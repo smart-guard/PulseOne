@@ -1114,7 +1114,7 @@ bool ModbusRtuWorker::SendModbusRtuDataToPipeline(const std::vector<uint16_t>& r
         return success;
                                                
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "SendModbusRtuDataToPipeline 예외: " + std::string(e.what()));
         return false;
     }
@@ -1208,7 +1208,7 @@ bool ModbusRtuWorker::SendModbusRtuBoolDataToPipeline(const std::vector<bool>& r
         return success;
                                                
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "SendModbusRtuBoolDataToPipeline 예외: " + std::string(e.what()));
         return false;
     }

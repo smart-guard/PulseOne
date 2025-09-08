@@ -54,7 +54,7 @@ bool VirtualPointBatchWriter::Start() {
     
     // DB 연결 확인
     if (!db_manager_) {
-        LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::LOG_ERROR,
             "❌ DatabaseManager가 null임");
         return false;
     }
@@ -71,7 +71,7 @@ bool VirtualPointBatchWriter::Start() {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::LOG_ERROR,
             "❌ VirtualPointBatchWriter 시작 실패: " + std::string(e.what()));
         return false;
     }
@@ -333,7 +333,7 @@ void VirtualPointBatchWriter::BatchWriterLoop() {
             }
             
         } catch (const std::exception& e) {
-            LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::ERROR,
+            LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::LOG_ERROR,
                 "❌ 배치 처리 루프 예외: " + std::string(e.what()));
             
             // 잠시 대기 후 재시도
@@ -408,7 +408,7 @@ bool VirtualPointBatchWriter::WriteBatchToDatabase(const std::vector<VPResult>& 
                 }
                 
             } catch (const std::exception& e) {
-                LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::ERROR,
+                LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::LOG_ERROR,
                     "❌ 가상포인트 " + std::to_string(result.vp_id) + " 저장 중 예외: " + std::string(e.what()));
                 // 개별 항목 실패해도 배치 처리 계속
             }
@@ -422,7 +422,7 @@ bool VirtualPointBatchWriter::WriteBatchToDatabase(const std::vector<VPResult>& 
         return success_count >= (batch.size() / 2);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::LOG_ERROR,
             "❌ 가상포인트 배치 저장 전체 실패: " + std::string(e.what()));
         
         return false;

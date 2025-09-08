@@ -20,6 +20,7 @@ CXXFLAGS = -std=c++17 -O2 -Wall -Wextra
 CXXFLAGS += -DPULSEONE_WINDOWS=1 -D_WIN32 -DPULSEONE_DISABLE_MSSQL=1
 CXXFLAGS += -DWIN32_LEAN_AND_MEAN -DNOMINMAX
 CXXFLAGS += -static -static-libgcc -static-libstdc++
+CXXFLAGS += -DHAVE_HTTPLIB=1
 
 # Include 경로
 MINGW_PREFIX = /usr/x86_64-w64-mingw32
@@ -39,6 +40,12 @@ INCLUDES += -I$(INCLUDE_DIR)/Alarm
 INCLUDES += -I$(INCLUDE_DIR)/VirtualPoint
 INCLUDES += -I$(INCLUDE_DIR)/Pipeline
 INCLUDES += -I$(INCLUDE_DIR)/Storage
+INCLUDES += -I$(INCLUDE_DIR)/Drivers
+INCLUDES += -I$(INCLUDE_DIR)/Drivers/Common
+INCLUDES += -I$(INCLUDE_DIR)/Drivers/Modbus
+INCLUDES += -I$(INCLUDE_DIR)/Drivers/Mqtt
+INCLUDES += -I$(INCLUDE_DIR)/Drivers/Bacnet
+INCLUDES += -I$(INCLUDE_DIR)/Network
 INCLUDES += -I$(MINGW_PREFIX)/include
 
 # 라이브러리 감지 및 설정
@@ -72,6 +79,13 @@ endif
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libhiredis.a),)
     DB_LIBS += -lhiredis
     CXXFLAGS += -DHAVE_REDIS=1
+endif
+
+# httplib 라이브러리 확인 및 설정
+ifneq ($(wildcard $(MINGW_PREFIX)/include/httplib.h),)
+    $(info ✅ httplib.h found at $(MINGW_PREFIX)/include/httplib.h)
+else
+    $(info ❌ httplib.h not found)
 endif
 
 # 모든 라이브러리
@@ -109,6 +123,7 @@ check-files:
 	@echo ""
 	@echo "Libraries:"
 	@echo "  SQLite:   ✅ (기본)"
+	@echo "  httplib:  ✅ (강제 활성화)"
 	@echo "  Modbus:   $(if $(findstring -lmodbus,$(PROTOCOL_LIBS)),✅,❌)"
 	@echo "  MQTT:     $(if $(findstring -lpaho-mqtt3c,$(PROTOCOL_LIBS)),✅,❌)"
 	@echo "  BACnet:   $(if $(findstring -lbacnet,$(PROTOCOL_LIBS)),✅,❌)"
@@ -154,6 +169,12 @@ $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)/Pipeline
 	@mkdir -p $(BUILD_DIR)/Storage
 	@mkdir -p $(BUILD_DIR)/Platform
+	@mkdir -p $(BUILD_DIR)/Drivers
+	@mkdir -p $(BUILD_DIR)/Drivers/Common
+	@mkdir -p $(BUILD_DIR)/Drivers/Modbus
+	@mkdir -p $(BUILD_DIR)/Drivers/Mqtt
+	@mkdir -p $(BUILD_DIR)/Drivers/Bacnet
+	@mkdir -p $(BUILD_DIR)/Network
 
 $(BIN_DIR):
 	@mkdir -p $@

@@ -76,13 +76,13 @@ MQTTWorker::MQTTWorker(const PulseOne::DeviceInfo& device_info,
     
     // 설정 파싱 (ModbusTcpWorker와 동일한 5단계 프로세스)
     if (!ParseMQTTConfig()) {
-        LogMessage(LogLevel::ERROR, "Failed to parse MQTT configuration");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to parse MQTT configuration");
         return;
     }
     
     // MqttDriver 초기화
     if (!InitializeMQTTDriver()) {
-        LogMessage(LogLevel::ERROR, "Failed to initialize MqttDriver");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to initialize MqttDriver");
         return;
     }
     
@@ -148,7 +148,7 @@ std::future<bool> MQTTWorker::Start() {
             promise->set_value(true);
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Failed to start MQTT worker: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Failed to start MQTT worker: " + std::string(e.what()));
             promise->set_value(false);
         }
     }).detach();
@@ -186,7 +186,7 @@ std::future<bool> MQTTWorker::Stop() {
             promise->set_value(true);
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Failed to stop MQTT worker: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Failed to stop MQTT worker: " + std::string(e.what()));
             promise->set_value(false);
         }
     }).detach();
@@ -196,7 +196,7 @@ std::future<bool> MQTTWorker::Stop() {
 
 bool MQTTWorker::EstablishConnection() {
     if (!mqtt_driver_) {
-        LogMessage(LogLevel::ERROR, "MQTT driver not initialized");
+        LogMessage(LogLevel::LOG_ERROR, "MQTT driver not initialized");
         return false;
     }
     
@@ -212,7 +212,7 @@ bool MQTTWorker::EstablishConnection() {
         
         return true;
     } else {
-        LogMessage(LogLevel::ERROR, "Failed to establish MQTT connection");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to establish MQTT connection");
         
         // 프로덕션 모드에서는 에러 카운트 업데이트
         if (IsProductionMode()) {
@@ -315,7 +315,7 @@ bool MQTTWorker::SendMQTTDataToPipeline(const std::string& topic,
         return SendValuesToPipelineWithLogging(values, "MQTT topic: " + topic, priority);
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "SendMQTTDataToPipeline 예외: " + std::string(e.what()));
         return false;
     }
@@ -424,7 +424,7 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json& json_data,
                                               priority);
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "SendJsonValuesToPipeline 예외: " + std::string(e.what()));
         return false;
     }
@@ -493,7 +493,7 @@ bool MQTTWorker::SendSingleTopicValueToPipeline(const std::string& topic,
                                               priority);
                                               
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR,
+        LogMessage(LogLevel::LOG_ERROR,
                   "SendSingleTopicValueToPipeline 예외: " + std::string(e.what()));
         return false;
     }
@@ -565,7 +565,7 @@ bool MQTTWorker::SendMultipleTopicValuesToPipeline(const std::map<std::string, P
                                               priority);
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR,
+        LogMessage(LogLevel::LOG_ERROR,
                   "SendMultipleTopicValuesToPipeline 예외: " + std::string(e.what()));
         return false;
     }
@@ -580,7 +580,7 @@ bool MQTTWorker::AddSubscription(const MQTTSubscription& subscription) {
     
     // 구독 유효성 검사
     if (!ValidateSubscription(subscription)) {
-        LogMessage(LogLevel::ERROR, "Invalid subscription: " + subscription.topic);
+        LogMessage(LogLevel::LOG_ERROR, "Invalid subscription: " + subscription.topic);
         return false;
     }
     
@@ -595,7 +595,7 @@ bool MQTTWorker::AddSubscription(const MQTTSubscription& subscription) {
         bool success = true; // 현재는 임시로 true (실제 구현에서는 MqttDriver API 사용)
         
         if (!success) {
-            LogMessage(LogLevel::ERROR, "Failed to subscribe to topic: " + new_subscription.topic);
+            LogMessage(LogLevel::LOG_ERROR, "Failed to subscribe to topic: " + new_subscription.topic);
             return false;
         }
     }
@@ -778,7 +778,7 @@ bool MQTTWorker::PublishWithPriority(const std::string& topic,
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in PublishWithPriority: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception in PublishWithPriority: " + std::string(e.what()));
         performance_metrics_.error_count++;
         return false;
     }
@@ -1143,7 +1143,7 @@ bool MQTTWorker::ParseMQTTConfig() {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ParseMQTTConfig failed: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ParseMQTTConfig failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -1156,7 +1156,7 @@ bool MQTTWorker::InitializeMQTTDriver() {
         mqtt_driver_ = std::make_unique<PulseOne::Drivers::MqttDriver>();
         
         if (!mqtt_driver_) {
-            LogMessage(LogLevel::ERROR, "❌ Failed to create MqttDriver instance");
+            LogMessage(LogLevel::LOG_ERROR, "❌ Failed to create MqttDriver instance");
             return false;
         }
         
@@ -1308,17 +1308,17 @@ bool MQTTWorker::InitializeMQTTDriver() {
             LogMessage(LogLevel::INFO, final_msg);
             
         } else {
-            LogMessage(LogLevel::ERROR, "❌ Failed to initialize MqttDriver");
+            LogMessage(LogLevel::LOG_ERROR, "❌ Failed to initialize MqttDriver");
             
             // 에러 상세 정보 (MqttDriver에서 제공되는 경우)
             // const auto& error = mqtt_driver_->GetLastError();
-            // LogMessage(LogLevel::ERROR, "   Error details: " + error.message);
+            // LogMessage(LogLevel::LOG_ERROR, "   Error details: " + error.message);
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "❌ Exception during MqttDriver initialization: " + std::string(e.what()));
         
         if (mqtt_driver_) {
@@ -1348,7 +1348,7 @@ void MQTTWorker::MessageProcessorThreadFunction() {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, 
+            LogMessage(LogLevel::LOG_ERROR, 
                       "Message processor thread error: " + std::string(e.what()));
             worker_stats_.failed_operations++;
         }
@@ -1418,13 +1418,13 @@ void MQTTWorker::PublishProcessorThreadFunction() {
                     
                     SendValuesToPipelineWithLogging({control_log}, "MQTT 제어 실패 이력", 1);
                     
-                    LogMessage(LogLevel::ERROR, 
+                    LogMessage(LogLevel::LOG_ERROR, 
                               "Failed to publish message to topic: " + task.topic);
                 }
             }
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, 
+            LogMessage(LogLevel::LOG_ERROR, 
                       "Publish processor thread error: " + std::string(e.what()));
             worker_stats_.failed_operations++;
         }
@@ -1466,7 +1466,7 @@ bool MQTTWorker::ProcessReceivedMessage(const std::string& topic, const std::str
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Error processing received message: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Error processing received message: " + std::string(e.what()));
         worker_stats_.json_parse_errors++;
         return false;
     }
@@ -1530,7 +1530,7 @@ void MQTTWorker::StartProductionThreads() {
         LogMessage(LogLevel::INFO, "Production threads started successfully");
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to start production threads: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to start production threads: " + std::string(e.what()));
     }
 }
 
@@ -1563,7 +1563,7 @@ void MQTTWorker::MetricsCollectorLoop() {
             std::this_thread::sleep_for(seconds(metrics_collection_interval_.load()));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in metrics collector: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Exception in metrics collector: " + std::string(e.what()));
             std::this_thread::sleep_for(seconds(10));
         }
     }
@@ -1605,7 +1605,7 @@ void MQTTWorker::PriorityQueueProcessorLoop() {
             std::this_thread::sleep_for(milliseconds(100));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in priority queue processor: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Exception in priority queue processor: " + std::string(e.what()));
             std::this_thread::sleep_for(seconds(1));
         }
     }
@@ -1632,7 +1632,7 @@ void MQTTWorker::AlarmMonitorLoop() {
             std::this_thread::sleep_for(seconds(30));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in alarm monitor: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Exception in alarm monitor: " + std::string(e.what()));
             std::this_thread::sleep_for(seconds(10));
         }
     }
@@ -1859,7 +1859,7 @@ bool MQTTWorker::ConvertJsonToDataValue(const nlohmann::json& json_val,
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "JSON conversion error: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "JSON conversion error: " + std::string(e.what()));
         return false;
     }
 }
@@ -1896,7 +1896,7 @@ bool MQTTWorker::WriteDataPoint(const std::string& point_id, const DataValue& va
         LogMessage(LogLevel::INFO, "WriteDataPoint 호출: " + point_id);
         return WriteDataPointValue(point_id, value);
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDataPoint 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteDataPoint 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1917,7 +1917,7 @@ bool MQTTWorker::WriteAnalogOutput(const std::string& output_id, double value) {
         return PublishControlMessage(control_topic, data_value);
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteAnalogOutput 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteAnalogOutput 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1938,7 +1938,7 @@ bool MQTTWorker::WriteDigitalOutput(const std::string& output_id, bool value) {
         return PublishControlMessage(control_topic, data_value);
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDigitalOutput 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteDigitalOutput 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1951,7 +1951,7 @@ bool MQTTWorker::WriteSetpoint(const std::string& setpoint_id, double value) {
         return WriteAnalogOutput(setpoint_id, value);
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteSetpoint 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteSetpoint 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1966,12 +1966,12 @@ bool MQTTWorker::ControlDigitalDevice(const std::string& device_id, bool enable)
         if (success) {
             LogMessage(LogLevel::INFO, "MQTT 디지털 장비 제어 성공: " + device_id + " " + (enable ? "활성화" : "비활성화"));
         } else {
-            LogMessage(LogLevel::ERROR, "MQTT 디지털 장비 제어 실패: " + device_id);
+            LogMessage(LogLevel::LOG_ERROR, "MQTT 디지털 장비 제어 실패: " + device_id);
         }
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ControlDigitalDevice 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ControlDigitalDevice 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1992,12 +1992,12 @@ bool MQTTWorker::ControlAnalogDevice(const std::string& device_id, double value)
         if (success) {
             LogMessage(LogLevel::INFO, "MQTT 아날로그 장비 제어 성공: " + device_id + " = " + std::to_string(value));
         } else {
-            LogMessage(LogLevel::ERROR, "MQTT 아날로그 장비 제어 실패: " + device_id);
+            LogMessage(LogLevel::LOG_ERROR, "MQTT 아날로그 장비 제어 실패: " + device_id);
         }
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ControlAnalogDevice 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ControlAnalogDevice 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -2009,7 +2009,7 @@ bool MQTTWorker::ControlAnalogDevice(const std::string& device_id, double value)
 bool MQTTWorker::WriteDataPointValue(const std::string& point_id, const DataValue& value) {
     auto data_point_opt = FindDataPointById(point_id);
     if (!data_point_opt.has_value()) {
-        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        LogMessage(LogLevel::LOG_ERROR, "DataPoint not found: " + point_id);
         return false;
     }
     
@@ -2022,7 +2022,7 @@ bool MQTTWorker::WriteDataPointValue(const std::string& point_id, const DataValu
         int qos;
         
         if (!ParseMQTTTopic(data_point, topic, json_path, qos)) {
-            LogMessage(LogLevel::ERROR, "Invalid MQTT topic for DataPoint: " + point_id);
+            LogMessage(LogLevel::LOG_ERROR, "Invalid MQTT topic for DataPoint: " + point_id);
             return false;
         }
         
@@ -2044,7 +2044,7 @@ bool MQTTWorker::WriteDataPointValue(const std::string& point_id, const DataValu
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -2068,7 +2068,7 @@ bool MQTTWorker::PublishControlMessage(const std::string& topic, const DataValue
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "PublishControlMessage 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "PublishControlMessage 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -2139,7 +2139,7 @@ std::string MQTTWorker::CreateJsonPayload(const DataValue& value) {
         return ss.str();
 #endif
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "CreateJsonPayload 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "CreateJsonPayload 예외: " + std::string(e.what()));
         // 폴백: 단순 문자열
         if (std::holds_alternative<std::string>(value)) {
             return std::get<std::string>(value);
@@ -2167,7 +2167,7 @@ void MQTTWorker::LogWriteOperation(const std::string& topic, const DataValue& va
         SendValuesToPipelineWithLogging({control_log}, "MQTT 제어 이력", 1);
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
     }
 }
 
@@ -2222,7 +2222,7 @@ bool MQTTWorker::ParseMQTTTopic(const PulseOne::DataPoint& data_point,
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to parse MQTT topic for DataPoint " + 
+        LogMessage(LogLevel::LOG_ERROR, "Failed to parse MQTT topic for DataPoint " + 
                   data_point.id + ": " + std::string(e.what()));
         return false;
     }

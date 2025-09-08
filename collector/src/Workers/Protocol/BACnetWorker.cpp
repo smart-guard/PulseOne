@@ -36,7 +36,7 @@ BACnetWorker::BACnetWorker(const DeviceInfo& device_info)
     
     // BACnet Driver 초기화 (독립 객체)
     if (!InitializeBACnetDriver()) {
-        LogMessage(LogLevel::ERROR, "Failed to initialize BACnet driver");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to initialize BACnet driver");
         return;
     }
 
@@ -47,7 +47,7 @@ BACnetWorker::BACnetWorker(const DeviceInfo& device_info)
         );
         LogMessage(LogLevel::INFO, "BACnetServiceManager initialized successfully");
     } else {
-        LogMessage(LogLevel::ERROR, "Cannot initialize BACnetServiceManager: BACnet driver is null");
+        LogMessage(LogLevel::LOG_ERROR, "Cannot initialize BACnetServiceManager: BACnet driver is null");
     }    
     
     LogMessage(LogLevel::INFO, "BACnetWorker initialization completed");
@@ -83,7 +83,7 @@ std::future<bool> BACnetWorker::Start() {
         
         // 2. UDP 연결 수립
         if (!EstablishConnection()) {
-            LogMessage(LogLevel::ERROR, "Failed to establish UDP connection");
+            LogMessage(LogLevel::LOG_ERROR, "Failed to establish UDP connection");
             return false;
         }
         
@@ -128,13 +128,13 @@ bool BACnetWorker::EstablishProtocolConnection() {
     LogMessage(LogLevel::INFO, "Establishing BACnet protocol connection...");
     
     if (!bacnet_driver_) {
-        LogMessage(LogLevel::ERROR, "BACnet driver not initialized");
+        LogMessage(LogLevel::LOG_ERROR, "BACnet driver not initialized");
         return false;
     }
     
     if (!bacnet_driver_->Connect()) {
         const auto& error = bacnet_driver_->GetLastError();
-        LogMessage(LogLevel::ERROR, "Failed to connect BACnet driver: " + error.message);
+        LogMessage(LogLevel::LOG_ERROR, "Failed to connect BACnet driver: " + error.message);
         return false;
     }
     
@@ -170,7 +170,7 @@ bool BACnetWorker::ProcessReceivedPacket(const UdpPacket& packet) {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in ProcessReceivedPacket: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception in ProcessReceivedPacket: " + std::string(e.what()));
         UpdateWorkerStats("packet_received", false);
         return false;
     }
@@ -272,7 +272,7 @@ bool BACnetWorker::SendBACnetDataToPipeline(
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "SendBACnetDataToPipeline 예외: " + std::string(e.what()));
         return false;
     }
@@ -346,7 +346,7 @@ bool BACnetWorker::SendBACnetPropertyToPipeline(const std::string& object_id,
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "SendBACnetPropertyToPipeline 예외: " + std::string(e.what()));
         return false;
     }
@@ -397,7 +397,7 @@ bool BACnetWorker::SendCOVNotificationToPipeline(const std::string& object_id,
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "SendCOVNotificationToPipeline 예외: " + std::string(e.what()));
         return false;
     }
@@ -495,7 +495,7 @@ bool BACnetWorker::ParseBACnetConfigFromDeviceInfo() {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in ParseBACnetConfigFromDeviceInfo: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception in ParseBACnetConfigFromDeviceInfo: " + std::string(e.what()));
         return false;
     }
 }
@@ -565,7 +565,7 @@ bool BACnetWorker::InitializeBACnetDriver() {
         LogMessage(LogLevel::INFO, "Initializing BACnet driver...");
         
         if (!bacnet_driver_) {
-            LogMessage(LogLevel::ERROR, "BACnet driver is null");
+            LogMessage(LogLevel::LOG_ERROR, "BACnet driver is null");
             return false;
         }
         
@@ -573,7 +573,7 @@ bool BACnetWorker::InitializeBACnetDriver() {
         
         if (!bacnet_driver_->Initialize(driver_config)) {
             const auto& error = bacnet_driver_->GetLastError();
-            LogMessage(LogLevel::ERROR, "BACnet driver initialization failed: " + error.message);
+            LogMessage(LogLevel::LOG_ERROR, "BACnet driver initialization failed: " + error.message);
             return false;
         }
         
@@ -583,7 +583,7 @@ bool BACnetWorker::InitializeBACnetDriver() {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception during BACnet driver initialization: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception during BACnet driver initialization: " + std::string(e.what()));
         return false;
     }
 }
@@ -596,7 +596,7 @@ void BACnetWorker::ShutdownBACnetDriver() {
             LogMessage(LogLevel::INFO, "BACnet driver shutdown complete");
         }
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception shutting down BACnet driver: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception shutting down BACnet driver: " + std::string(e.what()));
     }
 }
 
@@ -618,7 +618,7 @@ void BACnetWorker::DataScanThreadFunction() {
             std::this_thread::sleep_for(std::chrono::milliseconds(polling_interval_ms));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in data scan thread: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Exception in data scan thread: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
@@ -684,7 +684,7 @@ bool BACnetWorker::PerformDataScan() {
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in PerformDataScan: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception in PerformDataScan: " + std::string(e.what()));
         worker_stats_.failed_operations++;
         return false;
     }
@@ -706,7 +706,7 @@ bool BACnetWorker::WriteProperty(uint32_t device_id,
     }
     
     if (!bacnet_service_manager_) {
-        LogMessage(LogLevel::ERROR, "BACnetServiceManager not initialized");
+        LogMessage(LogLevel::LOG_ERROR, "BACnetServiceManager not initialized");
         return false;
     }
     
@@ -737,13 +737,13 @@ bool BACnetWorker::WriteProperty(uint32_t device_id,
             LogMessage(LogLevel::INFO, "BACnet write successful");
         } else {
             worker_stats_.failed_operations++;
-            LogMessage(LogLevel::ERROR, "BACnet write failed");
+            LogMessage(LogLevel::LOG_ERROR, "BACnet write failed");
         }
         
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteProperty 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteProperty 예외: " + std::string(e.what()));
         worker_stats_.failed_operations++;
         return false;
     }
@@ -758,7 +758,7 @@ bool BACnetWorker::WriteDataPoint(const std::string& point_id, const DataValue& 
         LogMessage(LogLevel::INFO, "WriteDataPoint 호출: " + point_id);
         return WriteDataPointValue(point_id, value);
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDataPoint 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteDataPoint 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -783,10 +783,10 @@ bool BACnetWorker::WriteAnalogOutput(const std::string& output_id, double value)
                                PROP_PRESENT_VALUE, data_value);
         }
         
-        LogMessage(LogLevel::ERROR, "WriteAnalogOutput: Invalid output_id: " + output_id);
+        LogMessage(LogLevel::LOG_ERROR, "WriteAnalogOutput: Invalid output_id: " + output_id);
         return false;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteAnalogOutput 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteAnalogOutput 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -811,10 +811,10 @@ bool BACnetWorker::WriteDigitalOutput(const std::string& output_id, bool value) 
                                PROP_PRESENT_VALUE, data_value);
         }
         
-        LogMessage(LogLevel::ERROR, "WriteDigitalOutput: Invalid output_id: " + output_id);
+        LogMessage(LogLevel::LOG_ERROR, "WriteDigitalOutput: Invalid output_id: " + output_id);
         return false;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDigitalOutput 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteDigitalOutput 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -824,7 +824,7 @@ bool BACnetWorker::WriteSetpoint(const std::string& setpoint_id, double value) {
         LogMessage(LogLevel::INFO, "WriteSetpoint 호출: " + setpoint_id + " = " + std::to_string(value));
         return WriteAnalogOutput(setpoint_id, value);
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteSetpoint 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteSetpoint 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -838,12 +838,12 @@ bool BACnetWorker::ControlDigitalDevice(const std::string& device_id, bool enabl
         if (success) {
             LogMessage(LogLevel::INFO, "BACnet 디지털 장비 제어 성공: " + device_id + " " + (enable ? "활성화" : "비활성화"));
         } else {
-            LogMessage(LogLevel::ERROR, "BACnet 디지털 장비 제어 실패: " + device_id);
+            LogMessage(LogLevel::LOG_ERROR, "BACnet 디지털 장비 제어 실패: " + device_id);
         }
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ControlDigitalDevice 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ControlDigitalDevice 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -862,12 +862,12 @@ bool BACnetWorker::ControlAnalogDevice(const std::string& device_id, double valu
         if (success) {
             LogMessage(LogLevel::INFO, "BACnet 아날로그 장비 제어 성공: " + device_id + " = " + std::to_string(value));
         } else {
-            LogMessage(LogLevel::ERROR, "BACnet 아날로그 장비 제어 실패: " + device_id);
+            LogMessage(LogLevel::LOG_ERROR, "BACnet 아날로그 장비 제어 실패: " + device_id);
         }
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ControlAnalogDevice 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ControlAnalogDevice 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -920,7 +920,7 @@ bool BACnetWorker::ProcessDataPoints(const std::vector<DataPoint>& points) {
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in ProcessDataPoints: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception in ProcessDataPoints: " + std::string(e.what()));
         worker_stats_.failed_operations++;
         return false;
     }
@@ -993,7 +993,7 @@ bool BACnetWorker::IsValueChanged(const DataValue& previous, const DataValue& cu
 bool BACnetWorker::WriteDataPointValue(const std::string& point_id, const DataValue& value) {
     auto data_point_opt = FindDataPointById(point_id);
     if (!data_point_opt.has_value()) {
-        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        LogMessage(LogLevel::LOG_ERROR, "DataPoint not found: " + point_id);
         return false;
     }
     
@@ -1009,7 +1009,7 @@ bool BACnetWorker::WriteDataPointValue(const std::string& point_id, const DataVa
             // address 필드에서 시도
             std::string object_id = std::to_string(data_point.address);
             if (!ParseBACnetObjectId(object_id, device_id, object_type, object_instance)) {
-                LogMessage(LogLevel::ERROR, "Invalid BACnet object ID for DataPoint: " + point_id);
+                LogMessage(LogLevel::LOG_ERROR, "Invalid BACnet object ID for DataPoint: " + point_id);
                 return false;
             }
         }
@@ -1027,7 +1027,7 @@ bool BACnetWorker::WriteDataPointValue(const std::string& point_id, const DataVa
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1066,7 +1066,7 @@ bool BACnetWorker::ParseBACnetObjectId(const std::string& object_id, uint32_t& d
         
         return true;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to parse BACnet object ID: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to parse BACnet object ID: " + std::string(e.what()));
         return false;
     }
 }
@@ -1097,7 +1097,7 @@ void BACnetWorker::LogWriteOperation(const std::string& object_id, const DataVal
         SendValuesToPipelineWithLogging({control_log}, "BACnet 제어 이력", 1);
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
     }
 }
 
@@ -1117,7 +1117,7 @@ bool BACnetWorker::WriteObjectProperty(const std::string& object_id,
         parts.push_back(temp);
         
         if (parts.size() != 3) {
-            LogMessage(LogLevel::ERROR, "Invalid object_id format: " + object_id + 
+            LogMessage(LogLevel::LOG_ERROR, "Invalid object_id format: " + object_id + 
                       " (expected: device_id:object_type:object_instance)");
             return false;
         }
@@ -1131,7 +1131,7 @@ bool BACnetWorker::WriteObjectProperty(const std::string& object_id,
                            PROP_PRESENT_VALUE, value, priority);
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteObjectProperty 파싱 에러: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteObjectProperty 파싱 에러: " + std::string(e.what()));
         return false;
     }
 }
@@ -1152,7 +1152,7 @@ bool BACnetWorker::WriteBACnetDataPoint(const std::string& point_id, const DataV
                 if (device_it == point.protocol_params.end() ||
                     object_type_it == point.protocol_params.end() ||
                     object_instance_it == point.protocol_params.end()) {
-                    LogMessage(LogLevel::ERROR, "BACnet mapping info missing for point: " + point_id);
+                    LogMessage(LogLevel::LOG_ERROR, "BACnet mapping info missing for point: " + point_id);
                     return false;
                 }
                 
@@ -1167,11 +1167,11 @@ bool BACnetWorker::WriteBACnetDataPoint(const std::string& point_id, const DataV
             }
         }
         
-        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        LogMessage(LogLevel::LOG_ERROR, "DataPoint not found: " + point_id);
         return false;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteBACnetDataPoint 에러: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteBACnetDataPoint 에러: " + std::string(e.what()));
         return false;
     }
 }

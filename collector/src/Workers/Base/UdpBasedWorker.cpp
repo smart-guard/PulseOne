@@ -172,13 +172,13 @@ bool UdpBasedWorker::EstablishConnection() {
     try {
         // 1. UDP 소켓 생성 및 설정
         if (!CreateUdpSocket()) {
-            LogMessage(LogLevel::ERROR, "Failed to create UDP socket");
+            LogMessage(LogLevel::LOG_ERROR, "Failed to create UDP socket");
             return false;
         }
         
         // 2. UDP 소켓 바인딩
         if (!BindUdpSocket()) {
-            LogMessage(LogLevel::ERROR, "Failed to bind UDP socket");
+            LogMessage(LogLevel::LOG_ERROR, "Failed to bind UDP socket");
             CloseUdpSocket();
             return false;
         }
@@ -189,7 +189,7 @@ bool UdpBasedWorker::EstablishConnection() {
         
         // 4. 프로토콜별 연결 수립
         if (!EstablishProtocolConnection()) {
-            LogMessage(LogLevel::ERROR, "Failed to establish protocol connection");
+            LogMessage(LogLevel::LOG_ERROR, "Failed to establish protocol connection");
             receive_thread_running_ = false;
             if (receive_thread_->joinable()) {
                 receive_thread_->join();
@@ -203,7 +203,7 @@ bool UdpBasedWorker::EstablishConnection() {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in EstablishConnection: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception in EstablishConnection: " + std::string(e.what()));
         CloseConnection();
         return false;
     }
@@ -240,7 +240,7 @@ bool UdpBasedWorker::CloseConnection() {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception in CloseConnection: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception in CloseConnection: " + std::string(e.what()));
         return false;
     }
 }
@@ -286,7 +286,7 @@ bool UdpBasedWorker::CreateUdpSocket() {
     // UDP 소켓 생성
     udp_connection_.socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (udp_connection_.socket_fd == -1) {
-        LogMessage(LogLevel::ERROR, "Failed to create UDP socket: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to create UDP socket: " + std::string(strerror(errno)));
         return false;
     }
     
@@ -303,7 +303,7 @@ bool UdpBasedWorker::CreateUdpSocket() {
 
 bool UdpBasedWorker::BindUdpSocket() {
     if (udp_connection_.socket_fd == -1) {
-        LogMessage(LogLevel::ERROR, "Socket not created before binding");
+        LogMessage(LogLevel::LOG_ERROR, "Socket not created before binding");
         return false;
     }
     
@@ -318,7 +318,7 @@ bool UdpBasedWorker::BindUdpSocket() {
     } else {
         if (inet_pton(AF_INET, udp_config_.local_interface.c_str(), 
                      &udp_connection_.local_addr.sin_addr) != 1) {
-            LogMessage(LogLevel::ERROR, "Invalid local interface: " + udp_config_.local_interface);
+            LogMessage(LogLevel::LOG_ERROR, "Invalid local interface: " + udp_config_.local_interface);
             return false;
         }
     }
@@ -327,7 +327,7 @@ bool UdpBasedWorker::BindUdpSocket() {
     if (bind(udp_connection_.socket_fd, 
              reinterpret_cast<struct sockaddr*>(&udp_connection_.local_addr),
              sizeof(udp_connection_.local_addr)) == -1) {
-        LogMessage(LogLevel::ERROR, "Failed to bind UDP socket: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to bind UDP socket: " + std::string(strerror(errno)));
         return false;
     }
     
@@ -363,7 +363,7 @@ void UdpBasedWorker::CloseUdpSocket() {
 ssize_t UdpBasedWorker::SendUdpData(const std::vector<uint8_t>& data, 
                                     const struct sockaddr_in& target_addr) {
     if (udp_connection_.socket_fd == -1) {
-        LogMessage(LogLevel::ERROR, "Socket not created for sending data");
+        LogMessage(LogLevel::LOG_ERROR, "Socket not created for sending data");
         UpdateErrorStats(true);
         return -1;
     }
@@ -379,7 +379,7 @@ ssize_t UdpBasedWorker::SendUdpData(const std::vector<uint8_t>& data,
                                sizeof(target_addr));
     
     if (bytes_sent == -1) {
-        LogMessage(LogLevel::ERROR, "Failed to send UDP data: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to send UDP data: " + std::string(strerror(errno)));
         UpdateErrorStats(true);
         return -1;
     }
@@ -399,7 +399,7 @@ ssize_t UdpBasedWorker::SendUdpData(const std::string& data,
                                     const std::string& target_host, uint16_t target_port) {
     struct sockaddr_in target_addr;
     if (!StringToSockAddr(target_host, target_port, target_addr)) {
-        LogMessage(LogLevel::ERROR, "Invalid target address: " + target_host + ":" + std::to_string(target_port));
+        LogMessage(LogLevel::LOG_ERROR, "Invalid target address: " + target_host + ":" + std::to_string(target_port));
         return -1;
     }
     
@@ -409,7 +409,7 @@ ssize_t UdpBasedWorker::SendUdpData(const std::string& data,
 
 ssize_t UdpBasedWorker::SendBroadcast(const std::vector<uint8_t>& data, uint16_t port) {
     if (!udp_config_.broadcast_enabled) {
-        LogMessage(LogLevel::ERROR, "Broadcast is disabled");
+        LogMessage(LogLevel::LOG_ERROR, "Broadcast is disabled");
         return -1;
     }
     
@@ -430,13 +430,13 @@ ssize_t UdpBasedWorker::SendBroadcast(const std::vector<uint8_t>& data, uint16_t
 ssize_t UdpBasedWorker::SendMulticast(const std::vector<uint8_t>& data, 
                                       const std::string& multicast_group, uint16_t port) {
     if (!udp_config_.multicast_enabled) {
-        LogMessage(LogLevel::ERROR, "Multicast is disabled");
+        LogMessage(LogLevel::LOG_ERROR, "Multicast is disabled");
         return -1;
     }
     
     struct sockaddr_in multicast_addr;
     if (!StringToSockAddr(multicast_group, port, multicast_addr)) {
-        LogMessage(LogLevel::ERROR, "Invalid multicast address: " + multicast_group);
+        LogMessage(LogLevel::LOG_ERROR, "Invalid multicast address: " + multicast_group);
         return -1;
     }
     
@@ -582,7 +582,7 @@ bool UdpBasedWorker::ParseUdpConfig() {
         return true;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to parse UDP config: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to parse UDP config: " + std::string(e.what()));
         return false;
     }
 }
@@ -675,7 +675,7 @@ void UdpBasedWorker::ReceiveThreadFunction() {
         
         if (select_result == -1) {
             if (errno != EINTR) {
-                LogMessage(LogLevel::ERROR, "Select error in receive thread: " + std::string(strerror(errno)));
+                LogMessage(LogLevel::LOG_ERROR, "Select error in receive thread: " + std::string(strerror(errno)));
                 UpdateErrorStats(false);
             }
             continue;
@@ -695,7 +695,7 @@ void UdpBasedWorker::ReceiveThreadFunction() {
             
             if (bytes_received == -1) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                    LogMessage(LogLevel::ERROR, "Receive error: " + std::string(strerror(errno)));
+                    LogMessage(LogLevel::LOG_ERROR, "Receive error: " + std::string(strerror(errno)));
                     UpdateErrorStats(false);
                 }
                 continue;

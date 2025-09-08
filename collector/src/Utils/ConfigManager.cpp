@@ -349,7 +349,7 @@ void ConfigManager::loadAdditionalConfigs() {
 void ConfigManager::loadConfigFile(const std::string& filepath) {
     std::ifstream file(filepath);
     if (!file.is_open()) {
-        LogManager::getInstance().log("config", LogLevel::ERROR, "❌ 파일 열기 실패: " + filepath);
+        LogManager::getInstance().log("config", LogLevel::LOG_ERROR, "❌ 파일 열기 실패: " + filepath);
         return;
     }
     
@@ -562,7 +562,7 @@ std::string ConfigManager::loadPasswordFromFile(const std::string& password_file
         return password;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("config", LogLevel::ERROR, 
+        LogManager::getInstance().log("config", LogLevel::LOG_ERROR, 
             "❌ 비밀번호 파일 읽기 실패: " + password_file + " - " + std::string(e.what()));
         return "";
     }

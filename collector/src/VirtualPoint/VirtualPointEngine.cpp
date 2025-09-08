@@ -60,11 +60,11 @@ void VirtualPointEngine::ensureInitialized() {
                 LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO, 
                                              "VirtualPointEngine 자동 초기화 성공");
             } else {
-                LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+                LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                              "VirtualPointEngine 자동 초기화 실패");
             }
         } catch (const std::exception& e) {
-            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                          "VirtualPointEngine 초기화 예외: " + std::string(e.what()));
             initialization_success_.store(false, std::memory_order_release);
         }
@@ -83,7 +83,7 @@ bool VirtualPointEngine::doInitialize() {
         
         // JavaScript 엔진 초기화
         if (!initJSEngine()) {
-            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                          "JavaScript 엔진 초기화 실패");
             return false;
         }
@@ -107,7 +107,7 @@ bool VirtualPointEngine::doInitialize() {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "VirtualPointEngine 초기화 실패: " + std::string(e.what()));
         return false;
     }
@@ -130,7 +130,7 @@ void VirtualPointEngine::reinitialize() {
         LogManager::getInstance().log("VirtualPointEngine", LogLevel::INFO,
                                      "VirtualPointEngine 재초기화 성공");
     } else {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "VirtualPointEngine 재초기화 실패");
     }
 }
@@ -172,7 +172,7 @@ bool VirtualPointEngine::initJSEngine() {
     
     js_runtime_ = JS_NewRuntime();
     if (!js_runtime_) {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "JavaScript 런타임 생성 실패");
         return false;
     }
@@ -181,7 +181,7 @@ bool VirtualPointEngine::initJSEngine() {
     
     js_context_ = JS_NewContext(js_runtime_);
     if (!js_context_) {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "JavaScript 컨텍스트 생성 실패");
         JS_FreeRuntime(js_runtime_);
         js_runtime_ = nullptr;
@@ -212,7 +212,7 @@ void VirtualPointEngine::cleanupJSEngine() {
 
 bool VirtualPointEngine::registerSystemFunctions() {
     if (!js_context_) {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "JavaScript 엔진이 초기화되지 않음");
         return false;
     }
@@ -270,7 +270,7 @@ function getPointValue(pointId) {
         } else {
             JSValue exception = JS_GetException(js_context_);
             const char* error_str = JS_ToCString(js_context_, exception);
-            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                          "getPointValue() 등록 실패: " + 
                                          std::string(error_str ? error_str : "Unknown error"));
             JS_FreeCString(js_context_, error_str);
@@ -424,7 +424,7 @@ function lerp(a, b, t) {
         return success_count >= 1;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "시스템 함수 등록 중 예외: " + std::string(e.what()));
         return false;
     }
@@ -525,7 +525,7 @@ bool VirtualPointEngine::loadVirtualPoints(int tenant_id) {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "가상포인트 로드 실패: " + std::string(e.what()));
         return false;
     }
@@ -550,7 +550,7 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
     std::vector<TimestampedValue> results;
     
     if (!isInitialized()) {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "VirtualPointEngine이 초기화되지 않음");
         return results;
     }
@@ -640,7 +640,7 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
                 triggerAlarmEvaluation(vp_id, jsonToDataValue(calc_result.value));
                 
             } else {
-                LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+                LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                              "가상포인트 " + std::to_string(vp_id) + 
                                              " 계산 실패: " + calc_result.error_message);
                 
@@ -649,7 +649,7 @@ std::vector<TimestampedValue> VirtualPointEngine::calculateForMessage(const Devi
             }
             
         } catch (const std::exception& e) {
-            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                          "가상포인트 " + std::to_string(vp_id) + 
                                          " 처리 예외: " + std::string(e.what()));
         }
@@ -723,7 +723,7 @@ CalculationResult VirtualPointEngine::calculate(int vp_id, const json& inputs) {
             statistics_.failed_calculations++;
         }
         
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "가상포인트 " + std::to_string(vp_id) + 
                                      " 계산 실패: " + result.error_message);
     }
@@ -788,7 +788,7 @@ DataValue VirtualPointEngine::evaluateFormula(const std::string& formula, const 
                                       JS_EVAL_TYPE_GLOBAL);
         
         if (JS_IsException(setup_result)) {
-            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                          "point_values 객체 생성 실패");
         }
         JS_FreeValue(js_context_, setup_result);
@@ -895,9 +895,9 @@ DataValue VirtualPointEngine::evaluateFormula(const std::string& formula, const 
             const char* error_str = JS_ToCString(js_context_, exception);
             std::string error_msg = error_str ? error_str : "Unknown error";
             
-            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                          "JavaScript 실행 오류: " + error_msg);
-            LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+            LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                          "실행한 수식: " + processed_formula);
             
             JS_FreeCString(js_context_, error_str);
@@ -945,7 +945,7 @@ DataValue VirtualPointEngine::evaluateFormula(const std::string& formula, const 
         return result;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "evaluateFormula 예외: " + std::string(e.what()));
         throw;
     }
@@ -1082,7 +1082,7 @@ void VirtualPointEngine::triggerAlarmEvaluation(int vp_id, const DataValue& valu
                                      "가상포인트 " + std::to_string(vp_id) + " 알람 평가 트리거");
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "가상포인트 " + std::to_string(vp_id) + " 알람 평가 실패: " + std::string(e.what()));
     }
 }
@@ -1123,7 +1123,7 @@ ExecutionResult VirtualPointEngine::executeScript(const CalculationContext& cont
         result.execution_time = std::chrono::duration_cast<std::chrono::microseconds>(
             end_time - start_time);
         
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "스크립트 실행 실패: " + result.error_message);
     }
     
@@ -1208,7 +1208,7 @@ CalculationResult VirtualPointEngine::calculateWithFormula(const std::string& fo
             statistics_.failed_calculations++;
         }
         
-        LogManager::getInstance().log("VirtualPointEngine", LogLevel::ERROR,
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR,
                                      "수식 계산 실패: " + result.error_message);
     }
     

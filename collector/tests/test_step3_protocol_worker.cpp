@@ -664,7 +664,7 @@ protected:
         
         // 시스템 초기화
         log_manager_ = &LogManager::getInstance();
-        log_manager_->setLogLevel(LogLevel::ERROR);
+        log_manager_->setLogLevel(LogLevel::LOG_ERROR);
         config_manager_ = &ConfigManager::getInstance();
         db_manager_ = &DatabaseManager::getInstance();
         repo_factory_ = &RepositoryFactory::getInstance();

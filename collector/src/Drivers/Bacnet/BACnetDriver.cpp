@@ -111,7 +111,7 @@ bool BACnetDriver::Initialize(const PulseOne::Structs::DriverConfig& config) {
         // 2. BACnet 스택 초기화
         if (!InitializeBACnetStack()) {
             SetError(PulseOne::Enums::ErrorCode::INTERNAL_ERROR, "Failed to initialize BACnet stack");
-            status_.store(static_cast<PulseOne::Structs::DriverStatus>(4)); // ERROR = 4 (매크로 충돌 방지)
+            status_.store(Enums::DriverStatus::DRIVER_ERROR); // ERROR = 4 (매크로 충돌 방지)
             return false;
         }
         
@@ -122,7 +122,7 @@ bool BACnetDriver::Initialize(const PulseOne::Structs::DriverConfig& config) {
         
     } catch (const std::exception& e) {
         SetError(PulseOne::Enums::ErrorCode::INTERNAL_ERROR, std::string("Exception: ") + e.what());
-        status_.store(static_cast<PulseOne::Structs::DriverStatus>(4)); // ERROR = 4
+        status_.store(Enums::DriverStatus::DRIVER_ERROR); // ERROR = 4
         return false;
     }
 }
@@ -143,7 +143,7 @@ bool BACnetDriver::Connect() {
         WSADATA wsaData;
         if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
             SetError(PulseOne::Enums::ErrorCode::CONNECTION_FAILED, "Failed to initialize Winsock");
-            status_.store(static_cast<PulseOne::Structs::DriverStatus>(4)); // ERROR = 4
+            status_.store(Enums::DriverStatus::DRIVER_ERROR); // ERROR = 4
             return false;
         }
         logger.Info("Winsock initialized successfully");
@@ -152,7 +152,7 @@ bool BACnetDriver::Connect() {
         // UDP 소켓 생성
         if (!CreateSocket()) {
             SetError(PulseOne::Enums::ErrorCode::CONNECTION_FAILED, "Failed to create UDP socket");
-            status_.store(static_cast<PulseOne::Structs::DriverStatus>(4)); // ERROR = 4
+            status_.store(Enums::DriverStatus::DRIVER_ERROR); // ERROR = 4
             return false;
         }
         
@@ -167,7 +167,7 @@ bool BACnetDriver::Connect() {
         
     } catch (const std::exception& e) {
         SetError(PulseOne::Enums::ErrorCode::CONNECTION_FAILED, std::string("Exception: ") + e.what());
-        status_.store(static_cast<PulseOne::Structs::DriverStatus>(4)); // ERROR = 4
+        status_.store(Enums::DriverStatus::DRIVER_ERROR); // ERROR = 4
         return false;
     }
 }

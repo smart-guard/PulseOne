@@ -36,12 +36,20 @@ ModbusDriver::ModbusDriver()
     , failover_(nullptr)
     , performance_(nullptr)
 {
+        // LogManager 초기화
     logger_ = &LogManager::getInstance();
+    
+    // 드라이버 상태 초기화
+    status_ = Enums::ConnectionStatus::DISCONNECTED;
+    
+    logger_->Info("ModbusDriver 생성됨: " + config_.name);
 }
 
 ModbusDriver::~ModbusDriver() {
     Disconnect();
     CleanupConnection();
+
+    logger_->Info("ModbusDriver 소멸됨: " + config_.name);
 }
 
 // =============================================================================
@@ -345,16 +353,51 @@ ProtocolType ModbusDriver::GetProtocolType() const {
     return ProtocolType::MODBUS_TCP;
 }
 
-Structs::DriverStatus ModbusDriver::GetStatus() const {
+Enums::DriverStatus ModbusDriver::GetStatus() const {
+    // 1. 먼저 모듈러스 컨텍스트 확인
     if (!modbus_ctx_) {
-        return Structs::DriverStatus::UNINITIALIZED;
+        return Enums::DriverStatus::UNINITIALIZED;
     }
     
-    if (!IsConnected()) {
-        return Structs::DriverStatus::ERROR;
-    }
+    // 2. ConnectionStatus를 DriverStatus로 변환 (ERROR 매크로 회피)
+    auto connection_status = status_;  // 직접 접근 (atomic 아님)
     
-    return Structs::DriverStatus::RUNNING;
+    // 🔥 숫자 값으로 비교해서 Windows ERROR 매크로 회피
+    auto status_value = static_cast<uint8_t>(connection_status);
+    
+    switch (status_value) {
+        case 0:  // DISCONNECTED = 0
+            return Enums::DriverStatus::STOPPED;
+            
+        case 1:  // CONNECTING = 1
+            return Enums::DriverStatus::STARTING;
+            
+        case 2:  // CONNECTED = 2
+            // 연결되어 있으면 실제 연결 상태도 확인
+            if (IsConnected()) {
+                return Enums::DriverStatus::RUNNING;
+            } else {
+                return Enums::DriverStatus::DRIVER_ERROR;  // 연결 상태 불일치
+            }
+            
+        case 3:  // RECONNECTING = 3
+            return Enums::DriverStatus::STARTING;
+            
+        case 4:  // DISCONNECTING = 4
+            return Enums::DriverStatus::STOPPING;
+            
+        case 5:  // ERROR = 5 (숫자로 비교해서 매크로 충돌 회피)
+            return Enums::DriverStatus::DRIVER_ERROR;
+            
+        case 6:  // TIMEOUT = 6
+            return Enums::DriverStatus::DRIVER_ERROR;
+            
+        case 7:  // MAINTENANCE = 7
+            return Enums::DriverStatus::MAINTENANCE;
+            
+        default:
+            return Enums::DriverStatus::UNINITIALIZED;
+    }
 }
 
 ErrorInfo ModbusDriver::GetLastError() const {

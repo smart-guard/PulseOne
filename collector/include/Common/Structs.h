@@ -1839,7 +1839,7 @@ namespace Structs {
                 double failure_ratio = static_cast<double>(failed_points) / total_points_configured;
                 
                 if (failure_ratio >= thresholds.error_failure_ratio) {
-                    device_status = Enums::DeviceStatus::ERROR;
+                    device_status = Enums::DeviceStatus::DEVICE_ERROR;
                     status_message = "포인트 " + std::to_string(static_cast<int>(failure_ratio * 100)) + "% 실패";
                 }
                 else if (failure_ratio >= thresholds.partial_failure_ratio) {

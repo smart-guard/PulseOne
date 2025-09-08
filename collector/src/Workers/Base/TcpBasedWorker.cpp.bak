@@ -61,19 +61,19 @@ bool TcpBasedWorker::EstablishConnection() {
     
     // TCP 설정 검증
     if (!ValidateTcpConfig()) {
-        LogMessage(LogLevel::ERROR, "Invalid TCP configuration");
+        LogMessage(LogLevel::LOG_ERROR, "Invalid TCP configuration");
         return false;
     }
     
     // TCP 소켓 생성 및 연결
     if (!CreateTcpSocket()) {
-        LogMessage(LogLevel::ERROR, "Failed to create TCP socket");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to create TCP socket");
         return false;
     }
     
     // 파생 클래스의 프로토콜별 연결 수립
     if (!EstablishProtocolConnection()) {
-        LogMessage(LogLevel::ERROR, "Failed to establish protocol connection");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to establish protocol connection");
         CloseTcpSocket();
         return false;
     }
@@ -150,17 +150,17 @@ std::string TcpBasedWorker::GetTcpConnectionInfo() const {
 
 bool TcpBasedWorker::ValidateTcpConfig() const {
     if (ip_address_.empty()) {
-        LogMessage(LogLevel::ERROR, "IP address is empty");
+        LogMessage(LogLevel::LOG_ERROR, "IP address is empty");
         return false;
     }
     
     if (port_ == 0) {
-        LogMessage(LogLevel::ERROR, "Port is zero");
+        LogMessage(LogLevel::LOG_ERROR, "Port is zero");
         return false;
     }
     
     if (connection_timeout_seconds_ <= 0) {
-        LogMessage(LogLevel::ERROR, "Invalid timeout value: " + std::to_string(connection_timeout_seconds_));
+        LogMessage(LogLevel::LOG_ERROR, "Invalid timeout value: " + std::to_string(connection_timeout_seconds_));
         return false;
     }
     
@@ -174,7 +174,7 @@ bool TcpBasedWorker::CreateTcpSocket() {
     // 새 소켓 생성
     socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd_ < 0) {
-        LogMessage(LogLevel::ERROR, "Failed to create TCP socket: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to create TCP socket: " + std::string(strerror(errno)));
         return false;
     }
     
@@ -203,14 +203,14 @@ bool TcpBasedWorker::CreateTcpSocket() {
     server_addr.sin_port = htons(port_);
     
     if (inet_pton(AF_INET, ip_address_.c_str(), &server_addr.sin_addr) <= 0) {
-        LogMessage(LogLevel::ERROR, "Invalid IP address: " + ip_address_);
+        LogMessage(LogLevel::LOG_ERROR, "Invalid IP address: " + ip_address_);
         CloseTcpSocket();
         return false;
     }
     
     // 연결 시도
     if (connect(socket_fd_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        LogMessage(LogLevel::ERROR, "TCP connection failed: " + std::string(strerror(errno)));
+        LogMessage(LogLevel::LOG_ERROR, "TCP connection failed: " + std::string(strerror(errno)));
         CloseTcpSocket();
         return false;
     }

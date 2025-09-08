@@ -86,11 +86,11 @@ DatabaseManager& DatabaseManager::getInstance() {
                 LogManager::getInstance().log("database", LogLevel::INFO, 
                     "🚀 DatabaseManager 자동 초기화 성공!");
             } else {
-                LogManager::getInstance().log("database", LogLevel::ERROR, 
+                LogManager::getInstance().log("database", LogLevel::ERLOG_ERRORROR, 
                     "❌ DatabaseManager 자동 초기화 실패!");
             }
         } catch (const std::exception& e) {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "💥 DatabaseManager 자동 초기화 예외: " + std::string(e.what()));
             initialization_success_.store(false);
         }
@@ -122,7 +122,7 @@ bool DatabaseManager::doInitialize() {
             LogManager::getInstance().log("database", LogLevel::INFO, 
                 "✅ 메인 RDB (SQLite) 연결 성공");
         } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ 메인 RDB (SQLite) 연결 실패");
         }
     }
@@ -134,7 +134,7 @@ bool DatabaseManager::doInitialize() {
             LogManager::getInstance().log("database", LogLevel::INFO, 
                 "✅ 메인 RDB (PostgreSQL) 연결 성공");
         } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ 메인 RDB (PostgreSQL) 연결 실패");
         }
     }
@@ -146,7 +146,7 @@ bool DatabaseManager::doInitialize() {
             LogManager::getInstance().log("database", LogLevel::INFO, 
                 "✅ 메인 RDB (MySQL) 연결 성공");
         } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ 메인 RDB (MySQL) 연결 실패");
         }
     }
@@ -159,7 +159,7 @@ bool DatabaseManager::doInitialize() {
             LogManager::getInstance().log("database", LogLevel::INFO, 
                 "✅ 메인 RDB (MSSQL) 연결 성공");
         } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ 메인 RDB (MSSQL) 연결 실패");
         }
     }
@@ -167,7 +167,7 @@ bool DatabaseManager::doInitialize() {
     
     // 🔧 3단계: 메인 RDB 연결 실패 시 전체 초기화 실패
     if (!primary_db_connected) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "❌ 메인 데이터베이스 연결 실패 - DatabaseManager 자동 초기화 실패");
         return false;
     }
@@ -250,7 +250,7 @@ void DatabaseManager::reinitialize() {
         LogManager::getInstance().log("database", LogLevel::INFO, 
             "✅ DatabaseManager 재초기화 성공");
     } else {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "❌ DatabaseManager 재초기화 실패");
     }
 }
@@ -344,7 +344,7 @@ bool DatabaseManager::connectPostgres() {
                 return true;
             }
         } catch (const std::exception& e) {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ PostgreSQL 연결 실패: " + std::string(e.what()));
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -382,7 +382,7 @@ bool DatabaseManager::connectSQLite() {
                     "✅ SQLite 연결 성공: " + db_path);
                 return true;
             } else {
-                LogManager::getInstance().log("database", LogLevel::ERROR, 
+                LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                     "❌ SQLite 연결 실패: " + std::string(sqlite3_errmsg(sqlite_conn_)));
                 if (sqlite_conn_) {
                     sqlite3_close(sqlite_conn_);
@@ -390,7 +390,7 @@ bool DatabaseManager::connectSQLite() {
                 }
             }
         } catch (const std::exception& e) {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ SQLite 연결 예외: " + std::string(e.what()));
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -404,7 +404,7 @@ bool DatabaseManager::executeQuerySQLite(
     void* data) {
     
     if (!isSQLiteConnected()) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "SQLite not connected for query: " + sql);
         return false;
     }
@@ -413,7 +413,7 @@ bool DatabaseManager::executeQuerySQLite(
     int result = sqlite3_exec(sqlite_conn_, sql.c_str(), callback, data, &error_msg);
     
     if (result != SQLITE_OK) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "SQLite query failed: " + std::string(error_msg ? error_msg : "Unknown error"));
         if (error_msg) {
             sqlite3_free(error_msg);
@@ -428,7 +428,7 @@ bool DatabaseManager::executeQuerySQLite(
 
 bool DatabaseManager::executeNonQuerySQLite(const std::string& sql) {
     if (!isSQLiteConnected()) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "SQLite not connected for non-query: " + sql);
         return false;
     }
@@ -437,7 +437,7 @@ bool DatabaseManager::executeNonQuerySQLite(const std::string& sql) {
     int result = sqlite3_exec(sqlite_conn_, sql.c_str(), nullptr, nullptr, &error_msg);
     
     if (result != SQLITE_OK) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "SQLite non-query failed: " + std::string(error_msg ? error_msg : "Unknown error"));
         if (error_msg) {
             sqlite3_free(error_msg);
@@ -460,7 +460,7 @@ bool DatabaseManager::isSQLiteConnected() {
 bool DatabaseManager::connectMySQL() {
     mysql_conn_ = mysql_init(nullptr);
     if (!mysql_conn_) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "❌ MySQL 초기화 실패");
         return false;
     }
@@ -479,11 +479,11 @@ bool DatabaseManager::connectMySQL() {
                     "✅ MySQL 연결 성공: " + std::string(host) + ":" + std::to_string(port));
                 return true;
             } else {
-                LogManager::getInstance().log("database", LogLevel::ERROR, 
+                LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                     "❌ MySQL 연결 실패: " + std::string(mysql_error(mysql_conn_)));
             }
         } catch (const std::exception& e) {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ MySQL 연결 예외: " + std::string(e.what()));
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -499,7 +499,7 @@ bool DatabaseManager::executeQueryMySQL(const std::string& query, std::vector<st
     
     try {
         if (mysql_query(mysql_conn_, query.c_str()) != 0) {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ MySQL 쿼리 실패: " + std::string(mysql_error(mysql_conn_)));
             return false;
         }
@@ -526,7 +526,7 @@ bool DatabaseManager::executeQueryMySQL(const std::string& query, std::vector<st
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "❌ MySQL 쿼리 예외: " + std::string(e.what()));
         return false;
     }
@@ -548,7 +548,7 @@ bool DatabaseManager::isMySQLConnected() {
 bool DatabaseManager::connectMSSQL() {
     // ODBC 환경 핸들 할당
     if (SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &mssql_env_) != SQL_SUCCESS) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "❌ MSSQL 환경 핸들 할당 실패");
         return false;
     }
@@ -558,7 +558,7 @@ bool DatabaseManager::connectMSSQL() {
     
     // 연결 핸들 할당
     if (SQLAllocHandle(SQL_HANDLE_DBC, mssql_env_, &mssql_conn_) != SQL_SUCCESS) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "❌ MSSQL 연결 핸들 할당 실패");
         SQLFreeHandle(SQL_HANDLE_ENV, mssql_env_);
         return false;
@@ -588,11 +588,11 @@ bool DatabaseManager::connectMSSQL() {
                     "✅ MSSQL 연결 성공");
                 return true;
             } else {
-                LogManager::getInstance().log("database", LogLevel::ERROR, 
+                LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                     "❌ MSSQL 연결 실패");
             }
         } catch (const std::exception& e) {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ MSSQL 연결 예외: " + std::string(e.what()));
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -645,14 +645,14 @@ bool DatabaseManager::connectRedis() {
                 "✅ Redis 연결 성공: " + host + ":" + std::to_string(port));
             return true;
         } else {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "❌ Redis 연결 실패: " + host + ":" + std::to_string(port));
             redis_client_.reset();
             return false;
         }
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "❌ Redis 연결 예외: " + std::string(e.what()));
         redis_client_.reset();
         return false;
@@ -676,7 +676,7 @@ void DatabaseManager::disconnectRedis() {
                 "✅ Redis 연결 해제 완료");
                 
         } catch (const std::exception& e) {
-            LogManager::getInstance().log("database", LogLevel::ERROR, 
+            LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
                 "Redis 연결 해제 중 예외: " + std::string(e.what()));
             redis_client_.reset();
         }
@@ -702,7 +702,7 @@ bool DatabaseManager::testRedisConnection() {
         return test_result;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "Redis 연결 테스트 중 예외: " + std::string(e.what()));
         return false;
     }
@@ -727,7 +727,7 @@ std::map<std::string, std::string> DatabaseManager::getRedisInfo() {
         return info;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "Redis 서버 정보 조회 중 예외: " + std::string(e.what()));
         
         info.clear();
@@ -748,7 +748,7 @@ bool DatabaseManager::connectInflux() {
         return false;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "❌ InfluxDB 연결 실패: " + std::string(e.what()));
     }
     return false;
@@ -802,7 +802,7 @@ bool DatabaseManager::executeQuery(const std::string& query, std::vector<std::ve
         return false;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "executeQuery failed: " + std::string(e.what()));
         return false;
     }
@@ -826,7 +826,7 @@ bool DatabaseManager::executeNonQuery(const std::string& query) {
         return false;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "executeNonQuery failed: " + std::string(e.what()));
         return false;
     }
@@ -968,7 +968,7 @@ pqxx::result DatabaseManager::executeQueryPostgres(const std::string& sql) {
         return query_result;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "PostgreSQL query failed: " + std::string(e.what()));
         throw;
     }
@@ -976,7 +976,7 @@ pqxx::result DatabaseManager::executeQueryPostgres(const std::string& sql) {
 
 bool DatabaseManager::executeNonQueryPostgres(const std::string& sql) {
     if (!isPostgresConnected()) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "PostgreSQL not connected for non-query: " + sql);
         return false;
     }
@@ -991,7 +991,7 @@ bool DatabaseManager::executeNonQueryPostgres(const std::string& sql) {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("database", LogLevel::ERROR, 
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
             "PostgreSQL non-query failed: " + std::string(e.what()));
         return false;
     }

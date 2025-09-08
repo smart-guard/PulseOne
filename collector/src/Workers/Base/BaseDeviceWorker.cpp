@@ -169,7 +169,7 @@ void BaseDeviceWorker::StartReconnectionThread() {
             LogMessage(LogLevel::DEBUG_LEVEL, "Reconnection thread started successfully");
         } catch (const std::exception& e) {
             thread_running_ = false;
-            LogMessage(LogLevel::ERROR, "Failed to start reconnection thread: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Failed to start reconnection thread: " + std::string(e.what()));
         }
     }
 }
@@ -185,7 +185,7 @@ void BaseDeviceWorker::StopAllThreads() {
                 reconnection_thread_->join();
                 LogMessage(LogLevel::DEBUG_LEVEL, "Reconnection thread joined successfully");
             } catch (const std::exception& e) {
-                LogMessage(LogLevel::ERROR, "Error joining reconnection thread: " + std::string(e.what()));
+                LogMessage(LogLevel::LOG_ERROR, "Error joining reconnection thread: " + std::string(e.what()));
             }
         }
         // 🔥 명시적으로 unique_ptr 해제 (메모리 누수 방지)
@@ -259,7 +259,7 @@ std::future<bool> BaseDeviceWorker::ForceReconnect() {
             promise->set_value(success);
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in force reconnect: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Exception in force reconnect: " + std::string(e.what()));
             promise->set_value(false);
         }
     }).detach();
@@ -351,7 +351,7 @@ void BaseDeviceWorker::SetConnectionState(bool connected) {
 }
 
 void BaseDeviceWorker::HandleConnectionError(const std::string& error_message) {
-    LogMessage(LogLevel::ERROR, "연결 에러: " + error_message);
+    LogMessage(LogLevel::LOG_ERROR, "연결 에러: " + error_message);
     
     SetConnectionState(false);
     
@@ -394,7 +394,7 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
             }
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "재연결 스레드 예외: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "재연결 스레드 예외: " + std::string(e.what()));
             // 예외 발생시 더 긴 대기 후 재시도
             for (int i = 0; i < 100 && thread_running_.load(); ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -417,7 +417,7 @@ bool BaseDeviceWorker::AttemptReconnection() {
         }
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "재연결 시도 중 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "재연결 시도 중 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -454,7 +454,7 @@ void BaseDeviceWorker::HandleKeepAlive() {
             last_keep_alive_time_ = now;
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Keep-alive exception: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Keep-alive exception: " + std::string(e.what()));
             HandleConnectionError("Keep-alive exception: " + std::string(e.what()));
             reconnection_stats_.keep_alive_failed.fetch_add(1);
         }
@@ -664,7 +664,7 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "파이프라인 전송 중 예외: " + std::string(e.what()));
         
         consecutive_failures_++;
@@ -696,7 +696,7 @@ bool BaseDeviceWorker::SendValuesToPipelineWithLogging(
                       "파이프라인 전송 성공 (" + data_type + "): " + 
                       std::to_string(values.size()) + "개 포인트");
         } else {
-            LogMessage(LogLevel::ERROR, 
+            LogMessage(LogLevel::LOG_ERROR, 
                       "파이프라인 전송 실패 (" + data_type + "): " + 
                       std::to_string(values.size()) + "개 포인트");
         }
@@ -704,7 +704,7 @@ bool BaseDeviceWorker::SendValuesToPipelineWithLogging(
         return success;
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, 
+        LogMessage(LogLevel::LOG_ERROR, 
                   "파이프라인 전송 예외 (" + data_type + "): " + std::string(e.what()));
         return false;
     }
@@ -791,7 +791,7 @@ PulseOne::Enums::DeviceStatus BaseDeviceWorker::ConvertWorkerStateToDeviceStatus
         case WorkerState::DEVICE_OFFLINE:
         case WorkerState::COMMUNICATION_ERROR:
         case WorkerState::MAX_RETRIES_EXCEEDED:
-            return PulseOne::Enums::DeviceStatus::ERROR;
+            return PulseOne::Enums::DeviceStatus::DEVICE_ERROR;
             
         case WorkerState::MAINTENANCE:
         case WorkerState::COMMISSIONING:

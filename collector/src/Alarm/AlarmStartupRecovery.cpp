@@ -141,7 +141,7 @@ Storage::BackendFormat::AlarmEventData AlarmStartupRecovery::ConvertToBackendFor
         return alarm_data;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+        LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR,
                                       "Backend 포맷 변환 실패: " + std::string(e.what()));
         
         // 안전한 기본값으로 초기화
@@ -189,7 +189,7 @@ size_t AlarmStartupRecovery::RecoverActiveAlarms() {
     try {
         // 1. 컴포넌트 초기화
         if (!InitializeComponents()) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+            LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR,
                                           "컴포넌트 초기화 실패");
             recovery_in_progress_.store(false);
             return 0;
@@ -259,7 +259,7 @@ size_t AlarmStartupRecovery::RecoverActiveAlarms() {
                 
             } catch (const std::exception& e) {
                 recovery_stats_.failed_to_publish++;
-                LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+                LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR,
                                               "개별 알람 복구 실패: " + std::string(e.what()));
             }
         }
@@ -353,14 +353,14 @@ bool AlarmStartupRecovery::InitializeComponents() {
         // 1. Repository 초기화
         auto& factory = Database::RepositoryFactory::getInstance();
         if (!factory.initialize()) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+            LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR,
                                           "RepositoryFactory 초기화 실패");
             return false;
         }
         
         alarm_occurrence_repo_ = factory.getAlarmOccurrenceRepository();
         if (!alarm_occurrence_repo_) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+            LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR,
                                           "AlarmOccurrenceRepository 획득 실패");
             return false;
         }
@@ -381,7 +381,7 @@ bool AlarmStartupRecovery::InitializeComponents() {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+        LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR,
                                       "컴포넌트 초기화 중 예외: " + std::string(e.what()));
         return false;
     }
@@ -390,7 +390,7 @@ bool AlarmStartupRecovery::InitializeComponents() {
 std::vector<Database::Entities::AlarmOccurrenceEntity> AlarmStartupRecovery::LoadActiveAlarmsFromDB() {
     try {
         if (!alarm_occurrence_repo_) {
-            LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+            LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR,
                                           "AlarmOccurrenceRepository가 null입니다");
             return {};
         }
@@ -405,7 +405,7 @@ std::vector<Database::Entities::AlarmOccurrenceEntity> AlarmStartupRecovery::Loa
         return active_alarms;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+        LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR,
                                       "활성 알람 DB 로드 실패: " + std::string(e.what()));
         return {};
     }
@@ -435,7 +435,7 @@ bool AlarmStartupRecovery::PublishAlarmToRedis(const Storage::BackendFormat::Ala
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().log("startup_recovery", LogLevel::ERROR,
+        LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR,
                                       "Redis 발행 중 예외: " + std::string(e.what()));
         return false;
     }
@@ -481,7 +481,7 @@ bool AlarmStartupRecovery::ValidateAlarmForRecovery(
 void AlarmStartupRecovery::HandleRecoveryError(const std::string& context, const std::string& error_msg) {
     std::string full_error = context + ": " + error_msg;
     
-    LogManager::getInstance().log("startup_recovery", LogLevel::ERROR, full_error);
+    LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR, full_error);
     
     recovery_stats_.last_error = full_error;
     recovery_stats_.last_recovery_time = GetCurrentTimeString();

@@ -37,12 +37,12 @@ ModbusTcpWorker::ModbusTcpWorker(const PulseOne::DeviceInfo& device_info)
     LogMessage(LogLevel::INFO, "ModbusTcpWorker created for device: " + device_info.name);
     
     if (!ParseModbusConfig()) {
-        LogMessage(LogLevel::ERROR, "Failed to parse Modbus configuration");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to parse Modbus configuration");
         return;
     }
     
     if (!InitializeModbusDriver()) {
-        LogMessage(LogLevel::ERROR, "Failed to initialize ModbusDriver");
+        LogMessage(LogLevel::LOG_ERROR, "Failed to initialize ModbusDriver");
         return;
     }
     
@@ -71,7 +71,7 @@ bool ModbusTcpWorker::WriteDataPoint(const std::string& point_id, const DataValu
         LogMessage(LogLevel::INFO, "WriteDataPoint 호출: " + point_id);
         return WriteDataPointValue(point_id, value);
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDataPoint 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteDataPoint 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -93,10 +93,10 @@ bool ModbusTcpWorker::WriteAnalogOutput(const std::string& output_id, double val
             return WriteSingleHoldingRegister(slave_id, address, int_value);
         }
         
-        LogMessage(LogLevel::ERROR, "WriteAnalogOutput: Invalid output_id: " + output_id);
+        LogMessage(LogLevel::LOG_ERROR, "WriteAnalogOutput: Invalid output_id: " + output_id);
         return false;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteAnalogOutput 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteAnalogOutput 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -117,10 +117,10 @@ bool ModbusTcpWorker::WriteDigitalOutput(const std::string& output_id, bool valu
             return WriteSingleCoil(slave_id, address, value);
         }
         
-        LogMessage(LogLevel::ERROR, "WriteDigitalOutput: Invalid output_id: " + output_id);
+        LogMessage(LogLevel::LOG_ERROR, "WriteDigitalOutput: Invalid output_id: " + output_id);
         return false;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDigitalOutput 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteDigitalOutput 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -130,7 +130,7 @@ bool ModbusTcpWorker::WriteSetpoint(const std::string& setpoint_id, double value
         LogMessage(LogLevel::INFO, "WriteSetpoint 호출: " + setpoint_id + " = " + std::to_string(value));
         return WriteAnalogOutput(setpoint_id, value);
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteSetpoint 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteSetpoint 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -145,7 +145,7 @@ bool ModbusTcpWorker::ControlDigitalDevice(const std::string& pump_id, bool enab
         }
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ControlPump 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ControlPump 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -155,7 +155,7 @@ bool ModbusTcpWorker::ControlAnalogDevice(const std::string& valve_id, double po
         LogMessage(LogLevel::INFO, "ControlValve 호출: " + valve_id + " = " + std::to_string(position) + "%");
         
         if (position < 0.0 || position > 100.0) {
-            LogMessage(LogLevel::ERROR, "ControlValve: Invalid position range: " + std::to_string(position) + "% (0-100 required)");
+            LogMessage(LogLevel::LOG_ERROR, "ControlValve: Invalid position range: " + std::to_string(position) + "% (0-100 required)");
             return false;
         }
         
@@ -165,7 +165,7 @@ bool ModbusTcpWorker::ControlAnalogDevice(const std::string& valve_id, double po
         }
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ControlValve 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ControlValve 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -187,7 +187,7 @@ std::future<bool> ModbusTcpWorker::Start() {
         
         try {
             if (!EstablishConnection()) {
-                LogMessage(LogLevel::ERROR, "Failed to establish connection");
+                LogMessage(LogLevel::LOG_ERROR, "Failed to establish connection");
                 return false;
             }
             
@@ -207,7 +207,7 @@ std::future<bool> ModbusTcpWorker::Start() {
             return true;
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception during start: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Exception during start: " + std::string(e.what()));
             return false;
         }
     });
@@ -230,7 +230,7 @@ std::future<bool> ModbusTcpWorker::Stop() {
             return true;
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception during stop: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Exception during stop: " + std::string(e.what()));
             return false;
         }
     });
@@ -242,7 +242,7 @@ std::future<bool> ModbusTcpWorker::Stop() {
 
 bool ModbusTcpWorker::EstablishProtocolConnection() {
     if (!modbus_driver_) {
-        LogMessage(LogLevel::ERROR, "ModbusDriver not initialized");
+        LogMessage(LogLevel::LOG_ERROR, "ModbusDriver not initialized");
         return false;
     }
     
@@ -250,7 +250,7 @@ bool ModbusTcpWorker::EstablishProtocolConnection() {
     
     if (!modbus_driver_->Connect()) {
         const auto& error = modbus_driver_->GetLastError();
-        LogMessage(LogLevel::ERROR, "ModbusDriver connection failed: " + error.message);
+        LogMessage(LogLevel::LOG_ERROR, "ModbusDriver connection failed: " + error.message);
         return false;
     }
     
@@ -302,7 +302,7 @@ bool ModbusTcpWorker::SendProtocolKeepAlive() {
         
         return result;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "SendProtocolKeepAlive 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "SendProtocolKeepAlive 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -313,14 +313,14 @@ bool ModbusTcpWorker::SendProtocolKeepAlive() {
 
 bool ModbusTcpWorker::AddPollingGroup(const ModbusTcpPollingGroup& group) {
     if (!ValidatePollingGroup(group)) {
-        LogMessage(LogLevel::ERROR, "Invalid polling group");
+        LogMessage(LogLevel::LOG_ERROR, "Invalid polling group");
         return false;
     }
     
     std::lock_guard<std::mutex> lock(polling_groups_mutex_);
     
     if (polling_groups_.find(group.group_id) != polling_groups_.end()) {
-        LogMessage(LogLevel::ERROR, "Polling group ID " + std::to_string(group.group_id) + " already exists");
+        LogMessage(LogLevel::LOG_ERROR, "Polling group ID " + std::to_string(group.group_id) + " already exists");
         return false;
     }
     
@@ -420,7 +420,7 @@ bool ModbusTcpWorker::TestConnection(int slave_id) {
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "TestConnection 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "TestConnection 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -481,7 +481,7 @@ std::map<uint16_t, uint16_t> ModbusTcpWorker::ScanRegisters(int slave_id, uint16
                   "/" + std::to_string(end_address - start_address + 1) + " 레지스터 읽기 성공");
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ScanRegisters 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ScanRegisters 예외: " + std::string(e.what()));
     }
     
     return scan_results;
@@ -538,7 +538,7 @@ std::string ModbusTcpWorker::ReadDeviceInfo(int slave_id) {
         LogMessage(LogLevel::INFO, "디바이스 정보 읽기 완료");
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ReadDeviceInfo 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ReadDeviceInfo 예외: " + std::string(e.what()));
         device_info["error"] = e.what();
     }
     
@@ -608,7 +608,7 @@ std::string ModbusTcpWorker::MonitorRegisters(int slave_id,
         LogMessage(LogLevel::INFO, "레지스터 모니터링 완료: " + std::to_string(sample_count) + "개 샘플 수집");
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "MonitorRegisters 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "MonitorRegisters 예외: " + std::string(e.what()));
         monitoring_result["error"] = e.what();
     }
     
@@ -714,7 +714,7 @@ std::string ModbusTcpWorker::RunDiagnostics(int slave_id) {
         LogMessage(LogLevel::INFO, "Modbus 진단 완료");
         
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "RunDiagnostics 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "RunDiagnostics 예외: " + std::string(e.what()));
         diagnostics["error"] = e.what();
     }
     
@@ -738,13 +738,13 @@ bool ModbusTcpWorker::ParseAddressString(const std::string& address_str, uint8_t
         }
         
         if (slave_id < 1 || slave_id > 247) {
-            LogMessage(LogLevel::ERROR, "Invalid slave_id: " + std::to_string(slave_id));
+            LogMessage(LogLevel::LOG_ERROR, "Invalid slave_id: " + std::to_string(slave_id));
             return false;
         }
         
         return true;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to parse address string '" + address_str + "': " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to parse address string '" + address_str + "': " + std::string(e.what()));
         return false;
     }
 }
@@ -791,12 +791,12 @@ bool ModbusTcpWorker::WriteSingleHoldingRegister(int slave_id, uint16_t address,
                       "Holding Register 쓰기 성공: 슬레이브=" + std::to_string(slave_id) + 
                       ", 주소=" + std::to_string(address) + ", 값=" + std::to_string(value));
         } else {
-            LogMessage(LogLevel::ERROR, "Holding Register 쓰기 실패");
+            LogMessage(LogLevel::LOG_ERROR, "Holding Register 쓰기 실패");
         }
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteSingleHoldingRegister 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteSingleHoldingRegister 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -821,7 +821,7 @@ bool ModbusTcpWorker::WriteSingleCoil(int slave_id, uint16_t address, bool value
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteSingleCoil 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteSingleCoil 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -844,7 +844,7 @@ bool ModbusTcpWorker::WriteMultipleHoldingRegisters(int slave_id, uint16_t start
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteMultipleHoldingRegisters 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteMultipleHoldingRegisters 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -882,7 +882,7 @@ bool ModbusTcpWorker::WriteMultipleCoils(int slave_id, uint16_t start_address,
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteMultipleCoils 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteMultipleCoils 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -981,7 +981,7 @@ bool ModbusTcpWorker::ReadHoldingRegisters(int slave_id, uint16_t start_address,
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ReadHoldingRegisters 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ReadHoldingRegisters 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1003,7 +1003,7 @@ bool ModbusTcpWorker::ReadInputRegisters(int slave_id, uint16_t start_address, u
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ReadInputRegisters 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ReadInputRegisters 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1035,7 +1035,7 @@ bool ModbusTcpWorker::ReadCoils(int slave_id, uint16_t start_address, uint16_t c
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ReadCoils 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ReadCoils 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1067,7 +1067,7 @@ bool ModbusTcpWorker::ReadDiscreteInputs(int slave_id, uint16_t start_address, u
         
         return success;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ReadDiscreteInputs 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ReadDiscreteInputs 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1079,7 +1079,7 @@ bool ModbusTcpWorker::ReadDiscreteInputs(int slave_id, uint16_t start_address, u
 bool ModbusTcpWorker::WriteDataPointValue(const std::string& point_id, const DataValue& value) {
     auto data_point_opt = FindDataPointById(point_id);
     if (!data_point_opt.has_value()) {
-        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        LogMessage(LogLevel::LOG_ERROR, "DataPoint not found: " + point_id);
         return false;
     }
     
@@ -1090,7 +1090,7 @@ bool ModbusTcpWorker::WriteDataPointValue(const std::string& point_id, const Dat
     uint16_t address;
     
     if (!ParseModbusAddress(data_point, slave_id, register_type, address)) {
-        LogMessage(LogLevel::ERROR, "Invalid Modbus address: " + point_id);
+        LogMessage(LogLevel::LOG_ERROR, "Invalid Modbus address: " + point_id);
         return false;
     }
     
@@ -1105,7 +1105,7 @@ bool ModbusTcpWorker::WriteDataPointValue(const std::string& point_id, const Dat
             bool coil_value = std::get<bool>(value);
             success = WriteSingleCoil(slave_id, address, coil_value);
         } else {
-            LogMessage(LogLevel::ERROR, "Read-only register type: " + point_id);
+            LogMessage(LogLevel::LOG_ERROR, "Read-only register type: " + point_id);
             return false;
         }
         
@@ -1115,10 +1115,10 @@ bool ModbusTcpWorker::WriteDataPointValue(const std::string& point_id, const Dat
         
         return success;
     } catch (const std::bad_variant_access& e) {
-        LogMessage(LogLevel::ERROR, "DataValue 타입 불일치: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "DataValue 타입 불일치: " + std::string(e.what()));
         return false;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "WriteDataPointValue 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1126,7 +1126,7 @@ bool ModbusTcpWorker::WriteDataPointValue(const std::string& point_id, const Dat
 bool ModbusTcpWorker::ReadDataPointValue(const std::string& point_id, TimestampedValue& value) {
     auto data_point_opt = FindDataPointById(point_id);
     if (!data_point_opt.has_value()) {
-        LogMessage(LogLevel::ERROR, "DataPoint not found: " + point_id);
+        LogMessage(LogLevel::LOG_ERROR, "DataPoint not found: " + point_id);
         return false;
     }
     
@@ -1137,7 +1137,7 @@ bool ModbusTcpWorker::ReadDataPointValue(const std::string& point_id, Timestampe
     uint16_t address;
     
     if (!ParseModbusAddress(data_point, slave_id, register_type, address)) {
-        LogMessage(LogLevel::ERROR, "Invalid Modbus address: " + point_id);
+        LogMessage(LogLevel::LOG_ERROR, "Invalid Modbus address: " + point_id);
         return false;
     }
     
@@ -1175,7 +1175,7 @@ bool ModbusTcpWorker::ReadDataPointValue(const std::string& point_id, Timestampe
         
         return false;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ReadDataPointValue 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ReadDataPointValue 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1262,7 +1262,7 @@ bool ModbusTcpWorker::ParseModbusConfig() {
         LogMessage(LogLevel::INFO, "Modbus config parsed successfully");
         return true;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "ParseModbusConfig failed: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "ParseModbusConfig failed: " + std::string(e.what()));
         return false;
     }
 }
@@ -1274,7 +1274,7 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         modbus_driver_ = std::make_unique<PulseOne::Drivers::ModbusDriver>();
         
         if (!modbus_driver_) {
-            LogMessage(LogLevel::ERROR, "Failed to create ModbusDriver instance");
+            LogMessage(LogLevel::LOG_ERROR, "Failed to create ModbusDriver instance");
             return false;
         }
         
@@ -1298,7 +1298,7 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         
         if (!modbus_driver_->Initialize(driver_config)) {
             const auto& error = modbus_driver_->GetLastError();
-            LogMessage(LogLevel::ERROR, "ModbusDriver initialization failed: " + error.message);
+            LogMessage(LogLevel::LOG_ERROR, "ModbusDriver initialization failed: " + error.message);
             return false;
         }
         
@@ -1307,7 +1307,7 @@ bool ModbusTcpWorker::InitializeModbusDriver() {
         LogMessage(LogLevel::INFO, "ModbusDriver initialized successfully");
         return true;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception during ModbusDriver initialization: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception during ModbusDriver initialization: " + std::string(e.what()));
         
         if (modbus_driver_) {
             modbus_driver_.reset();
@@ -1350,7 +1350,7 @@ void ModbusTcpWorker::PollingThreadFunction() {
             std::this_thread::sleep_for(milliseconds(100));
             
         } catch (const std::exception& e) {
-            LogMessage(LogLevel::ERROR, "Exception in polling thread: " + std::string(e.what()));
+            LogMessage(LogLevel::LOG_ERROR, "Exception in polling thread: " + std::string(e.what()));
             std::this_thread::sleep_for(seconds(1));
         }
     }
@@ -1379,7 +1379,7 @@ bool ModbusTcpWorker::ProcessPollingGroup(const ModbusTcpPollingGroup& group) {
         
         return true;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Exception processing group " + std::to_string(group.group_id) + ": " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Exception processing group " + std::to_string(group.group_id) + ": " + std::string(e.what()));
         return false;
     }
 }
@@ -1521,29 +1521,29 @@ bool ModbusTcpWorker::ParseModbusAddress(const PulseOne::DataPoint& data_point,
         
         return true;
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "Failed to parse Modbus address for " + data_point.name + ": " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "Failed to parse Modbus address for " + data_point.name + ": " + std::string(e.what()));
         return false;
     }
 }
 
 bool ModbusTcpWorker::ValidatePollingGroup(const ModbusTcpPollingGroup& group) {
     if (group.data_points.empty()) {
-        LogMessage(LogLevel::ERROR, "Polling group has no data points");
+        LogMessage(LogLevel::LOG_ERROR, "Polling group has no data points");
         return false;
     }
     
     if (group.register_count == 0 || group.register_count > max_registers_per_group_) {
-        LogMessage(LogLevel::ERROR, "Invalid register count: " + std::to_string(group.register_count));
+        LogMessage(LogLevel::LOG_ERROR, "Invalid register count: " + std::to_string(group.register_count));
         return false;
     }
     
     if (group.slave_id == 0 || group.slave_id > 247) {
-        LogMessage(LogLevel::ERROR, "Invalid slave ID: " + std::to_string(group.slave_id));
+        LogMessage(LogLevel::LOG_ERROR, "Invalid slave ID: " + std::to_string(group.slave_id));
         return false;
     }
     
     if (group.polling_interval_ms < 100) {
-        LogMessage(LogLevel::ERROR, "Polling interval too short: " + std::to_string(group.polling_interval_ms) + "ms");
+        LogMessage(LogLevel::LOG_ERROR, "Polling interval too short: " + std::to_string(group.polling_interval_ms) + "ms");
         return false;
     }
     
@@ -1624,7 +1624,7 @@ void ModbusTcpWorker::OnModbusError(void* worker_ptr, uint8_t slave_id, uint8_t 
         return;
     }
     
-    worker->LogMessage(LogLevel::ERROR, "Modbus error - Slave: " + std::to_string(slave_id) + 
+    worker->LogMessage(LogLevel::LOG_ERROR, "Modbus error - Slave: " + std::to_string(slave_id) + 
                        ", Function: " + std::to_string(function_code) + 
                        ", Code: " + std::to_string(error_code) + 
                        ", Message: " + error_message);
@@ -1654,7 +1654,7 @@ void ModbusTcpWorker::LogWriteOperation(int slave_id, uint16_t address, const Da
         
         SendValuesToPipelineWithLogging({control_log}, "제어 이력", 1);
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "LogWriteOperation 예외: " + std::string(e.what()));
     }
 }
 
@@ -1688,7 +1688,7 @@ bool ModbusTcpWorker::SendReadResultToPipeline(const std::vector<bool>& values, 
         
         return SendValuesToPipelineWithLogging(timestamped_values, register_type + " 읽기", 15);
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "SendReadResultToPipeline 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "SendReadResultToPipeline 예외: " + std::string(e.what()));
         return false;
     }
 }
@@ -1704,7 +1704,7 @@ bool ModbusTcpWorker::SendSingleValueToPipeline(const DataValue& value, uint16_t
         
         return SendValuesToPipelineWithLogging({tv}, "단일 값", 15);
     } catch (const std::exception& e) {
-        LogMessage(LogLevel::ERROR, "SendSingleValueToPipeline 예외: " + std::string(e.what()));
+        LogMessage(LogLevel::LOG_ERROR, "SendSingleValueToPipeline 예외: " + std::string(e.what()));
         return false;
     }
 }
