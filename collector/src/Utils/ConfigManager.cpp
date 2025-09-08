@@ -66,25 +66,36 @@ bool ConfigManager::doInitialize() {
 // 설정 디렉토리 찾기 (기존 헤더와 호환)
 // =============================================================================
 std::string ConfigManager::findConfigDirectory() {
-    searchLog_.clear();  // 기존 헤더 호환
+    searchLog_.clear();
     
-    // 환경변수 확인
+    // 1. 환경변수 확인
     const char* env_config = std::getenv("PULSEONE_CONFIG_DIR");
     if (env_config && directoryExists(env_config)) {
         searchLog_.push_back("✅ 환경변수: " + std::string(env_config));
         return std::string(env_config);
     }
     
-    // 기본 경로들 확인
+    // 2. 실행 파일 기준 경로 찾기
+    std::string exe_dir = getExecutableDirectory();
     std::vector<std::string> paths = {
-        "./config", "../config", "../../config"
+        exe_dir + "/config",           // 배포: PulseOne/config
+        exe_dir + "/../config",        // 개발: collector/../config  
+        exe_dir + "/../../config",     // 깊은 빌드: collector/bin/../config
+        "./config",                    // 현재 디렉토리
+        "../config",                   // 상위 디렉토리
+        "../../config"                 // 상위상위 디렉토리
     };
     
     for (const auto& path : paths) {
         if (directoryExists(path)) {
-            std::string canonical_path = std::filesystem::canonical(path).string();
-            searchLog_.push_back("✅ 발견: " + path + " → " + canonical_path);
-            return canonical_path;
+            try {
+                std::string canonical_path = std::filesystem::canonical(path).string();
+                searchLog_.push_back("✅ 발견: " + path + " → " + canonical_path);
+                return canonical_path;
+            } catch (const std::exception&) {
+                searchLog_.push_back("✅ 발견: " + path + " (canonical 실패)");
+                return path;
+            }
         } else {
             searchLog_.push_back("❌ 없음: " + path);
         }
@@ -92,6 +103,27 @@ std::string ConfigManager::findConfigDirectory() {
     
     searchLog_.push_back("❌ 설정 디렉토리를 찾을 수 없음");
     return "";
+}
+
+std::string ConfigManager::getExecutableDirectory() {
+    try {
+#ifdef _WIN32
+        char buffer[MAX_PATH];
+        GetModuleFileNameA(NULL, buffer, MAX_PATH);
+        std::string exe_path(buffer);
+        return std::filesystem::path(exe_path).parent_path().string();
+#else
+        char buffer[1024];
+        ssize_t len = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+        if (len != -1) {
+            buffer[len] = '\0';
+            return std::filesystem::path(buffer).parent_path().string();
+        }
+#endif
+    } catch (const std::exception&) {
+        // 실패 시 현재 디렉토리 반환
+    }
+    return ".";
 }
 
 bool ConfigManager::directoryExists(const std::string& path) {

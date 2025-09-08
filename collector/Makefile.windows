@@ -78,6 +78,11 @@ ifneq ($(wildcard $(MINGW_PREFIX)/lib/libquickjs.a),)
     CXXFLAGS += -DHAVE_QUICKJS=1
 endif
 
+# httplib 헤더 파일 확인 및 매크로 정의 추가
+ifneq ($(wildcard $(MINGW_PREFIX)/include/httplib.h),)
+    CXXFLAGS += -DHAVE_HTTPLIB=1
+endif
+
 # 데이터베이스 라이브러리
 DB_LIBS = -lsqlite3
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libhiredis.a),)

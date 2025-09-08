@@ -141,7 +141,7 @@ private:
     
     std::string findDataDirectory();
     void ensureDataDirectories();
-    
+    std::string getExecutableDirectory();
     // ==========================================================================
     // 멤버 변수들
     // ==========================================================================
