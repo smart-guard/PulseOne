@@ -1,25 +1,24 @@
-// =============================================================================
-// collector/include/Workers/Base/TcpBasedWorker.h - Windows 크로스 컴파일 완전 대응
-// =============================================================================
+/**
+ * @file TcpBasedWorker.h - 구현부와 100% 일치하도록 완전 수정
+ * @brief TCP 기반 프로토콜 워커 헤더 - 컴파일 에러 완전 해결
+ * @author PulseOne Development Team
+ * @date 2025-01-23
+ * @version 2.0.0 - 구현부 완전 동기화
+ */
 
 #ifndef WORKERS_TCP_BASED_WORKER_H
 #define WORKERS_TCP_BASED_WORKER_H
 
-/**
- * @file TcpBasedWorker.h - 크로스 플랫폼 TCP 통신 워커
- * @brief Windows/Linux TCP 소켓 지원 기반 워커 클래스
- * @author PulseOne Development Team
- * @date 2025-09-08
- * @version 8.0.0 - Windows 크로스 컴파일 완전 대응
- */
+// =============================================================================
+// UUID 충돌 방지 (가장 먼저!)
+// =============================================================================
+#ifdef _WIN32
+    #define NOMINMAX
+    #define WIN32_LEAN_AND_MEAN
+#endif
 
 // =============================================================================
-// 플랫폼 호환성 헤더 (가장 먼저!)
-// =============================================================================
-#include "Platform/PlatformCompat.h"
-
-// =============================================================================
-// 시스템 헤더들 (플랫폼별 조건부)
+// 시스템 헤더들
 // =============================================================================
 #include <string>
 #include <memory>
@@ -30,24 +29,19 @@
 #include <chrono>
 #include <future>
 
-#if PULSEONE_WINDOWS
-    // Windows 소켓 지원
+// =============================================================================
+// 플랫폼별 네트워크 헤더 (조건부)
+// =============================================================================
+#ifdef _WIN32
     #include <winsock2.h>
     #include <ws2tcpip.h>
     #include <windows.h>
     
-    // Windows 소켓 상수들
-    #define TCP_INVALID_SOCKET INVALID_SOCKET
-    #define TCP_SOCKET_ERROR SOCKET_ERROR
     typedef SOCKET TcpSocket;
     typedef int socklen_t;
-    
-    // Windows 전용 에러 매크로
-    #define GET_SOCKET_ERROR() WSAGetLastError()
-    #define CLOSE_SOCKET(s) closesocket(s)
-    
+    #define TCP_INVALID_SOCKET INVALID_SOCKET
+    #define TCP_SOCKET_ERROR SOCKET_ERROR
 #else
-    // Linux/Unix 소켓 지원
     #include <sys/socket.h>
     #include <netinet/in.h>
     #include <arpa/inet.h>
@@ -58,11 +52,8 @@
     #include <cerrno>
     
     typedef int TcpSocket;
-    
     #define TCP_INVALID_SOCKET -1
     #define TCP_SOCKET_ERROR -1
-    #define GET_SOCKET_ERROR() errno
-    #define CLOSE_SOCKET(s) close(s)
 #endif
 
 // =============================================================================
@@ -74,16 +65,16 @@ namespace PulseOne {
 namespace Workers {
 
 /**
- * @brief 크로스 플랫폼 TCP 연결 설정
+ * @brief TCP 연결 설정 구조체
  */
 struct TcpConfig {
-    std::string ip_address;              ///< IP 주소 ("192.168.1.100", "localhost" 등)
-    uint16_t port;                       ///< 포트 번호 (502, 1883, 47808 등)
+    std::string ip_address;              ///< IP 주소
+    uint16_t port;                       ///< 포트 번호
     int connection_timeout_seconds;       ///< 연결 타임아웃 (초)
     int send_timeout_seconds;            ///< 송신 타임아웃 (초)
     int receive_timeout_seconds;         ///< 수신 타임아웃 (초)
     bool keep_alive_enabled;             ///< TCP Keep-alive 사용 여부
-    bool no_delay_enabled;               ///< TCP_NODELAY 사용 여부 (Nagle 알고리즘 비활성화)
+    bool no_delay_enabled;               ///< TCP_NODELAY 사용 여부
     int send_buffer_size;                ///< 송신 버퍼 크기 (바이트)
     int receive_buffer_size;             ///< 수신 버퍼 크기 (바이트)
     
@@ -101,14 +92,17 @@ struct TcpConfig {
 
 /**
  * @brief TCP 기반 프로토콜 워커의 기반 클래스
- * @details BaseDeviceWorker의 완전한 재연결/Keep-alive 시스템 활용
- *          TCP 연결 관리만 담당하는 명확한 역할 분담
+ * @details BaseDeviceWorker를 상속받아 TCP 연결 관리 기능 제공
  */
 class TcpBasedWorker : public BaseDeviceWorker {
 public:
+    // =============================================================================
+    // 생성자 및 소멸자 (구현부와 정확히 일치)
+    // =============================================================================
+    
     /**
-     * @brief 생성자 (BaseDeviceWorker와 일치)
-     * @param device_info 디바이스 정보
+     * @brief 생성자
+     * @param device_info 디바이스 정보 (구현부와 타입 일치)
      */
     TcpBasedWorker(const PulseOne::Structs::DeviceInfo& device_info);
     
@@ -142,12 +136,6 @@ public:
      * @return JSON 형태의 연결 정보
      */
     std::string GetTcpConnectionInfo() const;
-    
-    /**
-     * @brief TCP 통계 정보 조회
-     * @return JSON 형태의 TCP 통계 + BaseDeviceWorker 통계
-     */
-    std::string GetTcpStats() const;
     
     // =============================================================================
     // BaseDeviceWorker 순수 가상 함수 구현 (TCP 특화)
@@ -210,12 +198,12 @@ protected:
     /**
      * @brief 프로토콜별 Keep-alive 전송 (파생 클래스에서 선택적 구현)
      * @details TCP 소켓이 연결된 상태에서 호출됨
-     * @return 성공 시 true
+     * @return 성공 시 true (기본 구현 제공)
      */
     virtual bool SendProtocolKeepAlive();
     
     // =============================================================================
-    // 크로스 플랫폼 TCP 소켓 관리 (파생 클래스에서 사용 가능)
+    // TCP 소켓 관리 (파생 클래스에서 사용 가능)
     // =============================================================================
     
     /**
@@ -225,111 +213,90 @@ protected:
     bool ValidateTcpConfig() const;
     
     /**
-     * @brief TCP 소켓 생성 및 연결 (크로스 플랫폼)
+     * @brief TCP 소켓 생성 및 연결
      * @return 성공 시 true
      */
     bool CreateTcpSocket();
     
     /**
-     * @brief TCP 소켓 닫기 (크로스 플랫폼)
+     * @brief TCP 소켓 닫기
      */
     void CloseTcpSocket();
     
     /**
-     * @brief TCP 소켓 연결 상태 확인 (크로스 플랫폼)
+     * @brief TCP 소켓 유효성 확인 (구현부 함수명과 일치)
+     * @return 유효한 소켓인 경우 true
+     */
+    bool IsTcpSocketValid() const;
+    
+    /**
+     * @brief TCP 소켓 연결 상태 확인
      * @return 연결된 경우 true
      */
     bool IsTcpSocketConnected() const;
-    
-    /**
-     * @brief TCP 데이터 전송 (크로스 플랫폼)
-     * @param data 전송할 데이터
-     * @param length 데이터 길이
-     * @return 전송된 바이트 수 (실패 시 -1)
-     */
-    ssize_t SendTcpData(const void* data, size_t length);
-    
-    /**
-     * @brief TCP 데이터 수신 (크로스 플랫폼)
-     * @param buffer 수신 버퍼
-     * @param buffer_size 버퍼 크기
-     * @return 수신된 바이트 수 (실패 시 -1, 타임아웃 시 0)
-     */
-    ssize_t ReceiveTcpData(void* buffer, size_t buffer_size);
-    
-    /**
-     * @brief 플랫폼별 소켓 핸들 조회
-     * @return TCP 소켓 핸들 (연결되지 않은 경우 TCP_INVALID_SOCKET)
-     */
-    TcpSocket GetTcpSocket() const;
-    
-    /**
-     * @brief 소켓 옵션 설정 (크로스 플랫폼)
-     * @return 성공 시 true
-     */
-    bool ConfigureSocketOptions();
-    
-    // =============================================================================
-    // 파생 클래스에서 사용할 수 있는 보호된 멤버들
-    // =============================================================================
-    
-    TcpConfig tcp_config_;                                ///< TCP 설정
-    TcpSocket tcp_socket_;                                ///< 크로스 플랫폼 TCP 소켓
-
-#if PULSEONE_WINDOWS
-    bool winsock_initialized_;                            ///< Winsock 초기화 여부
-#endif
 
 private:
     // =============================================================================
-    // 내부 유틸리티 메서드들 (크로스 플랫폼)
+    // 내부 멤버 변수들 (구현부와 완전 일치)
+    // =============================================================================
+    
+    TcpSocket tcp_socket_;              ///< TCP 소켓 핸들 (플랫폼별)
+    TcpConfig tcp_config_;              ///< TCP 설정
+    
+#ifdef _WIN32
+    bool winsock_initialized_;          ///< Windows Winsock 초기화 상태
+#endif
+
+    // =============================================================================
+    // 내부 헬퍼 메서드들 (구현부에 있는 모든 함수들)
     // =============================================================================
     
     /**
-     * @brief endpoint 문자열에서 TCP 설정 파싱
+     * @brief 소켓 옵션 설정
+     * @return 성공 시 true
+     */
+    bool SetSocketOptions();
+    
+    /**
+     * @brief 서버에 연결
+     * @return 성공 시 true
+     */
+    bool ConnectToServer();
+    
+    /**
+     * @brief 연결 완료 대기
+     * @return 성공 시 true
+     */
+    bool WaitForConnection();
+    
+    /**
+     * @brief 소켓을 논블로킹/블로킹 모드로 설정
+     * @param non_blocking true면 논블로킹, false면 블로킹
+     */
+    void SetSocketNonBlocking(bool non_blocking);
+    
+    /**
+     * @brief 소켓 타임아웃 설정
+     */
+    void SetSocketTimeouts();
+    
+    /**
+     * @brief endpoint 파싱 (ip:port 형태)
      */
     void ParseEndpoint();
-    
-#if PULSEONE_WINDOWS
+
+#ifdef _WIN32
     /**
-     * @brief Winsock 초기화
+     * @brief Windows Winsock 초기화
      * @return 성공 시 true
      */
     bool InitializeWinsock();
     
     /**
-     * @brief Winsock 정리
+     * @brief Windows Winsock 정리
      */
     void CleanupWinsock();
-    
-    /**
-     * @brief Windows 소켓 에러 메시지 변환
-     * @param error_code WSA 에러 코드
-     * @return 에러 메시지
-     */
-    std::string WinsockErrorToString(int error_code) const;
-    
-#else
-    /**
-     * @brief Unix 소켓 에러 메시지 변환
-     * @param error_code errno 값
-     * @return 에러 메시지
-     */
-    std::string UnixSocketErrorToString(int error_code) const;
-    
-    /**
-     * @brief 소켓을 논블로킹 모드로 설정
-     * @param socket 소켓
-     * @return 성공 시 true
-     */
-    bool SetSocketNonBlocking(TcpSocket socket);
 #endif
-
-    /**
-     * @brief 플랫폼별 에러 메시지 조회
-     * @return 에러 메시지
-     */
-    std::string GetLastSocketError() const;
 };
 
 } // namespace Workers
