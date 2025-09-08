@@ -3,7 +3,7 @@
  * @brief UDP 기반 디바이스 워커 클래스 - Windows/Linux 크로스 플랫폼 완전 지원
  * @author PulseOne Development Team
  * @date 2025-01-23
- * @version 1.1.0 - Windows 호환성 완전 수정
+ * @version 1.1.1 - 인터페이스 호환성 수정
  * 
  * @details
  * BaseDeviceWorker를 상속받아 UDP 통신에 특화된 기능을 제공합니다.
@@ -179,7 +179,7 @@ public:
     void ResetUdpStats();
 
     // =============================================================================
-    // BaseDeviceWorker 오버라이드 (UDP 특화)
+    // BaseDeviceWorker 오버라이드 (UDP 특화) - 인터페이스 호환성 수정
     // =============================================================================
     
     /**
@@ -190,10 +190,11 @@ public:
     bool EstablishConnection() override;
     
     /**
-     * @brief UDP 기반 연결 해제
+     * @brief UDP 기반 연결 해제 - BaseDeviceWorker 인터페이스 준수
      * @details 프로토콜 해제 → UDP 소켓 해제 순서로 진행
+     * @return 성공 시 true (BaseDeviceWorker 인터페이스 호환)
      */
-    void CloseConnection() override;
+    bool CloseConnection() override;
     
     /**
      * @brief UDP 기반 연결 상태 확인
@@ -211,7 +212,7 @@ public:
 
 protected:
     // =============================================================================
-    // 파생 클래스에서 구현해야 하는 프로토콜별 메서드들 (순수 가상)
+    // 파생 클래스에서 구현해야 하는 프로토콜별 메서드들 (순수 가상) - 인터페이스 수정
     // =============================================================================
     
     /**
@@ -222,10 +223,11 @@ protected:
     virtual bool EstablishProtocolConnection() = 0;
     
     /**
-     * @brief 프로토콜별 연결 해제 (BACnet, DNP3 등에서 구현)
+     * @brief 프로토콜별 연결 해제 (BACnet, DNP3 등에서 구현) - bool 반환으로 수정
      * @details UDP 소켓 해제 전에 호출됨
+     * @return 성공 시 true
      */
-    virtual void CloseProtocolConnection() = 0;
+    virtual bool CloseProtocolConnection() = 0;
     
     /**
      * @brief 프로토콜별 연결 상태 확인 (BACnet, DNP3 등에서 구현)

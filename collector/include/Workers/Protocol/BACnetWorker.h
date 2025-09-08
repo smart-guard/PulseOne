@@ -1,6 +1,6 @@
 /**
- * @file BACnetWorker.h - 독립 BACnetDriver 사용으로 완전 수정
- * @brief Windows/Linux 크로스 플랫폼 + 컴파일 에러 완전 해결
+ * @file BACnetWorker.h - 최적화 및 버그 수정 완성본
+ * @brief Windows/Linux 크로스 플랫폼 + 성능 최적화 + 메모리 관리
  */
 
 #ifndef BACNET_WORKER_H
@@ -19,6 +19,7 @@
 #include <mutex>
 #include <thread>
 #include <map>
+#include <unordered_map>
 #include <functional>
 #include <chrono>
 #include <optional>
@@ -76,7 +77,7 @@ struct BACnetWorkerStats {
 using ValueChangedCallback = std::function<void(const std::string& object_id, const TimestampedValue&)>;
 
 // =============================================================================
-// BACnetWorker 클래스 - 독립 BACnetDriver 사용
+// BACnetWorker 클래스 - 독립 BACnetDriver 사용 + 최적화
 // =============================================================================
 
 class BACnetWorker : public UdpBasedWorker {
@@ -132,9 +133,14 @@ public:
                                       const DataValue& previous_value = DataValue{});
     
     /**
-     * @brief DataPoint ID로 객체 검색
+     * @brief DataPoint ID로 객체 검색 (호환성 유지)
      */
     PulseOne::Structs::DataPoint* FindDataPointByObjectId(const std::string& object_id);
+    
+    /**
+     * @brief 최적화된 DataPoint 검색 (새로 추가)
+     */
+    PulseOne::Structs::DataPoint* FindDataPointByObjectIdOptimized(const std::string& object_id);
     
     // =============================================================================
     // 설정 및 상태 관리
@@ -151,7 +157,7 @@ public:
     std::vector<DataPoint> GetConfiguredDataPoints() const;
     
     /**
-     * @brief 통계 조회
+     * @brief 통계 조회 (메모리 사용량 정보 포함)
      */
     std::string GetBACnetWorkerStats() const;
     void ResetBACnetWorkerStats();
@@ -167,6 +173,20 @@ public:
     PulseOne::Drivers::BACnetDriver* GetBACnetDriver() const {
         return bacnet_driver_.get();
     }
+    
+    // =============================================================================
+    // 메모리 최적화 기능들 (새로 추가)
+    // =============================================================================
+    
+    /**
+     * @brief DataPoint 인덱스 재구성 (성능 최적화)
+     */
+    void RebuildDataPointIndex();
+    
+    /**
+     * @brief 이전값 캐시 정리 (메모리 최적화)
+     */
+    void CleanupPreviousValues();
     
     // =============================================================================
     // BACnet 제어 기능들
@@ -279,7 +299,7 @@ private:
     bool InitializeBACnetDriver();
     void ShutdownBACnetDriver();
     
-    // 데이터 스캔 스레드 (단순화)
+    // 데이터 스캔 스레드
     void DataScanThreadFunction();
     
     // 실제 데이터 스캔 로직
@@ -294,6 +314,8 @@ private:
     void ProcessValueChangeForCOV(const std::string& object_id, 
                                  const TimestampedValue& new_value);
     bool IsValueChanged(const DataValue& previous, const DataValue& current);
+    
+    // 제어 관련
     bool WriteDataPointValue(const std::string& point_id, const DataValue& value);
     bool ParseBACnetObjectId(const std::string& object_id, uint32_t& device_id, 
                             BACNET_OBJECT_TYPE& object_type, uint32_t& object_instance);
@@ -307,25 +329,33 @@ private:
     
     // 독립 BACnetDriver 객체 (싱글톤 아님!)
     std::unique_ptr<PulseOne::Drivers::BACnetDriver> bacnet_driver_;
+    
+    // BACnet 서비스 매니저
+    std::shared_ptr<PulseOne::Drivers::BACnetServiceManager> bacnet_service_manager_;
+    
+    // 워커 통계
     BACnetWorkerStats worker_stats_;
     
-    // 스레드 관리 (단순화)
+    // 스레드 관리
     std::atomic<bool> thread_running_;
     std::unique_ptr<std::thread> data_scan_thread_;
+    
+    // 메모리 정리 카운터 (새로 추가)
+    std::atomic<uint32_t> cleanup_timer_;
     
     // 설정된 DataPoint들 (외부에서 로드됨)
     mutable std::mutex data_points_mutex_;
     std::vector<DataPoint> configured_data_points_;
     
+    // 성능 최적화: DataPoint 빠른 검색을 위한 인덱스 (새로 추가)
+    std::unordered_map<std::string, PulseOne::Structs::DataPoint*> datapoint_index_;
+    
     // 콜백 함수
     ValueChangedCallback on_value_changed_;
 
-    // COV용 이전 값 저장 (string 키 사용)
+    // COV용 이전 값 저장 (스레드 안전하게 보호됨)
     std::map<std::string, DataValue> previous_values_;
-    std::mutex previous_values_mutex_;
-
-    // BACnet 서비스 매니저
-    std::shared_ptr<PulseOne::Drivers::BACnetServiceManager> bacnet_service_manager_;
+    mutable std::mutex previous_values_mutex_;  // 스레드 안전성 강화
 };
 
 } // namespace Workers

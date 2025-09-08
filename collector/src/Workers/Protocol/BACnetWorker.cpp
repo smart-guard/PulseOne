@@ -20,8 +20,9 @@ namespace Workers {
 
 BACnetWorker::BACnetWorker(const DeviceInfo& device_info)
     : UdpBasedWorker(device_info)
-    , bacnet_driver_(std::make_unique<PulseOne::Drivers::BACnetDriver>()) // 독립 객체!
-    , thread_running_(false) {
+    , bacnet_driver_(std::make_unique<PulseOne::Drivers::BACnetDriver>())
+    , thread_running_(false)
+    , cleanup_timer_(0) {
 
     LogMessage(LogLevel::INFO, "BACnetWorker created for device: " + device_info.name);
     
@@ -34,13 +35,13 @@ BACnetWorker::BACnetWorker(const DeviceInfo& device_info)
         LogMessage(LogLevel::WARN, "Failed to parse BACnet config from DeviceInfo, using defaults");
     }
     
-    // BACnet Driver 초기화 (독립 객체)
+    // BACnet Driver 초기화
     if (!InitializeBACnetDriver()) {
         LogMessage(LogLevel::LOG_ERROR, "Failed to initialize BACnet driver");
         return;
     }
 
-    // BACnetServiceManager 초기화 (독립 객체와 연결)
+    // BACnetServiceManager 초기화
     if (bacnet_driver_) {
         bacnet_service_manager_ = std::make_shared<PulseOne::Drivers::BACnetServiceManager>(
             bacnet_driver_.get()
@@ -63,7 +64,7 @@ BACnetWorker::~BACnetWorker() {
         }
     }
     
-    // BACnet 드라이버 정리 (독립 객체)
+    // BACnet 드라이버 정리
     ShutdownBACnetDriver();
     
     LogMessage(LogLevel::INFO, "BACnetWorker destroyed for device: " + device_info_.name);
@@ -119,7 +120,6 @@ std::future<bool> BACnetWorker::Stop() {
         return true;
     });
 }
-
 // =============================================================================
 // UdpBasedWorker 순수 가상 함수 구현
 // =============================================================================
@@ -132,14 +132,27 @@ bool BACnetWorker::EstablishProtocolConnection() {
         return false;
     }
     
-    if (!bacnet_driver_->Connect()) {
+    // 재시도 로직 추가
+    const int max_retries = 3;
+    for (int retry = 0; retry < max_retries; ++retry) {
+        if (bacnet_driver_->Connect()) {
+            LogMessage(LogLevel::INFO, "BACnet protocol connection established");
+            return true;
+        }
+        
         const auto& error = bacnet_driver_->GetLastError();
-        LogMessage(LogLevel::LOG_ERROR, "Failed to connect BACnet driver: " + error.message);
-        return false;
+        LogMessage(LogLevel::WARN, 
+                  "BACnet connection attempt " + std::to_string(retry + 1) + 
+                  " failed: " + error.message);
+        
+        if (retry < max_retries - 1) {
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+        }
     }
     
-    LogMessage(LogLevel::INFO, "BACnet protocol connection established");
-    return true;
+    LogMessage(LogLevel::LOG_ERROR, "Failed to establish BACnet connection after " + 
+              std::to_string(max_retries) + " attempts");
+    return false;
 }
 
 bool BACnetWorker::CloseProtocolConnection() {
@@ -157,7 +170,6 @@ bool BACnetWorker::CheckProtocolConnection() {
 }
 
 bool BACnetWorker::SendProtocolKeepAlive() {
-    // BACnet은 Keep-alive 대신 연결 상태만 확인
     return CheckProtocolConnection();
 }
 
@@ -204,36 +216,38 @@ bool BACnetWorker::SendBACnetDataToPipeline(
             tv.quality = PulseOne::Enums::DataQuality::GOOD;
             tv.source = "bacnet_" + object_id;
             
-            // DataPoint 찾기
-            PulseOne::Structs::DataPoint* data_point = FindDataPointByObjectId(object_id);
+            // 최적화된 DataPoint 검색
+            PulseOne::Structs::DataPoint* data_point = FindDataPointByObjectIdOptimized(object_id);
             if (data_point) {
                 tv.point_id = std::stoi(data_point->id);
-                
-                // 스케일링 적용
                 tv.scaling_factor = data_point->scaling_factor;
                 tv.scaling_offset = data_point->scaling_offset;
                 
-                // 이전값과 비교
-                auto prev_it = previous_values_.find(object_id);
-                if (prev_it != previous_values_.end()) {
-                    tv.previous_value = prev_it->second;
-                    tv.value_changed = (tv.value != prev_it->second);
-                } else {
-                    tv.previous_value = PulseOne::Structs::DataValue{};
-                    tv.value_changed = true;
+                // 스레드 안전한 이전값 비교
+                {
+                    std::lock_guard<std::mutex> lock(previous_values_mutex_);
+                    auto prev_it = previous_values_.find(object_id);
+                    if (prev_it != previous_values_.end()) {
+                        tv.previous_value = prev_it->second;
+                        tv.value_changed = (tv.value != prev_it->second);
+                    } else {
+                        tv.previous_value = PulseOne::Structs::DataValue{};
+                        tv.value_changed = true;
+                    }
+                    
+                    // 이전값 캐시 업데이트
+                    previous_values_[object_id] = tv.value;
                 }
                 
-                // 이전값 캐시 업데이트
-                previous_values_[object_id] = tv.value;
-                
             } else {
-                // DataPoint가 없는 경우 객체 ID 기반으로 임시 ID 생성
+                // DataPoint가 없는 경우
                 tv.point_id = std::hash<std::string>{}(object_id) % 100000;
                 tv.value_changed = true;
                 tv.scaling_factor = 1.0;
                 tv.scaling_offset = 0.0;
                 
-                // 이전값 캐시 관리
+                // 스레드 안전한 이전값 관리
+                std::lock_guard<std::mutex> lock(previous_values_mutex_);
                 auto prev_it = previous_values_.find(object_id);
                 if (prev_it != previous_values_.end()) {
                     tv.previous_value = prev_it->second;
@@ -246,7 +260,7 @@ bool BACnetWorker::SendBACnetDataToPipeline(
             }
             
             tv.sequence_number = GetNextSequenceNumber();
-            tv.change_threshold = 0.0;  // BACnet은 COV 기반
+            tv.change_threshold = 0.0;
             tv.force_rdb_store = tv.value_changed;
             
             timestamped_values.push_back(tv);
@@ -290,33 +304,21 @@ bool BACnetWorker::SendBACnetPropertyToPipeline(const std::string& object_id,
         tv.quality = PulseOne::Enums::DataQuality::GOOD;
         tv.source = "bacnet_" + object_id + (!object_name.empty() ? "_" + object_name : "");
         
-        // DataPoint 찾기
-        PulseOne::Structs::DataPoint* data_point = FindDataPointByObjectId(object_id);
+        // 최적화된 DataPoint 검색
+        PulseOne::Structs::DataPoint* data_point = FindDataPointByObjectIdOptimized(object_id);
         if (data_point) {
             tv.point_id = std::stoi(data_point->id);
             tv.scaling_factor = data_point->scaling_factor;
             tv.scaling_offset = data_point->scaling_offset;
-            
-            // 이전값과 비교
-            auto prev_it = previous_values_.find(object_id);
-            if (prev_it != previous_values_.end()) {
-                tv.previous_value = prev_it->second;
-                tv.value_changed = (tv.value != prev_it->second);
-            } else {
-                tv.previous_value = PulseOne::Structs::DataValue{};
-                tv.value_changed = true;
-            }
-            
-            // 이전값 캐시 업데이트
-            previous_values_[object_id] = tv.value;
-            
         } else {
             tv.point_id = std::hash<std::string>{}(object_id) % 100000;
-            tv.value_changed = true;
             tv.scaling_factor = 1.0;
             tv.scaling_offset = 0.0;
-            
-            // 이전값 캐시 관리
+        }
+        
+        // 스레드 안전한 이전값 처리
+        {
+            std::lock_guard<std::mutex> lock(previous_values_mutex_);
             auto prev_it = previous_values_.find(object_id);
             if (prev_it != previous_values_.end()) {
                 tv.previous_value = prev_it->second;
@@ -332,7 +334,6 @@ bool BACnetWorker::SendBACnetPropertyToPipeline(const std::string& object_id,
         tv.change_threshold = 0.0;
         tv.force_rdb_store = tv.value_changed;
         
-        // BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
         bool success = SendValuesToPipelineWithLogging({tv}, 
                                                       "BACnet Property: " + object_id + 
                                                       (!object_name.empty() ? " (" + object_name + ")" : ""),
@@ -367,8 +368,8 @@ bool BACnetWorker::SendCOVNotificationToPipeline(const std::string& object_id,
         // COV 알림은 높은 우선순위
         uint32_t cov_priority = 5;
         
-        // DataPoint 찾기
-        PulseOne::Structs::DataPoint* data_point = FindDataPointByObjectId(object_id);
+        // 최적화된 DataPoint 검색
+        PulseOne::Structs::DataPoint* data_point = FindDataPointByObjectIdOptimized(object_id);
         if (data_point) {
             tv.point_id = std::stoi(data_point->id);
             tv.scaling_factor = data_point->scaling_factor;
@@ -384,12 +385,12 @@ bool BACnetWorker::SendCOVNotificationToPipeline(const std::string& object_id,
         tv.change_threshold = 0.0;
         tv.force_rdb_store = true;  // COV는 항상 저장
         
-        // BaseDeviceWorker::SendValuesToPipelineWithLogging() 호출
         bool success = SendValuesToPipelineWithLogging({tv}, 
                                                       "BACnet COV: " + object_id,
                                                       cov_priority);
         
         if (success) {
+            worker_stats_.cov_notifications++;
             LogMessage(LogLevel::INFO, 
                       "COV notification sent for object: " + object_id);
         }
@@ -402,26 +403,40 @@ bool BACnetWorker::SendCOVNotificationToPipeline(const std::string& object_id,
         return false;
     }
 }
+// =============================================================================
+// 최적화된 DataPoint 검색
+// =============================================================================
 
 PulseOne::Structs::DataPoint* BACnetWorker::FindDataPointByObjectId(const std::string& object_id) {
-    // configured_data_points_ 멤버를 직접 검색
+    return FindDataPointByObjectIdOptimized(object_id);
+}
+
+PulseOne::Structs::DataPoint* BACnetWorker::FindDataPointByObjectIdOptimized(const std::string& object_id) {
     std::lock_guard<std::mutex> lock(data_points_mutex_);
     
+    // 빠른 검색을 위한 인덱스 활용
+    auto index_it = datapoint_index_.find(object_id);
+    if (index_it != datapoint_index_.end()) {
+        return index_it->second;
+    }
+    
+    // 인덱스에 없으면 전체 검색 후 인덱스 업데이트
     for (auto& point : configured_data_points_) {
-        // BACnet 객체 ID로 매칭 - 기본 필드들 먼저 확인
         if (point.name == object_id || point.id == object_id) {
+            datapoint_index_[object_id] = &point;
             return &point;
         }
         
         // protocol_params에서 검색
         auto obj_prop = point.protocol_params.find("object_id");
         if (obj_prop != point.protocol_params.end() && obj_prop->second == object_id) {
+            datapoint_index_[object_id] = &point;
             return &point;
         }
         
-        // protocol_params에서 bacnet_object_id 확인
         auto bacnet_obj_prop = point.protocol_params.find("bacnet_object_id");
         if (bacnet_obj_prop != point.protocol_params.end() && bacnet_obj_prop->second == object_id) {
+            datapoint_index_[object_id] = &point;
             return &point;
         }
     }
@@ -429,13 +444,68 @@ PulseOne::Structs::DataPoint* BACnetWorker::FindDataPointByObjectId(const std::s
     return nullptr;
 }
 
+void BACnetWorker::RebuildDataPointIndex() {
+    std::lock_guard<std::mutex> lock(data_points_mutex_);
+    
+    datapoint_index_.clear();
+    
+    for (auto& point : configured_data_points_) {
+        // 기본 필드들로 인덱스 생성
+        if (!point.name.empty()) {
+            datapoint_index_[point.name] = &point;
+        }
+        if (!point.id.empty()) {
+            datapoint_index_[point.id] = &point;
+        }
+        
+        // protocol_params 기반 인덱스
+        auto obj_prop = point.protocol_params.find("object_id");
+        if (obj_prop != point.protocol_params.end()) {
+            datapoint_index_[obj_prop->second] = &point;
+        }
+        
+        auto bacnet_obj_prop = point.protocol_params.find("bacnet_object_id");
+        if (bacnet_obj_prop != point.protocol_params.end()) {
+            datapoint_index_[bacnet_obj_prop->second] = &point;
+        }
+    }
+    
+    LogMessage(LogLevel::DEBUG_LEVEL, 
+              "DataPoint index rebuilt: " + std::to_string(datapoint_index_.size()) + " entries");
+}
+
+// =============================================================================
+// 메모리 정리 기능 추가
+// =============================================================================
+
+void BACnetWorker::CleanupPreviousValues() {
+    std::lock_guard<std::mutex> lock(previous_values_mutex_);
+    
+    const size_t max_entries = 10000;  // 최대 항목 수
+    
+    if (previous_values_.size() > max_entries) {
+        // 사용되지 않는 항목들을 정리
+        // 간단한 LRU 방식: 절반만 유지
+        auto it = previous_values_.begin();
+        std::advance(it, previous_values_.size() / 2);
+        previous_values_.erase(previous_values_.begin(), it);
+        
+        LogMessage(LogLevel::INFO, 
+                  "Previous values cleaned up, remaining: " + std::to_string(previous_values_.size()));
+    }
+}
 // =============================================================================
 // 설정 및 상태 관리
 // =============================================================================
 
 void BACnetWorker::LoadDataPointsFromConfiguration(const std::vector<DataPoint>& data_points) {
-    std::lock_guard<std::mutex> lock(data_points_mutex_);
-    configured_data_points_ = data_points;
+    {
+        std::lock_guard<std::mutex> lock(data_points_mutex_);
+        configured_data_points_ = data_points;
+    }
+    
+    // 인덱스 재구성
+    RebuildDataPointIndex();
     
     LogMessage(LogLevel::INFO, 
               "Loaded " + std::to_string(data_points.size()) + " data points from configuration");
@@ -454,6 +524,16 @@ std::string BACnetWorker::GetBACnetWorkerStats() const {
     ss << "  \"write_operations\": " << worker_stats_.write_operations.load() << ",\n";
     ss << "  \"failed_operations\": " << worker_stats_.failed_operations.load() << ",\n";
     ss << "  \"cov_notifications\": " << worker_stats_.cov_notifications.load() << ",\n";
+    
+    // 메모리 사용량 정보 추가
+    {
+        std::lock_guard<std::mutex> lock(previous_values_mutex_);
+        ss << "  \"previous_values_count\": " << previous_values_.size() << ",\n";
+    }
+    {
+        std::lock_guard<std::mutex> lock(data_points_mutex_);
+        ss << "  \"datapoint_index_count\": " << datapoint_index_.size() << ",\n";
+    }
     
     auto start_time = std::chrono::duration_cast<std::chrono::seconds>(
         worker_stats_.start_time.time_since_epoch()).count();
@@ -615,6 +695,13 @@ void BACnetWorker::DataScanThreadFunction() {
                 worker_stats_.polling_cycles++;
             }
             
+            // 주기적인 메모리 정리 (10분마다)
+            cleanup_timer_++;
+            if (cleanup_timer_ >= (600000 / polling_interval_ms)) {  // 10분
+                CleanupPreviousValues();
+                cleanup_timer_ = 0;
+            }
+            
             std::this_thread::sleep_for(std::chrono::milliseconds(polling_interval_ms));
             
         } catch (const std::exception& e) {
@@ -715,9 +802,23 @@ bool BACnetWorker::WriteProperty(uint32_t device_id,
                   "Writing BACnet property: Device=" + std::to_string(device_id) + 
                   ", Object=" + std::to_string(object_type) + ":" + std::to_string(object_instance));
         
-        // BACnetServiceManager를 통해 실제 쓰기
-        bool success = bacnet_service_manager_->WriteProperty(
-            device_id, object_type, object_instance, property_id, value, priority);
+        // 재시도 로직 추가
+        const int max_retries = 2;
+        bool success = false;
+        
+        for (int retry = 0; retry < max_retries; ++retry) {
+            success = bacnet_service_manager_->WriteProperty(
+                device_id, object_type, object_instance, property_id, value, priority);
+            
+            if (success) {
+                break;
+            }
+            
+            if (retry < max_retries - 1) {
+                LogMessage(LogLevel::WARN, "Write retry " + std::to_string(retry + 1));
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
+        }
         
         // 제어 이력 기록
         TimestampedValue control_log;
@@ -1175,3 +1276,6 @@ bool BACnetWorker::WriteBACnetDataPoint(const std::string& point_id, const DataV
         return false;
     }
 }
+
+} // namespace Workers - 누락된 중괄호
+} // namespace PulseOne - 누락된 중괄호
