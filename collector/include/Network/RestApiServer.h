@@ -24,6 +24,9 @@
 #include <nlohmann/json.hpp>
 
 // HTTP 라이브러리 전방 선언
+#ifdef HAVE_HTTPLIB
+#include <httplib.h>
+#endif
 namespace httplib {
     class Request;
     class Response;
