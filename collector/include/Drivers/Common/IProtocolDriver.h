@@ -7,7 +7,7 @@
 // =============================================================================
 // ✅ 필수 헤더들 모두 포함 (순서 중요!)
 // =============================================================================
-#include "Common/BasicTypes.h"           // UUID, Timestamp 등
+#include "Common/BasicTypes.h"           // UniqueId, Timestamp 등
 #include "Common/Enums.h"                // ProtocolType, ConnectionStatus 등  
 #include "Common/Structs.h"              // DeviceInfo, DataPoint 등
 #include "Common/DriverStatistics.h"     // DriverStatistics
@@ -26,7 +26,7 @@ namespace Drivers {
 // =============================================================================
 // ✅ 타입 별칭들 (기존 코드 호환성)
 // =============================================================================
-using UUID = PulseOne::BasicTypes::UUID;
+using UniqueId = PulseOne::BasicTypes::UniqueId;
 using ProtocolType = PulseOne::Enums::ProtocolType;
 using ConnectionStatus = PulseOne::Enums::ConnectionStatus;
 using DriverStatistics = PulseOne::Structs::DriverStatistics;
@@ -42,13 +42,13 @@ using DriverStatus = PulseOne::Structs::DriverStatus;
 // ✅ 콜백 함수 타입들 (간소화)
 // =============================================================================
 using StatusCallback = std::function<void(
-    const UUID& device_id,
+    const UniqueId& device_id,
     ConnectionStatus old_status,
     ConnectionStatus new_status
 )>;
 
 using ErrorCallback = std::function<void(
-    const UUID& device_id,
+    const UniqueId& device_id,
     const ErrorInfo& error
 )>;
 
@@ -139,7 +139,7 @@ protected:
     virtual void NotifyStatusChange(ConnectionStatus new_status) {
         auto old_status = connection_status_.exchange(new_status);
         if (old_status != new_status && status_callback_) {
-            UUID device_id{}; // 빈 UUID
+            UniqueId device_id{}; // 빈 UniqueId
             status_callback_(device_id, old_status, new_status);
         }
     }
@@ -149,7 +149,7 @@ protected:
         statistics_.failed_operations.fetch_add(1);  // ✅ 실제 필드명 사용
         
         if (error_callback_) {
-            UUID device_id{}; // 빈 UUID
+            UniqueId device_id{}; // 빈 UniqueId
             error_callback_(device_id, error);
         }
     }

@@ -128,7 +128,7 @@ private:
     void updateLastDigitalState(int rule_id, bool state);
     
     // 유틸리티
-    UUID getDeviceIdForPoint(int point_id);
+    UniqueId getDeviceIdForPoint(int point_id);
     std::string getPointLocation(int point_id);
     AlarmType convertToAlarmType(const AlarmRuleEntity::AlarmType& entity_type);
     TriggerCondition determineTriggerCondition(const AlarmRuleEntity& rule, const AlarmEvaluation& eval);

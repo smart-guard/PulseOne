@@ -7,7 +7,7 @@
  */
 
 // =============================================================================
-// UUID 충돌 방지 (헤더보다 먼저!)
+// UniqueId 충돌 방지 (헤더보다 먼저!)
 // =============================================================================
 #ifdef _WIN32
     #ifndef NOMINMAX
@@ -16,14 +16,14 @@
     #ifndef WIN32_LEAN_AND_MEAN
         #define WIN32_LEAN_AND_MEAN
     #endif
-    // PulseOne UUID와 Windows UUID 충돌 방지
-    #define UUID _WIN32_UUID_BACKUP
+    // PulseOne UniqueId와 Windows UniqueId 충돌 방지
+    #define UniqueId _WIN32_UniqueId_BACKUP
 #endif
 
 #include "Workers/Base/TcpBasedWorker.h"
 
 #ifdef _WIN32
-    #undef UUID
+    #undef UniqueId
 #endif
 
 #include "Utils/LogManager.h"

@@ -52,7 +52,7 @@ namespace Structs {
     // 🔥 핵심 타입들 명시적 별칭 (필수!)
     using DataValue = PulseOne::BasicTypes::DataVariant;   // ✅ 매우 중요!
     using Timestamp = PulseOne::BasicTypes::Timestamp;     // ✅ 매우 중요!
-    using UUID = PulseOne::BasicTypes::UUID;               // ✅ 매우 중요!
+    using UniqueId = PulseOne::BasicTypes::UniqueId;               // ✅ 매우 중요!
     using Duration = PulseOne::BasicTypes::Duration;       // ✅ 중요!
     using EngineerID = PulseOne::BasicTypes::EngineerID;   // ✅ 중요!
     
@@ -345,8 +345,8 @@ namespace Structs {
         // =======================================================================
         // 🔥 기본 식별 정보 (설정)
         // =======================================================================
-        UUID id;                                  // point_id
-        UUID device_id;                           // 소속 디바이스 ID
+        UniqueId id;                                  // point_id
+        UniqueId device_id;                           // 소속 디바이스 ID
         std::string name = "";                    // 표시 이름
         std::string description = "";             // 설명
         
@@ -918,7 +918,7 @@ namespace Structs {
         // =======================================================================
         // 🔥 공통 필드들 (기존 호환)
         // =======================================================================
-        UUID device_id;                           // 디바이스 ID
+        UniqueId device_id;                           // 디바이스 ID
         std::string name = "";                    // 디바이스 이름
         ProtocolType protocol = ProtocolType::UNKNOWN;  // 프로토콜 타입
         std::string endpoint = "";                // 연결 엔드포인트
@@ -1053,7 +1053,7 @@ namespace Structs {
         DriverConfig driver_config;
         
         // 기본 식별 정보
-        UUID id;                                       // device_id → id (Entity 호환)
+        UniqueId id;                                       // device_id → id (Entity 호환)
         int tenant_id = 0;                             // 테넌트 ID
         int site_id = 0;                               // 사이트 ID
         std::optional<int> device_group_id;            // 디바이스 그룹 ID
@@ -1295,8 +1295,8 @@ namespace Structs {
         // =======================================================================
         
         // 식별 정보
-        const UUID& getId() const { return id; }
-        void setId(const UUID& device_id) { id = device_id; }
+        const UniqueId& getId() const { return id; }
+        void setId(const UniqueId& device_id) { id = device_id; }
         
         int getTenantId() const { return tenant_id; }
         void setTenantId(int tenant) { tenant_id = tenant; }
@@ -1750,7 +1750,7 @@ namespace Structs {
         // 🔥 기존 필드들 (그대로 유지)
         // ==========================================================================
         std::string type = "device_data";                    // 메시지 타입 (고정값)
-        UUID device_id;                                      // 디바이스 고유 ID
+        UniqueId device_id;                                      // 디바이스 고유 ID
         std::string protocol;                                // 통신 프로토콜명 (modbus, bacnet, mqtt 등)
         std::vector<TimestampedValue> points;                // 수집된 데이터포인트들
         Timestamp timestamp;                                 // 메시지 생성 시간
@@ -1807,7 +1807,7 @@ namespace Structs {
         
         DeviceDataMessage() : timestamp(std::chrono::system_clock::now()) {}
         
-        DeviceDataMessage(const UUID& id, const std::string& proto, const std::string& worker = "")
+        DeviceDataMessage(const UniqueId& id, const std::string& proto, const std::string& worker = "")
             : device_id(id), protocol(proto), 
             timestamp(std::chrono::system_clock::now()), 
             source_worker(worker) {
@@ -2404,7 +2404,7 @@ namespace Structs {
      * @brief 드라이버 로그 컨텍스트
      */
     struct DriverLogContext {
-        UUID device_id;
+        UniqueId device_id;
         std::string device_name;
         ProtocolType protocol;
         std::string endpoint;
@@ -2413,7 +2413,7 @@ namespace Structs {
         
         DriverLogContext() = default;
         
-        DriverLogContext(const UUID& dev_id, const std::string& dev_name, 
+        DriverLogContext(const UniqueId& dev_id, const std::string& dev_name, 
                         ProtocolType proto, const std::string& ep)
             : device_id(dev_id), device_name(dev_name), protocol(proto), endpoint(ep) {}
     };

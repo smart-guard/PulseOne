@@ -23,7 +23,7 @@ namespace Alarm {
 // =============================================================================
 // 기존 프로젝트 타입 별칭들
 // =============================================================================
-using UUID = PulseOne::BasicTypes::UUID;
+using UniqueId = PulseOne::BasicTypes::UniqueId;
 using Timestamp = PulseOne::BasicTypes::Timestamp;
 using DataValue = PulseOne::BasicTypes::DataVariant;
 using JsonType = nlohmann::json;
@@ -116,7 +116,7 @@ enum class TriggerCondition : uint8_t {
 
 struct AlarmEvent {
     // 핵심 식별자 및 연결
-    UUID device_id;
+    UniqueId device_id;
     int point_id = 0;
     int rule_id = 0;
     int occurrence_id = 0;
@@ -147,7 +147,7 @@ struct AlarmEvent {
     AlarmEvent() : timestamp(std::chrono::system_clock::now()),
                 occurrence_time(std::chrono::system_clock::now()) {}
     
-    AlarmEvent(const UUID& dev_id, int pt_id, 
+    AlarmEvent(const UniqueId& dev_id, int pt_id, 
             const DataValue& value, AlarmSeverity sev,
             const std::string& msg, AlarmType type = AlarmType::ANALOG) 
         : device_id(dev_id), 

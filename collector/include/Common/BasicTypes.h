@@ -8,7 +8,7 @@
  * @date 2025-09-06
  * 
  * Windows/Linux 통합 타입 시스템:
- * - UUID는 모든 플랫폼에서 string으로 통일
+ * - UniqueId는 모든 플랫폼에서 string으로 통일
  * - Windows API 충돌 완전 방지
  * - 기존 코드 100% 호환성 보장
  */
@@ -33,10 +33,10 @@ namespace BasicTypes {
     // =========================================================================
     
     /**
-     * @brief UUID 타입 - 모든 플랫폼에서 string으로 통일
+     * @brief UniqueId 타입 - 모든 플랫폼에서 string으로 통일
      * @details Windows GUID 충돌 방지를 위해 string 사용
      */
-    using UUID = std::string;
+    using UniqueId = std::string;
     using DeviceID = std::string;
     using DataPointID = uint32_t;
     using AlarmID = uint32_t;
@@ -101,11 +101,11 @@ namespace BasicTypes {
     // =========================================================================
     
     /**
-     * @brief UUID 생성 함수 (플랫폼 독립적)
-     * @return 새로운 UUID 문자열
+     * @brief UniqueId 생성 함수 (플랫폼 독립적)
+     * @return 새로운 UniqueId 문자열
      */
-    inline UUID GenerateUUID() {
-        // 간단한 UUID 생성 (RFC 4122 버전 4 스타일)
+    inline UniqueId GenerateUniqueId() {
+        // 간단한 UniqueId 생성 (RFC 4122 버전 4 스타일)
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> dis(0, 15);
@@ -226,7 +226,7 @@ namespace BasicTypes {
     // =========================================================================
     
     using StringVector = std::vector<std::string>;
-    using UUIDVector = std::vector<UUID>;
+    using UniqueIdVector = std::vector<UniqueId>;
     using DataVariantVector = std::vector<DataVariant>;
     using StringMap = std::map<std::string, std::string>;
     using DataVariantMap = std::map<std::string, DataVariant>;
@@ -236,9 +236,9 @@ namespace BasicTypes {
     // =========================================================================
     
     namespace Compatibility {
-        using DeviceId = UUID;
-        using PointId = UUID;
-        using RequestId = UUID;
+        using DeviceId = UniqueId;
+        using PointId = UniqueId;
+        using RequestId = UniqueId;
         using Value = DataVariant;
         using TimeStamp = Timestamp;
     }

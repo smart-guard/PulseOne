@@ -34,7 +34,7 @@ using LogLevel = PulseOne::Enums::LogLevel;
 using DriverLogCategory = PulseOne::Enums::DriverLogCategory;
 using EngineerID = PulseOne::BasicTypes::EngineerID;
 using Timestamp = PulseOne::BasicTypes::Timestamp;
-using UUID = PulseOne::BasicTypes::UUID;
+using UniqueId = PulseOne::BasicTypes::UniqueId;
 
 // ✅ 필요한 구조체만 별칭
 using DeviceInfo = PulseOne::Structs::DeviceInfo;

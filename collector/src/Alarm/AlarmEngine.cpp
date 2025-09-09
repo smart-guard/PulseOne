@@ -1143,15 +1143,15 @@ bool AlarmEngine::clearActiveAlarm(int rule_id, const DataValue& current_value) 
 // 유틸리티 메서드들 - 실제 데이터베이스 조회 구현
 // =============================================================================
 
-UUID AlarmEngine::getDeviceIdForPoint(int point_id) {
+UniqueId AlarmEngine::getDeviceIdForPoint(int point_id) {
     try {
         // RepositoryFactory를 통해 DataPointRepository 가져오기
         auto& repo_factory = Database::RepositoryFactory::getInstance();
         auto data_point_repo = repo_factory.getDataPointRepository();
         
         if (!data_point_repo) {
-            LogManager::getInstance().Warn("DataPointRepository 사용 불가, 빈 UUID 반환");
-            return UUID{};
+            LogManager::getInstance().Warn("DataPointRepository 사용 불가, 빈 UniqueId 반환");
+            return UniqueId{};
         }
         
         // 포인트 정보 조회
@@ -1164,29 +1164,29 @@ UUID AlarmEngine::getDeviceIdForPoint(int point_id) {
             if (device_repo) {
                 auto device_entity = device_repo->findById(device_id);
                 if (device_entity.has_value()) {
-                    // Device의 UUID 또는 식별자를 반환
-                    // 실제 구현에서는 Device 엔티티에 UUID 필드가 있어야 함
-                    std::string device_uuid_str = "device_" + std::to_string(device_id);
+                    // Device의 UniqueId 또는 식별자를 반환
+                    // 실제 구현에서는 Device 엔티티에 UniqueId 필드가 있어야 함
+                    std::string device_UniqueId_str = "device_" + std::to_string(device_id);
                     
-                    // 간단한 UUID 생성 (실제로는 Device 테이블에 저장된 UUID 사용)
-                    UUID device_uuid;
-                    // UUID는 보통 문자열로 저장되므로, 파싱이 필요할 수 있음
+                    // 간단한 UniqueId 생성 (실제로는 Device 테이블에 저장된 UniqueId 사용)
+                    UniqueId device_UniqueId;
+                    // UniqueId는 보통 문자열로 저장되므로, 파싱이 필요할 수 있음
                     // 여기서는 device_id를 기반으로 한 간단한 구현
                     
                     LogManager::getInstance().Debug("포인트 " + std::to_string(point_id) + 
                                                   "의 디바이스 ID: " + std::to_string(device_id));
-                    return device_uuid;
+                    return device_UniqueId;
                 }
             }
         }
         
         LogManager::getInstance().Warn("포인트 " + std::to_string(point_id) + 
                                      "에 대한 디바이스 정보 찾을 수 없음");
-        return UUID{};
+        return UniqueId{};
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("getDeviceIdForPoint 실패: " + std::string(e.what()));
-        return UUID{};
+        return UniqueId{};
     }
 }
 

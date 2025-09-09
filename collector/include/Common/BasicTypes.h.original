@@ -1,6 +1,6 @@
 #ifdef _WIN32
-#ifdef UUID
-#undef UUID
+#ifdef UniqueId
+#undef UniqueId
 #endif
 #endif
 // collector/include/Common/BasicTypes.h
@@ -27,16 +27,16 @@
 #include <vector>
 #include <memory>
 
-// 조건부 UUID 라이브러리 include
+// 조건부 UniqueId 라이브러리 include
 #ifdef _WIN32
     #include <rpc.h>
     #pragma comment(lib, "rpcrt4.lib")
 #elif defined(__APPLE__)
-    #include <uuid/uuid.h>
+    #include <UniqueId/UniqueId.h>
 #elif defined(__linux__)
-    #include <uuid/uuid.h>
+    #include <UniqueId/UniqueId.h>
 #else
-    // Fallback: 간단한 UUID 구현
+    // Fallback: 간단한 UniqueId 구현
 #endif
 
 namespace PulseOne {
@@ -47,10 +47,10 @@ namespace BasicTypes {
     // =========================================================================
     
     /**
-     * @brief UUID 타입 (범용 고유 식별자)
+     * @brief UniqueId 타입 (범용 고유 식별자)
      * @details 디바이스, 데이터 포인트, 요청 등의 식별에 사용
      */
-    using UUID = std::string;  // 기존 프로젝트가 string 기반이므로 호환성 유지
+    using UniqueId = std::string;  // 기존 프로젝트가 string 기반이므로 호환성 유지
     
     /**
      * @brief 타임스탬프 타입
@@ -97,37 +97,37 @@ namespace BasicTypes {
     // =========================================================================
     
     /**
-     * @brief UUID 생성 함수
-     * @return 새로운 UUID 문자열
-     * @details 플랫폼별 최적화된 UUID 생성
+     * @brief UniqueId 생성 함수
+     * @return 새로운 UniqueId 문자열
+     * @details 플랫폼별 최적화된 UniqueId 생성
      */
-    inline UUID GenerateUUID() {
+    inline UniqueId GenerateUniqueId() {
         #ifdef _WIN32
-            UUID uuid;
-            RPC_CSTR uuid_string;
-            if (UuidCreate(&uuid) == RPC_S_OK) {
-                if (UuidToStringA(&uuid, &uuid_string) == RPC_S_OK) {
-                    std::string result(reinterpret_cast<char*>(uuid_string));
-                    RpcStringFreeA(&uuid_string);
+            UniqueId UniqueId;
+            RPC_CSTR UniqueId_string;
+            if (UniqueIdCreate(&UniqueId) == RPC_S_OK) {
+                if (UniqueIdToStringA(&UniqueId, &UniqueId_string) == RPC_S_OK) {
+                    std::string result(reinterpret_cast<char*>(UniqueId_string));
+                    RpcStringFreeA(&UniqueId_string);
                     return result;
                 }
             }
             // Fallback
-            return "uuid-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+            return "UniqueId-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
             
         #elif defined(__APPLE__) || defined(__linux__)
-            uuid_t uuid;
-            uuid_generate_random(uuid);
-            char uuid_str[37];
-            uuid_unparse_lower(uuid, uuid_str);
-            return std::string(uuid_str);
+            UniqueId_t UniqueId;
+            UniqueId_generate_random(UniqueId);
+            char UniqueId_str[37];
+            UniqueId_unparse_lower(UniqueId, UniqueId_str);
+            return std::string(UniqueId_str);
             
         #else
-            // Simple fallback UUID
+            // Simple fallback UniqueId
             static uint64_t counter = 0;
             auto now = std::chrono::high_resolution_clock::now();
             auto timestamp = now.time_since_epoch().count();
-            return "uuid-" + std::to_string(timestamp) + "-" + std::to_string(++counter);
+            return "UniqueId-" + std::to_string(timestamp) + "-" + std::to_string(++counter);
         #endif
     }
     
@@ -278,7 +278,7 @@ namespace BasicTypes {
      * @brief 벡터 별칭들 (자주 사용되는 타입들)
      */
     using StringVector = std::vector<std::string>;
-    using UUIDVector = std::vector<UUID>;
+    using UniqueIdVector = std::vector<UniqueId>;
     using DataVariantVector = std::vector<DataVariant>;
 
     // =========================================================================
@@ -291,9 +291,9 @@ namespace BasicTypes {
      */
     namespace Compatibility {
         // 기존 코드에서 사용했을 수 있는 타입들
-        using DeviceId = UUID;
-        using PointId = UUID;
-        using RequestId = UUID;
+        using DeviceId = UniqueId;
+        using PointId = UniqueId;
+        using RequestId = UniqueId;
         using Value = DataVariant;
         using TimeStamp = Timestamp;  // 기존 스타일
     }

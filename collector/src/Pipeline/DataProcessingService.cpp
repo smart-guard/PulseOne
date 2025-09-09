@@ -506,7 +506,7 @@ Storage::BackendFormat::AlarmEventData DataProcessingService::ConvertAlarmEventT
     data.rule_id = alarm_event.rule_id;
     data.tenant_id = alarm_event.tenant_id;
     data.point_id = alarm_event.point_id;
-    data.device_id = alarm_event.device_id;  // UUID는 이미 string 호환
+    data.device_id = alarm_event.device_id;  // UniqueId는 이미 string 호환
     data.message = alarm_event.message;
     
     // ✅ 타입 수정: enum → string 직접 변환 (AlarmTypes.h 함수 사용)

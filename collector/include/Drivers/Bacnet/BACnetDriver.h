@@ -31,7 +31,7 @@
 #endif
 
 #include "Drivers/Common/IProtocolDriver.h"
-#include "Common/BasicTypes.h"           // UUID, Timestamp 등
+#include "Common/BasicTypes.h"           // UniqueId, Timestamp 등
 #include "Common/Enums.h"                // ProtocolType, ConnectionStatus 등  
 #include "Common/Structs.h"              // DeviceInfo, DataPoint 등
 #include "Common/DriverStatistics.h"     // DriverStatistics

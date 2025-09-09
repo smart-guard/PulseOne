@@ -45,9 +45,9 @@
         #define NOMINMAX
     #endif
     
-    // UUID 타입 충돌 방지 (Windows API vs 사용자 정의)
-    #ifdef UUID
-        #undef UUID
+    // UniqueId 타입 충돌 방지 (Windows API vs 사용자 정의)
+    #ifdef UniqueId
+        #undef UniqueId
     #endif
     
     // 순서 중요: winsock2.h -> ws2tcpip.h -> windows.h
@@ -95,8 +95,8 @@
 #endif
 
 namespace PulseOne {
-    // 모든 플랫폼에서 UUID는 string으로 통일
-    using UUID = std::string;
+    // 모든 플랫폼에서 UniqueId는 string으로 통일
+    using UniqueId = std::string;
 }
 
 namespace PulseOne {
@@ -548,15 +548,15 @@ public:
 // =============================================================================
 class String {
 public:
-    // UUID를 문자열로 변환
-    static std::string UUIDToString(const PulseOne::UUID& uuid) {
-        // UUID가 이미 string이므로 그대로 반환
-        return uuid;
+    // UniqueId를 문자열로 변환
+    static std::string UniqueIdToString(const PulseOne::UniqueId& UniqueId) {
+        // UniqueId가 이미 string이므로 그대로 반환
+        return UniqueId;
     }
     
-    // 문자열을 UUID로 변환
-    static PulseOne::UUID StringToUUID(const std::string& str) {
-        return str;  // UUID가 string이므로 그대로 반환
+    // 문자열을 UniqueId로 변환
+    static PulseOne::UniqueId StringToUniqueId(const std::string& str) {
+        return str;  // UniqueId가 string이므로 그대로 반환
     }
 };
 
