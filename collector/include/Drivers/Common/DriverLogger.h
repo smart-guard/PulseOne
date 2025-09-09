@@ -82,7 +82,7 @@ private:
     }
 
 public:
-    DriverLogger(const UUID& device_id = "", 
+    DriverLogger(const UniqueId& device_id = "", 
                  ProtocolType protocol = ProtocolType::UNKNOWN,
                  const std::string& endpoint = "")
         : legacy_logger_(nullptr), min_level_(LogLevel::INFO) {

@@ -27,7 +27,7 @@ using namespace std::chrono;
  * @brief 점검 세션 정보 구조체
  */
 struct MaintenanceSession {
-    UUID session_id;                                ///< 세션 고유 ID
+    UniqueId session_id;                                ///< 세션 고유 ID
     std::string reason;                             ///< 점검 사유
     std::chrono::system_clock::time_point start_time;    ///< 시작 시간
     std::chrono::minutes estimated_duration;             ///< 예상 소요 시간
@@ -49,7 +49,7 @@ public:
      * @param redis_client Redis 클라이언트
      * @param logger 로거
      */
-    MaintenanceManager(const UUID& device_id,
+    MaintenanceManager(const UniqueId& device_id,
                       std::shared_ptr<RedisClient> redis_client,
                       std::shared_ptr<LogManager> logger)
         : device_id_(device_id)
@@ -89,7 +89,7 @@ public:
         try {
             // 새 세션 생성
             current_session_ = MaintenanceSession();
-            current_session_.session_id = GenerateUUID();
+            current_session_.session_id = GenerateUniqueId();
             current_session_.reason = reason;
             current_session_.start_time = system_clock::now();
             current_session_.estimated_duration = estimated_duration;
@@ -250,7 +250,7 @@ public:
      * @param severity 심각도
      * @return 억제해야 하는 경우 true
      */
-    bool ShouldSuppressAlarm(const UUID& alarm_id, const std::string& severity) const {
+    bool ShouldSuppressAlarm(const UniqueId& alarm_id, const std::string& severity) const {
         std::lock_guard<std::mutex> lock(maintenance_mutex_);
         
         if (!is_maintenance_active_) {
@@ -274,7 +274,7 @@ private:
     // 내부 데이터 멤버
     // =============================================================================
     
-    UUID device_id_;                                      ///< 디바이스 ID
+    UniqueId device_id_;                                      ///< 디바이스 ID
     std::shared_ptr<RedisClient> redis_client_;           ///< Redis 클라이언트
     std::shared_ptr<LogManager> logger_;                  ///< 로거
     
@@ -303,19 +303,19 @@ private:
     }
     
     /**
-     * @brief UUID 생성 (간단한 구현)
-     * @return 생성된 UUID
+     * @brief UniqueId 생성 (간단한 구현)
+     * @return 생성된 UniqueId
      */
-    UUID GenerateUUID() {
-        // 실제로는 더 복잡한 UUID 생성 로직 필요
+    UniqueId GenerateUniqueId() {
+        // 실제로는 더 복잡한 UniqueId 생성 로직 필요
         static std::atomic<uint64_t> counter{0};
         auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
         
-        std::string uuid_str = "maint-" + std::to_string(now) + "-" + std::to_string(counter.fetch_add(1));
+        std::string UniqueId_str = "maint-" + std::to_string(now) + "-" + std::to_string(counter.fetch_add(1));
         
-        UUID uuid;
-        // UUID 문자열을 적절히 변환 (실제 구현 필요)
-        return uuid;
+        UniqueId UniqueId;
+        // UniqueId 문자열을 적절히 변환 (실제 구현 필요)
+        return UniqueId;
     }
 };
 

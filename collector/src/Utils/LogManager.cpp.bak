@@ -182,7 +182,7 @@ std::string LogManager::formatLogMessage(LogLevel level, const std::string& cate
     return oss.str();
 }
 
-std::string LogManager::formatMaintenanceLog(const UUID& device_id, 
+std::string LogManager::formatMaintenanceLog(const UniqueId& device_id, 
                                            const EngineerID& engineer_id,
                                            const std::string& message) {
     std::ostringstream oss;
@@ -293,7 +293,7 @@ void LogManager::log(const std::string& category, const std::string& level, cons
 }
 
 // 🆕 점검 관련 로그 메소드들
-void LogManager::logMaintenance(const UUID& device_id, const EngineerID& engineer_id, 
+void LogManager::logMaintenance(const UniqueId& device_id, const EngineerID& engineer_id, 
                                const std::string& message) {
     std::string formatted = formatMaintenanceLog(device_id, engineer_id, message);
     std::string path = buildLogPath("maintenance");
@@ -316,14 +316,14 @@ void LogManager::logMaintenanceEnd(const DeviceInfo& device, const EngineerID& e
     logMaintenance(device.id, engineer_id, oss.str());
 }
 
-void LogManager::logRemoteControlBlocked(const UUID& device_id, const std::string& reason) {
+void LogManager::logRemoteControlBlocked(const UniqueId& device_id, const std::string& reason) {
     std::ostringstream oss;
     oss << "REMOTE CONTROL BLOCKED - Device: " << device_id << ", Reason: " << reason;
     log("security", LogLevel::WARN, oss.str());
 }
 
 // 🆕 드라이버 로그 (카테고리 지원)
-void LogManager::logDriver(const UUID& device_id, DriverLogCategory category, 
+void LogManager::logDriver(const UniqueId& device_id, DriverLogCategory category, 
                           LogLevel level, const std::string& message) {
     if (!shouldLogCategory(category, level)) return;
     
@@ -335,7 +335,7 @@ void LogManager::logDriver(const UUID& device_id, DriverLogCategory category,
 }
 
 // 🆕 데이터 품질 로그
-void LogManager::logDataQuality(const UUID& device_id, const UUID& point_id,
+void LogManager::logDataQuality(const UniqueId& device_id, const UniqueId& point_id,
                                DataQuality quality, const std::string& reason) {
     if (quality == DataQuality::GOOD) return;  // 정상 데이터는 로깅 안함
     

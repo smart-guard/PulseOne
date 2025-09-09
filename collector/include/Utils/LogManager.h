@@ -41,7 +41,7 @@
 using LogLevel = PulseOne::Enums::LogLevel;
 using DriverLogCategory = PulseOne::Enums::DriverLogCategory;
 using DataQuality = PulseOne::Enums::DataQuality;
-using UUID = PulseOne::BasicTypes::UUID;
+using UniqueId = PulseOne::BasicTypes::UniqueId;
 using EngineerID = PulseOne::BasicTypes::EngineerID;
 using Timestamp = PulseOne::BasicTypes::Timestamp;
 
@@ -125,19 +125,19 @@ public:
     void log(const std::string& category, const std::string& level, const std::string& message);
     
     // 점검 관련 로그
-    void logMaintenance(const UUID& device_id, const EngineerID& engineer_id, 
+    void logMaintenance(const UniqueId& device_id, const EngineerID& engineer_id, 
                        const std::string& message);
     void logMaintenanceStart(const PulseOne::Structs::DeviceInfo& device, const EngineerID& engineer_id);
     void logMaintenanceEnd(const PulseOne::Structs::DeviceInfo& device, const EngineerID& engineer_id);
-    void logRemoteControlBlocked(const UUID& device_id, const std::string& reason);
+    void logRemoteControlBlocked(const UniqueId& device_id, const std::string& reason);
     
     // 드라이버 로그
     void logDriver(const std::string& driverName, const std::string& message);
-    void logDriver(const UUID& device_id, DriverLogCategory category, 
+    void logDriver(const UniqueId& device_id, DriverLogCategory category, 
                   LogLevel level, const std::string& message);
     
     // 데이터 품질 로그
-    void logDataQuality(const UUID& device_id, const UUID& point_id,
+    void logDataQuality(const UniqueId& device_id, const UniqueId& point_id,
                        DataQuality quality, const std::string& reason = "");
 
     // 특수 로그
@@ -286,7 +286,7 @@ private:
     // 포맷팅
     std::string formatLogMessage(LogLevel level, const std::string& category,
                                 const std::string& message);
-    std::string formatMaintenanceLog(const UUID& device_id, const EngineerID& engineer_id,
+    std::string formatMaintenanceLog(const UniqueId& device_id, const EngineerID& engineer_id,
                                    const std::string& message);
 
     // 통계
@@ -378,13 +378,13 @@ inline LogManager& Logger() {
     return LogManager::getInstance();
 }
 
-inline void LogMaintenance(const UUID& device_id, 
+inline void LogMaintenance(const UniqueId& device_id, 
                           const EngineerID& engineer_id,
                           const std::string& message) {
     LogManager::getInstance().logMaintenance(device_id, engineer_id, message);
 }
 
-inline void LogDriver(const UUID& device_id, 
+inline void LogDriver(const UniqueId& device_id, 
                      DriverLogCategory category,
                      LogLevel level,
                      const std::string& message) {

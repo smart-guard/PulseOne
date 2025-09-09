@@ -33,7 +33,7 @@ namespace PulseOne::Utils {
     // 🔥 using namespace 완전 제거! 개별 타입만 명시적 선언
     
     // BasicTypes에서 필요한 타입들만 개별 선언
-    using UUID = PulseOne::BasicTypes::UUID;
+    using UniqueId = PulseOne::BasicTypes::UniqueId;
     using Timestamp = PulseOne::BasicTypes::Timestamp;
     using Duration = PulseOne::BasicTypes::Duration;
     using DataVariant = PulseOne::BasicTypes::DataVariant;
@@ -328,13 +328,13 @@ namespace PulseOne::Utils {
     }
     
     // ========================================
-    // UUID 생성 함수들
+    // UniqueId 생성 함수들
     // ========================================
     
     /**
-     * @brief UUID 생성 (간단한 형태)
+     * @brief UniqueId 생성 (간단한 형태)
      */
-    inline UUID GenerateUUID() {
+    inline UniqueId GenerateUniqueId() {
         static std::random_device rd;
         static std::mt19937 gen(rd());
         static std::uniform_int_distribution<> dis(0, 15);
@@ -359,7 +359,7 @@ namespace PulseOne::Utils {
     /**
      * @brief 디바이스 ID 생성 (프로토콜별)
      */
-    inline UUID GenerateDeviceID(ProtocolType protocol, const std::string& endpoint) {
+    inline UniqueId GenerateDeviceID(ProtocolType protocol, const std::string& endpoint) {
         std::string prefix = ProtocolTypeToString(protocol);
         std::hash<std::string> hasher;
         size_t hash = hasher(endpoint);
