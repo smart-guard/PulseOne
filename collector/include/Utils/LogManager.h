@@ -3,12 +3,18 @@
 
 /**
  * @file LogManager.h
- * @brief PulseOne 통합 로그 관리자 - PlatformCompat.h 사용
+ * @brief PulseOne 통합 로그 관리자 - 완전한 설정 적용 + 크로스 플랫폼 지원
  * @author PulseOne Development Team
- * @date 2025-09-06
+ * @date 2025-09-09
+ * 
+ * 완전한 기능:
+ * - LOG_LEVEL, LOG_TO_CONSOLE, LOG_TO_FILE, LOG_FILE_PATH 설정 완전 적용
+ * - Windows/Linux 크로스 플랫폼 경로 처리
+ * - 설정 파일 실시간 재로드 지원
+ * - 로그 로테이션 및 크기 관리
  */
 
-// 🔥 FIRST: PlatformCompat.h가 모든 플랫폼 문제를 해결함
+// PlatformCompat.h가 모든 플랫폼 문제를 해결함
 #include "Platform/PlatformCompat.h"
 
 // 표준 헤더들
@@ -24,6 +30,7 @@
 #include <chrono>
 #include <cstdint>
 #include <vector>
+#include <filesystem>  // 크로스 플랫폼 경로 처리용
 
 // PulseOne 타입 시스템
 #include "Common/Enums.h"
@@ -40,7 +47,7 @@ using Timestamp = PulseOne::BasicTypes::Timestamp;
 
 /**
  * @brief 완전 전역 싱글톤 로그 관리자
- * @details 다른 코드에서 LogManager::getInstance()로 직접 접근
+ * @details 설정 파일 기반 동작, 크로스 플랫폼 경로 처리 지원
  */
 class LogManager {
 public:
@@ -166,6 +173,46 @@ public:
     }
 
     // =============================================================================
+    // 새로 추가: 설정 관리 메소드들
+    // =============================================================================
+    
+    // 설정 파일에서 재로드
+    void reloadSettings();
+    
+    // 콘솔/파일 출력 제어 (LOG_TO_CONSOLE, LOG_TO_FILE 설정 런타임 변경)
+    void setConsoleOutput(bool enabled);
+    void setFileOutput(bool enabled);
+    
+    bool isConsoleOutputEnabled() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return console_output_enabled_;
+    }
+    
+    bool isFileOutputEnabled() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return file_output_enabled_;
+    }
+    
+    // 로그 경로 설정 (LOG_FILE_PATH 런타임 변경)
+    void setLogBasePath(const std::string& path);
+    
+    std::string getLogBasePath() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return log_base_path_;
+    }
+    
+    // 로그 로테이션 설정
+    void setMaxLogSizeMB(size_t size_mb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        max_log_size_mb_ = size_mb;
+    }
+    
+    void setMaxLogFiles(int count) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        max_log_files_ = count;
+    }
+
+    // =============================================================================
     // 통계 및 관리
     // =============================================================================
     
@@ -192,7 +239,33 @@ private:
     // =============================================================================
     void ensureInitialized();
     bool doInitialize();
+    
+    // 새로 추가: 설정 파일에서 로그 설정 로드
+    void loadLogSettingsFromConfig();
+
+    // =============================================================================
+    // 크로스 플랫폼 경로 처리 (새로 추가)
+    // =============================================================================
+    
+    // 경로 정규화 (Windows/Linux 호환)
+    std::string normalizePath(const std::string& path);
+    
+    // 로그 디렉토리 및 파일 경로 생성
+    std::filesystem::path buildLogDirectoryPath(const std::string& category);
+    std::filesystem::path buildLogFilePath(const std::string& category);
+    
+    // 디렉토리 생성 (std::filesystem 우선, 레거시 폴백)
+    void createLogDirectoriesRecursive();
+    
+    // 레거시 디렉토리 생성 (폴백용)
     bool createDirectoryRecursive(const std::string& path);
+
+    // =============================================================================
+    // 로그 경로 관리 (개선된 버전)
+    // =============================================================================
+    
+    std::string buildLogPath(const std::string& category);
+    std::string buildLogPathLegacy(const std::string& category);  // 폴백용
 
     // =============================================================================
     // 내부 유틸리티
@@ -200,8 +273,13 @@ private:
     std::string getCurrentDate();
     std::string getCurrentTime();
     std::string getCurrentTimestamp();
-    std::string buildLogPath(const std::string& category);
+    
+    // 파일 쓰기 (설정 적용 버전)
     void writeToFile(const std::string& filePath, const std::string& message);
+    
+    // 로그 로테이션 체크
+    void checkAndRotateLogFile(const std::string& filePath, std::ofstream& stream);
+    
     bool shouldLog(LogLevel level) const;
     bool shouldLogCategory(DriverLogCategory category, LogLevel level) const;
 
@@ -279,6 +357,17 @@ private:
     // 로그 로테이션 설정
     size_t max_log_size_mb_;
     int max_log_files_;
+    
+    // =============================================================================
+    // 새로 추가: 설정 기반 제어 변수들
+    // =============================================================================
+    
+    // 출력 제어 (LOG_TO_CONSOLE, LOG_TO_FILE 설정 적용)
+    bool console_output_enabled_;
+    bool file_output_enabled_;
+    
+    // 로그 경로 (LOG_FILE_PATH 설정 적용)
+    std::string log_base_path_;
 };
 
 // =============================================================================
@@ -300,6 +389,42 @@ inline void LogDriver(const UUID& device_id,
                      LogLevel level,
                      const std::string& message) {
     LogManager::getInstance().logDriver(device_id, category, level, message);
+}
+
+// =============================================================================
+// 새로 추가: 설정 기반 로그 제어 편의 함수들
+// =============================================================================
+
+/**
+ * @brief 로그 설정을 즉시 재로드
+ * 설정 파일이 변경되었을 때 호출
+ */
+inline void ReloadLogSettings() {
+    LogManager::getInstance().reloadSettings();
+}
+
+/**
+ * @brief 콘솔 출력 즉시 제어
+ * @param enabled true=콘솔 출력, false=콘솔 출력 안함
+ */
+inline void SetConsoleLogging(bool enabled) {
+    LogManager::getInstance().setConsoleOutput(enabled);
+}
+
+/**
+ * @brief 파일 출력 즉시 제어
+ * @param enabled true=파일 출력, false=파일 출력 안함
+ */
+inline void SetFileLogging(bool enabled) {
+    LogManager::getInstance().setFileOutput(enabled);
+}
+
+/**
+ * @brief 로그 경로 즉시 변경
+ * @param path 새 로그 경로 (Windows/Linux 자동 처리)
+ */
+inline void SetLogPath(const std::string& path) {
+    LogManager::getInstance().setLogBasePath(path);
 }
 
 #endif // LOG_MANAGER_H

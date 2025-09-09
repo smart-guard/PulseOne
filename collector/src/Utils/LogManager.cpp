@@ -1,39 +1,43 @@
 /**
  * @file LogManager.cpp
- * @brief PulseOne 통합 로그 관리자 - 완전 크로스 컴파일 대응
+ * @brief PulseOne 통합 로그 관리자 - 완전한 설정 적용 + 크로스 플랫폼 경로 처리
  * @author PulseOne Development Team
- * @date 2025-09-06
+ * @date 2025-09-09
  * 
- * 완전한 크로스 플랫폼 지원:
- * - Windows/Linux API 충돌 완전 해결
- * - 새 헤더와 100% 매칭 (올바른 enum 값들)
- * - LogStatistics 완전한 구조체 사용
+ * 완전한 기능:
+ * - LOG_LEVEL, LOG_TO_CONSOLE, LOG_TO_FILE, LOG_FILE_PATH 설정 적용
+ * - Windows/Linux 크로스 플랫폼 경로 처리 개선
  * - MinGW 크로스 컴파일 완전 대응
+ * - 설정 파일 변경 시 실시간 적용
  */
 
 #include "Utils/LogManager.h"
+#include "Utils/ConfigManager.h"  // 설정 파일 적용을 위해 추가
 #include <iostream>
 #include <sstream>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <filesystem>  // 크로스 플랫폼 경로 처리용
 
 // =============================================================================
-// 🔥 크로스 플랫폼 파일시스템 처리 (헤더 이후)
+// 크로스 플랫폼 파일시스템 처리 (std::filesystem 우선 사용)
 // =============================================================================
 
 #if PULSEONE_WINDOWS
     #include <direct.h>
     #include <io.h>
-    #define PATH_SEPARATOR "\\"
-    #define MKDIR(path) _mkdir(path)
-    #define ACCESS(path, mode) _access(path, mode)
+    #define LEGACY_PATH_SEPARATOR "\\"
+    #define LEGACY_MKDIR(path) _mkdir(path)
+    #define LEGACY_ACCESS(path, mode) _access(path, mode)
+    #define SAFE_LOCALTIME(timer, buf) localtime_s(buf, timer)
 #else
     #include <sys/stat.h>
     #include <unistd.h>
-    #define PATH_SEPARATOR "/"
-    #define MKDIR(path) mkdir(path, 0755)
-    #define ACCESS(path, mode) access(path, mode)
+    #define LEGACY_PATH_SEPARATOR "/"
+    #define LEGACY_MKDIR(path) mkdir(path, 0755)
+    #define LEGACY_ACCESS(path, mode) access(path, mode)
+    #define SAFE_LOCALTIME(timer, buf) localtime_r(timer, buf)
 #endif
 
 // =============================================================================
@@ -42,12 +46,16 @@
 
 LogManager::LogManager() 
     : initialized_(false)
-    , minLevel_(LogLevel::INFO)
+    , minLevel_(LogLevel::INFO)           // 기본값 (설정에서 덮어씀)
     , defaultCategory_("system")
     , maintenance_mode_enabled_(false)
-    , max_log_size_mb_(100)
-    , max_log_files_(30) {
-    // 생성자에서는 기본값만 설정
+    , max_log_size_mb_(100)              // 기본값 (설정에서 덮어씀)
+    , max_log_files_(30)                 // 기본값 (설정에서 덮어씀)
+    , console_output_enabled_(true)      // 새로 추가: 콘솔 출력 제어
+    , file_output_enabled_(true)         // 새로 추가: 파일 출력 제어
+    , log_base_path_("./logs/")          // 새로 추가: 로그 기본 경로
+{
+    // 생성자에서는 기본값만 설정, 실제 설정은 ensureInitialized()에서
 }
 
 LogManager::~LogManager() {
@@ -86,7 +94,10 @@ bool LogManager::doInitialize() {
     try {
         std::cout << "LogManager 자동 초기화 시작...\n";
         
-        // 🔥 올바른 enum 값들로 설정 (Common/Enums.h 기준)
+        // 1. 설정 파일에서 로그 설정 로드
+        loadLogSettingsFromConfig();
+        
+        // 2. 올바른 enum 값들로 카테고리 레벨 설정
         categoryLevels_[DriverLogCategory::GENERAL] = LogLevel::INFO;
         categoryLevels_[DriverLogCategory::CONNECTION] = LogLevel::INFO;
         categoryLevels_[DriverLogCategory::COMMUNICATION] = LogLevel::WARN;
@@ -98,12 +109,12 @@ bool LogManager::doInitialize() {
         categoryLevels_[DriverLogCategory::DIAGNOSTICS] = LogLevel::DEBUG;
         categoryLevels_[DriverLogCategory::MAINTENANCE] = LogLevel::WARN;
         
-        // 로그 디렉토리 확인 및 생성
-        createDirectoryRecursive("logs");
+        // 3. 로그 디렉토리 확인 및 생성 (크로스 플랫폼)
+        createLogDirectoriesRecursive();
         
         initialized_.store(true);
         
-        std::cout << "LogManager 자동 초기화 완료\n";
+        std::cout << "LogManager 자동 초기화 완료 (설정 적용됨)\n";
         return true;
         
     } catch (const std::exception& e) {
@@ -113,16 +124,156 @@ bool LogManager::doInitialize() {
 }
 
 // =============================================================================
-// 플랫폼별 디렉토리 생성
+// 새로 추가: 설정 파일에서 로그 설정 로드
+// =============================================================================
+
+void LogManager::loadLogSettingsFromConfig() {
+    try {
+        auto& config = ConfigManager::getInstance();
+        
+        // 1. LOG_LEVEL 적용
+        std::string log_level_str = config.get("LOG_LEVEL", "INFO");
+        std::transform(log_level_str.begin(), log_level_str.end(), log_level_str.begin(), ::toupper);
+        
+        if (log_level_str == "DEBUG") {
+            minLevel_ = LogLevel::DEBUG;
+        } else if (log_level_str == "INFO") {
+            minLevel_ = LogLevel::INFO;
+        } else if (log_level_str == "WARN" || log_level_str == "WARNING") {
+            minLevel_ = LogLevel::WARN;
+        } else if (log_level_str == "ERROR") {
+            minLevel_ = LogLevel::LOG_ERROR;
+        } else if (log_level_str == "FATAL") {
+            minLevel_ = LogLevel::LOG_FATAL;
+        } else if (log_level_str == "TRACE") {
+            minLevel_ = LogLevel::TRACE;
+        } else {
+            minLevel_ = LogLevel::INFO;  // 기본값
+            std::cout << "알 수 없는 LOG_LEVEL: " << log_level_str << ", INFO로 설정\n";
+        }
+        
+        // 2. LOG_TO_CONSOLE 적용
+        console_output_enabled_ = config.getBool("LOG_TO_CONSOLE", true);
+        
+        // 3. LOG_TO_FILE 적용  
+        file_output_enabled_ = config.getBool("LOG_TO_FILE", true);
+        
+        // 4. LOG_FILE_PATH 적용 (크로스 플랫폼 경로 처리)
+        std::string raw_path = config.get("LOG_FILE_PATH", "./logs/");
+        log_base_path_ = normalizePath(raw_path);
+        
+        // 5. 로그 로테이션 설정 적용
+        max_log_size_mb_ = static_cast<size_t>(config.getInt("LOG_MAX_SIZE_MB", 100));
+        max_log_files_ = config.getInt("LOG_MAX_FILES", 30);
+        
+        // 6. 유지보수 모드 설정
+        maintenance_mode_enabled_ = config.getBool("MAINTENANCE_MODE", false);
+        
+        std::cout << "로그 설정 적용됨:\n";
+        std::cout << "  - LOG_LEVEL: " << log_level_str << "\n";
+        std::cout << "  - LOG_TO_CONSOLE: " << (console_output_enabled_ ? "true" : "false") << "\n";
+        std::cout << "  - LOG_TO_FILE: " << (file_output_enabled_ ? "true" : "false") << "\n";
+        std::cout << "  - LOG_FILE_PATH: " << log_base_path_ << "\n";
+        
+    } catch (const std::exception& e) {
+        std::cerr << "로그 설정 로드 실패: " << e.what() << ", 기본값 사용\n";
+        // 기본값으로 폴백
+        console_output_enabled_ = true;
+        file_output_enabled_ = true;
+        log_base_path_ = "./logs/";
+        minLevel_ = LogLevel::INFO;
+    }
+}
+
+// =============================================================================
+// 새로 추가: 크로스 플랫폼 경로 처리 유틸리티
+// =============================================================================
+
+std::string LogManager::normalizePath(const std::string& path) {
+    try {
+        // std::filesystem를 사용한 경로 정규화
+        std::filesystem::path fs_path(path);
+        
+        // 상대 경로를 절대 경로로 변환하지 않고, 단순히 정규화만
+        std::filesystem::path normalized = fs_path.lexically_normal();
+        
+        // 끝에 슬래시가 없으면 추가
+        std::string result = normalized.string();
+        if (!result.empty() && result.back() != '/' && result.back() != '\\') {
+            result += std::filesystem::path::preferred_separator;
+        }
+        
+        return result;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "경로 정규화 실패: " << e.what() << ", 원본 경로 사용: " << path << "\n";
+        return path;
+    }
+}
+
+std::filesystem::path LogManager::buildLogDirectoryPath(const std::string& category) {
+    std::filesystem::path base_path(log_base_path_);
+    std::string date = getCurrentDate();
+    
+    if (category.rfind("packet_", 0) == 0) {
+        // 패킷 로그: logs/packets/20250909/
+        return base_path / "packets" / date;
+    } else if (category == "maintenance") {
+        // 유지보수 로그: logs/maintenance/20250909/
+        return base_path / "maintenance" / date;
+    } else {
+        // 일반 로그: logs/20250909/
+        return base_path / date;
+    }
+}
+
+std::filesystem::path LogManager::buildLogFilePath(const std::string& category) {
+    std::filesystem::path dir_path = buildLogDirectoryPath(category);
+    
+    if (category.rfind("packet_", 0) == 0) {
+        // 패킷 로그: modbus.log
+        std::string driver_name = category.substr(7);  // "packet_" 제거
+        return dir_path / (driver_name + ".log");
+    } else {
+        // 일반 로그: category.log
+        return dir_path / (category + ".log");
+    }
+}
+
+void LogManager::createLogDirectoriesRecursive() {
+    try {
+        // 기본 로그 디렉토리 생성
+        std::filesystem::path base_path(log_base_path_);
+        std::filesystem::create_directories(base_path);
+        
+        // 오늘 날짜 디렉토리 생성
+        std::string today = getCurrentDate();
+        std::filesystem::create_directories(base_path / today);
+        std::filesystem::create_directories(base_path / "packets" / today);
+        std::filesystem::create_directories(base_path / "maintenance" / today);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "로그 디렉토리 생성 실패: " << e.what() << ", 레거시 방식 시도\n";
+        
+        // 폴백: 레거시 방식으로 디렉토리 생성
+        createDirectoryRecursive(log_base_path_);
+        createDirectoryRecursive(log_base_path_ + getCurrentDate());
+        createDirectoryRecursive(log_base_path_ + "packets" + LEGACY_PATH_SEPARATOR + getCurrentDate());
+        createDirectoryRecursive(log_base_path_ + "maintenance" + LEGACY_PATH_SEPARATOR + getCurrentDate());
+    }
+}
+
+// =============================================================================
+// 레거시 디렉토리 생성 (폴백용)
 // =============================================================================
 
 bool LogManager::createDirectoryRecursive(const std::string& path) {
-    if (ACCESS(path.c_str(), 0) == 0) {
+    if (LEGACY_ACCESS(path.c_str(), 0) == 0) {
         return true; // 이미 존재함
     }
     
     // 부모 디렉토리 먼저 생성
-    size_t pos = path.find_last_of(PATH_SEPARATOR);
+    size_t pos = path.find_last_of(LEGACY_PATH_SEPARATOR);
     if (pos != std::string::npos) {
         std::string parent = path.substr(0, pos);
         if (!createDirectoryRecursive(parent)) {
@@ -130,7 +281,7 @@ bool LogManager::createDirectoryRecursive(const std::string& path) {
         }
     }
     
-    return MKDIR(path.c_str()) == 0;
+    return LEGACY_MKDIR(path.c_str()) == 0;
 }
 
 // =============================================================================
@@ -168,30 +319,48 @@ std::string LogManager::getCurrentTimestamp() {
 }
 
 // =============================================================================
-// 로그 경로 및 파일 관리
+// 로그 경로 관리 (개선된 버전)
 // =============================================================================
 
 std::string LogManager::buildLogPath(const std::string& category) {
+    try {
+        // std::filesystem 사용
+        std::filesystem::path log_file_path = buildLogFilePath(category);
+        
+        // 디렉토리 생성
+        std::filesystem::create_directories(log_file_path.parent_path());
+        
+        return log_file_path.string();
+        
+    } catch (const std::exception& e) {
+        std::cerr << "로그 경로 빌드 실패: " << e.what() << ", 레거시 방식 사용\n";
+        
+        // 폴백: 레거시 방식
+        return buildLogPathLegacy(category);
+    }
+}
+
+std::string LogManager::buildLogPathLegacy(const std::string& category) {
     std::string date = getCurrentDate();
     std::string baseDir;
 
     if (category.rfind("packet_", 0) == 0) {
-        baseDir = "logs" PATH_SEPARATOR "packets" PATH_SEPARATOR + date + PATH_SEPARATOR + category.substr(7);
+        baseDir = log_base_path_ + "packets" + LEGACY_PATH_SEPARATOR + date + LEGACY_PATH_SEPARATOR + category.substr(7);
     } else if (category == "maintenance") {
-        baseDir = "logs" PATH_SEPARATOR "maintenance" PATH_SEPARATOR + date;
+        baseDir = log_base_path_ + "maintenance" + LEGACY_PATH_SEPARATOR + date;
     } else {
-        baseDir = "logs" PATH_SEPARATOR + date;
+        baseDir = log_base_path_ + date;
     }
 
     std::string fullPath;
     if (category.rfind("packet_", 0) == 0) {
         fullPath = baseDir + ".log";
     } else {
-        fullPath = baseDir + PATH_SEPARATOR + category + ".log";
+        fullPath = baseDir + LEGACY_PATH_SEPARATOR + category + ".log";
     }
 
     // 디렉토리 생성
-    size_t pos = fullPath.find_last_of(PATH_SEPARATOR);
+    size_t pos = fullPath.find_last_of(LEGACY_PATH_SEPARATOR);
     if (pos != std::string::npos) {
         std::string dir = fullPath.substr(0, pos);
         createDirectoryRecursive(dir);
@@ -249,21 +418,72 @@ std::string LogManager::formatMaintenanceLog(const UUID& device_id,
 }
 
 // =============================================================================
-// 파일 쓰기 및 통계
+// 파일 쓰기 (설정 적용 버전)
 // =============================================================================
 
 void LogManager::writeToFile(const std::string& filePath, const std::string& message) {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    // 콘솔에도 출력
-    std::cout << message << std::endl;
-    
-    std::ofstream& stream = logFiles_[filePath];
-    if (!stream.is_open()) {
-        stream.open(filePath, std::ios::app);
+    // 1. 콘솔 출력 (LOG_TO_CONSOLE 설정 적용)
+    if (console_output_enabled_) {
+        std::cout << message << std::endl;
     }
-    stream << message << std::endl;
-    stream.flush();
+    
+    // 2. 파일 출력 (LOG_TO_FILE 설정 적용)
+    if (file_output_enabled_) {
+        std::ofstream& stream = logFiles_[filePath];
+        if (!stream.is_open()) {
+            stream.open(filePath, std::ios::app);
+            if (!stream.is_open()) {
+                if (console_output_enabled_) {
+                    std::cerr << "로그 파일 열기 실패: " << filePath << std::endl;
+                }
+                return;
+            }
+        }
+        stream << message << std::endl;
+        stream.flush();
+        
+        // 파일 크기 체크 및 로테이션
+        checkAndRotateLogFile(filePath, stream);
+    }
+}
+
+void LogManager::checkAndRotateLogFile(const std::string& filePath, std::ofstream& stream) {
+    try {
+        // 파일 크기 확인
+        if (stream.is_open()) {
+            auto current_pos = stream.tellp();
+            if (current_pos > 0) {
+                size_t current_size_mb = static_cast<size_t>(current_pos) / (1024 * 1024);
+                
+                if (current_size_mb >= max_log_size_mb_) {
+                    // 로그 로테이션
+                    stream.close();
+                    
+                    // 백업 파일명 생성 (timestamp 추가)
+                    std::filesystem::path original_path(filePath);
+                    std::string backup_name = original_path.stem().string() + "_" + 
+                                            getCurrentTimestamp() + original_path.extension().string();
+                    std::filesystem::path backup_path = original_path.parent_path() / backup_name;
+                    
+                    // 파일 이름 변경
+                    std::filesystem::rename(original_path, backup_path);
+                    
+                    // 새 파일 열기
+                    stream.open(filePath, std::ios::app);
+                    
+                    if (console_output_enabled_) {
+                        std::cout << "로그 로테이션 수행: " << filePath << " -> " << backup_path.string() << std::endl;
+                    }
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        if (console_output_enabled_) {
+            std::cerr << "로그 로테이션 실패: " << e.what() << std::endl;
+        }
+    }
 }
 
 void LogManager::updateStatistics(LogLevel level) {
@@ -454,6 +674,42 @@ LogLevel LogManager::getCategoryLogLevel(DriverLogCategory category) const {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = categoryLevels_.find(category);
     return (it != categoryLevels_.end()) ? it->second : minLevel_;
+}
+
+// =============================================================================
+// 설정 재로드 (새로 추가)
+// =============================================================================
+
+void LogManager::reloadSettings() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    loadLogSettingsFromConfig();
+    if (console_output_enabled_) {
+        std::cout << "로그 설정이 재로드되었습니다." << std::endl;
+    }
+}
+
+void LogManager::setConsoleOutput(bool enabled) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    console_output_enabled_ = enabled;
+}
+
+void LogManager::setFileOutput(bool enabled) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    file_output_enabled_ = enabled;
+}
+
+void LogManager::setLogBasePath(const std::string& path) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    log_base_path_ = normalizePath(path);
+    
+    // 새 경로에 디렉토리 생성
+    try {
+        createLogDirectoriesRecursive();
+    } catch (const std::exception& e) {
+        if (console_output_enabled_) {
+            std::cerr << "새 로그 경로 디렉토리 생성 실패: " << e.what() << std::endl;
+        }
+    }
 }
 
 // =============================================================================
