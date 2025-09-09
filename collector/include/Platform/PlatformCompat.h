@@ -3,15 +3,24 @@
 
 /**
  * @file PlatformCompat.h
- * @brief 크로스 플랫폼 호환성 레이어 - Windows/Linux 통합 (수정판)
+ * @brief 크로스 플랫폼 호환성 레이어 - Windows/Linux 통합 + 경로 처리 강화
  * @author PulseOne Development Team
- * @date 2025-09-06
+ * @date 2025-09-09
  */
 
 // 표준 헤더들 먼저 (순서 중요!)
 #include <string>
 #include <cstdint>
 #include <ctime>
+#include <vector>
+
+// C++17 filesystem 지원 확인
+#if __cplusplus >= 201703L && __has_include(<filesystem>)
+    #include <filesystem>
+    #define HAS_FILESYSTEM 1
+#else
+    #define HAS_FILESYSTEM 0
+#endif
 
 // =============================================================================
 // 플랫폼 감지
@@ -45,10 +54,12 @@
     #include <winsock2.h>
     #include <ws2tcpip.h>
     #include <windows.h>
+    #include <shlwapi.h>  // 경로 처리용
     
     // 링커 지시문
     //#pragma comment(lib, "ws2_32.lib")
     //#pragma comment(lib, "iphlpapi.lib")
+    //#pragma comment(lib, "shlwapi.lib")
     
     // Windows 전용 매크로들
     #define SAFE_LOCALTIME(t, tm) localtime_s(tm, t)
@@ -76,6 +87,8 @@
     #include <dlfcn.h>
     #include <sys/stat.h>
     #include <time.h>
+    #include <limits.h>     // PATH_MAX용
+    #include <libgen.h>     // dirname, basename용
     
     #define SAFE_LOCALTIME(t, tm) localtime_r(t, tm)
     #define SAFE_GMTIME(t, tm) gmtime_r(t, tm)
@@ -101,7 +114,315 @@ struct pollfd {
 #endif
 
 // =============================================================================
-// Socket 래퍼 클래스
+// 크로스 플랫폼 경로 처리 클래스 (새로 추가)
+// =============================================================================
+class Path {
+public:
+    /**
+     * @brief 경로 구분자 반환 (Windows: \, Linux: /)
+     */
+    static char GetSeparator() {
+#if PULSEONE_WINDOWS
+        return '\\';
+#else
+        return '/';
+#endif
+    }
+    
+    /**
+     * @brief 경로 구분자 문자열 반환
+     */
+    static std::string GetSeparatorString() {
+#if PULSEONE_WINDOWS
+        return "\\";
+#else
+        return "/";
+#endif
+    }
+    
+    /**
+     * @brief 두 경로를 안전하게 결합
+     */
+    static std::string Join(const std::string& base, const std::string& relative) {
+#if HAS_FILESYSTEM
+        try {
+            std::filesystem::path result = std::filesystem::path(base) / relative;
+            return result.string();
+        } catch (const std::exception&) {
+            // 폴백: 수동 결합
+        }
+#endif
+        // 수동 경로 결합
+        std::string result = base;
+        if (!result.empty() && result.back() != '/' && result.back() != '\\') {
+            result += GetSeparator();
+        }
+        result += relative;
+        return result;
+    }
+    
+    /**
+     * @brief 여러 경로 요소를 결합
+     */
+    static std::string Join(const std::vector<std::string>& parts) {
+        if (parts.empty()) return "";
+        
+        std::string result = parts[0];
+        for (size_t i = 1; i < parts.size(); ++i) {
+            result = Join(result, parts[i]);
+        }
+        return result;
+    }
+    
+    /**
+     * @brief 경로를 정규화 (. 및 .. 처리, 중복 구분자 제거)
+     */
+    static std::string Normalize(const std::string& path) {
+#if HAS_FILESYSTEM
+        try {
+            std::filesystem::path fs_path(path);
+            return fs_path.lexically_normal().string();
+        } catch (const std::exception&) {
+            // 폴백: 기본 정규화
+        }
+#endif
+        // 기본 정규화 (중복 구분자 제거)
+        std::string result = path;
+        
+        // 중복 구분자 제거
+        std::string double_sep = std::string(1, GetSeparator()) + GetSeparator();
+        size_t pos = 0;
+        while ((pos = result.find(double_sep, pos)) != std::string::npos) {
+            result.erase(pos, 1);
+        }
+        
+        return result;
+    }
+    
+    /**
+     * @brief 절대 경로로 변환
+     */
+    static std::string GetAbsolute(const std::string& path) {
+#if HAS_FILESYSTEM
+        try {
+            return std::filesystem::absolute(path).string();
+        } catch (const std::exception&) {
+            // 폴백: 플랫폼별 구현
+        }
+#endif
+        
+#if PULSEONE_WINDOWS
+        char abs_path[MAX_PATH];
+        if (GetFullPathNameA(path.c_str(), MAX_PATH, abs_path, nullptr)) {
+            return std::string(abs_path);
+        }
+#else
+        char abs_path[PATH_MAX];
+        if (realpath(path.c_str(), abs_path)) {
+            return std::string(abs_path);
+        }
+#endif
+        return path;  // 실패 시 원본 반환
+    }
+    
+    /**
+     * @brief 디렉토리 부분 추출
+     */
+    static std::string GetDirectory(const std::string& path) {
+#if HAS_FILESYSTEM
+        try {
+            return std::filesystem::path(path).parent_path().string();
+        } catch (const std::exception&) {
+            // 폴백
+        }
+#endif
+        
+        size_t pos = path.find_last_of("/\\");
+        if (pos != std::string::npos) {
+            return path.substr(0, pos);
+        }
+        return ".";  // 현재 디렉토리
+    }
+    
+    /**
+     * @brief 파일명 부분 추출
+     */
+    static std::string GetFileName(const std::string& path) {
+#if HAS_FILESYSTEM
+        try {
+            return std::filesystem::path(path).filename().string();
+        } catch (const std::exception&) {
+            // 폴백
+        }
+#endif
+        
+        size_t pos = path.find_last_of("/\\");
+        if (pos != std::string::npos) {
+            return path.substr(pos + 1);
+        }
+        return path;
+    }
+    
+    /**
+     * @brief 확장자 추출
+     */
+    static std::string GetExtension(const std::string& path) {
+#if HAS_FILESYSTEM
+        try {
+            return std::filesystem::path(path).extension().string();
+        } catch (const std::exception&) {
+            // 폴백
+        }
+#endif
+        
+        size_t pos = path.find_last_of('.');
+        size_t sep_pos = path.find_last_of("/\\");
+        
+        // 확장자가 경로 구분자 이후에 있는지 확인
+        if (pos != std::string::npos && (sep_pos == std::string::npos || pos > sep_pos)) {
+            return path.substr(pos);
+        }
+        return "";
+    }
+    
+    /**
+     * @brief 현재 실행 파일의 디렉토리 반환
+     */
+    static std::string GetExecutableDirectory() {
+#if PULSEONE_WINDOWS
+        char buffer[MAX_PATH];
+        DWORD result = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
+        if (result > 0 && result < MAX_PATH) {
+            return GetDirectory(std::string(buffer));
+        }
+#else
+        char buffer[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+        if (len != -1) {
+            buffer[len] = '\0';
+            return GetDirectory(std::string(buffer));
+        }
+#endif
+        return ".";  // 폴백
+    }
+    
+    /**
+     * @brief 경로 유형 변환 (Windows <-> Unix 스타일)
+     */
+    static std::string ToNativeStyle(const std::string& path) {
+        std::string result = path;
+        
+#if PULSEONE_WINDOWS
+        // Unix 스타일을 Windows 스타일로 변환
+        std::replace(result.begin(), result.end(), '/', '\\');
+#else
+        // Windows 스타일을 Unix 스타일로 변환
+        std::replace(result.begin(), result.end(), '\\', '/');
+#endif
+        
+        return result;
+    }
+};
+
+// =============================================================================
+// 파일 시스템 유틸리티 (개선된 버전)
+// =============================================================================
+class FileSystem {
+public:
+    static bool CreateDirectory(const std::string& path) {
+#if HAS_FILESYSTEM
+        try {
+            return std::filesystem::create_directories(path);
+        } catch (const std::exception&) {
+            // 폴백: 플랫폼별 구현
+        }
+#endif
+        
+#if PULSEONE_WINDOWS
+        return ::CreateDirectoryA(path.c_str(), nullptr) != 0 ||
+               ::GetLastError() == ERROR_ALREADY_EXISTS;
+#else
+        return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
+#endif
+    }
+    
+    static bool DirectoryExists(const std::string& path) {
+#if HAS_FILESYSTEM
+        try {
+            return std::filesystem::exists(path) && std::filesystem::is_directory(path);
+        } catch (const std::exception&) {
+            // 폴백
+        }
+#endif
+        
+#if PULSEONE_WINDOWS
+        DWORD attrs = ::GetFileAttributesA(path.c_str());
+        return (attrs != INVALID_FILE_ATTRIBUTES) && 
+               (attrs & FILE_ATTRIBUTE_DIRECTORY);
+#else
+        struct stat st;
+        return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+#endif
+    }
+    
+    static bool FileExists(const std::string& path) {
+#if HAS_FILESYSTEM
+        try {
+            return std::filesystem::exists(path) && std::filesystem::is_regular_file(path);
+        } catch (const std::exception&) {
+            // 폴백
+        }
+#endif
+        
+#if PULSEONE_WINDOWS
+        DWORD attrs = ::GetFileAttributesA(path.c_str());
+        return (attrs != INVALID_FILE_ATTRIBUTES) && 
+               !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+#else
+        struct stat st;
+        return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+#endif
+    }
+    
+    static bool Exists(const std::string& path) {
+#if HAS_FILESYSTEM
+        try {
+            return std::filesystem::exists(path);
+        } catch (const std::exception&) {
+            // 폴백
+        }
+#endif
+        
+#if PULSEONE_WINDOWS
+        return ::GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+#else
+        struct stat st;
+        return stat(path.c_str(), &st) == 0;
+#endif
+    }
+    
+    /**
+     * @brief 재귀적으로 디렉토리 생성
+     */
+    static bool CreateDirectoryRecursive(const std::string& path) {
+        if (DirectoryExists(path)) {
+            return true;
+        }
+        
+        // 부모 디렉토리 먼저 생성
+        std::string parent = Path::GetDirectory(path);
+        if (!parent.empty() && parent != path && parent != ".") {
+            if (!CreateDirectoryRecursive(parent)) {
+                return false;
+            }
+        }
+        
+        return CreateDirectory(path);
+    }
+};
+
+// =============================================================================
+// Socket 래퍼 클래스 (기존 유지)
 // =============================================================================
 class Socket {
 public:
@@ -142,7 +463,7 @@ public:
 };
 
 // =============================================================================
-// 시간 관련 유틸리티
+// 시간 관련 유틸리티 (기존 유지)
 // =============================================================================
 class Time {
 public:
@@ -168,33 +489,7 @@ public:
 };
 
 // =============================================================================
-// 파일 시스템 유틸리티
-// =============================================================================
-class FileSystem {
-public:
-    static bool CreateDirectory(const std::string& path) {
-#if PULSEONE_WINDOWS
-        return ::CreateDirectoryA(path.c_str(), NULL) != 0 ||
-               ::GetLastError() == ERROR_ALREADY_EXISTS;
-#else
-        return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
-#endif
-    }
-    
-    static bool DirectoryExists(const std::string& path) {
-#if PULSEONE_WINDOWS
-        DWORD attrs = ::GetFileAttributesA(path.c_str());
-        return (attrs != INVALID_FILE_ATTRIBUTES) && 
-               (attrs & FILE_ATTRIBUTE_DIRECTORY);
-#else
-        struct stat st;
-        return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
-#endif
-    }
-};
-
-// =============================================================================
-// 동적 라이브러리 로딩
+// 동적 라이브러리 로딩 (기존 유지)
 // =============================================================================
 class DynamicLibrary {
 public:
@@ -227,7 +522,7 @@ public:
 };
 
 // =============================================================================
-// 프로세스 관련 유틸리티
+// 프로세스 관련 유틸리티 (기존 유지)
 // =============================================================================
 class Process {
 public:
@@ -249,7 +544,7 @@ public:
 };
 
 // =============================================================================
-// 문자열 변환 유틸리티
+// 문자열 변환 유틸리티 (기존 유지)
 // =============================================================================
 class String {
 public:
