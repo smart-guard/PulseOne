@@ -52,7 +52,7 @@ try {
     console.log('✅ DatabaseInitializer 로드 성공 (lib/database/DatabaseInitializer.js)');
 } catch (error1) {
     try {
-        DatabaseInitializer = require('./scripts/database-initializer');
+        DatabaseInitializer = require('./lib/database/DatabaseInitializer');
         console.log('✅ DatabaseInitializer 로드 성공 (scripts/database-initializer.js)');
     } catch (error2) {
         console.warn('⚠️ DatabaseInitializer 로드 실패:', error1.message);
