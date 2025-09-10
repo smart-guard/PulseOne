@@ -1,5 +1,6 @@
 // =============================================================================
-// DatabaseInitializer - 범용 데이터베이스 초기화 (확장 가능한 설계)
+// DatabaseInitializer - 범용 데이터베이스 초기화 (SQL 파싱 문제 해결)
+// 🔥 핵심 수정: JavaScript 코드가 포함된 SQL 문 올바르게 처리
 // =============================================================================
 
 const fs = require('fs').promises;
@@ -109,56 +110,22 @@ class DatabaseInitializer {
      * SQLite 전용 실행
      */
     async executeSQLiteSQL(statement, params = []) {
-        const sqlite3 = require('sqlite3').verbose();
-        const dbConfig = this.config.getDatabaseConfig();
-        const dbPath = dbConfig.sqlite.path;
+        if (!this.connections?.sqlite) {
+            throw new Error('SQLite 연결이 없습니다');
+        }
         
-        return new Promise((resolve, reject) => {
-            const db = new sqlite3.Database(dbPath, (err) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-                
-                if (params.length > 0) {
-                    db.run(statement, params, (execErr) => {
-                        db.close();
-                        if (execErr) reject(execErr);
-                        else resolve();
-                    });
-                } else {
-                    db.exec(statement, (execErr) => {
-                        db.close();
-                        if (execErr) reject(execErr);
-                        else resolve();
-                    });
-                }
-            });
-        });
+        return await this.connections.sqlite.run(statement, params);
     }
 
     /**
      * SQLite 전용 쿼리
      */
     async querySQLiteSQL(query, params = []) {
-        const sqlite3 = require('sqlite3').verbose();
-        const dbConfig = this.config.getDatabaseConfig();
-        const dbPath = dbConfig.sqlite.path;
+        if (!this.connections?.sqlite) {
+            throw new Error('SQLite 연결이 없습니다');
+        }
         
-        return new Promise((resolve, reject) => {
-            const db = new sqlite3.Database(dbPath, (err) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-                
-                db.all(query, params, (execErr, rows) => {
-                    db.close();
-                    if (execErr) reject(execErr);
-                    else resolve(rows);
-                });
-            });
-        });
+        return await this.connections.sqlite.all(query, params);
     }
 
     /**
@@ -260,7 +227,8 @@ class DatabaseInitializer {
                 return true;
             }
 
-            const statements = this.parseSQLStatements(sqlContent);
+            // 🔥 핵심 수정: 개선된 SQL 파싱 사용
+            const statements = this.parseAdvancedSQLStatements(sqlContent);
             console.log(`  📁 ${filename}: ${statements.length}개 SQL 명령 실행 중...`);
             
             let successCount = 0;
@@ -270,6 +238,7 @@ class DatabaseInitializer {
                     successCount++;
                 } catch (error) {
                     console.log(`    ⚠️ SQL 실행 실패: ${error.message}`);
+                    console.log(`    📝 실패한 SQL (일부): ${statement.substring(0, 100)}...`);
                 }
             }
             
@@ -280,6 +249,127 @@ class DatabaseInitializer {
             console.error(`❌ SQL 파일 실행 실패 (${filename}):`, error.message);
             return false;
         }
+    }
+
+    /**
+     * 🔥 개선된 SQL 파싱 - JavaScript 코드가 포함된 SQL 문 올바르게 처리
+     */
+    parseAdvancedSQLStatements(sqlContent) {
+        // 주석 제거 (단, 문자열 내부의 주석은 보존)
+        let cleanedContent = this.removeCommentsFromSQL(sqlContent);
+        
+        // 문자열 리터럴 임시 치환 (JavaScript 코드 보호)
+        const { content: protectedContent, placeholders } = this.protectStringLiterals(cleanedContent);
+        
+        // 세미콜론으로 분할 (보호된 문자열 내부의 세미콜론은 분할하지 않음)
+        const rawStatements = protectedContent.split(';');
+        
+        // 문자열 리터럴 복원 및 정리
+        const statements = rawStatements
+            .map(stmt => this.restoreStringLiterals(stmt.trim(), placeholders))
+            .filter(stmt => stmt.length > 0 && !stmt.match(/^\s*--/)) // 빈 문장과 주석 제거
+            .map(stmt => stmt.trim());
+        
+        return statements;
+    }
+
+    /**
+     * SQL에서 주석 제거 (문자열 내부 제외)
+     */
+    removeCommentsFromSQL(sql) {
+        const lines = sql.split('\n');
+        const cleanedLines = [];
+        
+        for (let line of lines) {
+            // 문자열 내부가 아닌 경우에만 주석 제거
+            let inSingleQuote = false;
+            let inDoubleQuote = false;
+            let cleaned = '';
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                const nextChar = line[i + 1];
+                
+                if (char === "'" && !inDoubleQuote) {
+                    inSingleQuote = !inSingleQuote;
+                } else if (char === '"' && !inSingleQuote) {
+                    inDoubleQuote = !inDoubleQuote;
+                } else if (char === '-' && nextChar === '-' && !inSingleQuote && !inDoubleQuote) {
+                    // 문자열 외부의 주석 시작점에서 나머지 줄 무시
+                    break;
+                }
+                
+                cleaned += char;
+            }
+            
+            if (cleaned.trim()) {
+                cleanedLines.push(cleaned);
+            }
+        }
+        
+        return cleanedLines.join('\n');
+    }
+
+    /**
+     * 문자열 리터럴을 임시 플레이스홀더로 치환
+     */
+    protectStringLiterals(sql) {
+        const placeholders = {};
+        let placeholderIndex = 0;
+        let result = '';
+        let i = 0;
+        
+        while (i < sql.length) {
+            const char = sql[i];
+            
+            if (char === "'" || char === '"') {
+                // 문자열 시작
+                const quote = char;
+                let stringLiteral = quote;
+                i++; // 시작 따옴표 다음으로
+                
+                // 문자열 끝까지 찾기
+                while (i < sql.length) {
+                    const currentChar = sql[i];
+                    stringLiteral += currentChar;
+                    
+                    if (currentChar === quote) {
+                        // 이스케이프된 따옴표 확인 (연속된 따옴표)
+                        if (i + 1 < sql.length && sql[i + 1] === quote) {
+                            stringLiteral += sql[i + 1];
+                            i += 2;
+                            continue;
+                        } else {
+                            // 문자열 끝
+                            break;
+                        }
+                    }
+                    i++;
+                }
+                
+                // 플레이스홀더로 치환
+                const placeholder = `__STRING_LITERAL_${placeholderIndex}__`;
+                placeholders[placeholder] = stringLiteral;
+                result += placeholder;
+                placeholderIndex++;
+            } else {
+                result += char;
+            }
+            i++;
+        }
+        
+        return { content: result, placeholders };
+    }
+
+    /**
+     * 플레이스홀더를 원래 문자열로 복원
+     */
+    restoreStringLiterals(statement, placeholders) {
+        let restored = statement;
+        for (const [placeholder, original] of Object.entries(placeholders)) {
+            restored = restored.replace(new RegExp(placeholder, 'g'), original);
+        }
+        return restored;
     }
 
     /**
@@ -299,30 +389,6 @@ class DatabaseInitializer {
         };
         
         return schemaMap[filename] || null;
-    }
-
-    /**
-     * SQL 파싱
-     */
-    parseSQLStatements(sqlContent) {
-        return sqlContent
-            .split(';')
-            .map(stmt => stmt.trim())
-            .filter(stmt => {
-                return stmt.length > 0 && 
-                       !stmt.startsWith('--') && 
-                       !stmt.startsWith('/*');
-            })
-            .map(stmt => {
-                return stmt.split('\n')
-                    .map(line => {
-                        const commentIndex = line.indexOf('--');
-                        return commentIndex !== -1 ? line.substring(0, commentIndex).trim() : line.trim();
-                    })
-                    .filter(line => line.length > 0)
-                    .join(' ');
-            })
-            .filter(stmt => stmt.length > 0);
     }
 
     /**
@@ -587,7 +653,7 @@ class DatabaseInitializer {
                this.initStatus.indexesCreated;
     }
 
-    // 스키마 템플릿들 (기존과 동일)
+    // 스키마 템플릿들 (기존과 동일하므로 생략...)
     getCoreTables() {
         return `-- 01-core-tables.sql
 CREATE TABLE IF NOT EXISTS tenants (
