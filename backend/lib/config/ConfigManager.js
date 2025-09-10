@@ -27,117 +27,140 @@ class ConfigManager {
     }
 
     /**
-     * 환경변수 초기화 - 경로 문제 해결
-     */
+    * 환경변수 초기화 - 경로 문제 완전 해결
+    */
     initialize() {
-        if (this.loaded) return this;
+    if (this.loaded) return this;
 
-        this.logger.log('🔧 ConfigManager 환경변수 로딩 시작...');
+    this.logger.log('🔧 ConfigManager 환경변수 로딩 시작...');
+    
+    try {
+        // 현재 작업 디렉토리 확인
+        const cwd = process.cwd();
+        this.logger.log(`📁 현재 작업 디렉토리: ${cwd}`);
         
-        try {
-            // 프로젝트 루트 찾기 (backend에서 실행되므로 상위로)
-            const projectRoot = path.resolve(__dirname, '../../../');
-            process.chdir(projectRoot); // 작업 디렉토리를 프로젝트 루트로 변경
-            
-            this.logger.log(`📁 프로젝트 루트: ${projectRoot}`);
-            
-            // 1. 메인 .env 파일 로드 (프로젝트 루트)
-            this.loadEnvFile(path.join(projectRoot, '.env'), false);
-            
-            // 2. CONFIG_FILES 환경변수 기반 추가 파일 로드
-            const configFiles = process.env.CONFIG_FILES || 'database.env,redis.env,timeseries.env,messaging.env';
-            const configDir = path.join(projectRoot, 'config');
-            
-            this.logger.log(`📁 Config 디렉토리: ${configDir}`);
-            
-            if (configFiles) {
-                const files = configFiles.split(',').map(f => f.trim());
-                files.forEach(file => {
-                    const fullPath = path.join(configDir, file);
-                    this.loadEnvFile(fullPath, false);
-                });
+        // .env 파일 우선순위별 경로 목록
+        const envPaths = [
+            path.join(cwd, '.env'),                        // /app/.env
+            path.join(cwd, 'config', '.env'),              // /app/config/.env
+            path.join(__dirname, '../../../.env'),         // 프로젝트 루트/.env
+            path.join(__dirname, '../../../config/.env')   // 프로젝트 루트/config/.env
+        ];
+        
+        // 첫 번째 발견되는 .env 파일 로드
+        let envLoaded = false;
+        for (const envPath of envPaths) {
+            this.logger.log(`🔍 .env 파일 탐색: ${envPath}`);
+            if (this.loadEnvFile(envPath, false)) {
+                envLoaded = true;
+                this.logger.log(`✅ .env 파일 로드 성공: ${envPath}`);
+                break;
             }
-
-            // 3. process.env의 모든 변수 복사
-            Object.entries(process.env).forEach(([key, value]) => {
-                if (!this.env.has(key)) {
-                    this.env.set(key, value);
-                }
-            });
-
-            this.loaded = true;
-            this.lastInitialized = new Date().toISOString();
-            this.logger.log(`✅ 환경변수 로딩 완료 (${this.loadedFiles.length}개 파일)`);
-            
-            // 디버깅 정보 출력
-            this.printDebugInfo();
-            
-        } catch (error) {
-            this.logger.error('❌ ConfigManager 초기화 실패:', error.message);
+        }
+        
+        if (!envLoaded) {
+            this.logger.warn('⚠️ .env 파일을 찾을 수 없습니다.');
         }
 
-        return this;
+        // CONFIG_FILES 기반 추가 파일 로드
+        const configFiles = this.get('CONFIG_FILES') || 'database.env,redis.env,timeseries.env,messaging.env';
+        const configDirs = [
+            path.join(cwd, 'config'),
+            path.join(__dirname, '../../../config')
+        ];
+        
+        if (configFiles) {
+            const files = configFiles.split(',').map(f => f.trim());
+            
+            files.forEach(file => {
+                let fileLoaded = false;
+                for (const configDir of configDirs) {
+                    const fullPath = path.join(configDir, file);
+                    if (this.loadEnvFile(fullPath, false)) {
+                        fileLoaded = true;
+                        break;
+                    }
+                }
+                if (!fileLoaded) {
+                    this.logger.warn(`⚠️ 설정 파일 없음: ${file}`);
+                }
+            });
+        }
+
+        // process.env의 모든 변수 복사
+        Object.entries(process.env).forEach(([key, value]) => {
+            if (!this.env.has(key)) {
+                this.env.set(key, value);
+            }
+        });
+
+        this.loaded = true;
+        this.lastInitialized = new Date().toISOString();
+        this.logger.log(`✅ 환경변수 로딩 완료 (${this.loadedFiles.length}개 파일)`);
+        
+        // 디버깅 정보 출력
+        this.printDebugInfo();
+        
+    } catch (error) {
+        this.logger.error('❌ ConfigManager 초기화 실패:', error.message);
+    }
+
+    return this;
     }
 
     /**
-     * .env 파일 로드
-     */
+    * .env 파일 로드 - 개선된 버전
+    */
     loadEnvFile(filePath, required = false) {
-        try {
-            const absolutePath = path.resolve(filePath);
-            
-            this.logger.log(`🔍 파일 확인 중: ${absolutePath}`);
-            
-            if (!fs.existsSync(absolutePath)) {
-                if (required) {
-                    throw new Error(`필수 환경변수 파일 없음: ${filePath}`);
-                } else {
-                    this.logger.warn(`⚠️ 기본 환경변수 파일 없음: ${filePath}`);
-                    return false;
-                }
-            }
-
-            const content = fs.readFileSync(absolutePath, 'utf8');
-            const lines = content.split('\n');
-            let loadedCount = 0;
-
-            lines.forEach((line, index) => {
-                line = line.trim();
-                
-                // 빈 줄이나 주석 무시
-                if (!line || line.startsWith('#')) return;
-                
-                const equalIndex = line.indexOf('=');
-                if (equalIndex === -1) return;
-                
-                const key = line.substring(0, equalIndex).trim();
-                const value = line.substring(equalIndex + 1).trim();
-                
-                // 따옴표 제거
-                const cleanValue = value.replace(/^["']|["']$/g, '');
-                
-                // 환경변수 설정 (기존값 우선)
-                if (!this.env.has(key)) {
-                    this.env.set(key, cleanValue);
-                    process.env[key] = cleanValue; // process.env도 업데이트
-                    loadedCount++;
-                }
-            });
-
-            this.loadedFiles.push(path.basename(filePath));
-            this.lastLoad.set(filePath, new Date());
-            
-            this.logger.log(`✅ 로드 성공: ${path.basename(filePath)} (${loadedCount}개 변수)`);
-            return true;
-            
-        } catch (error) {
+    try {
+        const absolutePath = path.resolve(filePath);
+        
+        if (!fs.existsSync(absolutePath)) {
             if (required) {
-                throw error;
-            } else {
-                this.logger.warn(`⚠️ 환경변수 파일 로드 실패: ${filePath}`, error.message);
-                return false;
+                throw new Error(`필수 환경변수 파일 없음: ${filePath}`);
             }
+            return false;
         }
+
+        const content = fs.readFileSync(absolutePath, 'utf8');
+        const lines = content.split('\n');
+        let loadedCount = 0;
+
+        lines.forEach((line, index) => {
+            line = line.trim();
+            
+            // 빈 줄이나 주석 무시
+            if (!line || line.startsWith('#')) return;
+            
+            const equalIndex = line.indexOf('=');
+            if (equalIndex === -1) return;
+            
+            const key = line.substring(0, equalIndex).trim();
+            const value = line.substring(equalIndex + 1).trim();
+            
+            // 따옴표 제거
+            const cleanValue = value.replace(/^["']|["']$/g, '');
+            
+            // 환경변수 설정 (기존값 우선하지 않음 - .env 파일이 우선)
+            this.env.set(key, cleanValue);
+            process.env[key] = cleanValue;
+            loadedCount++;
+        });
+
+        this.loadedFiles.push(path.basename(filePath));
+        this.lastLoad.set(filePath, new Date());
+        
+        this.logger.log(`✅ 로드 성공: ${path.basename(filePath)} (${loadedCount}개 변수)`);
+        return true;
+        
+    } catch (error) {
+        if (required) {
+            throw error;
+        } else {
+            this.logger.warn(`⚠️ 환경변수 파일 로드 실패: ${path.basename(filePath)}`);
+            return false;
+        }
+    }
     }
 
     /**

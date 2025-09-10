@@ -324,6 +324,7 @@ let connections = {};
 
 async function initializeSystem() {
     try {
+        console.log('DEBUG: AUTO_INITIALIZE_ON_START =', process.env.AUTO_INITIALIZE_ON_START);
         console.log('🚀 PulseOne 시스템 초기화 시작...\n');
         
         console.log('📋 ConfigManager 설정 정보:');

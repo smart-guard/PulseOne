@@ -1,62 +1,61 @@
 -- =============================================================================
 -- backend/lib/database/schemas/08-initial-data.sql
--- 초기 데이터 및 샘플 데이터 (SQLite 버전) - 2025-08-21 최신 업데이트
--- PulseOne v2.1.0 완전 호환, 현재 DB 스키마와 100% 일치
--- category, tags 컬럼 포함
+-- 초기 데이터 및 샘플 데이터 (SQLite 버전) - FOREIGN KEY 문제 해결
+-- PulseOne v2.1.0 완전 호환, 순서 및 ID 매칭 수정
 -- =============================================================================
 
 -- 스키마 버전 기록
 INSERT OR IGNORE INTO schema_versions (version, description) 
-VALUES ('2.1.0', 'Complete PulseOne v2.1.0 schema with updated alarm system and category/tags support');
+VALUES ('2.1.0', 'Complete PulseOne v2.1.0 schema with fixed FOREIGN KEY relationships');
 
 -- =============================================================================
--- 테넌트 생성
+-- 1. 테넌트 생성 (먼저)
 -- =============================================================================
 INSERT OR IGNORE INTO tenants (
-    company_name, company_code, domain, 
+    id, company_name, company_code, domain, 
     contact_name, contact_email, contact_phone,
     subscription_plan, subscription_status,
     max_edge_servers, max_data_points, max_users,
     is_active
 ) VALUES 
-('Smart Factory Korea', 'SFK001', 'smartfactory.pulseone.io', 
+(1, 'Smart Factory Korea', 'SFK001', 'smartfactory.pulseone.io', 
  'Factory Manager', 'manager@smartfactory.co.kr', '+82-2-1234-5678',
  'professional', 'active', 10, 10000, 50, 1),
 
-('Global Manufacturing Inc', 'GMI002', 'global-mfg.pulseone.io',
+(2, 'Global Manufacturing Inc', 'GMI002', 'global-mfg.pulseone.io',
  'Operations Director', 'ops@globalmfg.com', '+1-555-0123',
  'enterprise', 'active', 50, 100000, 200, 1),
 
-('Demo Corporation', 'DEMO', 'demo.pulseone.io', 
+(3, 'Demo Corporation', 'DEMO', 'demo.pulseone.io', 
  'Demo Manager', 'demo@pulseone.com', '+82-10-0000-0000',
  'starter', 'trial', 3, 1000, 10, 1),
 
-('Test Factory Ltd', 'TEST', 'test.pulseone.io',
+(4, 'Test Factory Ltd', 'TEST', 'test.pulseone.io',
  'Test Engineer', 'test@testfactory.com', '+82-31-9999-8888', 
  'professional', 'active', 5, 5000, 25, 1);
 
 -- =============================================================================
--- 사이트 생성
+-- 2. 사이트 생성 (devices가 참조하는 ID들과 일치)
 -- =============================================================================
 INSERT OR IGNORE INTO sites (
-    tenant_id, name, location, description, is_active
+    id, tenant_id, name, location, description, is_active
 ) VALUES 
-(1, 'Seoul Main Factory', 'Seoul Industrial Complex', 'Main manufacturing facility', 1),
-(1, 'Busan Secondary Plant', 'Busan Industrial Park', 'Secondary production facility', 1),
-(2, 'New York Plant', 'New York Industrial Zone', 'East Coast Manufacturing Plant', 1),
-(2, 'Detroit Automotive Plant', 'Detroit, MI', 'Automotive Manufacturing Plant', 1),
-(3, 'Demo Factory', 'Demo Location', 'Demonstration facility', 1),
-(4, 'Test Facility', 'Test Location', 'Testing and R&D facility', 1);
+(1, 1, 'Seoul Main Factory', 'Seoul Industrial Complex', 'Main manufacturing facility', 1),
+(2, 1, 'Busan Secondary Plant', 'Busan Industrial Park', 'Secondary production facility', 1),
+(3, 2, 'New York Plant', 'New York Industrial Zone', 'East Coast Manufacturing Plant', 1),
+(4, 2, 'Detroit Automotive Plant', 'Detroit, MI', 'Automotive Manufacturing Plant', 1),
+(5, 3, 'Demo Factory', 'Demo Location', 'Demonstration facility', 1),
+(6, 4, 'Test Facility', 'Test Location', 'Testing and R&D facility', 1);
 
 -- =============================================================================
--- 디바이스 생성 (현재 스키마에 맞춤)
+-- 3. 디바이스 생성 (이제 site_id들이 존재함)
 -- =============================================================================
 INSERT OR IGNORE INTO devices (
     tenant_id, site_id, name, description, device_type, manufacturer, model,
     protocol_type, endpoint, config, polling_interval, timeout, retry_count,
     is_enabled
 ) VALUES 
--- Smart Factory Korea 디바이스들
+-- Smart Factory Korea 디바이스들 (site_id = 1)
 (1, 1, 'PLC-001', 'Main production line PLC', 'PLC', 'Siemens', 'S7-1515F',
  'MODBUS_TCP', '192.168.1.10:502', 
  '{"slave_id": 1, "timeout_ms": 3000, "byte_order": "big_endian"}',
@@ -87,7 +86,7 @@ INSERT OR IGNORE INTO devices (
  '{"slave_id": 10, "timeout_ms": 3000, "measurement_class": "0.2S"}',
  5000, 3000, 3, 1),
 
--- Global Manufacturing 디바이스들
+-- Global Manufacturing 디바이스들 (site_id = 3)
 (2, 3, 'PLC-NY-001', 'New York plant main PLC', 'PLC', 'Rockwell Automation', 'CompactLogix 5380',
  'MODBUS_TCP', '10.0.1.10:502',
  '{"slave_id": 1, "timeout_ms": 3000, "communication_format": "RTU_over_TCP"}',
@@ -98,7 +97,7 @@ INSERT OR IGNORE INTO devices (
  '{"connection_type": "explicit", "assembly_instance": 100}',
  200, 1000, 5, 1),
 
--- Demo/Test 디바이스들
+-- Demo/Test 디바이스들 (site_id = 5, 6)
 (3, 5, 'DEMO-PLC-001', 'Demo PLC for training', 'PLC', 'Demo Manufacturer', 'Demo-PLC-v2',
  'MODBUS_TCP', '192.168.100.10:502',
  '{"slave_id": 1, "timeout_ms": 3000, "demo_mode": true}',
@@ -115,13 +114,13 @@ INSERT OR IGNORE INTO devices (
  1000, 3000, 3, 1);
 
 -- =============================================================================
--- 데이터 포인트 생성 (현재 스키마에 맞춤)
+-- 4. 데이터 포인트 생성 (device_id 참조)
 -- =============================================================================
 INSERT OR IGNORE INTO data_points (
     device_id, name, description, address, data_type, access_mode, unit,
     scaling_factor, scaling_offset, min_value, max_value, is_enabled
 ) VALUES 
--- PLC-001 데이터 포인트들
+-- PLC-001 (device_id = 1) 데이터 포인트들
 (1, 'Production_Count', 'Production counter', 1001, 'uint32', 'read', 'pcs',
  1.0, 0.0, 0.0, 999999.0, 1),
 (1, 'Line_Speed', 'Line speed sensor', 1002, 'float', 'read', 'm/min',
@@ -133,7 +132,7 @@ INSERT OR IGNORE INTO data_points (
 (1, 'Emergency_Stop', 'Emergency stop button', 1005, 'bool', 'read', '',
  1.0, 0.0, 0.0, 1.0, 1),
 
--- HMI-001 데이터 포인트들
+-- HMI-001 (device_id = 2) 데이터 포인트들
 (2, 'Screen_Status', 'HMI screen status', 2001, 'uint16', 'read', '',
  1.0, 0.0, 0.0, 255.0, 1),
 (2, 'Active_Alarms', 'Number of active alarms', 2002, 'uint16', 'read', 'count',
@@ -141,7 +140,7 @@ INSERT OR IGNORE INTO data_points (
 (2, 'User_Level', 'Current user access level', 2003, 'uint16', 'read', '',
  1.0, 0.0, 0.0, 5.0, 1),
 
--- ROBOT-001 데이터 포인트들
+-- ROBOT-001 (device_id = 3) 데이터 포인트들
 (3, 'Robot_X_Position', 'Robot X position', 3001, 'float', 'read', 'mm',
  0.01, 0.0, -1611.0, 1611.0, 1),
 (3, 'Robot_Y_Position', 'Robot Y position', 3003, 'float', 'read', 'mm',
@@ -151,42 +150,42 @@ INSERT OR IGNORE INTO data_points (
 (3, 'Welding_Current', 'Welding current', 3007, 'float', 'read', 'A',
  0.1, 0.0, 0.0, 350.0, 1),
 
--- HVAC-001 데이터 포인트들
+-- HVAC-001 (device_id = 5) 데이터 포인트들
 (5, 'Zone1_Temperature', 'Production Zone 1 Temperature', 1, 'FLOAT32', 'read', '°C',
  1.0, 0.0, -10.0, 50.0, 1),
 (5, 'Zone1_Humidity', 'Production Zone 1 Humidity', 2, 'FLOAT32', 'read', '%RH',
  1.0, 0.0, 0.0, 100.0, 1);
 
 -- =============================================================================
--- 현재값 초기화
+-- 5. 현재값 초기화 (data_point ID 기반)
 -- =============================================================================
 INSERT OR IGNORE INTO current_values (
     point_id, value, raw_value, string_value, quality, timestamp, updated_at
 ) VALUES 
--- PLC-001 현재값들
+-- PLC-001 현재값들 (point_id 1-5)
 (1, 15847.0, 15847.0, NULL, 'good', datetime('now', '-5 minutes'), datetime('now')),
 (2, 18.5, 185.0, NULL, 'good', datetime('now', '-1 minute'), datetime('now')),
 (3, 28.7, 2870.0, NULL, 'good', datetime('now', '-30 seconds'), datetime('now')),
 (4, 23.8, 238.0, NULL, 'good', datetime('now', '-2 minutes'), datetime('now')),
 (5, 0.0, 0.0, 'false', 'good', datetime('now', '-10 seconds'), datetime('now')),
 
--- HMI-001 현재값들
+-- HMI-001 현재값들 (point_id 6-8)
 (6, 1.0, 1.0, NULL, 'good', datetime('now', '-30 seconds'), datetime('now')),
 (7, 2.0, 2.0, NULL, 'good', datetime('now', '-15 seconds'), datetime('now')),
 (8, 2.0, 2.0, NULL, 'good', datetime('now', '-45 seconds'), datetime('now')),
 
--- ROBOT-001 현재값들
+-- ROBOT-001 현재값들 (point_id 9-12)
 (9, 145.67, 14567.0, NULL, 'good', datetime('now', '-5 seconds'), datetime('now')),
 (10, -287.23, -28723.0, NULL, 'good', datetime('now', '-5 seconds'), datetime('now')),
 (11, 856.45, 85645.0, NULL, 'good', datetime('now', '-5 seconds'), datetime('now')),
 (12, 185.4, 1854.0, NULL, 'good', datetime('now', '-2 seconds'), datetime('now')),
 
--- HVAC-001 현재값들
+-- HVAC-001 현재값들 (point_id 13-14)
 (13, 22.3, 22.3, NULL, 'good', datetime('now', '-3 minutes'), datetime('now')),
 (14, 58.2, 58.2, NULL, 'good', datetime('now', '-2 minutes'), datetime('now'));
 
 -- =============================================================================
--- 가상포인트 생성 (현재 스키마에 맞춘 간단한 구조)
+-- 6. 가상포인트 생성
 -- =============================================================================
 INSERT OR IGNORE INTO virtual_points (
     tenant_id, scope_type, site_id, name, description, formula, data_type, unit,
@@ -213,47 +212,35 @@ INSERT OR IGNORE INTO virtual_points (
  'float', '%', 3000, 'timer', 1);
 
 -- =============================================================================
--- 알람 규칙 생성 (현재 스키마 구조에 맞춤 + category, tags 포함)
+-- 7. 알람 규칙 생성 (category, tags 포함)
 -- =============================================================================
 INSERT OR IGNORE INTO alarm_rules (
     tenant_id, name, description, target_type, target_id, alarm_type, severity,
     high_limit, low_limit, deadband, message_template, notification_enabled,
     is_enabled, escalation_enabled, escalation_max_level, category, tags
 ) VALUES 
--- Smart Factory Korea 알람들 (category, tags 포함)
-(1, 'TEST_PLC_Temperature_Alarm', 'PLC 온도 모니터링 알람 (테스트용)', 'data_point', 4, 'analog', 'high',
+-- Smart Factory Korea 알람들
+(1, 'Temperature_High_Alarm', 'PLC 온도 과열 알람', 'data_point', 4, 'analog', 'high',
  35.0, 15.0, 2.0, '온도 알람: {value}°C (임계값: {limit}°C)', 1, 1, 0, 3, 'process', '["temperature", "plc", "production"]'),
 
-(1, 'TEST_Motor_Current_Alarm', '모터 전류 과부하 알람 (테스트용)', 'data_point', 3, 'analog', 'critical',
+(1, 'Motor_Current_Overload', '모터 전류 과부하 알람', 'data_point', 3, 'analog', 'critical',
  30.0, NULL, 1.0, '모터 과부하: {value}A (한계: {limit}A)', 1, 1, 0, 3, 'process', '["current", "motor", "safety"]'),
 
-(1, 'TEST_Emergency_Stop_Alarm', '비상정지 버튼 활성화 알람 (테스트용)', 'data_point', 5, 'digital', 'critical',
+(1, 'Emergency_Stop_Active', '비상정지 버튼 활성화 알람', 'data_point', 5, 'digital', 'critical',
  NULL, NULL, 0.0, '🚨 비상정지 활성화됨!', 1, 1, 0, 3, 'safety', '["emergency", "stop", "critical"]'),
 
-(1, 'TEST_Zone1_Temperature_Alarm', 'RTU 구역1 온도 알람 (테스트용)', 'data_point', 13, 'analog', 'medium',
+(1, 'HVAC_Zone1_Temperature', 'HVAC 구역1 온도 알람', 'data_point', 13, 'analog', 'medium',
  28.0, 18.0, 1.5, 'Zone1 온도 이상: {value}°C', 1, 1, 0, 3, 'hvac', '["temperature", "zone1", "hvac"]'),
 
--- 추가 테스트 알람들 (category, tags 포함)
-(1, 'High Temperature Alert', 'Temperature exceeds 80 degrees', 'data_point', 1, 'analog', 'high',
- 80.0, NULL, 2.0, 'Temperature alarm: {{value}}°C > {{limit}}°C', 1, 1, 0, 3, 'process', '["temperature", "high", "production"]'),
+-- 추가 테스트 알람들
+(1, 'Production_Line_Speed', '생산라인 속도 알람', 'data_point', 2, 'analog', 'medium',
+ 25.0, 5.0, 1.0, '라인 속도 이상: {value} m/min', 1, 1, 0, 3, 'process', '["speed", "production", "line"]'),
 
-(1, 'Test Temperature Alarm FIXED', '', 'data_point', 999, 'analog', 'high',
- 85.0, NULL, 0.0, 'Test Temperature Alarm FIXED alarm triggered', 1, 1, 0, 3, 'general', '["test", "fixed"]'),
-
-(1, '고온 경고 표준_1', '온도 센서용 고온 임계값 경고 (자동 생성)', 'data_point', 1, 'analog', 'high',
- 85.0, NULL, 2.0, '{device_name} {point_name}이 {threshold}°C를 초과했습니다 (현재: {value}°C)', 1, 1, 0, 3, 'process', '["temperature", "standard", "auto-generated"]'),
-
-(1, '고온 경고 표준_2', '온도 센서용 고온 임계값 경고 (자동 생성)', 'data_point', 2, 'analog', 'high',
- 80.0, NULL, 2.0, '{device_name} {point_name}이 {threshold}°C를 초과했습니다 (현재: {value}°C)', 1, 1, 0, 3, 'process', '["temperature", "standard", "auto-generated"]'),
-
-(1, '고온 경고 표준_3', '온도 센서용 고온 임계값 경고 (자동 생성)', 'data_point', 3, 'analog', 'high',
- 90.0, NULL, 2.0, '{device_name} {point_name}이 {threshold}°C를 초과했습니다 (현재: {value}°C)', 1, 1, 0, 3, 'process', '["temperature", "standard", "auto-generated"]'),
-
-(1, '테스트 온도 알람', '테스트용 온도 임계값 알람', 'data_point', 1, 'analog', 'medium',
- 85.0, 10.0, 2.5, '온도 알람: {value}°C', 1, 1, 0, 3, 'general', '["test", "temperature"]');
+(1, 'Robot_Position_Limit', '로봇 위치 제한 알람', 'data_point', 9, 'analog', 'high',
+ 1500.0, -1500.0, 10.0, '로봇 X축 위치 제한 초과: {value}mm', 1, 1, 0, 3, 'safety', '["robot", "position", "limit"]');
 
 -- =============================================================================
--- 알람 규칙 템플릿 생성 (tags 컬럼 포함)
+-- 8. 알람 규칙 템플릿 생성 (notification_enabled 포함)
 -- =============================================================================
 INSERT OR IGNORE INTO alarm_rule_templates (
     tenant_id, name, description, category, condition_type, condition_template,
@@ -279,7 +266,7 @@ INSERT OR IGNORE INTO alarm_rule_templates (
  '["bool", "digital", "binary"]', 1, 1, 0, '["digital", "input", "state-change"]');
 
 -- =============================================================================
--- JavaScript 함수 라이브러리
+-- 9. JavaScript 함수 라이브러리
 -- =============================================================================
 INSERT OR IGNORE INTO javascript_functions (
     tenant_id, name, description, category, function_code, parameters, return_type, is_system
@@ -297,22 +284,20 @@ INSERT OR IGNORE INTO javascript_functions (
  '[{"name": "actual", "type": "number"}, {"name": "target", "type": "number"}, {"name": "hours", "type": "number"}]', 'number', 0);
 
 -- =============================================================================
--- 초기 데이터 로딩 완료 로그
+-- 10. 시스템 로그 기록
 -- =============================================================================
 INSERT OR IGNORE INTO system_logs (
     log_level, module, message, details, created_at
 ) VALUES 
-('INFO', 'database', 'Updated initial data loading completed successfully with category/tags support', 
- '{"tables_populated": 12, "devices": 11, "data_points": 14, "virtual_points": 5, "alarm_rules": 10, "templates": 3, "features": ["category", "tags"]}',
+('INFO', 'database', 'Fixed initial data loading completed successfully', 
+ '{"tables_populated": 10, "devices": 11, "data_points": 14, "virtual_points": 5, "alarm_rules": 6, "templates": 3, "foreign_keys": "fixed"}',
  datetime('now'));
 
 -- =============================================================================
 -- 초기 데이터 로딩 완료
 -- =============================================================================
--- 이 업데이트된 파일은 현재 데이터베이스 스키마와 완전히 일치합니다:
--- ✅ target_type, target_id 구조 사용
--- ✅ escalation_enabled, escalation_max_level 컬럼 포함
--- ✅ category, tags 컬럼 포함 (분류 시스템 완전 지원)
--- ✅ 실제 존재하는 테이블들만 사용
--- ✅ 백엔드 API와 호환되는 데이터 구조
--- ✅ 프론트엔드 필터링 기능 완전 지원
+-- ✅ FOREIGN KEY 문제 해결: sites 테이블을 devices 전에 생성
+-- ✅ ID 순서 수정: sites(1,2,3,4,5,6)가 devices에서 참조됨
+-- ✅ notification_enabled 컬럼 포함 (alarm_rule_templates)
+-- ✅ category, tags 컬럼 완전 지원
+-- ✅ 모든 관계형 데이터 무결성 확보
