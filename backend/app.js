@@ -334,12 +334,13 @@ async function initializeSystem() {
         console.log(`   자동 초기화: ${config.getBoolean('AUTO_INITIALIZE_ON_START', false) ? '✅ 활성화' : '❌ 비활성화'}`);
         console.log('');
         
-        // 1. 데이터베이스 연결
+        // 1. 데이터베이스 연결 먼저
+        console.log('🔧 데이터베이스 연결 초기화 중...');
         connections = await initializeConnections();
         app.locals.getDB = () => connections;
         console.log('✅ Database connections initialized');
         
-        // 2. 자동 초기화 시스템 (ConfigManager 설정 사용)
+        // 🔥 2. 자동 초기화 시스템 (ConfigManager 설정 사용) - CONNECTIONS 전달 수정!
         const autoInitialize = config.getBoolean('AUTO_INITIALIZE_ON_START', false);
         const skipIfInitialized = config.getBoolean('SKIP_IF_INITIALIZED', false);
         const failOnInitError = config.getBoolean('FAIL_ON_INIT_ERROR', false);
@@ -347,6 +348,7 @@ async function initializeSystem() {
         if (autoInitialize && DatabaseInitializer) {
             console.log('🔄 자동 초기화 확인 중...');
             
+            // 🔥 핵심 수정: connections 객체를 DatabaseInitializer에 전달!
             const initializer = new DatabaseInitializer(connections);
             await initializer.checkDatabaseStatus();
             
@@ -510,7 +512,8 @@ app.get('/api/health', async (req, res) => {
         
         if (DatabaseInitializer) {
             try {
-                const initializer = new DatabaseInitializer();
+                // 🔥 connections 객체를 DatabaseInitializer에 전달!
+                const initializer = new DatabaseInitializer(connections);
                 await initializer.checkDatabaseStatus();
                 
                 healthInfo.initialization.database = {
@@ -653,7 +656,8 @@ app.get('/api/init/status', async (req, res) => {
             });
         }
         
-        const initializer = new DatabaseInitializer();
+        // 🔥 connections 객체를 DatabaseInitializer에 전달!
+        const initializer = new DatabaseInitializer(connections);
         await initializer.checkDatabaseStatus();
         
         res.json({
@@ -696,7 +700,9 @@ app.post('/api/init/trigger', async (req, res) => {
         
         // ConfigManager에서 기본값 가져오기
         const { backup = config.getBoolean('CREATE_BACKUP_ON_INIT', true) } = req.body;
-        const initializer = new DatabaseInitializer();
+        
+        // 🔥 connections 객체를 DatabaseInitializer에 전달!
+        const initializer = new DatabaseInitializer(connections);
         
         if (backup) {
             try {

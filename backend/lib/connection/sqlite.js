@@ -1,5 +1,6 @@
 // ===========================================================================
-// backend/lib/connection/sqlite.js - SQLite 연결 클래스
+// backend/lib/connection/sqlite.js - 경로 문제 완전 해결
+// 🔥 상대 경로를 process.cwd() 기준으로 올바르게 처리
 // ===========================================================================
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
@@ -26,38 +27,93 @@ class SQLiteConnection {
         this.connection = null;
         this.isConnected = false;
         
+        // 🔥 핵심 수정: 상대 경로를 올바르게 처리
+        this.resolvedPath = this._resolvePath(this.config.path);
+        
         console.log(`📋 SQLite 연결 설정:
-   파일: ${this.config.path}
+   설정 경로: ${this.config.path}
+   작업 디렉토리: ${process.cwd()}
+   해석된 경로: ${this.resolvedPath}
    저널 모드: ${this.config.journalMode}
    외래키: ${this.config.foreignKeys ? '활성화' : '비활성화'}`);
     }
 
-    async connect() {
+    /**
+     * 경로 해석 - 상대 경로를 process.cwd() 기준으로 절대 경로로 변환
+     */
+    _resolvePath(configPath) {
+        // 이미 절대 경로인 경우 그대로 사용
+        if (path.isAbsolute(configPath)) {
+            return configPath;
+        }
+        
+        // 상대 경로인 경우 process.cwd() 기준으로 해석
+        const resolved = path.resolve(process.cwd(), configPath);
+        
+        console.log(`🔍 경로 해석:
+   원본: ${configPath}
+   기준: ${process.cwd()}
+   결과: ${resolved}`);
+        
+        return resolved;
+    }
+
+    /**
+     * 디렉토리 생성 및 권한 확인
+     */
+    async _ensureDirectory() {
         try {
-            // 디렉토리 생성
-            const dbDir = path.dirname(this.config.path);
+            const dbDir = path.dirname(this.resolvedPath);
+            
+            // 디렉토리가 존재하지 않으면 생성
             if (!fs.existsSync(dbDir)) {
                 fs.mkdirSync(dbDir, { recursive: true });
                 console.log(`✅ SQLite 디렉토리 생성: ${dbDir}`);
             }
+            
+            // 쓰기 권한 확인
+            try {
+                fs.accessSync(dbDir, fs.constants.W_OK);
+                console.log(`✅ 디렉토리 쓰기 권한 확인: ${dbDir}`);
+            } catch (permError) {
+                console.warn(`⚠️ 디렉토리 쓰기 권한 없음: ${dbDir}`);
+                throw new Error(`SQLite 디렉토리 쓰기 권한이 없습니다: ${dbDir}`);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error(`❌ 디렉토리 생성/권한 확인 실패: ${error.message}`);
+            throw error;
+        }
+    }
 
-            // 절대 경로로 변환
-            const absolutePath = path.resolve(this.config.path);
+    async connect() {
+        try {
+            // 디렉토리 생성 및 권한 확인
+            await this._ensureDirectory();
             
             return new Promise((resolve, reject) => {
-                this.connection = new sqlite3.Database(absolutePath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
-                    if (err) {
-                        console.error('❌ SQLite 연결 실패:', err.message);
-                        reject(err);
-                    } else {
-                        console.log('✅ SQLite 연결 성공');
-                        console.log(`   파일 위치: ${absolutePath}`);
-                        
-                        this.isConnected = true;
-                        this._applyPragmas();
-                        resolve(this.connection);
+                console.log(`🔧 SQLite 연결 시도: ${this.resolvedPath}`);
+                
+                this.connection = new sqlite3.Database(
+                    this.resolvedPath, 
+                    sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, 
+                    (err) => {
+                        if (err) {
+                            console.error('❌ SQLite 연결 실패:', err.message);
+                            console.error('   에러 코드:', err.code);
+                            console.error('   시도한 경로:', this.resolvedPath);
+                            reject(err);
+                        } else {
+                            console.log('✅ SQLite 연결 성공');
+                            console.log(`   파일 위치: ${this.resolvedPath}`);
+                            
+                            this.isConnected = true;
+                            this._applyPragmas();
+                            resolve(this.connection);
+                        }
                     }
-                });
+                );
             });
         } catch (error) {
             console.error('❌ SQLite 연결 설정 실패:', error.message);
@@ -78,7 +134,7 @@ class SQLiteConnection {
             }
             
             // 성능 최적화
-            this.connection.run(`PRAGMA cache_size = 10000`);
+            this.connection.run(`PRAGMA cache_size = ${this.config.cacheSize}`);
             this.connection.run(`PRAGMA temp_store = memory`);
             this.connection.run(`PRAGMA mmap_size = 268435456`); // 256MB
             
@@ -130,6 +186,75 @@ class SQLiteConnection {
         });
     }
 
+    // DatabaseAbstractionLayer 호환성을 위한 메서드들
+    async all(sql, params = []) {
+        if (!this.isConnected) {
+            await this.connect();
+        }
+        
+        return new Promise((resolve, reject) => {
+            this.connection.all(sql, params, (err, rows) => {
+                if (err) {
+                    console.error('❌ SQLite all() 오류:', err.message);
+                    console.error('   쿼리:', sql);
+                    console.error('   파라미터:', params);
+                    reject(err);
+                } else {
+                    resolve(rows || []);
+                }
+            });
+        });
+    }
+
+    async run(sql, params = []) {
+        if (!this.isConnected) {
+            await this.connect();
+        }
+        
+        return new Promise((resolve, reject) => {
+            this.connection.run(sql, params, function(err) {
+                if (err) {
+                    console.error('❌ SQLite run() 오류:', err.message);
+                    console.error('   쿼리:', sql);
+                    console.error('   파라미터:', params);
+                    reject(err);
+                } else {
+                    resolve({
+                        lastID: this.lastID,
+                        changes: this.changes
+                    });
+                }
+            });
+        });
+    }
+
+    async get(sql, params = []) {
+        if (!this.isConnected) {
+            await this.connect();
+        }
+        
+        return new Promise((resolve, reject) => {
+            this.connection.get(sql, params, (err, row) => {
+                if (err) {
+                    console.error('❌ SQLite get() 오류:', err.message);
+                    reject(err);
+                } else {
+                    resolve(row || null);
+                }
+            });
+        });
+    }
+
+    exec(sql, callback) {
+        if (!this.isConnected) {
+            this.connect().then(() => {
+                this.connection.exec(sql, callback);
+            }).catch(callback);
+        } else {
+            this.connection.exec(sql, callback);
+        }
+    }
+
     // 트랜잭션 지원
     async transaction(callback) {
         if (!this.isConnected) {
@@ -158,50 +283,6 @@ class SQLiteConnection {
         });
     }
 
-    // 배치 실행
-    async batchExecute(queries) {
-        if (!this.isConnected) {
-            await this.connect();
-        }
-
-        return new Promise((resolve, reject) => {
-            this.connection.serialize(() => {
-                this.connection.run('BEGIN TRANSACTION');
-                
-                const results = [];
-                let completed = 0;
-                let hasError = false;
-
-                queries.forEach((queryObj, index) => {
-                    const { sql, params = [] } = queryObj;
-                    
-                    this.connection.run(sql, params, function(err) {
-                        if (err && !hasError) {
-                            hasError = true;
-                            this.connection.run('ROLLBACK');
-                            reject(err);
-                            return;
-                        }
-                        
-                        results[index] = {
-                            lastID: this.lastID,
-                            changes: this.changes
-                        };
-                        
-                        completed++;
-                        
-                        if (completed === queries.length && !hasError) {
-                            this.connection.run('COMMIT', (commitErr) => {
-                                if (commitErr) reject(commitErr);
-                                else resolve(results);
-                            });
-                        }
-                    });
-                });
-            });
-        });
-    }
-
     async close() {
         if (this.connection) {
             return new Promise((resolve, reject) => {
@@ -212,6 +293,7 @@ class SQLiteConnection {
                     } else {
                         console.log('📴 SQLite 연결 종료');
                         this.isConnected = false;
+                        this.connection = null;
                         resolve();
                     }
                 });
@@ -220,24 +302,36 @@ class SQLiteConnection {
     }
 
     isReady() {
-        return this.isConnected && this.connection;
+        return this.isConnected && this.connection !== null;
     }
 
     getConnectionInfo() {
         return {
-            path: this.config.path,
+            configPath: this.config.path,
+            resolvedPath: this.resolvedPath,
+            workingDirectory: process.cwd(),
             journalMode: this.config.journalMode,
             foreignKeys: this.config.foreignKeys,
             isConnected: this.isConnected
         };
     }
+
+    async ping() {
+        try {
+            if (!this.isConnected) {
+                await this.connect();
+            }
+            
+            const result = await this.get('SELECT 1 as ping');
+            return result && result.ping === 1;
+        } catch (error) {
+            console.error('❌ SQLite ping 실패:', error.message);
+            throw error;
+        }
+    }
 }
 
-// 싱글톤 인스턴스 생성
+// 인스턴스를 기본으로 export하고, 클래스를 추가로 export
 const sqliteConnection = new SQLiteConnection();
-
 module.exports = sqliteConnection;
 module.exports.SQLiteConnection = SQLiteConnection;
-// SQLiteConnection 클래스 export
-module.exports = SQLiteConnection;
-

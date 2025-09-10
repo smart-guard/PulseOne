@@ -1,6 +1,6 @@
 // =============================================================================
 // backend/lib/database/DatabaseAbstractionLayer.js
-// 🚀 Database Abstraction Layer - C++ 패턴을 Node.js로 완전 이식
+// 🔥 SQLite 연결 문제 해결 - 무한 대기 수정
 // =============================================================================
 
 /**
@@ -274,12 +274,17 @@ class DatabaseAbstractionLayer {
                     return pgResult.rows;
                     
                 case 'sqlite':
-                    return new Promise((resolve, reject) => {
-                        db.all(adaptedQuery, params, (err, rows) => {
-                            if (err) reject(err);
-                            else resolve(rows || []);
-                        });
-                    });
+                    // 🔥 핵심 수정: SQLite 연결 객체의 실제 메서드 사용
+                    if (typeof db.all === 'function') {
+                        // SQLite 연결 객체가 all 메서드를 지원하는 경우
+                        return await db.all(adaptedQuery, params);
+                    } else if (typeof db.query === 'function') {
+                        // SQLite 연결 객체가 query 메서드를 지원하는 경우
+                        const result = await db.query(adaptedQuery, params);
+                        return result.rows || result;
+                    } else {
+                        throw new Error('SQLite connection does not support query methods');
+                    }
                     
                 case 'mysql':
                     const [mysqlRows] = await db.execute(adaptedQuery, params);
@@ -300,6 +305,8 @@ class DatabaseAbstractionLayer {
             
         } catch (error) {
             console.error('DatabaseAbstractionLayer::executeQuery failed:', error.message);
+            console.error('  Query:', query);
+            console.error('  Params:', params);
             throw error;
         }
     }
@@ -320,12 +327,18 @@ class DatabaseAbstractionLayer {
                     return pgResult.rowCount > 0;
                     
                 case 'sqlite':
-                    return new Promise((resolve, reject) => {
-                        db.run(adaptedQuery, params, function(err) {
-                            if (err) reject(err);
-                            else resolve(this.changes > 0);
-                        });
-                    });
+                    // 🔥 핵심 수정: SQLite 연결 객체의 실제 메서드 사용
+                    if (typeof db.run === 'function') {
+                        // SQLite 연결 객체가 run 메서드를 지원하는 경우
+                        const result = await db.run(adaptedQuery, params);
+                        return result.changes > 0;
+                    } else if (typeof db.query === 'function') {
+                        // SQLite 연결 객체가 query 메서드를 지원하는 경우
+                        const result = await db.query(adaptedQuery, params);
+                        return result.rowCount > 0 || result.changes > 0;
+                    } else {
+                        throw new Error('SQLite connection does not support non-query methods');
+                    }
                     
                 case 'mysql':
                     const [mysqlResult] = await db.execute(adaptedQuery, params);
@@ -345,6 +358,8 @@ class DatabaseAbstractionLayer {
             
         } catch (error) {
             console.error('DatabaseAbstractionLayer::executeNonQuery failed:', error.message);
+            console.error('  Query:', query);
+            console.error('  Params:', params);
             throw error;
         }
     }
@@ -455,6 +470,21 @@ class DatabaseAbstractionLayer {
      */
     getCurrentDbType() {
         return this.currentDbType;
+    }
+
+    /**
+     * 🔥 디버깅을 위한 연결 정보 출력
+     */
+    debugConnectionInfo() {
+        try {
+            const { db, type } = this.getCurrentDatabase();
+            console.log(`🔍 연결 디버그 정보:
+  타입: ${type}
+  연결 객체 존재: ${!!db}
+  지원 메서드: ${Object.getOwnPropertyNames(Object.getPrototypeOf(db)).filter(name => typeof db[name] === 'function').join(', ')}`);
+        } catch (error) {
+            console.error('🔍 연결 디버그 실패:', error.message);
+        }
     }
 }
 
