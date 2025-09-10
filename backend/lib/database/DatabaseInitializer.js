@@ -1,6 +1,6 @@
 // =============================================================================
-// DatabaseInitializer - 범용 데이터베이스 초기화 (SQL 파싱 문제 해결)
-// 🔥 핵심 수정: JavaScript 코드가 포함된 SQL 문 올바르게 처리
+// DatabaseInitializer - 범용 데이터베이스 초기화 (SKIP_IF_INITIALIZED 로직 수정)
+// 🔥 핵심 수정: SKIP_IF_INITIALIZED=true일 때 정확한 스킵 로직 구현
 // =============================================================================
 
 const fs = require('fs').promises;
@@ -227,7 +227,7 @@ class DatabaseInitializer {
                 return true;
             }
 
-            // 🔥 핵심 수정: 개선된 SQL 파싱 사용
+            // 개선된 SQL 파싱 사용
             const statements = this.parseAdvancedSQLStatements(sqlContent);
             console.log(`  📁 ${filename}: ${statements.length}개 SQL 명령 실행 중...`);
             
@@ -252,7 +252,7 @@ class DatabaseInitializer {
     }
 
     /**
-     * 🔥 개선된 SQL 파싱 - JavaScript 코드가 포함된 SQL 문 올바르게 처리
+     * 개선된 SQL 파싱 - JavaScript 코드가 포함된 SQL 문 올바르게 처리
      */
     parseAdvancedSQLStatements(sqlContent) {
         // 주석 제거 (단, 문자열 내부의 주석은 보존)
@@ -373,25 +373,6 @@ class DatabaseInitializer {
     }
 
     /**
-     * 기본 스키마 반환 (메모리에서)
-     */
-    getDefaultSchema(filename) {
-        const schemaMap = {
-            '01-core-tables.sql': this.getCoreTables(),
-            '02-users-sites.sql': this.getUsersSites(),
-            '03-device-tables.sql': this.getDevicesDatapoints(),
-            '04-virtual-points.sql': this.getVirtualPoints(),
-            '05-alarm-tables.sql': this.getAlarmRules(),
-            '06-log-tables.sql': this.getLogTables(),
-            '07-indexes.sql': this.getIndexes(),
-            '08-protocols-table.sql': this.getProtocolsTable(),
-            'initial-data.sql': this.getInitialData()
-        };
-        
-        return schemaMap[filename] || null;
-    }
-
-    /**
      * 테이블 존재 확인 (데이터베이스 타입별)
      */
     async doesTableExist(tableName) {
@@ -427,20 +408,34 @@ class DatabaseInitializer {
     }
 
     /**
-     * 완전 자동 초기화
+     * 🔥 핵심 수정: 완전 자동 초기화 - SKIP_IF_INITIALIZED 로직 정확히 구현
      */
     async performAutoInitialization() {
         try {
             console.log('🚀 완전 자동 초기화 시작...\n');
 
             await this.findSchemasPath();
-            await this.checkDatabaseStatus();
-
+            
+            // 🔥 중요: SKIP_IF_INITIALIZED 체크를 맨 먼저 실행
             const skipIfInitialized = this.config.getBoolean('SKIP_IF_INITIALIZED', true);
-            if (this.isFullyInitialized() && skipIfInitialized) {
-                console.log('✅ 데이터베이스가 이미 완전히 초기화되어 있습니다.');
-                return true;
+            
+            if (skipIfInitialized) {
+                console.log('🔍 기존 데이터베이스 상태 확인 중...');
+                
+                // 🔥 핵심: 더 정확한 초기화 상태 확인
+                const isAlreadyInitialized = await this.checkIfAlreadyInitialized();
+                
+                if (isAlreadyInitialized) {
+                    console.log('✅ 데이터베이스가 이미 완전히 초기화되어 있습니다. 초기화를 건너뜁니다.');
+                    console.log('💡 강제 초기화를 원하면 SKIP_IF_INITIALIZED=false로 설정하세요.');
+                    return true;
+                }
+                
+                console.log('📋 기존 데이터가 불완전하거나 없어서 초기화를 진행합니다.');
             }
+
+            // 여기서부터 실제 초기화 진행
+            await this.checkDatabaseStatus();
 
             // 단계별 초기화
             if (!this.initStatus.systemTables) {
@@ -468,7 +463,7 @@ class DatabaseInitializer {
             }
 
             console.log('🎯 [5/5] 초기 데이터 삽입 중...');
-            await this.executeSQLFile('initial-data.sql');
+            await this.executeSQLFile('09-initial-data.sql');
             
             // 최종 상태 확인
             await this.checkDatabaseStatus();
@@ -478,6 +473,91 @@ class DatabaseInitializer {
             
         } catch (error) {
             console.error('❌ 완전 자동 초기화 실패:', error.message);
+            return false;
+        }
+    }
+
+    /**
+     * 🔥 새로운 메서드: 더 정확한 초기화 상태 확인
+     */
+    async checkIfAlreadyInitialized() {
+        try {
+            // 1. 핵심 테이블들이 존재하는지 확인
+            const requiredTables = ['tenants', 'sites', 'protocols', 'devices', 'data_points'];
+            
+            for (const tableName of requiredTables) {
+                const exists = await this.doesTableExist(tableName);
+                if (!exists) {
+                    console.log(`📋 필수 테이블 '${tableName}'이 없음 - 초기화 필요`);
+                    return false;
+                }
+            }
+            
+            // 2. 기본 데이터가 충분한지 확인
+            const tenantCount = await this.querySQL('SELECT COUNT(*) as count FROM tenants');
+            const tenantsExist = parseInt(tenantCount[0]?.count || '0') > 0;
+            
+            const protocolCount = await this.querySQL('SELECT COUNT(*) as count FROM protocols');
+            const protocolsExist = parseInt(protocolCount[0]?.count || '0') > 0;
+            
+            if (!tenantsExist) {
+                console.log('📊 테넌트 데이터 없음 - 초기화 필요');
+                return false;
+            }
+            
+            if (!protocolsExist) {
+                console.log('📊 프로토콜 데이터 없음 - 초기화 필요');
+                return false;
+            }
+            
+            // 3. 중요한 인덱스가 있는지 확인
+            const indexExists = await this.checkCriticalIndexes();
+            if (!indexExists) {
+                console.log('⚡ 중요한 인덱스 없음 - 초기화 필요');
+                return false;
+            }
+            
+            console.log('✅ 모든 초기화 조건이 만족됨');
+            return true;
+            
+        } catch (error) {
+            console.log('❌ 초기화 상태 확인 실패:', error.message);
+            return false;
+        }
+    }
+
+    /**
+     * 🔥 새로운 메서드: 중요한 인덱스 존재 확인
+     */
+    async checkCriticalIndexes() {
+        try {
+            const criticalIndexes = ['idx_users_tenant', 'idx_devices_tenant', 'idx_data_points_device'];
+            
+            for (const indexName of criticalIndexes) {
+                let indexQuery;
+                
+                switch (this.databaseType) {
+                    case 'sqlite':
+                        indexQuery = "SELECT name FROM sqlite_master WHERE type='index' AND name = ?";
+                        break;
+                    case 'postgresql':
+                        indexQuery = "SELECT indexname FROM pg_indexes WHERE indexname = $1";
+                        break;
+                    case 'mysql':
+                        indexQuery = "SELECT index_name FROM information_schema.statistics WHERE index_name = ?";
+                        break;
+                    default:
+                        return true; // 알 수 없는 DB는 통과
+                }
+                
+                const result = await this.querySQL(indexQuery, [indexName]);
+                if (result.length === 0) {
+                    return false;
+                }
+            }
+            
+            return true;
+        } catch (error) {
             return false;
         }
     }
@@ -507,25 +587,25 @@ class DatabaseInitializer {
     }
 
     async createSystemTables() {
-        const sqlFiles = ['01-core-tables.sql', '02-users-sites.sql', '03-device-tables.sql'];
+        const sqlFiles = ['01-core-tables.sql', '02-users-sites.sql', '03-protocols-table.sql', '04-device-tables.sql'];
         for (const sqlFile of sqlFiles) {
             await this.executeSQLFile(sqlFile);
         }
     }
 
     async createExtendedTables() {
-        const sqlFiles = ['04-virtual-points.sql', '05-alarm-tables.sql', '06-log-tables.sql', '08-protocols-table.sql'];
+        const sqlFiles = ['05-alarm-tables.sql', '06-virtual-points.sql', '07-log-tables.sql'];
         for (const sqlFile of sqlFiles) {
             await this.executeSQLFile(sqlFile);
         }
     }
 
     async createIndexes() {
-        await this.executeSQLFile('07-indexes.sql');
+        await this.executeSQLFile('08-indexes.sql');
     }
 
     async checkSystemTables() {
-        const systemTables = ['tenants', 'users', 'sites', 'devices', 'datapoints'];
+        const systemTables = ['tenants', 'users', 'sites', 'protocols', 'devices', 'data_points'];
         let foundTables = 0;
         
         for (const tableName of systemTables) {
@@ -539,7 +619,7 @@ class DatabaseInitializer {
     }
 
     async checkExtendedTables() {
-        const extendedTables = ['virtual_points', 'alarm_rules', 'device_logs', 'protocols'];
+        const extendedTables = ['virtual_points', 'alarm_rules', 'system_logs'];
         let foundTables = 0;
         
         for (const tableName of extendedTables) {
@@ -600,46 +680,8 @@ class DatabaseInitializer {
     }
 
     async createSampleData() {
-        try {
-            // 기본 테넌트 생성
-            await this.executeSQL(
-                `INSERT OR IGNORE INTO tenants (id, name, display_name, description, is_active) 
-                 VALUES (1, 'default', 'Default Organization', 'Default tenant', 1)`
-            );
-            
-            // 기본 사용자 생성  
-            await this.executeSQL(
-                `INSERT OR IGNORE INTO users (tenant_id, username, email, role, is_active) 
-                 VALUES (1, 'admin', 'admin@pulseone.local', 'admin', 1)`
-            );
-            
-            console.log('  ✅ 기본 테넌트 및 사용자 생성 완료');
-        } catch (error) {
-            console.error('기본 데이터 생성 실패:', error.message);
-        }
-    }
-
-    async createBackup(force = false) {
-        try {
-            if (this.databaseType === 'sqlite') {
-                const dbConfig = this.config.getDatabaseConfig();
-                const backupDir = path.join(process.cwd(), 'data', 'backup');
-                await fs.mkdir(backupDir, { recursive: true });
-                
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                const backupPath = path.join(backupDir, `pulseone_backup_${timestamp}.db`);
-                
-                await fs.copyFile(dbConfig.sqlite.path, backupPath);
-                console.log(`✅ SQLite 백업 생성: ${backupPath}`);
-                return backupPath;
-            }
-            
-            return null;
-        } catch (error) {
-            console.error('❌ 백업 생성 실패:', error.message);
-            if (force) throw error;
-            return null;
-        }
+        // 09-initial-data.sql에서 처리하므로 여기서는 간단한 기본 데이터만
+        console.log('  ✅ 기본 데이터는 09-initial-data.sql에서 처리됩니다');
     }
 
     async performInitialization() {
@@ -653,182 +695,9 @@ class DatabaseInitializer {
                this.initStatus.indexesCreated;
     }
 
-    // 스키마 템플릿들 (기존과 동일하므로 생략...)
-    getCoreTables() {
-        return `-- 01-core-tables.sql
-CREATE TABLE IF NOT EXISTS tenants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name VARCHAR(100) UNIQUE NOT NULL,
-    display_name VARCHAR(255),
-    description TEXT,
-    is_active BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);`;
-    }
-
-    getUsersSites() {
-        return `-- 02-users-sites.sql
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    role VARCHAR(50) DEFAULT 'user',
-    is_active BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-);
-
-CREATE TABLE IF NOT EXISTS sites (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    location VARCHAR(255),
-    timezone VARCHAR(50) DEFAULT 'UTC',
-    is_active BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-);`;
-    }
-
-    getDevicesDatapoints() {
-        return `-- 03-devices-datapoints.sql
-CREATE TABLE IF NOT EXISTS devices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    site_id INTEGER NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    device_type VARCHAR(50) NOT NULL,
-    protocol_id INTEGER,
-    endpoint VARCHAR(255),
-    is_enabled BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-    FOREIGN KEY (site_id) REFERENCES sites(id)
-);
-
-CREATE TABLE IF NOT EXISTS datapoints (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    device_id INTEGER NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    data_type VARCHAR(50) DEFAULT 'FLOAT',
-    unit VARCHAR(20),
-    address VARCHAR(100),
-    scale_factor FLOAT DEFAULT 1.0,
-    offset FLOAT DEFAULT 0.0,
-    is_enabled BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-    FOREIGN KEY (device_id) REFERENCES devices(id)
-);`;
-    }
-
-    getVirtualPoints() {
-        return `-- 04-virtual-points.sql
-CREATE TABLE IF NOT EXISTS virtual_points (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    expression TEXT NOT NULL,
-    data_type VARCHAR(50) DEFAULT 'FLOAT',
-    unit VARCHAR(20),
-    update_interval INTEGER DEFAULT 60,
-    is_enabled BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-);`;
-    }
-
-    getAlarmRules() {
-        return `-- 05-alarm-rules.sql
-CREATE TABLE IF NOT EXISTS alarm_rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    condition_expression TEXT NOT NULL,
-    severity VARCHAR(20) DEFAULT 'WARNING',
-    is_enabled BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-);`;
-    }
-
-    getLogTables() {
-        return `-- 06-log-tables.sql
-CREATE TABLE IF NOT EXISTS device_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    device_id INTEGER,
-    log_level VARCHAR(20) NOT NULL,
-    category VARCHAR(50),
-    message TEXT NOT NULL,
-    details TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    source VARCHAR(100),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-    FOREIGN KEY (device_id) REFERENCES devices(id)
-);
-
-CREATE TABLE IF NOT EXISTS system_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    log_level VARCHAR(20) NOT NULL,
-    category VARCHAR(50),
-    component VARCHAR(100),
-    message TEXT NOT NULL,
-    details TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    user_id INTEGER,
-    session_id VARCHAR(100),
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);`;
-    }
-
-    getProtocolsTable() {
-        return `-- 08-protocols-table.sql
-CREATE TABLE IF NOT EXISTS protocols (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    protocol_type VARCHAR(50) NOT NULL UNIQUE,
-    display_name VARCHAR(100) NOT NULL,
-    description TEXT,
-    default_port INTEGER,
-    category VARCHAR(50),
-    is_enabled BOOLEAN DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);`;
-    }
-
-    getIndexes() {
-        return `-- 07-indexes.sql
-CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_devices_tenant ON devices(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_datapoints_device ON datapoints(device_id);
-CREATE INDEX IF NOT EXISTS idx_virtual_points_tenant ON virtual_points(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_tenant ON alarm_rules(tenant_id);`;
-    }
-
-    getInitialData() {
-        return `-- initial-data.sql
-INSERT OR IGNORE INTO protocols (protocol_type, display_name, description, default_port, category) VALUES 
-('MODBUS_TCP', 'Modbus TCP', 'Modbus TCP/IP 프로토콜', 502, 'industrial'),
-('MQTT', 'MQTT', 'MQTT 메시징 프로토콜', 1883, 'iot'),
-('HTTP_REST', 'HTTP REST', 'RESTful HTTP API', 80, 'web');`;
+    // 기본 스키마 반환 메서드들은 원본 유지...
+    getDefaultSchema(filename) {
+        return null; // 파일에서 읽는 것을 우선
     }
 }
 

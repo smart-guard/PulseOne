@@ -38,15 +38,14 @@ INSERT OR IGNORE INTO tenants (
 -- 2. 사이트 생성 (devices가 참조하는 ID들과 일치)
 -- =============================================================================
 INSERT OR IGNORE INTO sites (
-    id, tenant_id, name, location, description, is_active
+    id, tenant_id, name, code, site_type, location, description, is_active
 ) VALUES 
-(1, 1, 'Seoul Main Factory', 'Seoul Industrial Complex', 'Main manufacturing facility', 1),
-(2, 1, 'Busan Secondary Plant', 'Busan Industrial Park', 'Secondary production facility', 1),
-(3, 2, 'New York Plant', 'New York Industrial Zone', 'East Coast Manufacturing Plant', 1),
-(4, 2, 'Detroit Automotive Plant', 'Detroit, MI', 'Automotive Manufacturing Plant', 1),
-(5, 3, 'Demo Factory', 'Demo Location', 'Demonstration facility', 1),
-(6, 4, 'Test Facility', 'Test Location', 'Testing and R&D facility', 1);
-
+(1, 1, 'Seoul Main Factory', 'SMF001', 'factory', 'Seoul Industrial Complex', 'Main manufacturing facility', 1),
+(2, 1, 'Busan Secondary Plant', 'BSP002', 'factory', 'Busan Industrial Park', 'Secondary production facility', 1),
+(3, 2, 'New York Plant', 'NYP003', 'factory', 'New York Industrial Zone', 'East Coast Manufacturing Plant', 1),
+(4, 2, 'Detroit Automotive Plant', 'DAP004', 'factory', 'Detroit, MI', 'Automotive Manufacturing Plant', 1),
+(5, 3, 'Demo Factory', 'DEMO005', 'factory', 'Demo Location', 'Demonstration facility', 1),
+(6, 4, 'Test Facility', 'TEST006', 'factory', 'Test Location', 'Testing and R&D facility', 1);
 -- =============================================================================
 -- 3. 프로토콜 테이블 생성 및 데이터 삽입
 -- =============================================================================
@@ -443,28 +442,27 @@ INSERT OR IGNORE INTO alarm_rules (
 -- 11. JavaScript 함수 라이브러리 
 -- =============================================================================
 INSERT OR IGNORE INTO javascript_functions (
-    tenant_id, name, description, category, function_code, parameters, return_type, is_system
+    tenant_id, name, description, category, function_code, parameters, return_type
 ) VALUES 
-(0, 'average', 'Calculate average of values', 'math',
+(1, 'average', 'Calculate average of values', 'math',
  'function average(...values) { return values.reduce((a, b) => a + b, 0) / values.length; }',
- '[{"name": "values", "type": "number[]", "required": true}]', 'number', 1),
+ '[{"name": "values", "type": "number[]", "required": true}]', 'number'),
 
-(0, 'oeeCalculation', 'Calculate Overall Equipment Effectiveness', 'engineering',
+(1, 'oeeCalculation', 'Calculate Overall Equipment Effectiveness', 'engineering',
  'function oeeCalculation(availability, performance, quality) { return (availability / 100) * (performance / 100) * (quality / 100) * 100; }',
- '[{"name": "availability", "type": "number"}, {"name": "performance", "type": "number"}, {"name": "quality", "type": "number"}]', 'number', 1),
+ '[{"name": "availability", "type": "number"}, {"name": "performance", "type": "number"}, {"name": "quality", "type": "number"}]', 'number'),
 
-(0, 'powerFactorCorrection', 'Calculate power factor correction', 'electrical',
+(1, 'powerFactorCorrection', 'Calculate power factor correction', 'electrical',
  'function powerFactorCorrection(activePower, reactivePower) { return activePower / Math.sqrt(activePower * activePower + reactivePower * reactivePower); }',
- '[{"name": "activePower", "type": "number"}, {"name": "reactivePower", "type": "number"}]', 'number', 1),
+ '[{"name": "activePower", "type": "number"}, {"name": "reactivePower", "type": "number"}]', 'number'),
 
 (1, 'productionEfficiency', 'Calculate production efficiency for automotive line', 'custom',
  'function productionEfficiency(actual, target, hours) { return (actual / target) * 100; }',
- '[{"name": "actual", "type": "number"}, {"name": "target", "type": "number"}, {"name": "hours", "type": "number"}]', 'number', 0),
+ '[{"name": "actual", "type": "number"}, {"name": "target", "type": "number"}, {"name": "hours", "type": "number"}]', 'number'),
 
 (1, 'energyIntensity', 'Calculate energy intensity per unit', 'custom',
  'function energyIntensity(totalEnergy, productionCount) { return productionCount > 0 ? totalEnergy / productionCount : 0; }',
- '[{"name": "totalEnergy", "type": "number"}, {"name": "productionCount", "type": "number"}]', 'number', 0);
-
+ '[{"name": "totalEnergy", "type": "number"}, {"name": "productionCount", "type": "number"}]', 'number');
 -- =============================================================================
 -- 12. 시스템 로그 기록
 -- =============================================================================
