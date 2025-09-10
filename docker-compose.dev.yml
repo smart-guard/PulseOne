@@ -92,6 +92,7 @@ services:
       dockerfile: backend/Dockerfile.dev
     container_name: pulseone-backend-dev
     working_dir: /app
+    command: node backend/app.js
     env_file:
       - ./config/.env
       - ./config/database.env

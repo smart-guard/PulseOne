@@ -903,28 +903,32 @@ namespace CurrentValue {
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS current_values (
             point_id INTEGER PRIMARY KEY,
-            
-            -- 🔥 실제 값 (JSON으로 DataVariant 저장)
-            current_value TEXT,                          -- JSON: {"value": 123.45}
-            raw_value TEXT,                              -- JSON: {"value": 12345} (스케일링 전)
-            value_type VARCHAR(10) DEFAULT 'double',     -- bool, int16, uint16, int32, uint32, float, double, string
-            
-            -- 🔥 데이터 품질 및 타임스탬프
-            quality_code INTEGER DEFAULT 0,             -- DataQuality enum 값
-            quality VARCHAR(20) DEFAULT 'not_connected', -- 텍스트 표현
-            
+            -- 🔥 실제 값 (DataVariant 직렬화)
+            current_value TEXT, -- JSON으로 DataVariant 저장
+            raw_value TEXT, -- JSON으로 원시값 저장
+            previous_value TEXT, -- JSON으로 이전값 저장
+            -- 🔥 데이터 타입 정보
+            value_type VARCHAR(10) DEFAULT 'double', -- bool, int16, uint16, int32, uint32, float, double, string
+            -- 🔥 데이터 품질 및 상태
+            quality_code INTEGER DEFAULT 0, -- DataQuality enum 값
+            quality VARCHAR(20) DEFAULT 'not_connected', -- 텍스트 표현 (good, bad, uncertain, not_connected)
             -- 🔥 타임스탬프들
-            value_timestamp DATETIME,                   -- 값 변경 시간
-            quality_timestamp DATETIME,                 -- 품질 변경 시간  
-            last_log_time DATETIME,                     -- 마지막 로깅 시간
-            last_read_time DATETIME,                    -- 마지막 읽기 시간
-            last_write_time DATETIME,                   -- 마지막 쓰기 시간
-            
+            value_timestamp DATETIME, -- 값 변경 시간
+            quality_timestamp DATETIME, -- 품질 변경 시간
+            last_log_time DATETIME, -- 마지막 로깅 시간
+            last_read_time DATETIME, -- 마지막 읽기 시간
+            last_write_time DATETIME, -- 마지막 쓰기 시간
             -- 🔥 통계 카운터들
-            read_count INTEGER DEFAULT 0,               -- 읽기 횟수
-            write_count INTEGER DEFAULT 0,              -- 쓰기 횟수
-            error_count INTEGER DEFAULT 0,              -- 에러 횟수
-            
+            read_count INTEGER DEFAULT 0, -- 읽기 횟수
+            write_count INTEGER DEFAULT 0, -- 쓰기 횟수
+            error_count INTEGER DEFAULT 0, -- 에러 횟수
+            change_count INTEGER DEFAULT 0, -- 값 변경 횟수
+            -- 🔥 알람 상태
+            alarm_state VARCHAR(20) DEFAULT 'normal', -- normal, high, low, critical
+            alarm_active INTEGER DEFAULT 0,
+            alarm_acknowledged INTEGER DEFAULT 0,
+            -- 🔥 메타데이터
+            source_info TEXT, -- JSON: 값 소스 정보
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             
             FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE

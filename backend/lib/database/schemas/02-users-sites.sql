@@ -170,7 +170,6 @@ CREATE TABLE IF NOT EXISTS sites (
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_site_id) REFERENCES sites(id) ON DELETE SET NULL,
-    FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id),
     
     -- 🔥 제약조건

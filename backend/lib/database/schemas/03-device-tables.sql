@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS devices (
     device_group_id INTEGER,
     edge_server_id INTEGER,
     
-    -- 🔥 디바이스 기본 정보
+    -- 디바이스 기본 정보
     name VARCHAR(100) NOT NULL,
     description TEXT,
     device_type VARCHAR(50) NOT NULL,                    -- PLC, HMI, SENSOR, GATEWAY, METER, CONTROLLER, ROBOT, INVERTER
@@ -105,34 +105,34 @@ CREATE TABLE IF NOT EXISTS devices (
     serial_number VARCHAR(100),
     firmware_version VARCHAR(50),
     
-    -- 🔥 통신 프로토콜 설정
-    protocol_type VARCHAR(50) NOT NULL,                  -- MODBUS_TCP, MODBUS_RTU, MQTT, BACNET, OPCUA, ETHERNET_IP
+    -- 프로토콜 설정 (외래키 사용)
+    protocol_id INTEGER NOT NULL,
     endpoint VARCHAR(255) NOT NULL,                      -- IP:Port 또는 연결 문자열
     config TEXT NOT NULL,                               -- JSON 형태 프로토콜별 설정
     
-    -- 🔥 기본 수집 설정 (세부 설정은 device_settings 테이블 참조)
+    -- 기본 수집 설정 (세부 설정은 device_settings 테이블 참조)
     polling_interval INTEGER DEFAULT 1000,               -- 밀리초
     timeout INTEGER DEFAULT 3000,                       -- 밀리초
     retry_count INTEGER DEFAULT 3,
     
-    -- 🔥 물리적 정보
+    -- 물리적 정보
     location_description VARCHAR(200),
     installation_date DATE,
     last_maintenance DATE,
     next_maintenance DATE,
     warranty_expires DATE,
     
-    -- 🔥 상태 정보
+    -- 상태 정보
     is_enabled INTEGER DEFAULT 1,
     is_simulation_mode INTEGER DEFAULT 0,               -- 시뮬레이션 모드
     priority INTEGER DEFAULT 100,                       -- 수집 우선순위 (낮을수록 높은 우선순위)
     
-    -- 🔥 메타데이터
+    -- 메타데이터
     tags TEXT,                                          -- JSON 배열
     metadata TEXT,                                      -- JSON 객체
     custom_fields TEXT,                                 -- JSON 객체 (사용자 정의 필드)
     
-    -- 🔥 감사 정보
+    -- 감사 정보
     created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -141,11 +141,68 @@ CREATE TABLE IF NOT EXISTS devices (
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
     FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
     FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
+    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
     FOREIGN KEY (created_by) REFERENCES users(id),
     
-    -- 🔥 제약조건
-    CONSTRAINT chk_device_type CHECK (device_type IN ('PLC', 'HMI', 'SENSOR', 'GATEWAY', 'METER', 'CONTROLLER', 'ROBOT', 'INVERTER', 'DRIVE', 'SWITCH')),
-    CONSTRAINT chk_protocol_type CHECK (protocol_type IN ('MODBUS_TCP', 'MODBUS_RTU', 'MQTT', 'BACNET', 'OPCUA', 'ETHERNET_IP', 'PROFINET', 'HTTP'))
+    -- 제약조건
+    CONSTRAINT chk_device_type CHECK (device_type IN ('PLC', 'HMI', 'SENSOR', 'GATEWAY', 'METER', 'CONTROLLER', 'ROBOT', 'INVERTER', 'DRIVE', 'SWITCH'))
+);CREATE TABLE IF NOT EXISTS devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    site_id INTEGER NOT NULL,
+    device_group_id INTEGER,
+    edge_server_id INTEGER,
+    
+    -- 디바이스 기본 정보
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    device_type VARCHAR(50) NOT NULL,                    -- PLC, HMI, SENSOR, GATEWAY, METER, CONTROLLER, ROBOT, INVERTER
+    manufacturer VARCHAR(100),
+    model VARCHAR(100),
+    serial_number VARCHAR(100),
+    firmware_version VARCHAR(50),
+    
+    -- 프로토콜 설정 (외래키로 변경!)
+    protocol_id INTEGER NOT NULL,
+    endpoint VARCHAR(255) NOT NULL,                      -- IP:Port 또는 연결 문자열
+    config TEXT NOT NULL,                               -- JSON 형태 프로토콜별 설정
+    
+    -- 기본 수집 설정 (세부 설정은 device_settings 테이블 참조)
+    polling_interval INTEGER DEFAULT 1000,               -- 밀리초
+    timeout INTEGER DEFAULT 3000,                       -- 밀리초
+    retry_count INTEGER DEFAULT 3,
+    
+    -- 물리적 정보
+    location_description VARCHAR(200),
+    installation_date DATE,
+    last_maintenance DATE,
+    next_maintenance DATE,
+    warranty_expires DATE,
+    
+    -- 상태 정보
+    is_enabled INTEGER DEFAULT 1,
+    is_simulation_mode INTEGER DEFAULT 0,               -- 시뮬레이션 모드
+    priority INTEGER DEFAULT 100,                       -- 수집 우선순위 (낮을수록 높은 우선순위)
+    
+    -- 메타데이터
+    tags TEXT,                                          -- JSON 배열
+    metadata TEXT,                                      -- JSON 객체
+    custom_fields TEXT,                                 -- JSON 객체 (사용자 정의 필드)
+    
+    -- 감사 정보
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+    FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
+    FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
+    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    
+    -- 제약조건
+    CONSTRAINT chk_device_type CHECK (device_type IN ('PLC', 'HMI', 'SENSOR', 'GATEWAY', 'METER', 'CONTROLLER', 'ROBOT', 'INVERTER', 'DRIVE', 'SWITCH'))
 );
 
 -- =============================================================================

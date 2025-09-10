@@ -134,8 +134,6 @@ CREATE TABLE IF NOT EXISTS system_settings (
     updated_by INTEGER,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (updated_by) REFERENCES users(id),
-    
     -- 🔥 제약조건
     CONSTRAINT chk_data_type CHECK (data_type IN ('string', 'integer', 'boolean', 'json', 'float'))
 );
@@ -162,45 +160,3 @@ CREATE INDEX IF NOT EXISTS idx_system_settings_category ON system_settings(categ
 CREATE INDEX IF NOT EXISTS idx_system_settings_public ON system_settings(is_public);
 CREATE INDEX IF NOT EXISTS idx_system_settings_updated ON system_settings(updated_at DESC);
 
--- =============================================================================
--- 기본 데이터 삽입
--- =============================================================================
-
--- 스키마 버전 기록
-INSERT OR IGNORE INTO schema_versions (version, description) 
-VALUES ('2.1.0', 'Complete PulseOne schema with DataPoint struct alignment and JSON protocol params');
-
--- 기본 시스템 설정값
-INSERT OR IGNORE INTO system_settings (key_name, value, description, category, data_type) VALUES 
-('system.version', '2.1.0', 'PulseOne system version', 'system', 'string'),
-('system.timezone', 'Asia/Seoul', 'Default system timezone', 'system', 'string'),
-('system.max_data_retention_days', '365', 'Maximum data retention period', 'system', 'integer'),
-('system.log_level', 'INFO', 'Global log level', 'system', 'string'),
-
--- 데이터포인트 기본 설정
-('datapoint.default_log_enabled', 'true', 'Default log_enabled for new data points', 'datapoint', 'boolean'),
-('datapoint.default_log_interval_ms', '5000', 'Default log_interval_ms for new data points', 'datapoint', 'integer'),
-('datapoint.default_polling_interval_ms', '1000', 'Default polling_interval_ms for new data points', 'datapoint', 'integer'),
-('datapoint.default_deadband', '0.0', 'Default deadband for new data points', 'datapoint', 'float'),
-
--- 프로토콜 기본 설정
-('protocol.modbus.default_timeout_ms', '3000', 'Default Modbus timeout', 'protocol', 'integer'),
-('protocol.modbus.default_retry_count', '3', 'Default Modbus retry count', 'protocol', 'integer'),
-('protocol.mqtt.default_qos', '1', 'Default MQTT QoS level', 'protocol', 'integer'),
-('protocol.mqtt.default_keep_alive_s', '60', 'Default MQTT keep alive seconds', 'protocol', 'integer'),
-('protocol.bacnet.default_timeout_ms', '5000', 'Default BACnet timeout', 'protocol', 'integer'),
-
--- 알람 시스템 설정
-('alarm.default_severity', 'medium', 'Default alarm severity', 'alarm', 'string'),
-('alarm.auto_acknowledge_timeout_min', '60', 'Auto acknowledge timeout in minutes', 'alarm', 'integer'),
-('alarm.max_occurrences_per_hour', '100', 'Maximum alarm occurrences per hour', 'alarm', 'integer'),
-
--- 보안 설정
-('security.session_timeout_min', '120', 'User session timeout in minutes', 'security', 'integer'),
-('security.password_min_length', '8', 'Minimum password length', 'security', 'integer'),
-('security.max_login_attempts', '5', 'Maximum login attempts before lockout', 'security', 'integer'),
-
--- 성능 설정
-('performance.max_concurrent_workers', '10', 'Maximum concurrent protocol workers', 'performance', 'integer'),
-('performance.batch_size', '100', 'Default batch processing size', 'performance', 'integer'),
-('performance.cache_ttl_seconds', '3600', 'Default cache TTL in seconds', 'performance', 'integer');
