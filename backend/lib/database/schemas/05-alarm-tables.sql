@@ -171,6 +171,9 @@ CREATE TABLE IF NOT EXISTS alarm_rule_templates (
     applicable_device_types TEXT,                   -- JSON 배열: ["modbus_rtu", "mqtt"]
     applicable_units TEXT,                          -- JSON 배열: ["°C", "bar", "rpm"]
     
+    -- 🔥 추가: 알림 설정 (C++ 코드 호환용)
+    notification_enabled INTEGER DEFAULT 1,        -- ✅ 누락된 컬럼 추가!
+    
     -- 템플릿 메타데이터
     industry VARCHAR(50),                           -- 'manufacturing', 'hvac', 'water_treatment'
     equipment_type VARCHAR(50),                     -- 'pump', 'motor', 'sensor'
