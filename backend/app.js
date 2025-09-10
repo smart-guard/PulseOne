@@ -1,5 +1,5 @@
 // =============================================================================
-// backend/app.js - 통합 메인 애플리케이션 (CORS 및 WebSocket 수정 완료)
+// backend/app.js - ConfigManager 완전 통합 버전 (CORS 및 WebSocket 수정 완료)
 // 기존 구조 + WebSocket 서비스 분리 + Collector 통합 + 모든 API 라우트
 // =============================================================================
 
@@ -9,6 +9,27 @@ const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 const { initializeConnections } = require('./lib/connection/db');
+
+// =============================================================================
+// ConfigManager 통합 사용 (가장 먼저 로드)
+// =============================================================================
+const config = require('./lib/config/ConfigManager');
+
+console.log('🔧 ConfigManager 로딩 완료');
+console.log(`📁 Current working directory: ${process.cwd()}`);
+
+// ConfigManager에서 주요 설정값 로드
+const serverConfig = config.getServerConfig();
+const dbConfig = config.getDatabaseConfig();
+const redisConfig = config.getRedisConfig();
+
+console.log('📋 ConfigManager 설정 정보:');
+console.log(`   환경: ${serverConfig.env}`);
+console.log(`   스테이지: ${serverConfig.stage}`);
+console.log(`   포트: ${serverConfig.port}`);
+console.log(`   데이터베이스: ${dbConfig.type}`);
+console.log(`   자동 초기화: ${config.getBoolean('AUTO_INITIALIZE_ON_START', false) ? '✅ 활성화' : '❌ 비활성화'}`);
+console.log('');
 
 // =============================================================================
 // 안전한 모듈 로딩 (상세 에러 정보 포함)
@@ -116,26 +137,31 @@ const app = express();
 const server = http.createServer(app);
 
 // =============================================================================
-// 🔧 CORS 설정 수정 - 개발 환경에서 모든 origin 허용
+// 🔧 CORS 설정 수정 - ConfigManager 기반으로 개발 환경에서 모든 origin 허용
 // =============================================================================
 
 const corsOptions = {
     origin: function (origin, callback) {
+        // ConfigManager에서 환경 정보 가져오기
+        const isDevelopment = serverConfig.env === 'development';
+        
         // 개발 환경에서는 모든 origin 허용 (CORS 에러 해결)
-        if (process.env.NODE_ENV === 'development' || !origin) {
+        if (isDevelopment || !origin) {
             callback(null, true);
             return;
         }
         
-        // 허용된 origin 목록 (프로덕션용)
+        // 허용된 origin 목록 (ConfigManager에서 관리 가능)
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:5173',
             'http://localhost:5174', 
             'http://localhost:8080',
             'http://127.0.0.1:3000',
-            'http://127.0.0.1:5173'
-        ];
+            'http://127.0.0.1:5173',
+            config.get('FRONTEND_URL', 'http://localhost:5173'), // ConfigManager에서 프론트엔드 URL 가져오기
+            config.get('CORS_ALLOWED_ORIGINS', '').split(',').filter(Boolean) // 추가 허용 origin
+        ].flat();
         
         if (allowedOrigins.includes(origin)) {
             callback(null, true);
@@ -160,7 +186,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // =============================================================================
-// Socket.IO 서버 설정 (CORS 포함)
+// Socket.IO 서버 설정 (ConfigManager 기반 CORS 포함)
 // =============================================================================
 
 let io = null;
@@ -172,11 +198,13 @@ if (WebSocketService) {
     console.log('✅ WebSocket 서비스 초기화 완료');
 } else {
     // WebSocketService가 없는 경우 직접 Socket.IO 초기화
+    const isDevelopment = serverConfig.env === 'development';
+    
     io = new Server(server, {
         cors: {
             origin: function (origin, callback) {
-                // Socket.IO용 CORS 설정 (개발 환경에서 모든 origin 허용)
-                if (process.env.NODE_ENV === 'development' || !origin) {
+                // Socket.IO용 CORS 설정 (ConfigManager 기반)
+                if (isDevelopment || !origin) {
                     callback(null, true);
                     return;
                 }
@@ -187,7 +215,8 @@ if (WebSocketService) {
                     'http://localhost:5174',
                     'http://localhost:8080',
                     'http://127.0.0.1:3000',
-                    'http://127.0.0.1:5173'
+                    'http://127.0.0.1:5173',
+                    config.get('FRONTEND_URL', 'http://localhost:5173')
                 ];
                 
                 callback(null, allowedOrigins.includes(origin));
@@ -220,30 +249,34 @@ if (WebSocketService) {
 }
 
 // =============================================================================
-// 미들웨어 설정
+// 미들웨어 설정 (ConfigManager 기반)
 // =============================================================================
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+const maxRequestSize = config.get('MAX_REQUEST_SIZE', '10mb');
+app.use(express.json({ limit: maxRequestSize }));
+app.use(express.urlencoded({ extended: true, limit: maxRequestSize }));
 
-// 정적 파일 서빙 (프론트엔드)
+// 정적 파일 서빙 (프론트엔드) - ConfigManager에서 캐시 설정
+const staticMaxAge = serverConfig.env === 'production' ? '1d' : 0;
 app.use(express.static(path.join(__dirname, '../frontend'), {
-    maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0
+    maxAge: staticMaxAge
 }));
 
-// 요청 로깅 미들웨어
+// 요청 로깅 미들웨어 (ConfigManager 로그 레벨 기반)
 app.use((req, res, next) => {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ${req.method} ${req.path}`);
+    if (serverConfig.logLevel === 'debug' || serverConfig.logLevel === 'info') {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] ${req.method} ${req.path}`);
+    }
     next();
 });
 
 // =============================================================================
-// 글로벌 인증 및 테넌트 미들웨어 (개발용)
+// 글로벌 인증 및 테넌트 미들웨어 (ConfigManager 기반)
 // =============================================================================
 
 /**
- * 기본 인증 미들웨어 (개발용)
+ * 기본 인증 미들웨어 (ConfigManager 기반)
  */
 const authenticateToken = (req, res, next) => {
     // API 경로가 아니거나 특정 경로는 인증 스킵
@@ -255,25 +288,26 @@ const authenticateToken = (req, res, next) => {
         return next();
     }
 
-    // 개발용 기본 사용자 설정
-    req.user = {
-        id: 1,
-        username: 'admin',
-        tenant_id: 1,
-        role: 'admin'
+    // ConfigManager에서 개발용 사용자 설정 가져오기
+    const devUser = {
+        id: config.getNumber('DEV_USER_ID', 1),
+        username: config.get('DEV_USERNAME', 'admin'),
+        tenant_id: config.getNumber('DEV_TENANT_ID', 1),
+        role: config.get('DEV_USER_ROLE', 'admin')
     };
     
+    req.user = devUser;
     next();
 };
 
 /**
- * 테넌트 격리 미들웨어 (개발용)
+ * 테넌트 격리 미들웨어 (ConfigManager 기반)
  */
 const tenantIsolation = (req, res, next) => {
     if (req.user) {
         req.tenantId = req.user.tenant_id;
     } else {
-        req.tenantId = 1; // 기본값
+        req.tenantId = config.getNumber('DEFAULT_TENANT_ID', 1); // ConfigManager에서 기본값
     }
     next();
 };
@@ -283,24 +317,80 @@ app.use('/api/*', authenticateToken);
 app.use('/api/*', tenantIsolation);
 
 // =============================================================================
-// 데이터베이스 연결 및 자동 초기화
+// 데이터베이스 연결 및 자동 초기화 (ConfigManager 완전 통합)
 // =============================================================================
 
 let connections = {};
 
 async function initializeSystem() {
     try {
+        console.log('🚀 PulseOne 시스템 초기화 시작...\n');
+        
+        console.log('📋 ConfigManager 설정 정보:');
+        console.log(`   환경: ${serverConfig.env}`);
+        console.log(`   스테이지: ${serverConfig.stage}`);
+        console.log(`   포트: ${serverConfig.port}`);
+        console.log(`   데이터베이스: ${dbConfig.type}`);
+        console.log(`   자동 초기화: ${config.getBoolean('AUTO_INITIALIZE_ON_START', false) ? '✅ 활성화' : '❌ 비활성화'}`);
+        console.log('');
+        
         // 1. 데이터베이스 연결
         connections = await initializeConnections();
+        app.locals.getDB = () => connections;
+        console.log('✅ Database connections initialized');
         
-        // 2. DatabaseInitializer가 알아서 설정 확인하고 처리
-        if (DatabaseInitializer) {
+        // 2. 자동 초기화 시스템 (ConfigManager 설정 사용)
+        const autoInitialize = config.getBoolean('AUTO_INITIALIZE_ON_START', false);
+        const skipIfInitialized = config.getBoolean('SKIP_IF_INITIALIZED', false);
+        const failOnInitError = config.getBoolean('FAIL_ON_INIT_ERROR', false);
+        
+        if (autoInitialize && DatabaseInitializer) {
+            console.log('🔄 자동 초기화 확인 중...');
+            
             const initializer = new DatabaseInitializer(connections);
-            await initializer.autoInitializeIfNeeded();
+            await initializer.checkDatabaseStatus();
+            
+            // 완전히 초기화되어 있고 스킵 옵션이 활성화된 경우
+            if (initializer.isFullyInitialized() && skipIfInitialized) {
+                console.log('✅ 데이터베이스가 이미 초기화되어 있습니다. (스킵됨)\n');
+            } else if (!initializer.isFullyInitialized()) {
+                console.log('🔧 초기화가 필요한 항목들을 감지했습니다.');
+                console.log('🚀 자동 초기화를 시작합니다...\n');
+                
+                try {
+                    // 백업 생성 (ConfigManager 설정으로 제어)
+                    const createBackup = config.getBoolean('CREATE_BACKUP_ON_INIT', true);
+                    if (createBackup) {
+                        await initializer.createBackup(true);
+                    }
+                    
+                    await initializer.performInitialization();
+                    console.log('✅ 자동 초기화가 완료되었습니다!\n');
+                } catch (initError) {
+                    console.error('❌ 자동 초기화 실패:', initError.message);
+                    
+                    // ConfigManager 설정에 따라 초기화 실패 시 종료 여부 결정
+                    if (failOnInitError) {
+                        console.error('💥 초기화 실패로 인해 서버를 종료합니다.');
+                        process.exit(1);
+                    } else {
+                        console.log('⚠️ 초기화 실패했지만 서버는 계속 실행됩니다.');
+                    }
+                }
+            }
+        } else if (autoInitialize) {
+            console.log('⚠️ 자동 초기화가 활성화되어 있지만 DatabaseInitializer를 로드할 수 없습니다.');
         }
         
     } catch (error) {
-        console.error('System initialization failed:', error.message);
+        console.error('❌ 시스템 초기화 실패:', error);
+        
+        // ConfigManager 설정에 따라 초기화 실패 시 종료 여부 결정
+        const failOnInitError = config.getBoolean('FAIL_ON_INIT_ERROR', false);
+        if (failOnInitError) {
+            console.error('💥 시스템 초기화 실패로 인해 서버를 종료합니다.');
+            process.exit(1);
+        }
     }
 }
 
@@ -337,10 +427,10 @@ app.locals.alarmSubscriber = null; // startAlarmSubscriber에서 설정됨
 app.locals.serverStartTime = new Date().toISOString();
 
 // =============================================================================
-// 헬스체크 및 초기화 관리 엔드포인트
+// 헬스체크 및 초기화 관리 엔드포인트 (ConfigManager 통합)
 // =============================================================================
 
-// Health check
+// Health check (ConfigManager 정보 포함)
 app.get('/api/health', async (req, res) => {
     try {
         const healthInfo = { 
@@ -348,7 +438,15 @@ app.get('/api/health', async (req, res) => {
             timestamp: new Date().toISOString(),
             uptime: process.uptime(),
             pid: process.pid,
-            cors_enabled: true // CORS 활성화 확인
+            cors_enabled: true,
+            config_manager: {
+                enabled: true,
+                environment: serverConfig.env,
+                stage: serverConfig.stage,
+                database_type: dbConfig.type,
+                auto_init: config.getBoolean('AUTO_INITIALIZE_ON_START'),
+                log_level: serverConfig.logLevel
+            }
         };
         
         // 실시간 기능 상태
@@ -406,7 +504,7 @@ app.get('/api/health', async (req, res) => {
         healthInfo.initialization = {
             databaseInitializer: {
                 available: !!DatabaseInitializer,
-                autoInit: process.env.AUTO_INITIALIZE_ON_START === 'true'
+                autoInit: config.getBoolean('AUTO_INITIALIZE_ON_START')
             }
         };
         
@@ -438,6 +536,45 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
+// 시스템 정보 API (ConfigManager 사용)
+app.get('/api/system/info', (req, res) => {
+    res.json({
+        system: {
+            environment: serverConfig.env,
+            stage: serverConfig.stage,
+            logLevel: serverConfig.logLevel,
+            port: serverConfig.port,
+            pid: process.pid,
+            uptime: process.uptime(),
+            nodeVersion: process.version,
+            platform: process.platform
+        },
+        database: {
+            type: dbConfig.type,
+            sqlite: dbConfig.sqlite,
+            postgresql: dbConfig.postgresql
+        },
+        redis: {
+            enabled: redisConfig.enabled,
+            host: redisConfig.host,
+            port: redisConfig.port,
+            testMode: redisConfig.testMode
+        },
+        features: {
+            autoInitialize: config.getBoolean('AUTO_INITIALIZE_ON_START'),
+            autoRun: config.getBoolean('AUTO_RUN'),
+            autoBuild: config.getBoolean('AUTO_BUILD'),
+            maintenanceMode: config.getBoolean('MAINTENANCE_MODE')
+        },
+        config_manager: {
+            data_dir: config.get('DATA_DIR'),
+            logs_dir: config.get('LOGS_DIR'),
+            config_files: config.get('CONFIG_FILES', '').split(',').filter(Boolean),
+            loaded_files: config.getInstance ? config.getInstance().getLoadedFiles() : []
+        }
+    });
+});
+
 // 실시간 알람 테스트 엔드포인트
 app.post('/api/test/alarm', (req, res) => {
     if (!io) {
@@ -452,7 +589,7 @@ app.post('/api/test/alarm', (req, res) => {
         const testAlarm = {
             occurrence_id: Date.now(),
             rule_id: 999,
-            tenant_id: 1,
+            tenant_id: config.getNumber('DEFAULT_TENANT_ID', 1),
             device_id: 'test_device_001',
             point_id: 1,
             message: '🚨 테스트 알람 - 온도 센서 이상 감지',
@@ -472,7 +609,7 @@ app.post('/api/test/alarm', (req, res) => {
             sent = webSocketService.sendAlarm(testAlarm);
         } else {
             // 직접 Socket.IO 사용
-            io.to('tenant:1').emit('alarm_triggered', testAlarm);
+            io.to(`tenant:${testAlarm.tenant_id}`).emit('alarm_triggered', testAlarm);
             io.emit('alarm_triggered', testAlarm); // 전체 브로드캐스트도 함께
             sent = true;
         }
@@ -496,7 +633,7 @@ app.post('/api/test/alarm', (req, res) => {
     }
 });
 
-// 초기화 상태 조회
+// 초기화 상태 조회 (ConfigManager 통합)
 app.get('/api/init/status', async (req, res) => {
     try {
         if (!DatabaseInitializer) {
@@ -506,7 +643,12 @@ app.get('/api/init/status', async (req, res) => {
                     available: false,
                     message: 'DatabaseInitializer 클래스를 찾을 수 없습니다.',
                     suggestion: 'backend/lib/database/DatabaseInitializer.js 파일을 확인하세요.',
-                    autoInitEnabled: process.env.AUTO_INITIALIZE_ON_START === 'true'
+                    config: {
+                        autoInitEnabled: config.getBoolean('AUTO_INITIALIZE_ON_START'),
+                        skipIfInitialized: config.getBoolean('SKIP_IF_INITIALIZED'),
+                        failOnError: config.getBoolean('FAIL_ON_INIT_ERROR'),
+                        createBackup: config.getBoolean('CREATE_BACKUP_ON_INIT', true)
+                    }
                 }
             });
         }
@@ -520,7 +662,12 @@ app.get('/api/init/status', async (req, res) => {
                 available: true,
                 database: initializer.initStatus,
                 fullyInitialized: initializer.isFullyInitialized(),
-                autoInitEnabled: process.env.AUTO_INITIALIZE_ON_START === 'true'
+                config: {
+                    autoInitEnabled: config.getBoolean('AUTO_INITIALIZE_ON_START'),
+                    skipIfInitialized: config.getBoolean('SKIP_IF_INITIALIZED'),
+                    failOnError: config.getBoolean('FAIL_ON_INIT_ERROR'),
+                    createBackup: config.getBoolean('CREATE_BACKUP_ON_INIT', true)
+                }
             }
         });
     } catch (error) {
@@ -532,7 +679,7 @@ app.get('/api/init/status', async (req, res) => {
     }
 });
 
-// 초기화 수동 트리거
+// 초기화 수동 트리거 (ConfigManager 사용)
 app.post('/api/init/trigger', async (req, res) => {
     try {
         if (!DatabaseInitializer) {
@@ -547,7 +694,8 @@ app.post('/api/init/trigger', async (req, res) => {
             });
         }
         
-        const { backup = true } = req.body;
+        // ConfigManager에서 기본값 가져오기
+        const { backup = config.getBoolean('CREATE_BACKUP_ON_INIT', true) } = req.body;
         const initializer = new DatabaseInitializer();
         
         if (backup) {
@@ -572,6 +720,176 @@ app.post('/api/init/trigger', async (req, res) => {
             success: false,
             error: error.message,
             timestamp: new Date().toISOString()
+        });
+    }
+});
+
+// ConfigManager 설정 조회 API (새로 추가 - 개선된 버전)
+app.get('/api/config', (req, res) => {
+    try {
+        // ConfigManager 유효성 검증
+        const validation = config.validate();
+        
+        // 보안상 민감한 정보는 제외하고 반환
+        const safeConfig = config.exportSafeConfig();
+        
+        res.json({
+            success: true,
+            data: {
+                server: {
+                    environment: serverConfig.env,
+                    stage: serverConfig.stage,
+                    port: serverConfig.port,
+                    logLevel: serverConfig.logLevel
+                },
+                database: {
+                    type: dbConfig.type,
+                    sqlite: {
+                        enabled: dbConfig.sqlite.enabled,
+                        path: dbConfig.sqlite.path
+                    }
+                },
+                redis: {
+                    enabled: redisConfig.enabled,
+                    host: redisConfig.host,
+                    port: redisConfig.port
+                },
+                features: {
+                    autoInitialize: config.getBoolean('AUTO_INITIALIZE_ON_START'),
+                    autoRun: config.getBoolean('AUTO_RUN'),
+                    autoBuild: config.getBoolean('AUTO_BUILD'),
+                    maintenanceMode: config.getBoolean('MAINTENANCE_MODE')
+                },
+                directories: {
+                    data: config.get('DATA_DIR'),
+                    logs: config.get('LOGS_DIR'),
+                    config: config.get('CONFIG_DIR')
+                },
+                config_manager: {
+                    status: config.getConfigStatus(),
+                    validation: validation,
+                    loaded_files: config.getLoadedFiles(),
+                    total_variables: config.getConfigStatus().totalVariables
+                }
+            },
+            safe_config: safeConfig,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ConfigManager 디버깅 API (새로 추가)
+app.get('/api/config/debug', (req, res) => {
+    try {
+        const { category } = req.query;
+        
+        let debugInfo = {};
+        
+        switch (category) {
+            case 'database':
+                debugInfo = config.getDatabaseDebugInfo();
+                break;
+            case 'redis':
+                debugInfo = config.getRedisDebugInfo();
+                break;
+            case 'dev':
+                debugInfo = config.getDevDebugInfo();
+                break;
+            case 'all':
+                debugInfo = config.exportSafeConfig();
+                break;
+            default:
+                debugInfo = {
+                    database: config.getDatabaseDebugInfo(),
+                    redis: config.getRedisDebugInfo(),
+                    dev: config.getDevDebugInfo()
+                };
+        }
+        
+        res.json({
+            success: true,
+            category: category || 'summary',
+            data: debugInfo,
+            config_status: config.getConfigStatus(),
+            validation: config.validate(),
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ConfigManager 설정 다시 로드 API (새로 추가)
+app.post('/api/config/reload', (req, res) => {
+    try {
+        console.log('🔄 ConfigManager 설정 다시 로딩 요청됨');
+        
+        const oldStatus = config.getConfigStatus();
+        config.reload();
+        const newStatus = config.getConfigStatus();
+        
+        // 서버 설정 다시 읽기
+        const newServerConfig = config.getServerConfig();
+        const newDbConfig = config.getDatabaseConfig();
+        const newRedisConfig = config.getRedisConfig();
+        
+        res.json({
+            success: true,
+            message: '설정이 성공적으로 다시 로드되었습니다.',
+            old_status: oldStatus,
+            new_status: newStatus,
+            changes: {
+                loaded_files: newStatus.loadedFiles,
+                total_variables: newStatus.totalVariables
+            },
+            validation: config.validate(),
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log('✅ ConfigManager 설정 다시 로딩 완료');
+        
+    } catch (error) {
+        console.error('❌ ConfigManager 설정 다시 로딩 실패:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ConfigManager 유효성 검증 API (새로 추가)
+app.get('/api/config/validate', (req, res) => {
+    try {
+        const validation = config.validate();
+        const status = config.getConfigStatus();
+        
+        res.json({
+            success: true,
+            validation: validation,
+            status: status,
+            recommendations: validation.isValid ? 
+                ['설정이 모두 올바르게 구성되어 있습니다.'] :
+                [
+                    '설정 문제를 해결하세요.',
+                    'POST /api/config/reload 를 사용하여 설정을 다시 로드할 수 있습니다.',
+                    '.env 파일이나 config/ 디렉토리의 설정 파일들을 확인하세요.'
+                ],
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
         });
     }
 });
@@ -672,8 +990,13 @@ try {
     
     // 기본 인증 미들웨어
     debugAlarmRouter.use((req, res, next) => {
-        req.user = { id: 1, username: 'admin', tenant_id: 1, role: 'admin' };
-        req.tenantId = 1;
+        req.user = { 
+            id: config.getNumber('DEV_USER_ID', 1), 
+            username: config.get('DEV_USERNAME', 'admin'), 
+            tenant_id: config.getNumber('DEV_TENANT_ID', 1), 
+            role: config.get('DEV_USER_ROLE', 'admin') 
+        };
+        req.tenantId = config.getNumber('DEV_TENANT_ID', 1);
         next();
     });
     
@@ -684,7 +1007,11 @@ try {
             message: '디버그 모드 - 알람 API가 기본 기능으로 동작합니다!',
             timestamp: new Date().toISOString(),
             debug_mode: true,
-            error: error.message
+            error: error.message,
+            config_info: {
+                environment: serverConfig.env,
+                tenant_id: config.getNumber('DEV_TENANT_ID', 1)
+            }
         });
     });
     
@@ -825,15 +1152,17 @@ console.log('\n🎉 모든 API 라우트 등록 완료!\n');
 
 // 404 handler - API 전용 (개선된 디버깅)
 app.use('/api/*', (req, res) => {
-    console.log(`❌ 404 - API endpoint not found: ${req.method} ${req.originalUrl}`);
-    
-    // 알람 관련 엔드포인트에 대한 상세한 디버깅 정보
-    if (req.originalUrl.startsWith('/api/alarms/')) {
-        console.log('🔍 알람 API 요청 디버깅:');
-        console.log(`   - 요청 URL: ${req.originalUrl}`);
-        console.log(`   - HTTP 메서드: ${req.method}`);
-        console.log(`   - 예상 라우트: /api/alarms/*`);
-        console.log(`   - 알람 라우트 등록 상태 확인 필요!`);
+    if (serverConfig.logLevel === 'debug') {
+        console.log(`❌ 404 - API endpoint not found: ${req.method} ${req.originalUrl}`);
+        
+        // 알람 관련 엔드포인트에 대한 상세한 디버깅 정보
+        if (req.originalUrl.startsWith('/api/alarms/')) {
+            console.log('🔍 알람 API 요청 디버깅:');
+            console.log(`   - 요청 URL: ${req.originalUrl}`);
+            console.log(`   - HTTP 메서드: ${req.method}`);
+            console.log(`   - 예상 라우트: /api/alarms/*`);
+            console.log(`   - 알람 라우트 등록 상태 확인 필요!`);
+        }
     }
     
     res.status(404).json({ 
@@ -869,8 +1198,8 @@ app.use((error, req, res, next) => {
     res.status(statusCode).json({
         success: false,
         error: message,
-        message: process.env.NODE_ENV === 'development' ? error.message : message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        message: serverConfig.env === 'development' ? error.message : message,
+        stack: serverConfig.env === 'development' ? error.stack : undefined,
         timestamp: new Date().toISOString()
     });
 });
@@ -896,7 +1225,7 @@ app.use('*', (req, res) => {
 });
 
 // =============================================================================
-// Graceful Shutdown
+// Graceful Shutdown (ConfigManager 기반)
 // =============================================================================
 
 process.on('SIGTERM', gracefulShutdown);
@@ -904,6 +1233,8 @@ process.on('SIGINT', gracefulShutdown);
 
 function gracefulShutdown(signal) {
     console.log(`\n🔄 Received ${signal}. Starting graceful shutdown...`);
+    
+    const shutdownTimeout = config.getNumber('SHUTDOWN_TIMEOUT_MS', 10000);
     
     server.close(async (err) => {
         if (err) {
@@ -952,14 +1283,14 @@ function gracefulShutdown(signal) {
     setTimeout(() => {
         console.error('❌ Forced shutdown after timeout');
         process.exit(1);
-    }, 10000);
+    }, shutdownTimeout);
 }
 
 // =============================================================================
-// Start Server
+// Start Server (ConfigManager 기반)
 // =============================================================================
 
-const PORT = process.env.PORT || process.env.BACKEND_PORT || 3000;
+const PORT = serverConfig.port;
 
 server.listen(PORT, '0.0.0.0', async () => {
     const wsStatus = webSocketService ? 
@@ -970,17 +1301,28 @@ server.listen(PORT, '0.0.0.0', async () => {
     const syncHooksStatus = ConfigSyncHooks ? '✅ Available' : '❌ Not Found';
     
     console.log(`
-🚀 PulseOne Backend Server Started! (CORS & WebSocket 수정 완료)
+🚀 PulseOne Backend Server Started! (ConfigManager 완전 통합)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Dashboard:     http://localhost:${PORT}
 🔧 API Health:    http://localhost:${PORT}/api/health
+🔧 System Info:   http://localhost:${PORT}/api/system/info
+⚙️  Config Info:   http://localhost:${PORT}/api/config
 🔥 Alarm Test:    http://localhost:${PORT}/api/alarms/test
 📱 Alarm Active:  http://localhost:${PORT}/api/alarms/active
 🧪 Test Alarm:    POST http://localhost:${PORT}/api/test/alarm
 
+📋 ConfigManager 설정:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 환경:          ${serverConfig.env}
+🏷️  스테이지:      ${serverConfig.stage}
+📁 데이터 DIR:     ${config.get('DATA_DIR', './data')}
+📝 로그 DIR:       ${config.get('LOGS_DIR', './logs')}
+💾 데이터베이스:    ${dbConfig.type}
+🔧 자동 초기화:     ${config.getBoolean('AUTO_INITIALIZE_ON_START') ? '✅ 활성화' : '❌ 비활성화'}
+
 🌐 CORS 설정:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔒 모드:          ${process.env.NODE_ENV === 'development' ? '✅ 개발 모드 (모든 Origin 허용)' : '🔐 프로덕션 모드 (제한적 허용)'}
+🔒 모드:          ${serverConfig.env === 'development' ? '✅ 개발 모드 (모든 Origin 허용)' : '🔐 프로덕션 모드 (제한적 허용)'}
 🌍 허용 Origin:   localhost:3000, localhost:5173, 127.0.0.1:*
 📝 허용 메서드:    GET, POST, PUT, PATCH, DELETE, OPTIONS
 🍪 Credentials:   ✅ Enabled
@@ -999,49 +1341,54 @@ server.listen(PORT, '0.0.0.0', async () => {
 
 🚀 시스템 정보:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Environment: ${process.env.NODE_ENV || 'development'}
-Auto Initialize: ${process.env.AUTO_INITIALIZE_ON_START === 'true' ? '✅ Enabled' : '❌ Disabled'}
+Environment: ${serverConfig.env}
+Stage: ${serverConfig.stage}
+Log Level: ${serverConfig.logLevel}
+Auto Initialize: ${config.getBoolean('AUTO_INITIALIZE_ON_START') ? '✅ Enabled' : '❌ Disabled'}
 DatabaseInitializer: ${DatabaseInitializer ? '✅ Available' : '❌ Not Found'}
-Authentication: 🔓 Development Mode (기본 사용자)
+Authentication: 🔓 Development Mode (ConfigManager 기반)
 PID: ${process.pid}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎉 PulseOne 백엔드 시스템 완전 가동! 
+🎉 PulseOne 백엔드 시스템 완전 가동! ConfigManager 통합 완료 ✅
    - CORS 에러 수정 완료 ✅
    - WebSocket 연결 문제 해결 ✅
    - 알람 API 강화 ✅
    - 실시간 기능 준비 완료 ✅
+   - 환경설정 중앙화 완료 ✅
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
     
     // 서버 시작 후 알람 라우트 동작 확인
-    console.log('🔍 알람 API 엔드포인트 검증 중...');
-    
-    try {
-        const http = require('http');
+    if (serverConfig.logLevel === 'debug') {
+        console.log('🔍 알람 API 엔드포인트 검증 중...');
         
-        // 내부적으로 /api/alarms/test 호출해서 라우트 동작 확인
-        const testReq = http.request({
-            hostname: 'localhost',
-            port: PORT,
-            path: '/api/alarms/test',
-            method: 'GET'
-        }, (res) => {
-            if (res.statusCode === 200) {
-                console.log('✅ 알람 API 라우트 정상 동작 확인됨');
-            } else {
-                console.log(`⚠️ 알람 API 응답 코드: ${res.statusCode}`);
-            }
-        });
-        
-        testReq.on('error', (err) => {
-            console.log('⚠️ 알람 API 자체 테스트 실패:', err.message);
-        });
-        
-        testReq.end();
-        
-    } catch (testError) {
-        console.log('⚠️ 알람 API 검증 과정에서 오류:', testError.message);
+        try {
+            const http = require('http');
+            
+            // 내부적으로 /api/alarms/test 호출해서 라우트 동작 확인
+            const testReq = http.request({
+                hostname: 'localhost',
+                port: PORT,
+                path: '/api/alarms/test',
+                method: 'GET'
+            }, (res) => {
+                if (res.statusCode === 200) {
+                    console.log('✅ 알람 API 라우트 정상 동작 확인됨');
+                } else {
+                    console.log(`⚠️ 알람 API 응답 코드: ${res.statusCode}`);
+                }
+            });
+            
+            testReq.on('error', (err) => {
+                console.log('⚠️ 알람 API 자체 테스트 실패:', err.message);
+            });
+            
+            testReq.end();
+            
+        } catch (testError) {
+            console.log('⚠️ 알람 API 검증 과정에서 오류:', testError.message);
+        }
     }
     
     // Collector 연결 상태 확인
@@ -1074,8 +1421,9 @@ PID: ${process.pid}
     
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     
-    // 3초 후 실시간 알람 구독자 시작
-    setTimeout(startAlarmSubscriber, 3000);
+    // ConfigManager 설정에 따라 알람 구독자 시작 지연 시간 조정
+    const alarmStartDelay = config.getNumber('ALARM_SUBSCRIBER_START_DELAY_MS', 3000);
+    setTimeout(startAlarmSubscriber, alarmStartDelay);
 });
 
 module.exports = app;

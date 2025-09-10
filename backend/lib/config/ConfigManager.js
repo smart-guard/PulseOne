@@ -1,5 +1,5 @@
 // ============================================================================
-// backend/lib/config/ConfigManager.js - 경로 문제 해결
+// backend/lib/config/ConfigManager.js - 완성본 (권장사항 모두 적용)
 // ============================================================================
 const path = require('path');
 const fs = require('fs');
@@ -13,6 +13,7 @@ class ConfigManager {
         this.loadedFiles = [];
         this.lastLoad = new Map();
         this.logger = console;
+        this.lastInitialized = null;
         
         // 즉시 초기화
         this.initialize();
@@ -65,6 +66,7 @@ class ConfigManager {
             });
 
             this.loaded = true;
+            this.lastInitialized = new Date().toISOString();
             this.logger.log(`✅ 환경변수 로딩 완료 (${this.loadedFiles.length}개 파일)`);
             
             // 디버깅 정보 출력
@@ -287,6 +289,145 @@ class ConfigManager {
         });
         return result;
     }
+
+    /**
+     * 로드된 파일 목록 반환 (권장사항 적용)
+     */
+    getLoadedFiles() {
+        return this.loadedFiles || [];
+    }
+
+    /**
+     * ConfigManager 상태 조회 (권장사항 적용)
+     */
+    getConfigStatus() {
+        return {
+            loaded: this.loaded,
+            loadedFiles: this.loadedFiles,
+            totalVariables: this.env.size,
+            lastInitialized: this.lastInitialized
+        };
+    }
+
+    /**
+     * 특정 키 패턴으로 환경변수 검색 (권장사항 적용)
+     */
+    getByPattern(pattern) {
+        const result = {};
+        const regex = new RegExp(pattern, 'i');
+        
+        this.env.forEach((value, key) => {
+            if (regex.test(key)) {
+                result[key] = value;
+            }
+        });
+        
+        return result;
+    }
+
+    /**
+     * 환경변수 동적 설정 (런타임에서 사용) (권장사항 적용)
+     */
+    set(key, value) {
+        this.env.set(key, value);
+        process.env[key] = value;
+        return this;
+    }
+
+    /**
+     * 환경변수 존재 여부 확인 (권장사항 적용)
+     */
+    has(key) {
+        return this.env.has(key) || process.env.hasOwnProperty(key);
+    }
+
+    /**
+     * 개발자용 헬퍼 - 모든 DATABASE_ 관련 설정 조회 (권장사항 적용)
+     */
+    getDatabaseDebugInfo() {
+        return this.getByPattern('^DATABASE_|^SQLITE_|^POSTGRES_');
+    }
+
+    /**
+     * 개발자용 헬퍼 - 모든 REDIS_ 관련 설정 조회 (권장사항 적용)
+     */
+    getRedisDebugInfo() {
+        return this.getByPattern('^REDIS_');
+    }
+
+    /**
+     * 개발자용 헬퍼 - 모든 DEV_ 관련 설정 조회 (권장사항 적용)
+     */
+    getDevDebugInfo() {
+        return this.getByPattern('^DEV_|^DEFAULT_');
+    }
+
+    /**
+     * 설정 파일 다시 로드 (권장사항 적용)
+     */
+    reload() {
+        this.logger.log('🔄 ConfigManager 설정 다시 로딩 중...');
+        this.loaded = false;
+        this.env.clear();
+        this.loadedFiles = [];
+        this.lastLoad.clear();
+        this.initialize();
+        return this;
+    }
+
+    /**
+     * 환경변수를 JSON 형태로 내보내기 (민감한 정보 제외) (권장사항 적용)
+     */
+    exportSafeConfig() {
+        const sensitiveKeys = ['PASSWORD', 'SECRET', 'TOKEN', 'KEY', 'PRIVATE'];
+        const result = {};
+        
+        this.env.forEach((value, key) => {
+            const isSensitive = sensitiveKeys.some(sensitive => 
+                key.toUpperCase().includes(sensitive)
+            );
+            
+            if (!isSensitive) {
+                result[key] = value;
+            } else {
+                result[key] = '***HIDDEN***';
+            }
+        });
+        
+        return result;
+    }
+
+    /**
+     * 환경변수 유효성 검증 (권장사항 적용)
+     */
+    validate() {
+        const issues = [];
+        
+        // 필수 환경변수 검증
+        const required = ['NODE_ENV', 'DATABASE_TYPE'];
+        required.forEach(key => {
+            if (!this.has(key)) {
+                issues.push(`필수 환경변수 누락: ${key}`);
+            }
+        });
+        
+        // 포트 번호 유효성 검증
+        const port = this.getNumber('BACKEND_PORT');
+        if (port < 1 || port > 65535) {
+            issues.push(`잘못된 포트 번호: ${port}`);
+        }
+        
+        // 데이터베이스 타입 검증
+        const dbType = this.get('DATABASE_TYPE');
+        if (!['SQLITE', 'POSTGRESQL'].includes(dbType)) {
+            issues.push(`지원하지 않는 데이터베이스 타입: ${dbType}`);
+        }
+        
+        return {
+            isValid: issues.length === 0,
+            issues: issues
+        };
+    }
 }
 
 // 싱글톤 인스턴스 생성 및 내보내기
@@ -317,5 +458,18 @@ module.exports = {
     // 설정 그룹들
     getDatabaseConfig: () => configManager.getDatabaseConfig(),
     getRedisConfig: () => configManager.getRedisConfig(),
-    getServerConfig: () => configManager.getServerConfig()
+    getServerConfig: () => configManager.getServerConfig(),
+    
+    // 권장사항 적용 - 새로운 메서드들
+    getLoadedFiles: () => configManager.getLoadedFiles(),
+    getConfigStatus: () => configManager.getConfigStatus(),
+    getByPattern: (pattern) => configManager.getByPattern(pattern),
+    set: (key, value) => configManager.set(key, value),
+    has: (key) => configManager.has(key),
+    getDatabaseDebugInfo: () => configManager.getDatabaseDebugInfo(),
+    getRedisDebugInfo: () => configManager.getRedisDebugInfo(),
+    getDevDebugInfo: () => configManager.getDevDebugInfo(),
+    reload: () => configManager.reload(),
+    exportSafeConfig: () => configManager.exportSafeConfig(),
+    validate: () => configManager.validate()
 };
