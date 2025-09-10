@@ -440,7 +440,7 @@ CREATE INDEX IF NOT EXISTS idx_devices_tenant ON devices(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_devices_site ON devices(site_id);
 CREATE INDEX IF NOT EXISTS idx_devices_group ON devices(device_group_id);
 CREATE INDEX IF NOT EXISTS idx_devices_edge_server ON devices(edge_server_id);
-CREATE INDEX IF NOT EXISTS idx_devices_protocol ON devices(protocol_type);
+CREATE INDEX IF NOT EXISTS idx_devices_protocol ON devices(protocol_id);
 CREATE INDEX IF NOT EXISTS idx_devices_type ON devices(device_type);
 CREATE INDEX IF NOT EXISTS idx_devices_enabled ON devices(is_enabled);
 CREATE INDEX IF NOT EXISTS idx_devices_name ON devices(tenant_id, name);
