@@ -290,39 +290,17 @@ let connections = {};
 
 async function initializeSystem() {
     try {
-        console.log('🚀 PulseOne 시스템 초기화 시작...\n');
-        
-        // 1. 기존 데이터베이스 연결
+        // 1. 데이터베이스 연결
         connections = await initializeConnections();
-        app.locals.getDB = () => connections;
-        console.log('✅ Database connections initialized');
         
-        // 2. 자동 초기화 시스템
-        if (process.env.AUTO_INITIALIZE_ON_START === 'true' && DatabaseInitializer) {
-            console.log('🔄 자동 초기화 확인 중...');
-            
-            const initializer = new DatabaseInitializer();
-            await initializer.checkDatabaseStatus();
-            
-            if (initializer.isFullyInitialized() && process.env.SKIP_IF_INITIALIZED !== 'false') {
-                console.log('✅ 데이터베이스가 이미 초기화되어 있습니다.\n');
-            } else if (!initializer.isFullyInitialized()) {
-                console.log('🔧 초기화가 필요한 항목들을 감지했습니다.');
-                console.log('🚀 자동 초기화를 시작합니다...\n');
-                
-                await initializer.performInitialization();
-                console.log('✅ 자동 초기화가 완료되었습니다.\n');
-            }
+        // 2. DatabaseInitializer가 알아서 설정 확인하고 처리
+        if (DatabaseInitializer) {
+            const initializer = new DatabaseInitializer(connections);
+            await initializer.autoInitializeIfNeeded();
         }
         
     } catch (error) {
-        console.error('❌ System initialization failed:', error.message);
-        
-        if (process.env.FAIL_ON_INIT_ERROR === 'true') {
-            process.exit(1);
-        } else {
-            console.log('⚠️  초기화 실패했지만 서버를 계속 시작합니다.\n');
-        }
+        console.error('System initialization failed:', error.message);
     }
 }
 
