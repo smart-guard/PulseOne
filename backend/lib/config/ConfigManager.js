@@ -218,14 +218,15 @@ class ConfigManager {
      * 데이터베이스 설정 조회 - 기존 환경변수 구조 완전 지원
      */
     getDatabaseConfig() {
+        const rawSqlitePath = this.get('SQLITE_PATH', './data/db/pulseone.db');
+        const resolvedSqlitePath = this._resolveDatabasePath(rawSqlitePath);
+        
         return {
-            // 기본 타입
             type: this.get('DATABASE_TYPE', 'SQLITE'),
             
-            // SQLite 설정 (기존 변수명 유지)
             sqlite: {
                 enabled: this.getBoolean('SQLITE_ENABLED', true),
-                path: this.get('SQLITE_PATH', './data/db/pulseone.db'),
+                path: resolvedSqlitePath,
                 timeout: this.getNumber('SQLITE_BUSY_TIMEOUT', 5000),
                 journalMode: this.get('SQLITE_JOURNAL_MODE', 'WAL'),
                 foreignKeys: this.getBoolean('SQLITE_FOREIGN_KEYS', true),
@@ -250,6 +251,62 @@ class ConfigManager {
             }
         };
     }
+
+    /**
+     * 스마트 데이터베이스 경로 해석
+     * Docker, Windows, Linux 모든 환경 지원
+     */
+    _resolveDatabasePath(sqlitePath) {
+        const path = require('path');
+        const cwd = process.cwd();
+        
+        // 1. 절대 경로인 경우 그대로 사용
+        if (path.isAbsolute(sqlitePath)) {
+            console.log(`절대 경로 사용: ${sqlitePath}`);
+            return sqlitePath;
+        }
+        
+        // 2. Docker 환경 감지
+        const isDockerBackend = cwd.endsWith('/backend') || cwd.includes('/app/backend');
+        
+        if (isDockerBackend) {
+            // Docker에서 Node.js가 /app/backend에서 실행되는 경우
+            let correctedPath = sqlitePath;
+            
+            if (sqlitePath.startsWith('./')) {
+                // ./data/db/pulseone.db → ../data/db/pulseone.db
+                correctedPath = '../' + sqlitePath.substring(2);
+            }
+            
+            const resolved = path.resolve(cwd, correctedPath);
+            console.log(`Docker 환경 경로 보정: ${sqlitePath} → ${correctedPath} → ${resolved}`);
+            return resolved;
+        }
+        
+        // 3. Windows/Linux 일반 환경
+        const resolved = path.resolve(cwd, sqlitePath);
+        console.log(`일반 환경 경로: ${sqlitePath} → ${resolved}`);
+        return resolved;
+    }
+
+    /**
+     * 환경 정보 디버깅
+     */
+    getEnvironmentInfo() {
+        const path = require('path');
+        const cwd = process.cwd();
+        
+        return {
+            platform: process.platform,
+            cwd: cwd,
+            isDockerBackend: cwd.endsWith('/backend') || cwd.includes('/app/backend'),
+            nodeVersion: process.version,
+            configFiles: this.loadedFiles,
+            sqlitePathRaw: this.get('SQLITE_PATH'),
+            sqlitePathResolved: this._resolveDatabasePath(this.get('SQLITE_PATH', './data/db/pulseone.db'))
+        };
+    }
+
 
     /**
      * Redis 설정 조회 - 기존 환경변수 구조 완전 지원
