@@ -1,6 +1,7 @@
 // =============================================================================
-// DatabaseInitializer - 범용 데이터베이스 초기화 (SKIP_IF_INITIALIZED 로직 수정)
-// 🔥 핵심 수정: SKIP_IF_INITIALIZED=true일 때 정확한 스킵 로직 구현
+// DatabaseInitializer - 스키마 불일치 문제 해결
+// 🔥 핵심 수정: 메모리 스키마 제거, 파일 기반 초기화만 사용
+// 🔥 SKIP_IF_INITIALIZED 로직 개선
 // =============================================================================
 
 const fs = require('fs').promises;
@@ -198,52 +199,55 @@ class DatabaseInitializer {
             }
         }
 
-        console.log('⚠️ 스키마 폴더를 찾을 수 없어 메모리 스키마를 사용합니다.');
+        console.log('❌ 스키마 폴더를 찾을 수 없습니다. 초기화 실패.');
         return null;
     }
 
     /**
-     * SQL 파일 실행
+     * SQL 파일 실행 (메모리 스키마 폴백 제거)
      */
     async executeSQLFile(filename) {
         try {
             const schemasPath = await this.findSchemasPath();
-            let sqlContent;
             
-            if (schemasPath) {
-                const filePath = path.join(schemasPath, filename);
-                try {
-                    sqlContent = await fs.readFile(filePath, 'utf8');
-                } catch (error) {
-                    console.log(`  ⚠️ ${filename} 파일 없음, 기본 스키마 사용`);
-                    sqlContent = this.getDefaultSchema(filename);
+            if (!schemasPath) {
+                console.error(`❌ 스키마 경로를 찾을 수 없어 ${filename} 실행 불가`);
+                return false;
+            }
+            
+            const filePath = path.join(schemasPath, filename);
+            
+            try {
+                const sqlContent = await fs.readFile(filePath, 'utf8');
+                console.log(`📁 실제 파일에서 읽음: ${filePath}`);
+                
+                if (!sqlContent || sqlContent.trim().length === 0) {
+                    console.log(`⚠️ ${filename} 파일이 비어있음, 스킵`);
+                    return true;
                 }
-            } else {
-                sqlContent = this.getDefaultSchema(filename);
-            }
 
-            if (!sqlContent) {
-                console.log(`  ⚠️ ${filename} 스키마를 찾을 수 없음, 스킵`);
-                return true;
-            }
-
-            // 개선된 SQL 파싱 사용
-            const statements = this.parseAdvancedSQLStatements(sqlContent);
-            console.log(`  📁 ${filename}: ${statements.length}개 SQL 명령 실행 중...`);
-            
-            let successCount = 0;
-            for (const statement of statements) {
-                try {
-                    await this.executeSQL(statement);
-                    successCount++;
-                } catch (error) {
-                    console.log(`    ⚠️ SQL 실행 실패: ${error.message}`);
-                    console.log(`    📝 실패한 SQL (일부): ${statement.substring(0, 100)}...`);
+                // SQL 파싱 및 실행
+                const statements = this.parseAdvancedSQLStatements(sqlContent);
+                console.log(`  📁 ${filename}: ${statements.length}개 SQL 명령 실행 중...`);
+                
+                let successCount = 0;
+                for (const statement of statements) {
+                    try {
+                        await this.executeSQL(statement);
+                        successCount++;
+                    } catch (error) {
+                        console.log(`    ⚠️ SQL 실행 실패: ${error.message}`);
+                        console.log(`    📝 실패한 SQL (일부): ${statement.substring(0, 100)}...`);
+                    }
                 }
+                
+                console.log(`  ✅ ${filename} 실행 완료 (${successCount}/${statements.length})`);
+                return successCount > 0;
+                
+            } catch (fileError) {
+                console.error(`❌ ${filename} 파일 읽기 실패: ${fileError.message}`);
+                return false;
             }
-            
-            console.log(`  ✅ ${filename} 실행 완료 (${successCount}/${statements.length})`);
-            return successCount > 0;
             
         } catch (error) {
             console.error(`❌ SQL 파일 실행 실패 (${filename}):`, error.message);
@@ -408,21 +412,89 @@ class DatabaseInitializer {
     }
 
     /**
-     * 🔥 핵심 수정: 완전 자동 초기화 - SKIP_IF_INITIALIZED 로직 정확히 구현
+     * 🔥 핵심: 개선된 초기화 상태 확인 (안전한 체크)
+     */
+    async checkIfAlreadyInitialized() {
+        try {
+            console.log('🔍 데이터베이스 초기화 상태 확인 중...');
+            
+            // 1단계: 기본 연결 확인
+            if (!this.connections) {
+                console.log('📋 데이터베이스 연결이 없음 - 초기화 필요');
+                return false;
+            }
+
+            // 2단계: 핵심 테이블 존재 확인 (안전한 방식)
+            const requiredTables = ['tenants', 'users', 'sites', 'protocols', 'devices'];
+            let missingTables = [];
+            
+            for (const tableName of requiredTables) {
+                try {
+                    const exists = await this.doesTableExist(tableName);
+                    if (!exists) {
+                        missingTables.push(tableName);
+                    }
+                } catch (error) {
+                    // 테이블 확인 자체가 실패하면 해당 테이블이 없는 것으로 간주
+                    console.log(`📋 테이블 '${tableName}' 확인 실패 (${error.message}) - 없는 것으로 간주`);
+                    missingTables.push(tableName);
+                }
+            }
+            
+            if (missingTables.length > 0) {
+                console.log(`📋 누락된 필수 테이블: ${missingTables.join(', ')} - 초기화 필요`);
+                return false;
+            }
+            
+            console.log('✅ 모든 필수 테이블 존재함');
+
+            // 3단계: 기본 데이터 존재 확인 (안전한 방식)
+            try {
+                const tenantResult = await this.querySQL('SELECT COUNT(*) as count FROM tenants');
+                const tenantCount = parseInt(tenantResult[0]?.count || '0');
+                
+                if (tenantCount === 0) {
+                    console.log('📊 테넌트 데이터 없음 - 초기화 필요');
+                    return false;
+                }
+                
+                console.log(`📊 테넌트 데이터 확인: ${tenantCount}개`);
+            } catch (error) {
+                console.log(`📊 테넌트 데이터 확인 실패 (${error.message}) - 초기화 필요`);
+                return false;
+            }
+
+            console.log('✅ 데이터베이스가 완전히 초기화되어 있음');
+            return true;
+            
+        } catch (error) {
+            // 최상위 예외 처리: 어떤 예상치 못한 에러든 초기화 필요로 간주
+            console.log(`❌ 초기화 상태 확인 중 예외 발생: ${error.message}`);
+            console.log('🔧 안전을 위해 초기화 진행');
+            return false;
+        }
+    }
+
+    /**
+     * 🔥 핵심: 완전 자동 초기화 (SKIP_IF_INITIALIZED 로직 개선)
      */
     async performAutoInitialization() {
         try {
             console.log('🚀 완전 자동 초기화 시작...\n');
 
+            // 스키마 경로 확인
             await this.findSchemasPath();
-            
-            // 🔥 중요: SKIP_IF_INITIALIZED 체크를 맨 먼저 실행
+            if (!this.schemasPath) {
+                console.error('❌ 스키마 파일을 찾을 수 없어 초기화 불가');
+                return false;
+            }
+
+            // SKIP_IF_INITIALIZED 체크 (개선된 로직)
             const skipIfInitialized = this.config.getBoolean('SKIP_IF_INITIALIZED', true);
             
             if (skipIfInitialized) {
                 console.log('🔍 기존 데이터베이스 상태 확인 중...');
                 
-                // 🔥 핵심: 더 정확한 초기화 상태 확인
                 const isAlreadyInitialized = await this.checkIfAlreadyInitialized();
                 
                 if (isAlreadyInitialized) {
@@ -432,35 +504,22 @@ class DatabaseInitializer {
                 }
                 
                 console.log('📋 기존 데이터가 불완전하거나 없어서 초기화를 진행합니다.');
+            } else {
+                console.log('🔧 SKIP_IF_INITIALIZED=false 설정으로 강제 초기화 진행');
             }
 
-            // 여기서부터 실제 초기화 진행
-            await this.checkDatabaseStatus();
-
-            // 단계별 초기화
-            if (!this.initStatus.systemTables) {
-                console.log('📋 [1/5] 시스템 테이블 생성 중...');
-                await this.createSystemTables();
-                this.initStatus.systemTables = true;
-            }
+            // 실제 초기화 단계
+            console.log('📋 [1/5] 시스템 테이블 생성 중...');
+            await this.createSystemTables();
             
-            if (!this.initStatus.tenantSchemas) {
-                console.log('🏢 [2/5] 확장 테이블 생성 중...');
-                await this.createExtendedTables();
-                this.initStatus.tenantSchemas = true;
-            }
+            console.log('🏢 [2/5] 확장 테이블 생성 중...');
+            await this.createExtendedTables();
             
-            if (!this.initStatus.indexesCreated) {
-                console.log('⚡ [3/5] 인덱스 생성 중...');
-                await this.createIndexes();
-                this.initStatus.indexesCreated = true;
-            }
+            console.log('⚡ [3/5] 인덱스 생성 중...');
+            await this.createIndexes();
             
-            if (!this.initStatus.sampleData) {
-                console.log('📊 [4/5] 기본 데이터 생성 중...');
-                await this.createSampleData();
-                this.initStatus.sampleData = true;
-            }
+            console.log('📊 [4/5] 기본 데이터 생성 중...');
+            await this.createSampleData();
 
             console.log('🎯 [5/5] 초기 데이터 삽입 중...');
             await this.executeSQLFile('09-initial-data.sql');
@@ -473,91 +532,6 @@ class DatabaseInitializer {
             
         } catch (error) {
             console.error('❌ 완전 자동 초기화 실패:', error.message);
-            return false;
-        }
-    }
-
-    /**
-     * 🔥 새로운 메서드: 더 정확한 초기화 상태 확인
-     */
-    async checkIfAlreadyInitialized() {
-        try {
-            // 1. 핵심 테이블들이 존재하는지 확인
-            const requiredTables = ['tenants', 'sites', 'protocols', 'devices', 'data_points'];
-            
-            for (const tableName of requiredTables) {
-                const exists = await this.doesTableExist(tableName);
-                if (!exists) {
-                    console.log(`📋 필수 테이블 '${tableName}'이 없음 - 초기화 필요`);
-                    return false;
-                }
-            }
-            
-            // 2. 기본 데이터가 충분한지 확인
-            const tenantCount = await this.querySQL('SELECT COUNT(*) as count FROM tenants');
-            const tenantsExist = parseInt(tenantCount[0]?.count || '0') > 0;
-            
-            const protocolCount = await this.querySQL('SELECT COUNT(*) as count FROM protocols');
-            const protocolsExist = parseInt(protocolCount[0]?.count || '0') > 0;
-            
-            if (!tenantsExist) {
-                console.log('📊 테넌트 데이터 없음 - 초기화 필요');
-                return false;
-            }
-            
-            if (!protocolsExist) {
-                console.log('📊 프로토콜 데이터 없음 - 초기화 필요');
-                return false;
-            }
-            
-            // 3. 중요한 인덱스가 있는지 확인
-            const indexExists = await this.checkCriticalIndexes();
-            if (!indexExists) {
-                console.log('⚡ 중요한 인덱스 없음 - 초기화 필요');
-                return false;
-            }
-            
-            console.log('✅ 모든 초기화 조건이 만족됨');
-            return true;
-            
-        } catch (error) {
-            console.log('❌ 초기화 상태 확인 실패:', error.message);
-            return false;
-        }
-    }
-
-    /**
-     * 🔥 새로운 메서드: 중요한 인덱스 존재 확인
-     */
-    async checkCriticalIndexes() {
-        try {
-            const criticalIndexes = ['idx_users_tenant', 'idx_devices_tenant', 'idx_data_points_device'];
-            
-            for (const indexName of criticalIndexes) {
-                let indexQuery;
-                
-                switch (this.databaseType) {
-                    case 'sqlite':
-                        indexQuery = "SELECT name FROM sqlite_master WHERE type='index' AND name = ?";
-                        break;
-                    case 'postgresql':
-                        indexQuery = "SELECT indexname FROM pg_indexes WHERE indexname = $1";
-                        break;
-                    case 'mysql':
-                        indexQuery = "SELECT index_name FROM information_schema.statistics WHERE index_name = ?";
-                        break;
-                    default:
-                        return true; // 알 수 없는 DB는 통과
-                }
-                
-                const result = await this.querySQL(indexQuery, [indexName]);
-                if (result.length === 0) {
-                    return false;
-                }
-            }
-            
-            return true;
-        } catch (error) {
             return false;
         }
     }
@@ -587,14 +561,14 @@ class DatabaseInitializer {
     }
 
     async createSystemTables() {
-        const sqlFiles = ['01-core-tables.sql', '02-users-sites.sql', '03-protocols-table.sql', '04-device-tables.sql'];
+        const sqlFiles = ['01-core-tables.sql', '02-users-sites.sql', '03-protocols-table.sql'];
         for (const sqlFile of sqlFiles) {
             await this.executeSQLFile(sqlFile);
         }
     }
 
     async createExtendedTables() {
-        const sqlFiles = ['05-alarm-tables.sql', '06-virtual-points.sql', '07-log-tables.sql'];
+        const sqlFiles = ['04-device-tables.sql', '05-alarm-tables.sql', '06-virtual-points.sql', '07-log-tables.sql'];
         for (const sqlFile of sqlFiles) {
             await this.executeSQLFile(sqlFile);
         }
@@ -605,7 +579,7 @@ class DatabaseInitializer {
     }
 
     async checkSystemTables() {
-        const systemTables = ['tenants', 'users', 'sites', 'protocols', 'devices', 'data_points'];
+        const systemTables = ['tenants', 'users', 'sites', 'protocols', 'devices'];
         let foundTables = 0;
         
         for (const tableName of systemTables) {
@@ -679,9 +653,66 @@ class DatabaseInitializer {
         }
     }
 
+    /**
+     * 🔥 수정: 실제 테이블 구조에 맞는 기본 데이터 생성
+     */
     async createSampleData() {
-        // 09-initial-data.sql에서 처리하므로 여기서는 간단한 기본 데이터만
-        console.log('  ✅ 기본 데이터는 09-initial-data.sql에서 처리됩니다');
+        try {
+            console.log('  🔍 tenants 테이블 구조 확인 중...');
+            
+            // 실제 테이블 구조에 맞는 INSERT
+            try {
+                await this.executeSQL(
+                    `INSERT OR IGNORE INTO tenants (company_name, company_code, domain, contact_email, subscription_plan, subscription_status, is_active) 
+                    VALUES ('Default Company', 'DEFAULT', 'default.local', 'admin@default.local', 'starter', 'active', 1)`
+                );
+                console.log('  ✅ 기본 테넌트 생성 성공');
+            } catch (tenantError) {
+                console.log(`  ⚠️ 테넌트 생성 실패: ${tenantError.message}`);
+            }
+            
+            // 사용자는 성공했으므로 그대로 유지
+            try {
+                await this.executeSQL(
+                    `INSERT OR IGNORE INTO users (tenant_id, username, email, role, is_active) 
+                    VALUES (1, 'admin', 'admin@pulseone.local', 'admin', 1)`
+                );
+                console.log('  ✅ 기본 사용자 생성 성공');
+            } catch (userError) {
+                console.log(`  ⚠️ 사용자 생성 실패: ${userError.message}`);
+            }
+            
+        } catch (error) {
+            console.error('기본 데이터 생성 실패:', error.message);
+        }
+    }
+
+    async createBackup(force = false) {
+        try {
+            if (this.databaseType === 'sqlite') {
+                const dbConfig = this.config.getDatabaseConfig();
+                
+                // 🔥 수정: 데이터베이스 파일과 같은 디렉토리에 backup 폴더 생성
+                const dbPath = dbConfig.sqlite.path; // 예: /app/data/db/pulseone.db
+                const dbDir = path.dirname(dbPath);  // 예: /app/data/db
+                const backupDir = path.join(dbDir, '..', 'backup'); // /app/data/backup
+                
+                await fs.mkdir(backupDir, { recursive: true });
+                
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const backupPath = path.join(backupDir, `pulseone_backup_${timestamp}.db`);
+                
+                await fs.copyFile(dbPath, backupPath);
+                console.log(`✅ SQLite 백업 생성: ${backupPath}`);
+                return backupPath;
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('❌ 백업 생성 실패:', error.message);
+            if (force) throw error;
+            return null;
+        }
     }
 
     async performInitialization() {
@@ -693,11 +724,6 @@ class DatabaseInitializer {
                this.initStatus.tenantSchemas && 
                this.initStatus.sampleData && 
                this.initStatus.indexesCreated;
-    }
-
-    // 기본 스키마 반환 메서드들은 원본 유지...
-    getDefaultSchema(filename) {
-        return null; // 파일에서 읽는 것을 우선
     }
 }
 
