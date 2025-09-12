@@ -1,3 +1,72 @@
+// Command line argument handling
+if (process.argv.includes('--version')) {
+    console.log('PulseOne Backend v2.1.0');
+    process.exit(0);
+}
+
+if (process.argv.includes('--help')) {
+    console.log('PulseOne Backend Server');
+    console.log('Usage: pulseone-backend.exe [options]');
+    console.log('Options:');
+    console.log('  --version    Show version');
+    console.log('  --help       Show help');
+    process.exit(0);
+}
+
+// Command line argument handling
+if (process.argv.includes('--version')) {
+    console.log('PulseOne Backend v2.1.0');
+    process.exit(0);
+}
+
+if (process.argv.includes('--help')) {
+    console.log('PulseOne Backend Server');
+    console.log('Usage: pulseone-backend.exe [options]');
+    console.log('Options:');
+    console.log('  --version    Show version');
+    console.log('  --help       Show help');
+    process.exit(0);
+}
+
+// Command line argument handling
+if (process.argv.includes('--version')) {
+    console.log('PulseOne Backend v2.1.0');
+    process.exit(0);
+}
+
+if (process.argv.includes('--help')) {
+    console.log('PulseOne Backend Server');
+    console.log('Usage: pulseone-backend.exe [options]');
+    console.log('Options:');
+    console.log('  --version    Show version');
+    console.log('  --help       Show help');
+    process.exit(0);
+}
+
+// CLI 옵션 처리
+if (process.argv.includes('--version') || process.argv.includes('-v')) {
+    console.log('PulseOne Backend v2.1.0');
+    process.exit(0);
+}
+
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    console.log('PulseOne Industrial IoT Platform');
+    console.log('Usage: pulseone-backend.exe [options]');
+    console.log('');
+    console.log('Options:');
+    console.log('  --version, -v    Show version');
+    console.log('  --help, -h       Show help');
+    console.log('  --port PORT      Server port (default: 3000)');
+    console.log('');
+    process.exit(0);
+}
+
+// 포트 설정 처리
+const portArg = process.argv.find(arg => arg.startsWith('--port='));
+if (portArg) {
+    process.env.PORT = portArg.split('=')[1];
+}
+
 // =============================================================================
 // backend/app.js - ConfigManager 완전 통합 버전 (CORS 및 WebSocket 수정 완료)
 // 기존 구조 + WebSocket 서비스 분리 + Collector 통합 + 모든 API 라우트
