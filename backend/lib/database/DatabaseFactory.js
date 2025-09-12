@@ -46,8 +46,8 @@ loadConfig() {
             
             // SQLite 설정
             sqlite: {
-                path: process.env.SQLITE_DB_PATH || './data/pulseone.db',
-                logPath: process.env.SQLITE_LOG_DB_PATH || './data/pulseone_logs.db',
+                path: process.env.SQLITE_DB_PATH || './data/db/pulseone.db',
+                logPath: process.env.SQLITE_LOG_DB_PATH || './data/db/pulseone_logs.db',
                 walMode: process.env.SQLITE_WAL_MODE === 'true',
                 busyTimeout: parseInt(process.env.SQLITE_BUSY_TIMEOUT || '30000')
             },
@@ -143,7 +143,16 @@ loadConfig() {
         }
 
         try {
-            const connection = new ConnectionClass(connectionConfig);
+            let connection;
+            if (dbType.toLowerCase() === 'sqlite' || dbType.toLowerCase() === 'sqlite3') {
+                connection = ConnectionClass; // 이미 생성된 인스턴스 사용
+                // SQLite 설정이 필요하다면 별도 메서드로 적용
+                if (connection.updateConfig) {
+                    connection.updateConfig(connectionConfig);
+                }
+            } else {
+                connection = new ConnectionClass(connectionConfig); // 다른 DB는 생성자 사용
+            }
             await connection.connect();
             
             console.log(`✅ ${dbType} 연결 성공 (${purpose})`);

@@ -8,7 +8,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // 데이터베이스 연결
-const dbPath = process.env.SQLITE_PATH || path.join(__dirname, '../data/pulseone.db');
+const dbPath = process.env.SQLITE_PATH || path.join(__dirname, '../data/db/pulseone.db');
 const db = new sqlite3.Database(dbPath);
 
 /**

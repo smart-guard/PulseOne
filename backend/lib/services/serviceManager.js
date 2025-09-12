@@ -480,7 +480,7 @@ class ServiceManager {
           password: configManager.get('REDIS_PRIMARY_PASSWORD', '')
         },
         sqlite: {
-          path: configManager.get('SQLITE_PATH', './data/pulseone.db')
+          path: configManager.get('SQLITE_PATH', './data/db/pulseone.db')
         }
       },
       message_queue: {

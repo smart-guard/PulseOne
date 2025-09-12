@@ -334,4 +334,3 @@ class SQLiteConnection {
 // 인스턴스를 기본으로 export하고, 클래스를 추가로 export
 const sqliteConnection = new SQLiteConnection();
 module.exports = sqliteConnection;
-module.exports.SQLiteConnection = SQLiteConnection;
