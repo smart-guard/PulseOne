@@ -179,7 +179,7 @@ async function checkServiceHealth() {
     // SQLite 데이터베이스 체크
     try {
         const sqlite3 = require('sqlite3');
-        const dbPath = config.get('DATABASE_PATH') || './data/pulseone.db';
+        const dbPath = config.get('DATABASE_PATH') || './data/db/pulseone.db';
         
         await new Promise((resolve, reject) => {
             const db = new sqlite3.Database(dbPath, (err) => {
@@ -480,7 +480,7 @@ router.get('/database-stats', async (req, res) => {
         
         const config = ConfigManager.getInstance();
         const sqlite3 = require('sqlite3');
-        const dbPath = config.get('DATABASE_PATH') || './data/pulseone.db';
+        const dbPath = config.get('DATABASE_PATH') || './data/db/pulseone.db';
         
         console.log('📁 데이터베이스 경로:', dbPath);
         
