@@ -122,7 +122,7 @@ try {
 } catch (error1) {
     try {
         DatabaseInitializer = require('./lib/database/DatabaseInitializer');
-        console.log('✅ DatabaseInitializer 로드 성공 (lib/database/DatabaseInitializer')');
+        console.log('✅ DatabaseInitializer 로드 성공 (lib/database/DatabaseInitializer');
     } catch (error2) {
         console.warn('⚠️ DatabaseInitializer 로드 실패:', error1.message);
         console.warn('   초기화 기능이 비활성화됩니다.');
