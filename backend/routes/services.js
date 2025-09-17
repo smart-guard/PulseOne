@@ -1,12 +1,12 @@
-// backend/routes/services.js (크로스 플랫폼용)
-// Docker 없이 네이티브 프로세스 직접 관리 (Windows/Linux/macOS 모두 지원)
+// backend/routes/services.js - 완성본
+// Collector와 Redis 제어 기능 모두 포함
 
 const express = require('express');
 const router = express.Router();
 const CrossPlatformManager = require('../lib/services/crossPlatformManager');
 
 // ========================================
-// 📊 서비스 상태 조회 (Windows 프로세스 기반)
+// 📊 서비스 상태 조회
 // ========================================
 
 // 모든 서비스 상태 조회
@@ -45,8 +45,7 @@ router.get('/:serviceName', async (req, res) => {
       success: true,
       data: {
         ...service,
-        // 📈 추가 상세 정보
-        platform: 'Windows',
+        platform: CrossPlatformManager.platform,
         management: 'Native Process',
         executablePath: service.executable,
         lastUpdated: new Date().toISOString()
@@ -69,7 +68,7 @@ router.get('/:serviceName', async (req, res) => {
 // Collector 시작
 router.post('/collector/start', async (req, res) => {
   try {
-    console.log('🚀 Starting Collector service via Cross-Platform API...');
+    console.log('🚀 Starting Collector service...');
     const result = await CrossPlatformManager.startCollector();
     
     if (result.success) {
@@ -85,6 +84,7 @@ router.post('/collector/start', async (req, res) => {
         success: false,
         error: result.error,
         platform: result.platform,
+        suggestion: result.suggestion,
         timestamp: new Date().toISOString()
       });
     }
@@ -101,7 +101,7 @@ router.post('/collector/start', async (req, res) => {
 // Collector 중지
 router.post('/collector/stop', async (req, res) => {
   try {
-    console.log('🛑 Stopping Collector service via Cross-Platform API...');
+    console.log('🛑 Stopping Collector service...');
     const result = await CrossPlatformManager.stopCollector();
     
     if (result.success) {
@@ -132,7 +132,7 @@ router.post('/collector/stop', async (req, res) => {
 // Collector 재시작
 router.post('/collector/restart', async (req, res) => {
   try {
-    console.log('🔄 Restarting Collector service via Cross-Platform API...');
+    console.log('🔄 Restarting Collector service...');
     const result = await CrossPlatformManager.restartCollector();
     
     if (result.success) {
@@ -153,6 +153,127 @@ router.post('/collector/restart', async (req, res) => {
     }
   } catch (error) {
     console.error('Error restarting Collector:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// ========================================
+// 🔴 Redis 서비스 제어
+// ========================================
+
+// Redis 시작
+router.post('/redis/start', async (req, res) => {
+  try {
+    console.log('🚀 Starting Redis service...');
+    const result = await CrossPlatformManager.startRedis();
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: `Redis service started successfully on ${result.platform}`,
+        pid: result.pid,
+        platform: result.platform,
+        port: result.port || 6379,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        platform: result.platform,
+        suggestion: result.suggestion,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error('Error starting Redis:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Redis 중지
+router.post('/redis/stop', async (req, res) => {
+  try {
+    console.log('🛑 Stopping Redis service...');
+    const result = await CrossPlatformManager.stopRedis();
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: `Redis service stopped successfully on ${result.platform}`,
+        platform: result.platform,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        platform: result.platform,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error('Error stopping Redis:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Redis 재시작
+router.post('/redis/restart', async (req, res) => {
+  try {
+    console.log('🔄 Restarting Redis service...');
+    const result = await CrossPlatformManager.restartRedis();
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: `Redis service restarted successfully on ${result.platform}`,
+        pid: result.pid,
+        platform: result.platform,
+        port: result.port || 6379,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        platform: result.platform,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error('Error restarting Redis:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Redis 상태 확인
+router.get('/redis/status', async (req, res) => {
+  try {
+    const status = await CrossPlatformManager.getRedisStatus();
+    res.json({
+      success: true,
+      data: status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error checking Redis status:', error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -233,7 +354,7 @@ router.get('/system/info', async (req, res) => {
     
     const systemInfo = {
       platform: {
-        type: 'Windows Native Installation',
+        type: CrossPlatformManager.getDeploymentType(),
         os: os.platform(),
         release: os.release(),
         architecture: os.arch(),
@@ -308,6 +429,11 @@ router.get('/processes', async (req, res) => {
         ...p,
         service: 'collector',
         type: 'C++ Application'
+      })),
+      ...processMap.redis.map(p => ({
+        ...p,
+        service: 'redis',
+        type: 'Redis Server'
       }))
     ];
 
@@ -318,7 +444,8 @@ router.get('/processes', async (req, res) => {
         summary: {
           total: processes.length,
           backend: processMap.backend.length,
-          collector: processMap.collector.length
+          collector: processMap.collector.length,
+          redis: processMap.redis.length
         },
         platform: CrossPlatformManager.platform,
         architecture: CrossPlatformManager.architecture,
@@ -366,143 +493,6 @@ router.get('/platform/info', (req, res) => {
   res.json({
     success: true,
     data: platformInfo
-  });
-});
-
-// 플랫폼별 서비스 상태 (더 상세한 정보)
-router.get('/platform/services', async (req, res) => {
-  try {
-    const platform = CrossPlatformManager.platform;
-    
-    if (platform === 'win32') {
-      // Windows 서비스 상태 확인
-      const command = 'sc query type=service state=all | findstr "PulseOne"';
-      
-      try {
-        const { stdout } = await CrossPlatformManager.execCommand(command);
-        const services = stdout.split('\n').filter(line => line.trim());
-        
-        res.json({
-          success: true,
-          data: {
-            platform: 'Windows',
-            serviceManager: 'Windows Services',
-            services: services,
-            registered: services.length > 0,
-            message: services.length > 0 ? 
-              'PulseOne is registered as Windows Service' : 
-              'PulseOne is running as standalone application'
-          }
-        });
-      } catch (error) {
-        res.json({
-          success: true,
-          data: {
-            platform: 'Windows',
-            serviceManager: 'Windows Services',
-            services: [],
-            registered: false,
-            message: 'PulseOne is running as standalone application',
-            note: 'This is normal for development or portable installations'
-          }
-        });
-      }
-    } else if (platform === 'linux') {
-      // Linux systemd 서비스 확인
-      try {
-        const { stdout } = await CrossPlatformManager.execCommand('systemctl list-units | grep pulseone');
-        const services = stdout.split('\n').filter(line => line.trim());
-        
-        res.json({
-          success: true,
-          data: {
-            platform: 'Linux',
-            serviceManager: 'systemd',
-            services: services,
-            registered: services.length > 0,
-            message: services.length > 0 ? 
-              'PulseOne is registered as systemd service' : 
-              'PulseOne is running as standalone application'
-          }
-        });
-      } catch (error) {
-        res.json({
-          success: true,
-          data: {
-            platform: 'Linux',
-            serviceManager: 'systemd',
-            services: [],
-            registered: false,
-            message: 'PulseOne is running as standalone application'
-          }
-        });
-      }
-    } else {
-      // macOS or other platforms
-      res.json({
-        success: true,
-        data: {
-          platform: platform,
-          serviceManager: platform === 'darwin' ? 'launchd' : 'manual',
-          services: [],
-          registered: false,
-          message: 'Platform-specific service management not implemented'
-        }
-      });
-    }
-  } catch (error) {
-    console.error('Error checking platform services:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// 시스템 트레이/알림 상태 (플랫폼별)
-router.get('/ui/status', (req, res) => {
-  const platform = CrossPlatformManager.platform;
-  
-  const uiInfo = {
-    platform: platform,
-    available: true,
-    type: platform === 'win32' ? 'System Tray' : 
-          platform === 'linux' ? 'System Indicator' : 
-          platform === 'darwin' ? 'Menu Bar' : 'Unknown',
-    features: []
-  };
-
-  if (platform === 'win32') {
-    uiInfo.features = [
-      'Quick service control',
-      'Status monitoring', 
-      'Log viewer access',
-      'Settings panel',
-      'Windows notification integration'
-    ];
-  } else if (platform === 'linux') {
-    uiInfo.features = [
-      'System indicator icon',
-      'Quick service control',
-      'Status monitoring',
-      'Desktop notifications'
-    ];
-  } else if (platform === 'darwin') {
-    uiInfo.features = [
-      'Menu bar icon',
-      'Quick access menu',
-      'macOS notification center integration'
-    ];
-  }
-
-  res.json({
-    success: true,
-    data: {
-      ...uiInfo,
-      message: `Cross-platform UI integration for ${platform}`,
-      webAccess: 'http://localhost:3000'
-    }
   });
 });
 

@@ -102,22 +102,6 @@ export const MainLayout: React.FC = () => {
                   <i className="fas fa-plug"></i>
                 </div>
                 <span className="menu-title">프로토콜 관리</span>
-                {!sidebarCollapsed && (
-                  <span 
-                    style={{ 
-                      marginLeft: 'auto',
-                      padding: '2px 6px',
-                      fontSize: '9px',
-                      borderRadius: '8px',
-                      background: '#3b82f6',
-                      color: 'white',
-                      fontWeight: '500',
-                      textTransform: 'uppercase'
-                    }}
-                  >
-                    NEW
-                  </span>
-                )}
               </Link>
             </li>
 

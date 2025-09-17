@@ -1,10 +1,14 @@
-// backend/lib/services/crossPlatformManager.js
-// 완전 새로 작성: Windows, Linux, macOS, AWS 모두 지원
+// backend/lib/services/crossPlatformManager.js - 완성본
+// Windows, Linux, macOS, AWS 모두 지원 + Redis 제어 기능 포함
 
 const os = require('os');
 const path = require('path');
 const { spawn, exec } = require('child_process');
 const fs = require('fs').promises;
+const fsSync = require('fs');
+
+// ConfigManager 연동
+const config = require('../config/ConfigManager');
 
 class CrossPlatformManager {
   constructor() {
@@ -39,7 +43,7 @@ class CrossPlatformManager {
 
     // Docker 환경 감지
     try {
-      require('fs').accessSync('/.dockerenv');
+      fsSync.accessSync('/.dockerenv');
       indicators.push(true);
     } catch (e) {
       // Docker 환경 아님
@@ -49,15 +53,20 @@ class CrossPlatformManager {
   }
 
   // ========================================
-  // 📁 플랫폼별 경로 설정
+  // 📁 플랫폼별 경로 설정 (ConfigManager 통합)
   // ========================================
 
   initializePaths() {
+    // 1. ConfigManager에서 커스텀 경로 확인
+    const customCollectorPath = config.get('COLLECTOR_EXECUTABLE_PATH');
+    const customRedisPath = config.get('REDIS_EXECUTABLE_PATH');
+    
     const basePaths = {
       development: {
         win32: {
           root: process.cwd(),
-          collector: path.join(process.cwd(), 'collector', 'bin', 'collector.exe'),
+          collector: customCollectorPath || path.join(process.cwd(), 'collector', 'bin', 'collector.exe'),
+          redis: customRedisPath || path.join(process.cwd(), 'redis-server.exe'),
           config: path.join(process.cwd(), 'config'),
           data: path.join(process.cwd(), 'data'),
           logs: path.join(process.cwd(), 'logs'),
@@ -66,7 +75,8 @@ class CrossPlatformManager {
         },
         linux: {
           root: process.cwd(),
-          collector: path.join(process.cwd(), 'collector', 'bin', 'collector'),
+          collector: customCollectorPath || path.join(process.cwd(), 'collector', 'bin', 'collector'),
+          redis: customRedisPath || '/usr/bin/redis-server',
           config: path.join(process.cwd(), 'config'),
           data: path.join(process.cwd(), 'data'),
           logs: path.join(process.cwd(), 'logs'),
@@ -75,7 +85,8 @@ class CrossPlatformManager {
         },
         darwin: {
           root: process.cwd(),
-          collector: path.join(process.cwd(), 'collector', 'bin', 'collector'),
+          collector: customCollectorPath || path.join(process.cwd(), 'collector', 'bin', 'collector'),
+          redis: customRedisPath || '/usr/local/bin/redis-server',
           config: path.join(process.cwd(), 'config'),
           data: path.join(process.cwd(), 'data'),
           logs: path.join(process.cwd(), 'logs'),
@@ -86,7 +97,8 @@ class CrossPlatformManager {
       production: {
         win32: {
           root: 'C:\\PulseOne',
-          collector: 'C:\\PulseOne\\collector\\bin\\collector.exe',
+          collector: customCollectorPath || 'C:\\PulseOne\\collector\\bin\\collector.exe',
+          redis: customRedisPath || 'C:\\PulseOne\\redis-server.exe',
           config: 'C:\\PulseOne\\config',
           data: 'C:\\PulseOne\\data',
           logs: 'C:\\PulseOne\\logs',
@@ -95,7 +107,8 @@ class CrossPlatformManager {
         },
         linux: {
           root: '/opt/pulseone',
-          collector: '/opt/pulseone/collector/bin/collector',
+          collector: customCollectorPath || '/opt/pulseone/collector/bin/collector',
+          redis: customRedisPath || '/usr/bin/redis-server',
           config: '/opt/pulseone/config',
           data: '/opt/pulseone/data',
           logs: '/var/log/pulseone',
@@ -104,7 +117,8 @@ class CrossPlatformManager {
         },
         darwin: {
           root: '/Applications/PulseOne.app/Contents',
-          collector: '/Applications/PulseOne.app/Contents/collector/bin/collector',
+          collector: customCollectorPath || '/Applications/PulseOne.app/Contents/collector/bin/collector',
+          redis: customRedisPath || '/usr/local/bin/redis-server',
           config: '/Users/Shared/PulseOne/config',
           data: '/Users/Shared/PulseOne/data',
           logs: '/Users/Shared/PulseOne/logs',
@@ -125,25 +139,27 @@ class CrossPlatformManager {
   initializeCommands() {
     if (this.isWindows) {
       return {
-        processFind: 'wmic process where "name=\'collector.exe\' or (name=\'node.exe\' and CommandLine like \'%app.js%\')" get ProcessId,Name,CommandLine,CreationDate /format:csv',
+        processFind: 'wmic process where "name=\'collector.exe\' or name=\'redis-server.exe\' or (name=\'node.exe\' and CommandLine like \'%app.js%\')" get ProcessId,Name,CommandLine,CreationDate /format:csv',
         processKill: (pid) => `taskkill /PID ${pid} /F`,
         serviceList: 'sc query type=service state=all | findstr "PulseOne"',
         systemInfo: 'wmic OS get TotalVisibleMemorySize,FreePhysicalMemory /value',
-        pathExists: (path) => `if exist "${path}" echo "EXISTS" else echo "NOT_EXISTS"`
+        pathExists: (path) => `if exist "${path}" echo "EXISTS" else echo "NOT_EXISTS"`,
+        redisCliShutdown: 'redis-cli.exe shutdown'
       };
     } else {
       return {
-        processFind: 'ps aux | grep -E "(collector|node.*app\.js)" | grep -v grep',
+        processFind: 'ps aux | grep -E "(collector|redis-server|node.*app\.js)" | grep -v grep',
         processKill: (pid) => `kill -TERM ${pid}`,
         serviceList: 'systemctl list-units --type=service | grep pulseone',
         systemInfo: 'free -h && df -h',
-        pathExists: (path) => `[ -f "${path}" ] && echo "EXISTS" || echo "NOT_EXISTS"`
+        pathExists: (path) => `[ -f "${path}" ] && echo "EXISTS" || echo "NOT_EXISTS"`,
+        redisCliShutdown: 'redis-cli shutdown'
       };
     }
   }
 
   // ========================================
-  // 🔍 프로세스 조회
+  // 🔍 프로세스 조회 (Redis 추가)
   // ========================================
 
   async getRunningProcesses() {
@@ -155,7 +171,7 @@ class CrossPlatformManager {
       }
     } catch (error) {
       console.error('Error getting processes:', error);
-      return { backend: [], collector: [] };
+      return { backend: [], collector: [], redis: [] };
     }
   }
 
@@ -164,7 +180,7 @@ class CrossPlatformManager {
       const { stdout } = await this.execCommand(this.commands.processFind);
       const lines = stdout.split('\n').filter(line => line.trim() && !line.includes('Node,Name'));
       
-      const processes = { backend: [], collector: [] };
+      const processes = { backend: [], collector: [], redis: [] };
       
       lines.forEach(line => {
         const parts = line.split(',');
@@ -183,6 +199,8 @@ class CrossPlatformManager {
             processes.backend.push(processInfo);
           } else if (name.includes('collector.exe')) {
             processes.collector.push(processInfo);
+          } else if (name.includes('redis-server.exe')) {
+            processes.redis.push(processInfo);
           }
         }
       });
@@ -190,7 +208,7 @@ class CrossPlatformManager {
       return processes;
     } catch (error) {
       console.error('Error getting Windows processes:', error);
-      return { backend: [], collector: [] };
+      return { backend: [], collector: [], redis: [] };
     }
   }
 
@@ -199,7 +217,7 @@ class CrossPlatformManager {
       const { stdout } = await this.execCommand(this.commands.processFind);
       const lines = stdout.split('\n').filter(line => line.trim());
       
-      const processes = { backend: [], collector: [] };
+      const processes = { backend: [], collector: [], redis: [] };
       
       lines.forEach(line => {
         const parts = line.trim().split(/\s+/);
@@ -221,6 +239,8 @@ class CrossPlatformManager {
             processes.backend.push(processInfo);
           } else if (command.includes('collector')) {
             processes.collector.push(processInfo);
+          } else if (command.includes('redis-server')) {
+            processes.redis.push(processInfo);
           }
         }
       });
@@ -228,7 +248,7 @@ class CrossPlatformManager {
       return processes;
     } catch (error) {
       console.error('Error getting Unix processes:', error);
-      return { backend: [], collector: [] };
+      return { backend: [], collector: [], redis: [] };
     }
   }
 
@@ -245,7 +265,6 @@ class CrossPlatformManager {
       if (!collectorExists) {
         console.warn(`⚠️ Collector executable not found: ${this.paths.collector}`);
         
-        // 개발 환경에서는 빌드 제안
         if (this.isDevelopment) {
           return {
             success: false,
@@ -283,9 +302,7 @@ class CrossPlatformManager {
       await this.sleep(3000);
       
       const newProcesses = await this.getRunningProcesses();
-      const newCollector = newProcesses.collector.find(p => 
-        p.pid > (processes.collector[0]?.pid || 0)
-      );
+      const newCollector = newProcesses.collector[0];
 
       if (newCollector) {
         return {
@@ -298,7 +315,7 @@ class CrossPlatformManager {
       } else {
         return {
           success: false,
-          error: 'Collector process failed to start (process not detected)',
+          error: 'Collector process failed to start',
           platform: this.platform,
           suggestion: 'Check collector logs for startup errors'
         };
@@ -318,14 +335,12 @@ class CrossPlatformManager {
     const collectorDir = path.dirname(this.paths.collector);
     
     if (this.isWindows) {
-      // Windows에서 실행
       return spawn(this.paths.collector, [], {
         cwd: collectorDir,
         detached: true,
         stdio: 'ignore'
       });
     } else {
-      // Unix/Linux에서 실행 (환경변수 포함)
       return spawn(this.paths.collector, [], {
         cwd: collectorDir,
         detached: true,
@@ -395,14 +410,220 @@ class CrossPlatformManager {
       return stopResult;
     }
 
-    // 잠시 대기 후 시작
     await this.sleep(2000);
     
     return await this.startCollector();
   }
 
   // ========================================
-  // 📊 서비스 상태 조회
+  // 🔴 Redis 서비스 제어
+  // ========================================
+
+  async startRedis() {
+    console.log(`🚀 Starting Redis on ${this.platform}...`);
+    
+    try {
+      // 1. Redis 경로 확인
+      const redisPath = this.paths.redis;
+      const redisExists = await this.fileExists(redisPath);
+      
+      if (!redisExists) {
+        return {
+          success: false,
+          error: `Redis not found at: ${redisPath}`,
+          suggestion: this.isWindows ? 
+            'Download Redis for Windows from GitHub' : 
+            'Install Redis using package manager (apt/yum/brew)',
+          platform: this.platform
+        };
+      }
+
+      // 2. 이미 실행 중인지 확인
+      const processes = await this.getRunningProcesses();
+      if (processes.redis.length > 0) {
+        return {
+          success: false,
+          error: `Redis already running (PID: ${processes.redis[0].pid})`,
+          platform: this.platform,
+          port: 6379
+        };
+      }
+
+      // 3. Redis 시작
+      let redisProcess;
+      const redisConfig = config.getRedisConfig();
+      const port = redisConfig.port || 6379;
+      
+      if (this.isWindows) {
+        // Windows: redis-server.exe 실행
+        redisProcess = spawn(redisPath, [
+          '--port', port.toString(),
+          '--maxmemory', '512mb',
+          '--maxmemory-policy', 'allkeys-lru'
+        ], {
+          detached: true,
+          stdio: 'ignore'
+        });
+      } else {
+        // Linux/macOS: redis-server 실행
+        redisProcess = spawn(redisPath, [
+          '--port', port.toString(),
+          '--daemonize', 'yes',
+          '--maxmemory', '512mb',
+          '--maxmemory-policy', 'allkeys-lru'
+        ], {
+          detached: true,
+          stdio: 'ignore'
+        });
+      }
+
+      // 4. 시작 확인
+      await this.sleep(2000);
+      
+      const newProcesses = await this.getRunningProcesses();
+      const newRedis = newProcesses.redis[0];
+
+      if (newRedis) {
+        return {
+          success: true,
+          message: `Redis started successfully on ${this.platform}`,
+          pid: newRedis.pid,
+          platform: this.platform,
+          port: port
+        };
+      } else {
+        return {
+          success: false,
+          error: 'Redis process failed to start',
+          platform: this.platform,
+          suggestion: 'Check Redis logs or try manual start'
+        };
+      }
+
+    } catch (error) {
+      console.error('❌ Failed to start Redis:', error);
+      return {
+        success: false,
+        error: error.message,
+        platform: this.platform
+      };
+    }
+  }
+
+  async stopRedis() {
+    console.log(`🛑 Stopping Redis on ${this.platform}...`);
+    
+    try {
+      const processes = await this.getRunningProcesses();
+      const runningRedis = processes.redis[0];
+
+      if (!runningRedis) {
+        return {
+          success: false,
+          error: 'Redis is not running',
+          platform: this.platform
+        };
+      }
+
+      // Redis 정상 종료 시도 (redis-cli shutdown)
+      try {
+        await this.execCommand(this.commands.redisCliShutdown);
+        await this.sleep(2000);
+      } catch (cliError) {
+        console.warn('Redis CLI shutdown failed, using force kill');
+        // CLI 실패시 강제 종료
+        await this.execCommand(this.commands.processKill(runningRedis.pid));
+      }
+
+      // 종료 확인
+      await this.sleep(1000);
+      const newProcesses = await this.getRunningProcesses();
+      const stillRunning = newProcesses.redis.find(p => p.pid === runningRedis.pid);
+
+      if (!stillRunning) {
+        return {
+          success: true,
+          message: `Redis stopped successfully on ${this.platform}`,
+          platform: this.platform
+        };
+      } else {
+        // 강제 종료 재시도
+        await this.execCommand(this.commands.processKill(runningRedis.pid));
+        await this.sleep(1000);
+        
+        return {
+          success: true,
+          message: `Redis force stopped on ${this.platform}`,
+          platform: this.platform
+        };
+      }
+
+    } catch (error) {
+      console.error('❌ Failed to stop Redis:', error);
+      return {
+        success: false,
+        error: error.message,
+        platform: this.platform
+      };
+    }
+  }
+
+  async restartRedis() {
+    console.log(`🔄 Restarting Redis on ${this.platform}...`);
+    
+    const stopResult = await this.stopRedis();
+    if (!stopResult.success && !stopResult.error.includes('not running')) {
+      return stopResult;
+    }
+
+    await this.sleep(2000);
+    
+    return await this.startRedis();
+  }
+
+  async getRedisStatus() {
+    try {
+      const processes = await this.getRunningProcesses();
+      const redisProcess = processes.redis[0];
+      
+      if (redisProcess) {
+        // Redis ping 테스트
+        let isResponding = false;
+        try {
+          const { stdout } = await this.execCommand('redis-cli ping');
+          isResponding = stdout.trim() === 'PONG';
+        } catch {
+          isResponding = false;
+        }
+
+        return {
+          running: true,
+          pid: redisProcess.pid,
+          responding: isResponding,
+          memory: redisProcess.memory,
+          cpu: redisProcess.cpu,
+          uptime: this.calculateUptime(redisProcess.startTime),
+          port: config.getRedisConfig().port || 6379,
+          platform: this.platform
+        };
+      } else {
+        return {
+          running: false,
+          responding: false,
+          platform: this.platform
+        };
+      }
+    } catch (error) {
+      return {
+        running: false,
+        error: error.message,
+        platform: this.platform
+      };
+    }
+  }
+
+  // ========================================
+  // 📊 서비스 상태 조회 (Redis 포함)
   // ========================================
 
   async getServicesForAPI() {
@@ -438,6 +659,23 @@ class CrossPlatformManager {
         cpuUsage: processes.collector[0]?.cpu || 'N/A',
         executablePath: this.paths.collector,
         exists: await this.fileExists(this.paths.collector)
+      },
+      {
+        name: 'redis',
+        displayName: 'Redis Cache',
+        icon: 'fas fa-database',
+        description: `인메모리 캐시 서버 (${this.platform})`,
+        controllable: true,
+        status: processes.redis.length > 0 ? 'running' : 'stopped',
+        pid: processes.redis[0]?.pid || null,
+        platform: this.platform,
+        executable: path.basename(this.paths.redis),
+        uptime: processes.redis[0] ? this.calculateUptime(processes.redis[0].startTime) : 'N/A',
+        memoryUsage: processes.redis[0]?.memory || 'N/A',
+        cpuUsage: processes.redis[0]?.cpu || 'N/A',
+        executablePath: this.paths.redis,
+        exists: await this.fileExists(this.paths.redis),
+        port: config.getRedisConfig().port || 6379
       }
     ];
 
@@ -477,6 +715,7 @@ class CrossPlatformManager {
       system: await this.getSystemInfo(),
       checks: {
         collector_executable: await this.fileExists(this.paths.collector),
+        redis_executable: await this.fileExists(this.paths.redis),
         database_file: await this.fileExists(this.paths.sqlite),
         config_directory: await this.directoryExists(this.paths.config),
         logs_directory: await this.directoryExists(this.paths.logs),
@@ -504,10 +743,20 @@ class CrossPlatformManager {
         available: health.checks.collector_executable
       };
 
+      health.services.redis = {
+        running: processes.redis.length > 0,
+        pid: processes.redis[0]?.pid || null,
+        platform: this.platform,
+        essential: false,
+        available: health.checks.redis_executable
+      };
+
       // 전체 상태 결정
       if (!health.services.backend.running) {
         health.overall = 'critical';
       } else if (!health.services.collector.running && health.checks.collector_executable) {
+        health.overall = 'degraded';
+      } else if (!health.services.redis.running && health.checks.redis_executable) {
         health.overall = 'degraded';
       }
 
@@ -567,7 +816,8 @@ class CrossPlatformManager {
         dataPath: this.paths.data,
         logsPath: this.paths.logs,
         sqlitePath: this.paths.sqlite,
-        collectorPath: this.paths.collector
+        collectorPath: this.paths.collector,
+        redisPath: this.paths.redis
       }
     };
   }
