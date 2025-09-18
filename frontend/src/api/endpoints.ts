@@ -1,16 +1,15 @@
 // ============================================================================
 // frontend/src/api/endpoints.ts
-// API 엔드포인트 상수 정의 - protocol_id 직접 처리 지원
+// API 엔드포인트 상수 정의 - 완성본 (전체)
 // ============================================================================
 
 // React 환경에서 process.env 안전하게 접근
 const getApiBase = () => {
-  // 개발 환경에서는 기본값 사용
+  // 브라우저 환경
   if (typeof window !== 'undefined') {
-    // 브라우저 환경
     return window.location.hostname === 'localhost' 
       ? 'http://localhost:3000'
-      : 'https://api.pulseone.com';
+      : window.location.origin;
   }
   
   // 빌드 시점에 환경변수가 있다면 사용
@@ -42,12 +41,35 @@ export const ENDPOINTS = {
   SYSTEM_DATABASES: `${API_BASE}/api/system/databases`,
   SYSTEM_HEALTH: `${API_BASE}/api/system/health`,
   
-  // 서비스 제어
+  // ==========================================================================
+  // 서비스 제어 - 백엔드와 완벽 일치
+  // ==========================================================================
   SERVICES: `${API_BASE}/api/services`,
   SERVICE_BY_NAME: (name: string) => `${API_BASE}/api/services/${name}`,
+  
+  // Collector 서비스 제어
+  COLLECTOR_START: `${API_BASE}/api/services/collector/start`,
+  COLLECTOR_STOP: `${API_BASE}/api/services/collector/stop`,
+  COLLECTOR_RESTART: `${API_BASE}/api/services/collector/restart`,
+  COLLECTOR_STATUS: `${API_BASE}/api/services/collector`,
+  
+  // Redis 서비스 제어
+  REDIS_START: `${API_BASE}/api/services/redis/start`,
+  REDIS_STOP: `${API_BASE}/api/services/redis/stop`,
+  REDIS_RESTART: `${API_BASE}/api/services/redis/restart`,
+  REDIS_SERVICE_STATUS: `${API_BASE}/api/services/redis/status`,
+  
+  // 범용 서비스 제어 함수
   SERVICE_START: (name: string) => `${API_BASE}/api/services/${name}/start`,
   SERVICE_STOP: (name: string) => `${API_BASE}/api/services/${name}/stop`,
   SERVICE_RESTART: (name: string) => `${API_BASE}/api/services/${name}/restart`,
+  SERVICE_STATUS: (name: string) => `${API_BASE}/api/services/${name}`,
+  
+  // 서비스 헬스체크 및 시스템 정보
+  SERVICES_HEALTH_CHECK: `${API_BASE}/api/services/health/check`,
+  SERVICES_SYSTEM_INFO: `${API_BASE}/api/services/system/info`,
+  SERVICES_PROCESSES: `${API_BASE}/api/services/processes`,
+  SERVICES_PLATFORM_INFO: `${API_BASE}/api/services/platform/info`,
   
   // 프로세스 관리
   PROCESSES: `${API_BASE}/api/processes`,
@@ -115,6 +137,7 @@ export const ENDPOINTS = {
   ALARMS_HISTORY: `${API_BASE}/api/alarms/history`,
   ALARM_TODAY: `${API_BASE}/api/alarms/today`,
   ALARM_TODAY_STATISTICS: `${API_BASE}/api/alarms/statistics/today`,
+  
   // ---- 카테고리/태그별 알람 발생 ----
   ALARMS_OCCURRENCES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/occurrences/category/${category}`,
   ALARMS_OCCURRENCES_TAG: (tag: string) => `${API_BASE}/api/alarms/occurrences/tag/${tag}`,
@@ -168,7 +191,8 @@ export const ENDPOINTS = {
   DASHBOARD_TENANT_STATS: `${API_BASE}/api/dashboard/tenant-stats`,
   DASHBOARD_RECENT_DEVICES: `${API_BASE}/api/dashboard/recent-devices`,
   DASHBOARD_SYSTEM_HEALTH: `${API_BASE}/api/dashboard/system-health`,
-  DASHBOARD_SERVICE_CONTROL: (name: string) => `${API_BASE}/api/dashboard/service/${name}/control`,
+  DASHBOARD_SERVICE_CONTROL: (name: string, action: string) => 
+    `${API_BASE}/api/services/${name}/${action}`,  // 수정됨
   DASHBOARD_SERVICES_STATUS: `${API_BASE}/api/dashboard/services/status`,
   
   // ==========================================================================
@@ -288,6 +312,13 @@ export const ENDPOINTS = {
 // ==========================================================================
 // URL 빌더 유틸리티 함수들 - protocol_id 지원 추가
 // ==========================================================================
+
+/**
+ * 서비스 제어 URL 빌더
+ */
+export function buildServiceControlUrl(serviceName: string, action: 'start' | 'stop' | 'restart'): string {
+  return `${API_BASE}/api/services/${serviceName}/${action}`;
+}
 
 /**
  * 디바이스 목록 조회 URL - protocol_id 필터 지원
@@ -569,6 +600,27 @@ export const API_GROUPS = {
     HEALTH: ENDPOINTS.SYSTEM_HEALTH
   },
   
+  SERVICES: {
+    LIST: ENDPOINTS.SERVICES,
+    DETAIL: ENDPOINTS.SERVICE_BY_NAME,
+    COLLECTOR: {
+      START: ENDPOINTS.COLLECTOR_START,
+      STOP: ENDPOINTS.COLLECTOR_STOP,
+      RESTART: ENDPOINTS.COLLECTOR_RESTART,
+      STATUS: ENDPOINTS.COLLECTOR_STATUS
+    },
+    REDIS: {
+      START: ENDPOINTS.REDIS_START,
+      STOP: ENDPOINTS.REDIS_STOP,
+      RESTART: ENDPOINTS.REDIS_RESTART,
+      STATUS: ENDPOINTS.REDIS_SERVICE_STATUS
+    },
+    HEALTH_CHECK: ENDPOINTS.SERVICES_HEALTH_CHECK,
+    SYSTEM_INFO: ENDPOINTS.SERVICES_SYSTEM_INFO,
+    PROCESSES: ENDPOINTS.SERVICES_PROCESSES,
+    PLATFORM: ENDPOINTS.SERVICES_PLATFORM_INFO
+  },
+  
   DEVICES: {
     LIST: ENDPOINTS.DEVICES,
     DETAIL: ENDPOINTS.DEVICE_BY_ID,
@@ -665,7 +717,9 @@ export const API_GROUPS = {
     
     // 통계 및 기타
     STATISTICS: ENDPOINTS.ALARM_STATISTICS,
-    TEST: ENDPOINTS.ALARM_TEST
+    TEST: ENDPOINTS.ALARM_TEST,
+    TODAY: ENDPOINTS.ALARM_TODAY,
+    TODAY_STATISTICS: ENDPOINTS.ALARM_TODAY_STATISTICS
   },
   
   VIRTUAL_POINTS: {
@@ -714,7 +768,7 @@ export function getRtuEndpoints(): Record<string, string | Function> {
 /**
  * API 그룹별로 엔드포인트를 가져오는 함수
  */
-export function getEndpointsByGroup(group: keyof typeof API_GROUPS): Record<string, string | Function> {
+export function getEndpointsByGroup(group: keyof typeof API_GROUPS): Record<string, any> {
   return API_GROUPS[group];
 }
 
@@ -733,7 +787,7 @@ export const API_CONFIG = {
     retries: 3
   },
   production: {
-    baseUrl: 'https://api.pulseone.com',
+    baseUrl: window?.location?.origin || 'https://api.pulseone.com',
     timeout: 15000,
     retries: 2
   },
@@ -780,6 +834,12 @@ export const ERROR_CODES = {
   NOT_FOUND: 'NOT_FOUND',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   DUPLICATE_ERROR: 'DUPLICATE_ERROR',
+  
+  // 서비스 관련
+  SERVICE_CONTROL_ERROR: 'SERVICE_CONTROL_ERROR',
+  SERVICE_NOT_FOUND: 'SERVICE_NOT_FOUND',
+  SERVICE_ALREADY_RUNNING: 'SERVICE_ALREADY_RUNNING',
+  SERVICE_NOT_RUNNING: 'SERVICE_NOT_RUNNING',
   
   // 디바이스 및 프로토콜 관련 에러 코드들
   DEVICE_NOT_FOUND: 'DEVICE_NOT_FOUND',

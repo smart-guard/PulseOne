@@ -1,5 +1,4 @@
-// backend/routes/services.js - 완성본
-// Collector와 Redis 제어 기능 모두 포함
+// backend/routes/services.js - 완성본 (CrossPlatformManager 단일 의존성)
 
 const express = require('express');
 const router = express.Router();
@@ -46,7 +45,7 @@ router.get('/:serviceName', async (req, res) => {
       data: {
         ...service,
         platform: CrossPlatformManager.platform,
-        management: 'Native Process',
+        management: 'CrossPlatformManager',
         executablePath: service.executable,
         lastUpdated: new Date().toISOString()
       }
@@ -77,6 +76,7 @@ router.post('/collector/start', async (req, res) => {
         message: `Collector service started successfully on ${result.platform}`,
         pid: result.pid,
         platform: result.platform,
+        executable: result.executable,
         timestamp: new Date().toISOString()
       });
     } else {
@@ -85,6 +85,8 @@ router.post('/collector/start', async (req, res) => {
         error: result.error,
         platform: result.platform,
         suggestion: result.suggestion,
+        buildCommand: result.buildCommand,
+        development: result.development,
         timestamp: new Date().toISOString()
       });
     }
@@ -141,6 +143,7 @@ router.post('/collector/restart', async (req, res) => {
         message: `Collector service restarted successfully on ${result.platform}`,
         pid: result.pid,
         platform: result.platform,
+        executable: result.executable,
         timestamp: new Date().toISOString()
       });
     } else {
@@ -349,56 +352,26 @@ router.get('/health/check', async (req, res) => {
 // 시스템 정보 조회
 router.get('/system/info', async (req, res) => {
   try {
-    const os = require('os');
-    const path = require('path');
-    
-    const systemInfo = {
-      platform: {
-        type: CrossPlatformManager.getDeploymentType(),
-        os: os.platform(),
-        release: os.release(),
-        architecture: os.arch(),
-        hostname: os.hostname()
-      },
-      runtime: {
-        nodeVersion: process.version,
-        pid: process.pid,
-        uptime: `${Math.round(process.uptime() / 60)}분`,
-        memoryUsage: {
-          rss: `${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
-          heapTotal: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)}MB`,
-          heapUsed: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
-          external: `${Math.round(process.memoryUsage().external / 1024 / 1024)}MB`
-        }
-      },
-      system: {
-        totalMemory: `${Math.round(os.totalmem() / 1024 / 1024 / 1024)}GB`,
-        freeMemory: `${Math.round(os.freemem() / 1024 / 1024 / 1024)}GB`,
-        cpuCores: os.cpus().length,
-        loadAverage: os.loadavg(),
-        systemUptime: `${Math.round(os.uptime() / 3600)}시간`
-      },
-      pulseone: {
-        version: '2.1.0',
-        installationPath: CrossPlatformManager.paths.root,
-        configPath: CrossPlatformManager.paths.config,
-        dataPath: CrossPlatformManager.paths.data,
-        logsPath: CrossPlatformManager.paths.logs
-      },
-      deployment: {
-        type: 'Cross Platform Native',
-        containerized: false,
-        distributed: false,
-        scalable: false,
-        supportedPlatforms: ['Windows', 'Linux', 'macOS', 'AWS', 'Docker'],
-        notes: `Ideal for industrial edge computing and SCADA applications on ${os.platform()}`
-      },
-      timestamp: new Date().toISOString()
-    };
+    const systemInfo = await CrossPlatformManager.getSystemInfo();
 
     res.json({
       success: true,
-      data: systemInfo
+      data: {
+        ...systemInfo,
+        pulseone: {
+          ...systemInfo.pulseone,
+          version: '2.1.0',
+          managedBy: 'CrossPlatformManager'
+        },
+        deployment: {
+          type: 'Cross Platform Native',
+          containerized: false,
+          distributed: false,
+          scalable: false,
+          supportedPlatforms: ['Windows', 'Linux', 'macOS', 'AWS', 'Docker'],
+          notes: `Ideal for industrial edge computing and SCADA applications on ${systemInfo.platform.type}`
+        }
+      }
     });
   } catch (error) {
     console.error('Error getting system info:', error);
@@ -468,31 +441,15 @@ router.get('/processes', async (req, res) => {
 
 // 플랫폼 감지 및 특화 기능 정보
 router.get('/platform/info', (req, res) => {
-  const platform = CrossPlatformManager.platform;
+  const platformInfo = CrossPlatformManager.getPlatformInfo();
   
-  const platformInfo = {
-    detected: platform,
-    architecture: CrossPlatformManager.architecture,
-    features: {
-      serviceManager: platform === 'win32' ? 'Windows Services' : 'systemd',
-      processManager: platform === 'win32' ? 'Task Manager' : 'ps/htop',
-      packageManager: platform === 'win32' ? 'MSI/NSIS' : 
-                     platform === 'linux' ? 'apt/yum/dnf' : 'Homebrew',
-      autoStart: platform === 'win32' ? 'Windows Services' : 
-                platform === 'linux' ? 'systemd units' : 'launchd'
-    },
-    paths: CrossPlatformManager.paths,
-    deployment: {
-      recommended: platform === 'win32' ? 'Native Windows Package' :
-                  platform === 'linux' ? 'Docker or Native Package' :
-                  'Native Application Bundle',
-      alternatives: ['Docker', 'Manual Installation', 'Cloud Deployment']
-    }
-  };
-
   res.json({
     success: true,
-    data: platformInfo
+    data: {
+      ...platformInfo,
+      managedBy: 'CrossPlatformManager',
+      singleSource: true
+    }
   });
 });
 
