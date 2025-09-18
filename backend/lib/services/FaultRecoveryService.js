@@ -341,11 +341,17 @@ class FaultRecoveryService extends EventEmitter {
 
   async startCollectorProcess() {
     try {
+      const customPath = this.config.get('COLLECTOR_EXECUTABLE_PATH');
       const isWindows = process.platform === 'win32';
-      const collectorPath = path.join(__dirname, '../../../collector/bin', 
-        isWindows ? 'collector.exe' : 'collector'
-      );
-
+      
+      let collectorPath;
+      if (customPath && fsSync.existsSync(customPath)) {
+        collectorPath = customPath;
+      } else {
+        collectorPath = isWindows ? 
+          path.join(process.cwd(), 'collector.exe') :
+          path.join(process.cwd(), 'collector', 'bin', 'collector');
+      }
       // 실행 파일 존재 확인
       try {
         await fs.access(collectorPath);

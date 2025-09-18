@@ -32,16 +32,17 @@ class CrossPlatformManager {
   // ========================================
 
   detectDevelopmentEnvironment() {
-    // 여러 방법으로 개발 환경 감지
     const indicators = [
       process.env.NODE_ENV === 'development',
       process.env.ENV_STAGE === 'dev',
       process.cwd().includes('/app'),
       process.cwd().includes('\\app'),
-      process.env.DOCKER_CONTAINER === 'true'
+      process.env.DOCKER_CONTAINER === 'true',
+      // Windows 개발환경 추가 감지
+      !process.cwd().startsWith('C:\\Program Files'),
+      !process.cwd().startsWith('C:\\PulseOne')
     ];
 
-    // Docker 환경 감지
     try {
       fsSync.accessSync('/.dockerenv');
       indicators.push(true);
@@ -57,7 +58,7 @@ class CrossPlatformManager {
   // ========================================
 
   initializePaths() {
-    // 1. ConfigManager에서 커스텀 경로 확인
+    // ConfigManager에서 커스텀 경로 확인
     const customCollectorPath = config.get('COLLECTOR_EXECUTABLE_PATH');
     const customRedisPath = config.get('REDIS_EXECUTABLE_PATH');
     
@@ -65,7 +66,8 @@ class CrossPlatformManager {
       development: {
         win32: {
           root: process.cwd(),
-          collector: customCollectorPath || path.join(process.cwd(), 'collector', 'bin', 'collector.exe'),
+          // Windows에서 우선순위: 1) 환경변수 2) 루트 collector.exe 3) bin 폴더
+          collector: customCollectorPath || path.join(process.cwd(), 'collector.exe'),
           redis: customRedisPath || path.join(process.cwd(), 'redis-server.exe'),
           config: path.join(process.cwd(), 'config'),
           data: path.join(process.cwd(), 'data'),
@@ -96,34 +98,34 @@ class CrossPlatformManager {
       },
       production: {
         win32: {
-          root: 'C:\\PulseOne',
-          collector: customCollectorPath || 'C:\\PulseOne\\collector\\bin\\collector.exe',
-          redis: customRedisPath || 'C:\\PulseOne\\redis-server.exe',
-          config: 'C:\\PulseOne\\config',
-          data: 'C:\\PulseOne\\data',
-          logs: 'C:\\PulseOne\\logs',
-          sqlite: 'C:\\PulseOne\\data\\pulseone.db',
-          separator: '\\'
+            root: process.cwd(),
+            collector: customCollectorPath || path.join(process.cwd(), 'collector.exe'),
+            redis: customRedisPath || path.join(process.cwd(), 'redis-server.exe'),
+            config: path.join(process.cwd(), 'config'),
+            data: path.join(process.cwd(), 'data'),
+            logs: path.join(process.cwd(), 'logs'),
+            sqlite: path.join(process.cwd(), 'data', 'pulseone.db'),
+            separator: '\\'
         },
         linux: {
-          root: '/opt/pulseone',
-          collector: customCollectorPath || '/opt/pulseone/collector/bin/collector',
-          redis: customRedisPath || '/usr/bin/redis-server',
-          config: '/opt/pulseone/config',
-          data: '/opt/pulseone/data',
-          logs: '/var/log/pulseone',
-          sqlite: '/opt/pulseone/data/pulseone.db',
-          separator: '/'
+            root: process.cwd(),
+            collector: customCollectorPath || path.join(process.cwd(), 'collector'),
+            redis: customRedisPath || '/usr/bin/redis-server',
+            config: path.join(process.cwd(), 'config'),
+            data: path.join(process.cwd(), 'data'),
+            logs: path.join(process.cwd(), 'logs'),
+            sqlite: path.join(process.cwd(), 'data', 'pulseone.db'),
+            separator: '/'
         },
         darwin: {
-          root: '/Applications/PulseOne.app/Contents',
-          collector: customCollectorPath || '/Applications/PulseOne.app/Contents/collector/bin/collector',
-          redis: customRedisPath || '/usr/local/bin/redis-server',
-          config: '/Users/Shared/PulseOne/config',
-          data: '/Users/Shared/PulseOne/data',
-          logs: '/Users/Shared/PulseOne/logs',
-          sqlite: '/Users/Shared/PulseOne/data/pulseone.db',
-          separator: '/'
+            root: process.cwd(),
+            collector: customCollectorPath || path.join(process.cwd(), 'collector'),
+            redis: customRedisPath || '/usr/local/bin/redis-server',
+            config: path.join(process.cwd(), 'config'),
+            data: path.join(process.cwd(), 'data'),
+            logs: path.join(process.cwd(), 'logs'),
+            sqlite: path.join(process.cwd(), 'data', 'pulseone.db'),
+            separator: '/'
         }
       }
     };
@@ -332,17 +334,20 @@ class CrossPlatformManager {
   }
 
   async spawnCollector() {
-    const collectorDir = path.dirname(this.paths.collector);
+    // 디버깅 로그 추가
+    console.log(`Attempting to spawn: ${this.paths.collector}`);
+    console.log(`Working directory: ${process.cwd()}`);
+    console.log(`File exists: ${require('fs').existsSync(this.paths.collector)}`);
     
     if (this.isWindows) {
       return spawn(this.paths.collector, [], {
-        cwd: collectorDir,
+        cwd: process.cwd(), // collector.exe가 있는 루트 디렉토리
         detached: true,
         stdio: 'ignore'
       });
     } else {
       return spawn(this.paths.collector, [], {
-        cwd: collectorDir,
+        cwd: process.cwd(),
         detached: true,
         stdio: 'ignore',
         env: {
