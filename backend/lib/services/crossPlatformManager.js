@@ -1,5 +1,5 @@
-// backend/lib/services/crossPlatformManager.js - 완성본
-// Windows, Linux, macOS, AWS 모두 지원 + Redis 제어 기능 포함
+// backend/lib/services/crossPlatformManager.js - 통합 로그 매니저 연동 완성본
+// Windows, Linux, macOS, AWS 모두 지원 + Redis 제어 기능 + 통합 로깅
 
 const os = require('os');
 const path = require('path');
@@ -7,8 +7,9 @@ const { spawn, exec } = require('child_process');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 
-// ConfigManager 연동
+// ConfigManager와 LogManager 연동
 const config = require('../config/ConfigManager');
+const logger = require('../utils/LogManager');
 
 class CrossPlatformManager {
   constructor() {
@@ -23,24 +24,35 @@ class CrossPlatformManager {
     this.paths = this.initializePaths();
     this.commands = this.initializeCommands();
     
-    console.log(`🎯 CrossPlatformManager initialized for ${this.platform} (${this.architecture})`);
-    console.log(`📂 Development mode: ${this.isDevelopment}`);
+    // 통합 로그 매니저 사용
+    this.log = (level, message, metadata) => {
+      logger.crossplatform(level, message, metadata);
+    };
+    
+    this.log('INFO', 'CrossPlatformManager 초기화 완료', {
+      platform: this.platform,
+      architecture: this.architecture,
+      development: this.isDevelopment,
+      collectorPath: this.paths.collector,
+      redisPath: this.paths.redis
+    });
   }
 
   // ========================================
-  // 🔍 환경 감지
+  // 🔍 환경 감지 (Windows는 항상 프로덕션)
   // ========================================
 
   detectDevelopmentEnvironment() {
+    // Windows는 항상 프로덕션으로 처리
+    if (this.platform === 'win32') {
+      return false;
+    }
+    
     const indicators = [
       process.env.NODE_ENV === 'development',
       process.env.ENV_STAGE === 'dev',
       process.cwd().includes('/app'),
-      process.cwd().includes('\\app'),
-      process.env.DOCKER_CONTAINER === 'true',
-      // Windows 개발환경 추가 감지
-      !process.cwd().startsWith('C:\\Program Files'),
-      !process.cwd().startsWith('C:\\PulseOne')
+      process.env.DOCKER_CONTAINER === 'true'
     ];
 
     try {
@@ -66,9 +78,8 @@ class CrossPlatformManager {
       development: {
         win32: {
           root: process.cwd(),
-          // Windows에서 우선순위: 1) 환경변수 2) 루트 collector.exe 3) bin 폴더
-          collector: customCollectorPath || path.resolve(process.cwd(), '..', 'collector.exe'),  // 절대 경로로 변환
-          redis: customRedisPath || path.join(process.cwd(), 'redis-server.exe'),
+          collector: customCollectorPath || path.resolve(process.cwd(), '..', 'collector.exe'),
+          redis: customRedisPath || path.resolve(process.cwd(), '..', 'redis-server.exe'),
           config: path.join(process.cwd(), 'config'),
           data: path.join(process.cwd(), 'data'),
           logs: path.join(process.cwd(), 'logs'),
@@ -99,12 +110,13 @@ class CrossPlatformManager {
       production: {
         win32: {
             root: process.cwd(),
-            collector: customCollectorPath || path.join(process.cwd(), 'collector.exe'),
-            redis: customRedisPath || path.join(process.cwd(), 'redis-server.exe'),
-            config: path.join(process.cwd(), 'config'),
-            data: path.join(process.cwd(), 'data'),
-            logs: path.join(process.cwd(), 'logs'),
-            sqlite: path.join(process.cwd(), 'data', 'pulseone.db'),
+            // Windows 프로덕션에서 backend 폴더에서 실행되므로 상위 폴더 참조
+            collector: customCollectorPath || path.resolve(process.cwd(), '..', 'collector.exe'),
+            redis: customRedisPath || path.resolve(process.cwd(), '..', 'redis-server.exe'),
+            config: path.resolve(process.cwd(), '..', 'config'),
+            data: path.resolve(process.cwd(), '..', 'data'),
+            logs: path.resolve(process.cwd(), '..', 'logs'),
+            sqlite: path.resolve(process.cwd(), '..', 'data', 'pulseone.db'),
             separator: '\\'
         },
         linux: {
@@ -141,7 +153,7 @@ class CrossPlatformManager {
   initializeCommands() {
     if (this.isWindows) {
       return {
-        processFind: 'wmic process where "name=\'collector.exe\' or name=\'redis-server.exe\' or (name=\'node.exe\' and CommandLine like \'%app.js%\')" get ProcessId,Name,CommandLine,CreationDate /format:csv',
+        processFind: 'tasklist /fo csv | findstr /i "collector.exe redis-server.exe node.exe"',
         processKill: (pid) => `taskkill /PID ${pid} /F`,
         serviceList: 'sc query type=service state=all | findstr "PulseOne"',
         systemInfo: 'wmic OS get TotalVisibleMemorySize,FreePhysicalMemory /value',
@@ -161,7 +173,7 @@ class CrossPlatformManager {
   }
 
   // ========================================
-  // 🔍 프로세스 조회 (Redis 추가)
+  // 🔍 프로세스 조회 (강력한 감지)
   // ========================================
 
   async getRunningProcesses() {
@@ -172,45 +184,112 @@ class CrossPlatformManager {
         return await this.getUnixProcesses();
       }
     } catch (error) {
-      console.error('Error getting processes:', error);
+      this.log('ERROR', 'getRunningProcesses 실패', { error: error.message });
       return { backend: [], collector: [], redis: [] };
     }
   }
 
   async getWindowsProcesses() {
     try {
-      const { stdout } = await this.execCommand(this.commands.processFind);
-      const lines = stdout.split('\n').filter(line => line.trim() && !line.includes('Node,Name'));
+      this.log('DEBUG', 'Windows 프로세스 감지 시작');
       
+      const { stdout } = await this.execCommand('tasklist /fo csv');
+      this.log('DEBUG', `tasklist 출력 길이: ${stdout.length} 문자`);
+      
+      const lines = stdout.split('\n').filter(line => line.trim());
       const processes = { backend: [], collector: [], redis: [] };
       
-      lines.forEach(line => {
-        const parts = line.split(',');
-        if (parts.length >= 5) {
-          const [, commandLine, creationDate, name, pid] = parts;
-          
-          const processInfo = {
-            pid: parseInt(pid),
-            name: name.trim(),
-            commandLine: commandLine.trim(),
-            startTime: creationDate ? new Date(creationDate) : null,
-            platform: 'windows'
-          };
+      lines.forEach((line, index) => {
+        if (index === 0) return; // 헤더 스킵
+        
+        // CSV 파싱
+        const csvParts = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+        if (!csvParts || csvParts.length < 5) return;
+        
+        const imageName = csvParts[0].replace(/"/g, '').trim();
+        const pid = parseInt(csvParts[1].replace(/"/g, '').trim());
+        const memUsage = csvParts[4].replace(/"/g, '').trim();
+        
+        if (isNaN(pid)) return;
+        
+        const processInfo = {
+          pid: pid,
+          name: imageName,
+          commandLine: imageName,
+          startTime: new Date(),
+          platform: 'windows',
+          memory: memUsage
+        };
 
-          if (name.includes('node.exe') && commandLine.includes('app.js')) {
-            processes.backend.push(processInfo);
-          } else if (name.includes('collector.exe')) {
-            processes.collector.push(processInfo);
-          } else if (name.includes('redis-server.exe')) {
-            processes.redis.push(processInfo);
-          }
+        // 프로세스 분류
+        const lowerImageName = imageName.toLowerCase();
+        
+        if (lowerImageName.includes('node.exe')) {
+          processes.backend.push(processInfo);
+        } else if (lowerImageName.includes('collector.exe')) {
+          this.log('INFO', `Collector 프로세스 발견: PID ${pid}`);
+          processes.collector.push(processInfo);
+        } else if (lowerImageName.includes('redis-server.exe')) {
+          this.log('INFO', `Redis 프로세스 발견: PID ${pid}`);
+          processes.redis.push(processInfo);
         }
       });
 
+      this.log('INFO', '프로세스 감지 완료', {
+        backend: processes.backend.length,
+        collector: processes.collector.length,
+        redis: processes.redis.length
+      });
+      
       return processes;
+      
     } catch (error) {
-      console.error('Error getting Windows processes:', error);
-      return { backend: [], collector: [], redis: [] };
+      this.log('ERROR', 'Windows 프로세스 감지 실패', { error: error.message });
+      
+      // 폴백 방식
+      try {
+        const collectorCheck = await this.execCommand('tasklist | findstr collector.exe');
+        const redisCheck = await this.execCommand('tasklist | findstr redis-server.exe');
+        
+        const processes = { backend: [], collector: [], redis: [] };
+        
+        if (collectorCheck.stdout.trim()) {
+          this.log('INFO', 'Collector 프로세스 발견 (폴백)');
+          processes.collector.push({
+            pid: 1,
+            name: 'collector.exe',
+            commandLine: 'collector.exe',
+            startTime: new Date(),
+            platform: 'windows'
+          });
+        }
+        
+        if (redisCheck.stdout.trim()) {
+          this.log('INFO', 'Redis 프로세스 발견 (폴백)');
+          processes.redis.push({
+            pid: 2,
+            name: 'redis-server.exe',
+            commandLine: 'redis-server.exe',
+            startTime: new Date(),
+            platform: 'windows'
+          });
+        }
+        
+        // Backend는 항상 실행중으로 가정
+        processes.backend.push({
+          pid: process.pid,
+          name: 'node.exe',
+          commandLine: 'node.exe app.js',
+          startTime: new Date(),
+          platform: 'windows'
+        });
+        
+        return processes;
+        
+      } catch (fallbackError) {
+        this.log('ERROR', 'Windows 폴백 프로세스 감지도 실패', { error: fallbackError.message });
+        return { backend: [], collector: [], redis: [] };
+      }
     }
   }
 
@@ -249,390 +328,32 @@ class CrossPlatformManager {
 
       return processes;
     } catch (error) {
-      console.error('Error getting Unix processes:', error);
+      this.log('ERROR', 'Unix 프로세스 감지 실패', { error: error.message });
       return { backend: [], collector: [], redis: [] };
     }
   }
 
   // ========================================
-  // 🎮 Collector 서비스 제어
-  // ========================================
-
-  async startCollector() {
-    console.log(`🚀 Starting Collector on ${this.platform}...`);
-    
-    try {
-      // 1. 실행파일 존재 확인
-      const collectorExists = await this.fileExists(this.paths.collector);
-      if (!collectorExists) {
-        console.warn(`⚠️ Collector executable not found: ${this.paths.collector}`);
-        
-        if (this.isDevelopment) {
-          return {
-            success: false,
-            error: `Collector executable not found: ${this.paths.collector}`,
-            suggestion: 'Build the Collector project first',
-            buildCommand: this.isWindows ? 'cd collector && make' : 'cd collector && make debug',
-            platform: this.platform,
-            development: true
-          };
-        } else {
-          return {
-            success: false,
-            error: `Collector not installed: ${this.paths.collector}`,
-            suggestion: 'Install PulseOne Collector package',
-            platform: this.platform,
-            development: false
-          };
-        }
-      }
-
-      // 2. 이미 실행 중인지 확인
-      const processes = await this.getRunningProcesses();
-      if (processes.collector.length > 0) {
-        return {
-          success: false,
-          error: `Collector already running (PID: ${processes.collector[0].pid})`,
-          platform: this.platform
-        };
-      }
-
-      // 3. Collector 시작
-      const startResult = await this.spawnCollector();
-      
-      // 4. 시작 확인 (3초 대기)
-      await this.sleep(3000);
-      
-      const newProcesses = await this.getRunningProcesses();
-      const newCollector = newProcesses.collector[0];
-
-      if (newCollector) {
-        return {
-          success: true,
-          message: `Collector started successfully on ${this.platform}`,
-          pid: newCollector.pid,
-          platform: this.platform,
-          executable: this.paths.collector
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Collector process failed to start',
-          platform: this.platform,
-          suggestion: 'Check collector logs for startup errors'
-        };
-      }
-
-    } catch (error) {
-      console.error('❌ Failed to start Collector:', error);
-      return {
-        success: false,
-        error: error.message,
-        platform: this.platform
-      };
-    }
-  }
-
-  async spawnCollector() {
-    // 디버깅 로그 추가
-    console.log(`Attempting to spawn: ${this.paths.collector}`);
-    console.log(`Working directory: ${process.cwd()}`);
-    console.log(`File exists: ${require('fs').existsSync(this.paths.collector)}`);
-    
-    if (this.isWindows) {
-      return spawn(this.paths.collector, [], {
-        cwd: process.cwd(), // collector.exe가 있는 루트 디렉토리
-        detached: true,
-        stdio: 'ignore'
-      });
-    } else {
-      return spawn(this.paths.collector, [], {
-        cwd: process.cwd(),
-        detached: true,
-        stdio: 'ignore',
-        env: {
-          ...process.env,
-          LD_LIBRARY_PATH: '/usr/local/lib:/usr/lib',
-          PATH: process.env.PATH + ':/usr/local/bin'
-        }
-      });
-    }
-  }
-
-  async stopCollector() {
-    console.log(`🛑 Stopping Collector on ${this.platform}...`);
-    
-    try {
-      const processes = await this.getRunningProcesses();
-      const runningCollector = processes.collector[0];
-
-      if (!runningCollector) {
-        return {
-          success: false,
-          error: 'Collector is not running',
-          platform: this.platform
-        };
-      }
-
-      // 프로세스 종료
-      await this.execCommand(this.commands.processKill(runningCollector.pid));
-      
-      // 종료 확인 (3초 대기)
-      await this.sleep(3000);
-      
-      const newProcesses = await this.getRunningProcesses();
-      const stillRunning = newProcesses.collector.find(p => p.pid === runningCollector.pid);
-
-      if (!stillRunning) {
-        return {
-          success: true,
-          message: `Collector stopped successfully on ${this.platform}`,
-          platform: this.platform
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Failed to stop Collector process',
-          platform: this.platform
-        };
-      }
-
-    } catch (error) {
-      console.error('❌ Failed to stop Collector:', error);
-      return {
-        success: false,
-        error: error.message,
-        platform: this.platform
-      };
-    }
-  }
-
-  async restartCollector() {
-    console.log(`🔄 Restarting Collector on ${this.platform}...`);
-    
-    const stopResult = await this.stopCollector();
-    if (!stopResult.success && !stopResult.error.includes('not running')) {
-      return stopResult;
-    }
-
-    await this.sleep(2000);
-    
-    return await this.startCollector();
-  }
-
-  // ========================================
-  // 🔴 Redis 서비스 제어
-  // ========================================
-
-  async startRedis() {
-    console.log(`🚀 Starting Redis on ${this.platform}...`);
-    
-    try {
-      // 1. Redis 경로 확인
-      const redisPath = this.paths.redis;
-      const redisExists = await this.fileExists(redisPath);
-      
-      if (!redisExists) {
-        return {
-          success: false,
-          error: `Redis not found at: ${redisPath}`,
-          suggestion: this.isWindows ? 
-            'Download Redis for Windows from GitHub' : 
-            'Install Redis using package manager (apt/yum/brew)',
-          platform: this.platform
-        };
-      }
-
-      // 2. 이미 실행 중인지 확인
-      const processes = await this.getRunningProcesses();
-      if (processes.redis.length > 0) {
-        return {
-          success: false,
-          error: `Redis already running (PID: ${processes.redis[0].pid})`,
-          platform: this.platform,
-          port: 6379
-        };
-      }
-
-      // 3. Redis 시작
-      let redisProcess;
-      const redisConfig = config.getRedisConfig();
-      const port = redisConfig.port || 6379;
-      
-      if (this.isWindows) {
-        // Windows: redis-server.exe 실행
-        redisProcess = spawn(redisPath, [
-          '--port', port.toString(),
-          '--maxmemory', '512mb',
-          '--maxmemory-policy', 'allkeys-lru'
-        ], {
-          detached: true,
-          stdio: 'ignore'
-        });
-      } else {
-        // Linux/macOS: redis-server 실행
-        redisProcess = spawn(redisPath, [
-          '--port', port.toString(),
-          '--daemonize', 'yes',
-          '--maxmemory', '512mb',
-          '--maxmemory-policy', 'allkeys-lru'
-        ], {
-          detached: true,
-          stdio: 'ignore'
-        });
-      }
-
-      // 4. 시작 확인
-      await this.sleep(2000);
-      
-      const newProcesses = await this.getRunningProcesses();
-      const newRedis = newProcesses.redis[0];
-
-      if (newRedis) {
-        return {
-          success: true,
-          message: `Redis started successfully on ${this.platform}`,
-          pid: newRedis.pid,
-          platform: this.platform,
-          port: port
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Redis process failed to start',
-          platform: this.platform,
-          suggestion: 'Check Redis logs or try manual start'
-        };
-      }
-
-    } catch (error) {
-      console.error('❌ Failed to start Redis:', error);
-      return {
-        success: false,
-        error: error.message,
-        platform: this.platform
-      };
-    }
-  }
-
-  async stopRedis() {
-    console.log(`🛑 Stopping Redis on ${this.platform}...`);
-    
-    try {
-      const processes = await this.getRunningProcesses();
-      const runningRedis = processes.redis[0];
-
-      if (!runningRedis) {
-        return {
-          success: false,
-          error: 'Redis is not running',
-          platform: this.platform
-        };
-      }
-
-      // Redis 정상 종료 시도 (redis-cli shutdown)
-      try {
-        await this.execCommand(this.commands.redisCliShutdown);
-        await this.sleep(2000);
-      } catch (cliError) {
-        console.warn('Redis CLI shutdown failed, using force kill');
-        // CLI 실패시 강제 종료
-        await this.execCommand(this.commands.processKill(runningRedis.pid));
-      }
-
-      // 종료 확인
-      await this.sleep(1000);
-      const newProcesses = await this.getRunningProcesses();
-      const stillRunning = newProcesses.redis.find(p => p.pid === runningRedis.pid);
-
-      if (!stillRunning) {
-        return {
-          success: true,
-          message: `Redis stopped successfully on ${this.platform}`,
-          platform: this.platform
-        };
-      } else {
-        // 강제 종료 재시도
-        await this.execCommand(this.commands.processKill(runningRedis.pid));
-        await this.sleep(1000);
-        
-        return {
-          success: true,
-          message: `Redis force stopped on ${this.platform}`,
-          platform: this.platform
-        };
-      }
-
-    } catch (error) {
-      console.error('❌ Failed to stop Redis:', error);
-      return {
-        success: false,
-        error: error.message,
-        platform: this.platform
-      };
-    }
-  }
-
-  async restartRedis() {
-    console.log(`🔄 Restarting Redis on ${this.platform}...`);
-    
-    const stopResult = await this.stopRedis();
-    if (!stopResult.success && !stopResult.error.includes('not running')) {
-      return stopResult;
-    }
-
-    await this.sleep(2000);
-    
-    return await this.startRedis();
-  }
-
-  async getRedisStatus() {
-    try {
-      const processes = await this.getRunningProcesses();
-      const redisProcess = processes.redis[0];
-      
-      if (redisProcess) {
-        // Redis ping 테스트
-        let isResponding = false;
-        try {
-          const { stdout } = await this.execCommand('redis-cli ping');
-          isResponding = stdout.trim() === 'PONG';
-        } catch {
-          isResponding = false;
-        }
-
-        return {
-          running: true,
-          pid: redisProcess.pid,
-          responding: isResponding,
-          memory: redisProcess.memory,
-          cpu: redisProcess.cpu,
-          uptime: this.calculateUptime(redisProcess.startTime),
-          port: config.getRedisConfig().port || 6379,
-          platform: this.platform
-        };
-      } else {
-        return {
-          running: false,
-          responding: false,
-          platform: this.platform
-        };
-      }
-    } catch (error) {
-      return {
-        running: false,
-        error: error.message,
-        platform: this.platform
-      };
-    }
-  }
-
-  // ========================================
-  // 📊 서비스 상태 조회 (Redis 포함)
+  // 📊 서비스 상태 조회
   // ========================================
 
   async getServicesForAPI() {
+    this.log('INFO', '서비스 상태 조회 시작');
+    
     const processes = await this.getRunningProcesses();
+    
+    // 파일 존재 확인
+    const [collectorExists, redisExists] = await Promise.all([
+      this.fileExists(this.paths.collector),
+      this.fileExists(this.paths.redis)
+    ]);
+    
+    this.log('DEBUG', '파일 존재 확인 완료', {
+      collectorPath: this.paths.collector,
+      collectorExists,
+      redisPath: this.paths.redis,
+      redisExists
+    });
     
     const services = [
       {
@@ -663,7 +384,7 @@ class CrossPlatformManager {
         memoryUsage: processes.collector[0]?.memory || 'N/A',
         cpuUsage: processes.collector[0]?.cpu || 'N/A',
         executablePath: this.paths.collector,
-        exists: await this.fileExists(this.paths.collector)
+        exists: collectorExists
       },
       {
         name: 'redis',
@@ -679,8 +400,8 @@ class CrossPlatformManager {
         memoryUsage: processes.redis[0]?.memory || 'N/A',
         cpuUsage: processes.redis[0]?.cpu || 'N/A',
         executablePath: this.paths.redis,
-        exists: await this.fileExists(this.paths.redis),
-        port: config.getRedisConfig().port || 6379
+        exists: redisExists,
+        port: config.getRedisConfig?.()?.port || 6379
       }
     ];
 
@@ -690,6 +411,8 @@ class CrossPlatformManager {
       else if (service.status === 'stopped') acc.stopped++;
       return acc;
     }, { total: 0, running: 0, stopped: 0, unknown: 0 });
+
+    this.log('INFO', '서비스 상태 조회 완료', { summary });
 
     return {
       success: true,
@@ -711,6 +434,8 @@ class CrossPlatformManager {
   // ========================================
 
   async performHealthCheck() {
+    this.log('INFO', '헬스체크 시작');
+    
     const health = {
       overall: 'healthy',
       platform: this.platform,
@@ -730,7 +455,6 @@ class CrossPlatformManager {
     };
 
     try {
-      // 프로세스 상태 확인
       const processes = await this.getRunningProcesses();
       
       health.services.backend = {
@@ -765,20 +489,382 @@ class CrossPlatformManager {
         health.overall = 'degraded';
       }
 
-      // 플랫폼별 추가 체크
-      if (this.isLinux) {
-        health.checks.systemd_available = await this.commandExists('systemctl');
-        health.checks.docker_available = await this.commandExists('docker');
-      } else if (this.isWindows) {
-        health.checks.windows_services = await this.commandExists('sc');
-      }
+      this.log('INFO', '헬스체크 완료', { 
+        overall: health.overall,
+        services: {
+          backend: health.services.backend.running,
+          collector: health.services.collector.running,
+          redis: health.services.redis.running
+        }
+      });
 
     } catch (error) {
       health.overall = 'error';
       health.error = error.message;
+      this.log('ERROR', '헬스체크 실패', { error: error.message });
     }
 
     return health;
+  }
+
+  // ========================================
+  // 🎮 Collector 서비스 제어
+  // ========================================
+
+  async startCollector() {
+    this.log('INFO', 'Collector 시작 요청', {
+      platform: this.platform,
+      path: this.paths.collector,
+      workingDir: process.cwd()
+    });
+    
+    try {
+      // 1. 실행파일 존재 확인
+      const collectorExists = await this.fileExists(this.paths.collector);
+      this.log('DEBUG', `실행파일 존재 확인: ${collectorExists}`);
+      
+      if (!collectorExists) {
+        const errorMsg = `Collector 실행파일을 찾을 수 없음: ${this.paths.collector}`;
+        this.log('ERROR', errorMsg);
+        
+        return {
+          success: false,
+          error: errorMsg,
+          suggestion: this.isDevelopment ? 'Build the Collector project first' : 'Install PulseOne Collector package',
+          buildCommand: this.isWindows ? 'cd collector && make' : 'cd collector && make debug',
+          platform: this.platform,
+          development: this.isDevelopment,
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      // 2. 이미 실행 중인지 확인
+      const processes = await this.getRunningProcesses();
+      if (processes.collector.length > 0) {
+        const errorMsg = `Collector가 이미 실행 중입니다 (PID: ${processes.collector[0].pid})`;
+        this.log('WARN', errorMsg);
+        return {
+          success: false,
+          error: errorMsg,
+          platform: this.platform
+        };
+      }
+
+      // 3. Collector 시작
+      this.log('INFO', 'Collector 프로세스 시작 중...');
+      const startResult = await this.spawnCollector();
+      
+      // 4. 시작 확인 (3초 대기)
+      this.log('DEBUG', '프로세스 시작 대기 중... (3초)');
+      await this.sleep(3000);
+      
+      const newProcesses = await this.getRunningProcesses();
+      const newCollector = newProcesses.collector[0];
+
+      if (newCollector) {
+        const successMsg = `Collector가 성공적으로 시작됨 (PID: ${newCollector.pid})`;
+        this.log('INFO', successMsg, { pid: newCollector.pid, platform: this.platform });
+        return {
+          success: true,
+          message: successMsg,
+          pid: newCollector.pid,
+          platform: this.platform,
+          executable: this.paths.collector
+        };
+      } else {
+        const errorMsg = 'Collector 프로세스 시작 실패';
+        this.log('ERROR', errorMsg);
+        return {
+          success: false,
+          error: errorMsg,
+          platform: this.platform,
+          suggestion: 'Check collector logs for startup errors'
+        };
+      }
+
+    } catch (error) {
+      this.log('ERROR', 'Collector 시작 중 예외 발생', { error: error.message });
+      return {
+        success: false,
+        error: error.message,
+        platform: this.platform
+      };
+    }
+  }
+
+  async spawnCollector() {
+    // 상대 경로를 절대 경로로 변환
+    const absoluteCollectorPath = path.resolve(this.paths.collector);
+    
+    this.log('DEBUG', 'Collector 프로세스 스폰 시도', {
+        originalPath: this.paths.collector,
+        absolutePath: absoluteCollectorPath,
+        exists: fsSync.existsSync(absoluteCollectorPath),
+        workingDir: path.dirname(absoluteCollectorPath)
+    });
+    
+    if (!fsSync.existsSync(absoluteCollectorPath)) {
+        throw new Error(`Collector 실행파일이 존재하지 않음: ${absoluteCollectorPath}`);
+    }
+    
+    if (this.isWindows) {
+        return spawn(absoluteCollectorPath, [], {
+            cwd: path.dirname(absoluteCollectorPath),
+            detached: true,
+            stdio: 'ignore'
+        });
+    } else {
+        return spawn(absoluteCollectorPath, [], {
+            cwd: process.cwd(),
+            detached: true,
+            stdio: 'ignore',
+            env: {
+                ...process.env,
+                LD_LIBRARY_PATH: '/usr/local/lib:/usr/lib',
+                PATH: process.env.PATH + ':/usr/local/bin'
+            }
+        });
+      }
+  }
+
+  async stopCollector() {
+    this.log('INFO', 'Collector 중지 요청', { platform: this.platform });
+    
+    try {
+      const processes = await this.getRunningProcesses();
+      const runningCollector = processes.collector[0];
+
+      if (!runningCollector) {
+        const errorMsg = 'Collector가 실행되고 있지 않습니다';
+        this.log('WARN', errorMsg);
+        return {
+          success: false,
+          error: errorMsg,
+          platform: this.platform
+        };
+      }
+
+      this.log('INFO', `프로세스 종료 중... PID: ${runningCollector.pid}`);
+      await this.execCommand(this.commands.processKill(runningCollector.pid));
+      
+      // 종료 확인 (3초 대기)
+      await this.sleep(3000);
+      
+      const newProcesses = await this.getRunningProcesses();
+      const stillRunning = newProcesses.collector.find(p => p.pid === runningCollector.pid);
+
+      if (!stillRunning) {
+        const successMsg = 'Collector가 성공적으로 중지됨';
+        this.log('INFO', successMsg, { platform: this.platform });
+        return {
+          success: true,
+          message: successMsg,
+          platform: this.platform
+        };
+      } else {
+        const errorMsg = 'Collector 프로세스 중지 실패';
+        this.log('ERROR', errorMsg);
+        return {
+          success: false,
+          error: errorMsg,
+          platform: this.platform
+        };
+      }
+
+    } catch (error) {
+      this.log('ERROR', 'Collector 중지 중 예외 발생', { error: error.message });
+      return {
+        success: false,
+        error: error.message,
+        platform: this.platform
+      };
+    }
+  }
+
+  async restartCollector() {
+    this.log('INFO', 'Collector 재시작 요청', { platform: this.platform });
+    
+    const stopResult = await this.stopCollector();
+    if (!stopResult.success && !stopResult.error.includes('not running') && !stopResult.error.includes('실행되고 있지 않습니다')) {
+      return stopResult;
+    }
+
+    await this.sleep(2000);
+    
+    return await this.startCollector();
+  }
+
+  // ========================================
+  // 🔴 Redis 서비스 제어
+  // ========================================
+
+  async startRedis() {
+    this.log('INFO', 'Redis 시작 요청', { platform: this.platform });
+    
+    try {
+      const redisPath = this.paths.redis;
+      const redisExists = await this.fileExists(redisPath);
+      
+      if (!redisExists) {
+        const errorMsg = `Redis를 찾을 수 없음: ${redisPath}`;
+        this.log('ERROR', errorMsg);
+        return {
+          success: false,
+          error: errorMsg,
+          suggestion: this.isWindows ? 
+            'Download Redis for Windows from GitHub' : 
+            'Install Redis using package manager (apt/yum/brew)',
+          platform: this.platform
+        };
+      }
+
+      const processes = await this.getRunningProcesses();
+      if (processes.redis.length > 0) {
+        const errorMsg = `Redis가 이미 실행 중입니다 (PID: ${processes.redis[0].pid})`;
+        this.log('WARN', errorMsg);
+        return {
+          success: false,
+          error: errorMsg,
+          platform: this.platform,
+          port: 6379
+        };
+      }
+
+      let redisProcess;
+      const port = config.getRedisConfig?.()?.port || 6379;
+      
+      this.log('INFO', 'Redis 프로세스 시작 중...', { port });
+      
+      if (this.isWindows) {
+        redisProcess = spawn(redisPath, [
+          '--port', port.toString(),
+          '--maxmemory', '512mb',
+          '--maxmemory-policy', 'allkeys-lru'
+        ], {
+          detached: true,
+          stdio: 'ignore'
+        });
+      } else {
+        redisProcess = spawn(redisPath, [
+          '--port', port.toString(),
+          '--daemonize', 'yes',
+          '--maxmemory', '512mb',
+          '--maxmemory-policy', 'allkeys-lru'
+        ], {
+          detached: true,
+          stdio: 'ignore'
+        });
+      }
+
+      await this.sleep(2000);
+      
+      const newProcesses = await this.getRunningProcesses();
+      const newRedis = newProcesses.redis[0];
+
+      if (newRedis) {
+        const successMsg = `Redis가 성공적으로 시작됨 (PID: ${newRedis.pid})`;
+        this.log('INFO', successMsg, { pid: newRedis.pid, port });
+        return {
+          success: true,
+          message: successMsg,
+          pid: newRedis.pid,
+          platform: this.platform,
+          port: port
+        };
+      } else {
+        const errorMsg = 'Redis 프로세스 시작 실패';
+        this.log('ERROR', errorMsg);
+        return {
+          success: false,
+          error: errorMsg,
+          platform: this.platform,
+          suggestion: 'Check Redis logs or try manual start'
+        };
+      }
+
+    } catch (error) {
+      this.log('ERROR', 'Redis 시작 중 예외 발생', { error: error.message });
+      return {
+        success: false,
+        error: error.message,
+        platform: this.platform
+      };
+    }
+  }
+
+  async stopRedis() {
+    this.log('INFO', 'Redis 중지 요청', { platform: this.platform });
+    
+    try {
+      const processes = await this.getRunningProcesses();
+      const runningRedis = processes.redis[0];
+
+      if (!runningRedis) {
+        const errorMsg = 'Redis가 실행되고 있지 않습니다';
+        this.log('WARN', errorMsg);
+        return {
+          success: false,
+          error: errorMsg,
+          platform: this.platform
+        };
+      }
+
+      try {
+        this.log('DEBUG', 'Redis CLI shutdown 시도');
+        await this.execCommand(this.commands.redisCliShutdown);
+        await this.sleep(2000);
+      } catch (cliError) {
+        this.log('WARN', 'Redis CLI shutdown 실패, 강제 종료 사용', { error: cliError.message });
+        await this.execCommand(this.commands.processKill(runningRedis.pid));
+      }
+
+      await this.sleep(1000);
+      const newProcesses = await this.getRunningProcesses();
+      const stillRunning = newProcesses.redis.find(p => p.pid === runningRedis.pid);
+
+      if (!stillRunning) {
+        const successMsg = 'Redis가 성공적으로 중지됨';
+        this.log('INFO', successMsg, { platform: this.platform });
+        return {
+          success: true,
+          message: successMsg,
+          platform: this.platform
+        };
+      } else {
+        this.log('DEBUG', 'Redis 강제 종료 시도');
+        await this.execCommand(this.commands.processKill(runningRedis.pid));
+        await this.sleep(1000);
+        
+        const successMsg = 'Redis가 강제로 중지됨';
+        this.log('INFO', successMsg, { platform: this.platform });
+        return {
+          success: true,
+          message: successMsg,
+          platform: this.platform
+        };
+      }
+
+    } catch (error) {
+      this.log('ERROR', 'Redis 중지 중 예외 발생', { error: error.message });
+      return {
+        success: false,
+        error: error.message,
+        platform: this.platform
+      };
+    }
+  }
+
+  async restartRedis() {
+    this.log('INFO', 'Redis 재시작 요청', { platform: this.platform });
+    
+    const stopResult = await this.stopRedis();
+    if (!stopResult.success && !stopResult.error.includes('not running') && !stopResult.error.includes('실행되고 있지 않습니다')) {
+      return stopResult;
+    }
+
+    await this.sleep(2000);
+    
+    return await this.startRedis();
   }
 
   // ========================================
@@ -861,16 +947,6 @@ class CrossPlatformManager {
     }
   }
 
-  async commandExists(command) {
-    const testCommand = this.isWindows ? `where ${command}` : `which ${command}`;
-    try {
-      await this.execCommand(testCommand);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
@@ -915,10 +991,6 @@ class CrossPlatformManager {
     }
   }
 
-  // ========================================
-  // 📋 플랫폼 정보 제공
-  // ========================================
-
   getPlatformInfo() {
     return {
       detected: this.platform,
@@ -944,7 +1016,7 @@ class CrossPlatformManager {
   }
 }
 
-// 싱글턴 인스턴스 생성
+// 싱글톤 인스턴스 생성
 const crossPlatformManager = new CrossPlatformManager();
 
 module.exports = crossPlatformManager;

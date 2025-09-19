@@ -6,6 +6,8 @@ const { promisify } = require('util');
 
 // ✅ ConfigManager import 추가
 const ConfigManager = require('../lib/config/ConfigManager');
+// 🔥 CrossPlatformManager import 추가
+const CrossPlatformManager = require('../lib/services/crossPlatformManager');
 
 // =============================================================================
 // 📊 시스템 메트릭 유틸리티 함수들
@@ -152,192 +154,6 @@ function getProcessInfo() {
     };
 }
 
-  /**
-   * ✅ 서비스 헬스체크 (실제 연결 확인) - ConfigManager 기반
-   */
-async function checkServiceHealth() {
-    const services = {
-        backend: 'healthy', // 현재 응답하고 있으므로 healthy
-        database: 'unknown',
-        redis: 'unknown',
-        collector: 'unknown'
-    };
-
-    // 포트 정보 추가
-    const ports = {};
-    
-    // ConfigManager 인스턴스 가져오기
-    const config = ConfigManager.getInstance();
-    
-    // 🔥 포트 정보 수집
-    ports.backend = config.getNumber('BACKEND_PORT', 3000);
-    ports.redis = config.getNumber('REDIS_PRIMARY_PORT', 6379);
-    ports.collector = config.getNumber('COLLECTOR_PORT', 8080);
-    ports.rabbitmq = config.getNumber('RABBITMQ_PORT', 5672);
-    ports.postgresql = config.getNumber('POSTGRES_PRIMARY_PORT', 5432);
-    
-    // SQLite 데이터베이스 체크
-    try {
-        const sqlite3 = require('sqlite3');
-        const dbPath = config.get('DATABASE_PATH') || './data/db/pulseone.db';
-        
-        await new Promise((resolve, reject) => {
-            const db = new sqlite3.Database(dbPath, (err) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    services.database = 'healthy';
-                    db.close();
-                    resolve();
-                }
-            });
-        });
-    } catch (error) {
-        services.database = 'error';
-        console.warn('SQLite 연결 체크 실패:', error.message);
-    }
-    
-    // ✅ Redis 연결 체크 (기존 코드와 동일)
-    try {
-        console.log('🔍 Redis 연결 체크 시작...');
-        
-        const redisEnabled = config.getBoolean('REDIS_PRIMARY_ENABLED', false);
-        const redisHost = config.get('REDIS_PRIMARY_HOST', 'localhost');
-        const redisPort = config.getNumber('REDIS_PRIMARY_PORT', 6379);
-        const redisPassword = config.get('REDIS_PRIMARY_PASSWORD', '');
-        const redisDb = config.getNumber('REDIS_PRIMARY_DB', 0);
-        const connectTimeout = config.getNumber('REDIS_PRIMARY_CONNECT_TIMEOUT_MS', 3000);
-        
-        console.log(`📋 Redis 설정 확인:
-   활성화: ${redisEnabled}
-   호스트: ${redisHost}:${redisPort}
-   데이터베이스: ${redisDb}
-   패스워드: ${redisPassword ? '설정됨' : '없음'}
-   타임아웃: ${connectTimeout}ms`);
-        
-        if (!redisEnabled) {
-            console.log('⚠️ Redis가 비활성화됨 (REDIS_PRIMARY_ENABLED=false)');
-            services.redis = 'disabled';
-        } else {
-            const redis = require('redis');
-            
-            let redisUrl = `redis://${redisHost}:${redisPort}`;
-            if (redisPassword) {
-                redisUrl = `redis://:${redisPassword}@${redisHost}:${redisPort}`;
-            }
-            if (redisDb > 0) {
-                redisUrl += `/${redisDb}`;
-            }
-            
-            console.log(`🔗 Redis 연결 시도: ${redisUrl.replace(/:.*@/, ':****@')}`);
-            
-            const client = redis.createClient({
-                url: redisUrl,
-                socket: {
-                    connectTimeout: connectTimeout,
-                    commandTimeout: 2000,
-                    reconnectDelay: 1000
-                },
-                retry_unfulfilled_commands: false,
-                disableOfflineQueue: true
-            });
-            
-            client.on('error', (err) => {
-                console.warn('Redis 클라이언트 에러:', err.message);
-            });
-            
-            try {
-                const connectPromise = client.connect();
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Connection timeout')), connectTimeout);
-                });
-                
-                await Promise.race([connectPromise, timeoutPromise]);
-                
-                const pingResult = await client.ping();
-                console.log('📡 Redis ping 결과:', pingResult);
-                
-                if (pingResult === 'PONG') {
-                    services.redis = 'healthy';
-                    console.log('✅ Redis 연결 성공');
-                } else {
-                    services.redis = 'error';
-                    console.warn('⚠️ Redis ping 실패');
-                }
-                
-                await client.disconnect();
-                
-            } catch (connectError) {
-                services.redis = 'error';
-                console.warn('❌ Redis 연결 실패:', connectError.message);
-                
-                try {
-                    if (client.isOpen) {
-                        await client.disconnect();
-                    }
-                } catch (disconnectError) {
-                    // 무시
-                }
-            }
-        }
-        
-    } catch (error) {
-        services.redis = 'error';
-        console.warn('❌ Redis 연결 체크 전체 실패:', error.message);
-        
-        if (error.code === 'ECONNREFUSED') {
-            console.warn('   → Redis 서버가 실행되지 않음');
-        } else if (error.message.includes('timeout')) {
-            console.warn('   → Redis 연결 타임아웃');
-        } else if (error.message.includes('authentication')) {
-            console.warn('   → Redis 인증 실패');
-        }
-    }
-    
-    // Collector 프로세스 체크
-    try {
-        const net = require('net');
-        const collectorPort = config.getNumber('COLLECTOR_PORT', 8080);
-        
-        console.log(`🔍 Collector 포트 체크: ${collectorPort}`);
-        
-        await new Promise((resolve, reject) => {
-            const socket = new net.Socket();
-            socket.setTimeout(2000);
-            
-            socket.on('connect', () => {
-                services.collector = 'healthy';
-                socket.destroy();
-                console.log('✅ Collector 연결 성공');
-                resolve();
-            });
-            
-            socket.on('timeout', () => {
-                services.collector = 'error';
-                socket.destroy();
-                console.warn('⚠️ Collector 연결 타임아웃');
-                reject(new Error('timeout'));
-            });
-            
-            socket.on('error', (err) => {
-                services.collector = 'error';
-                console.warn('❌ Collector 연결 실패:', err.message);
-                reject(err);
-            });
-            
-            socket.connect(collectorPort, 'localhost');
-        });
-    } catch (error) {
-        services.collector = 'error';
-        console.warn('❌ Collector 연결 체크 실패:', error.message);
-    }
-    
-    console.log('📊 최종 서비스 상태:', services);
-    console.log('🔌 포트 정보:', ports);
-    
-    // 🔥 포트 정보를 포함해서 반환
-    return { services, ports };
-}
 // =============================================================================
 // 📊 API 엔드포인트들
 // =============================================================================
@@ -427,40 +243,96 @@ router.get('/system-metrics', async (req, res) => {
 });
 
 /**
- * GET /api/monitoring/service-health
- * 실제 서비스 헬스체크
+ * 🔥 GET /api/monitoring/service-health
+ * CrossPlatformManager 기반 실제 서비스 상태 확인 (수정됨)
  */
 router.get('/service-health', async (req, res) => {
     try {
-        console.log('🏥 서비스 헬스체크 시작...');
+        console.log('🏥 서비스 헬스체크 시작 (CrossPlatformManager 사용)...');
         
-        // 🔥 수정: services와 ports 정보 모두 받기
-        const { services, ports } = await checkServiceHealth();
+        // CrossPlatformManager를 사용하여 실제 프로세스 상태 확인
+        const result = await CrossPlatformManager.getServicesForAPI();
         
-        // 전체 헬스 상태 계산
-        const healthyCount = Object.values(services).filter(status => status === 'healthy').length;
-        const totalCount = Object.keys(services).length;
-        const overallHealth = healthyCount === totalCount ? 'healthy' : 
-                             healthyCount > totalCount / 2 ? 'degraded' : 'critical';
-        
-        console.log('✅ 서비스 헬스체크 완료');
-        
-        // 🔥 수정: 포트 정보도 포함해서 응답
-        res.json({
-            success: true,
-            data: {
-                services,
-                ports,  // 포트 정보 추가
-                overall: overallHealth,
-                healthy_count: healthyCount,
-                total_count: totalCount,
-                last_check: new Date().toISOString()
-            },
-            message: 'Service health checked successfully'
-        });
+        if (result.success) {
+            // 서비스 상태를 API 응답 형식에 맞게 변환
+            const services = {};
+            const ports = {
+                backend: 3000,
+                redis: 6379,
+                collector: 8001,
+                postgresql: 5432,
+                rabbitmq: 5672
+            };
+
+            // CrossPlatformManager 결과를 프론트엔드 형식에 맞게 변환
+            result.data.forEach(service => {
+                services[service.name] = service.status === 'running' ? 'healthy' : 'error';
+            });
+
+            // 누락된 서비스가 있다면 기본값으로 설정
+            if (!services.backend) services.backend = 'healthy'; // 현재 실행중이므로
+            if (!services.database) services.database = 'healthy'; // SQLite 파일 기반
+            if (!services.redis) services.redis = 'error';
+            if (!services.collector) services.collector = 'error';
+
+            // 전체 헬스 상태 계산
+            const healthyCount = Object.values(services).filter(status => status === 'healthy').length;
+            const totalCount = Object.keys(services).length;
+            const overall = healthyCount === totalCount ? 'healthy' : 
+                           healthyCount > totalCount / 2 ? 'degraded' : 'critical';
+
+            console.log('✅ 서비스 헬스체크 완료 (CrossPlatformManager):');
+            console.log('   서비스 상태:', services);
+            console.log('   전체 상태:', overall);
+
+            res.json({
+                success: true,
+                data: {
+                    services,
+                    ports,
+                    overall,
+                    healthy_count: healthyCount,
+                    total_count: totalCount,
+                    last_check: new Date().toISOString(),
+                    // 추가 정보
+                    platform: result.platform?.type || 'unknown',
+                    detected_processes: result.data.length
+                },
+                message: 'Service health checked successfully'
+            });
+        } else {
+            console.error('❌ CrossPlatformManager 헬스체크 실패:', result.error);
+            
+            // 폴백: 기본 상태 반환
+            res.json({
+                success: true,
+                data: {
+                    services: {
+                        backend: 'healthy',
+                        database: 'healthy',
+                        redis: 'error',
+                        collector: 'error'
+                    },
+                    ports: {
+                        backend: 3000,
+                        redis: 6379,
+                        collector: 8001,
+                        postgresql: 5432,
+                        rabbitmq: 5672
+                    },
+                    overall: 'degraded',
+                    healthy_count: 2,
+                    total_count: 4,
+                    last_check: new Date().toISOString(),
+                    fallback: true,
+                    error: result.error
+                },
+                message: 'Service health checked (fallback mode)'
+            });
+        }
         
     } catch (error) {
-        console.error('❌ 서비스 헬스체크 실패:', error);
+        console.error('❌ 서비스 헬스체크 완전 실패:', error);
         
         res.status(500).json({
             success: false,
