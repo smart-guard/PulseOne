@@ -446,7 +446,7 @@ export class DashboardApiService {
     const request: ServiceControlRequest = { action };
     
     return this.httpClient.post<ServiceControlResponse>(
-      ENDPOINTS.DASHBOARD_SERVICE_CONTROL(serviceName), 
+      ENDPOINTS.DASHBOARD_SERVICE_CONTROL(serviceName, action), 
       request
     );
   }

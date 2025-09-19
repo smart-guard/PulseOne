@@ -67,7 +67,7 @@ class ConfigManager {
     }
 
     /**
-     * 환경변수 초기화 - 경로 문제 완전 해결
+     * 환경변수 초기화 - .env.production 자동 로드 포함
      */
     initialize() {
         if (this.loaded) return this;
@@ -79,22 +79,40 @@ class ConfigManager {
             const cwd = process.cwd();
             this.logger.log(`📁 현재 작업 디렉토리: ${cwd}`);
             
-            // .env 파일 우선순위별 경로 목록
-            const envPaths = [
-                path.join(cwd, '.env'),
-                path.join(cwd, 'config', '.env'),
-                path.join(__dirname, '../../../.env'),
-                path.join(__dirname, '../../../config/.env')
+            // 환경별 .env 파일 우선순위 로드
+            const nodeEnv = process.env.NODE_ENV || 'development';
+            const envFiles = [
+                `.env.${nodeEnv}`,      // .env.production, .env.development
+                '.env.local',           // 로컬 오버라이드
+                '.env'                  // 기본 파일
             ];
             
-            // 첫 번째 발견되는 .env 파일 로드
             let envLoaded = false;
-            for (const envPath of envPaths) {
-                this.logger.log(`🔍 .env 파일 탐색: ${envPath}`);
+            for (const envFile of envFiles) {
+                const envPath = path.join(cwd, envFile);
+                this.logger.log(`🔍 환경 파일 탐색: ${envPath}`);
                 if (this.loadEnvFile(envPath, false)) {
                     envLoaded = true;
-                    this.logger.log(`✅ .env 파일 로드 성공: ${envPath}`);
-                    break;
+                    this.logger.log(`✅ 환경 파일 로드 성공: ${envFile}`);
+                    break; // 첫 번째로 찾은 파일만 로드 (우선순위)
+                }
+            }
+            
+            // fallback: 다른 경로에서 .env 파일 탐색
+            if (!envLoaded) {
+                const fallbackPaths = [
+                    path.join(cwd, 'config', '.env'),
+                    path.join(__dirname, '../../../.env'),
+                    path.join(__dirname, '../../../config/.env')
+                ];
+                
+                for (const envPath of fallbackPaths) {
+                    this.logger.log(`🔍 fallback .env 파일 탐색: ${envPath}`);
+                    if (this.loadEnvFile(envPath, false)) {
+                        envLoaded = true;
+                        this.logger.log(`✅ fallback .env 파일 로드 성공: ${envPath}`);
+                        break;
+                    }
                 }
             }
             
@@ -127,7 +145,7 @@ class ConfigManager {
                 });
             }
 
-            // process.env의 모든 변수 복사
+            // process.env의 모든 변수 복사 (기존 env 변수들 보존)
             Object.entries(process.env).forEach(([key, value]) => {
                 if (!this.env.has(key)) {
                     this.env.set(key, value);
@@ -137,6 +155,7 @@ class ConfigManager {
             this.loaded = true;
             this.lastInitialized = new Date().toISOString();
             this.logger.log(`✅ 환경변수 로딩 완료 (${this.loadedFiles.length}개 파일)`);
+            this.logger.log(`🎯 현재 환경: ${nodeEnv}`);
             
             // 디버깅 정보 출력
             this.printDebugInfo();

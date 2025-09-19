@@ -67,7 +67,7 @@ class CrossPlatformManager {
         win32: {
           root: process.cwd(),
           // Windows에서 우선순위: 1) 환경변수 2) 루트 collector.exe 3) bin 폴더
-          collector: customCollectorPath || path.join(process.cwd(), 'collector.exe'),
+          collector: customCollectorPath || path.resolve(process.cwd(), '..', 'collector.exe'),  // 절대 경로로 변환
           redis: customRedisPath || path.join(process.cwd(), 'redis-server.exe'),
           config: path.join(process.cwd(), 'config'),
           data: path.join(process.cwd(), 'data'),
