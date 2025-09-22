@@ -9,7 +9,7 @@
 #include <functional>
 #include <sstream>
 
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
 #include <hiredis/hiredis.h>
 #else
 // 시뮬레이션 모드용 더미 정의
@@ -71,7 +71,7 @@ RedisClientImpl::~RedisClientImpl() {
     // 연결 정리
     std::lock_guard<std::recursive_mutex> lock(connection_mutex_);
     if (context_) {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisFree(context_);
 #endif
         context_ = nullptr;
@@ -96,7 +96,7 @@ void RedisClientImpl::disconnect() {
     std::lock_guard<std::recursive_mutex> lock(connection_mutex_);
     
     if (context_) {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisFree(context_);
 #endif
         context_ = nullptr;
@@ -125,7 +125,7 @@ bool RedisClientImpl::isConnected() const {
 
 bool RedisClientImpl::set(const std::string& key, const std::string& value) {
     return executeWithRetry<bool>([this, &key, &value]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("SET %s %s", key.c_str(), value.c_str());
         bool result = isReplyOK(reply);
         if (reply) freeReplyObject(reply);
@@ -139,7 +139,7 @@ bool RedisClientImpl::set(const std::string& key, const std::string& value) {
 
 bool RedisClientImpl::setex(const std::string& key, const std::string& value, int expire_seconds) {
     return executeWithRetry<bool>([this, &key, &value, expire_seconds]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("SETEX %s %d %s", key.c_str(), expire_seconds, value.c_str());
         bool result = isReplyOK(reply);
         if (reply) freeReplyObject(reply);
@@ -153,7 +153,7 @@ bool RedisClientImpl::setex(const std::string& key, const std::string& value, in
 
 std::string RedisClientImpl::get(const std::string& key) {
     return executeWithRetry<std::string>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("GET %s", key.c_str());
         std::string result = replyToString(reply);
         if (reply) freeReplyObject(reply);
@@ -167,7 +167,7 @@ std::string RedisClientImpl::get(const std::string& key) {
 
 int RedisClientImpl::del(const std::string& key) {
     return executeWithRetry<int>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("DEL %s", key.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -181,7 +181,7 @@ int RedisClientImpl::del(const std::string& key) {
 
 bool RedisClientImpl::exists(const std::string& key) {
     return executeWithRetry<bool>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("EXISTS %s", key.c_str());
         bool result = reply && replyToInteger(reply) > 0;
         if (reply) freeReplyObject(reply);
@@ -195,7 +195,7 @@ bool RedisClientImpl::exists(const std::string& key) {
 
 bool RedisClientImpl::expire(const std::string& key, int seconds) {
     return executeWithRetry<bool>([this, &key, seconds]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("EXPIRE %s %d", key.c_str(), seconds);
         bool result = reply && replyToInteger(reply) == 1;
         if (reply) freeReplyObject(reply);
@@ -209,7 +209,7 @@ bool RedisClientImpl::expire(const std::string& key, int seconds) {
 
 int RedisClientImpl::ttl(const std::string& key) {
     return executeWithRetry<int>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("TTL %s", key.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : -1;
         if (reply) freeReplyObject(reply);
@@ -223,7 +223,7 @@ int RedisClientImpl::ttl(const std::string& key) {
 
 int RedisClientImpl::incr(const std::string& key, int increment) {
     return executeWithRetry<int>([this, &key, increment]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply;
         if (increment == 1) {
             reply = executeCommandSafe("INCR %s", key.c_str());
@@ -245,7 +245,7 @@ int RedisClientImpl::incr(const std::string& key, int increment) {
 
 bool RedisClientImpl::hset(const std::string& key, const std::string& field, const std::string& value) {
     return executeWithRetry<bool>([this, &key, &field, &value]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("HSET %s %s %s", key.c_str(), field.c_str(), value.c_str());
         bool result = reply && replyToInteger(reply) >= 0;
         if (reply) freeReplyObject(reply);
@@ -259,7 +259,7 @@ bool RedisClientImpl::hset(const std::string& key, const std::string& field, con
 
 std::string RedisClientImpl::hget(const std::string& key, const std::string& field) {
     return executeWithRetry<std::string>([this, &key, &field]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("HGET %s %s", key.c_str(), field.c_str());
         std::string result = replyToString(reply);
         if (reply) freeReplyObject(reply);
@@ -273,7 +273,7 @@ std::string RedisClientImpl::hget(const std::string& key, const std::string& fie
 
 RedisClient::StringMap RedisClientImpl::hgetall(const std::string& key) {
     return executeWithRetry<StringMap>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("HGETALL %s", key.c_str());
         StringMap result = replyToStringMap(reply);
         if (reply) freeReplyObject(reply);
@@ -290,7 +290,7 @@ RedisClient::StringMap RedisClientImpl::hgetall(const std::string& key) {
 
 int RedisClientImpl::hdel(const std::string& key, const std::string& field) {
     return executeWithRetry<int>([this, &key, &field]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("HDEL %s %s", key.c_str(), field.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -304,7 +304,7 @@ int RedisClientImpl::hdel(const std::string& key, const std::string& field) {
 
 bool RedisClientImpl::hexists(const std::string& key, const std::string& field) {
     return executeWithRetry<bool>([this, &key, &field]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("HEXISTS %s %s", key.c_str(), field.c_str());
         bool result = reply && replyToInteger(reply) > 0;
         if (reply) freeReplyObject(reply);
@@ -318,7 +318,7 @@ bool RedisClientImpl::hexists(const std::string& key, const std::string& field) 
 
 int RedisClientImpl::hlen(const std::string& key) {
     return executeWithRetry<int>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("HLEN %s", key.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -336,7 +336,7 @@ int RedisClientImpl::hlen(const std::string& key) {
 
 int RedisClientImpl::lpush(const std::string& key, const std::string& value) {
     return executeWithRetry<int>([this, &key, &value]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("LPUSH %s %s", key.c_str(), value.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -350,7 +350,7 @@ int RedisClientImpl::lpush(const std::string& key, const std::string& value) {
 
 int RedisClientImpl::rpush(const std::string& key, const std::string& value) {
     return executeWithRetry<int>([this, &key, &value]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("RPUSH %s %s", key.c_str(), value.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -364,7 +364,7 @@ int RedisClientImpl::rpush(const std::string& key, const std::string& value) {
 
 std::string RedisClientImpl::lpop(const std::string& key) {
     return executeWithRetry<std::string>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("LPOP %s", key.c_str());
         std::string result = replyToString(reply);
         if (reply) freeReplyObject(reply);
@@ -378,7 +378,7 @@ std::string RedisClientImpl::lpop(const std::string& key) {
 
 std::string RedisClientImpl::rpop(const std::string& key) {
     return executeWithRetry<std::string>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("RPOP %s", key.c_str());
         std::string result = replyToString(reply);
         if (reply) freeReplyObject(reply);
@@ -392,7 +392,7 @@ std::string RedisClientImpl::rpop(const std::string& key) {
 
 RedisClient::StringList RedisClientImpl::lrange(const std::string& key, int start, int stop) {
     return executeWithRetry<StringList>([this, &key, start, stop]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("LRANGE %s %d %d", key.c_str(), start, stop);
         StringList result = replyToStringList(reply);
         if (reply) freeReplyObject(reply);
@@ -409,7 +409,7 @@ RedisClient::StringList RedisClientImpl::lrange(const std::string& key, int star
 
 int RedisClientImpl::llen(const std::string& key) {
     return executeWithRetry<int>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("LLEN %s", key.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -427,7 +427,7 @@ int RedisClientImpl::llen(const std::string& key) {
 
 int RedisClientImpl::sadd(const std::string& key, const std::string& member) {
     return executeWithRetry<int>([this, &key, &member]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("SADD %s %s", key.c_str(), member.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -441,7 +441,7 @@ int RedisClientImpl::sadd(const std::string& key, const std::string& member) {
 
 int RedisClientImpl::srem(const std::string& key, const std::string& member) {
     return executeWithRetry<int>([this, &key, &member]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("SREM %s %s", key.c_str(), member.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -455,7 +455,7 @@ int RedisClientImpl::srem(const std::string& key, const std::string& member) {
 
 bool RedisClientImpl::sismember(const std::string& key, const std::string& member) {
     return executeWithRetry<bool>([this, &key, &member]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("SISMEMBER %s %s", key.c_str(), member.c_str());
         bool result = reply && replyToInteger(reply) == 1;
         if (reply) freeReplyObject(reply);
@@ -469,7 +469,7 @@ bool RedisClientImpl::sismember(const std::string& key, const std::string& membe
 
 RedisClient::StringList RedisClientImpl::smembers(const std::string& key) {
     return executeWithRetry<StringList>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("SMEMBERS %s", key.c_str());
         StringList result = replyToStringList(reply);
         if (reply) freeReplyObject(reply);
@@ -486,7 +486,7 @@ RedisClient::StringList RedisClientImpl::smembers(const std::string& key) {
 
 int RedisClientImpl::scard(const std::string& key) {
     return executeWithRetry<int>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("SCARD %s", key.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -504,7 +504,7 @@ int RedisClientImpl::scard(const std::string& key) {
 
 int RedisClientImpl::zadd(const std::string& key, double score, const std::string& member) {
     return executeWithRetry<int>([this, &key, score, &member]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("ZADD %s %f %s", key.c_str(), score, member.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -518,7 +518,7 @@ int RedisClientImpl::zadd(const std::string& key, double score, const std::strin
 
 int RedisClientImpl::zrem(const std::string& key, const std::string& member) {
     return executeWithRetry<int>([this, &key, &member]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("ZREM %s %s", key.c_str(), member.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -532,7 +532,7 @@ int RedisClientImpl::zrem(const std::string& key, const std::string& member) {
 
 RedisClient::StringList RedisClientImpl::zrange(const std::string& key, int start, int stop) {
     return executeWithRetry<StringList>([this, &key, start, stop]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("ZRANGE %s %d %d", key.c_str(), start, stop);
         StringList result = replyToStringList(reply);
         if (reply) freeReplyObject(reply);
@@ -549,7 +549,7 @@ RedisClient::StringList RedisClientImpl::zrange(const std::string& key, int star
 
 int RedisClientImpl::zcard(const std::string& key) {
     return executeWithRetry<int>([this, &key]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("ZCARD %s", key.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -567,7 +567,7 @@ int RedisClientImpl::zcard(const std::string& key) {
 
 int RedisClientImpl::publish(const std::string& channel, const std::string& message) {
     return executeWithRetry<int>([this, &channel, &message]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("PUBLISH %s %s", channel.c_str(), message.c_str());
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -613,7 +613,7 @@ bool RedisClientImpl::mset(const StringMap& key_values) {
     if (key_values.empty()) return true;
     
     return executeWithRetry<bool>([this, &key_values]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         std::vector<std::string> args;
         args.push_back("MSET");
         
@@ -648,7 +648,7 @@ RedisClient::StringList RedisClientImpl::mget(const StringList& keys) {
     if (keys.empty()) return StringList{};
     
     return executeWithRetry<StringList>([this, &keys]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         std::vector<std::string> args;
         args.push_back("MGET");
         args.insert(args.end(), keys.begin(), keys.end());
@@ -685,7 +685,7 @@ RedisClient::StringList RedisClientImpl::mget(const StringList& keys) {
 
 bool RedisClientImpl::multi() {
     return executeWithRetry<bool>([this]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("MULTI");
         bool result = isReplyOK(reply);
         if (reply) freeReplyObject(reply);
@@ -699,7 +699,7 @@ bool RedisClientImpl::multi() {
 
 bool RedisClientImpl::exec() {
     return executeWithRetry<bool>([this]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("EXEC");
         bool result = reply && reply->type == REDIS_REPLY_ARRAY;
         if (reply) freeReplyObject(reply);
@@ -713,7 +713,7 @@ bool RedisClientImpl::exec() {
 
 bool RedisClientImpl::discard() {
     return executeWithRetry<bool>([this]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("DISCARD");
         bool result = isReplyOK(reply);
         if (reply) freeReplyObject(reply);
@@ -733,7 +733,7 @@ RedisClient::StringMap RedisClientImpl::info() {
     return executeWithRetry<StringMap>([this]() {
         StringMap result;
         
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("INFO");
         if (reply && reply->type == REDIS_REPLY_STRING) {
             std::string info_str(reply->str, reply->len);
@@ -771,7 +771,7 @@ RedisClient::StringMap RedisClientImpl::info() {
 
 bool RedisClientImpl::ping() {
     return executeWithRetry<bool>([this]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("PING");
         bool result = reply && 
                      reply->type == REDIS_REPLY_STATUS && 
@@ -786,7 +786,7 @@ bool RedisClientImpl::ping() {
 
 bool RedisClientImpl::select(int db_index) {
     return executeWithRetry<bool>([this, db_index]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("SELECT %d", db_index);
         bool result = isReplyOK(reply);
         if (result) {
@@ -804,7 +804,7 @@ bool RedisClientImpl::select(int db_index) {
 
 int RedisClientImpl::dbsize() {
     return executeWithRetry<int>([this]() {
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("DBSIZE");
         int result = reply ? static_cast<int>(replyToInteger(reply)) : 0;
         if (reply) freeReplyObject(reply);
@@ -910,7 +910,7 @@ void RedisClientImpl::loadConfiguration() {
 bool RedisClientImpl::attemptConnection() {
     std::lock_guard<std::recursive_mutex> lock(connection_mutex_);
     
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
     try {
         if (context_) {
             redisFree(context_);
@@ -1043,7 +1043,7 @@ void RedisClientImpl::incrementFailure() {
     failed_commands_++;
 }
 
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
 // =============================================================================
 // hiredis 전용 구현들
 // =============================================================================
