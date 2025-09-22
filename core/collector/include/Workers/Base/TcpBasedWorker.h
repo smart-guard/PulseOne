@@ -3,7 +3,7 @@
  * @brief TCP 기반 프로토콜 워커 헤더 - 컴파일 에러 완전 해결
  * @author PulseOne Development Team
  * @date 2025-01-23
- * @version 2.0.0 - 구현부 완전 동기화
+ * @version 3.0.0 - 구현부 완전 동기화
  */
 
 #ifndef WORKERS_TCP_BASED_WORKER_H
@@ -171,34 +171,33 @@ public:
 
 protected:
     // =============================================================================
-    // 파생 클래스에서 구현해야 하는 프로토콜별 메서드들 (순수 가상)
+    // 파생 클래스에서 구현해야 하는 프로토콜별 메서드들 (구현부에서 기본 구현 제공)
     // =============================================================================
     
     /**
-     * @brief 프로토콜별 연결 수립 (Modbus TCP, MQTT 등에서 구현)
+     * @brief 프로토콜별 연결 수립 (기본 구현 제공, 파생 클래스에서 오버라이드 가능)
      * @details TCP 소켓이 이미 연결된 상태에서 호출됨
      * @return 성공 시 true
      */
-    virtual bool EstablishProtocolConnection() = 0;
+    virtual bool EstablishProtocolConnection();
     
     /**
-     * @brief 프로토콜별 연결 해제 (Modbus TCP, MQTT 등에서 구현)
-     * @details TCP 소켓 해제 전에 호출됨
-     * @return 성공 시 true
+     * @brief 프로토콜별 연결 해제 (기본 구현 제공, 파생 클래스에서 오버라이드 가능)
+     * @details TCP 소켓 해제 전에 호출됨 - 구현부와 일치하도록 void 반환
      */
-    virtual bool CloseProtocolConnection() = 0;
+    virtual bool CloseProtocolConnection();
     
     /**
-     * @brief 프로토콜별 연결 상태 확인 (Modbus TCP, MQTT 등에서 구현)
+     * @brief 프로토콜별 연결 상태 확인 (기본 구현 제공, 파생 클래스에서 오버라이드 가능)
      * @details TCP 소켓이 연결된 상태에서 호출됨
      * @return 연결 상태
      */
-    virtual bool CheckProtocolConnection() = 0;
+    virtual bool CheckProtocolConnection();
     
     /**
-     * @brief 프로토콜별 Keep-alive 전송 (파생 클래스에서 선택적 구현)
+     * @brief 프로토콜별 Keep-alive 전송 (기본 구현 제공, 파생 클래스에서 오버라이드 가능)
      * @details TCP 소켓이 연결된 상태에서 호출됨
-     * @return 성공 시 true (기본 구현 제공)
+     * @return 성공 시 true
      */
     virtual bool SendProtocolKeepAlive();
     
@@ -235,6 +234,23 @@ protected:
      */
     bool IsTcpSocketConnected() const;
 
+    // =============================================================================
+    // 에러 메시지 변환 유틸리티 (구현부에서 사용하는 함수들)
+    // =============================================================================
+    
+    /**
+     * @brief 마지막 소켓 에러를 문자열로 반환
+     * @return 에러 메시지 문자열
+     */
+    std::string GetLastSocketErrorString();
+    
+    /**
+     * @brief 소켓 에러 코드를 문자열로 변환
+     * @param error_code 에러 코드
+     * @return 에러 메시지 문자열
+     */
+    std::string SocketErrorToString(int error_code);
+
 private:
     // =============================================================================
     // 내부 멤버 변수들 (구현부와 완전 일치)
@@ -252,7 +268,7 @@ private:
     // =============================================================================
     
     /**
-     * @brief 소켓 옵션 설정 (구현부에서 호출하는 정확한 이름!)
+     * @brief 소켓 옵션 설정
      * @return 성공 시 true
      */
     bool ConfigureSocketOptions();
@@ -300,20 +316,6 @@ private:
      * @brief Windows Winsock 정리
      */
     void CleanupWinsock();
-    
-    /**
-     * @brief Winsock 에러 코드를 문자열로 변환
-     * @param error_code 에러 코드
-     * @return 에러 메시지 문자열
-     */
-    std::string WinsockErrorToString(int error_code);
-#else
-    /**
-     * @brief Unix 소켓 에러 코드를 문자열로 변환
-     * @param error_code 에러 코드 (errno)
-     * @return 에러 메시지 문자열
-     */
-    std::string UnixSocketErrorToString(int error_code);
 #endif
 };
 
