@@ -17,7 +17,7 @@
 #include <functional>
 
 // hiredis 라이브러리 체크
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
 #include <hiredis/hiredis.h>
 #endif
 
@@ -196,7 +196,7 @@ private:
         return default_value;
     }
     
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
     // hiredis 전용 메서드들
     redisReply* executeCommandSafe(const char* format, ...);
     std::string replyToString(redisReply* reply) const;
@@ -212,7 +212,7 @@ private:
     // =============================================================================
     
     // hiredis 연결 컨텍스트
-#ifdef HAS_HIREDIS
+#ifdef HAVE_REDIS
     redisContext* context_{nullptr};
 #else
     void* context_{nullptr};  // 호환성을 위한 더미
