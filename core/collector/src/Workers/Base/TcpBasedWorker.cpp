@@ -521,9 +521,10 @@ bool TcpBasedWorker::EstablishProtocolConnection() {
     return true;
 }
 
-void TcpBasedWorker::CloseProtocolConnection() {
+bool TcpBasedWorker::CloseProtocolConnection() {
     // 기본 구현: 특별한 프로토콜 정리 없음
     LogMessage(LogLevel::DEBUG_LEVEL, "Protocol connection closed (base implementation)");
+    return true;
 }
 
 bool TcpBasedWorker::CheckProtocolConnection() {

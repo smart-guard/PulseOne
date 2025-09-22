@@ -1,9 +1,9 @@
 /**
  * @file BACnetDiscoveryService.cpp
- * @brief BACnet 발견 서비스 - 버그 수정 및 안정성 강화 완성본
+ * @brief BACnet 발견 서비스 - setProtocolType deprecated 해결 완성본
  * @author PulseOne Development Team
- * @date 2025-08-09
- * @version 6.1.0 - 안정성 강화
+ * @date 2025-09-22
+ * @version 6.2.0 - setProtocolType deprecated 해결
  */
 
 #include "Workers/Protocol/BACnetDiscoveryService.h"
@@ -16,6 +16,8 @@
 #include "Database/Entities/CurrentValueEntity.h"
 #include "Database/Entities/DeviceSettingsEntity.h"
 #include "Database/DatabaseTypes.h"
+#include "Database/RepositoryFactory.h"          // 추가: ProtocolRepository 접근용
+#include "Database/Repositories/ProtocolRepository.h"  // 추가
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <functional>
@@ -40,6 +42,39 @@ using LogLevel = PulseOne::Enums::LogLevel;
 
 namespace PulseOne {
 namespace Workers {
+
+        // =======================================================================
+    // 헬퍼 함수: 프로토콜 타입을 ID로 안전하게 변환
+    // =======================================================================
+    
+    int ResolveProtocolTypeToId(const std::string& protocol_type) {
+        try {
+            auto& repo_factory = Database::RepositoryFactory::getInstance();
+            auto protocol_repo = repo_factory.getProtocolRepository();
+            
+            if (!protocol_repo) {
+                LogManager::getInstance().Error("ProtocolRepository not available");
+                return 0;  // 실패 시 0 반환 (유효하지 않은 ID)
+            }
+            
+            std::string actual_protocol_type = protocol_type.empty() ? "BACNET_IP" : protocol_type;
+            auto protocol_opt = protocol_repo->findByType(actual_protocol_type);
+            
+            if (protocol_opt.has_value()) {
+                LogManager::getInstance().Debug("Resolved protocol '" + actual_protocol_type + 
+                                              "' to ID " + std::to_string(protocol_opt->getId()));
+                return protocol_opt->getId();
+            } else {
+                LogManager::getInstance().Error("Protocol type not found in database: " + actual_protocol_type);
+                return 0;  // 프로토콜이 DB에 없으면 0 반환
+            }
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("Failed to resolve protocol type '" + protocol_type + 
+                                          "': " + std::string(e.what()));
+            return 0;
+        }
+    }
 
     // =======================================================================
     // 🔥 DeviceInfo ↔ DeviceEntity 변환 함수들
@@ -68,7 +103,19 @@ void BACnetDiscoveryService::ConvertDeviceInfoToEntity(const DeviceInfo& device_
         entity.setId(device_id);
         entity.setName(device_info.name.empty() ? "Unknown Device" : device_info.name);
         entity.setDescription(device_info.description);
-        entity.setProtocolType(device_info.protocol_type.empty() ? "BACNET_IP" : device_info.protocol_type);
+        
+        // 수정됨: setProtocolType → setProtocolId + ProtocolRepository 조회
+        int protocol_id = ResolveProtocolTypeToId(device_info.protocol_type);
+        if (protocol_id > 0) {
+            entity.setProtocolId(protocol_id);
+        } else {
+            auto& logger = LogManager::getInstance();
+            logger.Error("Failed to resolve protocol for device " + device_info.id + 
+                        ", protocol_type: " + device_info.protocol_type);
+            // 프로토콜 해결 실패 시 예외 발생 (데이터 무결성 보장)
+            throw std::runtime_error("Cannot resolve protocol type: " + device_info.protocol_type);
+        }
+        
         entity.setEndpoint(device_info.endpoint);
         entity.setEnabled(device_info.is_enabled);
         
@@ -1005,7 +1052,18 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(const DeviceInfo& de
         entity.setId(std::stoi(device.id));
         entity.setName(device.name);
         entity.setDescription(device.description);
-        entity.setProtocolType(device.protocol_type.empty() ? "BACNET_IP" : device.protocol_type);
+        
+        // 수정됨: setProtocolType → setProtocolId + ProtocolRepository 조회
+        int protocol_id = ResolveProtocolTypeToId(device.protocol_type);
+        if (protocol_id > 0) {
+            entity.setProtocolId(protocol_id);
+        } else {
+            auto& logger = LogManager::getInstance();
+            logger.Error("Failed to resolve protocol for device " + device.id + 
+                        ", protocol_type: " + device.protocol_type);
+            return false;  // 프로토콜 해결 실패 시 저장 실패
+        }
+        
         entity.setEndpoint(device.endpoint);
         entity.setEnabled(device.is_enabled);
         
