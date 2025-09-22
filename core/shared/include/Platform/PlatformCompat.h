@@ -17,6 +17,7 @@
 // C++17 filesystem 지원 확인
 #if __cplusplus >= 201703L && __has_include(<filesystem>)
     #include <filesystem>
+#include <algorithm>
     #define HAS_FILESYSTEM 1
 #else
     #define HAS_FILESYSTEM 0

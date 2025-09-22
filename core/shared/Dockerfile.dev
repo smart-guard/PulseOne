@@ -1,10 +1,38 @@
+# core/shared/Dockerfile.dev - PulseOne Shared 라이브러리 빌드 환경
 FROM gcc:12
 
+# 기본 빌드 도구 설치
 RUN apt-get update && apt-get install -y \
     cmake make build-essential \
-    pkg-config git \
+    libsqlite3-dev sqlite3 \
+    pkg-config curl wget \
+    tree htop procps \
     && rm -rf /var/lib/apt/lists/*
+
+# nlohmann/json 설치 (JSON 처리용)
+RUN echo "Installing nlohmann/json..." && \
+    cd /tmp && \
+    git clone --depth 1 --branch v3.11.3 https://github.com/nlohmann/json.git && \
+    cd json && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DJSON_BuildTests=OFF && \
+    make -j$(nproc) && make install && \
+    cd / && rm -rf /tmp/json
+
+# 컴파일러 환경 설정
+ENV CC=gcc CXX=g++
+ENV CFLAGS="-std=c11 -Wall -Wextra -fPIC"
+ENV CXXFLAGS="-std=c++17 -Wall -Wextra -fPIC"
+
+# Bash 프롬프트 설정
+RUN echo 'export PS1="\[\033[01;33m\]\u@shared-libs\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /root/.bashrc && \
+    echo 'echo "📚 PulseOne Shared Libraries Build Environment"' >> /root/.bashrc && \
+    echo 'echo "=============================================="' >> /root/.bashrc && \
+    echo 'echo "Available commands:"' >> /root/.bashrc && \
+    echo 'echo "  make test-headers  - Test all header files"' >> /root/.bashrc && \
+    echo 'echo "  make all          - Build all shared libraries"' >> /root/.bashrc && \
+    echo 'echo "  make clean        - Clean build artifacts"' >> /root/.bashrc && \
+    echo 'echo ""' >> /root/.bashrc
 
 WORKDIR /app/core/shared
 
-CMD ["bash"]
+CMD ["/bin/bash"]
