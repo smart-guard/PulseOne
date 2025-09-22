@@ -781,6 +781,15 @@ try {
     logger.system('WARN', 'Device 라우트 로드 실패', { error: error.message });
 }
 
+// 🆕 프로토콜 관리 라우트 (이 부분이 빠져있었음!)
+try {
+    const protocolRoutes = require('./routes/protocols');
+    app.use('/api/protocols', protocolRoutes);
+    logger.system('INFO', 'Protocol API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Protocol 라우트 로드 실패', { error: error.message });
+}
+
 // 알람 관리 라우트 (중요)
 try {
     const alarmRoutes = require('./routes/alarms');
@@ -824,6 +833,8 @@ const optionalRoutes = [
     { path: './routes/dashboard', mount: '/api/dashboard', name: 'Dashboard' },
     { path: './routes/realtime', mount: '/api/realtime', name: 'Realtime Data' },
     { path: './routes/virtual-points', mount: '/api/virtual-points', name: 'Virtual Points' },
+    { path: './routes/sites', mount: '/api/sites', name: 'Site Management' },
+    { path: './routes/data-points', mount: '/api/data-points', name: 'Data Points' },
     { path: './routes/monitoring', mount: '/api/monitoring', name: 'System Monitoring' },
     { path: './routes/backup', mount: '/api/backup', name: 'Backup/Restore' },
     { path: './routes/websocket', mount: '/api/websocket', name: 'WebSocket Management' }

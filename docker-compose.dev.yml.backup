@@ -1,0 +1,401 @@
+version: '3.8'
+
+services:
+  # PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: pulseone-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pulseone}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./data/sql/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pulseone_network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: pulseone-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pulseone_network
+
+  # InfluxDB
+  influxdb:
+    image: influxdb:2.7
+    container_name: pulseone-influxdb
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USERNAME:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD:-influxpassword}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:-pulseone}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET:-timeseries}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:-my-super-secret-auth-token}
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pulseone_network
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: pulseone-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rabbitmq}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq123}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pulseone_network
+
+  # Backend (Node.js)
+  # Backend (Node.js) - 기존 환경변수 구조에 맞춤
+# Backend (Node.js) - 스마트 자동 시작
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    container_name: pulseone-backend-dev
+    working_dir: /app
+    command: node backend/app.js
+    env_file:
+      - ./config/.env
+      - ./config/database.env
+      - ./config/redis.env
+      - ./config/timeseries.env
+      - ./config/messaging.env
+    environment:
+      NODE_ENV: development
+      ENV_STAGE: ${ENV_STAGE:-dev}
+      BACKEND_PORT: 3000
+      DATABASE_TYPE: SQLITE
+      SQLITE_DB_PATH: ./data/db/pulseone.db
+      REDIS_PRIMARY_ENABLED: "false"
+      REDIS_PRIMARY_HOST: redis
+      REDIS_PRIMARY_PORT: 6379
+    ports:
+      - "3000:3000"
+      - "9229:9229"
+    volumes:
+      - ./backend:/app/backend
+      - ./config:/app/config
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - pulseone_network
+    # 🚀 스마트 자동 시작 (포트 충돌 시 다른 포트 사용)
+    command: >
+      sh -c '
+        echo "🚀 PulseOne Backend Container Starting..."
+        
+        # 데이터 디렉토리 생성
+        mkdir -p /app/data/db /app/data/backup /app/data/logs /app/data/temp
+        
+        # 의존성 확인
+        cd /app/backend
+        if [ ! -d node_modules ]; then
+          echo "📦 Installing npm dependencies..."
+          npm install
+        fi
+        
+        # 포트 사용 체크 및 자동 조정
+        if netstat -tuln | grep -q ":3000 "; then
+          echo "⚠️  포트 3000이 사용 중입니다. 포트 3001을 사용합니다."
+          export BACKEND_PORT=3001
+        else
+          export BACKEND_PORT=3000
+        fi
+        
+        echo "🚀 Starting server on port $$BACKEND_PORT..."
+        npm run dev
+      '
+
+  # Frontend (React + TypeScript + Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: pulseone-frontend-dev
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      ENV_STAGE: ${ENV_STAGE:-dev}
+      VITE_API_BASE_URL: http://localhost:3000/api
+      VITE_WEBSOCKET_URL: ws://localhost:3000
+      CHOKIDAR_USEPOLLING: "true"
+      VITE_HMR_HOST: 0.0.0.0
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - pulseone_network
+    command: >
+      sh -c '
+        echo "🎨 PulseOne Frontend Development Environment"
+        echo "============================================="
+        
+        # npm 의존성 설치
+        if [ ! -d node_modules ]; then
+          echo "📦 Installing npm dependencies..."
+          npm install
+        fi
+        
+        # 개발 서버 시작
+        echo "🚀 Starting Frontend Development Server..."
+        npm run dev -- --host 0.0.0.0
+      '
+
+  # Collector (C++)
+  collector:
+    build:
+      context: .
+      dockerfile: collector/Dockerfile.dev
+    container_name: pulseone-collector-dev
+    tty: true
+    stdin_open: true
+    working_dir: /app
+    env_file:
+      - ./config/.env
+      - ./config/database.env
+      - ./config/redis.env  # redis.env의 변수명들을 그대로 사용
+      - ./config/timeseries.env
+      - ./config/messaging.env
+    environment:
+      # Build 관련 환경변수
+      BUILD_TYPE: Debug
+      LOG_LEVEL: debug
+      ENV_STAGE: ${ENV_STAGE:-dev}
+      AUTO_BUILD: "true"
+      AUTO_RUN: "false"
+      
+      # PostgreSQL (database.env에서 로드되지만 명시적으로 오버라이드)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      POSTGRES_DB: ${POSTGRES_DB:-pulseone}
+      
+      # InfluxDB (timeseries.env에서 로드되지만 명시적으로 오버라이드)
+      INFLUXDB_HOST: influxdb
+      INFLUXDB_PORT: 8086
+      INFLUXDB_TOKEN: ${INFLUX_TOKEN:-my-super-secret-auth-token}
+      INFLUXDB_ORG: ${INFLUX_ORG:-pulseone}
+      INFLUXDB_BUCKET: ${INFLUX_BUCKET:-timeseries}
+      
+      # RabbitMQ (messaging.env에서 로드되지만 명시적으로 오버라이드)
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbitmq}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbitmq123}
+      
+      # SQLite (개발용 백업 DB)
+      SQLITE_PATH: /app/data/pulseone.db
+      DATABASE_TYPE: sqlite
+      
+      # Redis는 redis.env 파일의 변수명을 그대로 사용
+      # REDIS_PRIMARY_HOST를 Docker 내부 서비스명으로 오버라이드
+      REDIS_PRIMARY_HOST: redis  # pulseone-redis 대신 서비스명 사용
+      
+    volumes:
+      - ./collector:/app/collector
+      - ./config:/app/config
+      - ./secrets:/app/secrets
+      - ./logs:/app/logs
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - pulseone_network
+    ports:
+      - "8080:8080"  
+    command: >
+      bash -c '
+        echo "🔧 PulseOne Collector Development Environment"
+        echo "============================================="
+        
+        # Redis 연결 환경 자동 설정 (redis.env의 변수명 사용)
+        echo "🔍 Redis 연결 환경 자동 설정:"
+        if timeout 3 bash -c "</dev/tcp/redis/6379" 2>/dev/null; then
+          echo "✅ 내부 Redis 서비스 연결 성공 (redis:6379)"
+          export REDIS_PRIMARY_HOST=redis
+        elif timeout 3 bash -c "</dev/tcp/host.docker.internal/6379" 2>/dev/null; then
+          echo "✅ 외부 Redis 서비스 연결 성공 (host.docker.internal:6379)"
+          export REDIS_PRIMARY_HOST=host.docker.internal
+        else
+          echo "❌ Redis 연결 실패 - 기본값 사용 (redis)"
+          export REDIS_PRIMARY_HOST=redis
+        fi
+        
+        echo "📍 최종 Redis 설정: $REDIS_PRIMARY_HOST:$REDIS_PRIMARY_PORT"
+        
+        # API Key 로드
+        if [ -f /app/secrets/anthropic_api_key ]; then
+          export ANTHROPIC_API_KEY=$(cat /app/secrets/anthropic_api_key)
+          echo "✅ Claude Code API Key 로드됨"
+        fi
+        
+        echo "📋 System Info:"
+        echo "  OS: $(uname -s) $(uname -r)"
+        echo "  Compiler: $(g++ --version | head -n1)"
+        echo "  Build Type: $BUILD_TYPE"
+        echo "  Working Dir: $(pwd)"
+        
+        # 데이터베이스 설정 확인
+        echo "🗄️ Database Configuration:"
+        echo "  DATABASE_TYPE: $DATABASE_TYPE"
+        echo "  POSTGRES_HOST: $POSTGRES_HOST:$POSTGRES_PORT"
+        echo "  REDIS_PRIMARY_HOST: $REDIS_PRIMARY_HOST:$REDIS_PRIMARY_PORT"
+        echo "  REDIS_PRIMARY_DB: $REDIS_PRIMARY_DB"
+        echo "  REDIS_POOL_SIZE: $REDIS_POOL_SIZE"
+        echo "  REDIS_KEY_PREFIX: $REDIS_KEY_PREFIX"
+        echo "  INFLUXDB_HOST: $INFLUXDB_HOST:$INFLUXDB_PORT"
+        echo "  SQLITE_PATH: $SQLITE_PATH"
+        
+        # SQLite 파일 확인
+        if [ -f "$SQLITE_PATH" ]; then
+          echo "  ✅ SQLite file found: $SQLITE_PATH"
+          sqlite3 "$SQLITE_PATH" "SELECT COUNT(*) as device_count FROM devices;" 2>/dev/null && echo "  📊 SQLite accessible" || echo "  ⚠️ SQLite query failed"
+        else
+          echo "  ❌ SQLite file not found: $SQLITE_PATH"
+          echo "  📝 Creating SQLite file..."
+          mkdir -p $(dirname "$SQLITE_PATH")
+          touch "$SQLITE_PATH"
+        fi
+        
+        # 라이브러리 상태 확인
+        echo "📚 Library Status:"
+        pkg-config --exists libmodbus && echo "  ✅ libmodbus: $(pkg-config --modversion libmodbus)" || echo "  ❌ libmodbus"
+        [ -f /usr/local/lib/libhiredis.so ] && echo "  ✅ hiredis: Found" || echo "  ❌ hiredis"
+        [ -f /usr/local/include/MQTTClient.h ] && echo "  ✅ Paho MQTT C: Found" || echo "  ❌ Paho MQTT C"
+        [ -f /usr/local/include/mqtt/async_client.h ] && echo "  ✅ Paho MQTT C++: Found" || echo "  ❌ Paho MQTT C++"
+        [ -d /usr/local/include/bacnet ] && echo "  ✅ BACnet: Found" || echo "  ❌ BACnet"
+        [ -f /usr/local/lib/libbacnet.a ] && echo "  ✅ BACnet library: $(du -h /usr/local/lib/libbacnet.a | cut -f1)" || echo "  ❌ BACnet library"
+        
+        # 서비스 연결 확인
+        echo "🌐 Service Connectivity:"
+        timeout 5 bash -c "</dev/tcp/postgres/5432" 2>/dev/null && echo "  ✅ PostgreSQL" || echo "  ❌ PostgreSQL"
+        timeout 5 bash -c "</dev/tcp/$REDIS_PRIMARY_HOST/$REDIS_PRIMARY_PORT" 2>/dev/null && echo "  ✅ Redis" || echo "  ❌ Redis"
+        timeout 5 bash -c "</dev/tcp/influxdb/8086" 2>/dev/null && echo "  ✅ InfluxDB" || echo "  ❌ InfluxDB"
+        timeout 5 bash -c "</dev/tcp/rabbitmq/5672" 2>/dev/null && echo "  ✅ RabbitMQ" || echo "  ❌ RabbitMQ"
+        
+        # 자동 빌드
+        if [ "$AUTO_BUILD" = "true" ]; then
+          echo "🔨 Starting automatic build..."
+          cd /app/collector
+          
+          # 필수 디렉토리 생성
+          echo "📁 Creating required directories..."
+          mkdir -p include/Core src/Core include/Drivers src/Drivers bin obj tests/bin
+          
+          echo "🔧 Building collector with environment variables..."
+          make clean 2>/dev/null || true
+          
+          # 환경변수를 Makefile에 전달 (redis.env의 변수명 사용)
+          if make debug REDIS_HOST=$REDIS_PRIMARY_HOST POSTGRES_HOST=$POSTGRES_HOST INFLUX_HOST=$INFLUXDB_HOST; then
+            echo "✅ Build successful!"
+            
+            # 자동 실행
+            if [ "$AUTO_RUN" = "true" ]; then
+              echo "🚀 Starting collector..."
+              make run
+            else
+              echo "💡 Build completed. Use make run to start collector."
+            fi
+          else
+            echo "❌ Build failed. Check the error messages above."
+            echo "💡 You can still access the container to debug:"
+            echo "   docker exec -it pulseone-collector-dev bash"
+          fi
+        fi
+        
+        echo ""
+        echo "🚀 Available Commands:"
+        echo "  dev-build.sh              - 개발 빌드 (Redis 설정 자동 적용)"
+        echo "  setup-docker-redis.sh     - Redis 설정 자동 구성"
+        echo "  test-redis-connection.sh  - Redis 연결 테스트"
+        echo "  test-bacnet-symbols.sh    - BACnet 심볼 테스트"
+        echo "  make clean && make debug  - Manual build"
+        echo "  make test                 - Run tests"
+        echo "  make help                 - Makefile help"
+        echo ""
+        echo "📊 Database Commands:"
+        echo "  sqlite3 \$SQLITE_PATH     - Access SQLite database"
+        echo "  sqlite3 \$SQLITE_PATH .tables  - List tables"
+        echo ""
+        echo "🔍 Redis Test Commands:"
+        echo "  redis-cli -h \$REDIS_PRIMARY_HOST -p \$REDIS_PRIMARY_PORT ping"
+        echo "  redis-cli -h \$REDIS_PRIMARY_HOST -p \$REDIS_PRIMARY_PORT --scan --pattern \"\$REDIS_KEY_PREFIX*\""
+        echo ""
+        echo "🚀 PulseOne Collector Development Environment Ready!"
+        echo "💡 Use: docker exec -it pulseone-collector-dev bash"
+        
+        # 무한 대기 (컨테이너 유지)
+        tail -f /dev/null
+      '
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f pulseone-collector || test -f /app/collector/bin/collector"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  pulseone_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  influxdb_data:
+  influxdb_config:
+  rabbitmq_data:
