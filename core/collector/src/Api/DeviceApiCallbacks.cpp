@@ -49,7 +49,7 @@ void DeviceApiCallbacks::Setup(RestApiServer* server) {
                         json device_json = json::object();
                         device_json["device_id"] = std::to_string(device.getId());
                         device_json["name"] = device.getName();
-                        device_json["protocol"] = device.getProtocolType();
+                        device_json["protocol"] = device.getProtocolDisplayName();
                         device_json["endpoint"] = device.getEndpoint();
                         device_json["enabled"] = device.isEnabled();
                         
