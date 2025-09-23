@@ -1,10 +1,9 @@
 /**
- * @file CSPGateway.h - 🎯 컴파일 에러 100% 해결 완료
- * @brief CSP Gateway 헤더 - C# CSPGateway 완전 포팅 (수정본)
- * @author PulseOne Development Team  
- * @date 2025-09-22
- * 🔥 함수 시그니처 불일치 문제 해결 완료
- * 📁 저장 위치: core/export-gateway/include/CSP/CSPGateway.h
+ * @file CSPGateway.h - 완전한 헤더 파일 (멀티빌딩, 시간필터, 배치관리 추가)
+ * @brief CSP Gateway 헤더 - C# CSPGateway 완전 포팅
+ * @author PulseOne Development Team
+ * @date 2025-09-23
+ * 저장 위치: core/export-gateway/include/CSP/CSPGateway.h
  */
 
 #ifndef CSP_GATEWAY_H
@@ -20,6 +19,7 @@
 #include <condition_variable>
 #include <chrono>
 #include <unordered_map>
+#include <filesystem>
 
 #include "AlarmMessage.h"
 
@@ -41,30 +41,45 @@ namespace PulseOne {
 namespace CSP {
 
 /**
- * @brief CSP Gateway 설정
+ * @brief CSP Gateway 설정 (확장된 버전)
  */
 struct CSPGatewayConfig {
+    // 기본 설정
     std::string building_id = "1001";
     std::string api_endpoint = "";
     std::string api_key = "";
     int api_timeout_sec = 30;
     
+    // S3 설정
     std::string s3_endpoint = "";
     std::string s3_access_key = "";
     std::string s3_secret_key = "";
     std::string s3_bucket_name = "";
     std::string s3_region = "us-east-1";
     
+    // 기본 옵션
     bool debug_mode = false;
     int max_retry_attempts = 3;
     int initial_delay_ms = 1000;
     int max_queue_size = 10000;
-    
     std::string failed_file_path = "./failed_alarms";
-    
-    // C# 호환성
     bool use_api = true;
     bool use_s3 = true;
+    
+    // 1. 멀티빌딩 지원 (C# Dictionary<int, List<AlarmMessage>> 지원)
+    std::vector<int> supported_building_ids = {1001};
+    bool multi_building_enabled = false;
+    
+    // 2. 알람 무시 시간 설정 (C# AlarmIgnoreMinutes 포팅)
+    int alarm_ignore_minutes = 5;
+    bool use_local_time = true;
+    
+    // 3. 배치 파일 관리 (C# _alarmDirPath 포팅)
+    std::string alarm_dir_path = "./alarm_files";
+    bool auto_cleanup_success_files = true;
+    int keep_failed_files_days = 7;
+    size_t max_batch_size = 1000;
+    int batch_timeout_ms = 5000;
 };
 
 /**
@@ -83,8 +98,23 @@ struct AlarmSendResult {
 };
 
 /**
- * @brief CSP Gateway 통계 🔥 atomic 복사 생성자 문제 해결 완료
- * 기존 Common/Structs.h의 LogStatistics 패턴 100% 적용
+ * @brief 배치 알람 처리 결과 (C# taskAlarmMultiple 결과 포팅)
+ */
+struct BatchAlarmResult {
+    int total_alarms = 0;
+    int successful_api_calls = 0;
+    int failed_api_calls = 0;
+    bool s3_success = false;
+    std::string batch_file_path;
+    std::chrono::system_clock::time_point processed_time;
+    
+    // C# 스타일 계산 메서드
+    int getFailAPIAlarms() const { return failed_api_calls; }
+    bool isCompleteSuccess() const { return failed_api_calls == 0 && s3_success; }
+};
+
+/**
+ * @brief CSP Gateway 통계
  */
 struct CSPGatewayStats {
     std::atomic<size_t> total_alarms{0};
@@ -94,22 +124,22 @@ struct CSPGatewayStats {
     std::atomic<size_t> failed_s3_uploads{0};
     std::atomic<size_t> retry_attempts{0};
     
+    // 배치 처리 통계 추가
+    std::atomic<size_t> total_batches{0};
+    std::atomic<size_t> successful_batches{0};
+    std::atomic<size_t> ignored_alarms{0}; // 시간 필터링으로 무시된 알람
+    
     std::chrono::system_clock::time_point last_success_time;
     std::chrono::system_clock::time_point last_failure_time;
     double avg_response_time_ms = 0.0;
     
-    /**
-     * @brief 기본 생성자
-     */
+    // 기본 생성자
     CSPGatewayStats() {
         last_success_time = std::chrono::system_clock::now();
         last_failure_time = last_success_time;
     }
     
-    /**
-     * @brief 복사 생성자 명시적 구현 (atomic 때문에 필요)
-     * 🔥 기존 LogStatistics와 100% 동일한 패턴
-     */
+    // 복사 생성자 (atomic 때문에 필요)
     CSPGatewayStats(const CSPGatewayStats& other) 
         : total_alarms(other.total_alarms.load())
         , successful_api_calls(other.successful_api_calls.load())
@@ -117,15 +147,14 @@ struct CSPGatewayStats {
         , successful_s3_uploads(other.successful_s3_uploads.load())
         , failed_s3_uploads(other.failed_s3_uploads.load())
         , retry_attempts(other.retry_attempts.load())
+        , total_batches(other.total_batches.load())
+        , successful_batches(other.successful_batches.load())
+        , ignored_alarms(other.ignored_alarms.load())
         , last_success_time(other.last_success_time)
         , last_failure_time(other.last_failure_time)
-        , avg_response_time_ms(other.avg_response_time_ms) {
-    }
+        , avg_response_time_ms(other.avg_response_time_ms) {}
     
-    /**
-     * @brief 할당 연산자 명시적 구현
-     * 🔥 기존 LogStatistics와 100% 동일한 패턴
-     */
+    // 할당 연산자
     CSPGatewayStats& operator=(const CSPGatewayStats& other) {
         if (this != &other) {
             total_alarms.store(other.total_alarms.load());
@@ -134,6 +163,9 @@ struct CSPGatewayStats {
             successful_s3_uploads.store(other.successful_s3_uploads.load());
             failed_s3_uploads.store(other.failed_s3_uploads.load());
             retry_attempts.store(other.retry_attempts.load());
+            total_batches.store(other.total_batches.load());
+            successful_batches.store(other.successful_batches.load());
+            ignored_alarms.store(other.ignored_alarms.load());
             last_success_time = other.last_success_time;
             last_failure_time = other.last_failure_time;
             avg_response_time_ms = other.avg_response_time_ms;
@@ -141,49 +173,24 @@ struct CSPGatewayStats {
         return *this;
     }
     
-    /**
-     * @brief 총 전송 시도 수 계산
-     * 🔥 기존 LogStatistics.GetTotalLogs() 패턴 적용
-     */
-    size_t getTotalAttempts() const {
-        return successful_api_calls.load() + failed_api_calls.load();
-    }
-    
-    /**
-     * @brief 성공률 계산 (백분율)
-     */
-    double getSuccessRate() const {
-        size_t total = getTotalAttempts();
+    // API 성공률 계산
+    double getAPISuccessRate() const {
+        size_t total = successful_api_calls.load() + failed_api_calls.load();
         return total > 0 ? (static_cast<double>(successful_api_calls.load()) / total * 100.0) : 0.0;
     }
     
-    /**
-     * @brief S3 총 업로드 시도 수
-     */
-    size_t getTotalS3Attempts() const {
-        return successful_s3_uploads.load() + failed_s3_uploads.load();
-    }
-    
-    /**
-     * @brief S3 성공률 계산 (백분율)
-     */
+    // S3 성공률 계산
     double getS3SuccessRate() const {
-        size_t total = getTotalS3Attempts();
+        size_t total = successful_s3_uploads.load() + failed_s3_uploads.load();
         return total > 0 ? (static_cast<double>(successful_s3_uploads.load()) / total * 100.0) : 0.0;
     }
 };
 
+// 멀티빌딩 알람 타입 정의 (C# Dictionary<int, List<AlarmMessage>> 포팅)
+using MultiBuildingAlarms = std::unordered_map<int, std::vector<AlarmMessage>>;
+
 /**
- * @brief CSP Gateway 메인 클래스
- * 
- * C# CSPGateway의 핵심 기능들을 C++로 포팅:
- * 
- * 주요 메서드:
- * - taskAlarmSingle() - 단일 알람 처리
- * - callAPIAlarm() - HTTP API 호출
- * - callS3Alarm() - S3 업로드
- * - 재시도 로직
- * - 비동기 배치 처리
+ * @brief CSP Gateway 메인 클래스 (완전한 C# 포팅)
  */
 class CSPGateway {
 public:
@@ -191,248 +198,235 @@ public:
     // 생성자 및 소멸자
     // =======================================================================
     
-    /**
-     * @brief 생성자
-     * @param config CSP Gateway 설정
-     */
     explicit CSPGateway(const CSPGatewayConfig& config);
-    
-    /**
-     * @brief 소멸자
-     */
     ~CSPGateway();
 
-    // 복사/이동 생성자 비활성화 (싱글톤 패턴)
+    // 복사/이동 생성자 비활성화
     CSPGateway(const CSPGateway&) = delete;
     CSPGateway& operator=(const CSPGateway&) = delete;
     CSPGateway(CSPGateway&&) = delete;
     CSPGateway& operator=(CSPGateway&&) = delete;
 
     // =======================================================================
-    // C# CSPGateway 핵심 메서드들 (원본과 동일한 이름)
+    // 기본 C# CSPGateway 메서드들
     // =======================================================================
     
-    /**
-     * @brief 단일 알람 처리 (C# taskAlarmSingle 포팅)
-     * @param alarm_message 처리할 알람 메시지
-     * @return 처리 결과
-     */
     AlarmSendResult taskAlarmSingle(const AlarmMessage& alarm_message);
-    
-    /**
-     * @brief API 알람 호출 (C# callAPIAlarm 포팅)
-     * @param alarm_message 전송할 알람 메시지
-     * @return 전송 결과
-     */
     AlarmSendResult callAPIAlarm(const AlarmMessage& alarm_message);
-    
-    /**
-     * @brief S3 알람 업로드 (C# callS3Alarm 포팅)
-     * @param alarm_message 업로드할 알람 메시지
-     * @param file_name 파일명 (선택사항)
-     * @return 업로드 결과
-     */
-    AlarmSendResult callS3Alarm(const AlarmMessage& alarm_message, 
-                                const std::string& file_name = "");
-
-    // =======================================================================
-    // PulseOne Entity 연동 메서드들
-    // =======================================================================
+    AlarmSendResult callS3Alarm(const AlarmMessage& alarm_message, const std::string& file_name = "");
 
 #ifdef HAS_SHARED_LIBS
-    /**
-     * @brief PulseOne AlarmOccurrence 처리
-     * @param occurrence 알람 발생 엔티티
-     * @return 처리 결과
-     */
     AlarmSendResult processAlarmOccurrence(const Database::Entities::AlarmOccurrenceEntity& occurrence);
-    
-    /**
-     * @brief 배치 알람 처리
-     * @param occurrences 알람 발생 엔티티 리스트
-     * @return 처리 결과 리스트
-     */
     std::vector<AlarmSendResult> processBatchAlarms(
         const std::vector<Database::Entities::AlarmOccurrenceEntity>& occurrences);
 #endif
 
     // =======================================================================
-    // 서비스 제어 메서드들
+    // 1. 멀티빌딩 지원 (C# Dictionary<int, List<AlarmMessage>> 포팅)
     // =======================================================================
     
     /**
-     * @brief 서비스 시작
+     * @brief 멀티빌딩 알람 배치 처리 (C# taskAlarmMultiple 포팅)
+     * @param building_alarms 빌딩별로 그룹화된 알람들
+     * @return 빌딩별 처리 결과
+     */
+    std::unordered_map<int, BatchAlarmResult> processMultiBuildingAlarms(
+        const MultiBuildingAlarms& building_alarms);
+    
+    /**
+     * @brief 알람을 빌딩별로 그룹화
+     * @param alarms 알람 메시지들
+     * @return 빌딩별로 그룹화된 알람
+     */
+    MultiBuildingAlarms groupAlarmsByBuilding(const std::vector<AlarmMessage>& alarms);
+    
+    /**
+     * @brief 지원하는 빌딩 ID 설정
+     * @param building_ids 지원할 빌딩 ID 목록
+     */
+    void setSupportedBuildingIds(const std::vector<int>& building_ids);
+    
+    /**
+     * @brief 멀티빌딩 모드 활성화/비활성화
+     * @param enabled true=활성화, false=비활성화
+     */
+    void setMultiBuildingEnabled(bool enabled);
+
+    // =======================================================================
+    // 2. 알람 무시 시간 필터링 (C# AlarmIgnoreMinutes 포팅)
+    // =======================================================================
+    
+    /**
+     * @brief 알람 무시 시간 필터링 (C# ignoreTime 로직 포팅)
+     * @param alarms 필터링할 알람들
+     * @return 필터링된 알람들 (무시된 알람 제외)
+     */
+    std::vector<AlarmMessage> filterIgnoredAlarms(const std::vector<AlarmMessage>& alarms);
+    
+    /**
+     * @brief 알람이 무시 시간 내인지 확인
+     * @param alarm_time 알람 시간 (C# 형식 문자열)
+     * @return 무시해야 하면 true
+     */
+    bool shouldIgnoreAlarm(const std::string& alarm_time) const;
+    
+    /**
+     * @brief 알람 무시 분수 설정 (C# AlarmIgnoreMinutes)
+     * @param minutes 무시할 분수
+     */
+    void setAlarmIgnoreMinutes(int minutes);
+    
+    /**
+     * @brief 로컬시간 사용 여부 설정 (C# IsLocalTime)
+     * @param use_local true=로컬시간, false=UTC
+     */
+    void setUseLocalTime(bool use_local);
+
+    // =======================================================================
+    // 3. 배치 파일 관리 및 자동 정리 (C# 파일 관리 로직 포팅)
+    // =======================================================================
+    
+    /**
+     * @brief 배치 알람 파일 저장 (C# 스타일 경로)
+     * @param building_id 빌딩 ID
+     * @param alarms 저장할 알람들
+     * @return 저장된 파일 경로
+     */
+    std::string saveBatchAlarmFile(int building_id, const std::vector<AlarmMessage>& alarms);
+    
+    /**
+     * @brief 성공한 배치 파일 자동 삭제 (C# File.Delete 로직)
+     * @param file_path 삭제할 파일 경로
      * @return 성공 여부
      */
+    bool cleanupSuccessfulBatchFile(const std::string& file_path);
+    
+    /**
+     * @brief 오래된 실패 파일들 정리
+     * @param days_to_keep 보관할 일수
+     * @return 삭제된 파일 수
+     */
+    size_t cleanupOldFailedFiles(int days_to_keep = -1);
+    
+    /**
+     * @brief 알람 디렉토리 경로 설정 (C# _alarmDirPath)
+     * @param dir_path 알람 파일 저장 디렉토리
+     */
+    void setAlarmDirectoryPath(const std::string& dir_path);
+    
+    /**
+     * @brief 자동 정리 활성화/비활성화
+     * @param enabled true=활성화, false=비활성화
+     */
+    void setAutoCleanupEnabled(bool enabled);
+
+    // =======================================================================
+    // 서비스 제어 메서드들
+    // =======================================================================
+    
     bool start();
-    
-    /**
-     * @brief 서비스 중지
-     */
     void stop();
-    
-    /**
-     * @brief 서비스 실행 상태 확인
-     * @return 실행 중이면 true
-     */
     bool isRunning() const { return is_running_.load(); }
 
     // =======================================================================
     // 설정 및 상태 관리
     // =======================================================================
     
-    /**
-     * @brief 설정 업데이트
-     * @param new_config 새로운 설정
-     */
     void updateConfig(const CSPGatewayConfig& new_config);
-    
-    /**
-     * @brief 현재 설정 조회
-     * @return 현재 설정
-     */
     const CSPGatewayConfig& getConfig() const { return config_; }
-    
-    /**
-     * @brief 통계 정보 조회 (값으로 반환 - 이제 복사 생성자가 있으므로 가능)
-     * @return 통계 정보
-     * 🔥 이제 atomic 복사 생성자 덕분에 컴파일 에러 없음
-     */
     CSPGatewayStats getStats() const { return stats_; }
-    
-    /**
-     * @brief 통계 초기화
-     */
     void resetStats();
 
     // =======================================================================
     // 테스트 및 진단 메서드들
     // =======================================================================
     
-    /**
-     * @brief 연결 테스트
-     * @return 연결 성공 여부
-     */
     bool testConnection();
-    
-    /**
-     * @brief S3 연결 테스트
-     * @return S3 연결 성공 여부
-     */
     bool testS3Connection();
-    
-    /**
-     * @brief 테스트 알람 전송
-     * @return 전송 결과
-     */
     AlarmSendResult sendTestAlarm();
-
-    // =======================================================================
-    // 재시도 및 오류 처리 메서드들
-    // =======================================================================
     
     /**
-     * @brief 실패한 알람 재처리
-     * @return 재처리된 알람 수
+     * @brief 멀티빌딩 테스트 (새로 추가)
+     * @return 빌딩별 테스트 결과
      */
-    size_t reprocessFailedAlarms();
+    std::unordered_map<int, BatchAlarmResult> testMultiBuildingAlarms();
 
 private:
     // =======================================================================
-    // 내부 도우미 메서드들
+    // 기존 private 멤버들
     // =======================================================================
     
-    /**
-     * @brief HTTP 클라이언트 초기화
-     */
+    CSPGatewayConfig config_;
+    mutable std::mutex config_mutex_;
+    
+    // 통계
+    mutable CSPGatewayStats stats_;
+    mutable std::mutex stats_mutex_;
+    
+    // 스레드 관리
+    std::atomic<bool> is_running_{false};
+    std::atomic<bool> should_stop_{false};
+    std::unique_ptr<std::thread> worker_thread_;
+    std::unique_ptr<std::thread> retry_thread_;
+    
+    // 큐 관리
+    std::queue<AlarmMessage> alarm_queue_;
+    std::queue<std::pair<AlarmMessage, int>> retry_queue_;
+    std::mutex queue_mutex_;
+    std::condition_variable queue_cv_;
+    
+    // 클라이언트들
+    std::unique_ptr<PulseOne::Client::HttpClient> http_client_;
+    std::unique_ptr<PulseOne::Client::S3Client> s3_client_;
+
+    // =======================================================================
+    // 기존 private 메서드들
+    // =======================================================================
+    
     void initializeHttpClient();
-    
-    /**
-     * @brief S3 클라이언트 초기화
-     */
     void initializeS3Client();
-    
-    /**
-     * @brief 실패한 알람 재시도
-     * @param alarm_message 알람 메시지
-     * @param attempt_count 시도 횟수
-     * @return 처리 결과
-     */
-    AlarmSendResult retryFailedAlarm(const AlarmMessage& alarm_message, int attempt_count);
-    
-    /**
-     * @brief 실패한 알람 파일 저장
-     * @param alarm_message 알람 메시지
-     * @param error_message 오류 메시지
-     * @return 저장 성공 여부
-     */
-    bool saveFailedAlarmToFile(const AlarmMessage& alarm_message, 
-                              const std::string& error_message);
-    
-    /**
-     * @brief 워커 스레드
-     */
     void workerThread();
-    
-    /**
-     * @brief 재시도 스레드
-     */
     void retryThread();
     
-    /**
-     * @brief HTTP POST 요청 처리 🔥 시그니처 수정 완료
-     * @param endpoint 엔드포인트
-     * @param json_data JSON 데이터
-     * @param content_type Content-Type
-     * @param headers 헤더들
-     * @return 처리 결과
-     */
+    AlarmSendResult retryFailedAlarm(const AlarmMessage& alarm_message, int attempt_count);
+    bool saveFailedAlarmToFile(const AlarmMessage& alarm_message, const std::string& error_message);
+    size_t reprocessFailedAlarms();
+    
+    // HTTP/S3 헬퍼 메서드들
     AlarmSendResult sendHttpPostRequest(const std::string& endpoint,
                                        const std::string& json_data,
                                        const std::string& content_type,
                                        const std::unordered_map<std::string, std::string>& headers);
+    bool uploadToS3(const std::string& object_key, const std::string& content);
+
+    // =======================================================================
+    // 새로 추가할 private 메서드들
+    // =======================================================================
     
     /**
-     * @brief S3 파일 업로드 🔥 시그니처 수정 완료
-     * @param object_key 객체 키
-     * @param content 파일 내용
-     * @return 업로드 성공 여부
+     * @brief C# 스타일 파일명 생성 (yyyyMMddHHmmss.json)
      */
-    bool uploadToS3(const std::string& object_key,
-                   const std::string& content);
-
-    // =======================================================================
-    // 멤버 변수들
-    // =======================================================================
+    std::string generateBatchFileName() const;
     
-    CSPGatewayConfig config_;                                    ///< 설정 정보
-    CSPGatewayStats stats_;                                      ///< 통계 정보 🔥 이제 복사 가능
+    /**
+     * @brief C# 스타일 디렉토리 구조 생성 (BuildingID/yyyyMMdd/)
+     */
+    std::string createBatchDirectory(int building_id) const;
     
-    std::atomic<bool> is_running_{false};                       ///< 실행 상태
-    std::atomic<bool> should_stop_{false};                      ///< 중지 플래그
+    /**
+     * @brief C# DateTime 문자열을 chrono로 변환
+     */
+    std::chrono::system_clock::time_point parseCSTimeString(const std::string& time_str) const;
     
-    // 스레드 관리
-    std::unique_ptr<std::thread> worker_thread_;                 ///< 워커 스레드
-    std::unique_ptr<std::thread> retry_thread_;                  ///< 재시도 스레드
+    /**
+     * @brief 배치 처리 통계 업데이트
+     */
+    void updateBatchStats(const BatchAlarmResult& result);
     
-    // 동기화 객체들
-    mutable std::mutex config_mutex_;                            ///< 설정 보호
-    mutable std::mutex stats_mutex_;                             ///< 통계 보호
-    std::mutex queue_mutex_;                                     ///< 큐 보호
-    std::condition_variable queue_cv_;                           ///< 큐 대기
-    
-    // 알람 큐들
-    std::queue<AlarmMessage> alarm_queue_;                       ///< 일반 알람 큐
-    std::queue<std::pair<AlarmMessage, int>> retry_queue_;       ///< 재시도 큐
-    
-    // HTTP 클라이언트 (Shared Library)
-    std::unique_ptr<PulseOne::Client::HttpClient> http_client_;
-
-    // S3 클라이언트 (Shared Library)  
-    std::unique_ptr<PulseOne::Client::S3Client> s3_client_;
-    
-    // 재시도 관리자 (Shared Library)
-    std::unique_ptr<PulseOne::Utils::RetryManager<AlarmMessage>> retry_manager_;
+    /**
+     * @brief ConfigManager에서 설정 로드 (기존)
+     */
+    void loadConfigFromConfigManager();
 };
 
 } // namespace CSP

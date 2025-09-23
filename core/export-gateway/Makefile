@@ -131,6 +131,7 @@ ifeq ($(HAS_SHARED),1)
     SHARED_LIBS += -lpulseone-client
     SHARED_LIBS += -lpulseone-export
     SHARED_LIBS += -lpulseone-common
+	SHARED_LIBS += -lpulseone-security
     # 🔥 핵심: HAS_SHARED_LIBS 매크로 정의 (LOG_INFO 매크로를 위해)
     CXXFLAGS += -DHAS_SHARED_LIBS=1
     # 🔥 컴파일 타임 확인용 메시지
@@ -243,6 +244,7 @@ shared-check:
 		exit 1; \
 	fi
 	@echo -e "Shared libs:"
+	@echo -e "  libpulseone-security: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-security$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  libpulseone-common: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-common$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  libpulseone-database: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-database$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  libpulseone-client: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-client$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"

@@ -1,14 +1,14 @@
-#include <sstream>
-#include <iomanip>
 /**
  * @file AlarmMessage.cpp
  * @brief CSP Gateway AlarmMessage 구현 - C# CSPGateway 완전 포팅
  * @author PulseOne Development Team
  * @date 2025-09-22
- * @version 1.0.1 - PulseOne Entity 연동
+ * @version 1.0.2 - LOG 매크로 문제 해결
  */
 
 #include "CSP/AlarmMessage.h"
+#include <sstream>
+#include <iomanip>
 
 #ifdef HAS_SHARED_LIBS
     // Shared 라이브러리가 있을 때만 Entity 변환 구현
@@ -16,10 +16,8 @@
     #include "Database/Entities/AlarmRuleEntity.h"
     #include "Database/Entities/DataPointEntity.h"
     #include "Database/Entities/DeviceEntity.h"
+    #include "Utils/LogManager.h"  // LogManager 직접 사용
 #endif
-
-#include <sstream>
-#include <iomanip>
 
 namespace PulseOne {
 namespace CSP {
@@ -27,18 +25,6 @@ namespace CSP {
 #ifdef HAS_SHARED_LIBS
 /**
  * @brief PulseOne AlarmOccurrence에서 AlarmMessage 생성
- * 
- * C# CSPGateway 변환 로직 완전 포팅:
- * ```csharp
- * AlarmMessage alarmMessage = _dicAlarmMessageInfo[onlineAlarm.VariableName].GetCSPMessage();
- * alarmMessage.vl = onlineAlarm.Value is double ? Convert.ToDouble(onlineAlarm.Value) : double.MaxValue;
- * alarmMessage.tm = _config.IsLocalTime ?
- *     onlineAlarm.ReceivedTime.ToString("yyyy-MM-dd HH:mm:ss.fff") :
- *     onlineAlarm.ReceivedTime.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss.fff");
- * alarmMessage.al = (onlineAlarm.ReasonType == OnlineAlarmReasonType.Received) ? 1 : 0;
- * alarmMessage.st = (onlineAlarm.Status & 0x40000) == 0 ? 1 : 0;
- * alarmMessage.des = onlineAlarm.LimitText;
- * ```
  */
 AlarmMessage AlarmMessage::from_alarm_occurrence(
     const Database::Entities::AlarmOccurrenceEntity& occurrence,
@@ -88,7 +74,7 @@ AlarmMessage AlarmMessage::from_alarm_occurrence(
             } catch (const std::exception&) {
                 // 숫자 변환 실패 시 C# double.MaxValue 사용
                 msg.vl = std::numeric_limits<double>::max();
-                LOG_DEBUG("Failed to parse trigger_value: " + occurrence.getTriggerValue());
+                LogManager::getInstance().Debug("Failed to parse trigger_value: " + occurrence.getTriggerValue());
             }
         } else {
             msg.vl = 0.0;
@@ -146,10 +132,10 @@ AlarmMessage AlarmMessage::from_alarm_occurrence(
             msg.des = severity_str + " 알람 " + msg.get_alarm_status_string();
         }
         
-        LOG_DEBUG("AlarmMessage created: " + msg.to_string());
+        LogManager::getInstance().Debug("AlarmMessage created: " + msg.to_string());
         
     } catch (const std::exception& e) {
-        LOG_ERROR("Exception in from_alarm_occurrence: " + std::string(e.what()));
+        LogManager::getInstance().Error("Exception in from_alarm_occurrence: " + std::string(e.what()));
         
         // 예외 발생 시 최소한의 유효한 메시지 생성
         msg.bd = building_id > 0 ? building_id : 1001;
@@ -172,11 +158,6 @@ AlarmMessage AlarmMessage::from_alarm_occurrence(
 
 /**
  * @brief C# CSPGateway 스타일 테스트 데이터 생성
- * 
- * C# 원본 데이터 예시를 기반으로 테스트 케이스 생성:
- * - 건물별 알람 (bd: 1001, 1002 등)
- * - 다양한 포인트 (Tank.Level, Pump.Status 등)  
- * - 실제 트리거 값 (85.5, 120.0 등)
  */
 std::vector<AlarmMessage> AlarmMessage::create_test_data() {
     std::vector<AlarmMessage> test_messages;
@@ -220,12 +201,6 @@ std::string AlarmMessage::create_test_json_array() {
 
 /**
  * @brief C# CSPGateway API 호출 시뮬레이션
- * 
- * C# 코드 시뮬레이션:
- * ```csharp
- * string result = _serviceAPI.InvokeAlarm(Json.GetString(alarmMessage));
- * ReturnMessage returnMessage = (ReturnMessage)Json.LoadString(result, typeof(ReturnMessage));
- * ```
  */
 bool AlarmMessage::simulate_csp_api_call(const AlarmMessage& msg, std::string& response) {
     try {
@@ -242,11 +217,15 @@ bool AlarmMessage::simulate_csp_api_call(const AlarmMessage& msg, std::string& r
         
         response = api_response.dump();
         
-        LOG_DEBUG("API Call simulated for: " + msg.nm + "/" + msg.get_alarm_status_string());
+#ifdef HAS_SHARED_LIBS
+        LogManager::getInstance().Debug("API Call simulated for: " + msg.nm + "/" + msg.get_alarm_status_string());
+#endif
         return true;
         
     } catch (const std::exception& e) {
-        LOG_ERROR("API simulation failed: " + std::string(e.what()));
+#ifdef HAS_SHARED_LIBS
+        LogManager::getInstance().Error("API simulation failed: " + std::string(e.what()));
+#endif
         
         // 실패 응답 생성
         json error_response = {
@@ -267,29 +246,39 @@ bool AlarmMessage::simulate_csp_api_call(const AlarmMessage& msg, std::string& r
 bool AlarmMessage::validate_for_csp_api() const {
     // C# 필수 필드 검증
     if (bd <= 0) {
-        LOG_ERROR("Invalid building_id: " + std::to_string(bd));
+#ifdef HAS_SHARED_LIBS
+        LogManager::getInstance().Error("Invalid building_id: " + std::to_string(bd));
+#endif
         return false;
     }
     
     if (nm.empty()) {
-        LOG_ERROR("Point name is empty");
+#ifdef HAS_SHARED_LIBS
+        LogManager::getInstance().Error("Point name is empty");
+#endif
         return false;
     }
     
     if (tm.empty()) {
-        LOG_ERROR("Timestamp is empty");
+#ifdef HAS_SHARED_LIBS
+        LogManager::getInstance().Error("Timestamp is empty");
+#endif
         return false;
     }
     
     // 알람 상태 유효성 (0 또는 1만 허용)
     if (al != 0 && al != 1) {
-        LOG_ERROR("Invalid alarm status: " + std::to_string(al));
+#ifdef HAS_SHARED_LIBS
+        LogManager::getInstance().Error("Invalid alarm status: " + std::to_string(al));
+#endif
         return false;
     }
     
     // C# DateTime 형식 검증 (간단한 정규식 체크)
     if (tm.length() < 23) { // yyyy-MM-dd HH:mm:ss.fff 최소 길이
-        LOG_ERROR("Invalid timestamp format: " + tm);
+#ifdef HAS_SHARED_LIBS
+        LogManager::getInstance().Error("Invalid timestamp format: " + tm);
+#endif
         return false;
     }
     
