@@ -1,5 +1,5 @@
 # =============================================================================
-# shared/Makefile - PulseOne 공유 라이브러리 (크로스 플랫폼) - 수정된 버전
+# shared/Makefile - PulseOne 공유 라이브러리 (Security 지원 추가)
 # =============================================================================
 
 # 플랫폼 감지
@@ -41,11 +41,12 @@ INCLUDE_DIR = include
 BUILD_DIR = build
 LIB_DIR = lib
 
-# Include 경로 (collector 패턴과 동일)
+# Include 경로 (Security 추가)
 INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Platform \
            -I$(INCLUDE_DIR)/Common \
            -I$(INCLUDE_DIR)/Utils \
+           -I$(INCLUDE_DIR)/Security \
            -I$(INCLUDE_DIR)/Database \
            -I$(INCLUDE_DIR)/Database/Entities \
            -I$(INCLUDE_DIR)/Database/Repositories \
@@ -53,7 +54,7 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Export \
            -I$(INCLUDE_DIR)/Alarm
 
-# 라이브러리 감지 (collector 패턴)
+# 라이브러리 감지
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
@@ -65,10 +66,12 @@ ifeq ($(HAS_HIREDIS),1)
     CXXFLAGS += -DHAS_HIREDIS
 endif
 
-# 소스 파일 수집 (현재는 헤더 전용이지만 향후 확장 대비)
+# 소스 파일 수집 (Security 추가)
 COMMON_SOURCES = $(wildcard $(SRC_DIR)/Common/*.cpp) \
                 $(wildcard $(SRC_DIR)/Utils/*.cpp) \
                 $(wildcard $(SRC_DIR)/Platform/*.cpp)
+
+SECURITY_SOURCES = $(wildcard $(SRC_DIR)/Security/*.cpp)
 
 DATABASE_SOURCES = $(wildcard $(SRC_DIR)/Database/*.cpp) \
                   $(wildcard $(SRC_DIR)/Database/Entities/*.cpp) \
@@ -82,13 +85,15 @@ ALARM_SOURCES = $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 
 # 오브젝트 파일
 COMMON_OBJECTS = $(COMMON_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+SECURITY_OBJECTS = $(SECURITY_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 DATABASE_OBJECTS = $(DATABASE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 CLIENT_OBJECTS = $(CLIENT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 EXPORT_OBJECTS = $(EXPORT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 ALARM_OBJECTS = $(ALARM_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 라이브러리 파일들
+# 라이브러리 파일들 (Security 추가)
 COMMON_LIB = $(LIB_DIR)/libpulseone-common$(LIB_SUFFIX)
+SECURITY_LIB = $(LIB_DIR)/libpulseone-security$(LIB_SUFFIX)
 DATABASE_LIB = $(LIB_DIR)/libpulseone-database$(LIB_SUFFIX)
 CLIENT_LIB = $(LIB_DIR)/libpulseone-client$(LIB_SUFFIX)
 EXPORT_LIB = $(LIB_DIR)/libpulseone-export$(LIB_SUFFIX)
@@ -105,20 +110,21 @@ NC = \033[0m
 # 메인 타겟들
 # =============================================================================
 
-.PHONY: all clean common database client export alarm test-headers help info
+.PHONY: all clean common security database client export alarm test-headers help info
 
-all: $(BUILD_DIR) $(LIB_DIR) common database client export alarm
+all: $(BUILD_DIR) $(LIB_DIR) common security database client export alarm
 	@echo -e "$(GREEN)✅ 모든 공유 라이브러리 빌드 완료 [$(PLATFORM)]$(NC)"
 
-# 디렉토리 생성
+# 디렉토리 생성 (Security 추가)
 $(BUILD_DIR) $(LIB_DIR):
 	@mkdir -p $@
 	@mkdir -p $(BUILD_DIR)/Common $(BUILD_DIR)/Utils $(BUILD_DIR)/Platform
+	@mkdir -p $(BUILD_DIR)/Security
 	@mkdir -p $(BUILD_DIR)/Database/Entities $(BUILD_DIR)/Database/Repositories
 	@mkdir -p $(BUILD_DIR)/Client $(BUILD_DIR)/Export $(BUILD_DIR)/Alarm
 
 # =============================================================================
-# 라이브러리 빌드 (수정된 더미 파일 생성 로직)
+# 라이브러리 빌드 (Security 추가)
 # =============================================================================
 
 common: $(COMMON_LIB)
@@ -126,6 +132,17 @@ $(COMMON_LIB): $(COMMON_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-common [$(PLATFORM)]$(NC)"
 ifneq ($(COMMON_OBJECTS),)
 	@ar rcs $@ $(COMMON_OBJECTS)
+	@ranlib $@ 2>/dev/null || true
+else
+	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
+	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+endif
+
+security: $(SECURITY_LIB)
+$(SECURITY_LIB): $(SECURITY_OBJECTS) | $(LIB_DIR)
+	@echo -e "$(BLUE)🔧 Building libpulseone-security [$(PLATFORM)]$(NC)"
+ifneq ($(SECURITY_OBJECTS),)
+	@ar rcs $@ $(SECURITY_OBJECTS)
 	@ranlib $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
@@ -186,7 +203,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
-# 테스트 및 검증 (Alarm 헤더 추가)
+# 테스트 및 검증 (Security 헤더 추가)
 # =============================================================================
 
 test-headers:
@@ -199,6 +216,8 @@ test-headers:
 	@echo "Testing Utils headers..."
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Utils/LogManager.h 2>/dev/null && echo "  ✅ LogManager.h" || echo "  ❌ LogManager.h"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Utils/ConfigManager.h 2>/dev/null && echo "  ✅ ConfigManager.h" || echo "  ❌ ConfigManager.h"
+	@echo "Testing Security headers..."
+	@if [ -f include/Security/SecretManager.h ]; then $(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Security/SecretManager.h 2>/dev/null && echo "  ✅ SecretManager.h" || echo "  ❌ SecretManager.h"; fi
 	@echo "Testing Alarm headers..."
 	@if [ -f include/Alarm/AlarmTypes.h ]; then $(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Alarm/AlarmTypes.h 2>/dev/null && echo "  ✅ AlarmTypes.h" || echo "  ❌ AlarmTypes.h"; fi
 	@echo "Testing Export headers..."
@@ -209,6 +228,7 @@ test-compile:
 	@echo -e "$(BLUE)🧪 Testing compilation [$(PLATFORM)]...$(NC)"
 	@echo '#include "Common/BasicTypes.h"' > /tmp/test_shared.cpp
 	@echo '#include "Export/ExportTypes.h"' >> /tmp/test_shared.cpp
+	@if [ -f include/Security/SecretManager.h ]; then echo '#include "Security/SecretManager.h"' >> /tmp/test_shared.cpp; fi
 	@if [ -f include/Alarm/AlarmTypes.h ]; then echo '#include "Alarm/AlarmTypes.h"' >> /tmp/test_shared.cpp; fi
 	@echo 'int main() { return 0; }' >> /tmp/test_shared.cpp
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c /tmp/test_shared.cpp -o /tmp/test_shared.o 2>/dev/null && echo "  ✅ Compilation test passed" || echo "  ❌ Compilation test failed"
@@ -223,7 +243,7 @@ windows-cross:
 	$(MAKE) CROSS_COMPILE_WINDOWS=1 all
 
 # =============================================================================
-# 정보 및 상태
+# 정보 및 상태 (Security 추가)
 # =============================================================================
 
 info:
@@ -233,7 +253,7 @@ info:
 	@echo "Compiler: $(CXX)"
 	@echo "Flags: $(CXXFLAGS)"
 	@echo "Header files: $(shell find $(INCLUDE_DIR) -name '*.h' 2>/dev/null | wc -l)"
-	@echo "Source files: $(words $(COMMON_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(EXPORT_SOURCES) $(ALARM_SOURCES))"
+	@echo "Source files: $(words $(COMMON_SOURCES) $(SECURITY_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(EXPORT_SOURCES) $(ALARM_SOURCES))"
 	@echo ""
 	@echo "Library Support:"
 	@echo "JSON (nlohmann): $(if $(filter 1,$(HAS_NLOHMANN_JSON)),✅ available,❌ missing)"
@@ -241,6 +261,7 @@ info:
 	@echo ""
 	@echo "Libraries:"
 	@echo "libpulseone-common: $(if $(wildcard $(COMMON_LIB)),✅ exists,❌ missing)"
+	@echo "libpulseone-security: $(if $(wildcard $(SECURITY_LIB)),✅ exists,❌ missing)"
 	@echo "libpulseone-database: $(if $(wildcard $(DATABASE_LIB)),✅ exists,❌ missing)"
 	@echo "libpulseone-client: $(if $(wildcard $(CLIENT_LIB)),✅ exists,❌ missing)"
 	@echo "libpulseone-export: $(if $(wildcard $(EXPORT_LIB)),✅ exists,❌ missing)"
@@ -274,6 +295,7 @@ help:
 	@echo -e "$(GREEN)Main Targets:$(NC)"
 	@echo "  make all          - Build all shared libraries"
 	@echo "  make common       - Build common library (BasicTypes, Utils, etc.)"
+	@echo "  make security     - Build security library (SecretManager, etc.)"
 	@echo "  make database     - Build database library (Entities, Repositories)"
 	@echo "  make client       - Build client library (Redis, InfluxDB clients)"
 	@echo "  make export       - Build export library (Export types)"
