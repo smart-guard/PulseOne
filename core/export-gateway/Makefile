@@ -1,5 +1,7 @@
 # =============================================================================
+# 🎯 이것이 Makefile 완성본입니다!
 # core/export-gateway/Makefile - PulseOne Export Gateway (크로스플랫폼)
+# 🔥 HAS_SHARED_LIBS 매크로 정의 보강 완료
 # =============================================================================
 
 # 플랫폼 감지 (shared Makefile과 동일한 로직)
@@ -57,11 +59,30 @@ else
 endif
 
 # =============================================================================
-# 라이브러리 감지 및 설정 (collector 패턴)
+# 디렉토리 구조 (shared-check보다 먼저 정의)
 # =============================================================================
 
-# Shared 라이브러리 감지
-HAS_SHARED := $(shell [ -d "$(SHARED_LIB_DIR)" ] && echo "1" || echo "0")
+# 현재 디렉토리
+EXPORT_GATEWAY_DIR = $(shell pwd)
+PROJECT_ROOT = $(shell dirname $(shell dirname $(EXPORT_GATEWAY_DIR)))
+SHARED_DIR = $(PROJECT_ROOT)/core/shared
+
+# 소스 디렉토리
+SRC_DIR = src
+INCLUDE_DIR = include
+BUILD_DIR = build
+BIN_DIR = bin
+
+# Shared 라이브러리 디렉토리
+SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
+SHARED_LIB_DIR = $(SHARED_DIR)/lib
+
+# =============================================================================
+# 라이브러리 감지 및 설정 (collector 패턴) 🔥 보강 완료
+# =============================================================================
+
+# 🔥 Shared 라이브러리 존재 여부 정밀 감지 (collector와 100% 동일 패턴)
+HAS_SHARED := $(shell [ -d "$(SHARED_LIB_DIR)" ] && [ -f "$(SHARED_LIB_DIR)/libpulseone-common$(LIB_SUFFIX)" ] && echo "1" || echo "0")
 
 # 동적 라이브러리 감지 (collector와 동일)
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
@@ -75,7 +96,7 @@ HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/n
 # 기본 Include 경로
 INCLUDES = -I$(INCLUDE_DIR)
 
-# Shared 라이브러리 Include (collector와 동일 패턴)
+# 🔥 Shared 라이브러리 Include (collector와 동일 패턴)
 ifeq ($(HAS_SHARED),1)
     # Shared 라이브러리를 우선순위로 설정
     INCLUDES := -I$(SHARED_INCLUDE_DIR) $(INCLUDES)
@@ -99,7 +120,7 @@ ifeq ($(CROSS_COMPILE_WINDOWS),1)
 endif
 
 # =============================================================================
-# 라이브러리 링크 (collector 패턴)
+# 라이브러리 링크 (collector 패턴) 🔥 중요: HAS_SHARED_LIBS 매크로 정의
 # =============================================================================
 
 # Shared 라이브러리 (collector와 동일 순서)
@@ -110,9 +131,16 @@ ifeq ($(HAS_SHARED),1)
     SHARED_LIBS += -lpulseone-client
     SHARED_LIBS += -lpulseone-export
     SHARED_LIBS += -lpulseone-common
+    # 🔥 핵심: HAS_SHARED_LIBS 매크로 정의 (LOG_INFO 매크로를 위해)
     CXXFLAGS += -DHAS_SHARED_LIBS=1
+    # 🔥 컴파일 타임 확인용 메시지
+    $(info ✅ HAS_SHARED=1 detected - LogManager will be available)
 else
     SHARED_LIBS =
+    # 🔥 디버깅용 - shared 라이브러리 없을 때 알림
+    $(info ⚠️  HAS_SHARED=0 - LogManager not available, logging disabled)
+    $(info     Shared lib path: $(SHARED_LIB_DIR))
+    $(info     Looking for: $(SHARED_LIB_DIR)/libpulseone-common$(LIB_SUFFIX))
 endif
 
 # 외부 라이브러리들
@@ -150,58 +178,6 @@ RED = \033[0;31m
 NC = \033[0m
 
 # =============================================================================
-# 디렉토리 구조
-# =============================================================================
-
-# 현재 디렉토리
-EXPORT_GATEWAY_DIR = $(shell pwd)
-PROJECT_ROOT = $(shell dirname $(shell dirname $(EXPORT_GATEWAY_DIR)))
-SHARED_DIR = $(PROJECT_ROOT)/core/shared
-
-# 소스 디렉토리
-SRC_DIR = src
-INCLUDE_DIR = include
-BUILD_DIR = build
-BIN_DIR = bin
-
-# Shared 라이브러리 디렉토리
-SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
-SHARED_LIB_DIR = $(SHARED_DIR)/lib
-
-# =============================================================================
-# Include 경로들
-# =============================================================================
-
-INCLUDES = -I$(INCLUDE_DIR) \
-           -I$(SHARED_INCLUDE_DIR) \
-           -I/usr/local/include \
-           -I/usr/include
-
-# =============================================================================
-# 라이브러리 링크
-# =============================================================================
-
-# PulseOne Shared 라이브러리들
-PULSEONE_LIBS = -L$(SHARED_LIB_DIR) \
-                -lpulseone-common \
-                -lpulseone-database \
-                -lpulseone-client \
-                -lpulseone-export \
-                -lpulseone-alarm
-
-# 외부 라이브러리들 (collector와 동일한 환경)
-EXTERNAL_LIBS = -lhiredis \
-                -lcurl \
-                -lssl \
-                -lcrypto \
-                -ljson \
-                -lpthread \
-                -ldl
-
-# 전체 링크 플래그
-LDFLAGS += $(PULSEONE_LIBS) $(EXTERNAL_LIBS)
-
-# =============================================================================
 # 소스 파일 및 오브젝트 파일
 # =============================================================================
 
@@ -231,7 +207,7 @@ TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)
 # 메인 타겟들
 # =============================================================================
 
-.PHONY: all clean debug release test install help shared-check
+.PHONY: all clean debug release test install help shared-check debug-config
 
 # 기본 타겟
 all: shared-check $(BUILD_DIR) $(BIN_DIR) $(TARGET)
@@ -253,11 +229,13 @@ $(BUILD_DIR) $(BIN_DIR):
 	@mkdir -p $(BUILD_DIR)/CSP $(BUILD_DIR)/Export $(BUILD_DIR)/Utils
 
 # =============================================================================
-# Shared 라이브러리 의존성 체크 (collector 패턴)
+# Shared 라이브러리 의존성 체크 (collector 패턴) 🔥 보강
 # =============================================================================
 
 shared-check:
 	@echo -e "$(BLUE)🔍 Checking PulseOne Shared Libraries [$(PLATFORM)]...$(NC)"
+	@echo "Shared lib directory: $(SHARED_LIB_DIR)"
+	@echo "HAS_SHARED detection result: $(HAS_SHARED)"
 	@if [ ! -d "$(SHARED_LIB_DIR)" ]; then \
 		echo -e "$(RED)❌ Shared library directory not found: $(SHARED_LIB_DIR)$(NC)"; \
 		echo -e "$(YELLOW)💡 Please build shared libraries first:$(NC)"; \
@@ -270,7 +248,44 @@ shared-check:
 	@echo -e "  libpulseone-client: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-client$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  libpulseone-export: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-export$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  libpulseone-alarm: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-alarm$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
+ifeq ($(HAS_SHARED),1)
+	@echo -e "$(GREEN)✅ HAS_SHARED_LIBS=1 - LogManager will be available$(NC)"
+else
+	@echo -e "$(YELLOW)⚠️  HAS_SHARED_LIBS not set - Logging will be disabled$(NC)"
+endif
 	@echo -e "$(GREEN)✅ Shared libraries checked$(NC)"
+
+# =============================================================================
+# 🔥 새로운 디버그 설정 확인 타겟
+# =============================================================================
+
+debug-config:
+	@echo -e "$(BLUE)🔍 Export Gateway Debug Configuration:$(NC)"
+	@echo "==========================================="
+	@echo "Platform: $(PLATFORM)"
+	@echo "Build Type: $(BUILD_TYPE)"
+	@echo "PROJECT_ROOT: $(PROJECT_ROOT)"
+	@echo "SHARED_DIR: $(SHARED_DIR)"
+	@echo "SHARED_LIB_DIR: $(SHARED_LIB_DIR)"
+	@echo "SHARED_INCLUDE_DIR: $(SHARED_INCLUDE_DIR)"
+	@echo ""
+	@echo "🔍 Library Detection Results:"
+	@echo "  HAS_SHARED: $(HAS_SHARED)"
+	@echo "  HAS_HIREDIS: $(HAS_HIREDIS)"
+	@echo "  HAS_HTTPLIB: $(HAS_HTTPLIB)"
+	@echo "  HAS_NLOHMANN_JSON: $(HAS_NLOHMANN_JSON)"
+	@echo ""
+	@echo "🔧 Compiler Flags:"
+	@echo "$(CXXFLAGS)" | tr ' ' '\n' | grep -E '^-D' || echo "  (no defines)"
+	@echo ""
+	@echo "📁 Include Paths:"
+	@echo "$(INCLUDES)" | tr ' ' '\n' | grep -E '^-I' || echo "  (no includes)"
+	@echo ""
+	@echo "🔗 Library Paths:"
+	@echo "$(LDFLAGS)" | tr ' ' '\n' | grep -E '^-[Ll]' || echo "  (no libraries)"
+	@echo ""
+	@echo "📋 File Status:"
+	@ls -la "$(SHARED_LIB_DIR)/" 2>/dev/null || echo "  ⚠️ Shared lib directory not accessible"
 
 # =============================================================================
 # 실행 파일 빌드
@@ -291,7 +306,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
-# 테스트 타겟들
+# 테스트 타겟들 🔥 보강
 # =============================================================================
 
 # CSP 컴포넌트만 테스트
@@ -311,9 +326,19 @@ test-headers:
 	fi
 	@echo -e "$(GREEN)✅ Header syntax check completed [$(PLATFORM)]$(NC)"
 
-# 전체 컴파일 테스트 (링크 없이)
+# 전체 컴파일 테스트 (링크 없이) 🔥 매크로 정의 상태 표시 추가
 test-compile: $(ALL_OBJECTS)
 	@echo -e "$(GREEN)✅ All sources compiled successfully$(NC)"
+	@echo -e "$(BLUE)📋 Compilation Summary:$(NC)"
+	@echo "  Platform: $(PLATFORM)"
+	@echo "  Build Type: $(BUILD_TYPE)"
+	@echo "  HAS_SHARED: $(HAS_SHARED)"
+ifeq ($(HAS_SHARED),1)
+	@echo -e "  ✅ HAS_SHARED_LIBS=1 defined - LogManager available"
+else
+	@echo -e "  ⚠️  HAS_SHARED_LIBS not defined - Logging disabled"
+endif
+	@echo "  Compiled objects: $(words $(ALL_OBJECTS))"
 
 # =============================================================================
 # 실행 및 개발 타겟들
@@ -397,6 +422,7 @@ help:
 	@echo ""
 	@echo -e "$(GREEN)Development:$(NC)"
 	@echo "  make config       - Create sample configuration"
+	@echo "  make debug-config - Show detailed configuration"
 	@echo "  make deps-info    - Show dependency information"
 	@echo "  make status       - Show build status"
 	@echo ""
