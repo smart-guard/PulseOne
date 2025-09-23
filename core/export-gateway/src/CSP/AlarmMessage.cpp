@@ -1,3 +1,5 @@
+#include <sstream>
+#include <iomanip>
 /**
  * @file AlarmMessage.cpp
  * @brief CSP Gateway AlarmMessage 구현 - C# CSPGateway 완전 포팅
@@ -322,6 +324,90 @@ std::vector<AlarmMessage> AlarmMessage::create_bulk_test_data(size_t count) {
     }
     
     return bulk_data;
+}
+
+/**
+ * @brief 현재 시간을 C# 형식으로 변환
+ */
+std::string AlarmMessage::current_time_to_csharp_format(bool use_local_time) {
+    auto now = std::chrono::system_clock::now();
+    return time_to_csharp_format(now, use_local_time);
+}
+
+/**
+ * @brief 시간을 C# 형식으로 변환 (yyyy-MM-dd HH:mm:ss.fff)
+ */
+std::string AlarmMessage::time_to_csharp_format(const std::chrono::system_clock::time_point& time_point, 
+                                              bool use_local_time) {
+    // 시간을 time_t와 밀리초로 분리
+    auto time_t = std::chrono::system_clock::to_time_t(time_point);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        time_point.time_since_epoch()) % 1000;
+    
+    // tm 구조체로 변환
+    std::tm tm_buf;
+    if (use_local_time) {
+#ifdef _WIN32
+        localtime_s(&tm_buf, &time_t);
+#else
+        localtime_r(&time_t, &tm_buf);
+#endif
+    } else {
+#ifdef _WIN32
+        gmtime_s(&tm_buf, &time_t);
+#else
+        gmtime_r(&time_t, &tm_buf);
+#endif
+    }
+    
+    // C# DateTime 형식으로 포맷팅: yyyy-MM-dd HH:mm:ss.fff
+    std::ostringstream oss;
+    oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
+    oss << "." << std::setfill('0') << std::setw(3) << ms.count();
+    
+    return oss.str();
+}
+
+/**
+ * @brief C# CSPGateway 스타일 샘플 생성
+ */
+AlarmMessage AlarmMessage::create_sample(int building_id, const std::string& point_name, 
+                                       double trigger_value, bool is_alarm_active) {
+    AlarmMessage msg;
+    
+    // C# 필드 직접 매핑
+    msg.bd = building_id;
+    msg.nm = point_name;
+    msg.vl = trigger_value;
+    msg.tm = current_time_to_csharp_format(true); // 로컬 시간 사용
+    msg.al = is_alarm_active ? 1 : 0;
+    msg.st = is_alarm_active ? 1 : 0; // 간단한 상태 매핑
+    
+    // 기본 설명 생성
+    if (is_alarm_active) {
+        msg.des = point_name + " 알람 발생 (값: " + std::to_string(trigger_value) + ")";
+    } else {
+        msg.des = point_name + " 알람 해제 (값: " + std::to_string(trigger_value) + ")";
+    }
+    
+    return msg;
+}
+
+/**
+ * @brief 디버깅용 문자열 표현
+ */
+std::string AlarmMessage::to_string() const {
+    std::ostringstream oss;
+    oss << "AlarmMessage{";
+    oss << "bd=" << bd;
+    oss << ", nm='" << nm << "'";
+    oss << ", vl=" << vl;
+    oss << ", tm='" << tm << "'";
+    oss << ", al=" << al;
+    oss << ", st=" << st;
+    oss << ", des='" << des << "'";
+    oss << "}";
+    return oss.str();
 }
 
 } // namespace CSP

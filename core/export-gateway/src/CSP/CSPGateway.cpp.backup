@@ -1,4 +1,3 @@
-#include "Utils/LogManager.h"
 /**
  * @file CSPGateway.cpp
  * @brief CSP Gateway 메인 구현 - C# CSPGateway 완전 포팅
@@ -17,17 +16,17 @@
 #include <future>
 
 // LogManager 직접 사용 - 매크로 대신 싱글톤 직접 호출
-
+#ifdef HAS_SHARED_LIBS
     #include "Utils/LogManager.h"
-
+#endif
 
 namespace PulseOne {
 namespace CSP {
 
 CSPGateway::CSPGateway(const CSPGatewayConfig& config) : config_(config) {
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway initializing...");
-
+#endif
     
     // HTTP 클라이언트 초기화
     initializeHttpClient();
@@ -35,9 +34,9 @@ CSPGateway::CSPGateway(const CSPGatewayConfig& config) : config_(config) {
     // S3 클라이언트 초기화
     initializeS3Client();
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway initialized successfully");
-
+#endif
 }
 
 CSPGateway::~CSPGateway() {
@@ -46,15 +45,15 @@ CSPGateway::~CSPGateway() {
 
 bool CSPGateway::start() {
     if (is_running_.load()) {
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Error("CSPGateway is already running");
-
+#endif
         return false;
     }
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("Starting CSPGateway service...");
-
+#endif
     
     should_stop_.store(false);
     is_running_.store(true);
@@ -65,9 +64,9 @@ bool CSPGateway::start() {
     // 재시도 스레드 시작
     retry_thread_ = std::make_unique<std::thread>(&CSPGateway::retryThread, this);
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway service started");
-
+#endif
     return true;
 }
 
@@ -76,9 +75,9 @@ void CSPGateway::stop() {
         return;
     }
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("Stopping CSPGateway service...");
-
+#endif
     
     should_stop_.store(true);
     is_running_.store(false);
@@ -96,9 +95,9 @@ void CSPGateway::stop() {
         retry_thread_->join();
     }
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway service stopped");
-
+#endif
 }
 
 AlarmSendResult CSPGateway::taskAlarmSingle(const AlarmMessage& alarm_message) {
@@ -108,9 +107,9 @@ AlarmSendResult CSPGateway::taskAlarmSingle(const AlarmMessage& alarm_message) {
         stats_.total_alarms++;
     }
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Debug("Processing alarm: " + alarm_message.nm);
-
+#endif
     
     AlarmSendResult result;
     
@@ -130,9 +129,9 @@ AlarmSendResult CSPGateway::taskAlarmSingle(const AlarmMessage& alarm_message) {
     // 재시도 로직
     if (!result.success && config_.max_retry_attempts > 0) {
         for (int attempt = 1; attempt <= config_.max_retry_attempts; ++attempt) {
-
+#ifdef HAS_SHARED_LIBS
             LogManager::getInstance().Debug("Retry attempt " + std::to_string(attempt) + " for alarm: " + alarm_message.nm);
-
+#endif
             
             auto retry_result = retryFailedAlarm(alarm_message, attempt);
             if (retry_result.success) {
@@ -275,7 +274,7 @@ AlarmSendResult CSPGateway::callS3Alarm(const AlarmMessage& alarm_message, const
     }
 }
 
-
+#ifdef HAS_SHARED_LIBS
 AlarmSendResult CSPGateway::processAlarmOccurrence(const Database::Entities::AlarmOccurrenceEntity& occurrence) {
     // AlarmOccurrenceEntity를 AlarmMessage로 변환
     AlarmMessage alarm_msg = AlarmMessage::from_alarm_occurrence(occurrence);
@@ -297,7 +296,7 @@ std::vector<AlarmSendResult> CSPGateway::processBatchAlarms(
     
     return results;
 }
-
+#endif
 
 void CSPGateway::updateConfig(const CSPGatewayConfig& new_config) {
     std::lock_guard<std::mutex> lock(config_mutex_);
@@ -307,9 +306,9 @@ void CSPGateway::updateConfig(const CSPGatewayConfig& new_config) {
     initializeHttpClient();
     initializeS3Client();
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway configuration updated");
-
+#endif
 }
 
 void CSPGateway::resetStats() {
@@ -323,15 +322,15 @@ void CSPGateway::resetStats() {
     stats_.retry_attempts.store(0);
     stats_.avg_response_time_ms = 0.0;
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway statistics reset");
-
+#endif
 }
 
 AlarmSendResult CSPGateway::retryFailedAlarm(const AlarmMessage& alarm_message, int attempt_count) {
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Debug("Retrying failed alarm (attempt " + std::to_string(attempt_count) + "): " + alarm_message.nm);
-
+#endif
     
     // 재시도 지연 (지수 백오프)
     int delay_ms = config_.initial_delay_ms * (1 << (attempt_count - 1)); // 2^(attempt-1)
@@ -379,36 +378,36 @@ bool CSPGateway::saveFailedAlarmToFile(const AlarmMessage& alarm_message,
             file << alarm_json.dump(2);
             file.close();
             
-
+#ifdef HAS_SHARED_LIBS
             LogManager::getInstance().Debug("Failed alarm saved to: " + filename.str());
-
+#endif
             return true;
         } else {
-
+#ifdef HAS_SHARED_LIBS
             LogManager::getInstance().Error("Failed to open file for writing: " + filename.str());
-
+#endif
             return false;
         }
         
     } catch (const std::exception& e) {
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Error("Exception saving failed alarm to file: " + std::string(e.what()));
-
+#endif
         return false;
     }
 }
 
 size_t CSPGateway::reprocessFailedAlarms() {
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("reprocessFailedAlarms - Not fully implemented");
-
+#endif
     return 0;
 }
 
 bool CSPGateway::testConnection() {
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("Testing CSPGateway connections...");
-
+#endif
     
     bool api_ok = false;
     bool s3_ok = false;
@@ -416,17 +415,17 @@ bool CSPGateway::testConnection() {
     // API 연결 테스트
     if (!config_.api_endpoint.empty() && http_client_) {
         api_ok = http_client_->testConnection("/health");
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Info("API connection test: " + std::string(api_ok ? "OK" : "FAILED"));
-
+#endif
     }
     
     // S3 연결 테스트
     if (!config_.s3_bucket_name.empty() && s3_client_) {
         s3_ok = s3_client_->testConnection();
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Info("S3 connection test: " + std::string(s3_ok ? "OK" : "FAILED"));
-
+#endif
     }
     
     return api_ok || s3_ok; // 하나라도 성공하면 OK
@@ -446,9 +445,9 @@ AlarmSendResult CSPGateway::sendTestAlarm() {
     try {
         building_id_int = std::stoi(config_.building_id);
     } catch (const std::exception& e) {
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Warn("Failed to convert building_id to int, using default 1001: " + std::string(e.what()));
-
+#endif
     }
     
     // 테스트용 알람 메시지 생성
@@ -460,9 +459,9 @@ AlarmSendResult CSPGateway::sendTestAlarm() {
     );
     test_alarm.des = "CSPGateway 연결 테스트 알람";
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("Sending test alarm");
-
+#endif
     return taskAlarmSingle(test_alarm);
 }
 
@@ -475,13 +474,13 @@ void CSPGateway::initializeHttpClient() {
         
         http_client_ = std::make_unique<PulseOne::Client::HttpClient>(config_.api_endpoint, options);
         
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Debug("HTTP client initialized");
-
+#endif
     } catch (const std::exception& e) {
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Error("Failed to initialize HTTP client: " + std::string(e.what()));
-
+#endif
     }
 }
 
@@ -502,20 +501,20 @@ void CSPGateway::initializeS3Client() {
         
         s3_client_ = std::make_unique<PulseOne::Client::S3Client>(s3_config);
         
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Debug("S3 client initialized");
-
+#endif
     } catch (const std::exception& e) {
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Error("Failed to initialize S3 client: " + std::string(e.what()));
-
+#endif
     }
 }
 
 void CSPGateway::workerThread() {
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway worker thread started");
-
+#endif
     
     while (!should_stop_.load()) {
         std::unique_lock<std::mutex> lock(queue_mutex_);
@@ -540,15 +539,15 @@ void CSPGateway::workerThread() {
         }
     }
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway worker thread stopped");
-
+#endif
 }
 
 void CSPGateway::retryThread() {
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway retry thread started");
-
+#endif
     
     while (!should_stop_.load()) {
         std::unique_lock<std::mutex> lock(queue_mutex_);
@@ -573,9 +572,9 @@ void CSPGateway::retryThread() {
         }
     }
     
-
+#ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Info("CSPGateway retry thread stopped");
-
+#endif
 }
 
 // =======================================================================
@@ -617,9 +616,9 @@ AlarmSendResult CSPGateway::sendHttpPostRequest(const std::string& endpoint,
 bool CSPGateway::uploadToS3(const std::string& object_key,
                            const std::string& content) {
     if (!s3_client_) {
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Error("S3 client not initialized");
-
+#endif
         return false;
     }
     
@@ -629,9 +628,9 @@ bool CSPGateway::uploadToS3(const std::string& object_key,
         return result.success;
         
     } catch (const std::exception& e) {
-
+#ifdef HAS_SHARED_LIBS
         LogManager::getInstance().Error("S3 upload exception: " + std::string(e.what()));
-
+#endif
         return false;
     }
 }
