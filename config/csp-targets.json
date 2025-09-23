@@ -1,0 +1,209 @@
+{
+  "version": "1.0",
+  "description": "CSP Gateway 동적 전송 대상 설정 - 무한 확장 가능",
+  "last_updated": "2025-09-23T12:00:00Z",
+  
+  "targets": [
+    {
+      "name": "main_api",
+      "type": "http",
+      "enabled": true,
+      "priority": 1,
+      "description": "메인 CSP API 서버",
+      
+      "config": {
+        "endpoint": "https://api.pulseone.com/v1/alarms",
+        "method": "POST",
+        "content_type": "application/json",
+        "auth_key_file": "${SECRETS_DIR}/csp_api_key.key",
+        "timeout_ms": 10000,
+        "max_retry": 3,
+        "retry_delay_ms": 1000,
+        "retry_backoff": "exponential",
+        "headers": {
+          "User-Agent": "PulseOne-CSPGateway/1.8",
+          "Accept": "application/json"
+        }
+      }
+    },
+    
+    {
+      "name": "backup_s3",
+      "type": "s3",
+      "enabled": true,
+      "priority": 2,
+      "description": "AWS S3 백업 스토리지",
+      
+      "config": {
+        "bucket_name": "pulseone-alarm-data",
+        "region": "ap-northeast-2",
+        "access_key_file": "${SECRETS_DIR}/aws_access_key.key",
+        "secret_key_file": "${SECRETS_DIR}/aws_secret_key.key",
+        "object_prefix": "alarms/{building_id}/",
+        "file_name_pattern": "{building_id}_{timestamp}_alarm.json",
+        "timeout_ms": 10000,
+        "max_retry": 3,
+        "retry_delay_ms": 2000,
+        "storage_class": "STANDARD_IA"
+      }
+    },
+    
+    {
+      "name": "insite_integration",
+      "type": "http", 
+      "enabled": false,
+      "priority": 3,
+      "description": "Insite 시스템 연동 (ver1.6)",
+      
+      "config": {
+        "endpoint": "https://insite.pulseone.com/api/v1/data",
+        "method": "POST",
+        "content_type": "application/json",
+        "auth_key_file": "${SECRETS_DIR}/insite_api_key.key",
+        "timeout_ms": 5000,
+        "control_disabled": true,
+        "control_clear_interval_hours": 24,
+        "headers": {
+          "X-Service": "PulseOne-CSP-Gateway",
+          "X-Version": "1.8"
+        }
+      }
+    },
+    
+    {
+      "name": "inbase_upload",
+      "type": "http",
+      "enabled": false,
+      "priority": 4,
+      "description": "Inbase 업로드 시스템 (ver1.6)",
+      
+      "config": {
+        "endpoint": "https://inbase.pulseone.com/api/v1/upload",
+        "method": "POST",
+        "content_type": "application/json",
+        "auth_key_file": "${SECRETS_DIR}/inbase_api_key.key",
+        "timeout_ms": 8000,
+        "headers": {
+          "X-Upload-Source": "CSP-Gateway"
+        }
+      }
+    },
+    
+    {
+      "name": "bems_system",
+      "type": "http",
+      "enabled": false,
+      "priority": 5,
+      "description": "BEMS 빌딩 관리 시스템 (ver1.7)",
+      
+      "config": {
+        "endpoint": "https://bems.pulseone.com/api/v1/building-data",
+        "method": "POST",
+        "content_type": "application/json",
+        "auth_key_file": "${SECRETS_DIR}/bems_api_key.key",
+        "building_id": "${CSP_GATEWAY_BUILDING_ID}",
+        "timeout_ms": 15000,
+        "headers": {
+          "X-Building-ID": "${CSP_GATEWAY_BUILDING_ID}",
+          "X-Data-Type": "alarm"
+        }
+      }
+    },
+    
+    {
+      "name": "customer_webhook_1",
+      "type": "http",
+      "enabled": false,
+      "priority": 10,
+      "description": "고객사 웹훅 #1 (예시)",
+      
+      "config": {
+        "endpoint": "https://customer1.com/webhooks/alarms",
+        "method": "POST",
+        "content_type": "application/json",
+        "timeout_ms": 5000,
+        "max_retry": 2,
+        "retry_delay_ms": 500,
+        "headers": {
+          "X-Webhook-Source": "PulseOne",
+          "Authorization": "Bearer ${CUSTOMER1_WEBHOOK_TOKEN}"
+        }
+      }
+    },
+    
+    {
+      "name": "mqtt_publisher",
+      "type": "mqtt",
+      "enabled": false,
+      "priority": 20,
+      "description": "MQTT 브로커 발행 (예시)",
+      
+      "config": {
+        "broker_host": "mqtt.pulseone.com",
+        "broker_port": 8883,
+        "topic_pattern": "alarms/{building_id}/{alarm_type}",
+        "qos": 1,
+        "retain": false,
+        "client_id": "csp-gateway-${CSP_GATEWAY_BUILDING_ID}",
+        "username": "csp_gateway",
+        "password_file": "${SECRETS_DIR}/mqtt_password.key",
+        "ssl_enabled": true,
+        "ssl_ca_file": "${SECRETS_DIR}/mqtt_ca.crt"
+      }
+    },
+    
+    {
+      "name": "local_file_backup",
+      "type": "file",
+      "enabled": true,
+      "priority": 99,
+      "description": "로컬 파일 백업 (항상 활성화)",
+      
+      "config": {
+        "base_path": "${DATA_DIR}/alarm_backups",
+        "file_pattern": "{building_id}/{date}/alarms_{timestamp}.json",
+        "compression": "gzip",
+        "rotate_daily": true,
+        "max_files_per_day": 100,
+        "cleanup_after_days": 30
+      }
+    }
+  ],
+  
+  "global_settings": {
+    "parallel_processing": true,
+    "max_concurrent_targets": 5,
+    "global_timeout_ms": 30000,
+    "circuit_breaker": {
+      "failure_threshold": 5,
+      "recovery_timeout_ms": 60000,
+      "half_open_requests": 3
+    },
+    "rate_limiting": {
+      "max_requests_per_minute": 1000,
+      "burst_size": 100
+    }
+  },
+  
+  "target_types": {
+    "http": {
+      "supported_methods": ["GET", "POST", "PUT", "PATCH"],
+      "default_timeout_ms": 10000,
+      "default_content_type": "application/json"
+    },
+    "s3": {
+      "supported_regions": ["us-east-1", "us-west-2", "ap-northeast-2"],
+      "default_storage_class": "STANDARD"
+    },
+    "mqtt": {
+      "supported_qos": [0, 1, 2],
+      "default_qos": 1,
+      "default_port": 1883,
+      "default_ssl_port": 8883
+    },
+    "file": {
+      "supported_compression": ["none", "gzip", "zip"],
+      "default_compression": "gzip"
+    }
+  }
+}
