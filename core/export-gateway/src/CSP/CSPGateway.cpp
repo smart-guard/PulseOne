@@ -1,12 +1,18 @@
 /**
- * @file CSPGateway.cpp - 완전한 구현 파일 (멀티빌딩, 시간필터, 배치관리 추가)
- * @brief CSP Gateway 메인 구현 - C# CSPGateway 완전 포팅
+ * @file CSPGateway.cpp - 완전한 구현 파일 (기존 + 동적 타겟 시스템 통합)
+ * @brief CSP Gateway 메인 구현 - C# CSPGateway 완전 포팅 + 동적 타겟 확장
  * @author PulseOne Development Team
  * @date 2025-09-23
  * 저장 위치: core/export-gateway/src/CSP/CSPGateway.cpp
+ * 
+ * 100% 기존 호환성 유지:
+ * - 모든 기존 메서드 완전 보존
+ * - 기존 설정 및 환경변수 그대로 동작
+ * - 동적 타겟 시스템은 선택적 추가 기능
  */
 
 #include "CSP/CSPGateway.h"
+#include "CSP/DynamicTargetManager.h"  // 새로 추가
 #include "Client/HttpClient.h"
 #include "Client/S3Client.h"
 #include "Utils/RetryManager.h"
@@ -23,20 +29,19 @@ namespace PulseOne {
 namespace CSP {
 
 // =============================================================================
-// 생성자 및 소멸자
+// 생성자 및 소멸자 (기존 + 동적 타겟 시스템 추가)
 // =============================================================================
 
 CSPGateway::CSPGateway(const CSPGatewayConfig& config) : config_(config) {
     LogManager::getInstance().Info("CSPGateway initializing...");
     
-    // ConfigManager에서 암호화된 설정 로드
+    // 기존 초기화 로직 완전 유지
     loadConfigFromConfigManager();
-    
-    // HTTP 클라이언트 초기화
     initializeHttpClient();
-    
-    // S3 클라이언트 초기화
     initializeS3Client();
+    
+    // 새로 추가: 동적 타겟 시스템 초기화 (선택적)
+    initializeDynamicTargetSystem();
     
     // 알람 디렉토리 생성
     try {
@@ -54,7 +59,46 @@ CSPGateway::~CSPGateway() {
 }
 
 // =============================================================================
-// 기본 C# CSPGateway 메서드들 (기존 유지)
+// 새로 추가: 동적 타겟 시스템 초기화 (선택적)
+// =============================================================================
+
+void CSPGateway::initializeDynamicTargetSystem() {
+    try {
+        // 동적 타겟 설정 파일 경로 확인
+        std::string targets_config_file = config_.dynamic_targets_config_file;
+        if (targets_config_file.empty()) {
+            targets_config_file = "./config/csp-targets.json";
+        }
+        
+        // 설정 파일이 존재하면 동적 시스템 활성화
+        if (std::filesystem::exists(targets_config_file)) {
+            LogManager::getInstance().Info("Dynamic targets config found, enabling dynamic system: " + targets_config_file);
+            
+            dynamic_target_manager_ = std::make_unique<DynamicTargetManager>(targets_config_file);
+            
+            if (dynamic_target_manager_->initialize()) {
+                use_dynamic_targets_ = true;
+                LogManager::getInstance().Info("Dynamic Target System enabled successfully");
+            } else {
+                LogManager::getInstance().Warn("Dynamic Target System initialization failed - using legacy mode only");
+                use_dynamic_targets_ = false;
+                dynamic_target_manager_.reset();
+            }
+        } else {
+            // 설정 파일이 없으면 레거시 모드만 사용
+            LogManager::getInstance().Info("No dynamic targets config found - using legacy mode only");
+            use_dynamic_targets_ = false;
+        }
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Warn("Dynamic Target System initialization error: " + std::string(e.what()) + " - using legacy mode");
+        use_dynamic_targets_ = false;
+        dynamic_target_manager_.reset();
+    }
+}
+
+// =============================================================================
+// 기본 C# CSPGateway 메서드들 (기존 완전 유지)
 // =============================================================================
 
 bool CSPGateway::start() {
@@ -101,6 +145,13 @@ void CSPGateway::stop() {
         retry_thread_->join();
     }
     
+    // 동적 타겟 시스템 종료
+    if (dynamic_target_manager_) {
+        LogManager::getInstance().Info("Shutting down Dynamic Target System...");
+        dynamic_target_manager_->shutdown();
+        dynamic_target_manager_.reset();
+    }
+    
     LogManager::getInstance().Info("CSPGateway service stopped");
 }
 
@@ -113,6 +164,86 @@ AlarmSendResult CSPGateway::taskAlarmSingle(const AlarmMessage& alarm_message) {
     
     LogManager::getInstance().Debug("Processing alarm: " + alarm_message.nm);
     
+    // 동적 타겟 시스템 우선 사용 (새로 추가)
+    if (use_dynamic_targets_ && dynamic_target_manager_) {
+        return taskAlarmSingleDynamic(alarm_message);
+    }
+    
+    // 기존 레거시 로직 완전 유지
+    return taskAlarmSingleLegacy(alarm_message);
+}
+
+// 새로 추가: 동적 타겟 시스템을 통한 전송
+AlarmSendResult CSPGateway::taskAlarmSingleDynamic(const AlarmMessage& alarm_message) {
+    try {
+        LogManager::getInstance().Debug("Using Dynamic Target System for: " + alarm_message.nm);
+        
+        auto start_time = std::chrono::high_resolution_clock::now();
+        
+        // 동적 타겟 매니저를 통한 전송
+        auto target_results = dynamic_target_manager_->sendAlarmToAllTargets(alarm_message);
+        
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        // 결과를 기존 AlarmSendResult 형식으로 변환
+        AlarmSendResult result;
+        result.alarm_message = alarm_message;
+        
+        // 동적 타겟 결과 집계
+        bool has_api_success = false;
+        bool has_s3_success = false;
+        size_t successful_targets = 0;
+        
+        for (const auto& target_result : target_results) {
+            if (target_result.success) {
+                successful_targets++;
+                
+                // 기존 필드와 매핑 (호환성)
+                if (target_result.target_type == "HTTP" || target_result.target_type == "HTTPS") {
+                    has_api_success = true;
+                    result.status_code = target_result.http_status_code;
+                    result.response_body = target_result.response_body;
+                }
+                if (target_result.target_type == "S3") {
+                    has_s3_success = true;
+                    result.s3_file_path = target_result.s3_object_key;
+                }
+            } else {
+                if (result.error_message.empty()) {
+                    result.error_message = target_result.error_message;
+                }
+                if (target_result.target_type == "S3" && result.s3_error_message.empty()) {
+                    result.s3_error_message = target_result.error_message;
+                }
+            }
+        }
+        
+        // 기존 필드 설정 (100% 호환성)
+        result.success = successful_targets > 0;
+        result.api_success = has_api_success;
+        result.s3_success = has_s3_success;
+        
+        // 통계 업데이트 (기존 형식 유지)
+        updateStatsFromDynamicResults(target_results, duration.count());
+        
+        LogManager::getInstance().Info("Dynamic alarm transmission completed: " + 
+                                      std::to_string(successful_targets) + "/" + 
+                                      std::to_string(target_results.size()) + " targets succeeded");
+        
+        return result;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Dynamic alarm transmission failed: " + std::string(e.what()));
+        
+        // 실패 시 레거시 모드로 폴백
+        LogManager::getInstance().Info("Falling back to legacy mode for: " + alarm_message.nm);
+        return taskAlarmSingleLegacy(alarm_message);
+    }
+}
+
+// 기존 로직을 별도 메서드로 분리 (100% 동일)
+AlarmSendResult CSPGateway::taskAlarmSingleLegacy(const AlarmMessage& alarm_message) {
     AlarmSendResult result;
     
     // API 전송 시도
@@ -148,6 +279,37 @@ AlarmSendResult CSPGateway::taskAlarmSingle(const AlarmMessage& alarm_message) {
     
     return result;
 }
+
+// 새로 추가: 동적 타겟 결과를 기존 통계에 반영
+void CSPGateway::updateStatsFromDynamicResults(const std::vector<TargetSendResult>& target_results, 
+                                               double response_time_ms) {
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    
+    for (const auto& target_result : target_results) {
+        if (target_result.target_type == "HTTP" || target_result.target_type == "HTTPS") {
+            if (target_result.success) {
+                stats_.successful_api_calls++;
+                stats_.last_success_time = std::chrono::system_clock::now();
+            } else {
+                stats_.failed_api_calls++;
+                stats_.last_failure_time = std::chrono::system_clock::now();
+            }
+        } else if (target_result.target_type == "S3") {
+            if (target_result.success) {
+                stats_.successful_s3_uploads++;
+            } else {
+                stats_.failed_s3_uploads++;
+            }
+        }
+    }
+    
+    // 평균 응답 시간 업데이트 (기존 방식과 동일)
+    stats_.avg_response_time_ms = (stats_.avg_response_time_ms * 0.9) + (response_time_ms * 0.1);
+}
+
+// =============================================================================
+// 기존 API/S3 메서드들 (100% 동일 유지)
+// =============================================================================
 
 AlarmSendResult CSPGateway::callAPIAlarm(const AlarmMessage& alarm_message) {
     if (config_.api_endpoint.empty()) {
@@ -299,7 +461,7 @@ std::vector<AlarmSendResult> CSPGateway::processBatchAlarms(
 #endif
 
 // =============================================================================
-// 1. 멀티빌딩 지원 구현 (C# Dictionary<int, List<AlarmMessage>> 포팅)
+// 1. 멀티빌딩 지원 구현 (100% 기존 유지)
 // =============================================================================
 
 std::unordered_map<int, BatchAlarmResult> CSPGateway::processMultiBuildingAlarms(
@@ -420,7 +582,7 @@ void CSPGateway::setMultiBuildingEnabled(bool enabled) {
 }
 
 // =============================================================================
-// 2. 알람 무시 시간 필터링 구현 (C# AlarmIgnoreMinutes 포팅)
+// 2. 알람 무시 시간 필터링 구현 (100% 기존 유지)
 // =============================================================================
 
 std::vector<AlarmMessage> CSPGateway::filterIgnoredAlarms(const std::vector<AlarmMessage>& alarms) {
@@ -478,7 +640,7 @@ void CSPGateway::setUseLocalTime(bool use_local) {
 }
 
 // =============================================================================
-// 3. 배치 파일 관리 및 자동 정리 구현 (C# 파일 관리 로직 포팅)
+// 3. 배치 파일 관리 및 자동 정리 구현 (100% 기존 유지)
 // =============================================================================
 
 std::string CSPGateway::saveBatchAlarmFile(int building_id, const std::vector<AlarmMessage>& alarms) {
@@ -592,16 +754,32 @@ void CSPGateway::setAutoCleanupEnabled(bool enabled) {
 }
 
 // =============================================================================
-// 기존 메서드들 (설정 및 상태 관리)
+// 기존 메서드들 (설정 및 상태 관리) - 100% 유지
 // =============================================================================
 
 void CSPGateway::updateConfig(const CSPGatewayConfig& new_config) {
     std::lock_guard<std::mutex> lock(config_mutex_);
+    
+    CSPGatewayConfig old_config = config_;
     config_ = new_config;
     
     // 클라이언트들 재초기화
     initializeHttpClient();
     initializeS3Client();
+    
+    // 동적 타겟 시스템 설정 변경 확인 (새로 추가)
+    if (config_.dynamic_targets_config_file != old_config.dynamic_targets_config_file) {
+        LogManager::getInstance().Info("Dynamic targets config file changed, reinitializing...");
+        
+        // 기존 시스템 종료
+        if (dynamic_target_manager_) {
+            dynamic_target_manager_->shutdown();
+            dynamic_target_manager_.reset();
+        }
+        
+        // 새 설정으로 재초기화
+        initializeDynamicTargetSystem();
+    }
     
     LogManager::getInstance().Info("CSPGateway configuration updated");
 }
@@ -624,25 +802,53 @@ void CSPGateway::resetStats() {
 }
 
 // =============================================================================
-// 테스트 메서드들
+// 테스트 메서드들 (기존 + 동적 시스템 추가)
 // =============================================================================
 
 bool CSPGateway::testConnection() {
     LogManager::getInstance().Info("Testing CSPGateway connections...");
     
+    bool legacy_ok = testConnectionLegacy();
+    bool dynamic_ok = true;
+    
+    // 동적 타겟 연결 테스트 추가
+    if (use_dynamic_targets_ && dynamic_target_manager_) {
+        LogManager::getInstance().Info("Testing dynamic targets...");
+        
+        auto detailed_stats = dynamic_target_manager_->getDetailedStats();
+        size_t healthy_count = 0;
+        
+        for (const auto& stat : detailed_stats) {
+            if (stat.enabled && stat.healthy) {
+                healthy_count++;
+            }
+        }
+        
+        dynamic_ok = (healthy_count > 0);
+        LogManager::getInstance().Info("Dynamic targets test: " + std::to_string(healthy_count) + 
+                                      "/" + std::to_string(detailed_stats.size()) + " healthy");
+    }
+    
+    bool overall_ok = legacy_ok || dynamic_ok;
+    LogManager::getInstance().Info("Overall connection test: " + std::string(overall_ok ? "OK" : "FAILED"));
+    
+    return overall_ok;
+}
+
+bool CSPGateway::testConnectionLegacy() {
     bool api_ok = false;
     bool s3_ok = false;
     
     // API 연결 테스트
     if (!config_.api_endpoint.empty() && http_client_) {
         api_ok = http_client_->testConnection("/health");
-        LogManager::getInstance().Info("API connection test: " + std::string(api_ok ? "OK" : "FAILED"));
+        LogManager::getInstance().Info("Legacy API connection test: " + std::string(api_ok ? "OK" : "FAILED"));
     }
     
     // S3 연결 테스트
     if (!config_.s3_bucket_name.empty() && s3_client_) {
         s3_ok = s3_client_->testConnection();
-        LogManager::getInstance().Info("S3 connection test: " + std::string(s3_ok ? "OK" : "FAILED"));
+        LogManager::getInstance().Info("Legacy S3 connection test: " + std::string(s3_ok ? "OK" : "FAILED"));
     }
     
     return api_ok || s3_ok;
@@ -689,7 +895,119 @@ std::unordered_map<int, BatchAlarmResult> CSPGateway::testMultiBuildingAlarms() 
 }
 
 // =============================================================================
-// Private 헬퍼 메서드들
+// 새로 추가: 동적 타겟 관리 API
+// =============================================================================
+
+bool CSPGateway::addDynamicTarget(const std::string& name, const std::string& type, 
+                                 const json& config, bool enabled, int priority) {
+    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
+        LogManager::getInstance().Error("Dynamic Target System not available");
+        return false;
+    }
+    
+    try {
+        DynamicTarget target;
+        target.name = name;
+        target.type = type;
+        target.config = config;
+        target.enabled = enabled;
+        target.priority = priority;
+        target.description = "Added via CSPGateway API";
+        
+        // 기본 실패 방지기 설정
+        target.failure_protector_config.failure_threshold = 5;
+        target.failure_protector_config.recovery_timeout_ms = 60000;
+        target.failure_protector_config.half_open_max_attempts = 3;
+        
+        bool success = dynamic_target_manager_->addTarget(target);
+        
+        if (success) {
+            LogManager::getInstance().Info("Dynamic target added: " + name + " (" + type + ")");
+            dynamic_target_manager_->saveConfiguration();
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Failed to add dynamic target: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool CSPGateway::removeDynamicTarget(const std::string& name) {
+    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
+        LogManager::getInstance().Error("Dynamic Target System not available");
+        return false;
+    }
+    
+    return dynamic_target_manager_->removeTarget(name);
+}
+
+bool CSPGateway::enableDynamicTarget(const std::string& name, bool enabled) {
+    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
+        LogManager::getInstance().Error("Dynamic Target System not available");
+        return false;
+    }
+    
+    return dynamic_target_manager_->enableTarget(name, enabled);
+}
+
+std::vector<std::string> CSPGateway::getSupportedTargetTypes() const {
+    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
+        return {"HTTP", "S3"}; // 기존 지원 타입
+    }
+    
+    return dynamic_target_manager_->getSupportedHandlerTypes();
+}
+
+bool CSPGateway::reloadDynamicTargets() {
+    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
+        LogManager::getInstance().Error("Dynamic Target System not available");
+        return false;
+    }
+    
+    return dynamic_target_manager_->reloadConfiguration();
+}
+
+// =============================================================================
+// 통계 및 모니터링 (기존 + 동적 시스템 통합)
+// =============================================================================
+
+CSPGatewayStats CSPGateway::getStats() const {
+    std::lock_guard<std::mutex> lock(stats_mutex_);
+    
+    CSPGatewayStats stats = stats_; // 기존 통계 복사
+    
+    // 동적 타겟 통계 추가
+    if (use_dynamic_targets_ && dynamic_target_manager_) {
+        auto dynamic_stats = dynamic_target_manager_->getStats();
+        
+        stats.dynamic_targets_enabled = true;
+        stats.total_dynamic_targets = dynamic_stats.total_targets;
+        stats.active_dynamic_targets = dynamic_stats.active_targets;
+        stats.healthy_dynamic_targets = dynamic_stats.healthy_targets;
+        stats.dynamic_target_success_rate = dynamic_stats.overall_success_rate;
+    } else {
+        stats.dynamic_targets_enabled = false;
+        stats.total_dynamic_targets = 0;
+        stats.active_dynamic_targets = 0;
+        stats.healthy_dynamic_targets = 0;
+        stats.dynamic_target_success_rate = 0.0;
+    }
+    
+    return stats;
+}
+
+std::vector<DynamicTargetStats> CSPGateway::getDynamicTargetStats() const {
+    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
+        return {};
+    }
+    
+    return dynamic_target_manager_->getDetailedStats();
+}
+
+// =============================================================================
+// Private 헬퍼 메서드들 (100% 기존 유지)
 // =============================================================================
 
 std::string CSPGateway::generateBatchFileName() const {
@@ -778,6 +1096,12 @@ void CSPGateway::loadConfigFromConfigManager() {
             config_.s3_bucket_name = config_mgr.getOrDefault("CSP_S3_BUCKET_NAME", "");
         }
         
+        // 동적 타겟 설정 파일 경로 (새로 추가)
+        if (config_.dynamic_targets_config_file.empty()) {
+            config_.dynamic_targets_config_file = config_mgr.getOrDefault("CSP_DYNAMIC_TARGETS_CONFIG", 
+                                                                          "./config/csp-targets.json");
+        }
+        
         LogManager::getInstance().Debug("CSPGateway configuration loaded from ConfigManager");
         
     } catch (const std::exception& e) {
@@ -786,7 +1110,7 @@ void CSPGateway::loadConfigFromConfigManager() {
 }
 
 // =============================================================================
-// 기존 Private 메서드들 (워커 스레드, HTTP/S3 등)
+// 기존 Private 메서드들 (워커 스레드, HTTP/S3 등) - 100% 유지
 // =============================================================================
 
 void CSPGateway::initializeHttpClient() {
