@@ -1,4 +1,4 @@
-#include "Utils/LogManager.h"
+
 /**
  * @file CSPGateway.cpp
  * @brief CSP Gateway 메인 구현 - C# CSPGateway 완전 포팅
@@ -11,14 +11,12 @@
 #include "Client/HttpClient.h"
 #include "Client/S3Client.h"
 #include "Utils/RetryManager.h"
+#include "Utils/LogManager.h"
 #include <fstream>
 #include <sstream>
 #include <thread>
 #include <future>
 
-// LogManager 직접 사용 - 매크로 대신 싱글톤 직접 호출
-
-    #include "Utils/LogManager.h"
 
 
 namespace PulseOne {
