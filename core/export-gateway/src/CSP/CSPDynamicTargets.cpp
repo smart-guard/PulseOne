@@ -1,14 +1,18 @@
 /**
  * @file CSPDynamicTargets.cpp
- * @brief CSP Gateway 동적 전송 대상 시스템 구현
- * @author PulseOne Development Team
+ * @brief CSP Gateway 동적 전송 대상 시스템 구현 - 에러 수정 완성본
+ * @author PulseOne Development Team  
  * @date 2025-09-23
  * 저장 위치: core/export-gateway/src/CSP/CSPDynamicTargets.cpp
+ * 
+ * 수정사항:
+ * - AlarmMessage 필드명 수정 (lvl → 실제 사용되는 필드명)
+ * - FailureProtectorConfig → 직접 생성자 사용  
+ * - ConfigManager API 실제 메서드명 사용
  */
 
 #include "CSP/CSPDynamicTargets.h"
-#include "Client/HttpClient.h"
-#include "Client/S3Client.h"
+#include "CSP/FailureProtector.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include <filesystem>
@@ -22,558 +26,334 @@ namespace PulseOne {
 namespace CSP {
 
 // =============================================================================
-// HTTP Target Handler 구현
+// Handler 클래스들의 메서드는 각각의 .cpp 파일에서 구현됩니다:
+// - HttpTargetHandler.cpp
+// - S3TargetHandler.cpp  
+// - MqttTargetHandler.cpp
+// - FileTargetHandler.cpp
 // =============================================================================
 
-bool HttpTargetHandler::initialize(const json& config) {
-    try {
-        // 필수 필드 검증
+// =============================================================================
+// 공통 유틸리티 함수들 (이 파일에서만 구현)
+// =============================================================================
+
+/**
+ * @brief 알람 메시지 유효성 검증
+ */
+bool isValidAlarmMessage(const AlarmMessage& alarm) {
+    if (alarm.nm.empty()) {
+        LogManager::getInstance().Error("알람 메시지에 포인트명이 없습니다");
+        return false;
+    }
+    
+    if (alarm.bd <= 0) {
+        LogManager::getInstance().Error("유효하지 않은 빌딩 ID: " + std::to_string(alarm.bd));
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * @brief 설정 유효성 검증
+ */
+bool isValidTargetConfig(const json& config, const std::string& target_type) {
+    if (config.empty() || !config.is_object()) {
+        LogManager::getInstance().Error("타겟 설정이 비어있거나 올바른 JSON 객체가 아닙니다");
+        return false;
+    }
+    
+    // 타겟 타입별 필수 필드 검증
+    if (target_type == "http" || target_type == "HTTP") {
         if (!config.contains("endpoint") || config["endpoint"].empty()) {
-            LogManager::getInstance().Error("HTTP target missing endpoint");
+            LogManager::getInstance().Error("HTTP 타겟에 endpoint가 설정되지 않음");
             return false;
         }
-        
-        LogManager::getInstance().Info("HTTP target handler initialized: " + 
-            config["endpoint"].get<std::string>());
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("HTTP handler initialization failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-TargetSendResult HttpTargetHandler::sendAlarm(const AlarmMessage& alarm, const json& config) {
-    TargetSendResult result;
-    result.target_type = "http";
-    
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    try {
-        // 설정 추출
-        std::string endpoint = config["endpoint"];
-        std::string method = config.value("method", "POST");
-        std::string content_type = config.value("content_type", "application/json");
-        int timeout_ms = config.value("timeout_ms", 10000);
-        
-        // HTTP 클라이언트 옵션 설정
-        PulseOne::Client::HttpRequestOptions options;
-        options.timeout_sec = timeout_ms / 1000;
-        options.connect_timeout_sec = 5;
-        options.user_agent = "PulseOne-CSPGateway/1.8";
-        
-        // 인증 키 로드
-        if (config.contains("auth_key_file")) {
-            std::string auth_key = loadAuthKey(config["auth_key_file"]);
-            if (!auth_key.empty()) {
-                options.bearer_token = auth_key;
-            }
-        }
-        
-        // HTTP 클라이언트 생성
-        PulseOne::Client::HttpClient client(endpoint, options);
-        
-        // 요청 데이터 준비
-        std::string json_data = alarm.to_json().dump();
-        
-        // 헤더 준비
-        auto headers = prepareHeaders(config);
-        
-        // HTTP 요청 전송
-        PulseOne::Client::HttpResponse response;
-        if (method == "POST") {
-            response = client.post("", json_data, content_type, headers);
-        } else if (method == "PUT") {
-            response = client.put("", json_data, content_type, headers);
-        } else {
-            result.error_message = "Unsupported HTTP method: " + method;
-            return result;
-        }
-        
-        // 결과 처리
-        result.success = response.isSuccess();
-        result.status_code = response.status_code;
-        result.response_body = response.body;
-        
-        if (!result.success) {
-            result.error_message = "HTTP " + std::to_string(response.status_code) + ": " + response.body;
-        }
-        
-    } catch (const std::exception& e) {
-        result.error_message = "HTTP request exception: " + std::string(e.what());
-    }
-    
-    auto end_time = std::chrono::high_resolution_clock::now();
-    result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    
-    return result;
-}
-
-bool HttpTargetHandler::testConnection(const json& config) {
-    try {
-        std::string endpoint = config["endpoint"];
-        
-        PulseOne::Client::HttpRequestOptions options;
-        options.timeout_sec = 5;
-        options.connect_timeout_sec = 3;
-        
-        PulseOne::Client::HttpClient client(endpoint, options);
-        
-        // HEAD 요청으로 연결 테스트
-        auto response = client.get("/health", {});
-        
-        // 2xx, 3xx, 심지어 404도 연결은 성공으로 간주
-        return response.status_code > 0 && response.status_code < 500;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Debug("HTTP connection test failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-std::string HttpTargetHandler::loadAuthKey(const std::string& key_file) {
-    try {
-        ConfigManager& config_mgr = ConfigManager::getInstance();
-        return config_mgr.getSecret(key_file);
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Failed to load auth key from " + key_file + ": " + std::string(e.what()));
-        return "";
-    }
-}
-
-std::unordered_map<std::string, std::string> HttpTargetHandler::prepareHeaders(const json& config) {
-    std::unordered_map<std::string, std::string> headers;
-    
-    // 기본 헤더
-    headers["Content-Type"] = config.value("content_type", "application/json");
-    headers["Accept"] = "application/json";
-    headers["User-Agent"] = "PulseOne-CSPGateway/1.8";
-    
-    // 설정에서 추가 헤더 로드
-    if (config.contains("headers") && config["headers"].is_object()) {
-        for (const auto& [key, value] : config["headers"].items()) {
-            if (value.is_string()) {
-                headers[key] = value.get<std::string>();
-            }
-        }
-    }
-    
-    return headers;
-}
-
-// =============================================================================
-// S3 Target Handler 구현
-// =============================================================================
-
-bool S3TargetHandler::initialize(const json& config) {
-    try {
-        // 필수 필드 검증
+    } else if (target_type == "s3" || target_type == "S3") {
         if (!config.contains("bucket_name") || config["bucket_name"].empty()) {
-            LogManager::getInstance().Error("S3 target missing bucket_name");
+            LogManager::getInstance().Error("S3 타겟에 bucket_name이 설정되지 않음");
             return false;
         }
-        
-        LogManager::getInstance().Info("S3 target handler initialized: " + 
-            config["bucket_name"].get<std::string>());
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("S3 handler initialization failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage& alarm, const json& config) {
-    TargetSendResult result;
-    result.target_type = "s3";
-    
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    try {
-        // S3 설정 구성
-        PulseOne::Client::S3Config s3_config;
-        s3_config.bucket_name = config["bucket_name"];
-        s3_config.region = config.value("region", "ap-northeast-2");
-        s3_config.endpoint = config.value("endpoint", "https://s3.amazonaws.com");
-        s3_config.upload_timeout_sec = config.value("timeout_ms", 10000) / 1000;
-        
-        // 자격증명 로드
-        s3_config.access_key = loadCredentials(config.value("access_key_file", ""));
-        s3_config.secret_key = loadCredentials(config.value("secret_key_file", ""));
-        
-        if (s3_config.access_key.empty() || s3_config.secret_key.empty()) {
-            result.error_message = "S3 credentials not available";
-            return result;
-        }
-        
-        // S3 클라이언트 생성
-        PulseOne::Client::S3Client s3_client(s3_config);
-        
-        // 객체 키 생성
-        std::string object_key = generateObjectKey(alarm, config);
-        
-        // JSON 데이터 업로드
-        std::string json_data = alarm.to_json().dump(2);
-        auto s3_result = s3_client.uploadJson(object_key, json_data);
-        
-        result.success = s3_result.success;
-        result.response_body = object_key;
-        
-        if (!result.success) {
-            result.error_message = s3_result.error_message;
-        }
-        
-    } catch (const std::exception& e) {
-        result.error_message = "S3 upload exception: " + std::string(e.what());
-    }
-    
-    auto end_time = std::chrono::high_resolution_clock::now();
-    result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    
-    return result;
-}
-
-bool S3TargetHandler::testConnection(const json& config) {
-    try {
-        PulseOne::Client::S3Config s3_config;
-        s3_config.bucket_name = config["bucket_name"];
-        s3_config.region = config.value("region", "ap-northeast-2");
-        s3_config.access_key = loadCredentials(config.value("access_key_file", ""));
-        s3_config.secret_key = loadCredentials(config.value("secret_key_file", ""));
-        
-        if (s3_config.access_key.empty() || s3_config.secret_key.empty()) {
+    } else if (target_type == "mqtt" || target_type == "MQTT") {
+        if (!config.contains("broker_host") || config["broker_host"].empty()) {
+            LogManager::getInstance().Error("MQTT 타겟에 broker_host가 설정되지 않음");
             return false;
         }
-        
-        PulseOne::Client::S3Client s3_client(s3_config);
-        return s3_client.testConnection();
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Debug("S3 connection test failed: " + std::string(e.what()));
-        return false;
+    } else if (target_type == "file" || target_type == "FILE") {
+        if (!config.contains("base_path") || config["base_path"].empty()) {
+            LogManager::getInstance().Error("파일 타겟에 base_path가 설정되지 않음");
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+/**
+ * @brief 전송 결과 로깅
+ */
+void logSendResult(const TargetSendResult& result, const std::string& alarm_name) {
+    if (result.success) {
+        LogManager::getInstance().Info("알람 전송 성공: " + alarm_name + 
+                                      " -> " + result.target_type + 
+                                      " (응답시간: " + std::to_string(result.response_time.count()) + "ms)");
+    } else {
+        LogManager::getInstance().Error("알람 전송 실패: " + alarm_name + 
+                                       " -> " + result.target_type + 
+                                       " - " + result.error_message);
     }
 }
 
-std::string S3TargetHandler::generateObjectKey(const AlarmMessage& alarm, const json& config) {
-    std::string pattern = config.value("file_name_pattern", "{building_id}_{timestamp}_alarm.json");
-    std::string prefix = config.value("object_prefix", "alarms/");
-    
-    // 변수 치환
+/**
+ * @brief 현재 타임스탬프 문자열 생성 (ISO 8601 형식)
+ */
+std::string getCurrentISOTimestamp() {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()) % 1000;
     
     std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y%m%d_%H%M%S");
-    std::string timestamp = oss.str();
+    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+    oss << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
     
-    // 패턴 치환
-    std::string object_key = pattern;
-    object_key = std::regex_replace(object_key, std::regex("\\{building_id\\}"), std::to_string(alarm.bd));
-    object_key = std::regex_replace(object_key, std::regex("\\{timestamp\\}"), timestamp);
-    object_key = std::regex_replace(object_key, std::regex("\\{nm\\}"), alarm.nm);
-    
-    return prefix + object_key;
+    return oss.str();
 }
 
-std::string S3TargetHandler::loadCredentials(const std::string& key_file) {
-    if (key_file.empty()) {
-        return "";
-    }
+/**
+ * @brief 템플릿 변수 확장 (공통 유틸리티) - 수정된 필드명 사용
+ */
+std::string expandTemplateString(const std::string& template_str, const AlarmMessage& alarm) {
+    std::string result = template_str;
     
-    try {
-        ConfigManager& config_mgr = ConfigManager::getInstance();
-        return config_mgr.getSecret(key_file);
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Failed to load S3 credentials from " + key_file + ": " + std::string(e.what()));
-        return "";
-    }
-}
-
-// =============================================================================
-// MQTT Target Handler 구현 (기본 구조)
-// =============================================================================
-
-bool MqttTargetHandler::initialize(const json& config) {
-    try {
-        // 필수 필드 검증
-        if (!config.contains("broker_host") || config["broker_host"].empty()) {
-            LogManager::getInstance().Error("MQTT target missing broker_host");
-            return false;
-        }
-        
-        LogManager::getInstance().Info("MQTT target handler initialized: " + 
-            config["broker_host"].get<std::string>());
-        
-        // TODO: Paho MQTT 클라이언트 초기화
-        LogManager::getInstance().Warn("MQTT handler not fully implemented yet");
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("MQTT handler initialization failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-TargetSendResult MqttTargetHandler::sendAlarm(const AlarmMessage& alarm, const json& config) {
-    TargetSendResult result;
-    result.target_type = "mqtt";
+    // 기본 변수들 치환 (실제 AlarmMessage 필드 사용)
+    result = std::regex_replace(result, std::regex("\\{building_id\\}"), std::to_string(alarm.bd));
+    result = std::regex_replace(result, std::regex("\\{point_name\\}"), alarm.nm);
+    result = std::regex_replace(result, std::regex("\\{nm\\}"), alarm.nm);  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{value\\}"), std::to_string(alarm.vl));
+    result = std::regex_replace(result, std::regex("\\{vl\\}"), std::to_string(alarm.vl));  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{timestamp\\}"), alarm.tm);
+    result = std::regex_replace(result, std::regex("\\{tm\\}"), alarm.tm);  // 짧은 형태
     
-    // TODO: MQTT 메시지 발행 구현
-    result.success = false;
-    result.error_message = "MQTT handler not implemented";
+    // 🔥 수정: alarm.lvl 대신 실제 필드 사용 (des 필드로 대체 또는 제거)
+    result = std::regex_replace(result, std::regex("\\{description\\}"), alarm.des);
+    result = std::regex_replace(result, std::regex("\\{des\\}"), alarm.des);  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{alarm_flag\\}"), std::to_string(alarm.al));
+    result = std::regex_replace(result, std::regex("\\{al\\}"), std::to_string(alarm.al));  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{status\\}"), std::to_string(alarm.st));
+    result = std::regex_replace(result, std::regex("\\{st\\}"), std::to_string(alarm.st));  // 짧은 형태
     
-    LogManager::getInstance().Debug("MQTT sendAlarm called for alarm: " + alarm.nm);
+    // level/lvl 필드 제거 또는 다른 필드로 대체
+    result = std::regex_replace(result, std::regex("\\{level\\}"), alarm.des);  // description으로 대체
+    result = std::regex_replace(result, std::regex("\\{lvl\\}"), alarm.des);    // description으로 대체
     
-    return result;
-}
-
-bool MqttTargetHandler::testConnection(const json& config) {
-    // TODO: MQTT 브로커 연결 테스트
-    LogManager::getInstance().Debug("MQTT connection test not implemented");
-    return false;
-}
-
-std::string MqttTargetHandler::generateTopic(const AlarmMessage& alarm, const json& config) {
-    std::string pattern = config.value("topic_pattern", "alarms/{building_id}/{alarm_type}");
-    
-    // 패턴 치환
-    std::string topic = pattern;
-    topic = std::regex_replace(topic, std::regex("\\{building_id\\}"), std::to_string(alarm.bd));
-    topic = std::regex_replace(topic, std::regex("\\{alarm_type\\}"), alarm.lvl);
-    topic = std::regex_replace(topic, std::regex("\\{nm\\}"), alarm.nm);
-    
-    return topic;
-}
-
-// =============================================================================
-// File Target Handler 구현 (로컬 백업)
-// =============================================================================
-
-bool FileTargetHandler::initialize(const json& config) {
-    try {
-        // 필수 필드 검증
-        if (!config.contains("base_path") || config["base_path"].empty()) {
-            LogManager::getInstance().Error("File target missing base_path");
-            return false;
-        }
-        
-        // 디렉토리 생성
-        std::string base_path = config["base_path"];
-        std::filesystem::create_directories(base_path);
-        
-        LogManager::getInstance().Info("File target handler initialized: " + base_path);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("File handler initialization failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage& alarm, const json& config) {
-    TargetSendResult result;
-    result.target_type = "file";
-    
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    try {
-        // 파일 경로 생성
-        std::string file_path = generateFilePath(alarm, config);
-        
-        // 디렉토리 생성 (필요시)
-        std::filesystem::create_directories(std::filesystem::path(file_path).parent_path());
-        
-        // JSON 데이터 저장
-        std::string json_data = alarm.to_json().dump(2);
-        
-        std::ofstream file(file_path);
-        if (!file.is_open()) {
-            result.error_message = "Failed to open file: " + file_path;
-            return result;
-        }
-        
-        file << json_data;
-        file.close();
-        
-        // 압축 처리 (설정시)
-        std::string compression = config.value("compression", "none");
-        if (compression != "none") {
-            bool compressed = compressFile(file_path, compression);
-            if (!compressed) {
-                LogManager::getInstance().Warn("File compression failed: " + file_path);
-            }
-        }
-        
-        result.success = true;
-        result.response_body = file_path;
-        
-        // 자동 정리 (설정시)
-        if (config.value("rotate_daily", false)) {
-            cleanupOldFiles(config);
-        }
-        
-    } catch (const std::exception& e) {
-        result.error_message = "File save exception: " + std::string(e.what());
-    }
-    
-    auto end_time = std::chrono::high_resolution_clock::now();
-    result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    
-    return result;
-}
-
-bool FileTargetHandler::testConnection(const json& config) {
-    try {
-        std::string base_path = config["base_path"];
-        
-        // 디렉토리 존재 확인 및 쓰기 권한 테스트
-        std::filesystem::create_directories(base_path);
-        
-        // 테스트 파일 작성
-        std::string test_file = base_path + "/test_write_permission.tmp";
-        std::ofstream test(test_file);
-        if (!test.is_open()) {
-            return false;
-        }
-        
-        test << "test";
-        test.close();
-        
-        // 테스트 파일 삭제
-        std::filesystem::remove(test_file);
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Debug("File connection test failed: " + std::string(e.what()));
-        return false;
-    }
-}
-
-std::string FileTargetHandler::generateFilePath(const AlarmMessage& alarm, const json& config) {
-    std::string base_path = config["base_path"];
-    std::string pattern = config.value("file_pattern", "{building_id}/{date}/alarms_{timestamp}.json");
-    
-    // 현재 시간 기반 변수들
+    // 시간 관련 변수들
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     
-    std::ostringstream date_oss;
-    date_oss << std::put_time(std::localtime(&time_t), "%Y%m%d");
-    std::string date = date_oss.str();
+    std::ostringstream date_oss, time_oss, datetime_oss;
+    date_oss << std::put_time(std::localtime(&time_t), "%Y-%m-%d");
+    time_oss << std::put_time(std::localtime(&time_t), "%H:%M:%S");
+    datetime_oss << std::put_time(std::localtime(&time_t), "%Y-%m-%d_%H:%M:%S");
     
-    std::ostringstream timestamp_oss;
-    timestamp_oss << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
-    std::string timestamp = timestamp_oss.str();
+    result = std::regex_replace(result, std::regex("\\{date\\}"), date_oss.str());
+    result = std::regex_replace(result, std::regex("\\{time\\}"), time_oss.str());
+    result = std::regex_replace(result, std::regex("\\{datetime\\}"), datetime_oss.str());
+    result = std::regex_replace(result, std::regex("\\{iso_timestamp\\}"), getCurrentISOTimestamp());
     
-    // 패턴 치환
-    std::string file_path = pattern;
-    file_path = std::regex_replace(file_path, std::regex("\\{building_id\\}"), std::to_string(alarm.bd));
-    file_path = std::regex_replace(file_path, std::regex("\\{date\\}"), date);
-    file_path = std::regex_replace(file_path, std::regex("\\{timestamp\\}"), timestamp);
-    file_path = std::regex_replace(file_path, std::regex("\\{nm\\}"), alarm.nm);
-    
-    return base_path + "/" + file_path;
+    return result;
 }
 
-bool FileTargetHandler::compressFile(const std::string& file_path, const std::string& compression_type) {
-    // TODO: 압축 구현 (gzip, zip 등)
-    LogManager::getInstance().Debug("File compression not implemented: " + compression_type + " for " + file_path);
-    return false;
-}
-
-void FileTargetHandler::cleanupOldFiles(const json& config) {
-    try {
-        int cleanup_after_days = config.value("cleanup_after_days", 30);
-        std::string base_path = config["base_path"];
-        
-        auto cutoff_time = std::chrono::system_clock::now() - std::chrono::hours(24 * cleanup_after_days);
-        
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(base_path)) {
-            if (entry.is_regular_file()) {
-                auto file_time = std::filesystem::last_write_time(entry);
-                auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                    file_time - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-                
-                if (sctp < cutoff_time) {
-                    std::filesystem::remove(entry);
-                    LogManager::getInstance().Debug("Cleaned up old file: " + entry.path().string());
-                }
+/**
+ * @brief JSON 설정에서 문자열 템플릿 확장
+ */
+void expandConfigTemplates(json& config, const AlarmMessage& alarm) {
+    std::function<void(json&)> expand_recursive = [&](json& obj) {
+        if (obj.is_string()) {
+            std::string str = obj.get<std::string>();
+            obj = expandTemplateString(str, alarm);
+        } else if (obj.is_object()) {
+            for (auto& [key, value] : obj.items()) {
+                expand_recursive(value);
+            }
+        } else if (obj.is_array()) {
+            for (auto& item : obj) {
+                expand_recursive(item);
             }
         }
+    };
+    
+    expand_recursive(config);
+}
+
+/**
+ * @brief 파일 크기를 사람이 읽기 쉬운 형태로 변환
+ */
+std::string formatFileSize(size_t bytes) {
+    const char* units[] = {"B", "KB", "MB", "GB", "TB"};
+    int unit_index = 0;
+    double size = static_cast<double>(bytes);
+    
+    while (size >= 1024.0 && unit_index < 4) {
+        size /= 1024.0;
+        unit_index++;
+    }
+    
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(1) << size << " " << units[unit_index];
+    return oss.str();
+}
+
+/**
+ * @brief URL 유효성 검증
+ */
+bool isValidUrl(const std::string& url) {
+    // 간단한 URL 형식 검증
+    std::regex url_pattern(R"(^(https?|ftp)://[^\s/$.?#].[^\s]*$)", std::regex::icase);
+    return std::regex_match(url, url_pattern);
+}
+
+/**
+ * @brief 파일 경로 유효성 검증
+ */
+bool isValidFilePath(const std::string& path) {
+    if (path.empty()) return false;
+    
+    // 경로에 금지된 문자가 있는지 확인
+    std::regex forbidden_chars(R"([<>:"|?*])");
+    if (std::regex_search(path, forbidden_chars)) {
+        return false;
+    }
+    
+    // 상대 경로 공격 방지 (.., ./)
+    if (path.find("..") != std::string::npos) {
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * @brief 디렉토리 생성 (재귀적, 안전)
+ */
+bool createDirectorySafe(const std::string& dir_path) {
+    try {
+        if (!isValidFilePath(dir_path)) {
+            LogManager::getInstance().Error("유효하지 않은 디렉토리 경로: " + dir_path);
+            return false;
+        }
+        
+        std::filesystem::create_directories(dir_path);
+        LogManager::getInstance().Debug("디렉토리 생성/확인: " + dir_path);
+        return true;
+        
+    } catch (const std::filesystem::filesystem_error& e) {
+        LogManager::getInstance().Error("디렉토리 생성 실패: " + dir_path + " - " + e.what());
+        return false;
+    }
+}
+
+/**
+ * @brief 환경 변수에서 설정값 로드
+ */
+std::string getEnvironmentVariable(const std::string& var_name, const std::string& default_value = "") {
+    const char* env_value = std::getenv(var_name.c_str());
+    if (env_value == nullptr) {
+        if (!default_value.empty()) {
+            LogManager::getInstance().Debug("환경변수 " + var_name + " 없음, 기본값 사용: " + default_value);
+        }
+        return default_value;
+    }
+    
+    LogManager::getInstance().Debug("환경변수 " + var_name + " 로드됨");
+    return std::string(env_value);
+}
+
+// =============================================================================
+// FailureProtector 별칭 (기존 CircuitBreaker 대신)
+// =============================================================================
+
+/**
+ * @brief CircuitBreaker의 별칭으로 FailureProtector 사용
+ * 기존 코드와의 호환성을 위한 타입 별칭
+ */
+using CircuitBreaker = FailureProtector;
+
+/**
+ * @brief 실패 방지기 생성 도우미 함수 - 수정된 생성자 사용
+ */
+std::unique_ptr<FailureProtector> createFailureProtector(const std::string& target_name, const json& config) {
+    // 🔥 수정: FailureProtectorConfig 대신 직접 생성자 매개변수 사용
+    size_t failure_threshold = config.value("failure_threshold", 5);
+    std::chrono::milliseconds recovery_timeout(config.value("recovery_timeout_ms", 60000));  // 1분
+    size_t half_open_requests = config.value("half_open_requests", 3);
+    
+    // FailureProtector 생성자 직접 호출
+    return std::make_unique<FailureProtector>(failure_threshold, recovery_timeout, half_open_requests);
+}
+
+/**
+ * @brief 글로벌 설정 적용 - 수정된 ConfigManager API 사용
+ */
+void applyGlobalSettings() {
+    auto& config_mgr = ConfigManager::getInstance();
+    
+    // 🔥 수정: getValue → getOrDefault, getIntValue → getInt 사용
+    std::string log_level = config_mgr.getOrDefault("CSP.log_level", "INFO");
+    LogManager::getInstance().Info("CSP Gateway 로그 레벨: " + log_level);
+    
+    // 글로벌 타임아웃 설정
+    int global_timeout = config_mgr.getInt("CSP.global_timeout_ms", 30000);
+    LogManager::getInstance().Debug("글로벌 타임아웃: " + std::to_string(global_timeout) + "ms");
+    
+    // 시스템 상태 로깅
+    LogManager::getInstance().Info("CSP Dynamic Targets 시스템 초기화 완료");
+}
+
+/**
+ * @brief 설정에서 암호화된 값 로드
+ */
+std::string loadEncryptedConfig(const std::string& config_key, const std::string& default_value = "") {
+    try {
+        auto& config_mgr = ConfigManager::getInstance();
+        
+        // 먼저 암호화된 시크릿으로 시도
+        std::string secret_value = config_mgr.getSecret(config_key);
+        if (!secret_value.empty()) {
+            return secret_value;
+        }
+        
+        // 일반 설정값으로 폴백
+        return config_mgr.getOrDefault(config_key, default_value);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("File cleanup failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("암호화된 설정 로드 실패: " + config_key + " - " + e.what());
+        return default_value;
     }
 }
 
-// =============================================================================
-// Circuit Breaker 구현
-// =============================================================================
-
-CircuitBreaker::CircuitBreaker(size_t failure_threshold, 
-                               std::chrono::milliseconds recovery_timeout,
-                               size_t half_open_requests)
-    : failure_threshold_(failure_threshold)
-    , recovery_timeout_(recovery_timeout)
-    , half_open_requests_(half_open_requests) {
-}
-
-bool CircuitBreaker::canExecute() {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+/**
+ * @brief 성능 메트릭 로깅
+ */
+void logPerformanceMetrics(const std::string& operation, 
+                          std::chrono::milliseconds duration,
+                          bool success,
+                          const std::string& target_type = "") {
+    std::ostringstream oss;
+    oss << "성능 메트릭 [" << operation << "]";
     
-    auto now = std::chrono::system_clock::now();
-    
-    switch (state_.load()) {
-        case State::CLOSED:
-            return true;
-            
-        case State::OPEN:
-            // 복구 시간이 지났는지 확인
-            if (now - last_failure_time_ >= recovery_timeout_) {
-                state_.store(State::HALF_OPEN);
-                success_count_.store(0);
-                return true;
-            }
-            return false;
-            
-        case State::HALF_OPEN:
-            // 제한된 요청만 허용
-            return success_count_.load() < half_open_requests_;
+    if (!target_type.empty()) {
+        oss << " (" << target_type << ")";
     }
     
-    return false;
-}
-
-void CircuitBreaker::recordSuccess() {
-    std::lock_guard<std::mutex> lock(state_mutex_);
+    oss << " - 소요시간: " << duration.count() << "ms";
+    oss << ", 결과: " << (success ? "성공" : "실패");
     
-    success_count_++;
-    failure_count_.store(0);
-    
-    if (state_.load() == State::HALF_OPEN && 
-        success_count_.load() >= half_open_requests_) {
-        state_.store(State::CLOSED);
+    if (duration.count() > 5000) {  // 5초 이상이면 경고
+        LogManager::getInstance().Warn(oss.str());
+    } else {
+        LogManager::getInstance().Debug(oss.str());
     }
-}
-
-void CircuitBreaker::recordFailure() {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    
-    failure_count_++;
-    last_failure_time_ = std::chrono::system_clock::now();
-    
-    if (failure_count_.load() >= failure_threshold_) {
-        state_.store(State::OPEN);
-    }
-}
-
-void CircuitBreaker::reset() {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    
-    state_.store(State::CLOSED);
-    failure_count_.store(0);
-    success_count_.store(0);
 }
 
 } // namespace CSP

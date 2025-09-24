@@ -1,5 +1,5 @@
 /**
- * @file CSPGateway.h - 완전한 헤더 파일 (멀티빌딩, 시간필터, 배치관리 추가)
+ * @file CSPGateway.h - 완전한 헤더 파일 (누락된 메서드 선언 추가)
  * @brief CSP Gateway 헤더 - C# CSPGateway 완전 포팅
  * @author PulseOne Development Team
  * @date 2025-09-23
@@ -20,25 +20,43 @@
 #include <chrono>
 #include <unordered_map>
 #include <filesystem>
-
+#include <nlohmann/json.hpp>
 #include "AlarmMessage.h"
+
+// 🔥 추가: Dynamic Targets 관련 헤더
+#include "CSPDynamicTargets.h"
+
+using json = nlohmann::json;
 
 // PulseOne 네임스페이스가 있는 헤더들 (조건부 include)
 #ifdef HAS_SHARED_LIBS
-    #include "Database/Entities/AlarmOccurrenceEntity.h"
-    namespace PulseOne {
-        namespace Client {
-            class HttpClient;
-            class S3Client;
-        }
-        namespace Utils {
-            template<typename T> class RetryManager;
-        }
-    }
+#include "Database/Entities/AlarmOccurrenceEntity.h"
+namespace PulseOne {
+namespace Client {
+    class HttpClient;
+    class S3Client;
+}
+namespace Utils {
+    template<typename T> class RetryManager;
+}
+}
 #endif
 
 namespace PulseOne {
 namespace CSP {
+
+// 🔥 추가: 누락된 타입 정의들
+struct DynamicTargetStats {
+    std::string name;
+    std::string type;
+    bool enabled = false;
+    size_t success_count = 0;
+    size_t failure_count = 0;
+    double success_rate = 0.0;
+    std::chrono::system_clock::time_point last_success;
+    std::chrono::system_clock::time_point last_failure;
+    std::string last_error;
+};
 
 /**
  * @brief CSP Gateway 설정 (확장된 버전)
@@ -56,6 +74,10 @@ struct CSPGatewayConfig {
     std::string s3_secret_key = "";
     std::string s3_bucket_name = "";
     std::string s3_region = "us-east-1";
+    
+    // 🔥 추가: Dynamic Targets 설정
+    std::string dynamic_targets_config_file = "";
+    bool use_dynamic_targets = false;
     
     // 기본 옵션
     bool debug_mode = false;
@@ -140,7 +162,7 @@ struct CSPGatewayStats {
     }
     
     // 복사 생성자 (atomic 때문에 필요)
-    CSPGatewayStats(const CSPGatewayStats& other) 
+    CSPGatewayStats(const CSPGatewayStats& other)
         : total_alarms(other.total_alarms.load())
         , successful_api_calls(other.successful_api_calls.load())
         , failed_api_calls(other.failed_api_calls.load())
@@ -200,13 +222,13 @@ public:
     
     explicit CSPGateway(const CSPGatewayConfig& config);
     ~CSPGateway();
-
+    
     // 복사/이동 생성자 비활성화
     CSPGateway(const CSPGateway&) = delete;
     CSPGateway& operator=(const CSPGateway&) = delete;
     CSPGateway(CSPGateway&&) = delete;
     CSPGateway& operator=(CSPGateway&&) = delete;
-
+    
     // =======================================================================
     // 기본 C# CSPGateway 메서드들
     // =======================================================================
@@ -214,13 +236,13 @@ public:
     AlarmSendResult taskAlarmSingle(const AlarmMessage& alarm_message);
     AlarmSendResult callAPIAlarm(const AlarmMessage& alarm_message);
     AlarmSendResult callS3Alarm(const AlarmMessage& alarm_message, const std::string& file_name = "");
-
+    
 #ifdef HAS_SHARED_LIBS
     AlarmSendResult processAlarmOccurrence(const Database::Entities::AlarmOccurrenceEntity& occurrence);
     std::vector<AlarmSendResult> processBatchAlarms(
         const std::vector<Database::Entities::AlarmOccurrenceEntity>& occurrences);
 #endif
-
+    
     // =======================================================================
     // 1. 멀티빌딩 지원 (C# Dictionary<int, List<AlarmMessage>> 포팅)
     // =======================================================================
@@ -251,7 +273,7 @@ public:
      * @param enabled true=활성화, false=비활성화
      */
     void setMultiBuildingEnabled(bool enabled);
-
+    
     // =======================================================================
     // 2. 알람 무시 시간 필터링 (C# AlarmIgnoreMinutes 포팅)
     // =======================================================================
@@ -281,7 +303,7 @@ public:
      * @param use_local true=로컬시간, false=UTC
      */
     void setUseLocalTime(bool use_local);
-
+    
     // =======================================================================
     // 3. 배치 파일 관리 및 자동 정리 (C# 파일 관리 로직 포팅)
     // =======================================================================
@@ -319,7 +341,7 @@ public:
      * @param enabled true=활성화, false=비활성화
      */
     void setAutoCleanupEnabled(bool enabled);
-
+    
     // =======================================================================
     // 서비스 제어 메서드들
     // =======================================================================
@@ -327,7 +349,7 @@ public:
     bool start();
     void stop();
     bool isRunning() const { return is_running_.load(); }
-
+    
     // =======================================================================
     // 설정 및 상태 관리
     // =======================================================================
@@ -336,7 +358,7 @@ public:
     const CSPGatewayConfig& getConfig() const { return config_; }
     CSPGatewayStats getStats() const { return stats_; }
     void resetStats();
-
+    
     // =======================================================================
     // 테스트 및 진단 메서드들
     // =======================================================================
@@ -350,6 +372,76 @@ public:
      * @return 빌딩별 테스트 결과
      */
     std::unordered_map<int, BatchAlarmResult> testMultiBuildingAlarms();
+    
+    // =======================================================================
+    // 🔥 CSPGateway.cpp에서 구현된 누락된 메서드 선언들 추가
+    // =======================================================================
+    
+private:
+    /**
+     * @brief Dynamic Target System 초기화
+     */
+    void initializeDynamicTargetSystem();
+    
+    /**
+     * @brief Dynamic Target을 사용한 단일 알람 처리
+     */
+    AlarmSendResult taskAlarmSingleDynamic(const AlarmMessage& alarm_message);
+    
+    /**
+     * @brief Legacy 방식 단일 알람 처리
+     */
+    AlarmSendResult taskAlarmSingleLegacy(const AlarmMessage& alarm_message);
+    
+    /**
+     * @brief Dynamic Target 결과에서 통계 업데이트
+     */
+    void updateStatsFromDynamicResults(const std::vector<TargetSendResult>& target_results,
+                                     double response_time_ms);
+    
+    /**
+     * @brief Legacy 연결 테스트
+     */
+    bool testConnectionLegacy();
+    
+public:
+    // =======================================================================
+    // Dynamic Target 관리 메서드들 (public)
+    // =======================================================================
+    
+    /**
+     * @brief 동적 타겟 추가
+     */
+    bool addDynamicTarget(const std::string& name, 
+                         const std::string& type,
+                         const json& config, 
+                         bool enabled = true, 
+                         int priority = 0);
+    
+    /**
+     * @brief 동적 타겟 제거
+     */
+    bool removeDynamicTarget(const std::string& name);
+    
+    /**
+     * @brief 동적 타겟 활성화/비활성화
+     */
+    bool enableDynamicTarget(const std::string& name, bool enabled);
+    
+    /**
+     * @brief 지원되는 타겟 타입 목록 반환
+     */
+    std::vector<std::string> getSupportedTargetTypes() const;
+    
+    /**
+     * @brief 동적 타겟 설정 다시 로드
+     */
+    bool reloadDynamicTargets();
+    
+    /**
+     * @brief 동적 타겟 통계 조회
+     */
+    std::vector<DynamicTargetStats> getDynamicTargetStats() const;
 
 private:
     // =======================================================================
@@ -378,7 +470,11 @@ private:
     // 클라이언트들
     std::unique_ptr<PulseOne::Client::HttpClient> http_client_;
     std::unique_ptr<PulseOne::Client::S3Client> s3_client_;
-
+    
+    // 🔥 추가: Dynamic Target System 멤버들
+    std::unique_ptr<DynamicTargetManager> dynamic_target_manager_;
+    std::atomic<bool> use_dynamic_targets_{false};
+    
     // =======================================================================
     // 기존 private 메서드들
     // =======================================================================
@@ -387,7 +483,6 @@ private:
     void initializeS3Client();
     void workerThread();
     void retryThread();
-    
     AlarmSendResult retryFailedAlarm(const AlarmMessage& alarm_message, int attempt_count);
     bool saveFailedAlarmToFile(const AlarmMessage& alarm_message, const std::string& error_message);
     size_t reprocessFailedAlarms();
@@ -398,7 +493,7 @@ private:
                                        const std::string& content_type,
                                        const std::unordered_map<std::string, std::string>& headers);
     bool uploadToS3(const std::string& object_key, const std::string& content);
-
+    
     // =======================================================================
     // 새로 추가할 private 메서드들
     // =======================================================================
