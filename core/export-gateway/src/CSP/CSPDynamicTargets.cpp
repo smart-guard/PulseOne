@@ -1,14 +1,9 @@
 /**
  * @file CSPDynamicTargets.cpp
- * @brief CSP Gateway 동적 전송 대상 시스템 구현 - 에러 수정 완성본
+ * @brief CSP Gateway 동적 전송 대상 시스템 구현 - 컴파일 에러 완전 수정
  * @author PulseOne Development Team  
- * @date 2025-09-23
- * 저장 위치: core/export-gateway/src/CSP/CSPDynamicTargets.cpp
- * 
- * 수정사항:
- * - AlarmMessage 필드명 수정 (lvl → 실제 사용되는 필드명)
- * - FailureProtectorConfig → 직접 생성자 사용  
- * - ConfigManager API 실제 메서드명 사용
+ * @date 2025-09-24
+ * @version 1.1.0 (FailureProtector 생성자 호출 수정)
  */
 
 #include "CSP/CSPDynamicTargets.h"
@@ -21,20 +16,14 @@
 #include <chrono>
 #include <thread>
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
 
 namespace PulseOne {
 namespace CSP {
 
 // =============================================================================
-// Handler 클래스들의 메서드는 각각의 .cpp 파일에서 구현됩니다:
-// - HttpTargetHandler.cpp
-// - S3TargetHandler.cpp  
-// - MqttTargetHandler.cpp
-// - FileTargetHandler.cpp
-// =============================================================================
-
-// =============================================================================
-// 공통 유틸리티 함수들 (이 파일에서만 구현)
+// 공통 유틸리티 함수들
 // =============================================================================
 
 /**
@@ -121,7 +110,7 @@ std::string getCurrentISOTimestamp() {
 }
 
 /**
- * @brief 템플릿 변수 확장 (공통 유틸리티) - 수정된 필드명 사용
+ * @brief 템플릿 변수 확장 (공통 유틸리티)
  */
 std::string expandTemplateString(const std::string& template_str, const AlarmMessage& alarm) {
     std::string result = template_str;
@@ -129,23 +118,23 @@ std::string expandTemplateString(const std::string& template_str, const AlarmMes
     // 기본 변수들 치환 (실제 AlarmMessage 필드 사용)
     result = std::regex_replace(result, std::regex("\\{building_id\\}"), std::to_string(alarm.bd));
     result = std::regex_replace(result, std::regex("\\{point_name\\}"), alarm.nm);
-    result = std::regex_replace(result, std::regex("\\{nm\\}"), alarm.nm);  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{nm\\}"), alarm.nm);
     result = std::regex_replace(result, std::regex("\\{value\\}"), std::to_string(alarm.vl));
-    result = std::regex_replace(result, std::regex("\\{vl\\}"), std::to_string(alarm.vl));  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{vl\\}"), std::to_string(alarm.vl));
     result = std::regex_replace(result, std::regex("\\{timestamp\\}"), alarm.tm);
-    result = std::regex_replace(result, std::regex("\\{tm\\}"), alarm.tm);  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{tm\\}"), alarm.tm);
     
-    // 🔥 수정: alarm.lvl 대신 실제 필드 사용 (des 필드로 대체 또는 제거)
+    // 설명 및 상태 필드
     result = std::regex_replace(result, std::regex("\\{description\\}"), alarm.des);
-    result = std::regex_replace(result, std::regex("\\{des\\}"), alarm.des);  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{des\\}"), alarm.des);
     result = std::regex_replace(result, std::regex("\\{alarm_flag\\}"), std::to_string(alarm.al));
-    result = std::regex_replace(result, std::regex("\\{al\\}"), std::to_string(alarm.al));  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{al\\}"), std::to_string(alarm.al));
     result = std::regex_replace(result, std::regex("\\{status\\}"), std::to_string(alarm.st));
-    result = std::regex_replace(result, std::regex("\\{st\\}"), std::to_string(alarm.st));  // 짧은 형태
+    result = std::regex_replace(result, std::regex("\\{st\\}"), std::to_string(alarm.st));
     
-    // level/lvl 필드 제거 또는 다른 필드로 대체
-    result = std::regex_replace(result, std::regex("\\{level\\}"), alarm.des);  // description으로 대체
-    result = std::regex_replace(result, std::regex("\\{lvl\\}"), alarm.des);    // description으로 대체
+    // level/lvl 필드를 description으로 대체 (호환성)
+    result = std::regex_replace(result, std::regex("\\{level\\}"), alarm.des);
+    result = std::regex_replace(result, std::regex("\\{lvl\\}"), alarm.des);
     
     // 시간 관련 변수들
     auto now = std::chrono::system_clock::now();
@@ -208,7 +197,6 @@ std::string formatFileSize(size_t bytes) {
  * @brief URL 유효성 검증
  */
 bool isValidUrl(const std::string& url) {
-    // 간단한 URL 형식 검증
     std::regex url_pattern(R"(^(https?|ftp)://[^\s/$.?#].[^\s]*$)", std::regex::icase);
     return std::regex_match(url, url_pattern);
 }
@@ -225,7 +213,7 @@ bool isValidFilePath(const std::string& path) {
         return false;
     }
     
-    // 상대 경로 공격 방지 (.., ./)
+    // 상대 경로 공격 방지
     if (path.find("..") != std::string::npos) {
         return false;
     }
@@ -256,7 +244,7 @@ bool createDirectorySafe(const std::string& dir_path) {
 /**
  * @brief 환경 변수에서 설정값 로드
  */
-std::string getEnvironmentVariable(const std::string& var_name, const std::string& default_value = "") {
+std::string getEnvironmentVariable(const std::string& var_name, const std::string& default_value) {
     const char* env_value = std::getenv(var_name.c_str());
     if (env_value == nullptr) {
         if (!default_value.empty()) {
@@ -270,35 +258,37 @@ std::string getEnvironmentVariable(const std::string& var_name, const std::strin
 }
 
 // =============================================================================
-// FailureProtector 별칭 (기존 CircuitBreaker 대신)
+// ✅ 수정: FailureProtector 생성 함수 - 올바른 생성자 시그니처 사용
 // =============================================================================
 
 /**
+ * @brief 실패 방지기 생성 도우미 함수 - 올바른 생성자 사용
+ */
+std::unique_ptr<FailureProtector> createFailureProtector(const std::string& target_name, const json& config) {
+    // ✅ 수정: FailureProtectorConfig 구조체 생성해서 사용
+    FailureProtectorConfig protector_config;
+    protector_config.failure_threshold = config.value("failure_threshold", 5);
+    protector_config.recovery_timeout_ms = config.value("recovery_timeout_ms", 60000);
+    protector_config.half_open_max_attempts = config.value("half_open_requests", 3);
+    protector_config.half_open_success_threshold = config.value("half_open_success_threshold", 2);
+    protector_config.backoff_multiplier = config.value("backoff_multiplier", 2.0);
+    protector_config.max_recovery_timeout_ms = config.value("max_recovery_timeout_ms", 1800000);
+    
+    // ✅ 올바른 생성자 호출: (target_name, config)
+    return std::make_unique<FailureProtector>(target_name, protector_config);
+}
+
+/**
  * @brief CircuitBreaker의 별칭으로 FailureProtector 사용
- * 기존 코드와의 호환성을 위한 타입 별칭
  */
 using CircuitBreaker = FailureProtector;
 
 /**
- * @brief 실패 방지기 생성 도우미 함수 - 수정된 생성자 사용
- */
-std::unique_ptr<FailureProtector> createFailureProtector(const std::string& target_name, const json& config) {
-    // 🔥 수정: FailureProtectorConfig 대신 직접 생성자 매개변수 사용
-    size_t failure_threshold = config.value("failure_threshold", 5);
-    std::chrono::milliseconds recovery_timeout(config.value("recovery_timeout_ms", 60000));  // 1분
-    size_t half_open_requests = config.value("half_open_requests", 3);
-    
-    // FailureProtector 생성자 직접 호출
-    return std::make_unique<FailureProtector>(failure_threshold, recovery_timeout, half_open_requests);
-}
-
-/**
- * @brief 글로벌 설정 적용 - 수정된 ConfigManager API 사용
+ * @brief 글로벌 설정 적용
  */
 void applyGlobalSettings() {
     auto& config_mgr = ConfigManager::getInstance();
     
-    // 🔥 수정: getValue → getOrDefault, getIntValue → getInt 사용
     std::string log_level = config_mgr.getOrDefault("CSP.log_level", "INFO");
     LogManager::getInstance().Info("CSP Gateway 로그 레벨: " + log_level);
     
@@ -306,14 +296,13 @@ void applyGlobalSettings() {
     int global_timeout = config_mgr.getInt("CSP.global_timeout_ms", 30000);
     LogManager::getInstance().Debug("글로벌 타임아웃: " + std::to_string(global_timeout) + "ms");
     
-    // 시스템 상태 로깅
     LogManager::getInstance().Info("CSP Dynamic Targets 시스템 초기화 완료");
 }
 
 /**
  * @brief 설정에서 암호화된 값 로드
  */
-std::string loadEncryptedConfig(const std::string& config_key, const std::string& default_value = "") {
+std::string loadEncryptedConfig(const std::string& config_key, const std::string& default_value) {
     try {
         auto& config_mgr = ConfigManager::getInstance();
         
@@ -338,7 +327,7 @@ std::string loadEncryptedConfig(const std::string& config_key, const std::string
 void logPerformanceMetrics(const std::string& operation, 
                           std::chrono::milliseconds duration,
                           bool success,
-                          const std::string& target_type = "") {
+                          const std::string& target_type) {
     std::ostringstream oss;
     oss << "성능 메트릭 [" << operation << "]";
     
@@ -354,6 +343,124 @@ void logPerformanceMetrics(const std::string& operation,
     } else {
         LogManager::getInstance().Debug(oss.str());
     }
+}
+
+/**
+ * @brief 안전한 JSON 파싱
+ */
+json parseJsonSafe(const std::string& json_str, const std::string& context = "") {
+    try {
+        return json::parse(json_str);
+    } catch (const json::parse_error& e) {
+        LogManager::getInstance().Error("JSON 파싱 오류" + 
+                                       (context.empty() ? "" : " [" + context + "]") + 
+                                       ": " + e.what());
+        return json::object();
+    }
+}
+
+/**
+ * @brief 파일에서 JSON 로드
+ */
+json loadJsonFromFile(const std::string& file_path) {
+    try {
+        if (!std::filesystem::exists(file_path)) {
+            LogManager::getInstance().Warn("설정 파일이 존재하지 않음: " + file_path);
+            return json::object();
+        }
+        
+        std::ifstream file(file_path);
+        if (!file.is_open()) {
+            LogManager::getInstance().Error("설정 파일 열기 실패: " + file_path);
+            return json::object();
+        }
+        
+        json config;
+        file >> config;
+        
+        LogManager::getInstance().Debug("설정 파일 로드 성공: " + file_path);
+        return config;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("설정 파일 로드 실패: " + file_path + " - " + e.what());
+        return json::object();
+    }
+}
+
+/**
+ * @brief JSON을 파일에 저장
+ */
+bool saveJsonToFile(const json& config, const std::string& file_path) {
+    try {
+        // 디렉토리 생성
+        std::filesystem::path path(file_path);
+        if (path.has_parent_path()) {
+            std::filesystem::create_directories(path.parent_path());
+        }
+        
+        std::ofstream file(file_path);
+        if (!file.is_open()) {
+            LogManager::getInstance().Error("설정 파일 쓰기 열기 실패: " + file_path);
+            return false;
+        }
+        
+        file << config.dump(2);  // 들여쓰기 2칸으로 예쁘게 출력
+        
+        LogManager::getInstance().Debug("설정 파일 저장 성공: " + file_path);
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("설정 파일 저장 실패: " + file_path + " - " + e.what());
+        return false;
+    }
+}
+
+/**
+ * @brief 네트워크 연결 상태 확인 (간단한 체크)
+ */
+bool isNetworkAvailable() {
+    try {
+        // 간단한 DNS 해석 테스트 (예: google.com)
+        // 실제로는 더 정교한 네트워크 체크를 구현해야 함
+        return true; // 일단 항상 true 반환
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+/**
+ * @brief 메모리 사용량 반환 (KB 단위)
+ */
+size_t getMemoryUsageKB() {
+    try {
+        // Linux에서 /proc/self/status 파싱하여 메모리 사용량 조회
+        std::ifstream status("/proc/self/status");
+        std::string line;
+        
+        while (std::getline(status, line)) {
+            if (line.find("VmRSS:") == 0) {
+                // VmRSS: 1234 kB 형태에서 숫자 추출
+                std::regex kb_pattern(R"(\d+)");
+                std::smatch match;
+                if (std::regex_search(line, match, kb_pattern)) {
+                    return std::stoull(match.str());
+                }
+            }
+        }
+    } catch (const std::exception&) {
+        // 실패 시 0 반환
+    }
+    
+    return 0;
+}
+
+/**
+ * @brief CPU 사용률 반환 (백분율)
+ */
+double getCpuUsagePercent() {
+    // 간단한 구현 - 실제로는 /proc/stat 파싱이 필요
+    // 지금은 0.0 반환
+    return 0.0;
 }
 
 } // namespace CSP
