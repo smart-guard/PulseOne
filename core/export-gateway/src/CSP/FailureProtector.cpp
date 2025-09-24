@@ -1,22 +1,15 @@
 /**
  * @file FailureProtector.cpp
- * @brief CSP Gateway 실패 방지기 구현 - CircuitBreaker 패턴
+ * @brief 실패 방지기 구현 - CircuitBreaker 패턴 (컴파일 에러 완전 수정)
  * @author PulseOne Development Team
- * @date 2025-09-23
- * 저장 위치: core/export-gateway/src/CSP/FailureProtector.cpp
- * 
- * 기존 PulseOne 패턴 100% 준수:
- * - MqttFailover.cpp의 재연결 로직 패턴 차용
- * - LogManager 표준 사용법 적용
- * - std::atomic + std::mutex 스레드 안전성
- * - 지수 백오프 알고리즘 내장
+ * @date 2025-09-24
+ * @version 1.1.0 (헤더와 완전 일치하도록 수정)
  */
 
 #include "CSP/FailureProtector.h"
 #include "Utils/LogManager.h"
 #include <algorithm>
 #include <cmath>
-#include <random>
 
 namespace PulseOne {
 namespace CSP {
@@ -38,7 +31,6 @@ FailureProtector::FailureProtector(const std::string& target_name, const Failure
     , total_successes_(0)
     , total_failures_(0) {
     
-    // 기존 LogManager 패턴 따라 로깅
     LogManager::getInstance().Info("FailureProtector 초기화: " + target_name_);
     LogManager::getInstance().Debug("설정 - failure_threshold: " + std::to_string(config_.failure_threshold) +
                                    ", recovery_timeout: " + std::to_string(config_.recovery_timeout_ms) + "ms");
@@ -51,7 +43,7 @@ FailureProtector::~FailureProtector() {
 }
 
 // =============================================================================
-// 핵심 CircuitBreaker 로직 (MqttFailover 패턴 차용)
+// 핵심 CircuitBreaker 로직
 // =============================================================================
 
 bool FailureProtector::canExecute() {
@@ -235,7 +227,7 @@ double FailureProtector::getSuccessRate() const {
 }
 
 // =============================================================================
-// 내부 헬퍼 메서드들 (MqttFailover 패턴 차용)
+// 내부 헬퍼 메서드들
 // =============================================================================
 
 bool FailureProtector::isRecoveryTimeReached() const {
@@ -243,7 +235,7 @@ bool FailureProtector::isRecoveryTimeReached() const {
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_failure_time_);
     
     // 지수 백오프 계산 (최대 복구 시간 제한)
-    uint32_t backoff_multiplier = std::min(failure_count_.load(), static_cast<uint32_t>(10)); // 최대 10배
+    uint32_t backoff_multiplier = std::min(static_cast<uint32_t>(failure_count_.load()), static_cast<uint32_t>(10)); // 최대 10배
     uint64_t adjusted_timeout = static_cast<uint64_t>(config_.recovery_timeout_ms) * 
                                static_cast<uint64_t>(std::pow(config_.backoff_multiplier, backoff_multiplier));
     
@@ -297,7 +289,7 @@ std::string FailureProtector::stateToString(State state) const {
 }
 
 uint64_t FailureProtector::calculateNextRecoveryTimeout() const {
-    uint32_t backoff_multiplier = std::min(failure_count_.load(), static_cast<uint32_t>(10));
+    uint32_t backoff_multiplier = std::min(static_cast<uint32_t>(failure_count_.load()), static_cast<uint32_t>(10));
     uint64_t timeout = static_cast<uint64_t>(config_.recovery_timeout_ms) * 
                       static_cast<uint64_t>(std::pow(config_.backoff_multiplier, backoff_multiplier));
     

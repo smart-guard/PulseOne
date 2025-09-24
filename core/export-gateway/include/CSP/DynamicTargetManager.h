@@ -329,7 +329,7 @@ public:
      * @brief 실패 방지기 상태 조회
      * @return 타겟별 실패 방지기 상태
      */
-    std::unordered_map<std::string, FailureProtector::Statistics> getFailureProtectorStats() const;
+    std::unordered_map<std::string, FailureProtectorStats> getFailureProtectorStats() const;
 
     // =======================================================================
     // 통계 및 모니터링
