@@ -1,5 +1,5 @@
 /**
- * @file main.cpp - 완전한 최종 버전
+ * @file main.cpp - 완전한 최종 버전 (초기화 패턴 수정)
  * @brief PulseOne Export Gateway 메인 진입점 (외부 설정 + 멀티빌딩 + 시간필터 + 배치관리)
  * @author PulseOne Development Team
  * @date 2025-09-23
@@ -623,9 +623,8 @@ int main(int argc, char* argv[]) {
         }
         
 #ifdef HAS_SHARED_LIBS
-        // LogManager 및 ConfigManager 초기화
-        LogManager::getInstance().initialize();
-        ConfigManager::getInstance().initialize();
+        // LogManager 및 ConfigManager 자동 초기화 (기존 패턴 준수)
+        // getInstance()만 호출해도 ensureInitialized() 자동 실행됨
         LogManager::getInstance().Info("Export Gateway starting...");
 #endif
         
