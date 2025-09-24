@@ -177,9 +177,7 @@ AlarmSendResult CSPGateway::taskAlarmSingleDynamic(const AlarmMessage& alarm_mes
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
-        // ✅ 수정: AlarmSendResult 실제 구조체에 맞춤
         AlarmSendResult result;
-        // ❌ result.alarm_message = alarm_message;  // 이 필드는 존재하지 않음!
         
         // 동적 타겟 결과 집계
         bool has_success = false;
@@ -190,24 +188,48 @@ AlarmSendResult CSPGateway::taskAlarmSingleDynamic(const AlarmMessage& alarm_mes
                 successful_targets++;
                 has_success = true;
                 
-                // ✅ 수정: 실제 필드명 사용
+                // ✅ 통합 타입의 실제 필드명 사용
                 if (target_result.target_type == "HTTP" || target_result.target_type == "HTTPS") {
-                    result.status_code = target_result.status_code;  // ✅ http_status_code → status_code
-                    result.response_body = target_result.response_body;
+                    result.status_code = target_result.status_code;        // ✅ 실제 필드명
+                    result.response_body = target_result.response_body;    // ✅ 실제 필드명
                 }
                 
                 if (target_result.target_type == "S3") {
                     result.s3_success = true;
-                    result.s3_file_path = target_result.s3_object_key;
+                    result.s3_file_path = target_result.s3_object_key;     // ✅ 실제 필드명
+                }
+                
+                if (target_result.target_type == "FILE") {
+                    result.s3_file_path = target_result.file_path;         // ✅ 범용 파일 경로
                 }
             }
         }
         
-        // ✅ 수정: api_success → success
         result.success = has_success;
+        result.response_time = duration;
+        
+        // 실패한 타겟이 있으면 에러 메시지 수집
+        if (!has_success || successful_targets < target_results.size()) {
+            std::string error_msg = "Dynamic targets errors: ";
+            bool first = true;
+            for (const auto& target_result : target_results) {
+                if (!target_result.success && !target_result.error_message.empty()) {
+                    if (!first) error_msg += "; ";
+                    error_msg += target_result.target_name + ": " + target_result.error_message;
+                    first = false;
+                }
+            }
+            if (!error_msg.empty() && error_msg != "Dynamic targets errors: ") {
+                result.error_message = error_msg;
+            }
+        }
         
         // 통계 업데이트
         updateStatsFromDynamicResults(target_results, static_cast<double>(duration.count()));
+        
+        LogManager::getInstance().Debug("Dynamic target system processed " + 
+            std::to_string(target_results.size()) + " targets, " + 
+            std::to_string(successful_targets) + " successful");
         
         return result;
         
@@ -219,43 +241,6 @@ AlarmSendResult CSPGateway::taskAlarmSingleDynamic(const AlarmMessage& alarm_mes
         result.error_message = "Dynamic target system error: " + std::string(e.what());
         return result;
     }
-}
-
-AlarmSendResult CSPGateway::taskAlarmSingleLegacy(const AlarmMessage& alarm_message) {
-    AlarmSendResult result;
-    
-    // API 전송 시도
-    if (config_.use_api && !config_.api_endpoint.empty()) {
-        result = callAPIAlarm(alarm_message);
-    }
-    
-    // S3 업로드 시도
-    if (config_.use_s3 && !config_.s3_bucket_name.empty()) {
-        auto s3_result = callS3Alarm(alarm_message);
-        result.s3_success = s3_result.success;
-        result.s3_error_message = s3_result.error_message;
-        result.s3_file_path = s3_result.s3_file_path;
-    }
-    
-    // 재시도 로직
-    if (!result.success && config_.max_retry_attempts > 0) {
-        for (int attempt = 1; attempt <= config_.max_retry_attempts; ++attempt) {
-            LogManager::getInstance().Debug("Retry attempt " + std::to_string(attempt) + " for alarm: " + alarm_message.nm);
-            
-            auto retry_result = retryFailedAlarm(alarm_message, attempt);
-            if (retry_result.success) {
-                result = retry_result;
-                break;
-            }
-        }
-    }
-    
-    // 최종 실패 시 파일 저장
-    if (!result.success && !result.s3_success) {
-        saveFailedAlarmToFile(alarm_message, result.error_message);
-    }
-    
-    return result;
 }
 
 AlarmSendResult CSPGateway::callAPIAlarm(const AlarmMessage& alarm_message) {
