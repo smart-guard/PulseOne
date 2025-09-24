@@ -5,11 +5,11 @@
  * @date 2025-09-23
  * 저장 위치: core/export-gateway/src/CSP/S3TargetHandler.cpp
  * 
- * 기존 PulseOne 패턴 100% 준수:
- * - S3Client.cpp의 업로드 로직 및 재시도 패턴 차용
- * - ConfigManager를 통한 암호화된 자격증명 로드
- * - 표준 LogManager 사용법
- * - 객체 키 템플릿 확장 지원
+ * 🚨 컴파일 에러 수정 완료:
+ * - 모든 멤버 변수 헤더에서 선언
+ * - TargetSendResult 필드명 정확히 사용
+ * - getTypeName() 중복 정의 제거
+ * - 모든 메서드 헤더에 선언됨
  */
 
 #include "CSP/S3TargetHandler.h"
@@ -140,16 +140,16 @@ TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage& alarm, const jso
         // S3 업로드 실행 (S3Client.cpp의 재시도 로직 활용)
         auto upload_result = s3_client_->uploadJson(object_key, json_content, metadata);
         
-        // 결과 변환
+        // 결과 변환 (올바른 필드명 사용)
         result.success = upload_result.success;
-        result.response_time_ms = upload_result.upload_time_ms;
+        result.response_time = std::chrono::milliseconds(static_cast<long>(upload_result.upload_time_ms));
+        result.content_size = json_content.length();
         
         if (upload_result.success) {
-            result.s3_etag = upload_result.etag;
             result.s3_object_key = object_key;
             LogManager::getInstance().Info("S3 알람 업로드 성공: " + object_key + 
                                           " (ETag: " + upload_result.etag + 
-                                          ", 소요시간: " + std::to_string(result.response_time_ms) + "ms)");
+                                          ", 소요시간: " + std::to_string(result.response_time.count()) + "ms)");
         } else {
             result.error_message = upload_result.error_message;
             LogManager::getInstance().Error("S3 알람 업로드 실패: " + object_key + 
@@ -197,6 +197,24 @@ bool S3TargetHandler::testConnection(const json& config) {
 
 std::string S3TargetHandler::getTypeName() const {
     return "S3";
+}
+
+json S3TargetHandler::getStatus() const {
+    return json{
+        {"type", "S3"},
+        {"upload_count", upload_count_.load()},
+        {"success_count", success_count_.load()},
+        {"failure_count", failure_count_.load()},
+        {"total_bytes_uploaded", total_bytes_uploaded_.load()},
+        {"compression_enabled", compression_enabled_}
+    };
+}
+
+void S3TargetHandler::cleanup() {
+    if (s3_client_) {
+        s3_client_.reset();
+    }
+    LogManager::getInstance().Info("S3TargetHandler 정리 완료");
 }
 
 // =============================================================================

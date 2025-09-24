@@ -5,11 +5,11 @@
  * @date 2025-09-23
  * 저장 위치: core/export-gateway/src/CSP/FileTargetHandler.cpp
  * 
- * 기존 PulseOne 패턴 100% 준수:
- * - ConfigManager.cpp의 파일 처리 패턴 차용
- * - LogManager의 파일 로테이션 로직 참조
- * - 표준 std::filesystem 사용
- * - 원자적 파일 쓰기 (임시파일 → 최종파일)
+ * 🚨 컴파일 에러 수정 완료:
+ * - 모든 멤버 변수 헤더에서 선언
+ * - TargetSendResult 필드명 정확히 사용
+ * - getTypeName() 중복 정의 제거
+ * - 모든 메서드 헤더에 선언됨
  */
 
 #include "CSP/FileTargetHandler.h"
@@ -146,22 +146,22 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage& alarm, const j
             write_success = writeFileDirectly(file_path, content, alarm, config);
         }
         
-        // 결과 처리
+        // 결과 처리 (올바른 필드명 사용)
         if (write_success) {
             result.success = true;
             result.file_path = file_path;
-            result.file_size_bytes = content.length();
+            result.content_size = content.length(); // file_size_bytes → content_size
             
             // 파일 권한 설정
             setFilePermissions(file_path);
             
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-            result.response_time_ms = duration.count();
+            result.response_time = duration; // response_time_ms → response_time
             
             LogManager::getInstance().Info("파일 알람 저장 성공: " + file_path + 
-                                          " (" + std::to_string(result.file_size_bytes) + " bytes, " +
-                                          std::to_string(result.response_time_ms) + "ms)");
+                                          " (" + std::to_string(result.content_size) + " bytes, " +
+                                          std::to_string(result.response_time.count()) + "ms)");
         } else {
             result.error_message = "파일 쓰기 실패: " + file_path;
             LogManager::getInstance().Error(result.error_message);
@@ -241,6 +241,27 @@ bool FileTargetHandler::testConnection(const json& config) {
 
 std::string FileTargetHandler::getTypeName() const {
     return "FILE";
+}
+
+json FileTargetHandler::getStatus() const {
+    return json{
+        {"type", "FILE"},
+        {"base_path", base_path_},
+        {"file_format", file_format_},
+        {"compression_enabled", compression_enabled_},
+        {"file_count", file_count_.load()},
+        {"success_count", success_count_.load()},
+        {"failure_count", failure_count_.load()},
+        {"total_bytes_written", total_bytes_written_.load()}
+    };
+}
+
+void FileTargetHandler::cleanup() {
+    should_stop_ = true;
+    if (cleanup_thread_ && cleanup_thread_->joinable()) {
+        cleanup_thread_->join();
+    }
+    LogManager::getInstance().Info("FileTargetHandler 정리 완료");
 }
 
 // =============================================================================
