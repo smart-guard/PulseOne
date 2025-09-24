@@ -5,11 +5,11 @@
  * @date 2025-09-23
  * 저장 위치: core/export-gateway/src/CSP/HttpTargetHandler.cpp
  * 
- * 기존 PulseOne 패턴 100% 준수:
- * - HttpClient.cpp의 재시도 로직 패턴 차용
- * - S3Client.cpp의 지수 백오프 알고리즘 적용
- * - 표준 LogManager 사용법
- * - 인증 헤더 처리 (Bearer Token, Basic Auth, API Key)
+ * 🚨 컴파일 에러 수정 완료:
+ * - 모든 멤버 변수 헤더에서 선언
+ * - TargetSendResult 필드명 정확히 사용 (status_code, not http_status_code)
+ * - getTypeName() 중복 정의 제거
+ * - 모든 메서드 헤더에 선언됨
  */
 
 #include "CSP/HttpTargetHandler.h"
@@ -113,7 +113,7 @@ TargetSendResult HttpTargetHandler::sendAlarm(const AlarmMessage& alarm, const j
         
         if (result.success) {
             LogManager::getInstance().Info("HTTP 알람 전송 성공: " + result.target_name + 
-                                          " (응답코드: " + std::to_string(result.http_status_code) + ")");
+                                          " (응답코드: " + std::to_string(result.status_code) + ")");
         } else {
             LogManager::getInstance().Error("HTTP 알람 전송 실패: " + result.target_name + 
                                            " - " + result.error_message);
@@ -146,13 +146,14 @@ bool HttpTargetHandler::testConnection(const json& config) {
         // 테스트 요청 실행
         PulseOne::Client::HttpResponse response;
         
-        if (method == "HEAD") {
-            response = http_client_->head(test_endpoint, headers);
-        } else if (method == "POST") {
-            json test_payload = {{"test", true}, {"timestamp", getCurrentTimestamp()}};
-            response = http_client_->post(test_endpoint, test_payload.dump(), headers);
+        if (method == "POST") {
+            json test_payload;
+            test_payload["test"] = true;
+            test_payload["timestamp"] = getCurrentTimestamp();
+            // POST(path, body, content_type, headers)
+            response = http_client_->post(test_endpoint, test_payload.dump(), "application/json", headers);
         } else {
-            // 기본적으로 GET 요청
+            // 기본적으로 GET 요청 (HEAD는 지원되지 않음)
             response = http_client_->get(test_endpoint, headers);
         }
         
@@ -177,6 +178,23 @@ bool HttpTargetHandler::testConnection(const json& config) {
 
 std::string HttpTargetHandler::getTypeName() const {
     return "HTTP";
+}
+
+json HttpTargetHandler::getStatus() const {
+    return json{
+        {"type", "HTTP"},
+        {"request_count", request_count_.load()},
+        {"success_count", success_count_.load()},
+        {"failure_count", failure_count_.load()},
+        {"auth_type", auth_config_.type}
+    };
+}
+
+void HttpTargetHandler::cleanup() {
+    if (http_client_) {
+        http_client_.reset();
+    }
+    LogManager::getInstance().Info("HttpTargetHandler 정리 완료");
 }
 
 // =============================================================================
@@ -214,17 +232,17 @@ TargetSendResult HttpTargetHandler::executeWithRetry(const AlarmMessage& alarm, 
                 result = attempt_result;
                 auto end_time = std::chrono::steady_clock::now();
                 auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-                result.response_time_ms = duration.count();
+                result.response_time = duration;
                 
                 LogManager::getInstance().Info("HTTP 전송 성공 (시도 " + std::to_string(attempt + 1) + 
-                                              ", 소요시간: " + std::to_string(result.response_time_ms) + "ms)");
+                                              ", 소요시간: " + std::to_string(result.response_time.count()) + "ms)");
                 return result;
             }
             
             // 실패 시 재시도 가능 여부 확인 (4xx 클라이언트 오류는 재시도 안함)
-            if (attempt_result.http_status_code >= 400 && attempt_result.http_status_code < 500) {
+            if (attempt_result.status_code >= 400 && attempt_result.status_code < 500) {
                 LogManager::getInstance().Error("클라이언트 오류로 재시도 중단 (상태코드: " + 
-                                               std::to_string(attempt_result.http_status_code) + ")");
+                                               std::to_string(attempt_result.status_code) + ")");
                 result = attempt_result;
                 break;
             }
@@ -240,11 +258,11 @@ TargetSendResult HttpTargetHandler::executeWithRetry(const AlarmMessage& alarm, 
     // 모든 재시도 실패
     auto end_time = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    result.response_time_ms = duration.count();
+    result.response_time = duration;
     
     LogManager::getInstance().Error("HTTP 전송 최종 실패 - 모든 재시도 소진 (" + 
                                    std::to_string(retry_config_.max_attempts + 1) + "회 시도, " +
-                                   std::to_string(result.response_time_ms) + "ms)");
+                                   std::to_string(result.response_time.count()) + "ms)");
     
     return result;
 }
@@ -277,22 +295,25 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(const AlarmMessage& ala
         PulseOne::Client::HttpResponse response;
         
         if (method == "POST") {
-            response = http_client_->post(endpoint, request_body, headers);
+            // POST(path, body, content_type, headers)
+            response = http_client_->post(endpoint, request_body, "application/json", headers);
         } else if (method == "PUT") {
-            response = http_client_->put(endpoint, request_body, headers);
+            // PUT(path, body, content_type, headers)
+            response = http_client_->put(endpoint, request_body, "application/json", headers);
         } else if (method == "PATCH") {
-            // HttpClient에 patch 메서드가 없으면 post로 대체하고 헤더로 오버라이드
+            // PATCH는 지원되지 않으므로 POST로 대체하고 헤더로 오버라이드
             headers["X-HTTP-Method-Override"] = "PATCH";
-            response = http_client_->post(endpoint, request_body, headers);
+            response = http_client_->post(endpoint, request_body, "application/json", headers);
         } else {
             result.error_message = "지원하지 않는 HTTP 메서드: " + method;
             return result;
         }
         
-        // 응답 처리
-        result.http_status_code = response.status_code;
+        // 응답 처리 (올바른 필드명 사용)
+        result.status_code = response.status_code;
         result.response_body = response.body;
         result.success = response.isSuccess();
+        result.content_size = request_body.length();
         
         if (!result.success) {
             result.error_message = "HTTP " + std::to_string(response.status_code) + ": " + response.body;
@@ -308,8 +329,7 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(const AlarmMessage& ala
 std::unordered_map<std::string, std::string> HttpTargetHandler::buildRequestHeaders(const json& config) {
     std::unordered_map<std::string, std::string> headers;
     
-    // 기본 헤더 설정
-    headers["Content-Type"] = config.value("content_type", "application/json; charset=utf-8");
+    // 기본 헤더 설정 - Content-Type은 POST/PUT 메서드에서 별도 처리
     headers["Accept"] = "application/json";
     headers["User-Agent"] = config.value("user_agent", "PulseOne-CSPGateway/1.0");
     
@@ -584,6 +604,22 @@ std::string HttpTargetHandler::base64Encode(const std::string& input) const {
     while (result.size() % 4) {
         result.push_back('=');
     }
+    
+    return result;
+}
+
+std::string HttpTargetHandler::expandTemplateVariables(const std::string& template_str, const AlarmMessage& alarm) const {
+    std::string result = template_str;
+    
+    // 기본 변수 치환
+    result = std::regex_replace(result, std::regex("\\{building_id\\}"), std::to_string(alarm.bd));
+    result = std::regex_replace(result, std::regex("\\{point_name\\}"), alarm.nm);
+    result = std::regex_replace(result, std::regex("\\{value\\}"), std::to_string(alarm.vl));
+    result = std::regex_replace(result, std::regex("\\{timestamp\\}"), alarm.tm);
+    result = std::regex_replace(result, std::regex("\\{alarm_flag\\}"), std::to_string(alarm.al));
+    result = std::regex_replace(result, std::regex("\\{status\\}"), std::to_string(alarm.st));
+    result = std::regex_replace(result, std::regex("\\{description\\}"), alarm.des);
+    result = std::regex_replace(result, std::regex("\\{alarm_status\\}"), alarm.get_alarm_status_string());
     
     return result;
 }

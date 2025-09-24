@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <atomic>
+#include <thread>
 
 // PulseOne HttpClient 전방 선언
 namespace PulseOne {
@@ -26,6 +27,28 @@ namespace Client {
 
 namespace PulseOne {
 namespace CSP {
+
+/**
+ * @brief 재시도 설정 구조체
+ */
+struct RetryConfig {
+    int max_attempts = 3;
+    uint32_t initial_delay_ms = 1000;
+    uint32_t max_delay_ms = 30000;
+    double backoff_multiplier = 2.0;
+};
+
+/**
+ * @brief 인증 설정 구조체
+ */
+struct AuthConfig {
+    std::string type = "none";              // "none", "bearer", "basic", "api_key"
+    std::string bearer_token;
+    std::string basic_username;
+    std::string basic_password;
+    std::string api_key;
+    std::string api_key_header = "X-API-Key";
+};
 
 /**
  * @brief HTTP/HTTPS 타겟 핸들러
@@ -50,6 +73,11 @@ private:
     std::atomic<size_t> success_count_{0};
     std::atomic<size_t> failure_count_{0};
     
+    // ========== 구현 파일에서 사용하는 멤버 변수들 ==========
+    std::unique_ptr<PulseOne::Client::HttpClient> http_client_;
+    RetryConfig retry_config_;
+    AuthConfig auth_config_;
+    
 public:
     /**
      * @brief 생성자
@@ -71,29 +99,6 @@ public:
      * @brief 핸들러 초기화
      * @param config JSON 설정 객체
      * @return 초기화 성공 여부
-     * 
-     * 필수 설정:
-     * - endpoint: HTTP(S) 엔드포인트 URL
-     * 
-     * 선택 설정:
-     * - method: HTTP 메서드 (기본: POST)
-     * - content_type: Content-Type 헤더 (기본: application/json)
-     * - auth_type: 인증 타입 (bearer, basic, api_key)
-     * - auth_key_file: 인증 키 파일 경로
-     * - username: Basic Auth 사용자명
-     * - password_file: Basic Auth 암호 파일
-     * - api_key_header: API Key 헤더명 (기본: X-API-Key)
-     * - headers: 추가 HTTP 헤더 (객체)
-     * - timeout_ms: 요청 타임아웃 (기본: 10000ms)
-     * - connect_timeout_ms: 연결 타임아웃 (기본: 5000ms)
-     * - max_retry: 최대 재시도 횟수 (기본: 3)
-     * - retry_delay_ms: 재시도 간격 (기본: 1000ms)
-     * - retry_backoff: 백오프 타입 (linear, exponential)
-     * - verify_ssl: SSL 인증서 검증 (기본: true)
-     * - user_agent: User-Agent 헤더 (기본: PulseOne-CSPGateway/1.8)
-     * - follow_redirects: 리다이렉트 따라가기 (기본: true)
-     * - max_redirects: 최대 리다이렉트 수 (기본: 3)
-     * - compression: 요청 압축 사용 (기본: false)
      */
     bool initialize(const json& config) override;
     
@@ -109,63 +114,26 @@ public:
      * @brief 연결 테스트
      * @param config 타겟별 설정
      * @return 연결 성공 여부
-     * 
-     * 테스트 방법:
-     * 1. GET /health 요청 (있는 경우)
-     * 2. HEAD 요청으로 기본 URL 확인
-     * 3. OPTIONS 요청으로 지원 메서드 확인
      */
     bool testConnection(const json& config) override;
     
     /**
      * @brief 핸들러 타입 이름 반환
      */
-    std::string getTypeName() const override { return "http"; }
+    std::string getTypeName() const override;
     
     /**
      * @brief 핸들러 상태 반환
      */
     json getStatus() const override;
+    
+    /**
+     * @brief 핸들러 정리
+     */
+    void cleanup() override;
 
 private:
-    /**
-     * @brief HTTP 클라이언트 옵션 구성
-     * @param config 설정 객체
-     * @return HTTP 요청 옵션
-     */
-    PulseOne::Client::HttpRequestOptions createHttpOptions(const json& config) const;
-    
-    /**
-     * @brief 인증 키 로드 (암호화된 파일에서)
-     * @param key_file 키 파일 경로
-     * @return 복호화된 인증 키
-     */
-    std::string loadAuthKey(const std::string& key_file) const;
-    
-    /**
-     * @brief HTTP 헤더 준비
-     * @param config 설정 객체
-     * @param alarm 알람 메시지 (동적 헤더용)
-     * @return 헤더 맵
-     */
-    std::unordered_map<std::string, std::string> prepareHeaders(
-        const json& config, const AlarmMessage& alarm) const;
-    
-    /**
-     * @brief 인증 헤더 추가
-     * @param headers 헤더 맵 (입출력)
-     * @param config 설정 객체
-     */
-    void addAuthHeaders(std::unordered_map<std::string, std::string>& headers, 
-                       const json& config) const;
-    
-    /**
-     * @brief 요청 본문 생성
-     * @param alarm 알람 메시지
-     * @param config 설정 객체
-     * @return 요청 본문 문자열
-     */
-    std::string createRequestBody(const AlarmMessage& alarm, const json& config) const;
+    // ========== 구현 파일에서 사용하는 모든 메서드들 선언 ==========
     
     /**
      * @brief 재시도 로직 실행
@@ -173,139 +141,123 @@ private:
      * @param config 설정 객체
      * @return 최종 전송 결과
      */
-    TargetSendResult executeWithRetry(const AlarmMessage& alarm, const json& config) const;
+    TargetSendResult executeWithRetry(const AlarmMessage& alarm, const json& config);
     
     /**
      * @brief 단일 HTTP 요청 실행
-     * @param endpoint 요청 URL
-     * @param method HTTP 메서드
-     * @param body 요청 본문
-     * @param headers 헤더 맵
-     * @param options HTTP 옵션
+     * @param alarm 알람 메시지
+     * @param config 설정 객체
      * @return HTTP 응답 결과
      */
-    TargetSendResult executeSingleRequest(
-        const std::string& endpoint,
-        const std::string& method,
-        const std::string& body,
-        const std::unordered_map<std::string, std::string>& headers,
-        const PulseOne::Client::HttpRequestOptions& options) const;
+    TargetSendResult executeSingleRequest(const AlarmMessage& alarm, const json& config);
     
     /**
-     * @brief HTTP 응답을 TargetSendResult로 변환
-     * @param response HTTP 응답
-     * @param response_time 응답 시간
-     * @return 타겟 전송 결과
+     * @brief 요청 헤더 생성
+     * @param config 설정 객체
+     * @return 헤더 맵
      */
-    TargetSendResult convertHttpResponse(
-        const PulseOne::Client::HttpResponse& response,
-        std::chrono::milliseconds response_time) const;
+    std::unordered_map<std::string, std::string> buildRequestHeaders(const json& config);
     
     /**
-     * @brief URL 유효성 검증
-     * @param url 검증할 URL
-     * @return 유효하면 true
+     * @brief 요청 본문 생성
+     * @param alarm 알람 메시지
+     * @param config 설정 객체
+     * @return 요청 본문
      */
-    bool isValidUrl(const std::string& url) const;
+    std::string buildRequestBody(const AlarmMessage& alarm, const json& config);
     
     /**
-     * @brief HTTP 메서드 유효성 검증
-     * @param method HTTP 메서드
-     * @return 지원하는 메서드면 true
+     * @brief JSON 요청 본문 생성
+     * @param alarm 알람 메시지
+     * @param config 설정 객체
+     * @return JSON 요청 본문
      */
-    bool isValidHttpMethod(const std::string& method) const;
+    std::string buildJsonRequestBody(const AlarmMessage& alarm, const json& config);
     
     /**
-     * @brief Content-Type 유효성 검증
-     * @param content_type Content-Type 문자열
-     * @return 유효한 타입이면 true
+     * @brief XML 요청 본문 생성
+     * @param alarm 알람 메시지
+     * @param config 설정 객체
+     * @return XML 요청 본문
      */
-    bool isValidContentType(const std::string& content_type) const;
+    std::string buildXmlRequestBody(const AlarmMessage& alarm, const json& config);
     
     /**
-     * @brief 응답 코드가 성공인지 확인
-     * @param status_code HTTP 상태 코드
-     * @return 2xx 범위면 true
+     * @brief Form 요청 본문 생성
+     * @param alarm 알람 메시지
+     * @param config 설정 객체
+     * @return Form 요청 본문
      */
-    bool isSuccessStatusCode(int status_code) const {
-        return status_code >= 200 && status_code < 300;
-    }
+    std::string buildFormRequestBody(const AlarmMessage& alarm, const json& config);
     
     /**
-     * @brief 응답 코드가 재시도 가능한지 확인
-     * @param status_code HTTP 상태 코드
-     * @return 재시도 가능하면 true (5xx, 408, 429 등)
+     * @brief 인증 설정 파싱
+     * @param config 설정 객체
      */
-    bool isRetryableStatusCode(int status_code) const;
+    void parseAuthenticationConfig(const json& config);
     
     /**
-     * @brief 에러 메시지 생성
-     * @param status_code HTTP 상태 코드
-     * @param response_body 응답 본문
-     * @return 사용자 친화적인 에러 메시지
+     * @brief 인증 헤더 추가
+     * @param headers 헤더 맵 (입출력)
+     * @param config 설정 객체
      */
-    std::string createErrorMessage(int status_code, const std::string& response_body) const;
+    void addAuthenticationHeaders(std::unordered_map<std::string, std::string>& headers,
+                                 const json& config);
     
     /**
-     * @brief 재시도 지연 시간 계산
-     * @param attempt 현재 시도 횟수 (0부터 시작)
-     * @param base_delay_ms 기본 지연 시간
-     * @param backoff_type 백오프 타입 ("linear" 또는 "exponential")
+     * @brief 백오프 지연 시간 계산
+     * @param attempt 시도 횟수
      * @return 지연 시간 (밀리초)
      */
-    int calculateRetryDelay(int attempt, int base_delay_ms, const std::string& backoff_type) const;
+    uint32_t calculateBackoffDelay(int attempt) const;
     
     /**
-     * @brief 요청 본문 압축
-     * @param data 원본 데이터
-     * @param headers 헤더 맵 (Content-Encoding 추가)
-     * @return 압축된 데이터
+     * @brief 타겟 이름 반환
+     * @param config 설정 객체
+     * @return 타겟 이름
      */
-    std::string compressRequestBody(const std::string& data, 
-                                   std::unordered_map<std::string, std::string>& headers) const;
+    std::string getTargetName(const json& config) const;
     
     /**
-     * @brief 템플릿 변수 확장 (URL, 헤더, 본문용)
+     * @brief 현재 타임스탬프 반환
+     * @return ISO 8601 형식 타임스탬프
+     */
+    std::string getCurrentTimestamp() const;
+    
+    /**
+     * @brief 요청 ID 생성
+     * @return 고유한 요청 ID
+     */
+    std::string generateRequestId() const;
+    
+    /**
+     * @brief 템플릿 변수 확장 (JSON용)
+     * @param template_json 템플릿 JSON
+     * @param alarm 알람 메시지
+     */
+    void expandTemplateVariables(json& template_json, const AlarmMessage& alarm) const;
+    
+    /**
+     * @brief URL 인코딩
+     * @param str 인코딩할 문자열
+     * @return URL 인코딩된 문자열
+     */
+    std::string urlEncode(const std::string& str) const;
+    
+    /**
+     * @brief Base64 인코딩
+     * @param input 인코딩할 데이터
+     * @return Base64 인코딩된 문자열
+     */
+    std::string base64Encode(const std::string& input) const;
+    
+    /**
+     * @brief 템플릿 변수 확장 (문자열용)
      * @param template_str 템플릿 문자열
      * @param alarm 알람 메시지
      * @return 확장된 문자열
      */
     std::string expandTemplateVariables(const std::string& template_str, const AlarmMessage& alarm) const;
-    
-    /**
-     * @brief 설정 검증
-     * @param config 검증할 설정
-     * @param error_message 오류 메시지 (출력용)
-     * @return 설정이 유효한지 여부
-     */
-    bool validateConfig(const json& config, std::string& error_message) const;
-    
-    /**
-     * @brief CSP API 호환 본문 생성 (C# 버전 호환)
-     * @param alarm 알람 메시지
-     * @param config 설정 객체
-     * @return CSP API 형식의 JSON 본문
-     */
-    std::string createCSPCompatibleBody(const AlarmMessage& alarm, const json& config) const;
-    
-    /**
-     * @brief 요청 로깅 (디버그용)
-     * @param method HTTP 메서드
-     * @param url 요청 URL
-     * @param headers 헤더 맵
-     * @param body 요청 본문
-     */
-    void logRequest(const std::string& method, const std::string& url,
-                   const std::unordered_map<std::string, std::string>& headers,
-                   const std::string& body) const;
-    
-    /**
-     * @brief 응답 로깅 (디버그용)
-     * @param response HTTP 응답
-     * @param response_time 응답 시간
-     */
-    void logResponse(const PulseOne::Client::HttpResponse& response,
-                    std::chrono::milliseconds response_time) const;
 };
 
 } // namespace CSP
