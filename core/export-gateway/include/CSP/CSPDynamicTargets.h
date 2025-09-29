@@ -78,8 +78,9 @@ struct TargetSendResult {
     // 편의 생성자들
     TargetSendResult() = default;
     
+    // 🔥 생성자 순서 수정 (success를 마지막에)
     TargetSendResult(const std::string& name, const std::string& type, bool result)
-        : target_name(name), target_type(type), success(result) {}
+        : success(result), target_name(name), target_type(type) {}
     
     // 상태 확인 메서드들
     bool isHttpSuccess() const {
@@ -180,14 +181,14 @@ class ITargetHandler {
 public:
     virtual ~ITargetHandler() = default;
     
-    // 필수 메서드들 (이제 TargetSendResult가 정의되어 있음)
+    // 필수 메서드들
     virtual TargetSendResult sendAlarm(const AlarmMessage& alarm, const json& config) = 0;
     virtual bool testConnection(const json& config) = 0;
     virtual std::string getHandlerType() const = 0;
     virtual bool validateConfig(const json& config, std::vector<std::string>& errors) = 0;
     
-    // 선택적 메서드들 (기본 구현 제공)
-    virtual bool initialize(const json& config) { return true; }
+    // 선택적 메서드들 (기본 구현 제공) - unused parameter warning 제거
+    virtual bool initialize(const json& /* config */) { return true; }
     virtual void cleanup() { /* 기본: 아무 작업 없음 */ }
     virtual json getStatus() const {
         return json{{"type", getHandlerType()}, {"status", "active"}};
@@ -454,7 +455,8 @@ struct BatchTargetResult {
  * @brief 알람 메시지 유효성 검증
  */
 inline bool isValidAlarmMessage(const AlarmMessage& alarm) {
-    return !alarm.device_name.empty() && !alarm.alarm_type.empty();
+    // 실제 AlarmMessage 필드: bd, nm, vl, tm, al, st, des
+    return !alarm.nm.empty() && alarm.bd > 0;
 }
 
 /**
