@@ -1,18 +1,16 @@
 /**
  * @file DynamicTargetManager.h
- * @brief 동적 타겟 관리자 - 통합 타입 사용 (완성본)
+ * @brief 동적 타겟 관리자 - include 정리 (컴파일 에러 해결)
  * @author PulseOne Development Team
- * @date 2025-09-24
- * @version 2.3.0 (TargetTypes.h 통합 타입 사용)
- * 저장 위치: core/export-gateway/include/CSP/DynamicTargetManager.h
+ * @date 2025-09-29
+ * @version 3.0.0 (CSPDynamicTargets.h 단일 include 사용)
  */
 
 #ifndef DYNAMIC_TARGET_MANAGER_H
 #define DYNAMIC_TARGET_MANAGER_H
 
-#include "CSPDynamicTargets.h"
-#include "TargetTypes.h"  // ✅ 통합 타입 사용
-#include "FailureProtector.h"
+#include "CSPDynamicTargets.h"  // 모든 타입이 여기 정의됨 (단일 include)
+#include "FailureProtector.h"   // FailureProtector 클래스만 필요
 #include <shared_mutex>
 #include <memory>
 #include <future>
@@ -80,62 +78,82 @@ public:
             return processed_alarms > 0 ? 
                 (static_cast<double>(successful_deliveries) / processed_alarms * 100.0) : 0.0;
         }
+        
+        json toJson() const {
+            json building_array = json::array();
+            for (const auto& [building_id, result] : building_results) {
+                json building_obj = result.toJson();
+                building_obj["building_id"] = building_id;
+                building_array.push_back(building_obj);
+            }
+            
+            return json{
+                {"total_alarms", total_alarms},
+                {"processed_alarms", processed_alarms},
+                {"successful_deliveries", successful_deliveries},
+                {"failed_deliveries", failed_deliveries},
+                {"success_rate", getSuccessRate()},
+                {"total_processing_time_ms", total_processing_time.count()},
+                {"avg_processing_time_ms", avg_processing_time.count()},
+                {"building_results", building_array}
+            };
+        }
     };
 
 private:
-    // 핵심 데이터
-    std::vector<DynamicTarget> targets_;
-    std::unordered_map<std::string, std::unique_ptr<ITargetHandler>> handlers_;
-    std::unordered_map<std::string, std::shared_ptr<FailureProtector>> failure_protectors_;
+    // =======================================================================
+    // 멤버 변수들
+    // =======================================================================
     
     // 설정 관리
-    json global_settings_;
     std::string config_file_path_;
-    std::chrono::system_clock::time_point last_config_check_;
+    json global_settings_;
     std::atomic<bool> auto_reload_enabled_{true};
-    std::atomic<bool> config_changed_{false};
+    std::chrono::system_clock::time_point last_config_check_;
     
-    // 동시성 제어
+    // 타겟 관리 (스레드 안전)
+    std::vector<DynamicTarget> targets_;               // CSPDynamicTargets.h에서 정의됨
     mutable std::shared_mutex targets_mutex_;
-    mutable std::mutex stats_mutex_;
-    mutable std::mutex config_mutex_;
     
-    // 성능 최적화
+    // 핸들러 관리 (팩토리 패턴)
+    std::unordered_map<std::string, std::unique_ptr<ITargetHandler>> handlers_;
+    mutable std::mutex handlers_mutex_;
+    
+    // 실패 방지기 관리
+    std::unordered_map<std::string, std::shared_ptr<FailureProtector>> failure_protectors_;
+    mutable std::mutex failure_protectors_mutex_;
+    
+    // 성능 관리
     std::atomic<size_t> concurrent_requests_{0};
-    std::atomic<size_t> peak_concurrent_requests_{0};
+    std::atomic<size_t> total_requests_{0};
+    std::atomic<size_t> successful_requests_{0};
+    std::atomic<size_t> failed_requests_{0};
+    std::chrono::system_clock::time_point last_rate_reset_;
     
-    // 백그라운드 작업
+    // 백그라운드 스레드 관리
+    std::atomic<bool> should_stop_{false};
     std::unique_ptr<std::thread> config_watcher_thread_;
     std::unique_ptr<std::thread> health_check_thread_;
     std::unique_ptr<std::thread> metrics_collector_thread_;
-    std::atomic<bool> should_stop_{false};
+    std::unique_ptr<std::thread> cleanup_thread_;
 
 public:
-    /**
-     * @brief 생성자
-     * @param config_file_path JSON 설정 파일 경로
-     */
-    explicit DynamicTargetManager(const std::string& config_file_path);
+    // =======================================================================
+    // 생성자 및 라이프사이클
+    // =======================================================================
     
-    /**
-     * @brief 소멸자
-     */
+    explicit DynamicTargetManager(const std::string& config_file_path = "targets.json");
     ~DynamicTargetManager();
     
-    // 복사/이동 생성자 비활성화
+    // 복사/이동 방지
     DynamicTargetManager(const DynamicTargetManager&) = delete;
     DynamicTargetManager& operator=(const DynamicTargetManager&) = delete;
     DynamicTargetManager(DynamicTargetManager&&) = delete;
     DynamicTargetManager& operator=(DynamicTargetManager&&) = delete;
-
-    // =======================================================================
-    // 라이프사이클 관리
-    // =======================================================================
     
     bool start();
     void stop();
-    bool isRunning() const { return !should_stop_.load(); }
-
+    
     // =======================================================================
     // 설정 관리
     // =======================================================================
@@ -147,20 +165,20 @@ public:
     bool saveConfiguration(const json& config);
 
     // =======================================================================
-    // 알람 전송 (핵심 기능) - 통합 타입 사용
+    // 알람 전송 (핵심 기능) - CSPDynamicTargets.h의 TargetSendResult 사용
     // =======================================================================
     
     /**
      * @brief 모든 활성 타겟에 알람 전송 (순차)
      * @param alarm 전송할 알람 메시지
-     * @return 타겟별 전송 결과 (TargetTypes.h의 TargetSendResult 사용)
+     * @return 타겟별 전송 결과
      */
     std::vector<TargetSendResult> sendAlarmToAllTargets(const AlarmMessage& alarm);
     
     /**
      * @brief 모든 활성 타겟에 알람 전송 (병렬, 성능 최적화)
      * @param alarm 전송할 알람 메시지
-     * @return 타겟별 전송 결과 (TargetTypes.h의 TargetSendResult 사용)
+     * @return 타겟별 전송 결과
      */
     std::vector<TargetSendResult> sendAlarmToAllTargetsParallel(const AlarmMessage& alarm);
     
@@ -168,14 +186,14 @@ public:
      * @brief 특정 타겟에만 알람 전송
      * @param alarm 전송할 알람 메시지
      * @param target_name 타겟 이름
-     * @return 전송 결과 (TargetTypes.h의 TargetSendResult 사용)
+     * @return 전송 결과
      */
     TargetSendResult sendAlarmToTarget(const AlarmMessage& alarm, const std::string& target_name);
     
     /**
      * @brief 비동기 알람 전송 (논블로킹)
      * @param alarm 전송할 알람 메시지
-     * @return Future 객체 (TargetTypes.h의 TargetSendResult 사용)
+     * @return Future 객체
      */
     std::future<std::vector<TargetSendResult>> sendAlarmAsync(const AlarmMessage& alarm);
 
@@ -187,7 +205,7 @@ public:
     bool testTargetConnection(const std::string& target_name);
     bool enableTarget(const std::string& target_name, bool enabled);
     bool changeTargetPriority(const std::string& target_name, int new_priority);
-    bool addTarget(const DynamicTarget& target);
+    bool addTarget(const DynamicTarget& target);           // CSPDynamicTargets.h의 DynamicTarget 사용
     bool removeTarget(const std::string& target_name);
     bool updateTargetConfig(const std::string& target_name, const json& new_config);
     std::vector<std::string> getTargetNames(bool include_disabled = true) const;
@@ -199,6 +217,7 @@ public:
     void resetFailureProtector(const std::string& target_name);
     void resetAllFailureProtectors();
     void forceOpenFailureProtector(const std::string& target_name);
+    std::unordered_map<std::string, FailureProtectorStats> getFailureProtectorStats() const;
 
     // =======================================================================
     // 통계 및 모니터링
@@ -237,7 +256,7 @@ private:
     void startBackgroundThreads();
     void stopBackgroundThreads();
     
-    // 타겟 처리 (핵심 로직) - 통합 타입 사용
+    // 타겟 처리 (핵심 로직)
     bool processTarget(const DynamicTarget& target, const AlarmMessage& alarm, TargetSendResult& result);
     bool processTargetByIndex(size_t index, const AlarmMessage& alarm, TargetSendResult& result);
     bool checkRateLimit();

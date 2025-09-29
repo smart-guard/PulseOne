@@ -490,13 +490,13 @@ bool DynamicTargetManager::removeTarget(const std::string& target_name) {
 
 void DynamicTargetManager::initializeFailureProtectorForTarget(const std::string& target_name) {
     try {
-        // 기본 실패 방지기 설정
-        FailureProtectionConfig fp_config;
+        // 기본 실패 방지기 설정 - 올바른 타입명 사용
+        FailureProtectorConfig fp_config;  // FailureProtectionConfig → FailureProtectorConfig
         fp_config.failure_threshold = 5;
         fp_config.recovery_timeout_ms = 60000;
         fp_config.half_open_max_attempts = 3;
         
-        failure_protectors_[target_name] = std::make_shared<FailureProtector>(fp_config);
+        failure_protectors_[target_name] = std::make_shared<FailureProtector>(target_name, fp_config);
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("실패 방지기 초기화 실패: " + target_name + " - " + std::string(e.what()));
