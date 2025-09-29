@@ -1,137 +1,128 @@
 /**
- * @file DynamicTargetManager.h
- * @brief 동적 타겟 관리자 - include 정리 (컴파일 에러 해결)
+ * @file DynamicTargetManager.h - 구조체 정의 위치 수정
+ * @brief 동적 타겟 관리자 헤더 - 구조체를 네임스페이스 레벨로 이동
  * @author PulseOne Development Team
  * @date 2025-09-29
- * @version 3.0.0 (CSPDynamicTargets.h 단일 include 사용)
+ * @version 5.0.0 (구조체 정의 위치 수정)
  */
 
 #ifndef DYNAMIC_TARGET_MANAGER_H
 #define DYNAMIC_TARGET_MANAGER_H
 
-#include "CSPDynamicTargets.h"  // 모든 타입이 여기 정의됨 (단일 include)
-#include "FailureProtector.h"   // FailureProtector 클래스만 필요
-#include <shared_mutex>
+#include "CSPDynamicTargets.h"
+#include "FailureProtector.h"
+#include <string>
+#include <vector>
+#include <unordered_map>
 #include <memory>
-#include <future>
-#include <unordered_set>
+#include <mutex>
+#include <shared_mutex>
+#include <atomic>
 #include <thread>
-#include <condition_variable>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 namespace PulseOne {
 namespace CSP {
 
+// =============================================================================
+// 🚨 구조체들을 클래스 외부 네임스페이스 레벨에 정의
+// =============================================================================
+
 /**
- * @brief 동적 타겟 관리자
- * 
- * 주요 기능:
- * - JSON 설정 파일 기반 타겟 관리
- * - 실시간 설정 재로드 (파일 변경 감지)
- * - 병렬 알람 전송 (성능 최적화)
- * - 실패 방지기 통합 (CircuitBreaker 패턴)
- * - 타겟별 상세 통계 수집
- * - 우선순위 기반 처리
+ * @brief 시스템 메트릭 구조체 (네임스페이스 레벨)
+ */
+struct SystemMetrics {
+    size_t total_targets = 0;
+    size_t active_targets = 0;
+    size_t healthy_targets = 0;
+    uint64_t total_requests = 0;
+    uint64_t successful_requests = 0;
+    uint64_t failed_requests = 0;
+    double overall_success_rate = 0.0;
+    std::chrono::system_clock::time_point last_update;
+    
+    json toJson() const {
+        return json{
+            {"total_targets", total_targets},
+            {"active_targets", active_targets},
+            {"healthy_targets", healthy_targets},
+            {"total_requests", total_requests},
+            {"successful_requests", successful_requests},
+            {"failed_requests", failed_requests},
+            {"overall_success_rate", overall_success_rate},
+            {"last_update", std::chrono::duration_cast<std::chrono::milliseconds>(
+                last_update.time_since_epoch()).count()}
+        };
+    }
+};
+
+/**
+ * @brief 배치 처리 결과 구조체 (네임스페이스 레벨)
+ */
+struct BatchProcessingResult {
+    std::vector<TargetSendResult> results;
+    size_t total_processed = 0;
+    size_t successful_count = 0;
+    size_t failed_count = 0;
+    std::chrono::milliseconds total_processing_time{0};
+    
+    json toJson() const {
+        json result_array = json::array();
+        for (const auto& result : results) {
+            result_array.push_back(result.toJson());
+        }
+        
+        return json{
+            {"results", result_array},
+            {"total_processed", total_processed},
+            {"successful_count", successful_count},
+            {"failed_count", failed_count},
+            {"total_processing_time_ms", total_processing_time.count()}
+        };
+    }
+};
+
+/**
+ * @brief 동적 타겟 관리자 클래스
  */
 class DynamicTargetManager {
-public:
-    /**
-     * @brief 시스템 메트릭
-     */
-    struct SystemMetrics {
-        size_t total_targets = 0;
-        size_t active_targets = 0;
-        size_t healthy_targets = 0;
-        size_t total_requests = 0;
-        size_t successful_requests = 0;
-        size_t failed_requests = 0;
-        double overall_success_rate = 0.0;
-        double avg_response_time_ms = 0.0;
-        std::chrono::system_clock::time_point last_update;
-        
-        json toJson() const {
-            return json{
-                {"total_targets", total_targets},
-                {"active_targets", active_targets},
-                {"healthy_targets", healthy_targets},
-                {"total_requests", total_requests},
-                {"successful_requests", successful_requests},
-                {"failed_requests", failed_requests},
-                {"overall_success_rate", overall_success_rate},
-                {"avg_response_time_ms", avg_response_time_ms}
-            };
-        }
-    };
-    
-    /**
-     * @brief 배치 처리 결과
-     */
-    struct BatchProcessingResult {
-        size_t total_alarms = 0;
-        size_t processed_alarms = 0;
-        size_t successful_deliveries = 0;
-        size_t failed_deliveries = 0;
-        std::chrono::milliseconds total_processing_time{0};
-        std::chrono::milliseconds avg_processing_time{0};
-        std::unordered_map<int, BatchTargetResult> building_results;
-        
-        double getSuccessRate() const {
-            return processed_alarms > 0 ? 
-                (static_cast<double>(successful_deliveries) / processed_alarms * 100.0) : 0.0;
-        }
-        
-        json toJson() const {
-            json building_array = json::array();
-            for (const auto& [building_id, result] : building_results) {
-                json building_obj = result.toJson();
-                building_obj["building_id"] = building_id;
-                building_array.push_back(building_obj);
-            }
-            
-            return json{
-                {"total_alarms", total_alarms},
-                {"processed_alarms", processed_alarms},
-                {"successful_deliveries", successful_deliveries},
-                {"failed_deliveries", failed_deliveries},
-                {"success_rate", getSuccessRate()},
-                {"total_processing_time_ms", total_processing_time.count()},
-                {"avg_processing_time_ms", avg_processing_time.count()},
-                {"building_results", building_array}
-            };
-        }
-    };
-
 private:
     // =======================================================================
     // 멤버 변수들
     // =======================================================================
     
-    // 설정 관리
+    // 설정 관련
     std::string config_file_path_;
+    mutable std::mutex config_mutex_;
     json global_settings_;
     std::atomic<bool> auto_reload_enabled_{true};
     std::chrono::system_clock::time_point last_config_check_;
     
-    // 타겟 관리 (스레드 안전)
-    std::vector<DynamicTarget> targets_;               // CSPDynamicTargets.h에서 정의됨
+    // 타겟 관리
+    std::vector<DynamicTarget> targets_;
     mutable std::shared_mutex targets_mutex_;
-    
-    // 핸들러 관리 (팩토리 패턴)
     std::unordered_map<std::string, std::unique_ptr<ITargetHandler>> handlers_;
-    mutable std::mutex handlers_mutex_;
-    
-    // 실패 방지기 관리
     std::unordered_map<std::string, std::shared_ptr<FailureProtector>> failure_protectors_;
-    mutable std::mutex failure_protectors_mutex_;
     
-    // 성능 관리
+    // 동시성 및 성능 제어
     std::atomic<size_t> concurrent_requests_{0};
+    std::atomic<size_t> peak_concurrent_requests_{0};
     std::atomic<size_t> total_requests_{0};
     std::atomic<size_t> successful_requests_{0};
     std::atomic<size_t> failed_requests_{0};
-    std::chrono::system_clock::time_point last_rate_reset_;
     
-    // 백그라운드 스레드 관리
+    // Rate Limiting
+    std::chrono::system_clock::time_point last_rate_reset_;
+    std::atomic<size_t> current_rate_count_{0};
+    
+    // 백그라운드 스레드들
     std::atomic<bool> should_stop_{false};
+    std::atomic<bool> is_running_{false};
     std::unique_ptr<std::thread> config_watcher_thread_;
     std::unique_ptr<std::thread> health_check_thread_;
     std::unique_ptr<std::thread> metrics_collector_thread_;
@@ -153,6 +144,7 @@ public:
     
     bool start();
     void stop();
+    bool isRunning() const { return is_running_.load(); }
     
     // =======================================================================
     // 설정 관리
@@ -165,37 +157,18 @@ public:
     bool saveConfiguration(const json& config);
 
     // =======================================================================
-    // 알람 전송 (핵심 기능) - CSPDynamicTargets.h의 TargetSendResult 사용
+    // 알람 전송 (핵심 기능)
     // =======================================================================
     
-    /**
-     * @brief 모든 활성 타겟에 알람 전송 (순차)
-     * @param alarm 전송할 알람 메시지
-     * @return 타겟별 전송 결과
-     */
     std::vector<TargetSendResult> sendAlarmToAllTargets(const AlarmMessage& alarm);
-    
-    /**
-     * @brief 모든 활성 타겟에 알람 전송 (병렬, 성능 최적화)
-     * @param alarm 전송할 알람 메시지
-     * @return 타겟별 전송 결과
-     */
     std::vector<TargetSendResult> sendAlarmToAllTargetsParallel(const AlarmMessage& alarm);
-    
-    /**
-     * @brief 특정 타겟에만 알람 전송
-     * @param alarm 전송할 알람 메시지
-     * @param target_name 타겟 이름
-     * @return 전송 결과
-     */
     TargetSendResult sendAlarmToTarget(const AlarmMessage& alarm, const std::string& target_name);
-    
-    /**
-     * @brief 비동기 알람 전송 (논블로킹)
-     * @param alarm 전송할 알람 메시지
-     * @return Future 객체
-     */
     std::future<std::vector<TargetSendResult>> sendAlarmAsync(const AlarmMessage& alarm);
+    
+    // 🚨 이제 네임스페이스 레벨 구조체 사용
+    std::vector<TargetSendResult> sendAlarmByPriority(const AlarmMessage& alarm, int max_priority);
+    BatchProcessingResult processBuildingAlarms(
+        const std::unordered_map<int, std::vector<AlarmMessage>>& building_alarms);
 
     // =======================================================================
     // 타겟 관리
@@ -205,7 +178,7 @@ public:
     bool testTargetConnection(const std::string& target_name);
     bool enableTarget(const std::string& target_name, bool enabled);
     bool changeTargetPriority(const std::string& target_name, int new_priority);
-    bool addTarget(const DynamicTarget& target);           // CSPDynamicTargets.h의 DynamicTarget 사용
+    bool addTarget(const DynamicTarget& target);
     bool removeTarget(const std::string& target_name);
     bool updateTargetConfig(const std::string& target_name, const json& new_config);
     std::vector<std::string> getTargetNames(bool include_disabled = true) const;
@@ -226,7 +199,12 @@ public:
     std::vector<DynamicTarget> getTargetStatistics() const;
     json getSystemStatus() const;
     json getDetailedStatistics() const;
+    
+    // 🚨 네임스페이스 레벨 구조체 사용
     SystemMetrics getSystemMetrics() const;
+    json generatePerformanceReport(
+        std::chrono::system_clock::time_point start_time,
+        std::chrono::system_clock::time_point end_time) const;
 
     // =======================================================================
     // 설정 유효성 검증
@@ -236,7 +214,7 @@ public:
     bool validateTargetConfig(const json& target_config, std::vector<std::string>& errors);
 
     // =======================================================================
-    // 핸들러 관리 (플러그인 아키텍처)
+    // 핸들러 관리
     // =======================================================================
     
     bool registerHandler(const std::string& type_name, std::unique_ptr<ITargetHandler> handler);
@@ -251,42 +229,27 @@ private:
     void registerDefaultHandlers();
     void initializeFailureProtectors();
     void initializeFailureProtectorForTarget(const std::string& target_name);
-    bool createDefaultConfigFile();
-    void applyGlobalSettings();
-    void startBackgroundThreads();
-    void stopBackgroundThreads();
-    
-    // 타겟 처리 (핵심 로직)
-    bool processTarget(const DynamicTarget& target, const AlarmMessage& alarm, TargetSendResult& result);
-    bool processTargetByIndex(size_t index, const AlarmMessage& alarm, TargetSendResult& result);
-    bool checkRateLimit();
-    bool checkConcurrencyLimit();
-    
-    // 변수 확장 및 설정 처리
-    void expandConfigVariables(json& config, const AlarmMessage& alarm);
-    void expandJsonVariables(json& obj, const AlarmMessage& alarm);
-    std::string expandVariables(const std::string& template_str, const AlarmMessage& alarm);
-    
-    // 통계 관리
-    void updateTargetStatistics(const std::string& target_name, bool success, 
-                               std::chrono::milliseconds response_time = std::chrono::milliseconds(0),
-                               size_t content_size = 0);
-    void updateSystemMetrics();
-    void collectPerformanceMetrics();
     
     // 백그라운드 스레드들
+    void startBackgroundThreads();
+    void stopBackgroundThreads();
     void configWatcherThread();
     void healthCheckThread();
     void metricsCollectorThread();
     void cleanupThread();
     
     // 유틸리티 메서드들
-    std::chrono::system_clock::time_point getFileModificationTime(const std::string& file_path) const;
     std::vector<DynamicTarget>::iterator findTarget(const std::string& target_name);
     std::vector<DynamicTarget>::const_iterator findTarget(const std::string& target_name) const;
-    bool backupConfigFile() const;
-    void logMessage(const std::string& level, const std::string& message, 
-                   const std::string& target_name = "") const;
+    bool processTargetByIndex(size_t index, const AlarmMessage& alarm, TargetSendResult& result);
+    bool checkRateLimit();
+    void updateTargetHealth(const std::string& target_name, bool healthy);
+    void updateTargetStatistics(const std::string& target_name, const TargetSendResult& result);
+    
+    // 설정 관리
+    bool createDefaultConfigFile();
+    bool backupConfigFile();
+    void expandConfigVariables(json& config, const AlarmMessage& alarm);
 };
 
 } // namespace CSP

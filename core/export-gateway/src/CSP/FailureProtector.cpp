@@ -201,13 +201,13 @@ FailureProtectorStats FailureProtector::getStats() const {
     stats.total_failures = total_failures_.load();
     stats.half_open_attempts = half_open_attempts_;
     
-    // 성공률 계산
     uint32_t total = stats.total_successes + stats.total_failures;
     stats.success_rate = total > 0 ? (static_cast<double>(stats.total_successes) / total * 100.0) : 0.0;
     
-    // 상태 지속 시간 계산 (밀리초)
+    // 🚨 수정: atomic time_point를 먼저 load()
     auto now = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_state_change_);
+    auto last_state_change_loaded = last_state_change_.load();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_state_change_loaded);
     stats.state_duration_ms = duration.count();
     
     return stats;
@@ -232,14 +232,14 @@ double FailureProtector::getSuccessRate() const {
 
 bool FailureProtector::isRecoveryTimeReached() const {
     auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_failure_time_);
+    // 🚨 수정: atomic time_point를 먼저 load()
+    auto last_failure_time_loaded = last_failure_time_.load();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_failure_time_loaded);
     
-    // 지수 백오프 계산 (최대 복구 시간 제한)
-    uint32_t backoff_multiplier = std::min(static_cast<uint32_t>(failure_count_.load()), static_cast<uint32_t>(10)); // 최대 10배
+    uint32_t backoff_multiplier = std::min(static_cast<uint32_t>(failure_count_.load()), static_cast<uint32_t>(10));
     uint64_t adjusted_timeout = static_cast<uint64_t>(config_.recovery_timeout_ms) * 
                                static_cast<uint64_t>(std::pow(config_.backoff_multiplier, backoff_multiplier));
     
-    // 최대 복구 시간 제한 (기본 30분)
     adjusted_timeout = std::min(adjusted_timeout, static_cast<uint64_t>(config_.max_recovery_timeout_ms));
     
     return elapsed.count() >= static_cast<int64_t>(adjusted_timeout);
