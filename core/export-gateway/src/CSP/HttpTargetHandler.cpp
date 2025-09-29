@@ -176,9 +176,35 @@ bool HttpTargetHandler::testConnection(const json& config) {
     }
 }
 
-std::string HttpTargetHandler::getTypeName() const {
-    return "HTTP";
+
+bool HttpTargetHandler::validateConfig(const json& config, std::vector<std::string>& errors) {
+    errors.clear();
+    
+    try {
+        if (!config.contains("url")) {
+            errors.push_back("url 필드가 필수입니다");
+            return false;
+        }
+        
+        if (!config["url"].is_string() || config["url"].get<std::string>().empty()) {
+            errors.push_back("url은 비어있지 않은 문자열이어야 합니다");
+            return false;
+        }
+        
+        std::string url = config["url"].get<std::string>();
+        if (url.find("http://") != 0 && url.find("https://") != 0) {
+            errors.push_back("url은 http:// 또는 https://로 시작해야 합니다");
+            return false;
+        }
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        errors.push_back("설정 검증 중 예외 발생: " + std::string(e.what()));
+        return false;
+    }
 }
+
 
 json HttpTargetHandler::getStatus() const {
     return json{
@@ -188,6 +214,16 @@ json HttpTargetHandler::getStatus() const {
         {"failure_count", failure_count_.load()},
         {"auth_type", auth_config_.type}
     };
+}
+
+json HttpTargetHandler::getStatistics() const {
+    return getStatus();
+}
+
+void HttpTargetHandler::resetStatistics() {
+    request_count_ = 0;
+    success_count_ = 0;
+    failure_count_ = 0;
 }
 
 void HttpTargetHandler::cleanup() {

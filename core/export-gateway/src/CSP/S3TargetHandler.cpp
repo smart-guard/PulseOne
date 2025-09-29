@@ -195,10 +195,6 @@ bool S3TargetHandler::testConnection(const json& config) {
     }
 }
 
-std::string S3TargetHandler::getTypeName() const {
-    return "S3";
-}
-
 json S3TargetHandler::getStatus() const {
     return json{
         {"type", "S3"},
@@ -215,6 +211,42 @@ void S3TargetHandler::cleanup() {
         s3_client_.reset();
     }
     LogManager::getInstance().Info("S3TargetHandler 정리 완료");
+}
+
+bool S3TargetHandler::validateConfig(const json& config, std::vector<std::string>& errors) {
+    errors.clear();
+    
+    try {
+        if (!config.contains("bucket_name")) {
+            errors.push_back("bucket_name 필드가 필수입니다");
+            return false;
+        }
+        
+        if (!config["bucket_name"].is_string() || config["bucket_name"].get<std::string>().empty()) {
+            errors.push_back("bucket_name은 비어있지 않은 문자열이어야 합니다");
+            return false;
+        }
+        
+        // 버킷명 형식 검증 (AWS S3 규칙)
+        std::string bucket_name = config["bucket_name"].get<std::string>();
+        if (bucket_name.length() < 3 || bucket_name.length() > 63) {
+            errors.push_back("bucket_name은 3-63자여야 합니다");
+            return false;
+        }
+        
+        // 영문 소문자, 숫자, 하이픈만 허용
+        if (!std::regex_match(bucket_name, std::regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$"))) {
+            errors.push_back("bucket_name은 소문자, 숫자, 하이픈만 사용 가능합니다");
+            return false;
+        }
+        
+        LogManager::getInstance().Debug("S3 타겟 설정 검증 성공");
+        return true;
+        
+    } catch (const std::exception& e) {
+        errors.push_back("설정 검증 중 예외 발생: " + std::string(e.what()));
+        return false;
+    }
 }
 
 // =============================================================================

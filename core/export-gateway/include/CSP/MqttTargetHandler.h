@@ -135,7 +135,7 @@ public:
     /**
      * @brief 핸들러 타입 이름 반환
      */
-    std::string getTypeName() const override { return "mqtt"; }
+    std::string getHandlerType() const override { return "MQTT"; }
     
     /**
      * @brief 핸들러 상태 반환

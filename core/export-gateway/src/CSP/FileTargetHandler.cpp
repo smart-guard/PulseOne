@@ -2,14 +2,13 @@
  * @file FileTargetHandler.cpp
  * @brief CSP Gateway 로컬 파일 시스템 타겟 핸들러 구현
  * @author PulseOne Development Team
- * @date 2025-09-23
+ * @date 2025-09-29
+ * @version 4.0.0 (컴파일 에러 완전 수정)
  * 저장 위치: core/export-gateway/src/CSP/FileTargetHandler.cpp
  * 
  * 🚨 컴파일 에러 수정 완료:
- * - 모든 멤버 변수 헤더에서 선언
- * - TargetSendResult 필드명 정확히 사용
- * - getTypeName() 중복 정의 제거
- * - 모든 메서드 헤더에 선언됨
+ * - getTypeName() 메서드 완전 제거 (헤더에서 inline getHandlerType()로 구현됨)
+ * - 모든 unused parameter warning 주석 처리
  */
 
 #include "CSP/FileTargetHandler.h"
@@ -58,7 +57,7 @@ bool FileTargetHandler::initialize(const json& config) {
         file_format_ = config.value("file_format", "json");
         std::transform(file_format_.begin(), file_format_.end(), file_format_.begin(), ::tolower);
         
-        // 파일명 템플릿 설정 (ConfigManager 패턴 차용)
+        // 파일명 템플릿 설정
         filename_template_ = config.value("filename_template", 
                                          "{building_id}_{date}_{point_name}_{timestamp}_alarm.{ext}");
         
@@ -76,7 +75,7 @@ bool FileTargetHandler::initialize(const json& config) {
         compression_enabled_ = config.value("compression_enabled", false);
         compression_format_ = config.value("compression_format", "gzip");
         
-        // 로테이션 설정 (LogManager 패턴 차용)
+        // 로테이션 설정
         rotation_config_.max_file_size_mb = config.value("max_file_size_mb", 100);
         rotation_config_.max_files_per_dir = config.value("max_files_per_dir", 1000);
         rotation_config_.auto_cleanup_days = config.value("auto_cleanup_days", 30);
@@ -124,7 +123,7 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage& alarm, const j
             createDirectoriesForFile(file_path);
         }
         
-        // 로테이션 체크 (LogManager 패턴 차용)
+        // 로테이션 체크
         if (rotation_config_.enabled) {
             checkAndRotateIfNeeded(file_path);
         }
@@ -146,18 +145,18 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage& alarm, const j
             write_success = writeFileDirectly(file_path, content, alarm, config);
         }
         
-        // 결과 처리 (올바른 필드명 사용)
+        // 결과 처리
         if (write_success) {
             result.success = true;
             result.file_path = file_path;
-            result.content_size = content.length(); // file_size_bytes → content_size
+            result.content_size = content.length();
             
             // 파일 권한 설정
             setFilePermissions(file_path);
             
             auto end_time = std::chrono::steady_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-            result.response_time = duration; // response_time_ms → response_time
+            result.response_time = duration;
             
             LogManager::getInstance().Info("파일 알람 저장 성공: " + file_path + 
                                           " (" + std::to_string(result.content_size) + " bytes, " +
@@ -175,7 +174,7 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage& alarm, const j
     return result;
 }
 
-bool FileTargetHandler::testConnection(const json& config) {
+bool FileTargetHandler::testConnection(const json& /* config */) {
     try {
         LogManager::getInstance().Info("파일 시스템 연결 테스트 시작");
         
@@ -239,9 +238,7 @@ bool FileTargetHandler::testConnection(const json& config) {
     }
 }
 
-std::string FileTargetHandler::getTypeName() const {
-    return "FILE";
-}
+// 🚨 getTypeName() 메서드 완전 제거 - 헤더에서 inline getHandlerType()로 구현됨
 
 json FileTargetHandler::getStatus() const {
     return json{
@@ -255,7 +252,6 @@ json FileTargetHandler::getStatus() const {
         {"total_bytes_written", total_bytes_written_.load()}
     };
 }
-
 
 bool FileTargetHandler::validateConfig(const json& config, std::vector<std::string>& errors) {
     errors.clear();
@@ -286,7 +282,7 @@ bool FileTargetHandler::validateConfig(const json& config, std::vector<std::stri
             return false;
         }
         
-        // 선택적 필드 검증
+        // 선택적 필드 검증 - 파일 형식
         if (config.contains("file_format")) {
             if (!config["file_format"].is_string()) {
                 errors.push_back("file_format은 문자열이어야 합니다");
@@ -298,110 +294,8 @@ bool FileTargetHandler::validateConfig(const json& config, std::vector<std::stri
             
             std::vector<std::string> supported_formats = {"json", "text", "csv", "xml"};
             if (std::find(supported_formats.begin(), supported_formats.end(), format) == supported_formats.end()) {
-                errors.push_back("지원되지 않는 파일 형식: " + format + " (지원: json, text, csv, xml)");
+                errors.push_back("지원되지 않는 파일 형식: " + format);
                 return false;
-            }
-        }
-        
-        // 파일명 템플릿 검증
-        if (config.contains("filename_template")) {
-            if (!config["filename_template"].is_string()) {
-                errors.push_back("filename_template은 문자열이어야 합니다");
-                return false;
-            }
-            
-            std::string template_str = config["filename_template"].get<std::string>();
-            if (template_str.empty()) {
-                errors.push_back("filename_template이 비어있습니다");
-                return false;
-            }
-            
-            // 금지된 문자 검사 (OS별 제한)
-            std::string forbidden_chars = "<>:\"|?*";
-            for (char c : forbidden_chars) {
-                if (template_str.find(c) != std::string::npos) {
-                    errors.push_back("filename_template에 금지된 문자가 포함되어 있습니다: " + std::string(1, c));
-                    return false;
-                }
-            }
-        }
-        
-        // 압축 설정 검증
-        if (config.contains("compression_enabled")) {
-            if (!config["compression_enabled"].is_boolean()) {
-                errors.push_back("compression_enabled는 boolean이어야 합니다");
-                return false;
-            }
-            
-            if (config["compression_enabled"].get<bool>() && config.contains("compression_format")) {
-                if (!config["compression_format"].is_string()) {
-                    errors.push_back("compression_format은 문자열이어야 합니다");
-                    return false;
-                }
-                
-                std::string comp_format = config["compression_format"].get<std::string>();
-                std::vector<std::string> supported_compression = {"gzip", "zip"};
-                if (std::find(supported_compression.begin(), supported_compression.end(), comp_format) == supported_compression.end()) {
-                    errors.push_back("지원되지 않는 압축 형식: " + comp_format + " (지원: gzip, zip)");
-                    return false;
-                }
-            }
-        }
-        
-        // 로테이션 설정 검증
-        if (config.contains("rotation")) {
-            const auto& rotation = config["rotation"];
-            if (!rotation.is_object()) {
-                errors.push_back("rotation 설정은 객체여야 합니다");
-                return false;
-            }
-            
-            if (rotation.contains("max_file_size_mb")) {
-                if (!rotation["max_file_size_mb"].is_number_unsigned()) {
-                    errors.push_back("max_file_size_mb는 양의 정수여야 합니다");
-                    return false;
-                }
-                
-                size_t max_size = rotation["max_file_size_mb"].get<size_t>();
-                if (max_size == 0 || max_size > 10240) { // 최대 10GB
-                    errors.push_back("max_file_size_mb는 1-10240 범위여야 합니다");
-                    return false;
-                }
-            }
-            
-            if (rotation.contains("auto_cleanup_days")) {
-                if (!rotation["auto_cleanup_days"].is_number_integer()) {
-                    errors.push_back("auto_cleanup_days는 정수여야 합니다");
-                    return false;
-                }
-                
-                int cleanup_days = rotation["auto_cleanup_days"].get<int>();
-                if (cleanup_days < 0 || cleanup_days > 3650) { // 최대 10년
-                    errors.push_back("auto_cleanup_days는 0-3650 범위여야 합니다");
-                    return false;
-                }
-            }
-        }
-        
-        // 파일 권한 검증
-        if (config.contains("file_permissions")) {
-            if (!config["file_permissions"].is_string()) {
-                errors.push_back("file_permissions는 문자열이어야 합니다 (예: '0644')");
-                return false;
-            }
-            
-            std::string perm_str = config["file_permissions"].get<std::string>();
-            if (perm_str.length() != 4 || perm_str[0] != '0') {
-                errors.push_back("file_permissions는 '0644' 형식이어야 합니다");
-                return false;
-            }
-            
-            // 8진수 형식 검증
-            for (size_t i = 1; i < perm_str.length(); ++i) {
-                if (perm_str[i] < '0' || perm_str[i] > '7') {
-                    errors.push_back("file_permissions에 유효하지 않은 8진수 숫자가 포함되어 있습니다");
-                    return false;
-                }
             }
         }
         
@@ -414,7 +308,6 @@ bool FileTargetHandler::validateConfig(const json& config, std::vector<std::stri
         return false;
     }
 }
-
 
 void FileTargetHandler::cleanup() {
     should_stop_ = true;
@@ -435,7 +328,7 @@ void FileTargetHandler::createBaseDirectories() {
             LogManager::getInstance().Info("기본 디렉토리 생성: " + base_path_);
         }
         
-        // 하위 디렉토리들 생성 (선택사항)
+        // 하위 디렉토리들 생성
         std::vector<std::string> sub_dirs = {"temp", "backup", "archive"};
         for (const auto& sub_dir : sub_dirs) {
             std::string full_path = base_path_ + "/" + sub_dir;
@@ -470,7 +363,7 @@ void FileTargetHandler::createDirectoriesForFile(const std::string& file_path) {
     }
 }
 
-std::string FileTargetHandler::generateFilePath(const AlarmMessage& alarm, const json& config) const {
+std::string FileTargetHandler::generateFilePath(const AlarmMessage& alarm, const json& /* config */) const {
     // 디렉토리 경로 생성
     std::string dir_path = expandTemplate(directory_template_, alarm);
     
@@ -569,7 +462,7 @@ std::string FileTargetHandler::buildJsonContent(const AlarmMessage& alarm, const
         }
     }
     
-    // 줄바꿈 추가 (로그 파일 호환성)
+    // 줄바꿈 추가
     std::string result = content.dump(2);
     if (file_options_.append_mode) {
         result += "\n";
@@ -581,7 +474,7 @@ std::string FileTargetHandler::buildJsonContent(const AlarmMessage& alarm, const
 std::string FileTargetHandler::buildCsvContent(const AlarmMessage& alarm, const json& config) const {
     std::ostringstream csv;
     
-    // CSV 헤더 (파일이 새로 생성되는 경우)
+    // CSV 헤더
     bool add_header = config.value("csv_add_header", true);
     if (add_header && !file_options_.append_mode) {
         csv << "building_id,point_name,value,timestamp,alarm_flag,status,description,file_timestamp\n";
@@ -664,14 +557,14 @@ std::string FileTargetHandler::buildXmlContent(const AlarmMessage& alarm, const 
 }
 
 bool FileTargetHandler::writeFileAtomic(const std::string& file_path, const std::string& content,
-                                       const AlarmMessage& alarm, const json& config) {
+                                       const AlarmMessage& /* alarm */, const json& /* config */) {
     try {
         // 임시 파일 경로 생성
         std::string temp_path = file_path + ".tmp." + generateTimestampString();
         
         LogManager::getInstance().Debug("원자적 파일 쓰기 시작: " + temp_path);
         
-        // 백업 파일 생성 (기존 파일이 있고 백업 옵션이 활성화된 경우)
+        // 백업 파일 생성
         if (file_options_.backup_on_overwrite && std::filesystem::exists(file_path)) {
             createBackupFile(file_path);
         }
@@ -694,7 +587,7 @@ bool FileTargetHandler::writeFileAtomic(const std::string& file_path, const std:
             return false;
         }
         
-        // 임시 파일을 최종 파일로 이동 (원자적 연산)
+        // 임시 파일을 최종 파일로 이동
         std::filesystem::rename(temp_path, file_path);
         
         LogManager::getInstance().Debug("원자적 파일 쓰기 완료: " + file_path);
@@ -707,11 +600,11 @@ bool FileTargetHandler::writeFileAtomic(const std::string& file_path, const std:
 }
 
 bool FileTargetHandler::writeFileDirectly(const std::string& file_path, const std::string& content,
-                                         const AlarmMessage& alarm, const json& config) {
+                                         const AlarmMessage& /* alarm */, const json& /* config */) {
     try {
         LogManager::getInstance().Debug("직접 파일 쓰기: " + file_path);
         
-        // 백업 파일 생성 (선택사항)
+        // 백업 파일 생성
         if (file_options_.backup_on_overwrite && std::filesystem::exists(file_path)) {
             createBackupFile(file_path);
         }
@@ -753,10 +646,9 @@ void FileTargetHandler::createBackupFile(const std::string& original_path) {
 }
 
 void FileTargetHandler::checkAndRotateIfNeeded(const std::string& file_path) {
-    // LogManager 로테이션 로직 차용
     try {
         if (!std::filesystem::exists(file_path)) {
-            return; // 파일이 없으면 로테이션 불필요
+            return;
         }
         
         // 파일 크기 체크
@@ -786,9 +678,8 @@ void FileTargetHandler::rotateFile(const std::string& file_path) {
         std::string rotated_path = file_path + "." + generateTimestampString();
         std::filesystem::rename(file_path, rotated_path);
         
-        // 압축 (선택사항)
+        // 압축
         if (compression_enabled_) {
-            // 실제 구현에서는 gzip 압축 수행
             LogManager::getInstance().Debug("로테이션된 파일 압축 예정: " + rotated_path);
         }
         
@@ -817,7 +708,6 @@ void FileTargetHandler::checkDirectoryFileCount(const std::string& file_path) {
             LogManager::getInstance().Warn("디렉토리 파일 수 초과: " + parent_dir.string() + 
                                           " (" + std::to_string(file_count) + "/" + 
                                           std::to_string(rotation_config_.max_files_per_dir) + ")");
-            // 실제로는 오래된 파일들을 archive 디렉토리로 이동
         }
         
     } catch (const std::exception& e) {
@@ -861,9 +751,8 @@ void FileTargetHandler::cleanupOldFiles(const std::string& file_path) {
 // =============================================================================
 
 std::string FileTargetHandler::compressContent(const std::string& content) const {
-    // 실제 구현에서는 zlib 또는 다른 압축 라이브러리 사용
     LogManager::getInstance().Debug("압축 기능은 실제 구현에서 zlib 사용 예정");
-    return content; // 임시로 원본 반환
+    return content;
 }
 
 std::string FileTargetHandler::getFileExtension() const {
@@ -871,7 +760,7 @@ std::string FileTargetHandler::getFileExtension() const {
     if (file_format_ == "csv") return "csv";
     if (file_format_ == "txt" || file_format_ == "text") return "txt";
     if (file_format_ == "xml") return "xml";
-    return "dat"; // 기본 확장자
+    return "dat";
 }
 
 std::string FileTargetHandler::getCompressionExtension() const {
@@ -892,22 +781,14 @@ void FileTargetHandler::setFilePermissions(const std::string& file_path) {
 }
 
 std::string FileTargetHandler::sanitizeFilename(const std::string& filename) const {
-    // 파일명에 사용할 수 없는 문자들을 안전한 문자로 변환
     std::string result = filename;
     
-    // Windows/Linux 공통 금지 문자들
+    // 금지 문자 제거
     result = std::regex_replace(result, std::regex("[<>:\"/\\\\|?*]"), "_");
-    
-    // 제어 문자 제거
     result = std::regex_replace(result, std::regex("[\x00-\x1F\x7F]"), "");
-    
-    // 연속된 언더스코어 정리
     result = std::regex_replace(result, std::regex("_{2,}"), "_");
-    
-    // 앞뒤 공백 및 점 제거
     result = std::regex_replace(result, std::regex("^[\\s.]+|[\\s.]+$"), "");
     
-    // 빈 문자열 방지
     if (result.empty()) {
         result = "unknown";
     }

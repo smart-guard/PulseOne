@@ -1,15 +1,17 @@
 /**
- * @file FileTargetHandler.h - 컴파일 에러 완전 수정
+ * @file FileTargetHandler.h
  * @brief 로컬 파일 타겟 핸들러 - ITargetHandler 인터페이스 정확 구현
  * @author PulseOne Development Team
  * @date 2025-09-29
- * @version 3.0.0 (컴파일 에러 수정)
+ * @version 4.0.0 (메서드 시그니처 완전 수정)
  * 저장 위치: core/export-gateway/include/CSP/FileTargetHandler.h
  * 
- * 🚨 컴파일 에러 수정사항:
- * 1. getTypeName() → getHandlerType() 수정 (ITargetHandler 인터페이스 준수)
- * 2. validateConfig() 메서드 추가 (순수 가상 함수 구현)
- * 3. 모든 필수 ITargetHandler 메서드 구현
+ * 🚨 컴파일 에러 완전 수정:
+ * 1. buildFileContent() - json& config 파라미터로 변경
+ * 2. writeFileAtomic() - alarm, config 파라미터 추가
+ * 3. writeFileDirect() → writeFileDirectly() 이름 수정 + alarm, config 추가
+ * 4. buildJsonContent(), buildCsvContent(), buildTextContent(), buildXmlContent() 추가
+ * 5. 모든 메서드 시그니처를 구현 파일과 완전 일치시킴
  */
 
 #ifndef FILE_TARGET_HANDLER_H
@@ -109,7 +111,7 @@ public:
     FileTargetHandler& operator=(FileTargetHandler&&) = delete;
     
     // =======================================================================
-    // 🚨 ITargetHandler 인터페이스 정확 구현 (CSPDynamicTargets.h 준수)
+    // ITargetHandler 인터페이스 정확 구현 (CSPDynamicTargets.h 준수)
     // =======================================================================
     
     /**
@@ -129,13 +131,11 @@ public:
     
     /**
      * @brief 핸들러 타입 이름 반환
-     * 🚨 수정: getTypeName() → getHandlerType() (ITargetHandler 인터페이스 준수)
      */
     std::string getHandlerType() const override { return "FILE"; }
     
     /**
      * @brief 설정 유효성 검증
-     * 🚨 추가: 순수 가상 함수 구현 (ITargetHandler 인터페이스 준수)
      */
     bool validateConfig(const json& config, std::vector<std::string>& errors) override;
     
@@ -151,34 +151,154 @@ public:
 
 private:
     // =======================================================================
-    // 내부 구현 메서드들
+    // 내부 구현 메서드들 (구현 파일과 시그니처 완전 일치)
     // =======================================================================
     
+    /**
+     * @brief 기본 디렉토리들 생성
+     */
     void createBaseDirectories();
+    
+    /**
+     * @brief 파일 경로의 디렉토리들 생성
+     */
     void createDirectoriesForFile(const std::string& file_path);
+    
+    /**
+     * @brief 알람으로부터 파일 경로 생성
+     */
     std::string generateFilePath(const AlarmMessage& alarm, const json& config) const;
+    
+    /**
+     * @brief 템플릿 문자열 확장 (변수 치환)
+     */
     std::string expandTemplate(const std::string& template_str, const AlarmMessage& alarm) const;
-    std::string buildFileContent(const AlarmMessage& alarm, const std::string& format) const;
-    bool writeFileContent(const std::string& file_path, const std::string& content, bool append);
-    bool writeFileAtomic(const std::string& file_path, const std::string& content);
-    bool writeFileDirect(const std::string& file_path, const std::string& content, bool append);
+    
+    /**
+     * @brief 파일 내용 생성 - json& config 파라미터 사용 (수정됨)
+     */
+    std::string buildFileContent(const AlarmMessage& alarm, const json& config) const;
+    
+    /**
+     * @brief JSON 형식 내용 생성 - 새로 추가
+     */
+    std::string buildJsonContent(const AlarmMessage& alarm, const json& config) const;
+    
+    /**
+     * @brief CSV 형식 내용 생성 - 새로 추가
+     */
+    std::string buildCsvContent(const AlarmMessage& alarm, const json& config) const;
+    
+    /**
+     * @brief 텍스트 형식 내용 생성 - 새로 추가
+     */
+    std::string buildTextContent(const AlarmMessage& alarm, const json& config) const;
+    
+    /**
+     * @brief XML 형식 내용 생성 - 새로 추가
+     */
+    std::string buildXmlContent(const AlarmMessage& alarm, const json& config) const;
+    
+    /**
+     * @brief 원자적 파일 쓰기 - alarm, config 파라미터 추가 (수정됨)
+     */
+    bool writeFileAtomic(const std::string& file_path, const std::string& content,
+                        const AlarmMessage& alarm, const json& config);
+    
+    /**
+     * @brief 직접 파일 쓰기 - 이름 및 파라미터 수정 (writeFileDirect → writeFileDirectly)
+     */
+    bool writeFileDirectly(const std::string& file_path, const std::string& content,
+                          const AlarmMessage& alarm, const json& config);
+    
+    /**
+     * @brief 백업 파일 생성
+     */
     void createBackupFile(const std::string& original_path);
+    
+    /**
+     * @brief 로테이션 필요 여부 체크 및 실행
+     */
     void checkAndRotateIfNeeded(const std::string& file_path);
+    
+    /**
+     * @brief 파일 로테이션 실행
+     */
     void rotateFile(const std::string& file_path);
+    
+    /**
+     * @brief 디렉토리 내 파일 수 체크
+     */
     void checkDirectoryFileCount(const std::string& file_path);
+    
+    /**
+     * @brief 오래된 파일 정리
+     */
     void cleanupOldFiles(const std::string& file_path);
+    
+    /**
+     * @brief 내용 압축
+     */
     std::string compressContent(const std::string& content) const;
+    
+    /**
+     * @brief 파일 확장자 반환
+     */
     std::string getFileExtension() const;
+    
+    /**
+     * @brief 압축 확장자 반환
+     */
     std::string getCompressionExtension() const;
+    
+    /**
+     * @brief 파일 권한 설정
+     */
     void setFilePermissions(const std::string& file_path);
+    
+    /**
+     * @brief 파일명 안전화 (금지 문자 제거)
+     */
     std::string sanitizeFilename(const std::string& filename) const;
+    
+    /**
+     * @brief 타겟 이름 반환
+     */
     std::string getTargetName(const json& config) const;
+    
+    /**
+     * @brief 현재 타임스탬프 (ISO 8601)
+     */
     std::string getCurrentTimestamp() const;
+    
+    /**
+     * @brief 타임스탬프 문자열 생성 (파일명용)
+     */
     std::string generateTimestampString() const;
+    
+    /**
+     * @brief 날짜 문자열 생성 (YYYY-MM-DD)
+     */
     std::string generateDateString() const;
+    
+    /**
+     * @brief 연도 문자열 생성 (YYYY)
+     */
     std::string generateYearString() const;
+    
+    /**
+     * @brief 월 문자열 생성 (MM)
+     */
     std::string generateMonthString() const;
+    
+    /**
+     * @brief 일 문자열 생성 (DD)
+     */
     std::string generateDayString() const;
+    
+    /**
+     * @brief 시간 문자열 생성 (HH)
+     */
     std::string generateHourString() const;
 };
 
