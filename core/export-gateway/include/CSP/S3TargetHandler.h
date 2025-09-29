@@ -11,7 +11,6 @@
 #define S3_TARGET_HANDLER_H
 
 #include "CSPDynamicTargets.h"
-#include "TargetTypes.h"  // ✅ 통합 타입 사용
 #include <string>
 #include <memory>
 #include <mutex>
