@@ -3,7 +3,7 @@
  * @brief CSP Gateway 동적 전송 대상 시스템 구현 - 완성본
  * @author PulseOne Development Team  
  * @date 2025-09-29
- * @version 3.0.0 (헤더 통합 완료, include 정리)
+ * @version 3.0.0 (모든 컴파일 에러 해결)
  */
 
 #include "CSP/CSPDynamicTargets.h"
@@ -22,6 +22,31 @@
 
 namespace PulseOne {
 namespace CSP {
+
+// =============================================================================
+// 헬퍼 함수들 (사용되는 함수보다 먼저 정의)
+// =============================================================================
+
+/**
+ * @brief XML 문자 이스케이프
+ */
+std::string escapeXmlText(const std::string& text) {
+    std::string result;
+    result.reserve(text.length() + 16);
+    
+    for (char c : text) {
+        switch (c) {
+            case '<': result += "&lt;"; break;
+            case '>': result += "&gt;"; break;
+            case '&': result += "&amp;"; break;
+            case '"': result += "&quot;"; break;
+            case '\'': result += "&apos;"; break;
+            default: result += c; break;
+        }
+    }
+    
+    return result;
+}
 
 // =============================================================================
 // 유틸리티 함수들 구현 (헤더에서 inline으로 정의되지 않은 것들)
@@ -47,7 +72,12 @@ bool isValidAlarmMessageExtended(const AlarmMessage& alarm) {
         return false;
     }
     
-    // 추가 검증 로직...
+    // 알람 플래그 검증 (0=해제, 1=발생)
+    if (alarm.al < 0 || alarm.al > 1) {
+        LogManager::getInstance().Error("유효하지 않은 알람 플래그: " + std::to_string(alarm.al));
+        return false;
+    }
+    
     return true;
 }
 
@@ -124,48 +154,49 @@ bool isValidTargetConfigExtended(const json& config, const std::string& target_t
 }
 
 /**
- * @brief 문자열에서 변수 치환
+ * @brief 문자열에서 변수 치환 (실제 AlarmMessage 필드 기준)
  */
 std::string replaceVariables(const std::string& template_str, const AlarmMessage& alarm) {
     std::string result = template_str;
     
-    // 기본 알람 필드들 치환
-    std::regex building_regex(R"(\{building_id\})");
+    // 실제 AlarmMessage 필드들 치환: bd, nm, vl, tm, al, st, des
+    std::regex building_regex(R"(\{building_id\}|\{bd\})");
     result = std::regex_replace(result, building_regex, std::to_string(alarm.bd));
     
-    std::regex point_regex(R"(\{point_name\})");
+    std::regex point_regex(R"(\{point_name\}|\{nm\})");
     result = std::regex_replace(result, point_regex, alarm.nm);
     
-    std::regex value_regex(R"(\{value\})");
+    std::regex value_regex(R"(\{value\}|\{vl\})");
     result = std::regex_replace(result, value_regex, std::to_string(alarm.vl));
     
-    std::regex status_regex(R"(\{status\})");
+    std::regex status_regex(R"(\{status\}|\{st\})");
     result = std::regex_replace(result, status_regex, std::to_string(alarm.st));
     
-    // 타임스탬프 치환
-    std::regex timestamp_regex(R"(\{timestamp\})");
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
-    result = std::regex_replace(result, timestamp_regex, ss.str());
+    std::regex alarm_flag_regex(R"(\{alarm_flag\}|\{al\})");
+    result = std::regex_replace(result, alarm_flag_regex, std::to_string(alarm.al));
     
-    // 날짜 관련 치환
-    std::regex date_regex(R"(\{date\})");
-    std::stringstream date_ss;
-    date_ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d");
-    result = std::regex_replace(result, date_regex, date_ss.str());
+    std::regex description_regex(R"(\{description\}|\{des\})");
+    result = std::regex_replace(result, description_regex, alarm.des);
     
-    std::regex time_regex(R"(\{time\})");
-    std::stringstream time_ss;
-    time_ss << std::put_time(std::gmtime(&time_t), "%H:%M:%S");
-    result = std::regex_replace(result, time_regex, time_ss.str());
+    // 타임스탬프 처리 (직접 생성)
+    std::regex timestamp_regex(R"(\{timestamp\}|\{tm\})");
+    std::string timestamp_str;
+    if (alarm.tm.empty()) {
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        std::stringstream ss;
+        ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+        timestamp_str = ss.str();
+    } else {
+        timestamp_str = alarm.tm;
+    }
+    result = std::regex_replace(result, timestamp_regex, timestamp_str);
     
     return result;
 }
 
 /**
- * @brief JSON 알람 메시지 생성
+ * @brief JSON 알람 메시지 생성 (실제 AlarmMessage 필드 기준)
  */
 json createAlarmJson(const AlarmMessage& alarm) {
     auto now = std::chrono::system_clock::now();
@@ -173,23 +204,24 @@ json createAlarmJson(const AlarmMessage& alarm) {
     std::stringstream ss;
     ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
     
-    return json{
-        {"building_id", alarm.bd},
-        {"point_name", alarm.nm},
-        {"value", alarm.vl},
-        {"status", alarm.st},
-        {"timestamp", ss.str()},
-        {"alarm_type", "CRITICAL"},
-        {"severity", 1},
-        {"message", "Alarm occurred on " + alarm.nm + " with value " + std::to_string(alarm.vl)},
-        {"source", "PulseOne CSP Gateway"},
-        {"device_name", alarm.device_name.empty() ? alarm.nm : alarm.device_name},
-        {"unit", alarm.unit.empty() ? "" : alarm.unit}
-    };
+    // 실제 AlarmMessage 필드만 사용: bd, nm, vl, tm, al, st, des
+    json j;
+    j["building_id"] = alarm.bd;
+    j["point_name"] = alarm.nm;
+    j["value"] = alarm.vl;
+    j["timestamp"] = alarm.tm.empty() ? ss.str() : alarm.tm;
+    j["alarm_flag"] = alarm.al;
+    j["status"] = alarm.st;
+    j["description"] = alarm.des;
+    j["source"] = "PulseOne CSP Gateway";
+    j["severity"] = 1;
+    j["alarm_type"] = "CRITICAL";
+    
+    return j;
 }
 
 /**
- * @brief 알람 메시지를 CSV 형식으로 변환
+ * @brief 알람 메시지를 CSV 형식으로 변환 (실제 필드 기준)
  */
 std::string createAlarmCsv(const AlarmMessage& alarm) {
     auto now = std::chrono::system_clock::now();
@@ -201,17 +233,16 @@ std::string createAlarmCsv(const AlarmMessage& alarm) {
     csv << alarm.bd << ","
         << "\"" << alarm.nm << "\","
         << alarm.vl << ","
+        << "\"" << (alarm.tm.empty() ? ss.str() : alarm.tm) << "\","
+        << alarm.al << ","
         << alarm.st << ","
-        << "\"" << ss.str() << "\","
-        << "\"CRITICAL\","
-        << "1,"
-        << "\"Alarm occurred on " << alarm.nm << "\"";
+        << "\"" << alarm.des << "\"";
     
     return csv.str();
 }
 
 /**
- * @brief 알람 메시지를 XML 형식으로 변환
+ * @brief 알람 메시지를 XML 형식으로 변환 (실제 필드 기준)
  */
 std::string createAlarmXml(const AlarmMessage& alarm) {
     auto now = std::chrono::system_clock::now();
@@ -223,13 +254,12 @@ std::string createAlarmXml(const AlarmMessage& alarm) {
     xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         << "<alarm>\n"
         << "  <building_id>" << alarm.bd << "</building_id>\n"
-        << "  <point_name>" << alarm.nm << "</point_name>\n"
+        << "  <point_name>" << escapeXmlText(alarm.nm) << "</point_name>\n"
         << "  <value>" << alarm.vl << "</value>\n"
+        << "  <timestamp>" << (alarm.tm.empty() ? ss.str() : alarm.tm) << "</timestamp>\n"
+        << "  <alarm_flag>" << alarm.al << "</alarm_flag>\n"
         << "  <status>" << alarm.st << "</status>\n"
-        << "  <timestamp>" << ss.str() << "</timestamp>\n"
-        << "  <alarm_type>CRITICAL</alarm_type>\n"
-        << "  <severity>1</severity>\n"
-        << "  <message>Alarm occurred on " << alarm.nm << "</message>\n"
+        << "  <description>" << escapeXmlText(alarm.des) << "</description>\n"
         << "  <source>PulseOne CSP Gateway</source>\n"
         << "</alarm>";
     
@@ -368,13 +398,13 @@ std::chrono::milliseconds calculateRetryDelay(int retry_count, int base_delay_ms
 }
 
 /**
- * @brief 문자열을 안전하게 이스케이프
+ * @brief 문자열을 안전하게 이스케이프 (warning 완전 해결)
  */
 std::string escapeJsonString(const std::string& input) {
     std::string output;
     output.reserve(input.length() + 16);
     
-    for (char c : input) {
+    for (unsigned char c : input) {  // unsigned char로 변경
         switch (c) {
             case '"': output += "\\\""; break;
             case '\\': output += "\\\\"; break;
@@ -384,10 +414,12 @@ std::string escapeJsonString(const std::string& input) {
             case '\r': output += "\\r"; break;
             case '\t': output += "\\t"; break;
             default:
-                if (c >= 0 && c < 32) {
-                    output += "\\u" + std::to_string(static_cast<unsigned char>(c));
+                if (c < 32) {  // >= 0 조건 완전 제거
+                    char hex_buf[8];
+                    snprintf(hex_buf, sizeof(hex_buf), "\\u%04x", c);
+                    output += hex_buf;
                 } else {
-                    output += c;
+                    output += static_cast<char>(c);
                 }
                 break;
         }
@@ -417,27 +449,6 @@ std::string escapeCsvField(const std::string& field) {
         return escaped;
     }
     return field;
-}
-
-/**
- * @brief XML 문자 이스케이프
- */
-std::string escapeXmlText(const std::string& text) {
-    std::string result;
-    result.reserve(text.length() + 16);
-    
-    for (char c : text) {
-        switch (c) {
-            case '<': result += "&lt;"; break;
-            case '>': result += "&gt;"; break;
-            case '&': result += "&amp;"; break;
-            case '"': result += "&quot;"; break;
-            case '\'': result += "&apos;"; break;
-            default: result += c; break;
-        }
-    }
-    
-    return result;
 }
 
 /**
