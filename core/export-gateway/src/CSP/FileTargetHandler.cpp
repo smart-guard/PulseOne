@@ -256,6 +256,166 @@ json FileTargetHandler::getStatus() const {
     };
 }
 
+
+bool FileTargetHandler::validateConfig(const json& config, std::vector<std::string>& errors) {
+    errors.clear();
+    
+    try {
+        // 필수 필드 검증
+        if (!config.contains("base_path")) {
+            errors.push_back("base_path 필드가 필수입니다");
+            return false;
+        }
+        
+        if (!config["base_path"].is_string() || config["base_path"].get<std::string>().empty()) {
+            errors.push_back("base_path는 비어있지 않은 문자열이어야 합니다");
+            return false;
+        }
+        
+        std::string base_path = config["base_path"].get<std::string>();
+        
+        // 경로 유효성 검증
+        try {
+            std::filesystem::path path(base_path);
+            if (!path.is_absolute() && !path.is_relative()) {
+                errors.push_back("base_path가 유효한 경로 형식이 아닙니다: " + base_path);
+                return false;
+            }
+        } catch (const std::exception& e) {
+            errors.push_back("base_path 경로 검증 실패: " + std::string(e.what()));
+            return false;
+        }
+        
+        // 선택적 필드 검증
+        if (config.contains("file_format")) {
+            if (!config["file_format"].is_string()) {
+                errors.push_back("file_format은 문자열이어야 합니다");
+                return false;
+            }
+            
+            std::string format = config["file_format"].get<std::string>();
+            std::transform(format.begin(), format.end(), format.begin(), ::tolower);
+            
+            std::vector<std::string> supported_formats = {"json", "text", "csv", "xml"};
+            if (std::find(supported_formats.begin(), supported_formats.end(), format) == supported_formats.end()) {
+                errors.push_back("지원되지 않는 파일 형식: " + format + " (지원: json, text, csv, xml)");
+                return false;
+            }
+        }
+        
+        // 파일명 템플릿 검증
+        if (config.contains("filename_template")) {
+            if (!config["filename_template"].is_string()) {
+                errors.push_back("filename_template은 문자열이어야 합니다");
+                return false;
+            }
+            
+            std::string template_str = config["filename_template"].get<std::string>();
+            if (template_str.empty()) {
+                errors.push_back("filename_template이 비어있습니다");
+                return false;
+            }
+            
+            // 금지된 문자 검사 (OS별 제한)
+            std::string forbidden_chars = "<>:\"|?*";
+            for (char c : forbidden_chars) {
+                if (template_str.find(c) != std::string::npos) {
+                    errors.push_back("filename_template에 금지된 문자가 포함되어 있습니다: " + std::string(1, c));
+                    return false;
+                }
+            }
+        }
+        
+        // 압축 설정 검증
+        if (config.contains("compression_enabled")) {
+            if (!config["compression_enabled"].is_boolean()) {
+                errors.push_back("compression_enabled는 boolean이어야 합니다");
+                return false;
+            }
+            
+            if (config["compression_enabled"].get<bool>() && config.contains("compression_format")) {
+                if (!config["compression_format"].is_string()) {
+                    errors.push_back("compression_format은 문자열이어야 합니다");
+                    return false;
+                }
+                
+                std::string comp_format = config["compression_format"].get<std::string>();
+                std::vector<std::string> supported_compression = {"gzip", "zip"};
+                if (std::find(supported_compression.begin(), supported_compression.end(), comp_format) == supported_compression.end()) {
+                    errors.push_back("지원되지 않는 압축 형식: " + comp_format + " (지원: gzip, zip)");
+                    return false;
+                }
+            }
+        }
+        
+        // 로테이션 설정 검증
+        if (config.contains("rotation")) {
+            const auto& rotation = config["rotation"];
+            if (!rotation.is_object()) {
+                errors.push_back("rotation 설정은 객체여야 합니다");
+                return false;
+            }
+            
+            if (rotation.contains("max_file_size_mb")) {
+                if (!rotation["max_file_size_mb"].is_number_unsigned()) {
+                    errors.push_back("max_file_size_mb는 양의 정수여야 합니다");
+                    return false;
+                }
+                
+                size_t max_size = rotation["max_file_size_mb"].get<size_t>();
+                if (max_size == 0 || max_size > 10240) { // 최대 10GB
+                    errors.push_back("max_file_size_mb는 1-10240 범위여야 합니다");
+                    return false;
+                }
+            }
+            
+            if (rotation.contains("auto_cleanup_days")) {
+                if (!rotation["auto_cleanup_days"].is_number_integer()) {
+                    errors.push_back("auto_cleanup_days는 정수여야 합니다");
+                    return false;
+                }
+                
+                int cleanup_days = rotation["auto_cleanup_days"].get<int>();
+                if (cleanup_days < 0 || cleanup_days > 3650) { // 최대 10년
+                    errors.push_back("auto_cleanup_days는 0-3650 범위여야 합니다");
+                    return false;
+                }
+            }
+        }
+        
+        // 파일 권한 검증
+        if (config.contains("file_permissions")) {
+            if (!config["file_permissions"].is_string()) {
+                errors.push_back("file_permissions는 문자열이어야 합니다 (예: '0644')");
+                return false;
+            }
+            
+            std::string perm_str = config["file_permissions"].get<std::string>();
+            if (perm_str.length() != 4 || perm_str[0] != '0') {
+                errors.push_back("file_permissions는 '0644' 형식이어야 합니다");
+                return false;
+            }
+            
+            // 8진수 형식 검증
+            for (size_t i = 1; i < perm_str.length(); ++i) {
+                if (perm_str[i] < '0' || perm_str[i] > '7') {
+                    errors.push_back("file_permissions에 유효하지 않은 8진수 숫자가 포함되어 있습니다");
+                    return false;
+                }
+            }
+        }
+        
+        LogManager::getInstance().Debug("파일 타겟 설정 검증 성공");
+        return true;
+        
+    } catch (const std::exception& e) {
+        errors.push_back("설정 검증 중 예외 발생: " + std::string(e.what()));
+        LogManager::getInstance().Error("파일 타겟 설정 검증 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+
 void FileTargetHandler::cleanup() {
     should_stop_ = true;
     if (cleanup_thread_ && cleanup_thread_->joinable()) {
