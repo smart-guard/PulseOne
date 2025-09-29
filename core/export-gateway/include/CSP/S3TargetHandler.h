@@ -92,11 +92,20 @@ public:
      * @return 연결 성공 여부
      */
     bool testConnection(const json& config) override;
-    
     /**
      * @brief 핸들러 타입 반환
      */
-    std::string getHandlerType() const override;
+    std::string getHandlerType() const override { return "S3"; }
+
+    /**
+     * @brief 핸들러 상태 반환
+     */
+    json getStatus() const override;
+
+    /**
+     * @brief 핸들러 정리
+     */
+    void cleanup() override;
     
     /**
      * @brief 설정 유효성 검증

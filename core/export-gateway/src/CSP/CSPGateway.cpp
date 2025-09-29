@@ -164,6 +164,14 @@ AlarmSendResult CSPGateway::taskAlarmSingle(const AlarmMessage& alarm_message) {
     return taskAlarmSingleLegacy(alarm_message);
 }
 
+AlarmSendResult CSPGateway::taskAlarmSingleLegacy(const AlarmMessage& alarm) {
+    // 레거시 알람 처리 로직
+    LogManager::getInstance().Debug("레거시 알람 처리: " + alarm.nm);
+    
+    // 실제 구현: taskAlarmSingle()을 호출하고 결과 반환
+    return taskAlarmSingle(alarm);
+}
+
 // =============================================================================
 // ✅ 수정 2: AlarmSendResult 필드명 수정
 // =============================================================================
