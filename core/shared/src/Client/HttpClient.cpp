@@ -47,19 +47,28 @@ HttpClient::~HttpClient() {
 }
 
 void HttpClient::initializeHttpLibrary() {
+    LOG_DEBUG("HttpClient::initializeHttpLibrary() 시작");
+    LOG_DEBUG("base_url: " + base_url_);
+    
     // httplib 우선 사용
 #ifdef HAVE_HTTPLIB
     try {
+        LOG_DEBUG("Trying httplib initialization...");
+        
         if (!base_url_.empty()) {
             auto parsed = parseUrl(base_url_);
             std::string host = parsed["host"];
             int port = std::stoi(parsed.count("port") ? parsed["port"] : 
                                 (parsed["scheme"] == "https" ? "443" : "80"));
             
+            LOG_DEBUG("Parsed - scheme: " + parsed["scheme"] + ", host: " + host + ", port: " + std::to_string(port));
+            
             if (parsed["scheme"] == "https") {
                 httplib_client_ = std::make_unique<httplib::SSLClient>(host, port);
+                LOG_DEBUG("SSLClient created");
             } else {
                 httplib_client_ = std::make_unique<httplib::Client>(host, port);
+                LOG_DEBUG("Client created");
             }
             
             httplib_client_->set_connection_timeout(options_.connect_timeout_sec);
@@ -70,24 +79,32 @@ void HttpClient::initializeHttpLibrary() {
                 auto ssl_client = dynamic_cast<httplib::SSLClient*>(httplib_client_.get());
                 if (ssl_client) {
                     ssl_client->set_ca_cert_path("");
+                    LOG_DEBUG("SSL verification disabled");
                 }
             }
         } else {
             httplib_client_ = std::make_unique<httplib::Client>();
+            LOG_DEBUG("Empty base_url - default client created");
         }
         
         library_type_ = HttpLibraryType::HTTPLIB;
-        LOG_DEBUG("HttpClient initialized with httplib");
+        LOG_DEBUG("HttpClient initialized with httplib successfully");
         return;
+        
     } catch (const std::exception& e) {
         LOG_ERROR("Failed to initialize httplib: " + std::string(e.what()));
     }
+#else
+    LOG_DEBUG("HAVE_HTTPLIB not defined");
 #endif
 
     // httplib 실패 시 curl 사용
 #ifdef HAS_CURL
     try {
+        LOG_DEBUG("Trying curl initialization...");
+        
         if (!curl_global_initialized_) {
+            LOG_DEBUG("Initializing curl globally...");
             curl_global_init(CURL_GLOBAL_DEFAULT);
             curl_global_initialized_ = true;
         }
@@ -95,15 +112,32 @@ void HttpClient::initializeHttpLibrary() {
         curl_handle_ = curl_easy_init();
         if (curl_handle_) {
             library_type_ = HttpLibraryType::CURL;
-            LOG_DEBUG("HttpClient initialized with curl");
+            LOG_DEBUG("HttpClient initialized with curl successfully");
             return;
+        } else {
+            LOG_ERROR("curl_easy_init() returned nullptr");
         }
     } catch (const std::exception& e) {
         LOG_ERROR("Failed to initialize curl: " + std::string(e.what()));
     }
+#else
+    LOG_DEBUG("HAS_CURL not defined");
 #endif
 
-    LOG_ERROR("No HTTP library available");
+    LOG_ERROR("No HTTP library available - HAVE_HTTPLIB=" 
+#ifdef HAVE_HTTPLIB
+              "1"
+#else
+              "0"
+#endif
+              ", HAS_CURL="
+#ifdef HAS_CURL
+              "1"
+#else
+              "0"
+#endif
+    );
+    
     library_type_ = HttpLibraryType::NONE;
 }
 
