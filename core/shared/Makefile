@@ -1,5 +1,5 @@
 # =============================================================================
-# shared/Makefile - PulseOne 공유 라이브러리 (Security 지원 추가)
+# shared/Makefile - PulseOne 공유 라이브러리 (OpenSSL + Security 지원)
 # =============================================================================
 
 # 플랫폼 감지
@@ -17,7 +17,7 @@ endif
 
 # 컴파일러 설정
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -fPIC  -DHAS_SHARED_LIBS=1
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -fPIC -DHAS_SHARED_LIBS=1
 
 # Windows 크로스 컴파일 지원
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
@@ -54,25 +54,58 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Export \
            -I$(INCLUDE_DIR)/Alarm
 
-# 라이브러리 감지
+# =============================================================================
+# 라이브러리 감지 (OpenSSL 추가!)
+# =============================================================================
+
 HAS_CURL := $(shell pkg-config --exists libcurl 2>/dev/null && echo "1" || echo "0")
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+
+# 🔥 OpenSSL 감지 (S3Client용 - 필수!)
+HAS_OPENSSL := $(shell pkg-config --exists openssl 2>/dev/null && echo "1" || echo "0")
+ifeq ($(HAS_OPENSSL),0)
+    HAS_OPENSSL := $(shell echo '\#include <openssl/sha.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+endif
+
+# =============================================================================
+# 조건부 컴파일 플래그
+# =============================================================================
 
 ifeq ($(HAS_CURL),1)
     CXXFLAGS += -DHAS_CURL
     LDFLAGS += $(shell pkg-config --libs libcurl)
 endif
 
-# 조건부 플래그
 ifeq ($(HAS_NLOHMANN_JSON),1)
     CXXFLAGS += -DHAS_NLOHMANN_JSON
 endif
+
 ifeq ($(HAS_HIREDIS),1)
     CXXFLAGS += -DHAS_HIREDIS
 endif
 
+# 🔥 OpenSSL 컴파일 플래그 (가장 중요!)
+ifeq ($(HAS_OPENSSL),1)
+    OPENSSL_LIBS := $(shell pkg-config --libs openssl 2>/dev/null)
+    ifneq ($(OPENSSL_LIBS),)
+        CXXFLAGS += -DHAS_OPENSSL=1
+        LDFLAGS += $(OPENSSL_LIBS)
+        $(info ✅ OpenSSL found via pkg-config)
+    else
+        CXXFLAGS += -DHAS_OPENSSL=1
+        LDFLAGS += -lssl -lcrypto
+        $(info ✅ OpenSSL found (direct link))
+    endif
+else
+    $(warning ⚠️  OpenSSL not found - S3 AWS Signature V4 will NOT work!)
+    $(warning     Install: sudo apt-get install libssl-dev pkg-config)
+endif
+
+# =============================================================================
 # 소스 파일 수집 (Security 추가)
+# =============================================================================
+
 COMMON_SOURCES = $(wildcard $(SRC_DIR)/Common/*.cpp) \
                 $(wildcard $(SRC_DIR)/Utils/*.cpp) \
                 $(wildcard $(SRC_DIR)/Platform/*.cpp)
@@ -116,7 +149,7 @@ NC = \033[0m
 # 메인 타겟들
 # =============================================================================
 
-.PHONY: all clean common security database client export alarm test-headers help info
+.PHONY: all clean common security database client export alarm test-headers help info openssl-check
 
 all: $(BUILD_DIR) $(LIB_DIR) common security database client export alarm
 	@echo -e "$(GREEN)✅ 모든 공유 라이브러리 빌드 완료 [$(PLATFORM)]$(NC)"
@@ -209,6 +242,25 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
+# OpenSSL 확인 타겟 (디버깅용)
+# =============================================================================
+
+openssl-check:
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "🔒 OpenSSL 설정 확인 (Shared 라이브러리)"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "HAS_OPENSSL = $(HAS_OPENSSL)"
+ifeq ($(HAS_OPENSSL),1)
+	@echo "✅ OpenSSL 활성화됨"
+	@echo "   CXXFLAGS: $(CXXFLAGS)" | grep -o "HAS_OPENSSL=1" && echo "   ✅ -DHAS_OPENSSL=1 플래그 적용됨" || echo "   ❌ 플래그 누락!"
+	@pkg-config --modversion openssl 2>/dev/null && echo "   OpenSSL 버전: $$(pkg-config --modversion openssl)" || echo "   버전 확인 불가"
+else
+	@echo "❌ OpenSSL 비활성화됨 - S3Client가 dummy_hash 사용!"
+	@echo "   해결: sudo apt-get install libssl-dev pkg-config"
+endif
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# =============================================================================
 # 테스트 및 검증 (Security 헤더 추가)
 # =============================================================================
 
@@ -249,7 +301,7 @@ windows-cross:
 	$(MAKE) CROSS_COMPILE_WINDOWS=1 all
 
 # =============================================================================
-# 정보 및 상태 (Security 추가)
+# 정보 및 상태 (OpenSSL 추가)
 # =============================================================================
 
 info:
@@ -262,8 +314,10 @@ info:
 	@echo "Source files: $(words $(COMMON_SOURCES) $(SECURITY_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(EXPORT_SOURCES) $(ALARM_SOURCES))"
 	@echo ""
 	@echo "Library Support:"
+	@echo "CURL (libcurl): $(if $(filter 1,$(HAS_CURL)),✅ available,❌ missing)"
 	@echo "JSON (nlohmann): $(if $(filter 1,$(HAS_NLOHMANN_JSON)),✅ available,❌ missing)"
 	@echo "Redis (hiredis): $(if $(filter 1,$(HAS_HIREDIS)),✅ available,❌ missing)"
+	@echo "OpenSSL: $(if $(filter 1,$(HAS_OPENSSL)),✅ available,❌ missing) $(if $(filter 1,$(HAS_OPENSSL)),<- S3 서명 가능,<- S3 서명 불가!)"
 	@echo ""
 	@echo "Libraries:"
 	@echo "libpulseone-common: $(if $(wildcard $(COMMON_LIB)),✅ exists,❌ missing)"
@@ -279,7 +333,8 @@ info:
 
 clean:
 	@echo -e "$(YELLOW)🧹 Cleaning shared libraries [$(PLATFORM)]...$(NC)"
-	@rm -rf $(BUILD_DIR) $(LIB_DIR)
+	@rm -rf $(BUILD_DIR)
+	@rm -rf $(LIB_DIR)/*.a $(LIB_DIR)/*.so 2>/dev/null || true
 	@echo -e "$(GREEN)✅ Clean completed$(NC)"
 
 install: all
@@ -299,17 +354,19 @@ help:
 	@echo "======================================"
 	@echo ""
 	@echo -e "$(GREEN)Main Targets:$(NC)"
+	@echo "  make              - Build all shared libraries (기본)"
 	@echo "  make all          - Build all shared libraries"
 	@echo "  make common       - Build common library (BasicTypes, Utils, etc.)"
 	@echo "  make security     - Build security library (SecretManager, etc.)"
 	@echo "  make database     - Build database library (Entities, Repositories)"
-	@echo "  make client       - Build client library (Redis, InfluxDB clients)"
+	@echo "  make client       - Build client library (S3Client, Redis, InfluxDB)"
 	@echo "  make export       - Build export library (Export types)"
 	@echo "  make alarm        - Build alarm library (Alarm types)"
 	@echo ""
 	@echo -e "$(GREEN)Testing:$(NC)"
 	@echo "  make test-headers - Test header file syntax"
 	@echo "  make test-compile - Test compilation"
+	@echo "  make openssl-check - Check OpenSSL configuration"
 	@echo ""
 	@echo -e "$(GREEN)Cross-Compilation:$(NC)"
 	@echo "  make windows-cross - Build for Windows (requires mingw-w64)"
@@ -321,6 +378,10 @@ help:
 	@echo "  make help         - Show this help"
 	@echo ""
 	@echo -e "$(YELLOW)Current Platform: $(PLATFORM)$(NC)"
-	@echo -e "$(YELLOW)Header files: $(shell find $(INCLUDE_DIR) -name '*.h' 2>/dev/null | wc -l)$(NC)"
+	@echo -e "$(YELLOW)OpenSSL Status: $(if $(filter 1,$(HAS_OPENSSL)),✅ Enabled,❌ Disabled)$(NC)"
 
-.DEFAULT_GOAL := help
+# =============================================================================
+# 🔥 기본 타겟 변경: make만 입력해도 빌드되도록!
+# =============================================================================
+
+.DEFAULT_GOAL := all
