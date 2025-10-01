@@ -218,22 +218,33 @@ bool DynamicTargetManager::loadConfiguration() {
 }
 
 bool DynamicTargetManager::reloadIfChanged() {
+    std::unique_lock<std::mutex> lock(config_mutex_);
+    
     try {
         if (!std::filesystem::exists(config_file_path_)) {
             return false;
         }
         
+        // ✅ 수정: fs_time 변수를 실제로 사용
         auto fs_time = std::filesystem::last_write_time(config_file_path_);
-        // 파일 시간과 시스템 시간 비교를 단순화
         auto now = std::chrono::system_clock::now();
         
-        // 1초 이상 차이가 나면 변경된 것으로 간주
-        if ((now - last_config_check_) > std::chrono::seconds(1)) {
-            LogManager::getInstance().Info("설정 파일 변경 감지, 자동 재로드 중...");
-            return loadConfiguration();
+        // 마지막 체크 이후 변경 여부 확인
+        if (last_config_check_ != std::chrono::system_clock::time_point::min()) {
+            auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                fs_time - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now()
+            );
+            
+            // 파일 수정 시간이 마지막 체크보다 이전이면 변경 없음
+            if (sctp <= last_config_check_) {
+                return false;
+            }
         }
         
-        return false;
+        last_config_check_ = now;
+        
+        LogManager::getInstance().Info("설정 파일 변경 감지 - 재로드 수행");
+        return loadConfiguration();
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("설정 파일 변경 확인 실패: " + std::string(e.what()));
@@ -846,21 +857,36 @@ void DynamicTargetManager::startBackgroundThreads() {
 }
 
 void DynamicTargetManager::stopBackgroundThreads() {
-    should_stop_.store(true);
-
-    auto timeout = std::chrono::milliseconds(1000);
+    LogManager::getInstance().Info("백그라운드 스레드 종료 중...");
     
+    // 1️⃣ 종료 플래그 설정
+    should_stop_.store(true);
+    
+    // 2️⃣ 모든 condition variable 깨우기
+    config_watcher_cv_.notify_all();
+    health_check_cv_.notify_all();
+    metrics_collector_cv_.notify_all();
+    
+    // 3️⃣ 스레드 join (즉시 종료됨)
     if (config_watcher_thread_ && config_watcher_thread_->joinable()) {
+        LogManager::getInstance().Debug("config_watcher_thread_ 종료 대기...");
         config_watcher_thread_->join();
+        LogManager::getInstance().Debug("config_watcher_thread_ 종료 완료");
     }
     
     if (health_check_thread_ && health_check_thread_->joinable()) {
+        LogManager::getInstance().Debug("health_check_thread_ 종료 대기...");
         health_check_thread_->join();
+        LogManager::getInstance().Debug("health_check_thread_ 종료 완료");
     }
     
     if (metrics_collector_thread_ && metrics_collector_thread_->joinable()) {
+        LogManager::getInstance().Debug("metrics_collector_thread_ 종료 대기...");
         metrics_collector_thread_->join();
+        LogManager::getInstance().Debug("metrics_collector_thread_ 종료 완료");
     }
+    
+    LogManager::getInstance().Info("백그라운드 스레드 종료 완료");
 }
 
 bool DynamicTargetManager::processTargetByIndex(size_t index, const AlarmMessage& alarm, TargetSendResult& result) {
@@ -953,7 +979,27 @@ void DynamicTargetManager::updateTargetHealth(const std::string& target_name, bo
 }
 
 void DynamicTargetManager::updateTargetStatistics(const std::string& target_name, const TargetSendResult& result) {
-    // 이미 processTargetByIndex에서 처리됨
+    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+    
+    auto it = findTarget(target_name);
+    if (it != targets_.end()) {
+        // ✅ 수정: atomic 변수들 직접 업데이트
+        if (result.success) {
+            it->success_count.fetch_add(1);
+            it->last_success_time = std::chrono::system_clock::now();
+            it->consecutive_failures.store(0);
+        } else {
+            it->failure_count.fetch_add(1);
+            it->last_failure_time = std::chrono::system_clock::now();
+            it->consecutive_failures.fetch_add(1);
+        }
+        
+        // 평균 응답 시간 업데이트 (이동 평균)
+        double current_avg = it->avg_response_time_ms.load();
+        double alpha = 0.3;  // 가중치
+        double new_avg = alpha * result.response_time.count() + (1.0 - alpha) * current_avg;
+        it->avg_response_time_ms.store(new_avg);
+    }
 }
 
 bool DynamicTargetManager::createDefaultConfigFile() {
@@ -1044,27 +1090,115 @@ std::vector<DynamicTarget>::const_iterator DynamicTargetManager::findTarget(cons
 }
 
 void DynamicTargetManager::configWatcherThread() {
+    LogManager::getInstance().Info("Config Watcher Thread 시작");
+    
     while (!should_stop_.load()) {
-        std::this_thread::sleep_for(std::chrono::seconds(5));
-        if (should_stop_.load()) break;
-        reloadIfChanged();
+        // ✅ sleep_for() 대신 wait_for() 사용
+        std::unique_lock<std::mutex> lock(cv_mutex_);
+        config_watcher_cv_.wait_for(lock, std::chrono::seconds(5), [this]() {
+            return should_stop_.load();
+        });
+        
+        if (should_stop_.load()) {
+            LogManager::getInstance().Info("Config Watcher Thread 종료 신호 수신");
+            break;
+        }
+        
+        try {
+            reloadIfChanged();
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("설정 리로드 실패: " + std::string(e.what()));
+        }
     }
+    
+    LogManager::getInstance().Info("Config Watcher Thread 종료");
 }
 
 void DynamicTargetManager::healthCheckThread() {
+    LogManager::getInstance().Info("Health Check Thread 시작");
+    
     while (!should_stop_.load()) {
-        std::this_thread::sleep_for(std::chrono::seconds(60));
-        if (should_stop_.load()) break;
+        // ✅ 60초 대기, 하지만 즉시 깨울 수 있음
+        std::unique_lock<std::mutex> lock(cv_mutex_);
+        health_check_cv_.wait_for(lock, std::chrono::seconds(60), [this]() {
+            return should_stop_.load();
+        });
+        
+        if (should_stop_.load()) {
+            LogManager::getInstance().Info("Health Check Thread 종료 신호 수신");
+            break;
+        }
+        
         // 헬스 체크 로직
+        try {
+            LogManager::getInstance().Debug("타겟 헬스 체크 수행 중...");
+            
+            std::shared_lock<std::shared_mutex> targets_lock(targets_mutex_);
+            for (const auto& target : targets_) {
+                if (!target.enabled) continue;
+                
+                auto protector_it = failure_protectors_.find(target.name);
+                if (protector_it != failure_protectors_.end()) {
+                    auto stats = protector_it->second->getStats();
+                    
+                    // ✅ 수정: current_state는 문자열
+                    if (stats.current_state == "OPEN") {
+                        LogManager::getInstance().Warn("타겟 비정상: " + target.name);
+                    } else if (stats.current_state == "HALF_OPEN") {
+                        LogManager::getInstance().Info("타겟 복구 중: " + target.name);
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("헬스 체크 실패: " + std::string(e.what()));
+        }
     }
+    
+    LogManager::getInstance().Info("Health Check Thread 종료");
 }
 
 void DynamicTargetManager::metricsCollectorThread() {
+    LogManager::getInstance().Info("Metrics Collector Thread 시작");
+    
     while (!should_stop_.load()) {
-        std::this_thread::sleep_for(std::chrono::seconds(30));
-        if (should_stop_.load()) break;
+        // ✅ 30초 대기, 하지만 즉시 깨울 수 있음
+        std::unique_lock<std::mutex> lock(cv_mutex_);
+        metrics_collector_cv_.wait_for(lock, std::chrono::seconds(30), [this]() {
+            return should_stop_.load();
+        });
+        
+        if (should_stop_.load()) {
+            LogManager::getInstance().Info("Metrics Collector Thread 종료 신호 수신");
+            break;
+        }
+        
         // 메트릭 수집 로직
+        try {
+            LogManager::getInstance().Debug("메트릭 수집 중...");
+            
+            auto total = total_requests_.load();
+            auto success = successful_requests_.load();
+            auto failed = failed_requests_.load();  // ✅ 사용하도록 수정
+            auto current = concurrent_requests_.load();
+            auto peak = peak_concurrent_requests_.load();
+            
+            if (total > 0) {
+                double success_rate = (double)success / total * 100.0;
+                double failure_rate = (double)failed / total * 100.0;
+                
+                LogManager::getInstance().Info(
+                    "메트릭 - 총:" + std::to_string(total) + 
+                    ", 성공:" + std::to_string(success) + "(" + std::to_string(success_rate) + "%)" +
+                    ", 실패:" + std::to_string(failed) + "(" + std::to_string(failure_rate) + "%)" +
+                    ", 동시:" + std::to_string(current) + "/" + std::to_string(peak)
+                );
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("메트릭 수집 실패: " + std::string(e.what()));
+        }
     }
+    
+    LogManager::getInstance().Info("Metrics Collector Thread 종료");
 }
 
 void DynamicTargetManager::cleanupThread() {

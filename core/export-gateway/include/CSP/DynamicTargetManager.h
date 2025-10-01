@@ -128,6 +128,12 @@ private:
     std::unique_ptr<std::thread> metrics_collector_thread_;
     std::unique_ptr<std::thread> cleanup_thread_;
 
+    // Condition Variable들 (MqttFailover 패턴)
+    std::condition_variable config_watcher_cv_;
+    std::condition_variable health_check_cv_;
+    std::condition_variable metrics_collector_cv_;
+    std::mutex cv_mutex_;  // condition variable용 mutex
+
 public:
     // =======================================================================
     // 생성자 및 라이프사이클

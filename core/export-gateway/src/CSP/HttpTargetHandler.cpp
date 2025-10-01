@@ -46,13 +46,17 @@ bool HttpTargetHandler::initialize(const json& config) {
     try {
         LogManager::getInstance().Info("HTTP 타겟 핸들러 초기화 시작");
         
-        // 필수 설정 검증
-        if (!config.contains("url") || config["url"].get<std::string>().empty()) {
-            LogManager::getInstance().Error("HTTP URL이 설정되지 않음");
+        // URL/Endpoint 가져오기 (endpoint 우선, 없으면 url)
+        std::string url;
+        if (config.contains("endpoint") && !config["endpoint"].get<std::string>().empty()) {
+            url = config["endpoint"].get<std::string>();
+        } else if (config.contains("url") && !config["url"].get<std::string>().empty()) {
+            url = config["url"].get<std::string>();
+        } else {
+            LogManager::getInstance().Error("HTTP URL/Endpoint가 설정되지 않음");
             return false;
         }
         
-        std::string url = config["url"].get<std::string>();
         LogManager::getInstance().Info("HTTP 타겟 URL: " + url);
         
         // HTTP 클라이언트 옵션 구성 (HttpClient.cpp 패턴 차용)
@@ -64,31 +68,40 @@ bool HttpTargetHandler::initialize(const json& config) {
         
         // SSL 설정
         options.verify_ssl = config.value("verify_ssl", true);
-        
-        // User-Agent 설정
-        options.user_agent = config.value("user_agent", "PulseOne-CSPGateway/1.0");
-        
-        // 재시도 설정 (S3Client.cpp 패턴 차용)
-        retry_config_.max_attempts = config.value("max_retry_attempts", 3);
-        retry_config_.initial_delay_ms = config.value("initial_delay_ms", 1000);
-        retry_config_.max_delay_ms = config.value("max_delay_ms", 30000);
-        retry_config_.backoff_multiplier = config.value("backoff_multiplier", 2.0);
-        
-        // 인증 설정 파싱
-        parseAuthenticationConfig(config);
+        options.user_agent = config.value("user_agent", "PulseOne-CSPGateway/1.8");
         
         // HTTP 클라이언트 생성
         http_client_ = std::make_unique<PulseOne::Client::HttpClient>(url, options);
         
-        LogManager::getInstance().Info("HTTP 타겟 핸들러 초기화 완료");
-        LogManager::getInstance().Debug("설정 - timeout: " + std::to_string(options.timeout_sec) + 
-                                       "s, max_retries: " + std::to_string(retry_config_.max_attempts) +
-                                       ", auth_type: " + auth_config_.type);
+        if (!http_client_) {
+            LogManager::getInstance().Error("HTTP 클라이언트 생성 실패");
+            return false;
+        }
         
+        // 재시도 설정
+        if (config.contains("max_retry")) {
+            retry_config_.max_attempts = config["max_retry"].get<int>();
+        }
+        if (config.contains("retry_delay_ms")) {
+            retry_config_.initial_delay_ms = config["retry_delay_ms"].get<uint32_t>();
+        }
+        if (config.contains("retry_backoff")) {
+            std::string backoff = config["retry_backoff"].get<std::string>();
+            if (backoff == "exponential") {
+                retry_config_.backoff_multiplier = 2.0;
+            } else if (backoff == "linear") {
+                retry_config_.backoff_multiplier = 1.0;
+            }
+        }
+        
+        // 인증 설정 파싱
+        parseAuthenticationConfig(config);
+        
+        LogManager::getInstance().Info("HTTP 타겟 핸들러 초기화 완료");
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("HTTP 타겟 핸들러 초기화 실패: " + std::string(e.what()));
+        LogManager::getInstance().Error("HTTP 핸들러 초기화 실패: " + std::string(e.what()));
         return false;
     }
 }
@@ -181,19 +194,31 @@ bool HttpTargetHandler::validateConfig(const json& config, std::vector<std::stri
     errors.clear();
     
     try {
-        if (!config.contains("url")) {
-            errors.push_back("url 필드가 필수입니다");
+        // URL/Endpoint 검증 (둘 중 하나는 필수)
+        if (!config.contains("endpoint") && !config.contains("url")) {
+            errors.push_back("endpoint 또는 url 필드가 필수입니다");
             return false;
         }
         
-        if (!config["url"].is_string() || config["url"].get<std::string>().empty()) {
-            errors.push_back("url은 비어있지 않은 문자열이어야 합니다");
-            return false;
+        // URL 가져오기
+        std::string url;
+        if (config.contains("endpoint")) {
+            if (!config["endpoint"].is_string() || config["endpoint"].get<std::string>().empty()) {
+                errors.push_back("endpoint는 비어있지 않은 문자열이어야 합니다");
+                return false;
+            }
+            url = config["endpoint"].get<std::string>();
+        } else {
+            if (!config["url"].is_string() || config["url"].get<std::string>().empty()) {
+                errors.push_back("url은 비어있지 않은 문자열이어야 합니다");
+                return false;
+            }
+            url = config["url"].get<std::string>();
         }
         
-        std::string url = config["url"].get<std::string>();
+        // URL 형식 검증
         if (url.find("http://") != 0 && url.find("https://") != 0) {
-            errors.push_back("url은 http:// 또는 https://로 시작해야 합니다");
+            errors.push_back("URL은 http:// 또는 https://로 시작해야 합니다");
             return false;
         }
         
