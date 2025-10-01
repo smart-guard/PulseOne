@@ -22,6 +22,17 @@
 #include <algorithm>
 #include <filesystem>
 
+static std::string readFileContent(const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open file: " + filepath);
+    }
+    
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+    return content;
+}
+
 namespace PulseOne {
 namespace CSP {
 
@@ -277,10 +288,9 @@ bool S3TargetHandler::validateConfig(const json& config, std::vector<std::string
 // =============================================================================
 
 void S3TargetHandler::loadCredentials(const json& config, PulseOne::Client::S3Config& s3_config) {
-    // ConfigManager 패턴 차용하여 암호화된 자격증명 로드
     auto& config_manager = ConfigManager::getInstance();
     
-    // 직접 설정에서 로드
+    // 1. 직접 설정에서 로드
     if (config.contains("access_key") && config.contains("secret_key")) {
         s3_config.access_key = config["access_key"].get<std::string>();
         s3_config.secret_key = config["secret_key"].get<std::string>();
@@ -288,23 +298,47 @@ void S3TargetHandler::loadCredentials(const json& config, PulseOne::Client::S3Co
         return;
     }
     
-    // ConfigManager에서 암호화된 자격증명 로드
-    std::string credential_prefix = config.value("credential_prefix", "S3_");
+    // 2. 파일에서 로드
+    if (config.contains("access_key_file") && config.contains("secret_key_file")) {
+        std::string access_key_file = config["access_key_file"].get<std::string>();
+        std::string secret_key_file = config["secret_key_file"].get<std::string>();
+        
+        // 환경변수 치환
+        access_key_file = config_manager.expandVariables(access_key_file);
+        secret_key_file = config_manager.expandVariables(secret_key_file);
+        
+        LogManager::getInstance().Debug("Reading access_key from: " + access_key_file);
+        LogManager::getInstance().Debug("Reading secret_key from: " + secret_key_file);
+        
+        try {
+            // ✅ 수정: 파일을 직접 읽기
+            s3_config.access_key = readFileContent(access_key_file);
+            s3_config.secret_key = readFileContent(secret_key_file);
+            
+            // 줄바꿈 제거
+            s3_config.access_key.erase(
+                std::remove(s3_config.access_key.begin(), s3_config.access_key.end(), '\n'), 
+                s3_config.access_key.end());
+            s3_config.secret_key.erase(
+                std::remove(s3_config.secret_key.begin(), s3_config.secret_key.end(), '\n'), 
+                s3_config.secret_key.end());
+            
+            if (!s3_config.access_key.empty() && !s3_config.secret_key.empty()) {
+                LogManager::getInstance().Info("S3 자격증명을 파일에서 로드 성공");
+                return;
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("S3 자격증명 파일 읽기 실패: " + std::string(e.what()));
+        }
+    }
     
+    // 3. ConfigManager에서 환경변수로 로드
+    std::string credential_prefix = config.value("credential_prefix", "S3_");
     s3_config.access_key = config_manager.getOrDefault(credential_prefix + "ACCESS_KEY", "");
     s3_config.secret_key = config_manager.getOrDefault(credential_prefix + "SECRET_KEY", "");
     
-    // 세션 토큰 (STS 사용 시)
-    std::string session_token = config_manager.getOrDefault(credential_prefix + "SESSION_TOKEN", "");
-    if (!session_token.empty()) {
-        // S3Config에 session_token 필드가 있다면 설정
-        LogManager::getInstance().Debug("S3 세션 토큰 설정");
-    }
-    
     if (s3_config.access_key.empty() || s3_config.secret_key.empty()) {
         LogManager::getInstance().Warn("S3 자격증명이 설정되지 않음 - IAM Role 또는 환경변수 사용");
-    } else {
-        LogManager::getInstance().Debug("S3 자격증명을 ConfigManager에서 로드");
     }
 }
 

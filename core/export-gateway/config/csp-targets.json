@@ -1,11 +1,127 @@
 {
   "version": "1.0",
+  "description": "CSP Gateway 동적 전송 대상 설정 - Insite/Inbase/US_Prod/Seoul_Backup",
+  "last_updated": "2025-09-29T12:00:00Z",
+  
   "targets": [
+    {
+      "name": "main_api",
+      "type": "http",
+      "enabled": true,
+      "priority": 1,
+      "description": "메인 CSP API 서버",
+      
+      "config": {
+        "endpoint": "https://api.pulseone.com/v1/alarms",
+        "method": "POST",
+        "content_type": "application/json",
+        "auth_key_file": "${SECRETS_DIR}/csp_api_key.key",
+        "timeout_ms": 10000,
+        "max_retry": 3,
+        "retry_delay_ms": 1000,
+        "retry_backoff": "exponential",
+        "headers": {
+          "User-Agent": "PulseOne-CSPGateway/1.8",
+          "Accept": "application/json"
+        }
+      }
+    },
+    
+    {
+      "name": "aws_insite",
+      "type": "s3",
+      "enabled": true,
+      "priority": 2,
+      "description": "Insite 시스템 전용 S3 (ap-northeast-2)",
+      
+      "config": {
+        "endpoint": "https://s3.ap-northeast-2.amazonaws.com",
+        "bucket_name": "pulseone-insite-data",
+        "region": "ap-northeast-2",
+        "access_key_file": "${SECRETS_DIR}/aws_insite_access.key",
+        "secret_key_file": "${SECRETS_DIR}/aws_insite_secret.key",
+        "object_prefix": "insite/alarms/{building_id}/",
+        "file_name_pattern": "insite_{building_id}_{timestamp}_alarm.json",
+        "timeout_ms": 10000,
+        "max_retry": 3,
+        "retry_delay_ms": 2000,
+        "storage_class": "STANDARD"
+      }
+    },
+    
+    {
+      "name": "aws_inbase",
+      "type": "s3",
+      "enabled": true,
+      "priority": 3,
+      "description": "Inbase 시스템 전용 S3 (ap-northeast-2)",
+      
+      "config": {
+        "endpoint": "https://s3.ap-northeast-2.amazonaws.com",
+        "bucket_name": "pulseone-inbase-data",
+        "region": "ap-northeast-2",
+        "access_key_file": "${SECRETS_DIR}/aws_inbase_access.key",
+        "secret_key_file": "${SECRETS_DIR}/aws_inbase_secret.key",
+        "object_prefix": "inbase/alarms/{building_id}/",
+        "file_name_pattern": "inbase_{building_id}_{timestamp}_alarm.json",
+        "timeout_ms": 10000,
+        "max_retry": 3,
+        "retry_delay_ms": 2000,
+        "storage_class": "STANDARD"
+      }
+    },
+    
+    {
+      "name": "aws_us_prod",
+      "type": "s3",
+      "enabled": true,
+      "priority": 4,
+      "description": "미국 프로덕션 S3 (us-west-2)",
+      
+      "config": {
+        "endpoint": "https://s3.us-west-2.amazonaws.com",
+        "bucket_name": "pulseone-us-production",
+        "region": "us-west-2",
+        "access_key_file": "${SECRETS_DIR}/aws_us_prod_access.key",
+        "secret_key_file": "${SECRETS_DIR}/aws_us_prod_secret.key",
+        "object_prefix": "production/alarms/{building_id}/",
+        "file_name_pattern": "prod_{building_id}_{timestamp}_alarm.json",
+        "timeout_ms": 12000,
+        "max_retry": 3,
+        "retry_delay_ms": 2000,
+        "storage_class": "STANDARD"
+      }
+    },
+    
+    {
+      "name": "aws_seoul_backup",
+      "type": "s3",
+      "enabled": true,
+      "priority": 5,
+      "description": "서울 백업 S3 (ap-northeast-2)",
+      
+      "config": {
+        "endpoint": "https://s3.ap-northeast-2.amazonaws.com",
+        "bucket_name": "pulseone-seoul-backup",
+        "region": "ap-northeast-2",
+        "access_key_file": "${SECRETS_DIR}/aws_seoul_backup_access.key",
+        "secret_key_file": "${SECRETS_DIR}/aws_seoul_backup_secret.key",
+        "object_prefix": "backup/alarms/{building_id}/",
+        "file_name_pattern": "backup_{building_id}_{timestamp}_alarm.json",
+        "timeout_ms": 15000,
+        "max_retry": 5,
+        "retry_delay_ms": 3000,
+        "storage_class": "STANDARD_IA"
+      }
+    },
+    
     {
       "name": "local_file_backup",
       "type": "file",
       "enabled": true,
-      "priority": 1,
+      "priority": 99,
+      "description": "로컬 파일 백업 (항상 활성화)",
+      
       "config": {
         "base_path": "/app/data/alarm_backups",
         "filename_template": "alarm_{timestamp}.json",

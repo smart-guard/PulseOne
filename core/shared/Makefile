@@ -17,7 +17,7 @@ endif
 
 # 컴파일러 설정
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -fPIC
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -fPIC  -DHAS_SHARED_LIBS=1
 
 # Windows 크로스 컴파일 지원
 ifeq ($(CROSS_COMPILE_WINDOWS),1)

@@ -34,22 +34,59 @@ namespace PulseOne {
 namespace Client {
 
 S3Client::S3Client(const S3Config& config) : config_(config) {
+    LOG_DEBUG("S3Client 생성자 시작");
+    
+    try {
+        std::string endpoint_log = config_.endpoint.empty() ? "(empty)" : config_.endpoint;
+        LOG_DEBUG("Endpoint: " + endpoint_log);
+    } catch (...) {
+        LOG_ERROR("Endpoint 로깅 실패");
+    }
+    
     if (!config_.isValid()) {
-        LOG_ERROR("Invalid S3 configuration");
+        // ✅ 구체적인 에러 메시지
+        std::string error_detail = "Invalid S3 configuration: ";
+        if (config_.access_key.empty()) error_detail += "access_key is empty; ";
+        if (config_.secret_key.empty()) error_detail += "secret_key is empty; ";
+        if (config_.bucket_name.empty()) error_detail += "bucket_name is empty; ";
+        
+        LOG_ERROR(error_detail);
         return;
     }
     
-    // HTTP 클라이언트 초기화
-    HttpRequestOptions http_options;
-    http_options.timeout_sec = config_.upload_timeout_sec;
-    http_options.connect_timeout_sec = config_.connect_timeout_sec;
-    http_options.verify_ssl = config_.verify_ssl;
-    http_options.user_agent = "PulseOne-S3Client/1.0";
+    LOG_DEBUG("S3 config valid, creating HttpClient...");
     
-    http_client_ = std::make_unique<HttpClient>(config_.endpoint, http_options);
-    
-    LOG_DEBUG("S3Client initialized for bucket: " + config_.bucket_name);
+    try {
+        HttpRequestOptions http_options;
+        http_options.timeout_sec = config_.upload_timeout_sec;
+        http_options.connect_timeout_sec = config_.connect_timeout_sec;
+        http_options.verify_ssl = config_.verify_ssl;
+        http_options.user_agent = "PulseOne-S3Client/1.0";
+        
+        LOG_DEBUG("HttpRequestOptions prepared");
+        
+        // 방어적 생성
+        http_client_ = std::make_unique<HttpClient>(config_.endpoint, http_options);
+        
+        LOG_DEBUG("HttpClient make_unique returned");
+        
+        // null 체크
+        if (!http_client_) {
+            LOG_ERROR("HttpClient creation returned nullptr");
+            return;
+        }
+        
+        LOG_DEBUG("S3Client initialized for bucket: " + config_.bucket_name);
+        
+    } catch (const std::exception& e) {
+        LOG_ERROR("HttpClient creation exception: " + std::string(e.what()));
+        http_client_ = nullptr;
+    } catch (...) {
+        LOG_ERROR("Unknown exception during HttpClient creation");
+        http_client_ = nullptr;
+    }
 }
+
 
 S3UploadResult S3Client::upload(const std::string& object_key,
                                const std::string& content,
@@ -124,6 +161,15 @@ S3UploadResult S3Client::executeUploadWithRetry(const std::string& object_key,
                                                const std::unordered_map<std::string, std::string>& metadata) {
     
     S3UploadResult result;
+
+    // ✅ http_client_ null 체크 추가
+    if (!http_client_) {
+        result.success = false;
+        result.error_message = "HttpClient not initialized";
+        LOG_ERROR("S3 upload failed: HttpClient is null");
+        return result;
+    }
+
     auto start_time = std::chrono::high_resolution_clock::now();
     
     for (int attempt = 0; attempt <= config_.max_retries; ++attempt) {
