@@ -290,6 +290,7 @@ HttpResponse HttpClient::executeWithCurl(const std::string& method,
     try {
         if (!curl_handle_) {
             response.error_message = "curl handle not initialized";
+            LOG_ERROR("❌ curl handle is nullptr");
             return response;
         }
         
@@ -300,16 +301,34 @@ HttpResponse HttpClient::executeWithCurl(const std::string& method,
         }
         full_url += path;
         
+        // 🔥 상세 로그 추가 1: URL 확인
+        LOG_DEBUG("🌐 curl PUT request starting");
+        LOG_DEBUG("  Method: " + method);
+        LOG_DEBUG("  Base URL: " + base_url_);
+        LOG_DEBUG("  Path: " + path);
+        LOG_DEBUG("  Full URL: " + full_url);
+        LOG_DEBUG("  Body size: " + std::to_string(body.length()) + " bytes");
+        
+        // curl 옵션 설정
         curl_easy_setopt(curl_handle_, CURLOPT_URL, full_url.c_str());
         curl_easy_setopt(curl_handle_, CURLOPT_TIMEOUT, options_.timeout_sec);
         curl_easy_setopt(curl_handle_, CURLOPT_CONNECTTIMEOUT, options_.connect_timeout_sec);
         curl_easy_setopt(curl_handle_, CURLOPT_FOLLOWLOCATION, options_.follow_redirects ? 1L : 0L);
         curl_easy_setopt(curl_handle_, CURLOPT_MAXREDIRS, options_.max_redirects);
         
+        // 🔥 상세 로그 추가 2: curl 옵션 확인
+        LOG_DEBUG("  Timeout: " + std::to_string(options_.timeout_sec) + "s");
+        LOG_DEBUG("  Connect timeout: " + std::to_string(options_.connect_timeout_sec) + "s");
+        LOG_DEBUG("  SSL verify: " + std::string(options_.verify_ssl ? "true" : "false"));
+        
         if (!options_.verify_ssl) {
             curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYPEER, 0L);
             curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYHOST, 0L);
+            LOG_DEBUG("  ⚠️  SSL verification disabled");
         }
+        
+        // 🔥 상세 로그 추가 3: verbose 모드 활성화 (디버깅용)
+        curl_easy_setopt(curl_handle_, CURLOPT_VERBOSE, 1L);
         
         // 응답 콜백 설정
         std::string response_body;
@@ -344,43 +363,93 @@ HttpResponse HttpClient::executeWithCurl(const std::string& method,
         for (const auto& header : default_headers_) {
             std::string header_str = header.first + ": " + header.second;
             header_list = curl_slist_append(header_list, header_str.c_str());
+            LOG_DEBUG("  Header: " + header_str);
         }
         
         // 요청 헤더 추가
         for (const auto& header : headers) {
             std::string header_str = header.first + ": " + header.second;
             header_list = curl_slist_append(header_list, header_str.c_str());
+            LOG_DEBUG("  Header: " + header_str);
         }
         
         if (!content_type.empty()) {
             std::string content_type_header = "Content-Type: " + content_type;
             header_list = curl_slist_append(header_list, content_type_header.c_str());
+            LOG_DEBUG("  Header: " + content_type_header);
         }
         
         // 인증 헤더
         if (!options_.bearer_token.empty()) {
             std::string auth_header = "Authorization: Bearer " + options_.bearer_token;
             header_list = curl_slist_append(header_list, auth_header.c_str());
+            LOG_DEBUG("  Header: Authorization: Bearer ***");
         } else if (!options_.username.empty()) {
             curl_easy_setopt(curl_handle_, CURLOPT_USERNAME, options_.username.c_str());
             curl_easy_setopt(curl_handle_, CURLOPT_PASSWORD, options_.password.c_str());
+            LOG_DEBUG("  Auth: Basic (username set)");
         }
         
         if (header_list) {
             curl_easy_setopt(curl_handle_, CURLOPT_HTTPHEADER, header_list);
         }
         
+        // 🔥 상세 로그 추가 4: 요청 실행 전
+        LOG_DEBUG("🚀 Executing curl_easy_perform...");
+        
         // 요청 실행
         CURLcode res = curl_easy_perform(curl_handle_);
+        
+        // 🔥 상세 로그 추가 5: 응답 상세 정보
+        LOG_DEBUG("📥 curl_easy_perform completed");
+        LOG_DEBUG("  CURLcode: " + std::to_string(res) + " (" + std::string(curl_easy_strerror(res)) + ")");
         
         if (res == CURLE_OK) {
             long status_code;
             curl_easy_getinfo(curl_handle_, CURLINFO_RESPONSE_CODE, &status_code);
             response.status_code = static_cast<int>(status_code);
             response.body = response_body;
+            
+            // 추가 정보 로깅
+            double total_time = 0;
+            curl_easy_getinfo(curl_handle_, CURLINFO_TOTAL_TIME, &total_time);
+            
+            long redirect_count = 0;
+            curl_easy_getinfo(curl_handle_, CURLINFO_REDIRECT_COUNT, &redirect_count);
+            
+            char* effective_url = nullptr;
+            curl_easy_getinfo(curl_handle_, CURLINFO_EFFECTIVE_URL, &effective_url);
+            
+            LOG_DEBUG("✅ Request successful");
+            LOG_DEBUG("  HTTP Status: " + std::to_string(status_code));
+            LOG_DEBUG("  Response size: " + std::to_string(response_body.length()) + " bytes");
+            LOG_DEBUG("  Total time: " + std::to_string(total_time) + "s");
+            LOG_DEBUG("  Redirects: " + std::to_string(redirect_count));
+            if (effective_url) {
+                LOG_DEBUG("  Effective URL: " + std::string(effective_url));
+            }
+            
         } else {
             response.status_code = 0;
             response.error_message = "curl error: " + std::string(curl_easy_strerror(res));
+            
+            // 🔥 상세 로그 추가 6: 에러 상세 분석
+            LOG_ERROR("❌ curl request failed");
+            LOG_ERROR("  Error code: " + std::to_string(res));
+            LOG_ERROR("  Error message: " + std::string(curl_easy_strerror(res)));
+            
+            // 에러별 상세 분석
+            if (res == CURLE_COULDNT_RESOLVE_HOST) {
+                LOG_ERROR("  🔍 DNS resolution failed - check hostname");
+            } else if (res == CURLE_COULDNT_CONNECT) {
+                LOG_ERROR("  🔍 Connection failed - check network/firewall");
+            } else if (res == CURLE_OPERATION_TIMEDOUT) {
+                LOG_ERROR("  🔍 Operation timeout - check timeout settings");
+            } else if (res == CURLE_SSL_CONNECT_ERROR) {
+                LOG_ERROR("  🔍 SSL connection error - check SSL settings");
+            } else if (res == CURLE_URL_MALFORMAT) {
+                LOG_ERROR("  🔍 Malformed URL: " + full_url);
+            }
         }
         
         // 정리
@@ -391,40 +460,10 @@ HttpResponse HttpClient::executeWithCurl(const std::string& method,
     } catch (const std::exception& e) {
         response.status_code = 0;
         response.error_message = "curl exception: " + std::string(e.what());
+        LOG_ERROR("❌ Exception in executeWithCurl: " + std::string(e.what()));
     }
     
     return response;
-}
-
-size_t HttpClient::curlWriteCallback(void* contents, size_t size, size_t nmemb, std::string* response) {
-    size_t total_size = size * nmemb;
-    response->append(static_cast<char*>(contents), total_size);
-    return total_size;
-}
-
-size_t HttpClient::curlHeaderCallback(char* buffer, size_t size, size_t nitems, 
-                                     std::unordered_map<std::string, std::string>* headers) {
-    size_t total_size = size * nitems;
-    std::string header_line(buffer, total_size);
-    
-    // 헤더 파싱 (Key: Value 형식)
-    size_t colon_pos = header_line.find(':');
-    if (colon_pos != std::string::npos) {
-        std::string key = header_line.substr(0, colon_pos);
-        std::string value = header_line.substr(colon_pos + 1);
-        
-        // 공백 제거
-        key.erase(0, key.find_first_not_of(" \t"));
-        key.erase(key.find_last_not_of(" \t\r\n") + 1);
-        value.erase(0, value.find_first_not_of(" \t"));
-        value.erase(value.find_last_not_of(" \t\r\n") + 1);
-        
-        if (!key.empty() && !value.empty()) {
-            (*headers)[key] = value;
-        }
-    }
-    
-    return total_size;
 }
 #endif
 
