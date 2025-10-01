@@ -781,12 +781,184 @@ json DynamicTargetManager::generatePerformanceReport(
 
 bool DynamicTargetManager::validateConfiguration(const json& config, std::vector<std::string>& errors) {
     errors.clear();
-    return config.is_object();
+    
+    try {
+        // 1. JSON 객체인지 확인
+        if (!config.is_object()) {
+            errors.push_back("설정은 JSON 객체여야 합니다");
+            return false;
+        }
+        
+        // 2. targets 배열 존재 확인
+        if (!config.contains("targets")) {
+            errors.push_back("'targets' 배열이 필요합니다");
+            return false;
+        }
+        
+        if (!config["targets"].is_array()) {
+            errors.push_back("'targets'는 배열이어야 합니다");
+            return false;
+        }
+        
+        // 3. 각 타겟 설정 검증
+        const auto& targets = config["targets"];
+        std::unordered_set<std::string> target_names;
+        
+        for (size_t i = 0; i < targets.size(); ++i) {
+            const auto& target = targets[i];
+            std::vector<std::string> target_errors;
+            
+            // 타겟별 검증
+            if (!validateTargetConfig(target, target_errors)) {
+                for (const auto& error : target_errors) {
+                    errors.push_back("타겟 [" + std::to_string(i) + "]: " + error);
+                }
+            }
+            
+            // 타겟 이름 중복 체크
+            if (target.contains("name")) {
+                std::string name = target["name"].get<std::string>();
+                if (target_names.count(name) > 0) {
+                    errors.push_back("중복된 타겟 이름: " + name);
+                }
+                target_names.insert(name);
+            }
+        }
+        
+        // 4. 글로벌 설정 검증 (선택적)
+        if (config.contains("global")) {
+            if (!config["global"].is_object()) {
+                errors.push_back("'global'은 객체여야 합니다");
+            }
+        }
+        
+        return errors.empty();
+        
+    } catch (const std::exception& e) {
+        errors.push_back("설정 검증 중 예외 발생: " + std::string(e.what()));
+        return false;
+    }
 }
 
 bool DynamicTargetManager::validateTargetConfig(const json& target_config, std::vector<std::string>& errors) {
     errors.clear();
-    return target_config.is_object();
+    
+    try {
+        // 1. JSON 객체인지 확인
+        if (!target_config.is_object()) {
+            errors.push_back("타겟 설정은 객체여야 합니다");
+            return false;
+        }
+        
+        // 2. 필수 필드 검증
+        std::vector<std::string> required_fields = {"name", "type", "config"};
+        for (const auto& field : required_fields) {
+            if (!target_config.contains(field)) {
+                errors.push_back("필수 필드 누락: " + field);
+            }
+        }
+        
+        // 필수 필드가 하나라도 없으면 더 이상 검증 안함
+        if (!errors.empty()) {
+            return false;
+        }
+        
+        // 3. 타겟 이름 검증
+        std::string name = target_config["name"].get<std::string>();
+        if (name.empty()) {
+            errors.push_back("타겟 이름이 비어있음");
+        }
+        if (name.length() > 100) {
+            errors.push_back("타겟 이름이 너무 김 (최대 100자)");
+        }
+        
+        // 4. 타겟 타입 검증
+        std::string type = target_config["type"].get<std::string>();
+        if (type.empty()) {
+            errors.push_back("타겟 타입이 비어있음");
+        }
+        
+        // 지원되는 타입 확인
+        if (handlers_.find(type) == handlers_.end()) {
+            errors.push_back("지원되지 않는 타겟 타입: " + type);
+        }
+        
+        // 5. config 필드 검증
+        if (!target_config["config"].is_object()) {
+            errors.push_back("'config'는 객체여야 합니다");
+            return false;
+        }
+        
+        // 6. 타입별 세부 검증
+        const auto& config = target_config["config"];
+        
+        if (type == "http" || type == "https") {
+            // HTTP 타겟 검증
+            if (!config.contains("endpoint")) {
+                errors.push_back("HTTP 타겟: 'endpoint' 필드 필요");
+            } else if (config["endpoint"].get<std::string>().empty()) {
+                errors.push_back("HTTP 타겟: 'endpoint'가 비어있음");
+            }
+            
+            // URL 형식 검증 (간단한 체크)
+            if (config.contains("endpoint")) {
+                std::string endpoint = config["endpoint"].get<std::string>();
+                // ${VAR} 패턴이 있으면 검증 스킵 (환경변수 치환 후에 검증됨)
+                if (endpoint.find("${") == std::string::npos) {
+                    if (endpoint.find("http://") != 0 && endpoint.find("https://") != 0) {
+                        errors.push_back("HTTP 타겟: 'endpoint'는 http:// 또는 https://로 시작해야 함");
+                    }
+                }
+            }
+        }
+        else if (type == "s3") {
+            // S3 타겟 검증
+            if (!config.contains("bucket_name")) {
+                errors.push_back("S3 타겟: 'bucket_name' 필드 필요");
+            } else {
+                std::string bucket = config["bucket_name"].get<std::string>();
+                if (bucket.empty()) {
+                    errors.push_back("S3 타겟: 'bucket_name'이 비어있음");
+                }
+                // ${VAR} 패턴이 없을 때만 길이 체크
+                if (bucket.find("${") == std::string::npos) {
+                    if (bucket.length() < 3 || bucket.length() > 63) {
+                        errors.push_back("S3 타겟: 'bucket_name'은 3-63자여야 함");
+                    }
+                }
+            }
+            
+            // 리전 검증 (선택적이지만 있다면 검증)
+            if (config.contains("region")) {
+                std::string region = config["region"].get<std::string>();
+                if (region.empty()) {
+                    errors.push_back("S3 타겟: 'region'이 비어있음");
+                }
+            }
+        }
+        else if (type == "file") {
+            // FILE 타겟 검증
+            if (!config.contains("base_path")) {
+                errors.push_back("FILE 타겟: 'base_path' 필드 필요");
+            } else if (config["base_path"].get<std::string>().empty()) {
+                errors.push_back("FILE 타겟: 'base_path'가 비어있음");
+            }
+        }
+        
+        // 7. 선택적 필드 검증
+        if (target_config.contains("priority")) {
+            int priority = target_config["priority"].get<int>();
+            if (priority < 1 || priority > 1000) {
+                errors.push_back("우선순위는 1-1000 사이여야 함 (현재: " + std::to_string(priority) + ")");
+            }
+        }
+        
+        return errors.empty();
+        
+    } catch (const std::exception& e) {
+        errors.push_back("타겟 설정 검증 중 예외 발생: " + std::string(e.what()));
+        return false;
+    }
 }
 
 // =============================================================================

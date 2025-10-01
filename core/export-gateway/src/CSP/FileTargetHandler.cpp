@@ -401,7 +401,7 @@ std::string FileTargetHandler::generateFilePath(const AlarmMessage& alarm, const
 std::string FileTargetHandler::expandTemplate(const std::string& template_str, const AlarmMessage& alarm) const {
     std::string result = template_str;
     
-    // 단순 문자열 치환 함수
+    // 문자열 치환 헬퍼 함수
     auto replaceAll = [](std::string& str, const std::string& from, const std::string& to) {
         size_t pos = 0;
         while ((pos = str.find(from, pos)) != std::string::npos) {
@@ -410,22 +410,37 @@ std::string FileTargetHandler::expandTemplate(const std::string& template_str, c
         }
     };
     
-    // 기본 변수 치환
+    // ✅ 환경변수 치환 함수 (신규 추가)
+    auto expandEnvVars = [](std::string& str) {
+        size_t pos = 0;
+        while ((pos = str.find("${", pos)) != std::string::npos) {
+            size_t end_pos = str.find("}", pos + 2);
+            if (end_pos == std::string::npos) break;
+            
+            std::string var_name = str.substr(pos + 2, end_pos - pos - 2);
+            const char* env_value = std::getenv(var_name.c_str());
+            std::string replacement = env_value ? env_value : "";
+            
+            str.replace(pos, end_pos - pos + 1, replacement);
+            pos += replacement.length();
+        }
+    };
+    
+    // ✅ 1단계: 환경변수 먼저 치환
+    expandEnvVars(result);
+    
+    // 2단계: 알람 변수 치환 (기존 코드)
     replaceAll(result, "{building_id}", std::to_string(alarm.bd));
     replaceAll(result, "{point_name}", sanitizeFilename(alarm.nm));
     replaceAll(result, "{value}", std::to_string(alarm.vl));
     replaceAll(result, "{alarm_flag}", std::to_string(alarm.al));
     replaceAll(result, "{status}", std::to_string(alarm.st));
-    
-    // 타임스탬프 관련 변수
     replaceAll(result, "{timestamp}", generateTimestampString());
     replaceAll(result, "{date}", generateDateString());
     replaceAll(result, "{year}", generateYearString());
     replaceAll(result, "{month}", generateMonthString());
     replaceAll(result, "{day}", generateDayString());
     replaceAll(result, "{hour}", generateHourString());
-    
-    // 알람 상태 문자열
     replaceAll(result, "{alarm_status}", sanitizeFilename(alarm.get_alarm_status_string()));
     
     return result;
