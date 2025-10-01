@@ -64,7 +64,9 @@ bool FileTargetHandler::initialize(const json& config) {
         // 디렉토리 구조 설정
         directory_template_ = config.value("directory_template", 
                                           "{building_id}/{year}/{month}/{day}");
-        
+        LogManager::getInstance().Debug("directory_template: " + directory_template_);
+        LogManager::getInstance().Debug("filename_template: " + filename_template_);
+
         // 파일 옵션 설정
         file_options_.append_mode = config.value("append_mode", false);
         file_options_.create_directories = config.value("create_directories", true);
@@ -370,8 +372,11 @@ std::string FileTargetHandler::generateFilePath(const AlarmMessage& alarm, const
     // 파일명 생성
     std::string filename = expandTemplate(filename_template_, alarm);
     
-    // 확장자 설정
-    filename = std::regex_replace(filename, std::regex("\\{ext\\}"), getFileExtension());
+    // 확장자 설정 - 정규식 제거
+    size_t pos = filename.find("{ext}");
+    if (pos != std::string::npos) {
+        filename.replace(pos, 5, getFileExtension());
+    }
     
     // 전체 경로 결합
     std::string full_path = base_path_;
@@ -384,8 +389,11 @@ std::string FileTargetHandler::generateFilePath(const AlarmMessage& alarm, const
     }
     full_path += filename;
     
-    // 경로 정규화
-    full_path = std::regex_replace(full_path, std::regex("//+"), "/");
+    // 중복 슬래시 제거 - 정규식 제거
+    size_t slash_pos = 0;
+    while ((slash_pos = full_path.find("//", slash_pos)) != std::string::npos) {
+        full_path.replace(slash_pos, 2, "/");
+    }
     
     return full_path;
 }
@@ -393,24 +401,32 @@ std::string FileTargetHandler::generateFilePath(const AlarmMessage& alarm, const
 std::string FileTargetHandler::expandTemplate(const std::string& template_str, const AlarmMessage& alarm) const {
     std::string result = template_str;
     
+    // 단순 문자열 치환 함수
+    auto replaceAll = [](std::string& str, const std::string& from, const std::string& to) {
+        size_t pos = 0;
+        while ((pos = str.find(from, pos)) != std::string::npos) {
+            str.replace(pos, from.length(), to);
+            pos += to.length();
+        }
+    };
+    
     // 기본 변수 치환
-    result = std::regex_replace(result, std::regex("\\{building_id\\}"), std::to_string(alarm.bd));
-    result = std::regex_replace(result, std::regex("\\{point_name\\}"), sanitizeFilename(alarm.nm));
-    result = std::regex_replace(result, std::regex("\\{value\\}"), std::to_string(alarm.vl));
-    result = std::regex_replace(result, std::regex("\\{alarm_flag\\}"), std::to_string(alarm.al));
-    result = std::regex_replace(result, std::regex("\\{status\\}"), std::to_string(alarm.st));
+    replaceAll(result, "{building_id}", std::to_string(alarm.bd));
+    replaceAll(result, "{point_name}", sanitizeFilename(alarm.nm));
+    replaceAll(result, "{value}", std::to_string(alarm.vl));
+    replaceAll(result, "{alarm_flag}", std::to_string(alarm.al));
+    replaceAll(result, "{status}", std::to_string(alarm.st));
     
     // 타임스탬프 관련 변수
-    result = std::regex_replace(result, std::regex("\\{timestamp\\}"), generateTimestampString());
-    result = std::regex_replace(result, std::regex("\\{date\\}"), generateDateString());
-    result = std::regex_replace(result, std::regex("\\{year\\}"), generateYearString());
-    result = std::regex_replace(result, std::regex("\\{month\\}"), generateMonthString());
-    result = std::regex_replace(result, std::regex("\\{day\\}"), generateDayString());
-    result = std::regex_replace(result, std::regex("\\{hour\\}"), generateHourString());
+    replaceAll(result, "{timestamp}", generateTimestampString());
+    replaceAll(result, "{date}", generateDateString());
+    replaceAll(result, "{year}", generateYearString());
+    replaceAll(result, "{month}", generateMonthString());
+    replaceAll(result, "{day}", generateDayString());
+    replaceAll(result, "{hour}", generateHourString());
     
     // 알람 상태 문자열
-    result = std::regex_replace(result, std::regex("\\{alarm_status\\}"), 
-                               sanitizeFilename(alarm.get_alarm_status_string()));
+    replaceAll(result, "{alarm_status}", sanitizeFilename(alarm.get_alarm_status_string()));
     
     return result;
 }
@@ -783,11 +799,23 @@ void FileTargetHandler::setFilePermissions(const std::string& file_path) {
 std::string FileTargetHandler::sanitizeFilename(const std::string& filename) const {
     std::string result = filename;
     
-    // 금지 문자 제거
-    result = std::regex_replace(result, std::regex("[<>:\"/\\\\|?*]"), "_");
-    result = std::regex_replace(result, std::regex("[\x00-\x1F\x7F]"), "");
-    result = std::regex_replace(result, std::regex("_{2,}"), "_");
-    result = std::regex_replace(result, std::regex("^[\\s.]+|[\\s.]+$"), "");
+    // 금지 문자 치환
+    const std::string forbidden = "<>:\"/\\|?*";
+    for (char& c : result) {
+        if (forbidden.find(c) != std::string::npos || c < 32 || c == 127) {
+            c = '_';
+        }
+    }
+    
+    // 중복 언더스코어 제거
+    size_t pos = 0;
+    while ((pos = result.find("__", pos)) != std::string::npos) {
+        result.replace(pos, 2, "_");
+    }
+    
+    // 앞뒤 공백과 점 제거
+    result.erase(0, result.find_first_not_of(" \t."));
+    result.erase(result.find_last_not_of(" \t.") + 1);
     
     if (result.empty()) {
         result = "unknown";

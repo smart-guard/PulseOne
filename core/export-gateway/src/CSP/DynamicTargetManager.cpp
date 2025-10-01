@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <sstream>
 #include <iomanip>
+#include <unordered_set>
 
 namespace PulseOne {
 namespace CSP {
@@ -53,8 +54,32 @@ DynamicTargetManager::DynamicTargetManager(const std::string& config_file_path)
 }
 
 DynamicTargetManager::~DynamicTargetManager() {
-    stop();
-    LogManager::getInstance().Info("DynamicTargetManager 소멸 완료");
+    try {
+        stop();
+        
+        // 핸들러들 명시적 정리 (순서 중요)
+        handlers_.clear();
+        
+        // 타겟들 정리
+        {
+            std::unique_lock<std::shared_mutex> lock(targets_mutex_);
+            targets_.clear();
+        }
+        
+        // 실패 방지기들 정리
+        failure_protectors_.clear();
+        
+        LogManager::getInstance().Info("DynamicTargetManager 소멸 완료");
+    } catch (const std::exception& e) {
+        // 소멸자에서 예외 발생 시 로그만 남기고 전파하지 않음
+        try {
+            LogManager::getInstance().Error("DynamicTargetManager 소멸 중 예외: " + std::string(e.what()));
+        } catch (...) {
+            // LogManager도 실패하면 무시
+        }
+    } catch (...) {
+        // 알 수 없는 예외도 무시
+    }
 }
 
 // =============================================================================
@@ -91,12 +116,23 @@ bool DynamicTargetManager::start() {
 }
 
 void DynamicTargetManager::stop() {
-    LogManager::getInstance().Info("DynamicTargetManager 중지...");
+    if (!is_running_.load()) return;
     
-    is_running_.store(false);
-    stopBackgroundThreads();
-    
-    LogManager::getInstance().Info("DynamicTargetManager 중지 완료");
+    try {
+        LogManager::getInstance().Info("DynamicTargetManager 중지...");
+        
+        should_stop_.store(true);
+        is_running_.store(false);
+        
+        // 백그라운드 스레드 정리
+        stopBackgroundThreads();
+        
+        LogManager::getInstance().Info("DynamicTargetManager 중지 완료");
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("DynamicTargetManager 중지 중 예외: " + std::string(e.what()));
+    } catch (...) {
+        // 예외 무시
+    }
 }
 
 // =============================================================================
@@ -811,6 +847,8 @@ void DynamicTargetManager::startBackgroundThreads() {
 
 void DynamicTargetManager::stopBackgroundThreads() {
     should_stop_.store(true);
+
+    auto timeout = std::chrono::milliseconds(1000);
     
     if (config_watcher_thread_ && config_watcher_thread_->joinable()) {
         config_watcher_thread_->join();
@@ -854,13 +892,24 @@ bool DynamicTargetManager::processTargetByIndex(size_t index, const AlarmMessage
         json expanded_config = target.config;
         expandConfigVariables(expanded_config, alarm);
         
+        // ✅ mutable_target 선언을 여기로 이동
+        auto& mutable_target = targets_[index];
+        
+        // 핸들러 초기화 (타겟마다 한 번만)
+        if (mutable_target.handler_initialized.load() == false) {
+            if (!handler_it->second->initialize(expanded_config)) {
+                result.error_message = "Handler initialization failed";
+                return false;
+            }
+            mutable_target.handler_initialized.store(true);
+        }
+        
         result = handler_it->second->sendAlarm(alarm, expanded_config);
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
-        // 통계 업데이트
-        auto& mutable_target = targets_[index];
+        // 통계 업데이트 (mutable_target 이미 선언됨)
         if (result.success) {
             mutable_target.success_count.fetch_add(1);
             mutable_target.consecutive_failures.store(0);

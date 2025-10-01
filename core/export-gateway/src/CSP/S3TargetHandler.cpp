@@ -54,7 +54,7 @@ bool S3TargetHandler::initialize(const json& config) {
         std::string bucket_name = config["bucket_name"].get<std::string>();
         LogManager::getInstance().Info("S3 타겟 버킷: " + bucket_name);
         
-        // S3 설정 구성 (S3Client.cpp 패턴 차용)
+        // S3 설정 구성
         PulseOne::Client::S3Config s3_config;
         
         // 기본 설정
@@ -62,7 +62,7 @@ bool S3TargetHandler::initialize(const json& config) {
         s3_config.endpoint = config.value("endpoint", "https://s3.amazonaws.com");
         s3_config.region = config.value("region", "us-east-1");
         
-        // 자격증명 로드 (ConfigManager 패턴 차용)
+        // 자격증명 로드
         loadCredentials(config, s3_config);
         
         // 타임아웃 설정
@@ -83,17 +83,33 @@ bool S3TargetHandler::initialize(const json& config) {
         compression_level_ = config.value("compression_level", 6);
         
         // 객체 키 템플릿 설정
-        object_key_template_ = config.value("object_key_template", 
-                                           "{building_id}/{date}/{point_name}_{timestamp}_alarm.json");
+        object_key_template_ = config.value("object_key_template",
+            "{building_id}/{date}/{point_name}_{timestamp}_alarm.json");
         
         // 메타데이터 템플릿 설정
         loadMetadataTemplate(config);
         
-        // S3 클라이언트 생성
-        s3_client_ = std::make_unique<PulseOne::Client::S3Client>(s3_config);
+        // S3 클라이언트 생성 (예외 처리 강화)
+        try {
+            s3_client_ = std::make_unique<PulseOne::Client::S3Client>(s3_config);
+            
+            if (!s3_client_) {
+                LogManager::getInstance().Error("S3 클라이언트 생성 실패 (nullptr)");
+                return false;
+            }
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("S3 클라이언트 생성 예외: " + std::string(e.what()));
+            s3_client_ = nullptr;
+            return false;
+        } catch (...) {
+            LogManager::getInstance().Error("S3 클라이언트 생성 중 알 수 없는 예외 발생");
+            s3_client_ = nullptr;
+            return false;
+        }
         
         LogManager::getInstance().Info("S3 타겟 핸들러 초기화 완료");
-        LogManager::getInstance().Debug("설정 - bucket: " + bucket_name + 
+        LogManager::getInstance().Debug("설정 - bucket: " + bucket_name +
                                        ", region: " + s3_config.region +
                                        ", compression: " + (compression_enabled_ ? "enabled" : "disabled"));
         
@@ -101,6 +117,11 @@ bool S3TargetHandler::initialize(const json& config) {
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("S3 타겟 핸들러 초기화 실패: " + std::string(e.what()));
+        s3_client_ = nullptr;
+        return false;
+    } catch (...) {
+        LogManager::getInstance().Error("S3 타겟 핸들러 초기화 중 알 수 없는 예외 발생");
+        s3_client_ = nullptr;
         return false;
     }
 }
@@ -112,6 +133,8 @@ TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage& alarm, const jso
     result.success = false;
     
     try {
+        LogManager::getInstance().Info("S3 알람 업로드 시작: " + result.target_name);
+
         if (!s3_client_) {
             result.error_message = "S3 클라이언트가 초기화되지 않음";
             LogManager::getInstance().Error(result.error_message);

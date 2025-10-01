@@ -242,7 +242,9 @@ private:
     
     // 새로 추가: 설정 파일에서 로그 설정 로드
     void loadLogSettingsFromConfig();
-
+    void loadEnvFileDirectly();
+    bool tryLoadEnvFile(const std::string& path);
+    std::string getExecutableDirectory();
     // =============================================================================
     // 크로스 플랫폼 경로 처리 (새로 추가)
     // =============================================================================

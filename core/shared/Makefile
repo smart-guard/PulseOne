@@ -55,8 +55,14 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Alarm
 
 # 라이브러리 감지
+HAS_CURL := $(shell pkg-config --exists libcurl 2>/dev/null && echo "1" || echo "0")
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+
+ifeq ($(HAS_CURL),1)
+    CXXFLAGS += -DHAS_CURL
+    LDFLAGS += $(shell pkg-config --libs libcurl)
+endif
 
 # 조건부 플래그
 ifeq ($(HAS_NLOHMANN_JSON),1)

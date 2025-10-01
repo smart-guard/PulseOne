@@ -1,14 +1,13 @@
 /**
  * @file LogManager.cpp
- * @brief PulseOne 통합 로그 관리자 - LEGACY 코드 완전 제거 + UUID→UniqueId 변경
+ * @brief PulseOne 통합 로그 관리자 - 순환 의존성 완전 제거
  * @author PulseOne Development Team
- * @date 2025-09-09
+ * @date 2025-09-29
  * 
- * 완전한 기능:
- * - LOG_LEVEL, LOG_TO_CONSOLE, LOG_TO_FILE, LOG_FILE_PATH 설정 적용
- * - Windows/Linux 크로스 플랫폼 경로 처리 (std::filesystem만 사용)
- * - LEGACY 폴백 코드 완전 제거
- * - UUID → UniqueId 변경 완료
+ * 핵심 변경:
+ * - ConfigManager 의존성 제거 (초기화 시)
+ * - 직접 .env 파일 읽기
+ * - 호출 순서 무관
  */
 
 #include "Utils/LogManager.h"
@@ -19,9 +18,12 @@
 #include <ctime>
 #include <iomanip>
 #include <filesystem>
+#include <fstream>
+#include <algorithm>
+#include <cstdlib>
 
 // =============================================================================
-// 생성자/소멸자 및 초기화
+// 생성자/소멸자
 // =============================================================================
 
 LogManager::LogManager() 
@@ -35,7 +37,6 @@ LogManager::LogManager()
     , file_output_enabled_(true)
     , log_base_path_("./logs/")
 {
-    // 생성자에서는 기본값만 설정
 }
 
 LogManager::~LogManager() {
@@ -62,10 +63,8 @@ bool LogManager::doInitialize() {
     try {
         std::cout << "LogManager 자동 초기화 시작...\n";
         
-        // 1. 설정 파일에서 로그 설정 로드
         loadLogSettingsFromConfig();
         
-        // 2. 카테고리별 로그 레벨 설정
         categoryLevels_[DriverLogCategory::GENERAL] = LogLevel::INFO;
         categoryLevels_[DriverLogCategory::CONNECTION] = LogLevel::INFO;
         categoryLevels_[DriverLogCategory::COMMUNICATION] = LogLevel::WARN;
@@ -77,7 +76,6 @@ bool LogManager::doInitialize() {
         categoryLevels_[DriverLogCategory::DIAGNOSTICS] = LogLevel::DEBUG;
         categoryLevels_[DriverLogCategory::MAINTENANCE] = LogLevel::WARN;
         
-        // 3. 로그 디렉토리 생성
         createLogDirectoriesRecursive();
         
         std::cout << "LogManager 자동 초기화 완료\n";
@@ -90,57 +88,175 @@ bool LogManager::doInitialize() {
 }
 
 // =============================================================================
-// 설정 파일에서 로그 설정 로드
+// 직접 .env 읽기
+// =============================================================================
+
+void LogManager::loadEnvFileDirectly() {
+    // 1. 환경변수 확인
+    const char* config_dir_env = std::getenv("PULSEONE_CONFIG_DIR");
+    if (config_dir_env) {
+        std::string env_path = std::string(config_dir_env) + "/.env";
+        if (tryLoadEnvFile(env_path)) {
+            return;
+        }
+    }
+    
+    // 2. 실행 파일 기준 경로 탐색
+    std::string exe_dir = getExecutableDirectory();
+    std::vector<std::string> search_paths = {
+        exe_dir + "/config/.env",
+        exe_dir + "/../config/.env",
+        exe_dir + "/../../config/.env",
+        "./config/.env",
+        "../config/.env",
+        "../../config/.env",
+        "/app/config/.env"
+    };
+    
+    for (const auto& path : search_paths) {
+        if (tryLoadEnvFile(path)) {
+            std::cout << "  .env 파일 로드: " << path << "\n";
+            return;
+        }
+    }
+    
+    std::cout << "  .env 파일 없음, 기본값 사용\n";
+}
+
+bool LogManager::tryLoadEnvFile(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+    
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        
+        size_t pos = line.find('=');
+        if (pos != std::string::npos) {
+            std::string key = line.substr(0, pos);
+            std::string value = line.substr(pos + 1);
+            
+            // 트림
+            key.erase(0, key.find_first_not_of(" \t"));
+            key.erase(key.find_last_not_of(" \t") + 1);
+            value.erase(0, value.find_first_not_of(" \t"));
+            value.erase(value.find_last_not_of(" \t") + 1);
+            
+            // 따옴표 제거
+            if (value.length() >= 2 && 
+                ((value.front() == '"' && value.back() == '"') || 
+                 (value.front() == '\'' && value.back() == '\''))) {
+                value = value.substr(1, value.length() - 2);
+            }
+            
+            if (!key.empty()) {
+                #ifdef _WIN32
+                _putenv_s(key.c_str(), value.c_str());
+                #else
+                setenv(key.c_str(), value.c_str(), 0);
+                #endif
+            }
+        }
+    }
+    file.close();
+    return true;
+}
+
+std::string LogManager::getExecutableDirectory() {
+    #ifdef _WIN32
+    char buffer[MAX_PATH];
+    GetModuleFileNameA(NULL, buffer, MAX_PATH);
+    std::string exe_path(buffer);
+    size_t pos = exe_path.find_last_of("\\/");
+    return (pos != std::string::npos) ? exe_path.substr(0, pos) : ".";
+    #else
+    char buffer[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+    if (len != -1) {
+        buffer[len] = '\0';
+        std::string exe_path(buffer);
+        size_t pos = exe_path.find_last_of('/');
+        return (pos != std::string::npos) ? exe_path.substr(0, pos) : ".";
+    }
+    return ".";
+    #endif
+}
+
+// =============================================================================
+// 설정 로드
 // =============================================================================
 
 void LogManager::loadLogSettingsFromConfig() {
     try {
-        auto& config = ConfigManager::getInstance();
+        const char* log_level_env = std::getenv("LOG_LEVEL");
         
-        // LOG_LEVEL 적용
-        std::string log_level_str = config.getOrDefault("LOG_LEVEL", "INFO");
-        std::transform(log_level_str.begin(), log_level_str.end(), log_level_str.begin(), ::toupper);
-        
-        if (log_level_str == "DEBUG") {
-            minLevel_ = LogLevel::DEBUG;
-        } else if (log_level_str == "INFO") {
-            minLevel_ = LogLevel::INFO;
-        } else if (log_level_str == "WARN" || log_level_str == "WARNING") {
-            minLevel_ = LogLevel::WARN;
-        } else if (log_level_str == "ERROR") {
-            minLevel_ = LogLevel::LOG_ERROR;
-        } else if (log_level_str == "FATAL") {
-            minLevel_ = LogLevel::LOG_FATAL;
-        } else if (log_level_str == "TRACE") {
-            minLevel_ = LogLevel::TRACE;
-        } else {
-            minLevel_ = LogLevel::INFO;
+        if (!log_level_env) {
+            loadEnvFileDirectly();
+            log_level_env = std::getenv("LOG_LEVEL");
         }
         
-        // 출력 제어 설정
-        console_output_enabled_ = config.getBool("LOG_TO_CONSOLE", true);
-        file_output_enabled_ = config.getBool("LOG_TO_FILE", true);
+        if (log_level_env) {
+            std::string level_str(log_level_env);
+            std::transform(level_str.begin(), level_str.end(), level_str.begin(), ::toupper);
+            
+            if (level_str == "DEBUG") minLevel_ = LogLevel::DEBUG;
+            else if (level_str == "INFO") minLevel_ = LogLevel::INFO;
+            else if (level_str == "WARN" || level_str == "WARNING") minLevel_ = LogLevel::WARN;
+            else if (level_str == "ERROR") minLevel_ = LogLevel::LOG_ERROR;
+            else if (level_str == "FATAL") minLevel_ = LogLevel::LOG_FATAL;
+            else if (level_str == "TRACE") minLevel_ = LogLevel::TRACE;
+            else minLevel_ = LogLevel::INFO;
+            
+            std::cout << "  LOG_LEVEL: " << level_str << "\n";
+        } else {
+            minLevel_ = LogLevel::INFO;
+            std::cout << "  LOG_LEVEL: INFO (기본값)\n";
+        }
         
-        // 로그 경로 설정
-        std::string raw_path = config.getOrDefault("LOG_FILE_PATH", "./logs/");
-        log_base_path_ = normalizePath(raw_path);
+        const char* console_log = std::getenv("LOG_TO_CONSOLE");
+        if (console_log) {
+            std::string val(console_log);
+            std::transform(val.begin(), val.end(), val.begin(), ::tolower);
+            console_output_enabled_ = (val == "true" || val == "1" || val == "yes");
+        } else {
+            console_output_enabled_ = true;
+        }
         
-        // 로그 로테이션 설정
-        max_log_size_mb_ = static_cast<size_t>(config.getInt("LOG_MAX_SIZE_MB", 100));
-        max_log_files_ = config.getInt("LOG_MAX_FILES", 30);
+        const char* file_log = std::getenv("LOG_TO_FILE");
+        if (file_log) {
+            std::string val(file_log);
+            std::transform(val.begin(), val.end(), val.begin(), ::tolower);
+            file_output_enabled_ = (val == "true" || val == "1" || val == "yes");
+        } else {
+            file_output_enabled_ = true;
+        }
         
-        // 유지보수 모드 설정
-        maintenance_mode_enabled_ = config.getBool("MAINTENANCE_MODE", false);
+        const char* log_path = std::getenv("LOG_FILE_PATH");
+        log_base_path_ = log_path ? normalizePath(std::string(log_path)) : "./logs/";
         
-        std::cout << "로그 설정 적용됨:\n";
-        std::cout << "  - LOG_LEVEL: " << log_level_str << "\n";
-        std::cout << "  - LOG_TO_CONSOLE: " << (console_output_enabled_ ? "true" : "false") << "\n";
-        std::cout << "  - LOG_TO_FILE: " << (file_output_enabled_ ? "true" : "false") << "\n";
-        std::cout << "  - LOG_FILE_PATH: " << log_base_path_ << "\n";
+        const char* max_size = std::getenv("LOG_MAX_SIZE_MB");
+        max_log_size_mb_ = max_size ? std::atoi(max_size) : 100;
+        
+        const char* max_files = std::getenv("LOG_MAX_FILES");
+        max_log_files_ = max_files ? std::atoi(max_files) : 30;
+        
+        const char* maint_mode = std::getenv("MAINTENANCE_MODE");
+        if (maint_mode) {
+            std::string val(maint_mode);
+            std::transform(val.begin(), val.end(), val.begin(), ::tolower);
+            maintenance_mode_enabled_ = (val == "true" || val == "1" || val == "yes");
+        } else {
+            maintenance_mode_enabled_ = false;
+        }
+        
+        std::cout << "  LOG_TO_CONSOLE: " << (console_output_enabled_ ? "true" : "false") << "\n";
+        std::cout << "  LOG_TO_FILE: " << (file_output_enabled_ ? "true" : "false") << "\n";
+        std::cout << "  LOG_FILE_PATH: " << log_base_path_ << "\n";
         
     } catch (const std::exception& e) {
-        std::cerr << "로그 설정 로드 실패: " << e.what() << "\n";
-        // 기본값으로 폴백
+        std::cerr << "로그 설정 실패: " << e.what() << "\n";
         console_output_enabled_ = true;
         file_output_enabled_ = true;
         log_base_path_ = "./logs/";
@@ -149,7 +265,7 @@ void LogManager::loadLogSettingsFromConfig() {
 }
 
 // =============================================================================
-// 크로스 플랫폼 경로 처리 (std::filesystem만 사용)
+// 경로 처리
 // =============================================================================
 
 std::string LogManager::normalizePath(const std::string& path) {
@@ -163,7 +279,6 @@ std::string LogManager::normalizePath(const std::string& path) {
         }
         
         return result;
-        
     } catch (const std::exception& e) {
         std::cerr << "경로 정규화 실패: " << e.what() << "\n";
         return path;
@@ -203,7 +318,6 @@ void LogManager::createLogDirectoriesRecursive() {
         std::filesystem::create_directories(base_path / today);
         std::filesystem::create_directories(base_path / "packets" / today);
         std::filesystem::create_directories(base_path / "maintenance" / today);
-        
     } catch (const std::exception& e) {
         std::cerr << "로그 디렉토리 생성 실패: " << e.what() << "\n";
     }
@@ -214,7 +328,6 @@ std::string LogManager::buildLogPath(const std::string& category) {
         std::filesystem::path log_file_path = buildLogFilePath(category);
         std::filesystem::create_directories(log_file_path.parent_path());
         return log_file_path.string();
-        
     } catch (const std::exception& e) {
         std::cerr << "로그 경로 빌드 실패: " << e.what() << "\n";
         return "./error.log";
@@ -222,7 +335,7 @@ std::string LogManager::buildLogPath(const std::string& category) {
 }
 
 // =============================================================================
-// 시간 관련 유틸리티
+// 시간 유틸리티
 // =============================================================================
 
 std::string LogManager::getCurrentDate() {
@@ -230,7 +343,6 @@ std::string LogManager::getCurrentDate() {
     std::time_t t = std::chrono::system_clock::to_time_t(now);
     std::tm buf{};
     
-    // PlatformCompat.h의 SAFE_LOCALTIME 사용
     SAFE_LOCALTIME(&t, &buf);
     
     std::ostringstream oss;
@@ -317,12 +429,10 @@ std::string LogManager::formatMaintenanceLog(const UniqueId& device_id,
 void LogManager::writeToFile(const std::string& filePath, const std::string& message) {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    // 콘솔 출력
     if (console_output_enabled_) {
         std::cout << message << std::endl;
     }
     
-    // 파일 출력
     if (file_output_enabled_) {
         std::ofstream& stream = logFiles_[filePath];
         if (!stream.is_open()) {
@@ -360,7 +470,7 @@ void LogManager::checkAndRotateLogFile(const std::string& filePath, std::ofstrea
                     stream.open(filePath, std::ios::app);
                     
                     if (console_output_enabled_) {
-                        std::cout << "로그 로테이션 수행: " << filePath << " -> " << backup_path.string() << std::endl;
+                        std::cout << "로그 로테이션: " << filePath << " -> " << backup_path.string() << std::endl;
                     }
                 }
             }
@@ -376,30 +486,17 @@ void LogManager::updateStatistics(LogLevel level) {
     std::lock_guard<std::mutex> lock(mutex_);
     
     switch (level) {
-        case LogLevel::TRACE:
-            statistics_.trace_count++;
-            break;
-        case LogLevel::DEBUG:
-            statistics_.debug_count++;
-            break;
-        case LogLevel::INFO:
-            statistics_.info_count++;
-            break;
-        case LogLevel::WARN:
+        case LogLevel::TRACE: statistics_.trace_count++; break;
+        case LogLevel::DEBUG: statistics_.debug_count++; break;
+        case LogLevel::INFO: statistics_.info_count++; break;
+        case LogLevel::WARN: 
             statistics_.warn_count++;
             statistics_.warning_count++;
             break;
-        case LogLevel::LOG_ERROR:
-            statistics_.error_count++;
-            break;
-        case LogLevel::LOG_FATAL:
-            statistics_.fatal_count++;
-            break;
-        case LogLevel::MAINTENANCE:
-            statistics_.maintenance_count++;
-            break;
-        default:
-            break;
+        case LogLevel::LOG_ERROR: statistics_.error_count++; break;
+        case LogLevel::LOG_FATAL: statistics_.fatal_count++; break;
+        case LogLevel::MAINTENANCE: statistics_.maintenance_count++; break;
+        default: break;
     }
 
     statistics_.total_logs++;
@@ -407,7 +504,7 @@ void LogManager::updateStatistics(LogLevel level) {
 }
 
 // =============================================================================
-// 기본 로그 메소드들
+// 기본 로그 메소드
 // =============================================================================
 
 void LogManager::Info(const std::string& message) {
@@ -441,7 +538,7 @@ void LogManager::Maintenance(const std::string& message) {
 }
 
 // =============================================================================
-// 확장 로그 메소드들
+// 확장 로그
 // =============================================================================
 
 void LogManager::log(const std::string& category, LogLevel level, const std::string& message) {
@@ -459,7 +556,7 @@ void LogManager::log(const std::string& category, const std::string& level, cons
 }
 
 // =============================================================================
-// 점검 관련 로그 메소드들 (UUID → UniqueId 변경)
+// 점검 로그
 // =============================================================================
 
 void LogManager::logMaintenance(const UniqueId& device_id, const EngineerID& engineer_id, 
@@ -491,7 +588,7 @@ void LogManager::logRemoteControlBlocked(const UniqueId& device_id, const std::s
 }
 
 // =============================================================================
-// 드라이버 로그 (UUID → UniqueId 변경)
+// 드라이버 로그
 // =============================================================================
 
 void LogManager::logDriver(const UniqueId& device_id, DriverLogCategory category, 
@@ -505,8 +602,12 @@ void LogManager::logDriver(const UniqueId& device_id, DriverLogCategory category
     log(categoryName, level, oss.str());
 }
 
+void LogManager::logDriver(const std::string& driverName, const std::string& message) {
+    log("driver_" + driverName, LogLevel::INFO, message);
+}
+
 // =============================================================================
-// 데이터 품질 로그 (UUID → UniqueId 변경)
+// 데이터 품질 로그
 // =============================================================================
 
 void LogManager::logDataQuality(const UniqueId& device_id, const UniqueId& point_id,
@@ -526,14 +627,6 @@ void LogManager::logDataQuality(const UniqueId& device_id, const UniqueId& point
     log("data_quality", level, oss.str());
 }
 
-// =============================================================================
-// 기존 특수 로그 메소드들
-// =============================================================================
-
-void LogManager::logDriver(const std::string& driverName, const std::string& message) {
-    log("driver_" + driverName, LogLevel::INFO, message);
-}
-
 void LogManager::logError(const std::string& message) {
     log("error", LogLevel::LOG_ERROR, message);
 }
@@ -548,7 +641,7 @@ void LogManager::logPacket(const std::string& driver, const std::string& device,
 }
 
 // =============================================================================
-// 카테고리별 로그 레벨 관리
+// 카테고리 관리
 // =============================================================================
 
 void LogManager::setCategoryLogLevel(DriverLogCategory category, LogLevel level) {
@@ -563,14 +656,14 @@ LogLevel LogManager::getCategoryLogLevel(DriverLogCategory category) const {
 }
 
 // =============================================================================
-// 설정 재로드
+// 설정 관리
 // =============================================================================
 
 void LogManager::reloadSettings() {
     std::lock_guard<std::mutex> lock(mutex_);
     loadLogSettingsFromConfig();
     if (console_output_enabled_) {
-        std::cout << "로그 설정이 재로드되었습니다." << std::endl;
+        std::cout << "로그 설정 재로드 완료" << std::endl;
     }
 }
 
@@ -592,13 +685,13 @@ void LogManager::setLogBasePath(const std::string& path) {
         createLogDirectoriesRecursive();
     } catch (const std::exception& e) {
         if (console_output_enabled_) {
-            std::cerr << "새 로그 경로 디렉토리 생성 실패: " << e.what() << std::endl;
+            std::cerr << "로그 경로 변경 실패: " << e.what() << std::endl;
         }
     }
 }
 
 // =============================================================================
-// 통계 및 관리
+// 통계
 // =============================================================================
 
 PulseOne::Structs::LogStatistics LogManager::getStatistics() const {
@@ -637,7 +730,7 @@ void LogManager::rotateLogs() {
 }
 
 // =============================================================================
-// 유틸리티 함수들
+// 유틸리티
 // =============================================================================
 
 std::string LogManager::logLevelToString(LogLevel level) {
