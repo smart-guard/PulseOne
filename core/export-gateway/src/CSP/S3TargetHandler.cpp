@@ -21,7 +21,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <filesystem>
-
+#include <fstream>
 namespace PulseOne {
 namespace CSP {
 
@@ -51,77 +51,74 @@ bool S3TargetHandler::initialize(const json& config) {
             return false;
         }
         
-        std::string bucket_name = config["bucket_name"].get<std::string>();
+        // ✅ 버킷명 환경변수 치환
+        std::string bucket_name = expandEnvironmentVariables(
+            config["bucket_name"].get<std::string>()
+        );
         LogManager::getInstance().Info("S3 타겟 버킷: " + bucket_name);
         
         // S3 설정 구성
         PulseOne::Client::S3Config s3_config;
-        
-        // 기본 설정
         s3_config.bucket_name = bucket_name;
-        s3_config.endpoint = config.value("endpoint", "https://s3.amazonaws.com");
-        s3_config.region = config.value("region", "us-east-1");
+        
+        // ✅ 리전 환경변수 치환
+        std::string region = config.value("region", "us-east-1");
+        region = expandEnvironmentVariables(region);
+        s3_config.region = region;
+        
+        if (config.contains("endpoint")) {
+            // ✅ 명시적 엔드포인트 환경변수 치환
+            std::string endpoint = config["endpoint"].get<std::string>();
+            endpoint = expandEnvironmentVariables(endpoint);
+            s3_config.endpoint = endpoint;
+            
+            LogManager::getInstance().Info("명시적 엔드포인트 사용: " + s3_config.endpoint);
+        } else {
+            // ✅ 자동 생성 (치환된 region 사용)
+            s3_config.endpoint = generateS3Endpoint(region);
+            LogManager::getInstance().Info("자동 생성된 엔드포인트: " + s3_config.endpoint);
+        }
         
         // 자격증명 로드
         loadCredentials(config, s3_config);
         
-        // 타임아웃 설정
+        // 나머지 설정 (기존 코드 유지)
         s3_config.upload_timeout_sec = config.value("upload_timeout_sec", 60);
         s3_config.connect_timeout_sec = config.value("connect_timeout_sec", 10);
-        
-        // SSL 설정
         s3_config.verify_ssl = config.value("verify_ssl", true);
-        
-        // 재시도 설정
         s3_config.max_retries = config.value("max_retries", 3);
         
-        // Content-Type 설정
-        s3_config.content_type = config.value("content_type", "application/json; charset=utf-8");
+        // ✅ content_type 환경변수 치환
+        std::string content_type = config.value("content_type", "application/json");
+        s3_config.content_type = expandEnvironmentVariables(content_type);
         
-        // 압축 설정
         compression_enabled_ = config.value("compression_enabled", false);
         compression_level_ = config.value("compression_level", 6);
         
-        // 객체 키 템플릿 설정
+        // ✅ object_key_template 환경변수 치환
         object_key_template_ = config.value("object_key_template",
             "{building_id}/{date}/{point_name}_{timestamp}_alarm.json");
+        object_key_template_ = expandEnvironmentVariables(object_key_template_);
         
-        // 메타데이터 템플릿 설정
         loadMetadataTemplate(config);
         
-        // S3 클라이언트 생성 (예외 처리 강화)
         try {
             s3_client_ = std::make_unique<PulseOne::Client::S3Client>(s3_config);
-            
             if (!s3_client_) {
                 LogManager::getInstance().Error("S3 클라이언트 생성 실패 (nullptr)");
                 return false;
             }
-            
         } catch (const std::exception& e) {
             LogManager::getInstance().Error("S3 클라이언트 생성 예외: " + std::string(e.what()));
-            s3_client_ = nullptr;
-            return false;
-        } catch (...) {
-            LogManager::getInstance().Error("S3 클라이언트 생성 중 알 수 없는 예외 발생");
             s3_client_ = nullptr;
             return false;
         }
         
         LogManager::getInstance().Info("S3 타겟 핸들러 초기화 완료");
-        LogManager::getInstance().Debug("설정 - bucket: " + bucket_name +
-                                       ", region: " + s3_config.region +
-                                       ", compression: " + (compression_enabled_ ? "enabled" : "disabled"));
-        
         return true;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("S3 타겟 핸들러 초기화 실패: " + std::string(e.what()));
-        s3_client_ = nullptr;
-        return false;
-    } catch (...) {
-        LogManager::getInstance().Error("S3 타겟 핸들러 초기화 중 알 수 없는 예외 발생");
-        s3_client_ = nullptr;
         return false;
     }
 }
@@ -279,88 +276,74 @@ bool S3TargetHandler::validateConfig(const json& config, std::vector<std::string
 void S3TargetHandler::loadCredentials(const json& config, PulseOne::Client::S3Config& s3_config) {
     auto& config_manager = ConfigManager::getInstance();
     
-    // 1. 파일에서 자격증명 로드 (최우선) - access_key_file, secret_key_file 사용
-    if (config.contains("access_key_file") && config.contains("secret_key_file")) {
-        try {
-            std::string access_key_file = config["access_key_file"].get<std::string>();
-            std::string secret_key_file = config["secret_key_file"].get<std::string>();
-            
-            // 🔥 수정: expandEnvVars → expandVariables로 변경
-            access_key_file = config_manager.expandVariables(access_key_file);
-            secret_key_file = config_manager.expandVariables(secret_key_file);
-            
-            LogManager::getInstance().Debug("📂 Reading S3 credentials from files:");
-            LogManager::getInstance().Debug("  Access key file: " + access_key_file);
-            LogManager::getInstance().Debug("  Secret key file: " + secret_key_file);
-            
-            // 파일 읽기 - ifstream 사용
-            std::ifstream access_file(access_key_file);
-            if (!access_file.is_open()) {
-                LogManager::getInstance().Error("❌ Cannot open access key file: " + access_key_file);
-            } else {
-                std::string access_key((std::istreambuf_iterator<char>(access_file)),
-                                      std::istreambuf_iterator<char>());
-                // trim whitespace
-                access_key.erase(0, access_key.find_first_not_of(" \t\n\r"));
-                access_key.erase(access_key.find_last_not_of(" \t\n\r") + 1);
-                
-                s3_config.access_key = access_key;
-                LogManager::getInstance().Debug("✅ Access key loaded: " + 
-                    access_key.substr(0, std::min<size_t>(8, access_key.length())) + "...");
-                access_file.close();
-            }
-            
-            std::ifstream secret_file(secret_key_file);
-            if (!secret_file.is_open()) {
-                LogManager::getInstance().Error("❌ Cannot open secret key file: " + secret_key_file);
-            } else {
-                std::string secret_key((std::istreambuf_iterator<char>(secret_file)),
-                                      std::istreambuf_iterator<char>());
-                // trim whitespace
-                secret_key.erase(0, secret_key.find_first_not_of(" \t\n\r"));
-                secret_key.erase(secret_key.find_last_not_of(" \t\n\r") + 1);
-                
-                s3_config.secret_key = secret_key;
-                LogManager::getInstance().Debug("✅ Secret key loaded (" + 
-                    std::to_string(secret_key.length()) + " bytes)");
-                secret_file.close();
-            }
-            
-            // 파일에서 성공적으로 읽었으면 리턴
-            if (!s3_config.access_key.empty() && !s3_config.secret_key.empty()) {
-                LogManager::getInstance().Info("✅ S3 credentials loaded from files successfully");
-                return;
-            }
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("❌ Failed to load credentials from files: " + 
-                                          std::string(e.what()));
-        }
-    }
-    
-    // 2. 직접 설정에서 로드 (access_key, secret_key 직접)
+    // 1. 직접 설정에서 로드 (환경변수 치환 지원)
     if (config.contains("access_key") && config.contains("secret_key")) {
-        s3_config.access_key = config["access_key"].get<std::string>();
-        s3_config.secret_key = config["secret_key"].get<std::string>();
-        LogManager::getInstance().Debug("✅ S3 자격증명을 설정에서 직접 로드");
+        s3_config.access_key = expandEnvironmentVariables(
+            config["access_key"].get<std::string>()
+        );
+        s3_config.secret_key = expandEnvironmentVariables(
+            config["secret_key"].get<std::string>()
+        );
+        LogManager::getInstance().Debug("S3 자격증명을 설정에서 로드");
         return;
     }
     
-    // 3. ConfigManager에서 환경변수로 로드
-    std::string credential_prefix = config.value("credential_prefix", "S3_");
-    s3_config.access_key = config_manager.getOrDefault(credential_prefix + "ACCESS_KEY", "");
-    s3_config.secret_key = config_manager.getOrDefault(credential_prefix + "SECRET_KEY", "");
-    
-    // 세션 토큰 (STS 사용 시)
-    std::string session_token = config_manager.getOrDefault(credential_prefix + "SESSION_TOKEN", "");
-    if (!session_token.empty()) {
-        LogManager::getInstance().Debug("✅ S3 세션 토큰 설정");
+    // 2. 파일에서 로드 (파일 경로도 환경변수 치환)
+    if (config.contains("access_key_file") && config.contains("secret_key_file")) {
+        std::string access_key_file = expandEnvironmentVariables(
+            config["access_key_file"].get<std::string>()
+        );
+        std::string secret_key_file = expandEnvironmentVariables(
+            config["secret_key_file"].get<std::string>()
+        );
+        
+        // ✅ 수정: loadKeyFromFile 대신 직접 파일 읽기
+        try {
+            // access_key 파일 읽기
+            std::ifstream access_file(access_key_file);
+            if (access_file.is_open()) {
+                std::string line;
+                if (std::getline(access_file, line)) {
+                    // 앞뒤 공백 제거
+                    line.erase(0, line.find_first_not_of(" \t\r\n"));
+                    line.erase(line.find_last_not_of(" \t\r\n") + 1);
+                    s3_config.access_key = line;
+                }
+                access_file.close();
+            } else {
+                LogManager::getInstance().Error("액세스 키 파일 열기 실패: " + access_key_file);
+            }
+            
+            // secret_key 파일 읽기
+            std::ifstream secret_file(secret_key_file);
+            if (secret_file.is_open()) {
+                std::string line;
+                if (std::getline(secret_file, line)) {
+                    // 앞뒤 공백 제거
+                    line.erase(0, line.find_first_not_of(" \t\r\n"));
+                    line.erase(line.find_last_not_of(" \t\r\n") + 1);
+                    s3_config.secret_key = line;
+                }
+                secret_file.close();
+            } else {
+                LogManager::getInstance().Error("시크릿 키 파일 열기 실패: " + secret_key_file);
+            }
+            
+            if (!s3_config.access_key.empty() && !s3_config.secret_key.empty()) {
+                LogManager::getInstance().Debug("S3 자격증명을 파일에서 로드");
+                return;
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("키 파일 읽기 실패: " + std::string(e.what()));
+        }
     }
     
-    if (s3_config.access_key.empty() || s3_config.secret_key.empty()) {
-        LogManager::getInstance().Warn("⚠️  S3 자격증명이 설정되지 않음 - IAM Role 또는 환경변수 사용");
-    } else {
-        LogManager::getInstance().Debug("✅ S3 자격증명을 ConfigManager에서 로드");
+    // 3. ConfigManager에서 로드
+    s3_config.access_key = config_manager.getOrDefault("AWS_ACCESS_KEY", "");
+    s3_config.secret_key = config_manager.getOrDefault("AWS_SECRET_KEY", "");
+    
+    if (!s3_config.access_key.empty()) {
+        LogManager::getInstance().Debug("S3 자격증명을 ConfigManager에서 로드");
     }
 }
 
@@ -633,6 +616,49 @@ std::string S3TargetHandler::generateHourString() const {
     std::ostringstream oss;
     oss << std::put_time(std::gmtime(&time_t), "%H");
     return oss.str();
+}
+
+std::string S3TargetHandler::expandEnvironmentVariables(const std::string& str) const {
+    std::string result = str;
+    size_t pos = 0;
+    
+    while ((pos = result.find("${", pos)) != std::string::npos) {
+        size_t end_pos = result.find("}", pos + 2);
+        if (end_pos == std::string::npos) break;
+        
+        // 환경변수 이름 추출
+        std::string var_name = result.substr(pos + 2, end_pos - pos - 2);
+        
+        // 환경변수 값 가져오기 (Windows/Linux 모두 동작)
+        const char* env_value = std::getenv(var_name.c_str());
+        std::string replacement = env_value ? env_value : "";
+        
+        // 치환
+        result.replace(pos, end_pos - pos + 1, replacement);
+        pos += replacement.length();
+    }
+    
+    return result;
+}
+
+std::string S3TargetHandler::generateS3Endpoint(const std::string& region) const {
+    // us-east-1은 특별 케이스
+    if (region == "us-east-1") {
+        return "https://s3.amazonaws.com";
+    }
+    
+    // 중국 리전
+    if (region.find("cn-") == 0) {
+        return "https://s3." + region + ".amazonaws.com.cn";
+    }
+    
+    // AWS GovCloud 리전
+    if (region.find("us-gov-") == 0) {
+        return "https://s3." + region + ".amazonaws.com";
+    }
+    
+    // 일반 AWS 리전
+    return "https://s3." + region + ".amazonaws.com";
 }
 
 } // namespace CSP
