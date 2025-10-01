@@ -165,15 +165,17 @@ AlarmSendResult CSPGateway::taskAlarmSingle(const AlarmMessage& alarm_message) {
 }
 
 AlarmSendResult CSPGateway::taskAlarmSingleLegacy(const AlarmMessage& alarm) {
-    // 레거시 알람 처리 로직
     LogManager::getInstance().Debug("레거시 알람 처리: " + alarm.nm);
     
-    // 실제 구현: taskAlarmSingle()을 호출하고 결과 반환
-    return taskAlarmSingle(alarm);
+    AlarmSendResult result;
+    result.success = false;
+    result.error_message = "Legacy method not implemented - use Dynamic Targets";
+    
+    // TODO: 실제 HTTP 전송 로직 구현
+    LogManager::getInstance().Warn("Legacy alarm processing not implemented yet");
+    
+    return result;
 }
-
-// =============================================================================
-// ✅ 수정 2: AlarmSendResult 필드명 수정
 // =============================================================================
 
 AlarmSendResult CSPGateway::taskAlarmSingleDynamic(const AlarmMessage& alarm_message) {

@@ -213,6 +213,7 @@ struct DynamicTarget {
     
     // 런타임 상태 (atomic 멤버들)
     mutable std::atomic<bool> healthy{true};
+    mutable std::atomic<bool> handler_initialized{false};  // ← 추가
     mutable std::atomic<size_t> success_count{0};
     mutable std::atomic<size_t> failure_count{0};
     mutable std::atomic<size_t> consecutive_failures{0};
@@ -225,7 +226,7 @@ struct DynamicTarget {
     std::chrono::system_clock::time_point last_failure_time;
     std::chrono::system_clock::time_point created_time;
     
-    // 🔥 기본 생성자
+    // 기본 생성자
     DynamicTarget() {
         auto now = std::chrono::system_clock::now();
         last_success_time = now;
@@ -233,7 +234,7 @@ struct DynamicTarget {
         created_time = now;
     }
     
-    // 🔥 복사 생성자 (atomic 멤버들 처리)
+    // 복사 생성자 (atomic 멤버들 처리)
     DynamicTarget(const DynamicTarget& other) 
         : name(other.name)
         , type(other.type)
@@ -241,7 +242,8 @@ struct DynamicTarget {
         , priority(other.priority)
         , description(other.description)
         , config(other.config)
-        , healthy(other.healthy.load())                    // atomic 값 로드
+        , healthy(other.healthy.load())
+        , handler_initialized(other.handler_initialized.load())  // ← 추가
         , success_count(other.success_count.load())
         , failure_count(other.failure_count.load())
         , consecutive_failures(other.consecutive_failures.load())
@@ -252,7 +254,7 @@ struct DynamicTarget {
         , last_failure_time(other.last_failure_time)
         , created_time(other.created_time) {}
     
-    // 🔥 이동 생성자 (atomic 멤버들 처리)
+    // 이동 생성자 (atomic 멤버들 처리)
     DynamicTarget(DynamicTarget&& other) noexcept
         : name(std::move(other.name))
         , type(std::move(other.type))
@@ -260,7 +262,8 @@ struct DynamicTarget {
         , priority(other.priority)
         , description(std::move(other.description))
         , config(std::move(other.config))
-        , healthy(other.healthy.load())                    // atomic 값 로드
+        , healthy(other.healthy.load())
+        , handler_initialized(other.handler_initialized.load())  // ← 추가
         , success_count(other.success_count.load())
         , failure_count(other.failure_count.load())
         , consecutive_failures(other.consecutive_failures.load())
@@ -271,7 +274,7 @@ struct DynamicTarget {
         , last_failure_time(other.last_failure_time)
         , created_time(other.created_time) {}
     
-    // 🔥 복사 대입 연산자
+    // 복사 대입 연산자
     DynamicTarget& operator=(const DynamicTarget& other) {
         if (this != &other) {
             name = other.name;
@@ -280,7 +283,8 @@ struct DynamicTarget {
             priority = other.priority;
             description = other.description;
             config = other.config;
-            healthy.store(other.healthy.load());             // atomic 값 저장
+            healthy.store(other.healthy.load());
+            handler_initialized.store(other.handler_initialized.load());  // ← 추가
             success_count.store(other.success_count.load());
             failure_count.store(other.failure_count.load());
             consecutive_failures.store(other.consecutive_failures.load());
@@ -294,7 +298,7 @@ struct DynamicTarget {
         return *this;
     }
     
-    // 🔥 이동 대입 연산자
+    // 이동 대입 연산자
     DynamicTarget& operator=(DynamicTarget&& other) noexcept {
         if (this != &other) {
             name = std::move(other.name);
@@ -303,7 +307,8 @@ struct DynamicTarget {
             priority = other.priority;
             description = std::move(other.description);
             config = std::move(other.config);
-            healthy.store(other.healthy.load());             // atomic 값 저장
+            healthy.store(other.healthy.load());
+            handler_initialized.store(other.handler_initialized.load());  // ← 추가
             success_count.store(other.success_count.load());
             failure_count.store(other.failure_count.load());
             consecutive_failures.store(other.consecutive_failures.load());
@@ -333,6 +338,7 @@ struct DynamicTarget {
             {"priority", priority},
             {"description", description},
             {"healthy", healthy.load()},
+            {"handler_initialized", handler_initialized.load()},  // ← 추가
             {"success_count", success_count.load()},
             {"failure_count", failure_count.load()},
             {"consecutive_failures", consecutive_failures.load()},
