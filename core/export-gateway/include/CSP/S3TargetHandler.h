@@ -195,6 +195,12 @@ private:
      * @brief 시간 문자열 생성
      */
     std::string generateHourString() const;
+    
+    // 환경변수 치환
+    std::string expandEnvironmentVariables(const std::string& str) const;
+    
+    // 리전 기반 엔드포인트 자동 생성
+    std::string generateS3Endpoint(const std::string& region) const;
 };
 
 } // namespace CSP
