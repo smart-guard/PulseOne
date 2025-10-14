@@ -1,5 +1,5 @@
 # =============================================================================
-# shared/Makefile - PulseOne 공유 라이브러리 (OpenSSL + Security 지원)
+# shared/Makefile - PulseOne 공유 라이브러리 (OpenSSL + Security + Data 지원)
 # =============================================================================
 
 # 플랫폼 감지
@@ -41,7 +41,7 @@ INCLUDE_DIR = include
 BUILD_DIR = build
 LIB_DIR = lib
 
-# Include 경로 (Security 추가)
+# Include 경로 (Data 추가!)
 INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Platform \
            -I$(INCLUDE_DIR)/Common \
@@ -51,6 +51,7 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Database/Entities \
            -I$(INCLUDE_DIR)/Database/Repositories \
            -I$(INCLUDE_DIR)/Client \
+           -I$(INCLUDE_DIR)/Data \
            -I$(INCLUDE_DIR)/Export \
            -I$(INCLUDE_DIR)/Alarm
 
@@ -103,7 +104,7 @@ else
 endif
 
 # =============================================================================
-# 소스 파일 수집 (Security 추가)
+# 소스 파일 수집 (Data 추가!)
 # =============================================================================
 
 COMMON_SOURCES = $(wildcard $(SRC_DIR)/Common/*.cpp) \
@@ -118,6 +119,9 @@ DATABASE_SOURCES = $(wildcard $(SRC_DIR)/Database/*.cpp) \
 
 CLIENT_SOURCES = $(wildcard $(SRC_DIR)/Client/*.cpp)
 
+# 🆕 Data 소스 (DataReader, DataWriter)
+DATA_SOURCES = $(wildcard $(SRC_DIR)/Data/*.cpp)
+
 EXPORT_SOURCES = $(wildcard $(SRC_DIR)/Export/*.cpp)
 
 ALARM_SOURCES = $(wildcard $(SRC_DIR)/Alarm/*.cpp)
@@ -127,14 +131,16 @@ COMMON_OBJECTS = $(COMMON_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 SECURITY_OBJECTS = $(SECURITY_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 DATABASE_OBJECTS = $(DATABASE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 CLIENT_OBJECTS = $(CLIENT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+DATA_OBJECTS = $(DATA_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 EXPORT_OBJECTS = $(EXPORT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 ALARM_OBJECTS = $(ALARM_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 라이브러리 파일들 (Security 추가)
+# 라이브러리 파일들 (Data 추가!)
 COMMON_LIB = $(LIB_DIR)/libpulseone-common$(LIB_SUFFIX)
 SECURITY_LIB = $(LIB_DIR)/libpulseone-security$(LIB_SUFFIX)
 DATABASE_LIB = $(LIB_DIR)/libpulseone-database$(LIB_SUFFIX)
 CLIENT_LIB = $(LIB_DIR)/libpulseone-client$(LIB_SUFFIX)
+DATA_LIB = $(LIB_DIR)/libpulseone-data$(LIB_SUFFIX)
 EXPORT_LIB = $(LIB_DIR)/libpulseone-export$(LIB_SUFFIX)
 ALARM_LIB = $(LIB_DIR)/libpulseone-alarm$(LIB_SUFFIX)
 
@@ -149,21 +155,24 @@ NC = \033[0m
 # 메인 타겟들
 # =============================================================================
 
-.PHONY: all clean common security database client export alarm test-headers help info openssl-check
+.PHONY: all clean common security database client data export alarm test-headers help info openssl-check
 
-all: $(BUILD_DIR) $(LIB_DIR) common security database client export alarm
+all: $(BUILD_DIR) $(LIB_DIR) common security database client data export alarm
 	@echo -e "$(GREEN)✅ 모든 공유 라이브러리 빌드 완료 [$(PLATFORM)]$(NC)"
 
-# 디렉토리 생성 (Security 추가)
+# 디렉토리 생성 (Data 추가!)
 $(BUILD_DIR) $(LIB_DIR):
 	@mkdir -p $@
 	@mkdir -p $(BUILD_DIR)/Common $(BUILD_DIR)/Utils $(BUILD_DIR)/Platform
 	@mkdir -p $(BUILD_DIR)/Security
 	@mkdir -p $(BUILD_DIR)/Database/Entities $(BUILD_DIR)/Database/Repositories
-	@mkdir -p $(BUILD_DIR)/Client $(BUILD_DIR)/Export $(BUILD_DIR)/Alarm
+	@mkdir -p $(BUILD_DIR)/Client
+	@mkdir -p $(BUILD_DIR)/Data
+	@mkdir -p $(BUILD_DIR)/Export
+	@mkdir -p $(BUILD_DIR)/Alarm
 
 # =============================================================================
-# 라이브러리 빌드 (Security 추가)
+# 라이브러리 빌드 (Data 추가!)
 # =============================================================================
 
 common: $(COMMON_LIB)
@@ -205,6 +214,19 @@ $(CLIENT_LIB): $(CLIENT_OBJECTS) | $(LIB_DIR)
 ifneq ($(CLIENT_OBJECTS),)
 	@ar rcs $@ $(CLIENT_OBJECTS)
 	@ranlib $@ 2>/dev/null || true
+else
+	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
+	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+endif
+
+# 🆕 Data 라이브러리 빌드 (DataReader, DataWriter)
+data: $(DATA_LIB)
+$(DATA_LIB): $(DATA_OBJECTS) | $(LIB_DIR)
+	@echo -e "$(BLUE)🔧 Building libpulseone-data [$(PLATFORM)]$(NC)"
+ifneq ($(DATA_OBJECTS),)
+	@ar rcs $@ $(DATA_OBJECTS)
+	@ranlib $@ 2>/dev/null || true
+	@echo -e "$(GREEN)   ✅ DataReader.cpp, DataWriter.cpp compiled$(NC)"
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
 	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
@@ -261,7 +283,7 @@ endif
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # =============================================================================
-# 테스트 및 검증 (Security 헤더 추가)
+# 테스트 및 검증 (Data 헤더 추가!)
 # =============================================================================
 
 test-headers:
@@ -276,6 +298,10 @@ test-headers:
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Utils/ConfigManager.h 2>/dev/null && echo "  ✅ ConfigManager.h" || echo "  ❌ ConfigManager.h"
 	@echo "Testing Security headers..."
 	@if [ -f include/Security/SecretManager.h ]; then $(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Security/SecretManager.h 2>/dev/null && echo "  ✅ SecretManager.h" || echo "  ❌ SecretManager.h"; fi
+	@echo "Testing Data headers..."
+	@if [ -f include/Data/DataReader.h ]; then $(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Data/DataReader.h 2>/dev/null && echo "  ✅ DataReader.h" || echo "  ❌ DataReader.h"; fi
+	@if [ -f include/Data/DataWriter.h ]; then $(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Data/DataWriter.h 2>/dev/null && echo "  ✅ DataWriter.h" || echo "  ❌ DataWriter.h"; fi
+	@if [ -f include/Data/RedisDataTypes.h ]; then $(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Data/RedisDataTypes.h 2>/dev/null && echo "  ✅ RedisDataTypes.h" || echo "  ❌ RedisDataTypes.h"; fi
 	@echo "Testing Alarm headers..."
 	@if [ -f include/Alarm/AlarmTypes.h ]; then $(CXX) $(CXXFLAGS) $(INCLUDES) -fsyntax-only include/Alarm/AlarmTypes.h 2>/dev/null && echo "  ✅ AlarmTypes.h" || echo "  ❌ AlarmTypes.h"; fi
 	@echo "Testing Export headers..."
@@ -287,6 +313,8 @@ test-compile:
 	@echo '#include "Common/BasicTypes.h"' > /tmp/test_shared.cpp
 	@echo '#include "Export/ExportTypes.h"' >> /tmp/test_shared.cpp
 	@if [ -f include/Security/SecretManager.h ]; then echo '#include "Security/SecretManager.h"' >> /tmp/test_shared.cpp; fi
+	@if [ -f include/Data/DataReader.h ]; then echo '#include "Data/DataReader.h"' >> /tmp/test_shared.cpp; fi
+	@if [ -f include/Data/DataWriter.h ]; then echo '#include "Data/DataWriter.h"' >> /tmp/test_shared.cpp; fi
 	@if [ -f include/Alarm/AlarmTypes.h ]; then echo '#include "Alarm/AlarmTypes.h"' >> /tmp/test_shared.cpp; fi
 	@echo 'int main() { return 0; }' >> /tmp/test_shared.cpp
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c /tmp/test_shared.cpp -o /tmp/test_shared.o 2>/dev/null && echo "  ✅ Compilation test passed" || echo "  ❌ Compilation test failed"
@@ -301,7 +329,7 @@ windows-cross:
 	$(MAKE) CROSS_COMPILE_WINDOWS=1 all
 
 # =============================================================================
-# 정보 및 상태 (OpenSSL 추가)
+# 정보 및 상태 (Data 추가!)
 # =============================================================================
 
 info:
@@ -311,7 +339,7 @@ info:
 	@echo "Compiler: $(CXX)"
 	@echo "Flags: $(CXXFLAGS)"
 	@echo "Header files: $(shell find $(INCLUDE_DIR) -name '*.h' 2>/dev/null | wc -l)"
-	@echo "Source files: $(words $(COMMON_SOURCES) $(SECURITY_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(EXPORT_SOURCES) $(ALARM_SOURCES))"
+	@echo "Source files: $(words $(COMMON_SOURCES) $(SECURITY_SOURCES) $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(DATA_SOURCES) $(EXPORT_SOURCES) $(ALARM_SOURCES))"
 	@echo ""
 	@echo "Library Support:"
 	@echo "CURL (libcurl): $(if $(filter 1,$(HAS_CURL)),✅ available,❌ missing)"
@@ -324,6 +352,7 @@ info:
 	@echo "libpulseone-security: $(if $(wildcard $(SECURITY_LIB)),✅ exists,❌ missing)"
 	@echo "libpulseone-database: $(if $(wildcard $(DATABASE_LIB)),✅ exists,❌ missing)"
 	@echo "libpulseone-client: $(if $(wildcard $(CLIENT_LIB)),✅ exists,❌ missing)"
+	@echo "libpulseone-data: $(if $(wildcard $(DATA_LIB)),✅ exists (DataReader/Writer),❌ missing)"
 	@echo "libpulseone-export: $(if $(wildcard $(EXPORT_LIB)),✅ exists,❌ missing)"
 	@echo "libpulseone-alarm: $(if $(wildcard $(ALARM_LIB)),✅ exists,❌ missing)"
 
@@ -360,6 +389,7 @@ help:
 	@echo "  make security     - Build security library (SecretManager, etc.)"
 	@echo "  make database     - Build database library (Entities, Repositories)"
 	@echo "  make client       - Build client library (S3Client, Redis, InfluxDB)"
+	@echo "  make data         - Build data library (DataReader, DataWriter) 🆕"
 	@echo "  make export       - Build export library (Export types)"
 	@echo "  make alarm        - Build alarm library (Alarm types)"
 	@echo ""
@@ -379,6 +409,7 @@ help:
 	@echo ""
 	@echo -e "$(YELLOW)Current Platform: $(PLATFORM)$(NC)"
 	@echo -e "$(YELLOW)OpenSSL Status: $(if $(filter 1,$(HAS_OPENSSL)),✅ Enabled,❌ Disabled)$(NC)"
+	@echo -e "$(YELLOW)Data Library: DataReader.cpp + DataWriter.cpp 🆕$(NC)"
 
 # =============================================================================
 # 🔥 기본 타겟 변경: make만 입력해도 빌드되도록!
