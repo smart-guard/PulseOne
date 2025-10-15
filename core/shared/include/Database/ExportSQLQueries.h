@@ -333,13 +333,42 @@ namespace ExportLog {
         FROM export_logs
         WHERE id = ?
     )";
-    
+
+    const std::string FIND_BY_TIME_RANGE = R"(
+        SELECT 
+            id, log_type, service_id, target_id, mapping_id, point_id,
+            source_value, converted_value, status, error_message, error_code,
+            response_data, http_status_code, processing_time_ms, timestamp, client_info
+        FROM export_logs
+        WHERE timestamp BETWEEN ? AND ?
+        ORDER BY timestamp DESC
+    )";
+
     const std::string INSERT = R"(
         INSERT INTO export_logs (
             log_type, service_id, target_id, mapping_id, point_id,
             source_value, converted_value, status, error_message, error_code,
             response_data, http_status_code, processing_time_ms, client_info
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+
+    const std::string UPDATE = R"(
+        UPDATE export_logs SET
+            log_type = ?,
+            service_id = ?,
+            target_id = ?,
+            mapping_id = ?,
+            point_id = ?,
+            source_value = ?,
+            converted_value = ?,
+            status = ?,
+            error_message = ?,
+            error_code = ?,
+            response_data = ?,
+            http_status_code = ?,
+            processing_time_ms = ?,
+            client_info = ?
+        WHERE id = ?
     )";
     
     const std::string DELETE_BY_ID = "DELETE FROM export_logs WHERE id = ?";

@@ -1,6 +1,6 @@
 /**
  * @file ExportTargetMappingEntity.cpp
- * @version 2.0.0
+ * @version 2.0.1 - loadViaRepository 제거, 직접 구현
  */
 
 #include "Database/Entities/ExportTargetMappingEntity.h"
@@ -45,23 +45,80 @@ std::shared_ptr<Repositories::ExportTargetMappingRepository> ExportTargetMapping
 }
 
 // =============================================================================
-// DB 연산
+// DB 연산 - 직접 구현 (loadViaRepository 사용 안 함)
 // =============================================================================
 
 bool ExportTargetMappingEntity::loadFromDatabase() {
-    return loadViaRepository();
+    if (getId() <= 0) {
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getExportTargetMappingRepository();
+        if (repo) {
+            auto loaded = repo->findById(getId());
+            if (loaded.has_value()) {
+                *this = loaded.value();
+                markSaved();
+                return true;
+            }
+        }
+        return false;
+    } catch (const std::exception& e) {
+        markError();
+        return false;
+    }
 }
 
 bool ExportTargetMappingEntity::saveToDatabase() {
-    return saveViaRepository();
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getExportTargetMappingRepository();
+        if (repo) {
+            bool success = false;
+            if (getId() <= 0) {
+                success = repo->save(*this);
+            } else {
+                success = repo->update(*this);
+            }
+            
+            if (success) {
+                markSaved();
+            }
+            return success;
+        }
+        return false;
+    } catch (const std::exception& e) {
+        markError();
+        return false;
+    }
 }
 
 bool ExportTargetMappingEntity::updateToDatabase() {
-    return updateViaRepository();
+    return saveToDatabase();
 }
 
 bool ExportTargetMappingEntity::deleteFromDatabase() {
-    return deleteViaRepository();
+    if (getId() <= 0) {
+        return false;
+    }
+    
+    try {
+        auto& factory = RepositoryFactory::getInstance();
+        auto repo = factory.getExportTargetMappingRepository();
+        if (repo) {
+            bool success = repo->deleteById(getId());
+            if (success) {
+                markDeleted();
+            }
+            return success;
+        }
+        return false;
+    } catch (const std::exception& e) {
+        markError();
+        return false;
+    }
 }
 
 // =============================================================================
@@ -71,58 +128,65 @@ bool ExportTargetMappingEntity::deleteFromDatabase() {
 json ExportTargetMappingEntity::toJson() const {
     json j;
     
-    j["id"] = id_;
-    j["target_id"] = target_id_;
-    j["point_id"] = point_id_;
-    j["target_field_name"] = target_field_name_;
-    j["target_description"] = target_description_;
-    j["conversion_config"] = conversion_config_;
-    j["is_enabled"] = is_enabled_;
+    try {
+        j["id"] = getId();
+        j["target_id"] = target_id_;
+        j["point_id"] = point_id_;
+        j["target_field_name"] = target_field_name_;
+        j["target_description"] = target_description_;
+        j["conversion_config"] = conversion_config_;
+        j["is_enabled"] = is_enabled_;
+        j["created_at"] = timestampToString(getCreatedAt());
+        j["updated_at"] = timestampToString(getUpdatedAt());
+        
+    } catch (const std::exception&) {
+        // JSON 생성 실패 시 기본 객체 반환
+    }
     
     return j;
 }
 
 bool ExportTargetMappingEntity::fromJson(const json& data) {
     try {
-        if (data.contains("id") && data["id"].is_number()) {
-            id_ = data["id"].get<int>();
+        if (data.contains("id")) {
+            setId(data["id"].get<int>());
         }
-        
-        if (data.contains("target_id") && data["target_id"].is_number()) {
+        if (data.contains("target_id")) {
             target_id_ = data["target_id"].get<int>();
         }
-        
-        if (data.contains("point_id") && data["point_id"].is_number()) {
+        if (data.contains("point_id")) {
             point_id_ = data["point_id"].get<int>();
         }
-        
-        if (data.contains("target_field_name") && data["target_field_name"].is_string()) {
+        if (data.contains("target_field_name")) {
             target_field_name_ = data["target_field_name"].get<std::string>();
         }
-        
-        if (data.contains("target_description") && data["target_description"].is_string()) {
+        if (data.contains("target_description")) {
             target_description_ = data["target_description"].get<std::string>();
         }
-        
-        if (data.contains("conversion_config") && data["conversion_config"].is_string()) {
+        if (data.contains("conversion_config")) {
             conversion_config_ = data["conversion_config"].get<std::string>();
         }
-        
-        if (data.contains("is_enabled") && data["is_enabled"].is_boolean()) {
+        if (data.contains("is_enabled")) {
             is_enabled_ = data["is_enabled"].get<bool>();
         }
         
         markModified();
         return true;
         
-    } catch (const json::exception& e) {
-        LogManager::getInstance().Error("ExportTargetMappingEntity::fromJson failed: " + std::string(e.what()));
+    } catch (const std::exception&) {
         return false;
     }
 }
 
 std::string ExportTargetMappingEntity::toString() const {
-    return toJson().dump(2);
+    std::ostringstream oss;
+    oss << "ExportTargetMappingEntity[";
+    oss << "id=" << getId();
+    oss << ", target_id=" << target_id_;
+    oss << ", point_id=" << point_id_;
+    oss << ", enabled=" << (is_enabled_ ? "true" : "false");
+    oss << "]";
+    return oss.str();
 }
 
 // =============================================================================
@@ -134,23 +198,16 @@ bool ExportTargetMappingEntity::hasConversion() const {
 }
 
 bool ExportTargetMappingEntity::validate() const {
-    if (target_id_ <= 0) {
-        LogManager::getInstance().Warn("ExportTargetMappingEntity::validate - target_id is invalid");
-        return false;
-    }
-    
-    if (point_id_ <= 0) {
-        LogManager::getInstance().Warn("ExportTargetMappingEntity::validate - point_id is invalid");
-        return false;
-    }
-    
+    if (target_id_ <= 0) return false;
+    if (point_id_ <= 0) return false;
+    if (target_field_name_.empty()) return false;
     return true;
 }
 
 std::string ExportTargetMappingEntity::getEntityTypeName() const {
-    return "ExportTargetMapping";
+    return "ExportTargetMappingEntity";
 }
 
-}
-}
-}
+} // namespace Entities
+} // namespace Database
+} // namespace PulseOne

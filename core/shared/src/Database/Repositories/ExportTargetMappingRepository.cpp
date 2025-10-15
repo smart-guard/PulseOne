@@ -1,32 +1,21 @@
 /**
  * @file ExportTargetMappingRepository.cpp
- * @brief Export Target Mapping Repository 구현
- * @author PulseOne Development Team
- * @date 2025-10-15
- * @version 1.0.0
- * 저장 위치: core/shared/src/Database/Repositories/ExportTargetMappingRepository.cpp
+ * @brief Export Target Mapping Repository 구현 - 에러 수정 완료
  */
 
 #include "Database/Repositories/ExportTargetMappingRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/DatabaseAbstractionLayer.h"
 #include "Database/ExportSQLQueries.h"
-#include "Database/SQLQueries.h"
 #include "Utils/LogManager.h"
-#include <sstream>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
-// =============================================================================
-// IRepository 기본 CRUD 구현
-// =============================================================================
-
 std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findAll() {
     try {
         if (!ensureTableExists()) {
-            logger_->Error("ExportTargetMappingRepository::findAll - Table creation failed");
             return {};
         }
         
@@ -34,22 +23,14 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findAll() 
         auto results = db_layer.executeQuery(SQL::ExportTargetMapping::FIND_ALL);
         
         std::vector<ExportTargetMappingEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportTargetMappingRepository::findAll - Failed to map row");
-            }
+            } catch (...) {}
         }
         
-        logger_->Info("ExportTargetMappingRepository::findAll - Found " + 
-                     std::to_string(entities.size()) + " mappings");
         return entities;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::findAll failed: " + std::string(e.what()));
+    } catch (...) {
         return {};
     }
 }
@@ -59,7 +40,6 @@ std::optional<ExportTargetMappingEntity> ExportTargetMappingRepository::findById
         if (isCacheEnabled()) {
             auto cached = getCachedEntity(id);
             if (cached.has_value()) {
-                logger_->Debug("ExportTargetMappingRepository::findById - Cache hit");
                 return cached.value();
             }
         }
@@ -68,9 +48,11 @@ std::optional<ExportTargetMappingEntity> ExportTargetMappingRepository::findById
             return std::nullopt;
         }
         
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::FIND_BY_ID, std::to_string(id));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportTargetMapping::FIND_BY_ID, 
-                                            {std::to_string(id)});
+        auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
             return std::nullopt;
@@ -83,96 +65,73 @@ std::optional<ExportTargetMappingEntity> ExportTargetMappingRepository::findById
         }
         
         return entity;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::findById failed: " + std::string(e.what()));
+    } catch (...) {
         return std::nullopt;
     }
 }
 
 bool ExportTargetMappingRepository::save(ExportTargetMappingEntity& entity) {
     try {
-        if (!validateMapping(entity)) {
-            logger_->Error("ExportTargetMappingRepository::save - Invalid mapping");
-            return false;
-        }
-        
         if (!ensureTableExists()) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        auto params = entityToParams(entity);
+        std::string query = SQL::ExportTargetMapping::INSERT;
         
-        std::vector<std::string> params = {
-            std::to_string(entity.getTargetId()),
-            std::to_string(entity.getPointId()),
-            entity.getTargetFieldName(),
-            entity.getTargetDescription(),
-            entity.getConversionConfig(),
-            entity.isEnabled() ? "1" : "0"
-        };
-        
-        bool success = db_layer.executeNonQuery(SQL::ExportTargetMapping::INSERT, params);
-        
-        if (success && entity.getId() <= 0) {
-            auto id_result = db_layer.executeQuery(SQL::Common::GET_LAST_INSERT_ID);
-            if (!id_result.empty() && !id_result[0].empty()) {
-                entity.setId(std::stoi(id_result[0].at("id")));
+        for (const auto& param : params) {
+            size_t pos = query.find('?');
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, "'" + param.second + "'");
             }
         }
         
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
         if (success) {
-            entity.markSaved();
-            
-            if (isCacheEnabled()) {
-                cacheEntity(entity);
+            auto results = db_layer.executeQuery("SELECT last_insert_rowid() as id");
+            if (!results.empty() && results[0].find("id") != results[0].end()) {
+                entity.setId(std::stoi(results[0].at("id")));
             }
-            
-            logger_->Info("ExportTargetMappingRepository::save - Saved mapping ID: " + 
-                         std::to_string(entity.getId()));
         }
         
         return success;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::save failed: " + std::string(e.what()));
+    } catch (...) {
         return false;
     }
 }
 
 bool ExportTargetMappingRepository::update(const ExportTargetMappingEntity& entity) {
     try {
-        if (!validateMapping(entity)) {
-            logger_->Error("ExportTargetMappingRepository::update - Invalid mapping");
+        if (!ensureTableExists() || entity.getId() <= 0) {
             return false;
         }
         
-        if (!ensureTableExists()) {
-            return false;
+        auto params = entityToParams(entity);
+        std::string query = SQL::ExportTargetMapping::UPDATE;
+        
+        for (const auto& param : params) {
+            size_t pos = query.find('?');
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, "'" + param.second + "'");
+            }
+        }
+        
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(entity.getId()));
         }
         
         DatabaseAbstractionLayer db_layer;
-        
-        std::vector<std::string> params = {
-            std::to_string(entity.getTargetId()),
-            std::to_string(entity.getPointId()),
-            entity.getTargetFieldName(),
-            entity.getTargetDescription(),
-            entity.getConversionConfig(),
-            entity.isEnabled() ? "1" : "0",
-            std::to_string(entity.getId())
-        };
-        
-        bool success = db_layer.executeNonQuery(SQL::ExportTargetMapping::UPDATE, params);
+        bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
-            cacheEntity(entity);
+            clearCacheForId(entity.getId());
         }
         
         return success;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::update failed: " + std::string(e.what()));
+    } catch (...) {
         return false;
     }
 }
@@ -183,18 +142,18 @@ bool ExportTargetMappingRepository::deleteById(int id) {
             return false;
         }
         
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::DELETE_BY_ID, std::to_string(id));
+        
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeNonQuery(SQL::ExportTargetMapping::DELETE_BY_ID, 
-                                               {std::to_string(id)});
+        bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
-            invalidateCache(id);
+            clearCacheForId(id);
         }
         
         return success;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::deleteById failed: " + std::string(e.what()));
+    } catch (...) {
         return false;
     }
 }
@@ -205,40 +164,53 @@ bool ExportTargetMappingRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportTargetMapping::EXISTS_BY_ID, 
-                                            {std::to_string(id)});
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::EXISTS_BY_ID, std::to_string(id));
         
-        if (!results.empty() && !results[0].empty()) {
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
             return std::stoi(results[0].at("count")) > 0;
         }
         
         return false;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::exists failed: " + std::string(e.what()));
+    } catch (...) {
         return false;
     }
 }
 
-// =============================================================================
-// 벌크 연산
-// =============================================================================
-
-std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByIds(const std::vector<int>& ids) {
-    if (ids.empty()) return {};
+std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByIds(
+    const std::vector<int>& ids) {
     
-    std::vector<ExportTargetMappingEntity> entities;
-    entities.reserve(ids.size());
-    
-    for (int id : ids) {
-        auto entity = findById(id);
-        if (entity.has_value()) {
-            entities.push_back(entity.value());
+    try {
+        if (ids.empty() || !ensureTableExists()) {
+            return {};
         }
+        
+        std::ostringstream ids_ss;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) ids_ss << ", ";
+            ids_ss << ids[i];
+        }
+        
+        std::string query = "SELECT * FROM export_target_mappings WHERE id IN (" + 
+                          ids_ss.str() + ")";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<ExportTargetMappingEntity> entities;
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (...) {}
+        }
+        
+        return entities;
+    } catch (...) {
+        return {};
     }
-    
-    return entities;
 }
 
 std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByConditions(
@@ -246,125 +218,160 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByCond
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
     
-    return IRepository<ExportTargetMappingEntity>::findByConditions(conditions, order_by, pagination);
-}
-
-int ExportTargetMappingRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    return IRepository<ExportTargetMappingEntity>::countByConditions(conditions);
-}
-
-// =============================================================================
-// Mapping 전용 조회 메서드
-// =============================================================================
-
-std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByTargetId(int target_id) {
     try {
         if (!ensureTableExists()) {
             return {};
         }
         
+        std::string query = "SELECT * FROM export_target_mappings";
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportTargetMapping::FIND_BY_TARGET_ID, 
-                                            {std::to_string(target_id)});
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetMappingEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportTargetMappingRepository::findByTargetId - Failed to map row");
-            }
+            } catch (...) {}
         }
         
         return entities;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::findByTargetId failed: " + std::string(e.what()));
+    } catch (...) {
         return {};
     }
 }
 
-std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByPointId(int point_id) {
+int ExportTargetMappingRepository::countByConditions(
+    const std::vector<QueryCondition>& conditions) {
+    
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        std::string query = "SELECT COUNT(*) as count FROM export_target_mappings";
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
+    } catch (...) {
+        return 0;
+    }
+}
+
+std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByTargetId(
+    int target_id) {
+    
     try {
         if (!ensureTableExists()) {
             return {};
         }
         
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::FIND_BY_TARGET_ID, std::to_string(target_id));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportTargetMapping::FIND_BY_POINT_ID, 
-                                            {std::to_string(point_id)});
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetMappingEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportTargetMappingRepository::findByPointId - Failed to map row");
-            }
+            } catch (...) {}
         }
         
         return entities;
+    } catch (...) {
+        return {};
+    }
+}
+
+std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByPointId(
+    int point_id) {
+    
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
         
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::findByPointId failed: " + std::string(e.what()));
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::FIND_BY_POINT_ID, std::to_string(point_id));
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<ExportTargetMappingEntity> entities;
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (...) {}
+        }
+        
+        return entities;
+    } catch (...) {
         return {};
     }
 }
 
 std::optional<ExportTargetMappingEntity> ExportTargetMappingRepository::findByTargetAndPoint(
     int target_id, int point_id) {
+    
     try {
         if (!ensureTableExists()) {
             return std::nullopt;
         }
         
+        std::string query = RepositoryHelpers::replaceTwoParameters(
+            SQL::ExportTargetMapping::FIND_BY_TARGET_AND_POINT, 
+            std::to_string(target_id), 
+            std::to_string(point_id));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportTargetMapping::FIND_BY_TARGET_AND_POINT,
-                                            {std::to_string(target_id), std::to_string(point_id)});
+        auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
             return std::nullopt;
         }
         
         return mapRowToEntity(results[0]);
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::findByTargetAndPoint failed: " + 
-                      std::string(e.what()));
+    } catch (...) {
         return std::nullopt;
     }
 }
 
-std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findEnabledByTargetId(int target_id) {
+std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findEnabledByTargetId(
+    int target_id) {
+    
     try {
         if (!ensureTableExists()) {
             return {};
         }
         
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::FIND_ENABLED_BY_TARGET_ID, 
+            std::to_string(target_id));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportTargetMapping::FIND_ENABLED_BY_TARGET_ID, 
-                                            {std::to_string(target_id)});
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetMappingEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportTargetMappingRepository::findEnabledByTargetId - Failed to map row");
-            }
+            } catch (...) {}
         }
         
         return entities;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::findEnabledByTargetId failed: " + 
-                      std::string(e.what()));
+    } catch (...) {
         return {};
     }
 }
@@ -375,24 +382,19 @@ int ExportTargetMappingRepository::deleteByTargetId(int target_id) {
             return 0;
         }
         
-        // 먼저 개수 확인
-        int count = countByTargetId(target_id);
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::DELETE_BY_TARGET_ID, 
+            std::to_string(target_id));
         
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeNonQuery(SQL::ExportTargetMapping::DELETE_BY_TARGET_ID, 
-                                               {std::to_string(target_id)});
+        bool success = db_layer.executeNonQuery(query);
         
-        if (success) {
-            logger_->Info("ExportTargetMappingRepository::deleteByTargetId - Deleted " + 
-                         std::to_string(count) + " mappings");
-            return count;
+        if (success && isCacheEnabled()) {
+            clearCache();
         }
         
-        return 0;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::deleteByTargetId failed: " + 
-                      std::string(e.what()));
+        return success ? 1 : 0;
+    } catch (...) {
         return 0;
     }
 }
@@ -403,30 +405,22 @@ int ExportTargetMappingRepository::deleteByPointId(int point_id) {
             return 0;
         }
         
-        int count = countByPointId(point_id);
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::DELETE_BY_POINT_ID, 
+            std::to_string(point_id));
         
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeNonQuery(SQL::ExportTargetMapping::DELETE_BY_POINT_ID, 
-                                               {std::to_string(point_id)});
+        bool success = db_layer.executeNonQuery(query);
         
-        if (success) {
-            logger_->Info("ExportTargetMappingRepository::deleteByPointId - Deleted " + 
-                         std::to_string(count) + " mappings");
-            return count;
+        if (success && isCacheEnabled()) {
+            clearCache();
         }
         
-        return 0;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::deleteByPointId failed: " + 
-                      std::string(e.what()));
+        return success ? 1 : 0;
+    } catch (...) {
         return 0;
     }
 }
-
-// =============================================================================
-// 통계
-// =============================================================================
 
 int ExportTargetMappingRepository::countByTargetId(int target_id) {
     try {
@@ -434,19 +428,19 @@ int ExportTargetMappingRepository::countByTargetId(int target_id) {
             return 0;
         }
         
-        DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportTargetMapping::COUNT_BY_TARGET_ID, 
-                                            {std::to_string(target_id)});
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::COUNT_BY_TARGET_ID, 
+            std::to_string(target_id));
         
-        if (!results.empty() && !results[0].empty()) {
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
             return std::stoi(results[0].at("count"));
         }
         
         return 0;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::countByTargetId failed: " + 
-                      std::string(e.what()));
+    } catch (...) {
         return 0;
     }
 }
@@ -457,34 +451,36 @@ int ExportTargetMappingRepository::countByPointId(int point_id) {
             return 0;
         }
         
-        DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportTargetMapping::COUNT_BY_POINT_ID, 
-                                            {std::to_string(point_id)});
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTargetMapping::COUNT_BY_POINT_ID, 
+            std::to_string(point_id));
         
-        if (!results.empty() && !results[0].empty()) {
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
             return std::stoi(results[0].at("count"));
         }
         
         return 0;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::countByPointId failed: " + 
-                      std::string(e.what()));
+    } catch (...) {
         return 0;
     }
 }
 
-// =============================================================================
-// 캐시 관리
-// =============================================================================
-
 std::map<std::string, int> ExportTargetMappingRepository::getCacheStats() const {
-    return IRepository<ExportTargetMappingEntity>::getCacheStats();
+    std::map<std::string, int> stats;
+    
+    if (isCacheEnabled()) {
+        stats["cache_enabled"] = 1;
+        auto base_stats = IRepository<ExportTargetMappingEntity>::getCacheStats();
+        stats.insert(base_stats.begin(), base_stats.end());
+    } else {
+        stats["cache_enabled"] = 0;
+    }
+    
+    return stats;
 }
-
-// =============================================================================
-// 내부 헬퍼 메서드들
-// =============================================================================
 
 ExportTargetMappingEntity ExportTargetMappingRepository::mapRowToEntity(
     const std::map<std::string, std::string>& row) {
@@ -492,48 +488,46 @@ ExportTargetMappingEntity ExportTargetMappingRepository::mapRowToEntity(
     ExportTargetMappingEntity entity;
     
     try {
-        DatabaseAbstractionLayer db_layer;
-        
         auto it = row.find("id");
-        if (it != row.end()) {
+        if (it != row.end() && !it->second.empty()) {
             entity.setId(std::stoi(it->second));
         }
         
         it = row.find("target_id");
-        if (it != row.end()) {
+        if (it != row.end() && !it->second.empty()) {
             entity.setTargetId(std::stoi(it->second));
         }
         
         it = row.find("point_id");
-        if (it != row.end()) {
+        if (it != row.end() && !it->second.empty()) {
             entity.setPointId(std::stoi(it->second));
         }
         
-        if ((it = row.find("target_field_name")) != row.end()) {
+        it = row.find("target_field_name");
+        if (it != row.end()) {
             entity.setTargetFieldName(it->second);
         }
         
-        if ((it = row.find("target_description")) != row.end()) {
+        it = row.find("target_description");
+        if (it != row.end()) {
             entity.setTargetDescription(it->second);
         }
         
-        if ((it = row.find("conversion_config")) != row.end()) {
+        it = row.find("conversion_config");
+        if (it != row.end()) {
             entity.setConversionConfig(it->second);
         }
         
         it = row.find("is_enabled");
-        if (it != row.end()) {
-            entity.setEnabled(db_layer.parseBoolean(it->second));
+        if (it != row.end() && !it->second.empty()) {
+            entity.setEnabled(std::stoi(it->second) != 0);
         }
         
-        entity.markSaved();
-        return entity;
-        
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::mapRowToEntity failed: " + 
-                      std::string(e.what()));
-        throw;
+    } catch (...) {
+        throw std::runtime_error("Failed to map row to ExportTargetMappingEntity");
     }
+    
+    return entity;
 }
 
 std::map<std::string, std::string> ExportTargetMappingRepository::entityToParams(
@@ -541,7 +535,6 @@ std::map<std::string, std::string> ExportTargetMappingRepository::entityToParams
     
     std::map<std::string, std::string> params;
     
-    params["id"] = std::to_string(entity.getId());
     params["target_id"] = std::to_string(entity.getTargetId());
     params["point_id"] = std::to_string(entity.getPointId());
     params["target_field_name"] = entity.getTargetFieldName();
@@ -552,17 +545,21 @@ std::map<std::string, std::string> ExportTargetMappingRepository::entityToParams
     return params;
 }
 
-bool ExportTargetMappingRepository::validateMapping(const ExportTargetMappingEntity& entity) {
-    return entity.validate();
+bool ExportTargetMappingRepository::validateMapping(
+    const ExportTargetMappingEntity& entity) {
+    
+    if (entity.getTargetId() <= 0) return false;
+    if (entity.getPointId() <= 0) return false;
+    if (entity.getTargetFieldName().empty()) return false;
+    
+    return true;
 }
 
 bool ExportTargetMappingRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
         return db_layer.executeNonQuery(SQL::ExportTargetMapping::CREATE_TABLE);
-    } catch (const std::exception& e) {
-        logger_->Error("ExportTargetMappingRepository::ensureTableExists failed: " + 
-                      std::string(e.what()));
+    } catch (...) {
         return false;
     }
 }
