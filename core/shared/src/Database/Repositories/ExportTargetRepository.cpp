@@ -1,6 +1,6 @@
 /**
  * @file ExportTargetRepository.cpp
- * @brief Export Target Repository 구현 - 에러 수정 완료
+ * @brief Export Target Repository 구현 - 최종 수정 완료
  */
 
 #include "Database/Repositories/ExportTargetRepository.h"
@@ -288,14 +288,20 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByTargetType(const s
     }
 }
 
-std::vector<ExportTargetEntity> ExportTargetRepository::findEnabled() {
+std::vector<ExportTargetEntity> ExportTargetRepository::findByEnabled(bool enabled) {
     try {
         if (!ensureTableExists()) {
             return {};
         }
         
+        // ✅ FIND_BY_ENABLED 사용 (파라미터 필요: WHERE is_enabled = ?)
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportTarget::FIND_BY_ENABLED,
+            enabled ? "1" : "0"
+        );
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportTarget::FIND_ENABLED);
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
         for (const auto& row : results) {
@@ -335,13 +341,25 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByProfileId(int prof
     }
 }
 
-bool ExportTargetRepository::updateStatistics(int target_id, bool success, int processing_time_ms) {
+bool ExportTargetRepository::updateStatistics(
+    int target_id, 
+    bool success, 
+    int processing_time_ms,
+    const std::string& error_message) {
+    
     try {
         if (!ensureTableExists()) {
             return false;
         }
         
         std::string query = SQL::ExportTarget::UPDATE_STATISTICS;
+        
+        // 7개 플레이스홀더를 순서대로 치환
+        query = RepositoryHelpers::replaceParameter(query, success ? "1" : "0");
+        query = RepositoryHelpers::replaceParameter(query, success ? "0" : "1");
+        query = RepositoryHelpers::replaceParameter(query, success ? "1" : "0");
+        query = RepositoryHelpers::replaceParameterWithQuotes(query, error_message);
+        query = RepositoryHelpers::replaceParameter(query, success ? "1" : "0");
         query = RepositoryHelpers::replaceParameter(query, std::to_string(processing_time_ms));
         query = RepositoryHelpers::replaceParameter(query, std::to_string(target_id));
         
@@ -378,7 +396,10 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
     ExportTargetEntity entity;
     
     try {
-        auto it = row.find("id");
+        auto it = row.end();
+        
+        // 기본 식별 정보
+        it = row.find("id");
         if (it != row.end() && !it->second.empty()) {
             entity.setId(std::stoi(it->second));
         }
@@ -403,6 +424,7 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
             entity.setDescription(it->second);
         }
         
+        // 상태 및 설정
         it = row.find("is_enabled");
         if (it != row.end() && !it->second.empty()) {
             entity.setEnabled(std::stoi(it->second) != 0);
@@ -428,6 +450,7 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
             entity.setBatchSize(std::stoi(it->second));
         }
         
+        // 통계 데이터 (uint64_t)
         it = row.find("total_exports");
         if (it != row.end() && !it->second.empty()) {
             entity.setTotalExports(std::stoull(it->second));
@@ -448,8 +471,42 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
             entity.setAvgExportTimeMs(std::stoi(it->second));
         }
         
-    } catch (...) {
-        throw std::runtime_error("Failed to map row to ExportTargetEntity");
+        // 타임스탬프 필드들 (optional<time_point>)
+        it = row.find("last_export_at");
+        if (it != row.end() && !it->second.empty()) {
+            try {
+                auto timestamp = PulseOne::Utils::StringToTimestamp(it->second);
+                entity.setLastExportAt(timestamp);
+            } catch (...) {}
+        }
+        
+        it = row.find("last_success_at");
+        if (it != row.end() && !it->second.empty()) {
+            try {
+                auto timestamp = PulseOne::Utils::StringToTimestamp(it->second);
+                entity.setLastSuccessAt(timestamp);
+            } catch (...) {}
+        }
+        
+        it = row.find("last_error_at");
+        if (it != row.end() && !it->second.empty()) {
+            try {
+                auto timestamp = PulseOne::Utils::StringToTimestamp(it->second);
+                entity.setLastErrorAt(timestamp);
+            } catch (...) {}
+        }
+        
+        it = row.find("last_error");
+        if (it != row.end()) {
+            entity.setLastError(it->second);
+        }
+        
+        // 🔥 BaseEntity 타임스탬프는 자동 관리되므로 건드리지 않음!
+        // created_at, updated_at은 BaseEntity가 알아서 처리
+        
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to map row to ExportTargetEntity: " + 
+                                std::string(e.what()));
     }
     
     return entity;

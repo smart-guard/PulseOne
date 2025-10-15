@@ -57,6 +57,9 @@ public:
     void setExportMode(const std::string& mode) { export_mode_ = mode; markModified(); }
     void setExportInterval(int interval) { export_interval_ = interval; markModified(); }
     void setBatchSize(int size) { batch_size_ = size; markModified(); }
+    void setTotalExports(uint64_t count) { total_exports_ = count; markModified(); }
+    void setSuccessfulExports(uint64_t count) { successful_exports_ = count; markModified(); }
+    void setFailedExports(uint64_t count) { failed_exports_ = count; markModified(); }
     void incrementTotalExports() { total_exports_++; markModified(); }
     void incrementSuccessfulExports() { successful_exports_++; markModified(); }
     void incrementFailedExports() { failed_exports_++; markModified(); }
