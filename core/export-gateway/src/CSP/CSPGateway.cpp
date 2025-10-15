@@ -19,6 +19,7 @@
 #include "CSP/DynamicTargetManager.h"
 #include "Client/HttpClient.h"
 #include "Client/S3Client.h"
+#include "Database/DatabaseManager.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include <fstream>
@@ -62,32 +63,489 @@ CSPGateway::~CSPGateway() {
 }
 
 // =============================================================================
-// ✅ 수정 1: DynamicTargetManager 메서드명 수정
+// ✅ 수정된 초기화 메서드 (데이터베이스 모드)
 // =============================================================================
 
 void CSPGateway::initializeDynamicTargetSystem() {
-    if (!config_.use_dynamic_targets || config_.dynamic_targets_config_path.empty()) {
-        LogManager::getInstance().Info("Dynamic Target System disabled or config path not set");
+    if (!config_.use_dynamic_targets) {
+        LogManager::getInstance().Info("Dynamic Target System disabled");
         return;
     }
     
     try {
-        LogManager::getInstance().Info("Initializing Dynamic Target System...");
+        LogManager::getInstance().Info("Initializing Dynamic Target System (Database Mode)...");
         
-        dynamic_target_manager_ = std::make_unique<DynamicTargetManager>(config_.dynamic_targets_config_path);
+        // 데이터베이스 경로 확인
+        std::string db_path = getDatabasePath();
+        if (db_path.empty()) {
+            LogManager::getInstance().Error("Database path not configured");
+            return;
+        }
         
-        // ✅ 수정: initialize() → start()
-        if (dynamic_target_manager_->start()) {
+        // DynamicTargetManager 생성 (빈 설정으로 초기화)
+        dynamic_target_manager_ = std::make_unique<DynamicTargetManager>("");
+        
+        if (!dynamic_target_manager_->start()) {
+            LogManager::getInstance().Error("Failed to start Dynamic Target Manager");
+            dynamic_target_manager_.reset();
+            return;
+        }
+        
+        // ✅ 데이터베이스에서 타겟 로드
+        if (loadTargetsFromDatabase()) {
             use_dynamic_targets_ = true;
-            LogManager::getInstance().Info("Dynamic Target System initialized successfully");
+            LogManager::getInstance().Info("Dynamic Target System initialized successfully from database");
         } else {
-            LogManager::getInstance().Error("Failed to initialize Dynamic Target System");
+            LogManager::getInstance().Error("Failed to load targets from database");
+            dynamic_target_manager_->stop();
             dynamic_target_manager_.reset();
         }
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("Exception initializing Dynamic Target System: " + std::string(e.what()));
         dynamic_target_manager_.reset();
+    }
+}
+
+// =============================================================================
+// ✅ 새로운 메서드: 데이터베이스에서 타겟 로드
+// =============================================================================
+
+bool CSPGateway::loadTargetsFromDatabase() {
+    try {
+        LogManager::getInstance().Info("Loading targets from database...");
+        
+        // DatabaseManager 인스턴스 가져오기
+        auto& db_manager = Database::DatabaseManager::getInstance();
+        
+        // export_targets 테이블에서 활성화된 타겟 조회
+        std::string query = R"(
+            SELECT 
+                id, name, target_type, description, 
+                config, is_enabled, export_mode, 
+                batch_size
+            FROM export_targets 
+            WHERE is_enabled = 1
+            ORDER BY id ASC
+        )";
+        
+        auto result = db_manager.executeQuery(query);
+        
+        if (!result.success) {
+            LogManager::getInstance().Error("Failed to query export_targets: " + result.error_message);
+            return false;
+        }
+        
+        int loaded_count = 0;
+        int priority = 1; // 우선순위는 순서대로 증가
+        
+        for (const auto& row : result.rows) {
+            try {
+                // DynamicTarget 구조체 생성
+                DynamicTarget target;
+                
+                target.name = row.at("name");
+                target.type = row.at("target_type");
+                target.enabled = (row.at("is_enabled") == "1");
+                target.priority = priority++;
+                
+                // config JSON 파싱
+                try {
+                    target.config = json::parse(row.at("config"));
+                } catch (const std::exception& e) {
+                    LogManager::getInstance().Warn("Failed to parse config for target " + target.name + ": " + e.what());
+                    target.config = json::object();
+                }
+                
+                // description 추가
+                if (row.find("description") != row.end()) {
+                    target.config["description"] = row.at("description");
+                }
+                
+                // DynamicTargetManager에 타겟 추가
+                if (dynamic_target_manager_->addTarget(target)) {
+                    loaded_count++;
+                    LogManager::getInstance().Debug("Loaded target: " + target.name + " (" + target.type + ")");
+                } else {
+                    LogManager::getInstance().Warn("Failed to add target to manager: " + target.name);
+                }
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().Error("Error processing target row: " + std::string(e.what()));
+                continue;
+            }
+        }
+        
+        LogManager::getInstance().Info("Loaded " + std::to_string(loaded_count) + " targets from database");
+        return (loaded_count > 0);
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Exception loading targets from database: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// ✅ 수정된 메서드: 타겟 추가 시 DB에도 저장
+// =============================================================================
+
+bool CSPGateway::addDynamicTarget(const std::string& name, const std::string& type, 
+                                  const json& config, bool enabled, int priority) {
+    try {
+        if (!dynamic_target_manager_) {
+            LogManager::getInstance().Error("Dynamic Target Manager not initialized");
+            return false;
+        }
+        
+        // 1. DynamicTargetManager에 추가
+        DynamicTarget target;
+        target.name = name;
+        target.type = type;
+        target.config = config;
+        target.enabled = enabled;
+        target.priority = priority;
+        
+        bool manager_success = dynamic_target_manager_->addTarget(target);
+        
+        if (!manager_success) {
+            LogManager::getInstance().Error("Failed to add target to manager: " + name);
+            return false;
+        }
+        
+        // 2. 데이터베이스에도 저장
+        bool db_success = saveTargetToDatabase(target);
+        
+        if (db_success) {
+            LogManager::getInstance().Info("Dynamic target added and saved to DB: " + name);
+        } else {
+            LogManager::getInstance().Warn("Target added to manager but failed to save to DB: " + name);
+        }
+        
+        return manager_success;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Exception adding dynamic target: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// ✅ 수정된 메서드: 타겟 제거 시 DB에서도 삭제
+// =============================================================================
+
+bool CSPGateway::removeDynamicTarget(const std::string& name) {
+    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
+        LogManager::getInstance().Error("Dynamic Target System not available");
+        return false;
+    }
+    
+    // 1. DynamicTargetManager에서 제거
+    bool manager_success = dynamic_target_manager_->removeTarget(name);
+    
+    // 2. 데이터베이스에서도 삭제
+    if (manager_success) {
+        bool db_success = deleteTargetFromDatabase(name);
+        if (db_success) {
+            LogManager::getInstance().Info("Target removed from both manager and DB: " + name);
+        } else {
+            LogManager::getInstance().Warn("Target removed from manager but failed to delete from DB: " + name);
+        }
+    }
+    
+    return manager_success;
+}
+
+// =============================================================================
+// ✅ 수정된 메서드: 타겟 활성화/비활성화 시 DB 업데이트
+// =============================================================================
+
+bool CSPGateway::enableDynamicTarget(const std::string& name, bool enabled) {
+    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
+        LogManager::getInstance().Error("Dynamic Target System not available");
+        return false;
+    }
+    
+    // 1. DynamicTargetManager에서 활성화/비활성화
+    bool manager_success = dynamic_target_manager_->enableTarget(name, enabled);
+    
+    // 2. 데이터베이스에도 반영
+    if (manager_success) {
+        bool db_success = updateTargetEnabledStatus(name, enabled);
+        if (db_success) {
+            LogManager::getInstance().Info("Target " + name + " " + 
+                (enabled ? "enabled" : "disabled") + " in both manager and DB");
+        } else {
+            LogManager::getInstance().Warn("Target status updated in manager but failed in DB: " + name);
+        }
+    }
+    
+    return manager_success;
+}
+
+// =============================================================================
+// ✅ 수정된 메서드: DB에서 타겟 재로드
+// =============================================================================
+
+bool CSPGateway::reloadDynamicTargets() {
+    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
+        LogManager::getInstance().Error("Dynamic Target System not available");
+        return false;
+    }
+    
+    try {
+        LogManager::getInstance().Info("Reloading dynamic targets from database...");
+        
+        // 1. 기존 타겟 모두 제거
+        auto existing_targets = getDynamicTargetStats();
+        for (const auto& target_stat : existing_targets) {
+            dynamic_target_manager_->removeTarget(target_stat.name);
+        }
+        
+        // 2. 데이터베이스에서 재로드
+        return loadTargetsFromDatabase();
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Failed to reload dynamic targets: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// ✅ 새로운 Private 헬퍼 메서드들
+// =============================================================================
+
+std::string CSPGateway::getDatabasePath() const {
+    ConfigManager& config_mgr = ConfigManager::getInstance();
+    
+    // 설정에서 데이터베이스 경로 가져오기
+    std::string db_path = config_mgr.getOrDefault("CSP_DATABASE_PATH", "");
+    
+    if (db_path.empty()) {
+        // 기본 경로 사용
+        db_path = config_mgr.getOrDefault("DATABASE_PATH", "/app/data/pulseone.db");
+    }
+    
+    LogManager::getInstance().Debug("Database path: " + db_path);
+    return db_path;
+}
+
+bool CSPGateway::saveTargetToDatabase(const DynamicTarget& target) {
+    try {
+        auto& db_manager = Database::DatabaseManager::getInstance();
+        
+        // config를 JSON 문자열로 변환
+        std::string config_json = target.config.dump();
+        
+        std::string query = R"(
+            INSERT INTO export_targets 
+                (name, target_type, description, config, is_enabled, export_mode, batch_size)
+            VALUES (?, ?, ?, ?, ?, 'on_change', 100)
+        )";
+        
+        std::vector<std::string> params = {
+            target.name,
+            target.type,
+            target.config.value("description", "Added via API"),
+            config_json,
+            target.enabled ? "1" : "0"
+        };
+        
+        auto result = db_manager.executeUpdate(query, params);
+        
+        if (!result.success) {
+            LogManager::getInstance().Error("Failed to save target to DB: " + result.error_message);
+            return false;
+        }
+        
+        LogManager::getInstance().Debug("Target saved to DB: " + target.name);
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Exception saving target to DB: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool CSPGateway::deleteTargetFromDatabase(const std::string& name) {
+    try {
+        auto& db_manager = Database::DatabaseManager::getInstance();
+        
+        std::string query = "DELETE FROM export_targets WHERE name = ?";
+        std::vector<std::string> params = {name};
+        
+        auto result = db_manager.executeUpdate(query, params);
+        
+        if (!result.success) {
+            LogManager::getInstance().Error("Failed to delete target from DB: " + result.error_message);
+            return false;
+        }
+        
+        LogManager::getInstance().Debug("Target deleted from DB: " + name);
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Exception deleting target from DB: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool CSPGateway::updateTargetEnabledStatus(const std::string& name, bool enabled) {
+    try {
+        auto& db_manager = Database::DatabaseManager::getInstance();
+        
+        std::string query = "UPDATE export_targets SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?";
+        std::vector<std::string> params = {
+            enabled ? "1" : "0",
+            name
+        };
+        
+        auto result = db_manager.executeUpdate(query, params);
+        
+        if (!result.success) {
+            LogManager::getInstance().Error("Failed to update target status in DB: " + result.error_message);
+            return false;
+        }
+        
+        LogManager::getInstance().Debug("Target status updated in DB: " + name + " = " + (enabled ? "enabled" : "disabled"));
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Exception updating target status in DB: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
+// ✅ 알람 전송 성공 시 DB 통계 업데이트
+// =============================================================================
+
+void CSPGateway::updateExportTargetStats(const std::string& target_name, bool success, 
+                                         double response_time_ms) {
+    try {
+        auto& db_manager = Database::DatabaseManager::getInstance();
+        
+        std::string query;
+        std::vector<std::string> params;
+        
+        if (success) {
+            query = R"(
+                UPDATE export_targets 
+                SET 
+                    total_exports = total_exports + 1,
+                    successful_exports = successful_exports + 1,
+                    last_export_at = CURRENT_TIMESTAMP,
+                    last_success_at = CURRENT_TIMESTAMP,
+                    avg_export_time_ms = CAST((COALESCE(avg_export_time_ms, 0) * 0.9 + ? * 0.1) AS INTEGER),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE name = ?
+            )";
+            params = {std::to_string(static_cast<int>(response_time_ms)), target_name};
+        } else {
+            query = R"(
+                UPDATE export_targets 
+                SET 
+                    total_exports = total_exports + 1,
+                    failed_exports = failed_exports + 1,
+                    last_export_at = CURRENT_TIMESTAMP,
+                    last_error_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE name = ?
+            )";
+            params = {target_name};
+        }
+        
+        auto result = db_manager.executeUpdate(query, params);
+        
+        if (!result.success) {
+            LogManager::getInstance().Debug("Failed to update target stats in DB: " + result.error_message);
+        }
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Debug("Exception updating target stats: " + std::string(e.what()));
+        // 통계 업데이트 실패는 치명적이지 않으므로 계속 진행
+    }
+}
+
+// =============================================================================
+// ✅ 수정: taskAlarmSingleDynamic에서 통계 업데이트 호출
+// =============================================================================
+
+AlarmSendResult CSPGateway::taskAlarmSingleDynamic(const AlarmMessage& alarm_message) {
+    try {
+        LogManager::getInstance().Debug("Using Dynamic Target System for: " + alarm_message.nm);
+        
+        auto start_time = std::chrono::high_resolution_clock::now();
+        auto target_results = dynamic_target_manager_->sendAlarmToAllTargets(alarm_message);
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        AlarmSendResult result;
+        bool has_success = false;
+        size_t successful_targets = 0;
+        
+        for (const auto& target_result : target_results) {
+            // ✅ 수정: response_time_ms → response_time.count()로 변경
+            double response_time_ms = std::chrono::duration<double, std::milli>(
+                target_result.response_time).count();
+            
+            updateExportTargetStats(target_result.target_name, target_result.success, 
+                                   response_time_ms);
+            
+            if (target_result.success) {
+                successful_targets++;
+                has_success = true;
+                
+                if (target_result.target_type == "HTTP" || target_result.target_type == "HTTPS") {
+                    result.status_code = target_result.status_code;
+                    result.response_body = target_result.response_body;
+                }
+                
+                if (target_result.target_type == "S3") {
+                    result.s3_success = true;
+                    result.s3_file_path = target_result.s3_object_key;
+                }
+                
+                if (target_result.target_type == "FILE") {
+                    result.s3_file_path = target_result.file_path;
+                }
+            }
+        }
+        
+        result.success = has_success;
+        result.response_time = duration;
+        
+        // 실패한 타겟 에러 메시지 수집
+        if (!has_success || successful_targets < target_results.size()) {
+            std::string error_msg = "Dynamic targets errors: ";
+            bool first = true;
+            for (const auto& target_result : target_results) {
+                if (!target_result.success && !target_result.error_message.empty()) {
+                    if (!first) error_msg += "; ";
+                    error_msg += target_result.target_name + ": " + target_result.error_message;
+                    first = false;
+                }
+            }
+            if (!error_msg.empty() && error_msg != "Dynamic targets errors: ") {
+                result.error_message = error_msg;
+            }
+        }
+        
+        // 통계 업데이트
+        updateStatsFromDynamicResults(target_results, static_cast<double>(duration.count()));
+        
+        LogManager::getInstance().Debug("Dynamic target system processed " + 
+            std::to_string(target_results.size()) + " targets, " + 
+            std::to_string(successful_targets) + " successful");
+        
+        return result;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Exception in taskAlarmSingleDynamic: " + std::string(e.what()));
+        
+        AlarmSendResult result;
+        result.success = false;
+        result.error_message = "Dynamic target system error: " + std::string(e.what());
+        return result;
     }
 }
 
@@ -175,82 +633,6 @@ AlarmSendResult CSPGateway::taskAlarmSingleLegacy(const AlarmMessage& alarm) {
     LogManager::getInstance().Warn("Legacy alarm processing not implemented yet");
     
     return result;
-}
-// =============================================================================
-
-AlarmSendResult CSPGateway::taskAlarmSingleDynamic(const AlarmMessage& alarm_message) {
-    try {
-        LogManager::getInstance().Debug("Using Dynamic Target System for: " + alarm_message.nm);
-        
-        auto start_time = std::chrono::high_resolution_clock::now();
-        auto target_results = dynamic_target_manager_->sendAlarmToAllTargets(alarm_message);
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
-        AlarmSendResult result;
-        
-        // 동적 타겟 결과 집계
-        bool has_success = false;
-        size_t successful_targets = 0;
-        
-        for (const auto& target_result : target_results) {
-            if (target_result.success) {
-                successful_targets++;
-                has_success = true;
-                
-                // ✅ 통합 타입의 실제 필드명 사용
-                if (target_result.target_type == "HTTP" || target_result.target_type == "HTTPS") {
-                    result.status_code = target_result.status_code;        // ✅ 실제 필드명
-                    result.response_body = target_result.response_body;    // ✅ 실제 필드명
-                }
-                
-                if (target_result.target_type == "S3") {
-                    result.s3_success = true;
-                    result.s3_file_path = target_result.s3_object_key;     // ✅ 실제 필드명
-                }
-                
-                if (target_result.target_type == "FILE") {
-                    result.s3_file_path = target_result.file_path;         // ✅ 범용 파일 경로
-                }
-            }
-        }
-        
-        result.success = has_success;
-        result.response_time = duration;
-        
-        // 실패한 타겟이 있으면 에러 메시지 수집
-        if (!has_success || successful_targets < target_results.size()) {
-            std::string error_msg = "Dynamic targets errors: ";
-            bool first = true;
-            for (const auto& target_result : target_results) {
-                if (!target_result.success && !target_result.error_message.empty()) {
-                    if (!first) error_msg += "; ";
-                    error_msg += target_result.target_name + ": " + target_result.error_message;
-                    first = false;
-                }
-            }
-            if (!error_msg.empty() && error_msg != "Dynamic targets errors: ") {
-                result.error_message = error_msg;
-            }
-        }
-        
-        // 통계 업데이트
-        updateStatsFromDynamicResults(target_results, static_cast<double>(duration.count()));
-        
-        LogManager::getInstance().Debug("Dynamic target system processed " + 
-            std::to_string(target_results.size()) + " targets, " + 
-            std::to_string(successful_targets) + " successful");
-        
-        return result;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Exception in taskAlarmSingleDynamic: " + std::string(e.what()));
-        
-        AlarmSendResult result;
-        result.success = false;
-        result.error_message = "Dynamic target system error: " + std::string(e.what());
-        return result;
-    }
 }
 
 AlarmSendResult CSPGateway::callAPIAlarm(const AlarmMessage& alarm_message) {
@@ -876,91 +1258,12 @@ std::unordered_map<int, BatchAlarmResult> CSPGateway::testMultiBuildingAlarms() 
     return processMultiBuildingAlarms(grouped_alarms);
 }
 
-// =============================================================================
-// ✅ 수정 3: DynamicTarget 필드 수정 - failure_protector_config 제거
-// =============================================================================
-
-bool CSPGateway::addDynamicTarget(const std::string& name, const std::string& type, 
-                                  const json& config, bool enabled, int priority) {
-    try {
-        if (!dynamic_target_manager_) {
-            LogManager::getInstance().Error("Dynamic Target Manager not initialized");
-            return false;
-        }
-        
-        DynamicTarget target;
-        target.name = name;
-        target.type = type;
-        target.config = config;
-        target.enabled = enabled;
-        target.priority = priority;
-        
-        // ❌ 제거: failure_protector_config 필드는 DynamicTarget 구조체에 없음!
-        // target.failure_protector_config.failure_threshold = 5;
-        // target.failure_protector_config.recovery_timeout_ms = 60000;
-        // target.failure_protector_config.half_open_max_attempts = 3;
-        
-        // 타겟 추가 (실패 방지기 설정은 DynamicTargetManager 내부에서 처리)
-        bool add_success = dynamic_target_manager_->addTarget(target);
-        
-        if (add_success) {
-            LogManager::getInstance().Info("Dynamic target added: " + name);
-        }
-        
-        return add_success;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Exception adding dynamic target: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool CSPGateway::removeDynamicTarget(const std::string& name) {
-    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
-        LogManager::getInstance().Error("Dynamic Target System not available");
-        return false;
-    }
-    
-    return dynamic_target_manager_->removeTarget(name);
-}
-
-bool CSPGateway::enableDynamicTarget(const std::string& name, bool enabled) {
-    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
-        LogManager::getInstance().Error("Dynamic Target System not available");
-        return false;
-    }
-    
-    return dynamic_target_manager_->enableTarget(name, enabled);
-}
-
 std::vector<std::string> CSPGateway::getSupportedTargetTypes() const {
     if (!use_dynamic_targets_ || !dynamic_target_manager_) {
         return {"HTTP", "S3"}; // 기존 지원 타입
     }
     
     return dynamic_target_manager_->getSupportedHandlerTypes();
-}
-
-// =============================================================================
-// ✅ 수정 5: reloadConfiguration() → loadConfiguration()
-// =============================================================================
-
-bool CSPGateway::reloadDynamicTargets() {
-    if (!use_dynamic_targets_ || !dynamic_target_manager_) {
-        LogManager::getInstance().Error("Dynamic Target System not available");
-        return false;
-    }
-    
-    try {
-        LogManager::getInstance().Info("Reloading dynamic targets configuration...");
-        
-        // ✅ 수정: reloadConfiguration() → loadConfiguration()
-        return dynamic_target_manager_->loadConfiguration();
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Failed to reload dynamic targets: " + std::string(e.what()));
-        return false;
-    }
 }
 
 // =============================================================================
