@@ -107,6 +107,13 @@ public:
      */
     virtual int ttl(const std::string& key) = 0;
     /**
+     * @brief 패턴으로 키 검색 (KEYS 명령)
+     * @param pattern 검색 패턴 (예: "device:*", "point:*:latest")
+     * @return 매칭되는 키 리스트
+     * @warning 프로덕션 환경에서는 SCAN 사용 권장
+     */
+    virtual StringList keys(const std::string& pattern) = 0;
+    /**
      * @brief 정수 값 증가
      * @param key 키
      * @param increment 증가값 (기본 1)
