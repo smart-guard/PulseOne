@@ -1,10 +1,6 @@
 /**
  * @file ExportTargetMappingEntity.cpp
- * @brief Export Target Mapping Entity 구현
- * @author PulseOne Development Team
- * @date 2025-10-15
- * @version 1.0.0
- * 저장 위치: core/shared/src/Database/Entities/ExportTargetMappingEntity.cpp
+ * @version 2.0.0
  */
 
 #include "Database/Entities/ExportTargetMappingEntity.h"
@@ -83,10 +79,6 @@ json ExportTargetMappingEntity::toJson() const {
     j["conversion_config"] = conversion_config_;
     j["is_enabled"] = is_enabled_;
     
-    if (created_at_.time_since_epoch().count() > 0) {
-        j["created_at"] = std::chrono::system_clock::to_time_t(created_at_);
-    }
-    
     return j;
 }
 
@@ -134,17 +126,21 @@ std::string ExportTargetMappingEntity::toString() const {
 }
 
 // =============================================================================
-// 유효성 검증
+// 비즈니스 로직
 // =============================================================================
+
+bool ExportTargetMappingEntity::hasConversion() const {
+    return !conversion_config_.empty() && conversion_config_ != "{}";
+}
 
 bool ExportTargetMappingEntity::validate() const {
     if (target_id_ <= 0) {
-        LogManager::getInstance().Warn("ExportTargetMappingEntity::validate - invalid target_id");
+        LogManager::getInstance().Warn("ExportTargetMappingEntity::validate - target_id is invalid");
         return false;
     }
     
     if (point_id_ <= 0) {
-        LogManager::getInstance().Warn("ExportTargetMappingEntity::validate - invalid point_id");
+        LogManager::getInstance().Warn("ExportTargetMappingEntity::validate - point_id is invalid");
         return false;
     }
     
@@ -155,6 +151,6 @@ std::string ExportTargetMappingEntity::getEntityTypeName() const {
     return "ExportTargetMapping";
 }
 
-} // namespace Entities
-} // namespace Database
-} // namespace PulseOne
+}
+}
+}
