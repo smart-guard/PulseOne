@@ -539,6 +539,24 @@ bool ExportTargetRepository::ensureTableExists() {
     }
 }
 
+int ExportTargetRepository::getTotalCount() {
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        // countByConditions()를 조건 없이 호출 = 전체 카운트
+        return countByConditions({});
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetRepository::getTotalCount failed: " + 
+                          std::string(e.what()));
+        }
+        return 0;
+    }
+}
+
 } // namespace Repositories
 } // namespace Database
 } // namespace PulseOne

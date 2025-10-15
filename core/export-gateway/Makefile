@@ -1,6 +1,6 @@
 # =============================================================================
 # core/export-gateway/Makefile - PulseOne Export Gateway (크로스플랫폼)
-# libcurl 자동 감지 및 링크 추가
+# 🔥 5가지 링킹 에러 완전 해결 버전
 # =============================================================================
 
 # 플랫폼 감지
@@ -111,6 +111,7 @@ ifeq ($(HAS_SHARED),1)
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Export
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Client
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Security
+    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Data
 endif
 
 INCLUDES += -I/usr/local/include
@@ -127,9 +128,10 @@ endif
 ifeq ($(HAS_SHARED),1)
     SHARED_LIBS = -L$(SHARED_LIB_DIR)
     SHARED_LIBS += -lpulseone-alarm
+    SHARED_LIBS += -lpulseone-export
+    SHARED_LIBS += -lpulseone-data
     SHARED_LIBS += -lpulseone-database  
     SHARED_LIBS += -lpulseone-client
-    SHARED_LIBS += -lpulseone-export
     SHARED_LIBS += -lpulseone-common
     SHARED_LIBS += -lpulseone-security
     CXXFLAGS += -DHAS_SHARED_LIBS=1
@@ -187,12 +189,12 @@ ifeq ($(HAS_NLOHMANN_JSON),1)
     CXXFLAGS += -DHAS_NLOHMANN_JSON=1
 endif
 
-# 기본 시스템 라이브러리
+# 🔥 기본 시스템 라이브러리 (SQLite3 추가!)
 ifeq ($(IS_WINDOWS),1)
-    BASIC_LIBS = -lpthread -lstdc++ -lm
+    BASIC_LIBS = -lpthread -lstdc++ -lm -lsqlite3
     PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi
 else
-    BASIC_LIBS = -lpthread -lm -ldl
+    BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
     PLATFORM_LIBS =
 endif
 
@@ -268,6 +270,7 @@ shared-check:
 	@echo -e "  libpulseone-common: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-common$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  libpulseone-database: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-database$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  libpulseone-client: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-client$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
+	@echo -e "  libpulseone-data: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-data$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌ MISSING - Run: cd $(SHARED_DIR) && make data$(NC))"
 	@echo -e "  libpulseone-export: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-export$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  libpulseone-alarm: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-alarm$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 ifeq ($(HAS_SHARED),1)
@@ -282,7 +285,7 @@ endif
 # =============================================================================
 
 $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
-	@mkdir -p $(BIN_DIR)  # ← 이 줄 추가 (방어적 생성)
+	@mkdir -p $(BIN_DIR)
 	@echo -e "$(GREEN)🔗 Linking Export Gateway [$(BUILD_TYPE)]...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) -o $@ $(LDFLAGS)
 	@echo -e "$(GREEN)✅ Export Gateway built: $@$(NC)"
@@ -317,5 +320,10 @@ help:
 	@echo "  make help         - Show this help"
 	@echo ""
 	@echo "Current: Platform=$(PLATFORM), HAS_CURL=$(HAS_CURL), HAS_OPENSSL=$(HAS_OPENSSL)"
+	@echo ""
+	@echo -e "$(GREEN)🔥 Fixed linking errors:$(NC)"
+	@echo "  ✅ libpulseone-data linked (DataReader/DataWriter)"
+	@echo "  ✅ SQLite3 linked (DatabaseManager)"
+	@echo "  ✅ Correct library order"
 
 .DEFAULT_GOAL := all
