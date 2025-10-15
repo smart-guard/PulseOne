@@ -3,11 +3,10 @@
  * @brief Export Target Entity - BaseEntity 패턴 적용
  * @author PulseOne Development Team
  * @date 2025-10-15
- * @version 1.0.0
+ * @version 1.0.1
  * 저장 위치: core/shared/include/Database/Entities/ExportTargetEntity.h
  * 
- * 테이블: export_targets
- * 기능: HTTP/S3/File 등 외부 전송 타겟 관리
+ * 🔧 수정: toJson() 반환타입, override 제거
  */
 
 #ifndef EXPORT_TARGET_ENTITY_H
@@ -17,10 +16,13 @@
 #include <string>
 #include <chrono>
 #include <optional>
+#include <nlohmann/json.hpp>  // 🔧 추가
 
 namespace PulseOne {
 namespace Database {
 namespace Entities {
+
+using json = nlohmann::json;  // 🔧 추가
 
 /**
  * @brief Export Target Entity
@@ -182,7 +184,7 @@ public:
     /**
      * @brief 유효성 검증
      */
-    bool validate() const override {
+    bool validate() const {  // 🔧 override 제거!
         if (name_.empty()) return false;
         if (target_type_.empty()) return false;
         if (config_.empty()) return false;
@@ -192,7 +194,7 @@ public:
     /**
      * @brief JSON 변환
      */
-    std::string toJson() const override {
+    json toJson() const override {  // 🔧 반환타입 json으로 변경!
         json j;
         j["id"] = id_;
         j["profile_id"] = profile_id_;
@@ -221,16 +223,25 @@ public:
             j["last_error_at"] = std::chrono::system_clock::to_time_t(last_error_at_.value());
         }
         
-        return j.dump(2);
+        return j;  // 🔧 json 객체 직접 반환!
     }
+    
+    // 🔧 BaseEntity 나머지 순수가상함수 구현 (CPP에서)
+    bool loadFromDatabase() override;
+    bool saveToDatabase() override;
+    bool updateToDatabase() override;
+    bool deleteFromDatabase() override;
+    bool fromJson(const json& data) override;
+    std::string toString() const override { return toJson().dump(2); }
     
     /**
      * @brief 엔티티 타입 이름
      */
-    std::string getEntityTypeName() const override {
+    std::string getEntityTypeName() const {  // 🔧 override 제거!
         return "ExportTarget";
     }
-
+    
+    std::string getTableName() const override { return "export_targets"; }
 private:
     // 기본 필드
     int profile_id_ = 0;
