@@ -193,6 +193,23 @@ bool RedisClientImpl::exists(const std::string& key) {
     }, false);
 }
 
+RedisClient::StringList RedisClientImpl::keys(const std::string& pattern) {
+    return executeWithRetry<StringList>([this, &pattern]() {
+#ifdef HAVE_REDIS
+        redisReply* reply = executeCommandSafe("KEYS %s", pattern.c_str());
+        StringList result = replyToStringList(reply);
+        if (reply) freeReplyObject(reply);
+        return result;
+#else
+        logInfo("KEYS " + pattern + " (시뮬레이션)");
+        StringList result;
+        result.push_back("key1");
+        result.push_back("key2");
+        return result;
+#endif
+    }, StringList{});
+}
+
 bool RedisClientImpl::expire(const std::string& key, int seconds) {
     return executeWithRetry<bool>([this, &key, seconds]() {
 #ifdef HAVE_REDIS

@@ -15,9 +15,7 @@
 #include <condition_variable>
 
 // Forward declaration
-namespace PulseOne {
-    class RedisClient;
-}
+class RedisClient;
 
 namespace PulseOne {
 namespace Shared {

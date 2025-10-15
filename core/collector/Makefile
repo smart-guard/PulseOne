@@ -1,5 +1,5 @@
 # =============================================================================
-# PulseOne Collector - 완전한 Makefile
+# PulseOne Collector - 완전한 Makefile (링크 에러 수정 완료)
 # =============================================================================
 
 # 기본 설정
@@ -160,7 +160,7 @@ HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mq
 HAS_BACNET := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
 
 # =============================================================================
-# 라이브러리 링킹 설정
+# 라이브러리 링킹 설정 (✅ 수정: security 추가)
 # =============================================================================
 
 # 기본 시스템 라이브러리
@@ -173,13 +173,14 @@ else
 	PLATFORM_LIBS :=
 endif
 
-# Shared 라이브러리
+# ✅ Shared 라이브러리 (security를 common 앞에 추가)
 ifeq ($(HAS_SHARED),1)
 	SHARED_LIBS := -L$(SHARED_LIB_DIR)
 	SHARED_LIBS += -lpulseone-alarm
 	SHARED_LIBS += -lpulseone-database
 	SHARED_LIBS += -lpulseone-client
 	SHARED_LIBS += -lpulseone-export
+	SHARED_LIBS += -lpulseone-security
 	SHARED_LIBS += -lpulseone-common
 	CXXFLAGS += -DHAS_SHARED_LIBS=1
 else
@@ -236,12 +237,15 @@ endif
 LIBS := $(SHARED_LIBS) $(PROTOCOL_LIBS) $(UTILITY_LIBS) $(BASIC_LIBS) $(PLATFORM_LIBS)
 
 # =============================================================================
-# 소스 파일 수집
+# 소스 파일 수집 (✅ 수정: ConfigManager 제외)
 # =============================================================================
 
 # Core 소스
 CORE_SOURCES := $(wildcard $(SRC_DIR)/Core/*.cpp)
-UTILS_SOURCES := $(wildcard $(SRC_DIR)/Utils/*.cpp)
+
+# ✅ Utils 소스 (ConfigManager.cpp 제외 - shared에서 사용)
+UTILS_SOURCES := $(filter-out $(SRC_DIR)/Utils/ConfigManager.cpp, $(wildcard $(SRC_DIR)/Utils/*.cpp))
+
 CONFIG_SOURCES := $(wildcard $(SRC_DIR)/Config/*.cpp)
 PLATFORM_SOURCES := $(wildcard $(SRC_DIR)/Platform/*.cpp)
 
@@ -370,7 +374,7 @@ $(TARGET): $(ALL_OBJECTS) $(MAIN_OBJECT) | $(BIN_DIR)
 	@echo -e "$(BLUE)🔗 Linking $(TARGET)...$(NC)"
 	$(CXX) $(LDFLAGS) -o $(BIN_DIR)/$@ $(ALL_OBJECTS) $(MAIN_OBJECT) $(LIBS)
 	@echo -e "$(GREEN)✅ $(TARGET) built successfully!$(NC)"
-	@echo -e "Size: $(CYAN)$(shell du -h $(BIN_DIR)/$(TARGET) | cut -f1)$(NC)"
+	@echo -e "Size: $(CYAN)$(shell du -h $(BIN_DIR)/$(TARGET) 2>/dev/null | cut -f1 || echo 'N/A')$(NC)"
 
 # 오브젝트 파일 컴파일
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | create-dirs
