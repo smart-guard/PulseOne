@@ -38,6 +38,9 @@ namespace Repositories {
     class TenantRepository;
     class UserRepository;
     class AlarmConfigRepository;
+    class ExportLogRepository;
+    class ExportTargetRepository;
+    class ExportTargetMappingRepository;
 }
 
 /**
@@ -222,6 +225,9 @@ private:
     std::shared_ptr<Repositories::TenantRepository> getRepositoryImpl(class TenantEntity*);
     std::shared_ptr<Repositories::UserRepository> getRepositoryImpl(class UserEntity*);
     std::shared_ptr<Repositories::AlarmConfigRepository> getRepositoryImpl(class AlarmConfigEntity*);
+    std::shared_ptr<Repositories::ExportLogRepository> getRepositoryImpl(class ExportLogEntity*);
+    std::shared_ptr<Repositories::ExportTargetRepository> getRepositoryImpl(class ExportTargetEntity*);
+    std::shared_ptr<Repositories::ExportTargetMappingRepository> getRepositoryImpl(class ExportTargetMappingEntity*);
 
     int getEntityId() const {
         if constexpr (std::is_same_v<DerivedType, class DeviceSettingsEntity>) {

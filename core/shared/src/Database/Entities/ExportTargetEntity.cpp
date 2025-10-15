@@ -1,10 +1,6 @@
 /**
  * @file ExportTargetEntity.cpp
- * @brief Export Target Entity 구현 - SiteEntity 패턴 100% 적용
- * @author PulseOne Development Team
- * @date 2025-10-15
- * @version 1.0.0
- * 저장 위치: core/shared/src/Database/Entities/ExportTargetEntity.cpp
+ * @version 2.0.0
  */
 
 #include "Database/Entities/ExportTargetEntity.h"
@@ -53,7 +49,7 @@ ExportTargetEntity::~ExportTargetEntity() {
 }
 
 // =============================================================================
-// Repository 패턴 지원 (BaseEntity 통합)
+// Repository 패턴 지원
 // =============================================================================
 
 std::shared_ptr<Repositories::ExportTargetRepository> ExportTargetEntity::getRepository() const {
@@ -61,7 +57,7 @@ std::shared_ptr<Repositories::ExportTargetRepository> ExportTargetEntity::getRep
 }
 
 // =============================================================================
-// DB 연산 (BaseEntity 패턴)
+// DB 연산
 // =============================================================================
 
 bool ExportTargetEntity::loadFromDatabase() {
@@ -81,13 +77,12 @@ bool ExportTargetEntity::deleteFromDatabase() {
 }
 
 // =============================================================================
-// JSON 직렬화 (SiteEntity 패턴)
+// JSON 직렬화
 // =============================================================================
 
 json ExportTargetEntity::toJson() const {
     json j;
     
-    // 기본 필드
     j["id"] = id_;
     j["profile_id"] = profile_id_;
     j["name"] = name_;
@@ -98,8 +93,6 @@ json ExportTargetEntity::toJson() const {
     j["export_mode"] = export_mode_;
     j["export_interval"] = export_interval_;
     j["batch_size"] = batch_size_;
-    
-    // 통계
     j["total_exports"] = total_exports_;
     j["successful_exports"] = successful_exports_;
     j["failed_exports"] = failed_exports_;
@@ -107,7 +100,6 @@ json ExportTargetEntity::toJson() const {
     j["last_error"] = last_error_;
     j["avg_export_time_ms"] = avg_export_time_ms_;
     
-    // 타임스탬프
     if (last_export_at_.has_value()) {
         j["last_export_at"] = std::chrono::system_clock::to_time_t(last_export_at_.value());
     }
@@ -116,12 +108,6 @@ json ExportTargetEntity::toJson() const {
     }
     if (last_error_at_.has_value()) {
         j["last_error_at"] = std::chrono::system_clock::to_time_t(last_error_at_.value());
-    }
-    if (created_at_.time_since_epoch().count() > 0) {
-        j["created_at"] = std::chrono::system_clock::to_time_t(created_at_);
-    }
-    if (updated_at_.time_since_epoch().count() > 0) {
-        j["updated_at"] = std::chrono::system_clock::to_time_t(updated_at_);
     }
     
     return j;
@@ -169,6 +155,26 @@ bool ExportTargetEntity::fromJson(const json& data) {
             batch_size_ = data["batch_size"].get<int>();
         }
         
+        if (data.contains("total_exports") && data["total_exports"].is_number()) {
+            total_exports_ = data["total_exports"].get<uint64_t>();
+        }
+        
+        if (data.contains("successful_exports") && data["successful_exports"].is_number()) {
+            successful_exports_ = data["successful_exports"].get<uint64_t>();
+        }
+        
+        if (data.contains("failed_exports") && data["failed_exports"].is_number()) {
+            failed_exports_ = data["failed_exports"].get<uint64_t>();
+        }
+        
+        if (data.contains("last_error") && data["last_error"].is_string()) {
+            last_error_ = data["last_error"].get<std::string>();
+        }
+        
+        if (data.contains("avg_export_time_ms") && data["avg_export_time_ms"].is_number()) {
+            avg_export_time_ms_ = data["avg_export_time_ms"].get<int>();
+        }
+        
         markModified();
         return true;
         
@@ -183,8 +189,17 @@ std::string ExportTargetEntity::toString() const {
 }
 
 // =============================================================================
-// 유효성 검증
+// 비즈니스 로직
 // =============================================================================
+
+double ExportTargetEntity::getSuccessRate() const {
+    if (total_exports_ == 0) return 0.0;
+    return (static_cast<double>(successful_exports_) / total_exports_) * 100.0;
+}
+
+bool ExportTargetEntity::isHealthy() const {
+    return is_enabled_ && (getSuccessRate() > 50.0);
+}
 
 bool ExportTargetEntity::validate() const {
     if (name_.empty()) {
@@ -203,74 +218,19 @@ bool ExportTargetEntity::validate() const {
     }
     
     // target_type 검증
-    if (target_type_ != "HTTP" && target_type_ != "HTTPS" && 
-        target_type_ != "S3" && target_type_ != "FILE" && target_type_ != "MQTT") {
+    if (target_type_ != "HTTP" && target_type_ != "S3" && 
+        target_type_ != "FILE" && target_type_ != "MQTT") {
         LogManager::getInstance().Warn("ExportTargetEntity::validate - invalid target_type: " + target_type_);
-        return false;
-    }
-    
-    // export_mode 검증
-    if (export_mode_ != "on_change" && export_mode_ != "periodic" && export_mode_ != "both") {
-        LogManager::getInstance().Warn("ExportTargetEntity::validate - invalid export_mode: " + export_mode_);
         return false;
     }
     
     return true;
 }
 
-// =============================================================================
-// 비즈니스 로직
-// =============================================================================
-
-double ExportTargetEntity::getSuccessRate() const {
-    if (total_exports_ == 0) return 0.0;
-    return (static_cast<double>(successful_exports_) / total_exports_) * 100.0;
-}
-
-bool ExportTargetEntity::isHealthy() const {
-    return is_enabled_ && (getSuccessRate() > 50.0);
-}
-
-void ExportTargetEntity::recordExportSuccess(int processing_time_ms) {
-    total_exports_++;
-    successful_exports_++;
-    last_export_at_ = std::chrono::system_clock::now();
-    last_success_at_ = std::chrono::system_clock::now();
-    
-    // 평균 처리 시간 갱신 (이동 평균)
-    if (avg_export_time_ms_ == 0) {
-        avg_export_time_ms_ = processing_time_ms;
-    } else {
-        avg_export_time_ms_ = (avg_export_time_ms_ * 9 + processing_time_ms) / 10;
-    }
-    
-    markModified();
-}
-
-void ExportTargetEntity::recordExportFailure(const std::string& error_message) {
-    total_exports_++;
-    failed_exports_++;
-    last_export_at_ = std::chrono::system_clock::now();
-    last_error_ = error_message;
-    last_error_at_ = std::chrono::system_clock::now();
-    
-    markModified();
-}
-
-void ExportTargetEntity::resetStatistics() {
-    total_exports_ = 0;
-    successful_exports_ = 0;
-    failed_exports_ = 0;
-    avg_export_time_ms_ = 0;
-    last_error_.clear();
-    
-    markModified();
-}
-
 std::string ExportTargetEntity::getEntityTypeName() const {
     return "ExportTarget";
 }
 
-} // namespace Entities
-} // namespace Database
-} // namespace PulseOne
+}
+}
+}

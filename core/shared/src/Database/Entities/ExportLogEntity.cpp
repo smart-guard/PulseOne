@@ -1,10 +1,6 @@
 /**
  * @file ExportLogEntity.cpp
- * @brief Export Log Entity 구현
- * @author PulseOne Development Team
- * @date 2025-10-15
- * @version 1.0.0
- * 저장 위치: core/shared/src/Database/Entities/ExportLogEntity.cpp
+ * @version 2.0.0
  */
 
 #include "Database/Entities/ExportLogEntity.h"
@@ -193,13 +189,11 @@ bool ExportLogEntity::validate() const {
         return false;
     }
     
-    // log_type 검증
     if (log_type_ != "export" && log_type_ != "protocol" && log_type_ != "mapping") {
         LogManager::getInstance().Warn("ExportLogEntity::validate - invalid log_type: " + log_type_);
         return false;
     }
     
-    // status 검증
     if (status_ != "success" && status_ != "failed" && status_ != "retry") {
         LogManager::getInstance().Warn("ExportLogEntity::validate - invalid status: " + status_);
         return false;
@@ -207,10 +201,6 @@ bool ExportLogEntity::validate() const {
     
     return true;
 }
-
-// =============================================================================
-// 비즈니스 로직
-// =============================================================================
 
 bool ExportLogEntity::isSuccess() const {
     return status_ == "success";
@@ -220,6 +210,6 @@ std::string ExportLogEntity::getEntityTypeName() const {
     return "ExportLog";
 }
 
-} // namespace Entities
-} // namespace Database
-} // namespace PulseOne
+}
+}
+}
