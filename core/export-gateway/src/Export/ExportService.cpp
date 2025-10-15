@@ -24,10 +24,19 @@
 #include "CSP/FileTargetHandler.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
+
+// ✅ Repository 헤더 추가 (incomplete type 해결)
 #include "Database/RepositoryFactory.h"
+#include "Database/Repositories/ExportTargetRepository.h"
+#include "Database/Repositories/ExportTargetMappingRepository.h"
+#include "Database/Repositories/ExportLogRepository.h"
 #include "Database/Entities/ExportTargetEntity.h"
 #include "Database/Entities/ExportTargetMappingEntity.h"
 #include "Database/Entities/ExportLogEntity.h"
+
+// ✅ RedisClientImpl 사용 (추상 클래스가 아님)
+#include "Client/RedisClientImpl.h"
+
 #include <chrono>
 #include <thread>
 #include <algorithm>
@@ -63,11 +72,15 @@ bool ExportService::Initialize() {
     try {
         LogManager::getInstance().Info("ExportService 초기화 시작");
         
-        // 1. Redis 클라이언트 생성
-        redis_client_ = std::make_shared<RedisClient>();
-        if (!redis_client_->connect()) {
-            LogManager::getInstance().Error("ExportService: Redis 연결 실패");
-            return false;
+        // ✅ 1. RedisClientImpl 생성 (자동 연결됨)
+        redis_client_ = std::make_shared<RedisClientImpl>();
+        
+        // ✅ 연결 확인 (자동 연결이 이미 시도됨)
+        if (!redis_client_->isConnected()) {
+            LogManager::getInstance().Warn("ExportService: Redis 초기 연결 실패, 백그라운드 재연결 진행 중");
+            // 계속 진행 (자동 재연결 활성화됨)
+        } else {
+            LogManager::getInstance().Info("ExportService: Redis 연결 성공");
         }
         
         // 2. DataReader/Writer 생성
@@ -79,20 +92,23 @@ bool ExportService::Initialize() {
         s3_handler_ = std::make_unique<CSP::S3TargetHandler>();
         file_handler_ = std::make_unique<CSP::FileTargetHandler>();
         
-        // 4. 설정 로드
+        // ✅ 4. 설정 로드 (getOrDefault 사용)
         export_interval_ms_ = ConfigManager::getInstance().getInt("EXPORT_INTERVAL_MS", 1000);
         batch_size_ = ConfigManager::getInstance().getInt("EXPORT_BATCH_SIZE", 100);
         max_retry_count_ = ConfigManager::getInstance().getInt("EXPORT_MAX_RETRY", 3);
         retry_delay_ms_ = ConfigManager::getInstance().getInt("EXPORT_RETRY_DELAY_MS", 1000);
         
-        // 실패 파일 디렉토리 생성
-        failed_data_dir_ = ConfigManager::getInstance().getString("EXPORT_FAILED_DIR", 
-                                                                  "/app/data/export_failed");
+        // ✅ 실패 파일 디렉토리 (getOrDefault 사용)
+        failed_data_dir_ = ConfigManager::getInstance().getOrDefault("EXPORT_FAILED_DIR", 
+                                                                      "/app/data/export_failed");
         if (!fs::exists(failed_data_dir_)) {
             fs::create_directories(failed_data_dir_);
         }
         
         LogManager::getInstance().Info("ExportService: 초기화 완료");
+        LogManager::getInstance().Info("  - Export 간격: " + std::to_string(export_interval_ms_) + "ms");
+        LogManager::getInstance().Info("  - 배치 크기: " + std::to_string(batch_size_));
+        LogManager::getInstance().Info("  - 실패 데이터 저장 경로: " + failed_data_dir_);
         return true;
         
     } catch (const std::exception& e) {
@@ -151,7 +167,6 @@ int ExportService::LoadActiveTargets() {
     active_targets_.clear();
     
     try {
-        // ✅ Database에서 활성 타겟 로드
         auto& factory = Database::RepositoryFactory::getInstance();
         auto export_repo = factory.getExportTargetRepository();
         
@@ -160,20 +175,23 @@ int ExportService::LoadActiveTargets() {
             return 0;
         }
         
-        // is_enabled = 1인 타겟만 조회
+        // ✅ is_enabled = 1인 타겟만 조회
         auto db_targets = export_repo->findByEnabled(true);
         
         for (const auto& db_target : db_targets) {
             ExportTargetConfig target;
-            target.id = db_target.id;
-            target.name = db_target.name;
-            target.type = db_target.target_type;
-            target.enabled = db_target.is_enabled;
-            target.endpoint = "";  // config JSON에서 추출
             
-            // config JSON 파싱
+            // ✅ getter 메서드로 접근
+            target.id = db_target.getId();
+            target.name = db_target.getName();
+            target.type = db_target.getTargetType();
+            target.enabled = db_target.isEnabled();
+            target.endpoint = "";
+            
+            // ✅ config JSON 파싱
             try {
-                target.config = json::parse(db_target.config);
+                std::string config_str = db_target.getConfig();
+                target.config = json::parse(config_str);
                 
                 // endpoint 추출 (타겟 타입별)
                 if (target.config.contains("endpoint")) {
@@ -188,9 +206,9 @@ int ExportService::LoadActiveTargets() {
                 continue;
             }
             
-            // 통계 정보
-            target.success_count = db_target.successful_exports;
-            target.failure_count = db_target.failed_exports;
+            // ✅ 통계 정보
+            target.success_count = db_target.getSuccessfulExports();
+            target.failure_count = db_target.getFailedExports();
             
             active_targets_.push_back(target);
             
@@ -474,7 +492,7 @@ void ExportService::saveFailedData(const ExportTargetConfig& target,
 std::vector<int> ExportService::collectPointIdsForExport(
     const std::vector<ExportTargetConfig>& targets) {
     
-    std::set<int> point_ids_set;  // 중복 제거용
+    std::set<int> point_ids_set;
     
     try {
         auto& factory = Database::RepositoryFactory::getInstance();
@@ -491,17 +509,17 @@ std::vector<int> ExportService::collectPointIdsForExport(
                 continue;
             }
             
-            // target_id로 매핑 조회
+            // ✅ target_id로 매핑 조회
             auto mappings = mapping_repo->findByTargetId(target.id);
             
             for (const auto& mapping : mappings) {
-                if (mapping.is_enabled) {
-                    point_ids_set.insert(mapping.point_id);
+                // ✅ getter 메서드 사용
+                if (mapping.isEnabled()) {
+                    point_ids_set.insert(mapping.getPointId());
                 }
             }
         }
         
-        // set을 vector로 변환
         std::vector<int> point_ids(point_ids_set.begin(), point_ids_set.end());
         
         if (!point_ids.empty()) {
@@ -529,36 +547,41 @@ void ExportService::logExportResult(int target_id,
         
         if (log_repo) {
             Database::Entities::ExportLogEntity log;
-            log.log_type = "export";
-            log.target_id = target_id;
-            log.status = status;
-            log.error_message = error_message;
-            log.timestamp = std::chrono::system_clock::now();
+            log.setLogType("export");
+            log.setTargetId(target_id);
+            log.setStatus(status);
+            log.setErrorMessage(error_message);
+            log.setTimestamp(std::chrono::system_clock::now());
             
-            log_repo->create(log);
+            // ✅ save() 메서드 사용 (create가 아님)
+            log_repo->save(log);
         }
         
         // ✅ 2. export_targets 테이블 통계 업데이트
         auto export_repo = factory.getExportTargetRepository();
         if (export_repo) {
-            auto target = export_repo->findById(target_id);
+            // ✅ Optional 올바른 처리
+            auto target_opt = export_repo->findById(target_id);
             
-            if (target) {
-                target->total_exports++;
+            if (target_opt.has_value()) {
+                auto target = target_opt.value();
+                
+                // ✅ increment 메서드 사용
+                target.incrementTotalExports();
                 
                 if (status == "success") {
-                    target->successful_exports++;
-                    target->last_success_at = std::chrono::system_clock::now();
+                    target.incrementSuccessfulExports();
+                    target.setLastSuccessAt(std::chrono::system_clock::now());
                 } else {
-                    target->failed_exports++;
-                    target->last_error = error_message;
-                    target->last_error_at = std::chrono::system_clock::now();
+                    target.incrementFailedExports();
+                    target.setLastError(error_message);
+                    target.setLastErrorAt(std::chrono::system_clock::now());
                 }
                 
-                target->last_export_at = std::chrono::system_clock::now();
+                target.setLastExportAt(std::chrono::system_clock::now());
                 
-                // DB 업데이트
-                export_repo->update(*target);
+                // ✅ DB 업데이트 (참조 전달)
+                export_repo->update(target);
             }
         }
         
