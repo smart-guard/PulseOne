@@ -1,8 +1,8 @@
 /**
  * @file RepositoryFactory.h
- * @brief PulseOne Repository 팩토리 - 간단 수정본
+ * @brief PulseOne Repository 팩토리 - Export Repository 추가
  * @author PulseOne Development Team
- * @date 2025-07-30
+ * @date 2025-10-15
  */
 
 #ifndef PULSEONE_REPOSITORY_FACTORY_H
@@ -33,7 +33,12 @@ namespace Repositories {
     class AlarmRuleRepository;
     class AlarmOccurrenceRepository;
     class ScriptLibraryRepository;
-    class ProtocolRepository; 
+    class ProtocolRepository;
+    
+    // 🆕 Export 시스템 Repository들
+    class ExportTargetRepository;
+    class ExportTargetMappingRepository;
+    class ExportLogRepository;
 }
 
 /**
@@ -89,7 +94,7 @@ public:
             throw std::runtime_error("RepositoryFactory not initialized");
         }
         creation_count_.fetch_add(1);
-        return device_settings_repository_;  // 🆕 실제 멤버 변수 사용
+        return device_settings_repository_;
     }  
     
     std::shared_ptr<Repositories::CurrentValueRepository> getCurrentValueRepository() {
@@ -174,7 +179,45 @@ public:
     }
 
     // =============================================================================
-    // 캐시 관리
+    // 🆕 Export 시스템 Repository 접근자들
+    // =============================================================================
+    
+    std::shared_ptr<Repositories::ExportTargetRepository> getExportTargetRepository() {
+        std::lock_guard<std::mutex> lock(factory_mutex_);
+        if (!initialized_.load()) {
+            throw std::runtime_error("RepositoryFactory not initialized");
+        }
+        creation_count_.fetch_add(1);
+        return export_target_repository_;
+    }
+    
+    std::shared_ptr<Repositories::ExportTargetMappingRepository> getExportTargetMappingRepository() {
+        std::lock_guard<std::mutex> lock(factory_mutex_);
+        if (!initialized_.load()) {
+            throw std::runtime_error("RepositoryFactory not initialized");
+        }
+        creation_count_.fetch_add(1);
+        return export_target_mapping_repository_;
+    }
+    
+    std::shared_ptr<Repositories::ExportLogRepository> getExportLogRepository() {
+        std::lock_guard<std::mutex> lock(factory_mutex_);
+        if (!initialized_.load()) {
+            throw std::runtime_error("RepositoryFactory not initialized");
+        }
+        creation_count_.fetch_add(1);
+        return export_log_repository_;
+    }
+
+    // =============================================================================
+    // 통계 및 디버깅
+    // =============================================================================
+    
+    int getCreationCount() const { return creation_count_.load(); }
+    int getErrorCount() const { return error_count_.load(); }
+    
+    // =============================================================================
+    // 캐싱 제어
     // =============================================================================
     
     void setCacheEnabled(bool enabled);
@@ -182,29 +225,23 @@ public:
     void setCacheTTL(int ttl_seconds);
     void setMaxCacheSize(int max_size);
 
-    // =============================================================================
-    // 통계 및 상태
-    // =============================================================================
-    
-    int getCreationCount() const { return creation_count_.load(); }
-    int getErrorCount() const { return error_count_.load(); }
-
 private:
     // =============================================================================
-    // 생성자 및 소멸자 (private - 싱글톤)
+    // 싱글톤 생성자/소멸자
     // =============================================================================
     
     RepositoryFactory();
     ~RepositoryFactory();
 
     // =============================================================================
-    // 내부 메서드들
+    // 내부 헬퍼 메서드들
     // =============================================================================
     
     bool createRepositoryInstances();
     void applyRepositoryConfigurations();
     bool injectDependencies();
     void connectRepositoryDependencies();
+    
     // =============================================================================
     // 데이터 멤버들
     // =============================================================================
@@ -227,6 +264,12 @@ private:
     std::shared_ptr<Repositories::AlarmOccurrenceRepository> alarm_occurrence_repository_;
     std::shared_ptr<Repositories::ScriptLibraryRepository> script_library_repository_;
     std::shared_ptr<Repositories::ProtocolRepository> protocol_repository_;
+    
+    // 🆕 Export 시스템 Repository들
+    std::shared_ptr<Repositories::ExportTargetRepository> export_target_repository_;
+    std::shared_ptr<Repositories::ExportTargetMappingRepository> export_target_mapping_repository_;
+    std::shared_ptr<Repositories::ExportLogRepository> export_log_repository_;
+    
     // 상태 관리
     std::atomic<bool> initialized_{false};
     mutable std::mutex factory_mutex_;

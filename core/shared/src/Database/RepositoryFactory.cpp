@@ -1,8 +1,8 @@
 /**
  * @file RepositoryFactory.cpp
- * @brief PulseOne Repository 팩토리 구현 - Include 수정본
+ * @brief PulseOne Repository 팩토리 구현 - Export Repository 추가
  * @author PulseOne Development Team
- * @date 2025-07-30
+ * @date 2025-10-15
  */
 
 #include "Database/RepositoryFactory.h"
@@ -25,6 +25,11 @@
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include "Database/Repositories/ScriptLibraryRepository.h"
 #include "Database/Repositories/ProtocolRepository.h"
+
+// 🆕 Export 시스템 Repository들
+#include "Database/Repositories/ExportTargetRepository.h"
+#include "Database/Repositories/ExportTargetMappingRepository.h"
+#include "Database/Repositories/ExportLogRepository.h"
 
 // ✅ 필수 STL 헤더들
 #include <map>
@@ -147,12 +152,6 @@ void RepositoryFactory::shutdown() {
     try {
         logger_->Info("🔧 RepositoryFactory shutting down...");
         
-        // 활성 트랜잭션이 있으면 롤백 (구현되어 있다면)
-        // if (transaction_active_.load()) {
-        //     logger_->Warn("Active transaction found during shutdown - rolling back");
-        //     rollbackGlobalTransaction();
-        // }
-        
         // 모든 캐시 클리어
         clearAllCaches();
         
@@ -168,6 +167,12 @@ void RepositoryFactory::shutdown() {
         device_settings_repository_.reset(); 
         alarm_occurrence_repository_.reset();
         script_library_repository_.reset();
+        protocol_repository_.reset();
+        
+        // 🆕 Export 시스템 Repository 해제
+        export_target_repository_.reset();
+        export_target_mapping_repository_.reset();
+        export_log_repository_.reset();
         
         initialized_.store(false);
         logger_->Info("✅ RepositoryFactory shutdown completed");
@@ -188,12 +193,6 @@ void RepositoryFactory::setCacheEnabled(bool enabled) {
     global_cache_enabled_ = enabled;
     
     logger_->Info("Global cache " + std::string(enabled ? "enabled" : "disabled"));
-    
-    // 각 Repository에 캐시 설정 적용 (구현되어 있다면)
-    // if (device_repository_) {
-    //     device_repository_->setCacheEnabled(enabled);
-    // }
-    // ... 다른 repositories도 동일
 }
 
 void RepositoryFactory::clearAllCaches() {
@@ -204,15 +203,6 @@ void RepositoryFactory::clearAllCaches() {
     int total_cleared = 0;
     
     // 각 Repository 캐시 클리어 (구현되어 있다면)
-    // if (device_repository_) {
-    //     try {
-    //         device_repository_->clearCache();
-    //         total_cleared++;
-    //     } catch (const std::exception& e) {
-    //         logger_->Error("Failed to clear DeviceRepository cache: " + std::string(e.what()));
-    //         error_count_.fetch_add(1);
-    //     }
-    // }
     
     logger_->Info("Cleared " + std::to_string(total_cleared) + " cached items from all repositories");
 }
@@ -241,14 +231,14 @@ bool RepositoryFactory::createRepositoryInstances() {
     try {
         logger_->Info("Creating repository instances...");
         
-        // ✅ 올바른 네임스페이스로 Repository 생성
+        // ✅ 기존 Repository 생성
         device_repository_ = std::make_shared<Repositories::DeviceRepository>();
         if (!device_repository_) {
             logger_->Error("Failed to create DeviceRepository");
             return false;
         }
 
-        device_settings_repository_ = std::make_shared<Repositories::DeviceSettingsRepository>();  // 🆕 이 줄 추가
+        device_settings_repository_ = std::make_shared<Repositories::DeviceSettingsRepository>();
         if (!device_settings_repository_) {
             logger_->Error("Failed to create DeviceSettingsRepository");
             return false;
@@ -271,7 +261,6 @@ bool RepositoryFactory::createRepositoryInstances() {
             logger_->Error("Failed to create TenantRepository");
             return false;
         }
-        
         
         site_repository_ = std::make_shared<Repositories::SiteRepository>();
         if (!site_repository_) {
@@ -309,17 +298,28 @@ bool RepositoryFactory::createRepositoryInstances() {
             return false;
         }
 
+        // 🆕 Export 시스템 Repository 생성
+        export_target_repository_ = std::make_shared<Repositories::ExportTargetRepository>();
+        if (!export_target_repository_) {
+            logger_->Error("Failed to create ExportTargetRepository");
+            return false;
+        }
+        logger_->Info("✅ ExportTargetRepository created");
+
+        export_target_mapping_repository_ = std::make_shared<Repositories::ExportTargetMappingRepository>();
+        if (!export_target_mapping_repository_) {
+            logger_->Error("Failed to create ExportTargetMappingRepository");
+            return false;
+        }
+        logger_->Info("✅ ExportTargetMappingRepository created");
+
+        export_log_repository_ = std::make_shared<Repositories::ExportLogRepository>();
+        if (!export_log_repository_) {
+            logger_->Error("Failed to create ExportLogRepository");
+            return false;
+        }
+        logger_->Info("✅ ExportLogRepository created");
         
-
-
-        // script_library_repo_ = std::make_shared<Repositories::ScriptLibraryRepository>();
-        //if (!script_library_repo_) {
-        //    logger_->Error("Failed to create ScriptLibraryRepository");
-        //    return false;
-        //}
-        //logger_->Info("⚠️ ScriptLibraryRepository not created (implementation pending)");
-
-                
         logger_->Info("All repository instances created successfully");
         return true;
         
@@ -344,7 +344,6 @@ void RepositoryFactory::applyRepositoryConfigurations() {
             } else {
                 logger_->Info("Cache disabled globally");
             }
-            // setCacheEnabled(global_cache_enabled_);  // 🔧 주석 처리
             logger_->Info("Step 3: Cache settings applied");
         } catch (const std::exception& cache_e) {
             logger_->Warn("Cache setting failed but continuing: " + std::string(cache_e.what()));
@@ -386,12 +385,10 @@ void RepositoryFactory::connectRepositoryDependencies() {
             logger_->Info("✅ CurrentValueRepository connected to DataPointRepository");
         }
         
-        // 🔥 향후 추가 연결들
-        // if (alarm_repository_ && data_point_repository_) {
-        //     alarm_repository_->setDataPointRepository(data_point_repository_);
-        // }
-        // if (virtual_point_repository_ && data_point_repository_) {
-        //     virtual_point_repository_->setDataPointRepository(data_point_repository_);
+        // 🆕 Export 시스템 의존성 연결 (필요 시)
+        // if (export_target_repository_ && export_log_repository_) {
+        //     export_target_repository_->setLogRepository(export_log_repository_);
+        //     logger_->Info("✅ ExportLogRepository connected to ExportTargetRepository");
         // }
         
         logger_->Info("✅ Repository dependencies connected successfully");

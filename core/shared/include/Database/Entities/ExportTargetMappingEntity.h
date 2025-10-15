@@ -17,10 +17,13 @@
 #include <string>
 #include <chrono>
 #include <optional>
+#include <nlohmann/json.hpp>  // 🔧 추가
 
 namespace PulseOne {
 namespace Database {
 namespace Entities {
+
+using json = nlohmann::json;  // 🔧 추가
 
 /**
  * @brief Export Target Mapping Entity
@@ -89,9 +92,16 @@ public:
     // =======================================================================
     
     /**
+     * @brief 변환 설정 유무 확인
+     */
+    bool hasConversion() const {
+        return !conversion_config_.empty() && conversion_config_ != "{}";
+    }
+    
+    /**
      * @brief 유효성 검증
      */
-    bool validate() const override {
+    bool validate() const {  // 🔧 override 제거
         if (target_id_ <= 0) return false;
         if (point_id_ <= 0) return false;
         return true;
@@ -100,7 +110,7 @@ public:
     /**
      * @brief JSON 변환
      */
-    std::string toJson() const override {
+    json toJson() const override {  // 🔧 반환타입 변경
         json j;
         j["id"] = id_;
         j["target_id"] = target_id_;
@@ -110,26 +120,31 @@ public:
         j["conversion_config"] = conversion_config_;
         j["is_enabled"] = is_enabled_;
         
-        if (created_at_.time_since_epoch().count() > 0) {
-            j["created_at"] = std::chrono::system_clock::to_time_t(created_at_);
-        }
-        
-        return j.dump(2);
+        return j;  // 🔧 변경
     }
+    
+    // 🔧 추가: BaseEntity 순수 가상 함수
+    bool loadFromDatabase() override;
+    bool saveToDatabase() override;
+    bool updateToDatabase() override;
+    bool deleteFromDatabase() override;
+    bool fromJson(const json& data) override;
+    std::string toString() const override { return toJson().dump(2); }
     
     /**
      * @brief 엔티티 타입 이름
      */
-    std::string getEntityTypeName() const override {
+    std::string getEntityTypeName() const {  // 🔧 override 제거
         return "ExportTargetMapping";
     }
-
+    std::string getTableName() const override { return "export_target_mappings"; } 
+    
 private:
     int target_id_ = 0;
     int point_id_ = 0;
     std::string target_field_name_;
     std::string target_description_;
-    std::string conversion_config_;  // JSON 문자열
+    std::string conversion_config_;  // JSON 변환 규칙
     bool is_enabled_ = true;
 };
 
