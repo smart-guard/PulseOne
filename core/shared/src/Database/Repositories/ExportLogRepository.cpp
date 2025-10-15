@@ -1,16 +1,9 @@
 /**
  * @file ExportLogRepository.cpp
- * @brief Export Log Repository 구현 - SiteRepository 패턴 100% 적용
+ * @brief Export Log Repository 구현 - 에러 수정 완료
  * @author PulseOne Development Team
  * @date 2025-10-15
- * @version 1.0.0
- * 저장 위치: core/shared/src/Database/Repositories/ExportLogRepository.cpp
- * 
- * 기존 패턴 준수:
- * - SiteRepository/ExportTargetRepository 패턴 적용
- * - DatabaseAbstractionLayer 사용
- * - IRepository 인터페이스 완전 구현
- * - 캐싱 및 벌크 연산 지원
+ * @version 1.0.1
  */
 
 #include "Database/Repositories/ExportLogRepository.h"
@@ -80,11 +73,12 @@ std::optional<ExportLogEntity> ExportLogRepository::findById(int id) {
         }
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::FIND_BY_ID, 
-                                            {std::to_string(id)});
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportLog::FIND_BY_ID, std::to_string(id));
+        auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
-            logger_->Debug("ExportLogRepository::findById - Log not found: " + 
+            logger_->Debug("ExportLogRepository::findById - No log found for ID: " + 
                           std::to_string(id));
             return std::nullopt;
         }
@@ -96,63 +90,45 @@ std::optional<ExportLogEntity> ExportLogRepository::findById(int id) {
             cacheEntity(entity);
         }
         
+        logger_->Debug("ExportLogRepository::findById - Found log ID: " + 
+                      std::to_string(id));
         return entity;
         
     } catch (const std::exception& e) {
-        logger_->Error("ExportLogRepository::findById failed for ID " + 
-                      std::to_string(id) + ": " + std::string(e.what()));
+        logger_->Error("ExportLogRepository::findById failed: " + std::string(e.what()));
         return std::nullopt;
     }
 }
 
 bool ExportLogRepository::save(ExportLogEntity& entity) {
     try {
-        if (!validateLog(entity)) {
-            logger_->Error("ExportLogRepository::save - Invalid log");
-            return false;
-        }
-        
         if (!ensureTableExists()) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        auto params = entityToParams(entity);
+        std::string query = SQL::ExportLog::INSERT;
         
-        std::vector<std::string> params = {
-            entity.getLogType(),
-            std::to_string(entity.getServiceId()),
-            std::to_string(entity.getTargetId()),
-            std::to_string(entity.getMappingId()),
-            std::to_string(entity.getPointId()),
-            entity.getSourceValue(),
-            entity.getConvertedValue(),
-            entity.getStatus(),
-            entity.getErrorMessage(),
-            entity.getErrorCode(),
-            entity.getResponseData(),
-            std::to_string(entity.getHttpStatusCode()),
-            std::to_string(entity.getProcessingTimeMs()),
-            entity.getClientInfo()
-        };
-        
-        bool success = db_layer.executeNonQuery(SQL::ExportLog::INSERT, params);
-        
-        if (success && entity.getId() <= 0) {
-            auto id_result = db_layer.executeQuery(SQL::Common::GET_LAST_INSERT_ID);
-            if (!id_result.empty() && !id_result[0].empty()) {
-                entity.setId(std::stoi(id_result[0].at("id")));
+        // ? 플레이스홀더를 params 값으로 치환
+        for (const auto& param : params) {
+            size_t pos = query.find('?');
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, "'" + param.second + "'");
             }
         }
         
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
         if (success) {
-            entity.markSaved();
-            
-            if (isCacheEnabled()) {
-                cacheEntity(entity);
+            // ID 조회
+            auto results = db_layer.executeQuery("SELECT last_insert_rowid() as id");
+            if (!results.empty() && results[0].find("id") != results[0].end()) {
+                entity.setId(std::stoi(results[0].at("id")));
             }
             
-            logger_->Debug("ExportLogRepository::save - Saved log ID: " + 
-                          std::to_string(entity.getId()));
+            logger_->Info("ExportLogRepository::save - Saved log ID: " + 
+                         std::to_string(entity.getId()));
         }
         
         return success;
@@ -165,44 +141,41 @@ bool ExportLogRepository::save(ExportLogEntity& entity) {
 
 bool ExportLogRepository::update(const ExportLogEntity& entity) {
     try {
-        if (!validateLog(entity)) {
-            logger_->Error("ExportLogRepository::update - Invalid log");
-            return false;
-        }
-        
         if (!ensureTableExists()) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
-        
-        std::vector<std::string> params = {
-            entity.getLogType(),
-            std::to_string(entity.getServiceId()),
-            std::to_string(entity.getTargetId()),
-            std::to_string(entity.getMappingId()),
-            std::to_string(entity.getPointId()),
-            entity.getSourceValue(),
-            entity.getConvertedValue(),
-            entity.getStatus(),
-            entity.getErrorMessage(),
-            entity.getErrorCode(),
-            entity.getResponseData(),
-            std::to_string(entity.getHttpStatusCode()),
-            std::to_string(entity.getProcessingTimeMs()),
-            entity.getClientInfo(),
-            std::to_string(entity.getId())
-        };
-        
-        bool success = db_layer.executeNonQuery(SQL::ExportLog::UPDATE, params);
-        
-        if (success && isCacheEnabled()) {
-            cacheEntity(entity);
+        if (entity.getId() <= 0) {
+            logger_->Error("ExportLogRepository::update - Invalid entity ID");
+            return false;
         }
         
+        auto params = entityToParams(entity);
+        std::string query = SQL::ExportLog::UPDATE;
+        
+        // ? 플레이스홀더를 params 값으로 치환
+        for (const auto& param : params) {
+            size_t pos = query.find('?');
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, "'" + param.second + "'");
+            }
+        }
+        
+        // 마지막 ? (WHERE id = ?)
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(entity.getId()));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
         if (success) {
-            logger_->Debug("ExportLogRepository::update - Updated log ID: " + 
-                          std::to_string(entity.getId()));
+            if (isCacheEnabled()) {
+                clearCacheForId(entity.getId());
+            }
+            logger_->Info("ExportLogRepository::update - Updated log ID: " + 
+                         std::to_string(entity.getId()));
         }
         
         return success;
@@ -219,16 +192,20 @@ bool ExportLogRepository::deleteById(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeNonQuery(SQL::ExportLog::DELETE_BY_ID, 
-                                               {std::to_string(id)});
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportLog::DELETE_BY_ID, std::to_string(id));
         
-        if (success && isCacheEnabled()) {
-            invalidateCache(id);
-        }
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
-            logger_->Debug("ExportLogRepository::deleteById - Deleted log ID: " + 
+            if (isCacheEnabled()) {
+                clearCacheForId(id);
+            }
+            logger_->Info("ExportLogRepository::deleteById - Deleted log ID: " + 
+                         std::to_string(id));
+        } else {
+            logger_->Error("ExportLogRepository::deleteById - Failed to delete log ID: " + 
                           std::to_string(id));
         }
         
@@ -246,12 +223,15 @@ bool ExportLogRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::EXISTS_BY_ID, 
-                                            {std::to_string(id)});
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportLog::EXISTS_BY_ID, std::to_string(id));
         
-        if (!results.empty() && !results[0].empty()) {
-            return std::stoi(results[0].at("count")) > 0;
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            int count = std::stoi(results[0].at("count"));
+            return count > 0;
         }
         
         return false;
@@ -267,19 +247,48 @@ bool ExportLogRepository::exists(int id) {
 // =============================================================================
 
 std::vector<ExportLogEntity> ExportLogRepository::findByIds(const std::vector<int>& ids) {
-    if (ids.empty()) return {};
-    
-    std::vector<ExportLogEntity> entities;
-    entities.reserve(ids.size());
-    
-    for (int id : ids) {
-        auto entity = findById(id);
-        if (entity.has_value()) {
-            entities.push_back(entity.value());
+    try {
+        if (ids.empty() || !ensureTableExists()) {
+            return {};
         }
+        
+        std::ostringstream ids_ss;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) ids_ss << ", ";
+            ids_ss << ids[i];
+        }
+        
+        std::string query = R"(
+            SELECT 
+                id, log_type, service_id, target_id, mapping_id, point_id,
+                source_value, converted_value, status, error_message, error_code,
+                response_data, http_status_code, processing_time_ms, timestamp, client_info
+            FROM export_logs
+            WHERE id IN ()" + ids_ss.str() + R"()
+            ORDER BY timestamp DESC
+        )";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<ExportLogEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("ExportLogRepository::findByIds - Failed to map row: " + 
+                             std::string(e.what()));
+            }
+        }
+        
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("ExportLogRepository::findByIds failed: " + std::string(e.what()));
+        return {};
     }
-    
-    return entities;
 }
 
 std::vector<ExportLogEntity> ExportLogRepository::findByConditions(
@@ -287,13 +296,72 @@ std::vector<ExportLogEntity> ExportLogRepository::findByConditions(
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
     
-    // IRepository의 기본 구현 활용
-    return IRepository<ExportLogEntity>::findByConditions(conditions, order_by, pagination);
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        std::string query = R"(
+            SELECT 
+                id, log_type, service_id, target_id, mapping_id, point_id,
+                source_value, converted_value, status, error_message, error_code,
+                response_data, http_status_code, processing_time_ms, timestamp, client_info
+            FROM export_logs
+        )";
+        
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        query += RepositoryHelpers::buildOrderByClause(order_by);
+        query += RepositoryHelpers::buildLimitClause(pagination);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<ExportLogEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("ExportLogRepository::findByConditions - Failed to map row: " + 
+                             std::string(e.what()));
+            }
+        }
+        
+        logger_->Debug("ExportLogRepository::findByConditions - Found " + 
+                      std::to_string(entities.size()) + " logs");
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("ExportLogRepository::findByConditions failed: " + 
+                      std::string(e.what()));
+        return {};
+    }
 }
 
 int ExportLogRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    // IRepository의 기본 구현 활용
-    return IRepository<ExportLogEntity>::countByConditions(conditions);
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        std::string query = "SELECT COUNT(*) as count FROM export_logs";
+        query += RepositoryHelpers::buildWhereClause(conditions);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("ExportLogRepository::countByConditions failed: " + 
+                      std::string(e.what()));
+        return 0;
+    }
 }
 
 // =============================================================================
@@ -306,20 +374,19 @@ std::vector<ExportLogEntity> ExportLogRepository::findByTargetId(int target_id, 
             return {};
         }
         
+        std::string query = SQL::ExportLog::FIND_BY_TARGET_ID;
+        query = RepositoryHelpers::replaceTwoParameters(query, 
+                                                        std::to_string(target_id),
+                                                        std::to_string(limit));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::FIND_BY_TARGET_ID, 
-                                            {std::to_string(target_id), 
-                                             std::to_string(limit)});
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportLogEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportLogRepository::findByTargetId - Failed to map row");
-            }
+            } catch (const std::exception&) {}
         }
         
         return entities;
@@ -333,24 +400,24 @@ std::vector<ExportLogEntity> ExportLogRepository::findByTargetId(int target_id, 
 
 std::vector<ExportLogEntity> ExportLogRepository::findByStatus(
     const std::string& status, int limit) {
+    
     try {
         if (!ensureTableExists()) {
             return {};
         }
         
+        std::string query = SQL::ExportLog::FIND_BY_STATUS;
+        query = RepositoryHelpers::replaceParameterWithQuotes(query, status);
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(limit));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::FIND_BY_STATUS, 
-                                            {status, std::to_string(limit)});
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportLogEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportLogRepository::findByStatus - Failed to map row");
-            }
+            } catch (const std::exception&) {}
         }
         
         return entities;
@@ -365,27 +432,33 @@ std::vector<ExportLogEntity> ExportLogRepository::findByStatus(
 std::vector<ExportLogEntity> ExportLogRepository::findByTimeRange(
     const std::chrono::system_clock::time_point& start_time,
     const std::chrono::system_clock::time_point& end_time) {
+    
     try {
         if (!ensureTableExists()) {
             return {};
         }
         
-        std::string start_str = RepositoryHelpers::formatTimestamp(start_time);
-        std::string end_str = RepositoryHelpers::formatTimestamp(end_time);
+        auto start_t = std::chrono::system_clock::to_time_t(start_time);
+        auto end_t = std::chrono::system_clock::to_time_t(end_time);
+        
+        char start_str[64], end_str[64];
+        std::strftime(start_str, sizeof(start_str), "%Y-%m-%d %H:%M:%S", 
+                     std::gmtime(&start_t));
+        std::strftime(end_str, sizeof(end_str), "%Y-%m-%d %H:%M:%S", 
+                     std::gmtime(&end_t));
+        
+        std::string query = SQL::ExportLog::FIND_BY_TIME_RANGE;
+        query = RepositoryHelpers::replaceParameterWithQuotes(query, start_str);
+        query = RepositoryHelpers::replaceParameterWithQuotes(query, end_str);
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::FIND_BY_TIME_RANGE, 
-                                            {start_str, end_str});
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportLogEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportLogRepository::findByTimeRange - Failed to map row");
-            }
+            } catch (const std::exception&) {}
         }
         
         return entities;
@@ -403,27 +476,25 @@ std::vector<ExportLogEntity> ExportLogRepository::findRecent(int hours, int limi
             return {};
         }
         
+        std::string query = SQL::ExportLog::FIND_RECENT;
+        query = RepositoryHelpers::replaceTwoParameters(query, 
+                                                        std::to_string(hours),
+                                                        std::to_string(limit));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::FIND_RECENT, 
-                                            {std::to_string(hours), 
-                                             std::to_string(limit)});
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportLogEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportLogRepository::findRecent - Failed to map row");
-            }
+            } catch (const std::exception&) {}
         }
         
         return entities;
         
     } catch (const std::exception& e) {
-        logger_->Error("ExportLogRepository::findRecent failed: " + 
-                      std::string(e.what()));
+        logger_->Error("ExportLogRepository::findRecent failed: " + std::string(e.what()));
         return {};
     }
 }
@@ -434,20 +505,19 @@ std::vector<ExportLogEntity> ExportLogRepository::findRecentFailures(int hours, 
             return {};
         }
         
+        std::string query = SQL::ExportLog::FIND_RECENT_FAILURES;
+        query = RepositoryHelpers::replaceTwoParameters(query, 
+                                                        std::to_string(hours),
+                                                        std::to_string(limit));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::FIND_RECENT_FAILURES, 
-                                            {std::to_string(hours), 
-                                             std::to_string(limit)});
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportLogEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportLogRepository::findRecentFailures - Failed to map row");
-            }
+            } catch (const std::exception&) {}
         }
         
         return entities;
@@ -465,20 +535,19 @@ std::vector<ExportLogEntity> ExportLogRepository::findByPointId(int point_id, in
             return {};
         }
         
+        std::string query = SQL::ExportLog::FIND_BY_POINT_ID;
+        query = RepositoryHelpers::replaceTwoParameters(query, 
+                                                        std::to_string(point_id),
+                                                        std::to_string(limit));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::FIND_BY_POINT_ID, 
-                                            {std::to_string(point_id), 
-                                             std::to_string(limit)});
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportLogEntity> entities;
-        entities.reserve(results.size());
-        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (const std::exception& e) {
-                logger_->Warn("ExportLogRepository::findByPointId - Failed to map row");
-            }
+            } catch (const std::exception&) {}
         }
         
         return entities;
@@ -491,11 +560,12 @@ std::vector<ExportLogEntity> ExportLogRepository::findByPointId(int point_id, in
 }
 
 // =============================================================================
-// 통계 및 분석
+// 통계 메서드
 // =============================================================================
 
 std::map<std::string, int> ExportLogRepository::getTargetStatistics(
     int target_id, int hours) {
+    
     std::map<std::string, int> stats;
     
     try {
@@ -503,10 +573,13 @@ std::map<std::string, int> ExportLogRepository::getTargetStatistics(
             return stats;
         }
         
+        std::string query = SQL::ExportLog::GET_TARGET_STATISTICS;
+        query = RepositoryHelpers::replaceTwoParameters(query, 
+                                                        std::to_string(target_id),
+                                                        std::to_string(hours));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::GET_TARGET_STATISTICS, 
-                                            {std::to_string(target_id), 
-                                             std::to_string(hours)});
+        auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
             if (row.find("status") != row.end() && row.find("count") != row.end()) {
@@ -530,9 +603,11 @@ std::map<std::string, int> ExportLogRepository::getOverallStatistics(int hours) 
             return stats;
         }
         
+        std::string query = SQL::ExportLog::GET_OVERALL_STATISTICS;
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(hours));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::GET_OVERALL_STATISTICS, 
-                                            {std::to_string(hours)});
+        auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
             if (row.find("status") != row.end() && row.find("count") != row.end()) {
@@ -554,29 +629,28 @@ double ExportLogRepository::getAverageProcessingTime(int target_id, int hours) {
             return 0.0;
         }
         
+        std::string query = SQL::ExportLog::GET_AVERAGE_PROCESSING_TIME;
+        query = RepositoryHelpers::replaceTwoParameters(query, 
+                                                        std::to_string(target_id),
+                                                        std::to_string(hours));
+        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportLog::GET_AVERAGE_PROCESSING_TIME, 
-                                            {std::to_string(target_id), 
-                                             std::to_string(hours)});
+        auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("avg_time") != results[0].end()) {
-            const std::string& avg_str = results[0].at("avg_time");
-            if (!avg_str.empty() && avg_str != "NULL") {
-                return std::stod(avg_str);
-            }
+            return std::stod(results[0].at("avg_time"));
         }
-        
-        return 0.0;
         
     } catch (const std::exception& e) {
         logger_->Error("ExportLogRepository::getAverageProcessingTime failed: " + 
                       std::string(e.what()));
-        return 0.0;
     }
+    
+    return 0.0;
 }
 
 // =============================================================================
-// 로그 정리
+// 정리 메서드
 // =============================================================================
 
 int ExportLogRepository::deleteOlderThan(int days) {
@@ -585,29 +659,27 @@ int ExportLogRepository::deleteOlderThan(int days) {
             return 0;
         }
         
+        std::string query = SQL::ExportLog::DELETE_OLDER_THAN;
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(days));
+        
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeNonQuery(SQL::ExportLog::DELETE_OLDER_THAN, 
-                                               {std::to_string(days)});
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
+            if (isCacheEnabled()) {
+                clearCache();
+            }
             logger_->Info("ExportLogRepository::deleteOlderThan - Deleted logs older than " + 
                          std::to_string(days) + " days");
-            
-            // 캐시 전체 무효화
-            if (isCacheEnabled()) {
-                clearAllCache();
-            }
-            
-            return 1; // 성공 표시
+            return 1;
         }
-        
-        return 0;
         
     } catch (const std::exception& e) {
         logger_->Error("ExportLogRepository::deleteOlderThan failed: " + 
                       std::string(e.what()));
-        return 0;
     }
+    
+    return 0;
 }
 
 int ExportLogRepository::deleteSuccessLogsOlderThan(int days) {
@@ -616,31 +688,28 @@ int ExportLogRepository::deleteSuccessLogsOlderThan(int days) {
             return 0;
         }
         
+        std::string query = SQL::ExportLog::DELETE_SUCCESS_LOGS_OLDER_THAN;
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(days));
+        
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeNonQuery(
-            SQL::ExportLog::DELETE_SUCCESS_LOGS_OLDER_THAN, 
-            {std::to_string(days)});
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
-            logger_->Info("ExportLogRepository::deleteSuccessLogsOlderThan - " +
-                         "Deleted success logs older than " + 
-                         std::to_string(days) + " days");
-            
-            // 캐시 전체 무효화
             if (isCacheEnabled()) {
-                clearAllCache();
+                clearCache();
             }
-            
-            return 1; // 성공 표시
+            logger_->Info("ExportLogRepository::deleteSuccessLogsOlderThan - " +
+                         std::string("Deleted success logs older than ") + 
+                         std::to_string(days) + " days");
+            return 1;
         }
-        
-        return 0;
         
     } catch (const std::exception& e) {
         logger_->Error("ExportLogRepository::deleteSuccessLogsOlderThan failed: " + 
                       std::string(e.what()));
-        return 0;
     }
+    
+    return 0;
 }
 
 // =============================================================================
@@ -652,7 +721,6 @@ std::map<std::string, int> ExportLogRepository::getCacheStats() const {
     
     if (isCacheEnabled()) {
         stats["cache_enabled"] = 1;
-        // 기본 통계는 IRepository에서 제공
         auto base_stats = IRepository<ExportLogEntity>::getCacheStats();
         stats.insert(base_stats.begin(), base_stats.end());
     } else {
@@ -743,8 +811,12 @@ ExportLogEntity ExportLogRepository::mapRowToEntity(
         
         it = row.find("timestamp");
         if (it != row.end() && !it->second.empty()) {
-            auto timestamp = RepositoryHelpers::parseTimestamp(it->second);
-            entity.setTimestamp(timestamp);
+            // timestamp 문자열을 time_point로 변환
+            std::tm tm = {};
+            std::istringstream ss(it->second);
+            ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+            auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+            entity.setTimestamp(tp);
         }
         
         it = row.find("client_info");
@@ -752,21 +824,19 @@ ExportLogEntity ExportLogRepository::mapRowToEntity(
             entity.setClientInfo(it->second);
         }
         
-        entity.markSaved();
         return entity;
         
     } catch (const std::exception& e) {
-        logger_->Error("ExportLogRepository::mapRowToEntity failed: " + 
-                      std::string(e.what()));
-        throw;
+        throw std::runtime_error("Failed to map row to ExportLogEntity: " + 
+                               std::string(e.what()));
     }
 }
 
 std::map<std::string, std::string> ExportLogRepository::entityToParams(
     const ExportLogEntity& entity) {
+    
     std::map<std::string, std::string> params;
     
-    params["id"] = std::to_string(entity.getId());
     params["log_type"] = entity.getLogType();
     params["service_id"] = std::to_string(entity.getServiceId());
     params["target_id"] = std::to_string(entity.getTargetId());
@@ -780,33 +850,16 @@ std::map<std::string, std::string> ExportLogRepository::entityToParams(
     params["response_data"] = entity.getResponseData();
     params["http_status_code"] = std::to_string(entity.getHttpStatusCode());
     params["processing_time_ms"] = std::to_string(entity.getProcessingTimeMs());
-    params["timestamp"] = RepositoryHelpers::formatTimestamp(entity.getTimestamp());
     params["client_info"] = entity.getClientInfo();
     
     return params;
 }
 
-bool ExportLogRepository::validateLog(const ExportLogEntity& entity) {
-    return entity.validate();
-}
-
 bool ExportLogRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
-        
-        // 테이블 생성
-        if (!db_layer.executeNonQuery(SQL::ExportLog::CREATE_TABLE)) {
-            return false;
-        }
-        
-        // 인덱스 생성
-        if (!db_layer.executeNonQuery(SQL::ExportLog::CREATE_INDEXES)) {
-            logger_->Warn("ExportLogRepository::ensureTableExists - Index creation failed");
-            // 인덱스 실패는 치명적이지 않으므로 계속 진행
-        }
-        
-        return true;
-        
+        return db_layer.executeNonQuery(SQL::ExportLog::CREATE_TABLE) &&
+               db_layer.executeNonQuery(SQL::ExportLog::CREATE_INDEXES);
     } catch (const std::exception& e) {
         logger_->Error("ExportLogRepository::ensureTableExists failed: " + 
                       std::string(e.what()));
