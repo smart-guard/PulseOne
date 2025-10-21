@@ -1,14 +1,18 @@
 /**
- * @file CSPGateway.h - 데이터베이스 통합 완성 버전
- * @brief CSP Gateway 헤더 - export_targets 테이블 연동
+ * @file CSPGateway.h - 실제 스키마 기반 완전 수정
+ * @brief CSP Gateway 헤더 - export_logs 통계 집계
  * @author PulseOne Development Team
- * @date 2025-10-15
- * @version 1.2.0 (Database Integration)
+ * @date 2025-10-21
+ * @version 1.3.0 (export_logs 기반 통계)
  * 
- * 주요 변경사항:
- * 1. JSON 파일 대신 SQLite 데이터베이스에서 타겟 로드
- * 2. 타겟 추가/제거/활성화 시 DB 자동 업데이트
- * 3. 전송 통계를 export_targets 테이블에 실시간 반영
+ * 현재 상황:
+ * - export_targets: 구버전 스키마 (통계 필드 포함) - 아직 운영 중
+ * - export_logs: 확장됨 - 전송 로그 저장
+ * - VIEW: v_export_targets_stats_24h, v_export_targets_stats_all
+ * 
+ * 해결:
+ * - TargetStatistics: export_logs 집계 결과 담는 구조체
+ * - getTargetStatisticsFromLogs(): export_logs 쿼리 또는 VIEW 사용
  */
 
 #ifndef CSP_GATEWAY_H
@@ -25,6 +29,7 @@
 #include <chrono>
 #include <unordered_map>
 #include <filesystem>
+#include <optional>
 #include <nlohmann/json.hpp>
 #include "AlarmMessage.h"
 #include "CSPDynamicTargets.h"
@@ -52,6 +57,50 @@ namespace CSP {
 // =============================================================================
 // 타입 정의들
 // =============================================================================
+
+/**
+ * @brief export_logs 테이블 집계 결과 구조체
+ * 
+ * 이 구조체는 export_logs 테이블을 집계하거나
+ * VIEW (v_export_targets_stats_24h, v_export_targets_stats_all)를 
+ * 조회한 결과를 담습니다.
+ */
+struct TargetStatistics {
+    int target_id = 0;
+    std::string target_name;
+    std::string target_type;
+    
+    // export_logs 집계 결과
+    uint64_t total_count = 0;          // COUNT(*)
+    uint64_t success_count = 0;        // SUM(CASE WHEN status='success')
+    uint64_t failure_count = 0;        // SUM(CASE WHEN status='failure')
+    double avg_response_time_ms = 0.0; // AVG(processing_time_ms)
+    
+    // 시간 정보
+    std::chrono::system_clock::time_point last_export_at;
+    std::chrono::system_clock::time_point last_success_at;  // MAX(timestamp WHERE status='success')
+    std::chrono::system_clock::time_point last_failure_at;  // MAX(timestamp WHERE status='failure')
+    std::string last_error_message;  // 최근 에러 메시지
+    
+    // 성공률 계산
+    double getSuccessRate() const {
+        return (total_count > 0) ? (static_cast<double>(success_count) / total_count * 100.0) : 0.0;
+    }
+    
+    json toJson() const {
+        return json{
+            {"target_id", target_id},
+            {"target_name", target_name},
+            {"target_type", target_type},
+            {"total_count", total_count},
+            {"success_count", success_count},
+            {"failure_count", failure_count},
+            {"success_rate", getSuccessRate()},
+            {"avg_response_time_ms", avg_response_time_ms},
+            {"last_error_message", last_error_message}
+        };
+    }
+};
 
 struct DynamicTargetStats {
     std::string name;
@@ -377,7 +426,7 @@ private:
     void loadConfigFromConfigManager();
     
     // ========================================================================
-    // ✅ 데이터베이스 관련 메서드 (새로 추가)
+    // ✅ 데이터베이스 관련 메서드
     // ========================================================================
     
     /**
@@ -422,6 +471,32 @@ private:
      */
     void updateExportTargetStats(const std::string& target_name, bool success, 
                                 double response_time_ms);
+
+    /**
+     * @brief export_logs 테이블에서 타겟 통계 집계
+     * 
+     * 이 메서드는 export_logs 테이블을 집계하여 통계를 반환합니다.
+     * 
+     * 실행 쿼리 예시:
+     * SELECT 
+     *   target_id,
+     *   COUNT(*) as total_count,
+     *   SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+     *   SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) as failure_count,
+     *   AVG(CASE WHEN status = 'success' THEN processing_time_ms END) as avg_time_ms,
+     *   MAX(CASE WHEN status = 'success' THEN timestamp END) as last_success_at,
+     *   MAX(CASE WHEN status = 'failure' THEN timestamp END) as last_failure_at
+     * FROM export_logs
+     * WHERE target_id = ? AND timestamp > datetime('now', '-24 hours')
+     * 
+     * 또는 VIEW 사용:
+     * SELECT * FROM v_export_targets_stats_24h WHERE id = ?
+     * 
+     * @param target_id 타겟 ID
+     * @param hours 집계 시간 범위 (기본 24시간)
+     * @return 통계 정보 (조회 실패 시 std::nullopt)
+     */
+    std::optional<TargetStatistics> getTargetStatisticsFromLogs(int target_id, int hours = 24);                            
 };
 
 } // namespace CSP

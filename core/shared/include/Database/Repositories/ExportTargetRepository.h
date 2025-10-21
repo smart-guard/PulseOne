@@ -1,10 +1,16 @@
 /**
  * @file ExportTargetRepository.h
- * @brief Export Target Repository - SiteRepository 패턴 100% 적용
- * @author PulseOne Development Team
- * @date 2025-10-15
- * @version 1.0.0
+ * @brief Export Target Repository (통계 필드 제거 버전)
+ * @version 3.0.0 - 통계 필드 완전 제거
+ * @date 2025-10-21
+ * 
  * 저장 위치: core/shared/include/Database/Repositories/ExportTargetRepository.h
+ * 
+ * 주요 변경사항:
+ *   - updateStatistics() 제거
+ *   - findHealthyTargets() 제거
+ *   - findRecentErrorTargets() 제거
+ *   - 설정 정보만 관리
  */
 
 #ifndef EXPORT_TARGET_REPOSITORY_H
@@ -40,6 +46,10 @@ using ExportTargetEntity = PulseOne::Database::Entities::ExportTargetEntity;
  * - 프로파일별 타겟 조회
  * - DatabaseAbstractionLayer 사용
  * - 캐싱 및 벌크 연산 지원
+ * 
+ * 역할:
+ * - Export Target 설정만 관리
+ * - 통계는 ExportLogRepository에서 조회
  */
 class ExportTargetRepository : public IRepository<ExportTargetEntity> {
 public:
@@ -51,7 +61,7 @@ public:
         initializeDependencies();
         
         if (logger_) {
-            logger_->Info("🚀 ExportTargetRepository initialized with BaseEntity pattern");
+            logger_->Info("🚀 ExportTargetRepository initialized (v3.0 - stats removed)");
             logger_->Info("✅ Cache enabled: " + std::string(isCacheEnabled() ? "YES" : "NO"));
         }
     }
@@ -84,7 +94,7 @@ public:
     int countByConditions(const std::vector<QueryCondition>& conditions) override;
 
     // =======================================================================
-    // Export Target 전용 조회 메서드
+    // Export Target 전용 조회 메서드 (설정 조회만)
     // =======================================================================
     
     /**
@@ -96,7 +106,7 @@ public:
     
     /**
      * @brief 타겟 타입별 조회
-     * @param target_type "HTTP", "S3", "FILE", "MQTT"
+     * @param target_type "http", "s3", "file", "mqtt"
      * @return 타겟 목록
      */
     std::vector<ExportTargetEntity> findByTargetType(const std::string& target_type);
@@ -110,26 +120,13 @@ public:
     
     /**
      * @brief 이름으로 타겟 조회
-     * @param name 타겟 이름
+     * @param name 타겟 이름 (UNIQUE)
      * @return 타겟 (optional)
      */
     std::optional<ExportTargetEntity> findByName(const std::string& name);
-    
-    /**
-     * @brief 건강한 타겟 조회 (성공률 > 50%)
-     * @return 타겟 목록
-     */
-    std::vector<ExportTargetEntity> findHealthyTargets();
-    
-    /**
-     * @brief 최근 에러 발생 타겟 조회
-     * @param hours 최근 N시간 이내
-     * @return 타겟 목록
-     */
-    std::vector<ExportTargetEntity> findRecentErrorTargets(int hours = 24);
 
     // =======================================================================
-    // 통계 및 모니터링
+    // 카운트 및 통계 (설정 기반만)
     // =======================================================================
     
     /**
@@ -144,14 +141,9 @@ public:
     
     /**
      * @brief 타겟 타입별 개수
+     * @return map<target_type, count>
      */
     std::map<std::string, int> getCountByType();
-    
-    /**
-     * @brief 타겟 통계 업데이트
-     */
-    bool updateStatistics(int target_id, bool success, int processing_time_ms,
-                         const std::string& error_message = "");
 
     // =======================================================================
     // 캐시 관리
@@ -165,19 +157,14 @@ private:
     // =======================================================================
     
     /**
-     * @brief DB 행을 Entity로 변환
+     * @brief DB 행을 Entity로 변환 (통계 필드 제거됨)
      */
     ExportTargetEntity mapRowToEntity(const std::map<std::string, std::string>& row);
     
     /**
-     * @brief Entity를 DB 파라미터로 변환
+     * @brief Entity를 DB 파라미터로 변환 (통계 필드 제거됨)
      */
     std::map<std::string, std::string> entityToParams(const ExportTargetEntity& entity);
-    
-    /**
-     * @brief 타겟 유효성 검증
-     */
-    bool validateTarget(const ExportTargetEntity& entity);
     
     /**
      * @brief 테이블 존재 확인 및 생성

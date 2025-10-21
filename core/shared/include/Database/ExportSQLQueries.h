@@ -1,12 +1,20 @@
 /**
  * @file ExportSQLQueries.h
- * @brief Export 시스템 SQL 쿼리 중앙 관리
+ * @brief Export 시스템 SQL 쿼리 중앙 관리 (리팩토링 v2.0.1)
  * @author PulseOne Development Team
- * @date 2025-10-15
- * @version 1.0.0
- * 저장 위치: core/shared/include/Database/ExportSQLQueries.h
+ * @date 2025-10-21
+ * @version 2.0.1
  * 
- * 참조: 001_export_system_schema.sql
+ * 저장 위치: core/shared/include/Database/ExportSQLQueries.h
+ * 참조: 10-export_system.sql
+ * 
+ * 🔧 긴급 수정 (v2.0.0 → v2.0.1):
+ *   - ExportTargetMapping::EXISTS_BY_ID 추가 (컴파일 에러 수정)
+ * 
+ * 주요 변경사항 (v1.0 → v2.0):
+ *   - export_targets: 통계 필드 제거 (설정만 보관)
+ *   - export_logs: 확장 및 통계 집계 쿼리 추가
+ *   - VIEW를 통한 실시간 통계 제공
  */
 
 #ifndef EXPORT_SQL_QUERIES_H
@@ -19,11 +27,63 @@ namespace Database {
 namespace SQL {
 
 // =============================================================================
+// 🎯 ExportProfile 쿼리들 (export_profiles 테이블)
+// =============================================================================
+namespace ExportProfile {
+    
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS export_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name VARCHAR(100) NOT NULL UNIQUE,
+            description TEXT,
+            is_enabled BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_by VARCHAR(50),
+            point_count INTEGER DEFAULT 0,
+            last_exported_at DATETIME
+        )
+    )";
+    
+    const std::string CREATE_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_profiles_enabled ON export_profiles(is_enabled);
+        CREATE INDEX IF NOT EXISTS idx_profiles_created ON export_profiles(created_at DESC);
+    )";
+    
+    const std::string FIND_ALL = R"(
+        SELECT id, name, description, is_enabled, created_at, updated_at, 
+               created_by, point_count, last_exported_at
+        FROM export_profiles
+        ORDER BY name ASC
+    )";
+    
+    const std::string FIND_BY_ID = R"(
+        SELECT id, name, description, is_enabled, created_at, updated_at, 
+               created_by, point_count, last_exported_at
+        FROM export_profiles WHERE id = ?
+    )";
+    
+    const std::string INSERT = R"(
+        INSERT INTO export_profiles (name, description, is_enabled, created_by)
+        VALUES (?, ?, ?, ?)
+    )";
+    
+    const std::string UPDATE = R"(
+        UPDATE export_profiles SET
+            name = ?, description = ?, is_enabled = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string DELETE_BY_ID = "DELETE FROM export_profiles WHERE id = ?";
+    
+} // namespace ExportProfile
+
+// =============================================================================
 // 🎯 ExportTarget 쿼리들 (export_targets 테이블)
+// 변경: 통계 필드 완전 제거, 설정만 보관
 // =============================================================================
 namespace ExportTarget {
     
-    // 테이블 생성
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS export_targets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,14 +96,6 @@ namespace ExportTarget {
             export_mode VARCHAR(20) DEFAULT 'on_change',
             export_interval INTEGER DEFAULT 0,
             batch_size INTEGER DEFAULT 100,
-            total_exports INTEGER DEFAULT 0,
-            successful_exports INTEGER DEFAULT 0,
-            failed_exports INTEGER DEFAULT 0,
-            last_export_at DATETIME,
-            last_success_at DATETIME,
-            last_error TEXT,
-            last_error_at DATETIME,
-            avg_export_time_ms INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             
@@ -51,25 +103,49 @@ namespace ExportTarget {
         )
     )";
     
-    // 기본 CRUD
+    const std::string CREATE_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_export_targets_type ON export_targets(target_type);
+        CREATE INDEX IF NOT EXISTS idx_export_targets_profile ON export_targets(profile_id);
+        CREATE INDEX IF NOT EXISTS idx_export_targets_enabled ON export_targets(is_enabled);
+        CREATE INDEX IF NOT EXISTS idx_export_targets_name ON export_targets(name);
+    )";
+    
+    // 기본 CRUD (통계 필드 제거됨)
     const std::string FIND_ALL = R"(
-        SELECT 
-            id, profile_id, name, target_type, description, is_enabled, config,
-            export_mode, export_interval, batch_size, total_exports, 
-            successful_exports, failed_exports, last_export_at, last_success_at,
-            last_error, last_error_at, avg_export_time_ms, created_at, updated_at
+        SELECT id, profile_id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets
         ORDER BY name ASC
     )";
     
     const std::string FIND_BY_ID = R"(
-        SELECT 
-            id, profile_id, name, target_type, description, is_enabled, config,
-            export_mode, export_interval, batch_size, total_exports, 
-            successful_exports, failed_exports, last_export_at, last_success_at,
-            last_error, last_error_at, avg_export_time_ms, created_at, updated_at
-        FROM export_targets 
-        WHERE id = ?
+        SELECT id, profile_id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
+        FROM export_targets WHERE id = ?
+    )";
+    
+    const std::string FIND_BY_NAME = R"(
+        SELECT id, profile_id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
+        FROM export_targets WHERE name = ?
+    )";
+    
+    const std::string FIND_BY_ENABLED = R"(
+        SELECT id, profile_id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
+        FROM export_targets WHERE is_enabled = ? ORDER BY name ASC
+    )";
+    
+    const std::string FIND_BY_TARGET_TYPE = R"(
+        SELECT id, profile_id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
+        FROM export_targets WHERE target_type = ? ORDER BY name ASC
+    )";
+    
+    const std::string FIND_BY_PROFILE_ID = R"(
+        SELECT id, profile_id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
+        FROM export_targets WHERE profile_id = ? ORDER BY name ASC
     )";
     
     const std::string INSERT = R"(
@@ -81,15 +157,8 @@ namespace ExportTarget {
     
     const std::string UPDATE = R"(
         UPDATE export_targets SET
-            profile_id = ?,
-            name = ?,
-            target_type = ?,
-            description = ?,
-            is_enabled = ?,
-            config = ?,
-            export_mode = ?,
-            export_interval = ?,
-            batch_size = ?,
+            profile_id = ?, name = ?, target_type = ?, description = ?, is_enabled = ?,
+            config = ?, export_mode = ?, export_interval = ?, batch_size = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
@@ -98,80 +167,24 @@ namespace ExportTarget {
     
     const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM export_targets WHERE id = ?";
     
-    // 전용 조회
-    const std::string FIND_BY_ENABLED = R"(
-        SELECT 
-            id, profile_id, name, target_type, description, is_enabled, config,
-            export_mode, export_interval, batch_size, total_exports, 
-            successful_exports, failed_exports, last_export_at, last_success_at,
-            last_error, last_error_at, avg_export_time_ms, created_at, updated_at
-        FROM export_targets
-        WHERE is_enabled = ?
-        ORDER BY name ASC
-    )";
-    
-    const std::string FIND_BY_TARGET_TYPE = R"(
-        SELECT 
-            id, profile_id, name, target_type, description, is_enabled, config,
-            export_mode, export_interval, batch_size, total_exports, 
-            successful_exports, failed_exports, last_export_at, last_success_at,
-            last_error, last_error_at, avg_export_time_ms, created_at, updated_at
-        FROM export_targets
-        WHERE target_type = ?
-        ORDER BY name ASC
-    )";
-    
-    const std::string FIND_BY_PROFILE_ID = R"(
-        SELECT 
-            id, profile_id, name, target_type, description, is_enabled, config,
-            export_mode, export_interval, batch_size, total_exports, 
-            successful_exports, failed_exports, last_export_at, last_success_at,
-            last_error, last_error_at, avg_export_time_ms, created_at, updated_at
-        FROM export_targets
-        WHERE profile_id = ?
-        ORDER BY name ASC
-    )";
-    
-    const std::string FIND_BY_NAME = R"(
-        SELECT 
-            id, profile_id, name, target_type, description, is_enabled, config,
-            export_mode, export_interval, batch_size, total_exports, 
-            successful_exports, failed_exports, last_export_at, last_success_at,
-            last_error, last_error_at, avg_export_time_ms, created_at, updated_at
-        FROM export_targets
-        WHERE name = ?
-    )";
-    
-    // 통계 업데이트
-    const std::string UPDATE_STATISTICS = R"(
-        UPDATE export_targets SET
-            total_exports = total_exports + 1,
-            successful_exports = successful_exports + ?,
-            failed_exports = failed_exports + ?,
-            last_export_at = CURRENT_TIMESTAMP,
-            last_success_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE last_success_at END,
-            last_error = ?,
-            last_error_at = CASE WHEN ? = 0 THEN CURRENT_TIMESTAMP ELSE last_error_at END,
-            avg_export_time_ms = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    )";
-    
-    // 카운트
     const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM export_targets";
     
     const std::string COUNT_ACTIVE = "SELECT COUNT(*) as count FROM export_targets WHERE is_enabled = 1";
     
-    const std::string COUNT_BY_TYPE = "SELECT target_type, COUNT(*) as count FROM export_targets GROUP BY target_type";
+    const std::string COUNT_BY_TYPE = R"(
+        SELECT target_type, COUNT(*) as count 
+        FROM export_targets 
+        GROUP BY target_type
+    )";
     
 } // namespace ExportTarget
 
 // =============================================================================
 // 🎯 ExportTargetMapping 쿼리들 (export_target_mappings 테이블)
+// 🔧 v2.0.1: EXISTS_BY_ID 추가됨!
 // =============================================================================
 namespace ExportTargetMapping {
     
-    // 테이블 생성
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS export_target_mappings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -189,21 +202,51 @@ namespace ExportTargetMapping {
         )
     )";
     
-    // 기본 CRUD
+    const std::string CREATE_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_export_target_mappings_target ON export_target_mappings(target_id);
+        CREATE INDEX IF NOT EXISTS idx_export_target_mappings_point ON export_target_mappings(point_id);
+    )";
+    
     const std::string FIND_ALL = R"(
-        SELECT 
-            id, target_id, point_id, target_field_name, target_description,
-            conversion_config, is_enabled, created_at
+        SELECT id, target_id, point_id, target_field_name, target_description,
+               conversion_config, is_enabled, created_at
         FROM export_target_mappings
         ORDER BY target_id, point_id
     )";
     
     const std::string FIND_BY_ID = R"(
-        SELECT 
-            id, target_id, point_id, target_field_name, target_description,
-            conversion_config, is_enabled, created_at
+        SELECT id, target_id, point_id, target_field_name, target_description,
+               conversion_config, is_enabled, created_at
+        FROM export_target_mappings WHERE id = ?
+    )";
+    
+    const std::string FIND_BY_TARGET_ID = R"(
+        SELECT id, target_id, point_id, target_field_name, target_description,
+               conversion_config, is_enabled, created_at
         FROM export_target_mappings
-        WHERE id = ?
+        WHERE target_id = ? ORDER BY point_id
+    )";
+    
+    const std::string FIND_ENABLED_BY_TARGET_ID = R"(
+        SELECT id, target_id, point_id, target_field_name, target_description,
+               conversion_config, is_enabled, created_at
+        FROM export_target_mappings
+        WHERE target_id = ? AND is_enabled = 1
+        ORDER BY point_id
+    )";
+    
+    const std::string FIND_BY_POINT_ID = R"(
+        SELECT id, target_id, point_id, target_field_name, target_description,
+               conversion_config, is_enabled, created_at
+        FROM export_target_mappings
+        WHERE point_id = ? ORDER BY target_id
+    )";
+    
+    const std::string FIND_BY_TARGET_AND_POINT = R"(
+        SELECT id, target_id, point_id, target_field_name, target_description,
+               conversion_config, is_enabled, created_at
+        FROM export_target_mappings
+        WHERE target_id = ? AND point_id = ?
     )";
     
     const std::string INSERT = R"(
@@ -215,60 +258,20 @@ namespace ExportTargetMapping {
     
     const std::string UPDATE = R"(
         UPDATE export_target_mappings SET
-            target_id = ?,
-            point_id = ?,
-            target_field_name = ?,
-            target_description = ?,
-            conversion_config = ?,
-            is_enabled = ?
+            target_id = ?, point_id = ?, target_field_name = ?, target_description = ?,
+            conversion_config = ?, is_enabled = ?
         WHERE id = ?
     )";
     
     const std::string DELETE_BY_ID = "DELETE FROM export_target_mappings WHERE id = ?";
     
-    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM export_target_mappings WHERE id = ?";
-    
-    // 전용 조회
-    const std::string FIND_BY_TARGET_ID = R"(
-        SELECT 
-            id, target_id, point_id, target_field_name, target_description,
-            conversion_config, is_enabled, created_at
-        FROM export_target_mappings
-        WHERE target_id = ?
-        ORDER BY point_id
-    )";
-    
-    const std::string FIND_BY_POINT_ID = R"(
-        SELECT 
-            id, target_id, point_id, target_field_name, target_description,
-            conversion_config, is_enabled, created_at
-        FROM export_target_mappings
-        WHERE point_id = ?
-        ORDER BY target_id
-    )";
-    
-    const std::string FIND_BY_TARGET_AND_POINT = R"(
-        SELECT 
-            id, target_id, point_id, target_field_name, target_description,
-            conversion_config, is_enabled, created_at
-        FROM export_target_mappings
-        WHERE target_id = ? AND point_id = ?
-    )";
-    
-    const std::string FIND_ENABLED_BY_TARGET_ID = R"(
-        SELECT 
-            id, target_id, point_id, target_field_name, target_description,
-            conversion_config, is_enabled, created_at
-        FROM export_target_mappings
-        WHERE target_id = ? AND is_enabled = 1
-        ORDER BY point_id
-    )";
-    
     const std::string DELETE_BY_TARGET_ID = "DELETE FROM export_target_mappings WHERE target_id = ?";
     
     const std::string DELETE_BY_POINT_ID = "DELETE FROM export_target_mappings WHERE point_id = ?";
     
-    // 카운트
+    // 🔧 v2.0.1: 컴파일 에러 수정을 위해 추가
+    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM export_target_mappings WHERE id = ?";
+    
     const std::string COUNT_BY_TARGET_ID = "SELECT COUNT(*) as count FROM export_target_mappings WHERE target_id = ?";
     
     const std::string COUNT_BY_POINT_ID = "SELECT COUNT(*) as count FROM export_target_mappings WHERE point_id = ?";
@@ -277,10 +280,10 @@ namespace ExportTargetMapping {
 
 // =============================================================================
 // 🎯 ExportLog 쿼리들 (export_logs 테이블)
+// 변경: 확장 및 통계 집계 쿼리 추가
 // =============================================================================
 namespace ExportLog {
     
-    // 테이블 생성
     const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS export_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -306,44 +309,39 @@ namespace ExportLog {
         )
     )";
     
-    // 인덱스 생성
     const std::string CREATE_INDEXES = R"(
         CREATE INDEX IF NOT EXISTS idx_export_logs_type ON export_logs(log_type);
         CREATE INDEX IF NOT EXISTS idx_export_logs_timestamp ON export_logs(timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_export_logs_status ON export_logs(status);
         CREATE INDEX IF NOT EXISTS idx_export_logs_target ON export_logs(target_id);
+        CREATE INDEX IF NOT EXISTS idx_export_logs_target_time ON export_logs(target_id, timestamp DESC);
     )";
     
     // 기본 CRUD
     const std::string FIND_ALL = R"(
-        SELECT 
-            id, log_type, service_id, target_id, mapping_id, point_id,
-            source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
+        SELECT id, log_type, service_id, target_id, mapping_id, point_id,
+               source_value, converted_value, status, error_message, error_code,
+               response_data, http_status_code, processing_time_ms, timestamp, client_info
         FROM export_logs
-        ORDER BY timestamp DESC
-        LIMIT 1000
+        ORDER BY timestamp DESC LIMIT 1000
     )";
     
     const std::string FIND_BY_ID = R"(
-        SELECT 
-            id, log_type, service_id, target_id, mapping_id, point_id,
-            source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
-        FROM export_logs
-        WHERE id = ?
+        SELECT id, log_type, service_id, target_id, mapping_id, point_id,
+               source_value, converted_value, status, error_message, error_code,
+               response_data, http_status_code, processing_time_ms, timestamp, client_info
+        FROM export_logs WHERE id = ?
     )";
-
+    
     const std::string FIND_BY_TIME_RANGE = R"(
-        SELECT 
-            id, log_type, service_id, target_id, mapping_id, point_id,
-            source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
+        SELECT id, log_type, service_id, target_id, mapping_id, point_id,
+               source_value, converted_value, status, error_message, error_code,
+               response_data, http_status_code, processing_time_ms, timestamp, client_info
         FROM export_logs
         WHERE timestamp BETWEEN ? AND ?
         ORDER BY timestamp DESC
     )";
-
+    
     const std::string INSERT = R"(
         INSERT INTO export_logs (
             log_type, service_id, target_id, mapping_id, point_id,
@@ -351,23 +349,13 @@ namespace ExportLog {
             response_data, http_status_code, processing_time_ms, client_info
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
-
+    
     const std::string UPDATE = R"(
         UPDATE export_logs SET
-            log_type = ?,
-            service_id = ?,
-            target_id = ?,
-            mapping_id = ?,
-            point_id = ?,
-            source_value = ?,
-            converted_value = ?,
-            status = ?,
-            error_message = ?,
-            error_code = ?,
-            response_data = ?,
-            http_status_code = ?,
-            processing_time_ms = ?,
-            client_info = ?
+            log_type = ?, service_id = ?, target_id = ?, mapping_id = ?, point_id = ?,
+            source_value = ?, converted_value = ?, status = ?, error_message = ?,
+            error_code = ?, response_data = ?, http_status_code = ?,
+            processing_time_ms = ?, client_info = ?
         WHERE id = ?
     )";
     
@@ -377,89 +365,124 @@ namespace ExportLog {
     
     // 전용 조회
     const std::string FIND_BY_TARGET_ID = R"(
-        SELECT 
-            id, log_type, service_id, target_id, mapping_id, point_id,
-            source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
+        SELECT id, log_type, service_id, target_id, mapping_id, point_id,
+               source_value, converted_value, status, error_message, error_code,
+               response_data, http_status_code, processing_time_ms, timestamp, client_info
         FROM export_logs
         WHERE target_id = ?
-        ORDER BY timestamp DESC
-        LIMIT ?
+        ORDER BY timestamp DESC LIMIT ?
     )";
     
     const std::string FIND_BY_STATUS = R"(
-        SELECT 
-            id, log_type, service_id, target_id, mapping_id, point_id,
-            source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
+        SELECT id, log_type, service_id, target_id, mapping_id, point_id,
+               source_value, converted_value, status, error_message, error_code,
+               response_data, http_status_code, processing_time_ms, timestamp, client_info
         FROM export_logs
         WHERE status = ?
-        ORDER BY timestamp DESC
-        LIMIT ?
+        ORDER BY timestamp DESC LIMIT ?
     )";
     
     const std::string FIND_RECENT = R"(
-        SELECT 
-            id, log_type, service_id, target_id, mapping_id, point_id,
-            source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
+        SELECT id, log_type, service_id, target_id, mapping_id, point_id,
+               source_value, converted_value, status, error_message, error_code,
+               response_data, http_status_code, processing_time_ms, timestamp, client_info
         FROM export_logs
         WHERE timestamp >= datetime('now', '-' || ? || ' hours')
-        ORDER BY timestamp DESC
-        LIMIT ?
+        ORDER BY timestamp DESC LIMIT ?
     )";
     
     const std::string FIND_RECENT_FAILURES = R"(
-        SELECT 
-            id, log_type, service_id, target_id, mapping_id, point_id,
-            source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
+        SELECT id, log_type, service_id, target_id, mapping_id, point_id,
+               source_value, converted_value, status, error_message, error_code,
+               response_data, http_status_code, processing_time_ms, timestamp, client_info
         FROM export_logs
-        WHERE status = 'failed' 
-          AND timestamp >= datetime('now', '-' || ? || ' hours')
-        ORDER BY timestamp DESC
-        LIMIT ?
+        WHERE status = 'failed' AND timestamp >= datetime('now', '-' || ? || ' hours')
+        ORDER BY timestamp DESC LIMIT ?
     )";
     
     const std::string FIND_BY_POINT_ID = R"(
-        SELECT 
-            id, log_type, service_id, target_id, mapping_id, point_id,
-            source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
+        SELECT id, log_type, service_id, target_id, mapping_id, point_id,
+               source_value, converted_value, status, error_message, error_code,
+               response_data, http_status_code, processing_time_ms, timestamp, client_info
         FROM export_logs
         WHERE point_id = ?
-        ORDER BY timestamp DESC
-        LIMIT ?
+        ORDER BY timestamp DESC LIMIT ?
     )";
     
-    // 통계
-    const std::string GET_TARGET_STATISTICS = R"(
+    // ========================================================================
+    // 🆕 통계 집계 쿼리들 (export_targets 통계 필드 대체)
+    // ========================================================================
+    
+    // Target별 전체 통계
+    const std::string GET_TARGET_STATISTICS_ALL = R"(
         SELECT 
-            status, COUNT(*) as count
+            COUNT(*) as total_exports,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_exports,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_exports,
+            AVG(CASE WHEN status = 'success' THEN processing_time_ms END) as avg_export_time_ms,
+            MAX(timestamp) as last_export_at,
+            MAX(CASE WHEN status = 'success' THEN timestamp END) as last_success_at,
+            MAX(CASE WHEN status = 'failed' THEN timestamp END) as last_error_at
         FROM export_logs
         WHERE target_id = ?
-          AND timestamp >= datetime('now', '-' || ? || ' hours')
-        GROUP BY status
     )";
     
+    // Target별 시간대별 통계 (최근 N시간)
+    const std::string GET_TARGET_STATISTICS_RECENT = R"(
+        SELECT 
+            COUNT(*) as total_exports,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_exports,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_exports,
+            AVG(CASE WHEN status = 'success' THEN processing_time_ms END) as avg_export_time_ms,
+            MAX(timestamp) as last_export_at,
+            MAX(CASE WHEN status = 'success' THEN timestamp END) as last_success_at,
+            MAX(CASE WHEN status = 'failed' THEN timestamp END) as last_error_at,
+            (SELECT error_message FROM export_logs 
+             WHERE target_id = ? AND status = 'failed' 
+             ORDER BY timestamp DESC LIMIT 1) as last_error
+        FROM export_logs
+        WHERE target_id = ? AND timestamp >= datetime('now', '-' || ? || ' hours')
+    )";
+    
+    // 전체 시스템 통계
     const std::string GET_OVERALL_STATISTICS = R"(
         SELECT 
-            status, COUNT(*) as count
+            COUNT(*) as total_exports,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_exports,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_exports,
+            AVG(CASE WHEN status = 'success' THEN processing_time_ms END) as avg_export_time_ms
         FROM export_logs
         WHERE timestamp >= datetime('now', '-' || ? || ' hours')
+    )";
+    
+    // Target별 상태 분포
+    const std::string GET_STATUS_DISTRIBUTION = R"(
+        SELECT status, COUNT(*) as count
+        FROM export_logs
+        WHERE target_id = ? AND timestamp >= datetime('now', '-' || ? || ' hours')
         GROUP BY status
     )";
     
+    // 평균 처리시간 (성공 건만)
     const std::string GET_AVERAGE_PROCESSING_TIME = R"(
-        SELECT 
-            AVG(processing_time_ms) as avg_time
+        SELECT AVG(processing_time_ms) as avg_time
         FROM export_logs
-        WHERE target_id = ?
-          AND status = 'success'
-          AND timestamp >= datetime('now', '-' || ? || ' hours')
+        WHERE target_id = ? AND status = 'success' AND timestamp >= datetime('now', '-' || ? || ' hours')
     )";
     
-    // 정리
+    // 최근 에러 목록
+    const std::string GET_RECENT_ERRORS = R"(
+        SELECT error_message, error_code, COUNT(*) as count, MAX(timestamp) as last_occurred
+        FROM export_logs
+        WHERE target_id = ? AND status = 'failed' AND timestamp >= datetime('now', '-' || ? || ' hours')
+        GROUP BY error_message, error_code
+        ORDER BY count DESC LIMIT ?
+    )";
+    
+    // ========================================================================
+    // 정리 (Log Retention)
+    // ========================================================================
+    
     const std::string DELETE_OLDER_THAN = R"(
         DELETE FROM export_logs
         WHERE timestamp < datetime('now', '-' || ? || ' days')
@@ -467,11 +490,69 @@ namespace ExportLog {
     
     const std::string DELETE_SUCCESS_LOGS_OLDER_THAN = R"(
         DELETE FROM export_logs
-        WHERE status = 'success'
-          AND timestamp < datetime('now', '-' || ? || ' days')
+        WHERE status = 'success' AND timestamp < datetime('now', '-' || ? || ' days')
+    )";
+    
+    const std::string COUNT_LOGS_OLDER_THAN = R"(
+        SELECT COUNT(*) as count
+        FROM export_logs
+        WHERE timestamp < datetime('now', '-' || ? || ' days')
     )";
     
 } // namespace ExportLog
+
+// =============================================================================
+// 🎯 ExportTargetStats VIEW (실시간 통계 뷰)
+// =============================================================================
+namespace ExportTargetStatsView {
+    
+    const std::string CREATE_VIEW = R"(
+        CREATE VIEW IF NOT EXISTS export_target_stats AS
+        SELECT 
+            t.id,
+            t.name,
+            t.target_type,
+            t.is_enabled,
+            
+            -- 최근 24시간 통계
+            COUNT(l.id) as total_exports_24h,
+            SUM(CASE WHEN l.status = 'success' THEN 1 ELSE 0 END) as successful_exports_24h,
+            SUM(CASE WHEN l.status = 'failed' THEN 1 ELSE 0 END) as failed_exports_24h,
+            AVG(CASE WHEN l.status = 'success' THEN l.processing_time_ms END) as avg_time_ms_24h,
+            
+            -- 전체 통계
+            (SELECT COUNT(*) FROM export_logs WHERE target_id = t.id) as total_exports_all,
+            (SELECT COUNT(*) FROM export_logs WHERE target_id = t.id AND status = 'success') as successful_exports_all,
+            (SELECT COUNT(*) FROM export_logs WHERE target_id = t.id AND status = 'failed') as failed_exports_all,
+            
+            -- 마지막 정보
+            MAX(CASE WHEN l.status = 'success' THEN l.timestamp END) as last_success_at,
+            MAX(CASE WHEN l.status = 'failed' THEN l.timestamp END) as last_failure_at,
+            (SELECT error_message FROM export_logs 
+             WHERE target_id = t.id AND status = 'failed' 
+             ORDER BY timestamp DESC LIMIT 1) as last_error
+             
+        FROM export_targets t
+        LEFT JOIN export_logs l ON t.id = l.target_id 
+            AND l.timestamp > datetime('now', '-24 hours')
+        GROUP BY t.id
+    )";
+    
+    const std::string DROP_VIEW = "DROP VIEW IF EXISTS export_target_stats";
+    
+    const std::string SELECT_ALL = R"(
+        SELECT * FROM export_target_stats ORDER BY name ASC
+    )";
+    
+    const std::string SELECT_BY_ID = R"(
+        SELECT * FROM export_target_stats WHERE id = ?
+    )";
+    
+    const std::string SELECT_ACTIVE = R"(
+        SELECT * FROM export_target_stats WHERE is_enabled = 1 ORDER BY name ASC
+    )";
+    
+} // namespace ExportTargetStatsView
 
 } // namespace SQL
 } // namespace Database

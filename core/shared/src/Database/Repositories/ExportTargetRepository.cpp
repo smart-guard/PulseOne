@@ -1,7 +1,15 @@
 /**
  * @file ExportTargetRepository.cpp
- * @brief Export Target Repository 구현 - 완전 수정 완료
- * @note std::map 알파벳 정렬 문제 해결
+ * @brief Export Target Repository 구현부 (통계 필드 제거 버전)
+ * @version 3.0.0 - 통계 필드 완전 제거
+ * @date 2025-10-21
+ * 
+ * 저장 위치: core/shared/src/Database/Repositories/ExportTargetRepository.cpp
+ * 
+ * 주요 변경사항:
+ *   - mapRowToEntity: 통계 필드 파싱 코드 제거
+ *   - entityToParams: 통계 필드 변환 코드 제거
+ *   - updateStatistics 메서드 삭제
  */
 
 #include "Database/Repositories/ExportTargetRepository.h"
@@ -9,10 +17,15 @@
 #include "Database/DatabaseAbstractionLayer.h"
 #include "Database/ExportSQLQueries.h"
 #include "Utils/LogManager.h"
+#include <sstream>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
+
+// =============================================================================
+// CRUD 기본 연산
+// =============================================================================
 
 std::vector<ExportTargetEntity> ExportTargetRepository::findAll() {
     try {
@@ -24,35 +37,28 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findAll() {
         auto results = db_layer.executeQuery(SQL::ExportTarget::FIND_ALL);
         
         std::vector<ExportTargetEntity> entities;
+        entities.reserve(results.size());
+        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
             } catch (const std::exception& e) {
                 if (logger_) {
-                    logger_->Error("ExportTargetRepository::findAll - Failed to map row: " + std::string(e.what()));
-                    std::string row_info = "Row data: ";
-                    for (const auto& [key, value] : row) {
-                        row_info += key + "=" + value.substr(0, 50) + " ";
-                    }
-                    logger_->Debug(row_info);
-                }
-            } catch (...) {
-                if (logger_) {
-                    logger_->Error("ExportTargetRepository::findAll - Unknown exception while mapping row");
+                    logger_->Warn("Failed to map row: " + std::string(e.what()));
                 }
             }
         }
         
         if (logger_) {
-            logger_->Info("ExportTargetRepository::findAll - Successfully mapped " + 
-                         std::to_string(entities.size()) + " out of " + 
-                         std::to_string(results.size()) + " rows");
+            logger_->Debug("findAll: mapped " + std::to_string(entities.size()) + 
+                          " of " + std::to_string(results.size()) + " rows");
         }
         
         return entities;
+        
     } catch (const std::exception& e) {
         if (logger_) {
-            logger_->Error("ExportTargetRepository::findAll failed: " + std::string(e.what()));
+            logger_->Error("findAll failed: " + std::string(e.what()));
         }
         return {};
     }
@@ -60,6 +66,7 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findAll() {
 
 std::optional<ExportTargetEntity> ExportTargetRepository::findById(int id) {
     try {
+        // 캐시 확인
         if (isCacheEnabled()) {
             auto cached = getCachedEntity(id);
             if (cached.has_value()) {
@@ -83,12 +90,17 @@ std::optional<ExportTargetEntity> ExportTargetRepository::findById(int id) {
         
         auto entity = mapRowToEntity(results[0]);
         
+        // 캐시 저장
         if (isCacheEnabled()) {
             cacheEntity(entity);
         }
         
         return entity;
-    } catch (...) {
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("findById failed: " + std::string(e.what()));
+        }
         return std::nullopt;
     }
 }
@@ -102,12 +114,7 @@ bool ExportTargetRepository::save(ExportTargetEntity& entity) {
         auto params = entityToParams(entity);
         std::string query = SQL::ExportTarget::INSERT;
         
-        // ✅ INSERT 쿼리의 컬럼 순서대로 파라미터 치환
-        // INSERT INTO export_targets (
-        //     profile_id, name, target_type, description, is_enabled, config,
-        //     export_mode, export_interval, batch_size
-        // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        
+        // INSERT 쿼리의 컬럼 순서대로 파라미터 치환
         std::vector<std::string> insert_order = {
             "profile_id",
             "name",
@@ -123,7 +130,14 @@ bool ExportTargetRepository::save(ExportTargetEntity& entity) {
         for (const auto& key : insert_order) {
             size_t pos = query.find('?');
             if (pos != std::string::npos) {
-                query.replace(pos, 1, "'" + params[key] + "'");
+                std::string value = params[key];
+                // SQL Injection 방지: 작은따옴표 이스케이프
+                size_t escape_pos = 0;
+                while ((escape_pos = value.find('\'', escape_pos)) != std::string::npos) {
+                    value.replace(escape_pos, 1, "''");
+                    escape_pos += 2;
+                }
+                query.replace(pos, 1, "'" + value + "'");
             }
         }
         
@@ -131,6 +145,7 @@ bool ExportTargetRepository::save(ExportTargetEntity& entity) {
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
+            // 생성된 ID 가져오기
             auto results = db_layer.executeQuery("SELECT last_insert_rowid() as id");
             if (!results.empty() && results[0].find("id") != results[0].end()) {
                 entity.setId(std::stoi(results[0].at("id")));
@@ -138,9 +153,10 @@ bool ExportTargetRepository::save(ExportTargetEntity& entity) {
         }
         
         return success;
+        
     } catch (const std::exception& e) {
         if (logger_) {
-            logger_->Error("ExportTargetRepository::save failed: " + std::string(e.what()));
+            logger_->Error("save failed: " + std::string(e.what()));
         }
         return false;
     }
@@ -155,7 +171,7 @@ bool ExportTargetRepository::update(const ExportTargetEntity& entity) {
         auto params = entityToParams(entity);
         std::string query = SQL::ExportTarget::UPDATE;
         
-        // ✅ UPDATE 쿼리의 SET 절 순서대로 파라미터 치환
+        // UPDATE 쿼리의 SET 절 순서대로 파라미터 치환
         std::vector<std::string> update_order = {
             "profile_id",
             "name",
@@ -171,7 +187,14 @@ bool ExportTargetRepository::update(const ExportTargetEntity& entity) {
         for (const auto& key : update_order) {
             size_t pos = query.find('?');
             if (pos != std::string::npos) {
-                query.replace(pos, 1, "'" + params[key] + "'");
+                std::string value = params[key];
+                // SQL Injection 방지
+                size_t escape_pos = 0;
+                while ((escape_pos = value.find('\'', escape_pos)) != std::string::npos) {
+                    value.replace(escape_pos, 1, "''");
+                    escape_pos += 2;
+                }
+                query.replace(pos, 1, "'" + value + "'");
             }
         }
         
@@ -189,9 +212,10 @@ bool ExportTargetRepository::update(const ExportTargetEntity& entity) {
         }
         
         return success;
+        
     } catch (const std::exception& e) {
         if (logger_) {
-            logger_->Error("ExportTargetRepository::update failed: " + std::string(e.what()));
+            logger_->Error("update failed: " + std::string(e.what()));
         }
         return false;
     }
@@ -214,7 +238,11 @@ bool ExportTargetRepository::deleteById(int id) {
         }
         
         return success;
-    } catch (...) {
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("deleteById failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
@@ -236,12 +264,22 @@ bool ExportTargetRepository::exists(int id) {
         }
         
         return false;
-    } catch (...) {
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("exists failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
 
-std::vector<ExportTargetEntity> ExportTargetRepository::findByIds(const std::vector<int>& ids) {
+// =============================================================================
+// 벌크 연산
+// =============================================================================
+
+std::vector<ExportTargetEntity> ExportTargetRepository::findByIds(
+    const std::vector<int>& ids) {
+    
     try {
         if (ids.empty() || !ensureTableExists()) {
             return {};
@@ -253,20 +291,32 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByIds(const std::vec
             ids_ss << ids[i];
         }
         
-        std::string query = "SELECT * FROM export_targets WHERE id IN (" + ids_ss.str() + ")";
+        std::string query = "SELECT * FROM export_targets WHERE id IN (" + 
+                           ids_ss.str() + ")";
         
         DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
+        entities.reserve(results.size());
+        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Warn("Failed to map row in findByIds: " + 
+                                 std::string(e.what()));
+                }
+            }
         }
         
         return entities;
-    } catch (...) {
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("findByIds failed: " + std::string(e.what()));
+        }
         return {};
     }
 }
@@ -290,19 +340,32 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByConditions(
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
+        entities.reserve(results.size());
+        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Warn("Failed to map row in findByConditions: " + 
+                                 std::string(e.what()));
+                }
+            }
         }
         
         return entities;
-    } catch (...) {
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("findByConditions failed: " + std::string(e.what()));
+        }
         return {};
     }
 }
 
-int ExportTargetRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
+int ExportTargetRepository::countByConditions(
+    const std::vector<QueryCondition>& conditions) {
+    
     try {
         if (!ensureTableExists()) {
             return 0;
@@ -319,35 +382,18 @@ int ExportTargetRepository::countByConditions(const std::vector<QueryCondition>&
         }
         
         return 0;
-    } catch (...) {
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("countByConditions failed: " + std::string(e.what()));
+        }
         return 0;
     }
 }
 
-std::vector<ExportTargetEntity> ExportTargetRepository::findByTargetType(const std::string& target_type) {
-    try {
-        if (!ensureTableExists()) {
-            return {};
-        }
-        
-        std::string query = RepositoryHelpers::replaceParameterWithQuotes(
-            SQL::ExportTarget::FIND_BY_TARGET_TYPE, target_type);
-        
-        DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
-        
-        std::vector<ExportTargetEntity> entities;
-        for (const auto& row : results) {
-            try {
-                entities.push_back(mapRowToEntity(row));
-            } catch (...) {}
-        }
-        
-        return entities;
-    } catch (...) {
-        return {};
-    }
-}
+// =============================================================================
+// 전용 조회 메서드
+// =============================================================================
 
 std::vector<ExportTargetEntity> ExportTargetRepository::findByEnabled(bool enabled) {
     try {
@@ -364,14 +410,63 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByEnabled(bool enabl
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
+        entities.reserve(results.size());
+        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Warn("Failed to map row in findByEnabled: " + 
+                                 std::string(e.what()));
+                }
+            }
         }
         
         return entities;
-    } catch (...) {
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("findByEnabled failed: " + std::string(e.what()));
+        }
+        return {};
+    }
+}
+
+std::vector<ExportTargetEntity> ExportTargetRepository::findByTargetType(
+    const std::string& target_type) {
+    
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        std::string query = RepositoryHelpers::replaceParameterWithQuotes(
+            SQL::ExportTarget::FIND_BY_TARGET_TYPE, target_type);
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<ExportTargetEntity> entities;
+        entities.reserve(results.size());
+        
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Warn("Failed to map row in findByTargetType: " + 
+                                 std::string(e.what()));
+                }
+            }
+        }
+        
+        return entities;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("findByTargetType failed: " + std::string(e.what()));
+        }
         return {};
     }
 }
@@ -389,51 +484,146 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByProfileId(int prof
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
+        entities.reserve(results.size());
+        
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Warn("Failed to map row in findByProfileId: " + 
+                                 std::string(e.what()));
+                }
+            }
         }
         
         return entities;
-    } catch (...) {
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("findByProfileId failed: " + std::string(e.what()));
+        }
         return {};
     }
 }
 
-bool ExportTargetRepository::updateStatistics(
-    int target_id, 
-    bool success, 
-    int processing_time_ms,
-    const std::string& error_message) {
+std::optional<ExportTargetEntity> ExportTargetRepository::findByName(
+    const std::string& name) {
     
     try {
         if (!ensureTableExists()) {
-            return false;
+            return std::nullopt;
         }
         
-        std::string query = SQL::ExportTarget::UPDATE_STATISTICS;
-        
-        query = RepositoryHelpers::replaceParameter(query, success ? "1" : "0");
-        query = RepositoryHelpers::replaceParameter(query, success ? "0" : "1");
-        query = RepositoryHelpers::replaceParameter(query, success ? "1" : "0");
-        query = RepositoryHelpers::replaceParameterWithQuotes(query, error_message);
-        query = RepositoryHelpers::replaceParameter(query, success ? "1" : "0");
-        query = RepositoryHelpers::replaceParameter(query, std::to_string(processing_time_ms));
-        query = RepositoryHelpers::replaceParameter(query, std::to_string(target_id));
+        std::string query = RepositoryHelpers::replaceParameterWithQuotes(
+            SQL::ExportTarget::FIND_BY_NAME, name);
         
         DatabaseAbstractionLayer db_layer;
-        bool result = db_layer.executeNonQuery(query);
+        auto results = db_layer.executeQuery(query);
         
-        if (result && isCacheEnabled()) {
-            clearCacheForId(target_id);
+        if (results.empty()) {
+            return std::nullopt;
         }
         
-        return result;
-    } catch (...) {
-        return false;
+        return mapRowToEntity(results[0]);
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("findByName failed: " + std::string(e.what()));
+        }
+        return std::nullopt;
     }
 }
+
+// =============================================================================
+// 카운트 및 통계 (설정 기반만)
+// =============================================================================
+
+int ExportTargetRepository::getTotalCount() {
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(SQL::ExportTarget::COUNT_ALL);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("getTotalCount failed: " + std::string(e.what()));
+        }
+        return 0;
+    }
+}
+
+int ExportTargetRepository::getActiveCount() {
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(SQL::ExportTarget::COUNT_ACTIVE);
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("getActiveCount failed: " + std::string(e.what()));
+        }
+        return 0;
+    }
+}
+
+std::map<std::string, int> ExportTargetRepository::getCountByType() {
+    std::map<std::string, int> counts;
+    
+    try {
+        if (!ensureTableExists()) {
+            return counts;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(SQL::ExportTarget::COUNT_BY_TYPE);
+        
+        for (const auto& row : results) {
+            try {
+                auto type_it = row.find("target_type");
+                auto count_it = row.find("count");
+                
+                if (type_it != row.end() && count_it != row.end()) {
+                    counts[type_it->second] = std::stoi(count_it->second);
+                }
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Warn("Failed to parse count by type row: " + 
+                                 std::string(e.what()));
+                }
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("getCountByType failed: " + std::string(e.what()));
+        }
+    }
+    
+    return counts;
+}
+
+// =============================================================================
+// 캐시 관리
+// =============================================================================
 
 std::map<std::string, int> ExportTargetRepository::getCacheStats() const {
     std::map<std::string, int> stats;
@@ -449,6 +639,10 @@ std::map<std::string, int> ExportTargetRepository::getCacheStats() const {
     return stats;
 }
 
+// =============================================================================
+// 내부 헬퍼 메서드
+// =============================================================================
+
 ExportTargetEntity ExportTargetRepository::mapRowToEntity(
     const std::map<std::string, std::string>& row) {
     
@@ -457,104 +651,68 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
     try {
         auto it = row.end();
         
+        // ID
         it = row.find("id");
         if (it != row.end() && !it->second.empty()) {
             entity.setId(std::stoi(it->second));
         }
         
+        // profile_id
         it = row.find("profile_id");
         if (it != row.end() && !it->second.empty()) {
             entity.setProfileId(std::stoi(it->second));
         }
         
+        // name
         it = row.find("name");
         if (it != row.end()) {
             entity.setName(it->second);
         }
         
+        // target_type
         it = row.find("target_type");
         if (it != row.end()) {
             entity.setTargetType(it->second);
         }
         
+        // description
         it = row.find("description");
         if (it != row.end()) {
             entity.setDescription(it->second);
         }
         
+        // is_enabled
         it = row.find("is_enabled");
         if (it != row.end() && !it->second.empty()) {
             entity.setEnabled(std::stoi(it->second) != 0);
         }
         
+        // config
         it = row.find("config");
         if (it != row.end()) {
             entity.setConfig(it->second);
         }
         
+        // export_mode
         it = row.find("export_mode");
         if (it != row.end()) {
             entity.setExportMode(it->second);
         }
         
+        // export_interval
         it = row.find("export_interval");
         if (it != row.end() && !it->second.empty()) {
             entity.setExportInterval(std::stoi(it->second));
         }
         
+        // batch_size
         it = row.find("batch_size");
         if (it != row.end() && !it->second.empty()) {
             entity.setBatchSize(std::stoi(it->second));
         }
         
-        it = row.find("total_exports");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setTotalExports(std::stoull(it->second));
-        }
-        
-        it = row.find("successful_exports");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setSuccessfulExports(std::stoull(it->second));
-        }
-        
-        it = row.find("failed_exports");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setFailedExports(std::stoull(it->second));
-        }
-        
-        it = row.find("avg_export_time_ms");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setAvgExportTimeMs(std::stoi(it->second));
-        }
-        
-        it = row.find("last_export_at");
-        if (it != row.end() && !it->second.empty()) {
-            try {
-                auto timestamp = PulseOne::Utils::StringToTimestamp(it->second);
-                entity.setLastExportAt(timestamp);
-            } catch (...) {}
-        }
-        
-        it = row.find("last_success_at");
-        if (it != row.end() && !it->second.empty()) {
-            try {
-                auto timestamp = PulseOne::Utils::StringToTimestamp(it->second);
-                entity.setLastSuccessAt(timestamp);
-            } catch (...) {}
-        }
-        
-        it = row.find("last_error_at");
-        if (it != row.end() && !it->second.empty()) {
-            try {
-                auto timestamp = PulseOne::Utils::StringToTimestamp(it->second);
-                entity.setLastErrorAt(timestamp);
-            } catch (...) {}
-        }
-        
-        it = row.find("last_error");
-        if (it != row.end()) {
-            entity.setLastError(it->second);
-        }
+        // ❌ 통계 필드 파싱 코드 완전 제거
+        // total_exports, successful_exports, failed_exports 등
         
     } catch (const std::exception& e) {
         throw std::runtime_error("Failed to map row to ExportTargetEntity: " + 
@@ -569,6 +727,7 @@ std::map<std::string, std::string> ExportTargetRepository::entityToParams(
     
     std::map<std::string, std::string> params;
     
+    // 설정 정보만 변환 (통계 필드 제거됨)
     params["profile_id"] = std::to_string(entity.getProfileId());
     params["name"] = entity.getName();
     params["target_type"] = entity.getTargetType();
@@ -578,6 +737,8 @@ std::map<std::string, std::string> ExportTargetRepository::entityToParams(
     params["export_mode"] = entity.getExportMode();
     params["export_interval"] = std::to_string(entity.getExportInterval());
     params["batch_size"] = std::to_string(entity.getBatchSize());
+    
+    // ❌ 통계 필드 변환 코드 완전 제거
     
     return params;
 }
@@ -589,36 +750,21 @@ bool ExportTargetRepository::ensureTableExists() {
         
         if (success) {
             if (logger_) {
-                logger_->Debug("ExportTargetRepository::ensureTableExists - Table ready");
+                logger_->Debug("Table export_targets is ready");
             }
         } else {
             if (logger_) {
-                logger_->Error("ExportTargetRepository::ensureTableExists - executeCreateTable returned false");
+                logger_->Error("Failed to ensure table exists");
             }
         }
         
         return success;
+        
     } catch (const std::exception& e) {
         if (logger_) {
-            logger_->Error("ExportTargetRepository::ensureTableExists failed: " + std::string(e.what()));
+            logger_->Error("ensureTableExists failed: " + std::string(e.what()));
         }
         return false;
-    }
-}
-
-int ExportTargetRepository::getTotalCount() {
-    try {
-        if (!ensureTableExists()) {
-            return 0;
-        }
-        
-        return countByConditions({});
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("ExportTargetRepository::getTotalCount failed: " + 
-                          std::string(e.what()));
-        }
-        return 0;
     }
 }
 

@@ -523,26 +523,68 @@ private:
             log.Info("  - 실패 API: " + std::to_string(gateway_stats.failed_api_calls));
             
             auto all_targets = target_repo->findAll();
-            log.Info("✅ 6-2. DB 타겟 통계 (" + std::to_string(all_targets.size()) + "개):");
+            log.Info("✅ 6-2. DB 타겟 목록 (" + std::to_string(all_targets.size()) + "개):");
             
+            // ✅ v2.0: export_targets는 설정만 (통계 필드 없음)
             for (const auto& t : all_targets) {
-                log.Info("  - " + t.getName() + " (enabled=" + 
-                    (t.isEnabled() ? "YES" : "NO") + ")" +
-                    ": exports=" + std::to_string(t.getTotalExports()) + 
-                    ", success=" + std::to_string(t.getSuccessfulExports()) + 
-                    ", fail=" + std::to_string(t.getFailedExports()));
+                log.Info("  - " + t.getName() + 
+                    " (type=" + t.getTargetType() +
+                    ", enabled=" + (t.isEnabled() ? "YES" : "NO") + ")");
+            }
+            
+            // ✅ v2.0: 통계는 export_logs에서 조회
+            auto log_repo = factory.getExportLogRepository();
+            if (log_repo) {
+                log.Info("✅ 6-3. Export Logs 통계 (export_logs 테이블):");
+                
+                for (const auto& t : all_targets) {
+                    try {
+                        // export_logs에서 타겟별 통계 조회
+                        auto stats_map = log_repo->getTargetStatistics(t.getId(), 24);
+                        
+                        uint64_t success = 0;
+                        uint64_t failed = 0;
+                        
+                        for (const auto& [status, count] : stats_map) {
+                            if (status == "success") {
+                                success = count;
+                            } else if (status == "failed" || status == "failure") {
+                                failed = count;
+                            }
+                        }
+                        
+                        uint64_t total = success + failed;
+                        
+                        log.Info("  - " + t.getName() + 
+                            ": total=" + std::to_string(total) +
+                            ", success=" + std::to_string(success) + 
+                            ", fail=" + std::to_string(failed));
+                            
+                    } catch (const std::exception& e) {
+                        log.Warn("  - " + t.getName() + ": 통계 조회 실패 - " + std::string(e.what()));
+                    }
+                }
+            } else {
+                log.Warn("⚠️  ExportLogRepository 없음 - 로그 통계 확인 불가");
             }
             
             auto dynamic_stats = gateway_->getDynamicTargetStats();
-            log.Info("✅ 6-3. 동적 타겟 통계 (" + std::to_string(dynamic_stats.size()) + "개):");
+            log.Info("✅ 6-4. 동적 타겟 통계 (" + std::to_string(dynamic_stats.size()) + "개):");
             
             for (const auto& s : dynamic_stats) {
                 log.Info("  - " + s.name + 
                     ": success=" + std::to_string(s.success_count) + 
-                    ", fail=" + std::to_string(s.failure_count));
+                    ", fail=" + std::to_string(s.failure_count) +
+                    ", rate=" + std::to_string(s.calculateSuccessRate()) + "%");
             }
             
             log.Info("✅ STEP 6 완료 - 통계 확인 완료");
+            log.Info("");
+            log.Info("📊 v2.0 통계 시스템 요약:");
+            log.Info("  - export_targets: 설정만 저장 (통계 필드 없음)");
+            log.Info("  - export_logs: 모든 전송 로그 기록");
+            log.Info("  - 통계 조회: export_logs 집계");
+            
             return true;
             
         } catch (const std::exception& e) {
@@ -550,6 +592,7 @@ private:
             return false;
         }
     }
+
     
     void cleanup() {
         auto& log = LogManager::getInstance();
