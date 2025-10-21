@@ -1,34 +1,107 @@
 // =============================================================================
 // backend/routes/collector-proxy.js
-// Collector API 프록시 라우트 (모든 Frontend → Collector 요청 처리)
+// Collector API 프록시 라우트 (개선: 불필요한 연결 체크 감소)
 // =============================================================================
 
 const express = require('express');
 const router = express.Router();
 const { getInstance: getCollectorProxy } = require('../lib/services/CollectorProxyService');
 
-// 미들웨어: Collector 연결 확인
+// 헬스 체크 캐시 (불필요한 반복 체크 방지)
+let healthCheckCache = {
+  timestamp: 0,
+  isHealthy: false,
+  cacheDuration: 30000,  // 30초 캐시
+  error: null
+};
+
+// 미들웨어: Collector 연결 확인 (캐싱 + 개발 환경 스킵)
 const checkCollectorConnection = async (req, res, next) => {
+  // 1. 개발 환경에서 스킵 옵션
+  if (process.env.NODE_ENV === 'development' && 
+      process.env.SKIP_COLLECTOR_CHECK === 'true') {
+    return next();
+  }
+  
   try {
     const proxy = getCollectorProxy();
+    const now = Date.now();
     
-    if (!proxy.isCollectorHealthy()) {
-      // 연결 상태 체크 시도
-      try {
-        await proxy.healthCheck();
-      } catch (error) {
+    // 2. 캐시된 결과 사용 (30초 이내)
+    if (now - healthCheckCache.timestamp < healthCheckCache.cacheDuration) {
+      if (!healthCheckCache.isHealthy) {
+        // 개발 환경에서는 DEBUG 레벨 로그만
+        if (process.env.NODE_ENV === 'development') {
+          console.debug(`🔌 Collector unavailable (cached) - ${req.method} ${req.path}`);
+        } else {
+          console.warn(`🔌 Collector unavailable (cached) - ${req.method} ${req.path}`);
+        }
+        
         return res.status(503).json({
           success: false,
           error: 'Collector service is unavailable',
-          details: 'Collector 서비스에 연결할 수 없습니다. 서비스가 실행 중인지 확인하세요.',
+          details: healthCheckCache.error || 'Collector 서비스에 연결할 수 없습니다.',
+          cached_since: new Date(healthCheckCache.timestamp).toISOString(),
           lastHealthCheck: proxy.getLastHealthCheck(),
           collectorConfig: proxy.getCollectorConfig()
         });
       }
+      return next();
+    }
+    
+    // 3. 실제 헬스 체크 수행
+    if (!proxy.isCollectorHealthy()) {
+      try {
+        await proxy.healthCheck();
+        
+        // 성공: 캐시 업데이트
+        healthCheckCache = {
+          timestamp: now,
+          isHealthy: true,
+          cacheDuration: 30000,
+          error: null
+        };
+        
+        console.log('✅ Collector 연결 복구됨');
+        
+      } catch (error) {
+        // 실패: 캐시 업데이트
+        healthCheckCache = {
+          timestamp: now,
+          isHealthy: false,
+          cacheDuration: 30000,
+          error: error.message
+        };
+        
+        // 개발 환경에서는 조용히
+        if (process.env.NODE_ENV === 'development') {
+          console.debug(`🔌 Collector check failed - ${req.method} ${req.path}`);
+        } else {
+          console.warn(`🔌 Collector check failed - ${req.method} ${req.path}: ${error.message}`);
+        }
+        
+        return res.status(503).json({
+          success: false,
+          error: 'Collector service is unavailable',
+          details: error.message,
+          lastHealthCheck: proxy.getLastHealthCheck(),
+          collectorConfig: proxy.getCollectorConfig()
+        });
+      }
+    } else {
+      // 이미 healthy 상태
+      healthCheckCache = {
+        timestamp: now,
+        isHealthy: true,
+        cacheDuration: 30000,
+        error: null
+      };
     }
     
     next();
+    
   } catch (error) {
+    console.error('❌ checkCollectorConnection error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to check collector connection',
@@ -39,7 +112,9 @@ const checkCollectorConnection = async (req, res, next) => {
 
 // 공통 에러 핸들러
 const handleProxyError = (error, req, res) => {
-  console.error(`❌ Collector Proxy Error [${req.method} ${req.originalUrl}]:`, error);
+  // 개발 환경에서는 DEBUG 레벨
+  const logFn = process.env.NODE_ENV === 'development' ? console.debug : console.error;
+  logFn(`❌ Collector Proxy Error [${req.method} ${req.originalUrl}]:`, error.message);
   
   if (error.name === 'CollectorProxyError') {
     const statusCode = error.status || 500;
@@ -61,13 +136,9 @@ const handleProxyError = (error, req, res) => {
 };
 
 // =============================================================================
-// 🔥 1. 디바이스 제어 API (최우선 구현)
+// 🔥 1. 디바이스 제어 API
 // =============================================================================
 
-/**
- * POST /api/collector/devices/:deviceId/start
- * 디바이스 워커 시작
- */
 router.post('/devices/:deviceId/start', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId } = req.params;
@@ -92,10 +163,6 @@ router.post('/devices/:deviceId/start', checkCollectorConnection, async (req, re
   }
 });
 
-/**
- * POST /api/collector/devices/:deviceId/stop
- * 디바이스 워커 중지
- */
 router.post('/devices/:deviceId/stop', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId } = req.params;
@@ -120,10 +187,6 @@ router.post('/devices/:deviceId/stop', checkCollectorConnection, async (req, res
   }
 });
 
-/**
- * POST /api/collector/devices/:deviceId/pause
- * 디바이스 워커 일시정지
- */
 router.post('/devices/:deviceId/pause', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId } = req.params;
@@ -147,10 +210,6 @@ router.post('/devices/:deviceId/pause', checkCollectorConnection, async (req, re
   }
 });
 
-/**
- * POST /api/collector/devices/:deviceId/resume
- * 디바이스 워커 재개
- */
 router.post('/devices/:deviceId/resume', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId } = req.params;
@@ -174,10 +233,6 @@ router.post('/devices/:deviceId/resume', checkCollectorConnection, async (req, r
   }
 });
 
-/**
- * POST /api/collector/devices/:deviceId/restart
- * 디바이스 워커 재시작
- */
 router.post('/devices/:deviceId/restart', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId } = req.params;
@@ -202,10 +257,6 @@ router.post('/devices/:deviceId/restart', checkCollectorConnection, async (req, 
   }
 });
 
-/**
- * GET /api/collector/devices/:deviceId/status
- * 디바이스 실시간 상태 조회
- */
 router.get('/devices/:deviceId/status', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId } = req.params;
@@ -229,10 +280,6 @@ router.get('/devices/:deviceId/status', checkCollectorConnection, async (req, re
 // 🔥 2. 하드웨어 제어 API
 // =============================================================================
 
-/**
- * POST /api/collector/devices/:deviceId/digital/:outputId/control
- * 디지털 출력 제어 (릴레이, 솔레노이드 등)
- */
 router.post('/devices/:deviceId/digital/:outputId/control', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId, outputId } = req.params;
@@ -266,10 +313,6 @@ router.post('/devices/:deviceId/digital/:outputId/control', checkCollectorConnec
   }
 });
 
-/**
- * POST /api/collector/devices/:deviceId/analog/:outputId/control
- * 아날로그 출력 제어 (4-20mA, 0-10V 등)
- */
 router.post('/devices/:deviceId/analog/:outputId/control', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId, outputId } = req.params;
@@ -304,10 +347,6 @@ router.post('/devices/:deviceId/analog/:outputId/control', checkCollectorConnect
   }
 });
 
-/**
- * POST /api/collector/devices/:deviceId/parameters/:parameterId/set
- * 디바이스 파라미터 설정
- */
 router.post('/devices/:deviceId/parameters/:parameterId/set', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId, parameterId } = req.params;
@@ -344,10 +383,6 @@ router.post('/devices/:deviceId/parameters/:parameterId/set', checkCollectorConn
 // 🔥 3. 실시간 데이터 API
 // =============================================================================
 
-/**
- * GET /api/collector/devices/:deviceId/data/current
- * 디바이스 현재 데이터 조회
- */
 router.get('/devices/:deviceId/data/current', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId } = req.params;
@@ -371,10 +406,6 @@ router.get('/devices/:deviceId/data/current', checkCollectorConnection, async (r
   }
 });
 
-/**
- * GET /api/collector/alarms/active
- * 활성 알람 목록 조회
- */
 router.get('/alarms/active', checkCollectorConnection, async (req, res) => {
   try {
     const { severity, device_id, limit, acknowledged } = req.query;
@@ -401,17 +432,12 @@ router.get('/alarms/active', checkCollectorConnection, async (req, res) => {
   }
 });
 
-/**
- * POST /api/collector/alarms/:alarmId/acknowledge
- * 알람 확인
- */
 router.post('/alarms/:alarmId/acknowledge', checkCollectorConnection, async (req, res) => {
   try {
     const { alarmId } = req.params;
     const { user_id, comment } = req.body;
     
-    // 사용자 ID는 세션에서 가져오거나 body에서 받음
-    const userId = user_id || req.user?.id || 1; // 기본값 설정
+    const userId = user_id || req.user?.id || 1;
     
     console.log(`✅ Acknowledging alarm ${alarmId} by user ${userId}`);
     
@@ -432,10 +458,6 @@ router.post('/alarms/:alarmId/acknowledge', checkCollectorConnection, async (req
   }
 });
 
-/**
- * POST /api/collector/alarms/:alarmId/clear
- * 알람 클리어
- */
 router.post('/alarms/:alarmId/clear', checkCollectorConnection, async (req, res) => {
   try {
     const { alarmId } = req.params;
@@ -466,10 +488,6 @@ router.post('/alarms/:alarmId/clear', checkCollectorConnection, async (req, res)
 // 🔥 4. 설정 동기화 API
 // =============================================================================
 
-/**
- * POST /api/collector/devices/:deviceId/config/reload
- * 디바이스 설정 재로드
- */
 router.post('/devices/:deviceId/config/reload', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId } = req.params;
@@ -492,10 +510,6 @@ router.post('/devices/:deviceId/config/reload', checkCollectorConnection, async 
   }
 });
 
-/**
- * POST /api/collector/config/reload
- * 전체 설정 재로드
- */
 router.post('/config/reload', checkCollectorConnection, async (req, res) => {
   try {
     console.log('🔄 Reloading all configurations');
@@ -515,10 +529,6 @@ router.post('/config/reload', checkCollectorConnection, async (req, res) => {
   }
 });
 
-/**
- * POST /api/collector/devices/:deviceId/sync
- * 디바이스 설정 동기화
- */
 router.post('/devices/:deviceId/sync', checkCollectorConnection, async (req, res) => {
   try {
     const { deviceId } = req.params;
@@ -542,10 +552,6 @@ router.post('/devices/:deviceId/sync', checkCollectorConnection, async (req, res
   }
 });
 
-/**
- * POST /api/collector/config/notify-change
- * 설정 변경 알림
- */
 router.post('/config/notify-change', checkCollectorConnection, async (req, res) => {
   try {
     const { type, entity_id, changes } = req.body;
@@ -580,10 +586,6 @@ router.post('/config/notify-change', checkCollectorConnection, async (req, res) 
 // 🔥 5. 시스템 관리 API
 // =============================================================================
 
-/**
- * GET /api/collector/statistics
- * Collector 통계 정보 조회
- */
 router.get('/statistics', checkCollectorConnection, async (req, res) => {
   try {
     const proxy = getCollectorProxy();
@@ -600,10 +602,6 @@ router.get('/statistics', checkCollectorConnection, async (req, res) => {
   }
 });
 
-/**
- * GET /api/collector/workers/status
- * 워커 상태 조회
- */
 router.get('/workers/status', checkCollectorConnection, async (req, res) => {
   try {
     const proxy = getCollectorProxy();
@@ -620,14 +618,19 @@ router.get('/workers/status', checkCollectorConnection, async (req, res) => {
   }
 });
 
-/**
- * GET /api/collector/health
- * Collector 헬스 체크
- */
+// Health 엔드포인트는 체크 미들웨어 없이 직접 호출
 router.get('/health', async (req, res) => {
   try {
     const proxy = getCollectorProxy();
     const result = await proxy.healthCheck();
+    
+    // 성공 시 캐시 업데이트
+    healthCheckCache = {
+      timestamp: Date.now(),
+      isHealthy: true,
+      cacheDuration: 30000,
+      error: null
+    };
     
     res.json({
       success: true,
@@ -638,6 +641,14 @@ router.get('/health', async (req, res) => {
     });
     
   } catch (error) {
+    // 실패 시 캐시 업데이트
+    healthCheckCache = {
+      timestamp: Date.now(),
+      isHealthy: false,
+      cacheDuration: 30000,
+      error: error.message
+    };
+    
     res.status(503).json({
       success: false,
       status: 'unhealthy',

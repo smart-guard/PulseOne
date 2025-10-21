@@ -1,7 +1,7 @@
 # core/export-gateway/Dockerfile.dev - PulseOne Export Gateway 개발 환경
 FROM gcc:12
 
-# 기본 패키지 설치 (libhttplib-dev 제외 - 직접 다운로드 사용)
+# 기본 패키지 설치 (redis-tools 추가!)
 RUN apt-get update && apt-get install -y \
     cmake make build-essential \
     libsqlite3-dev sqlite3 \
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libssl-dev uuid-dev \
     libcurl4-openssl-dev \
     tree htop procps \
+    redis-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # httplib 헤더 다운로드
@@ -51,16 +52,17 @@ RUN echo 'export PS1="\[\033[01;36m\]\u@export-gateway\[\033[00m\]:\[\033[01;34m
     echo 'echo "🌐 PulseOne Export Gateway Development Environment"' >> /root/.bashrc && \
     echo 'echo "================================================="' >> /root/.bashrc && \
     echo 'echo "Installed libraries:"' >> /root/.bashrc && \
-    echo 'echo "  ✅ httplib (HTTP client)"' >> /root/.bashrc && \
-    echo 'echo "  ✅ nlohmann/json (JSON processing)"' >> /root/.bashrc && \
-    echo 'echo "  ✅ hiredis (Redis client)"' >> /root/.bashrc && \
-    echo 'echo "  ✅ libcurl (HTTP/HTTPS client)"' >> /root/.bashrc && \
+    echo 'echo " ✅ httplib (HTTP client)"' >> /root/.bashrc && \
+    echo 'echo " ✅ nlohmann/json (JSON processing)"' >> /root/.bashrc && \
+    echo 'echo " ✅ hiredis (Redis client)"' >> /root/.bashrc && \
+    echo 'echo " ✅ libcurl (HTTP/HTTPS client)"' >> /root/.bashrc && \
+    echo 'echo " ✅ redis-tools (Redis CLI)"' >> /root/.bashrc && \
     echo 'echo ""' >> /root/.bashrc && \
     echo 'echo "Development focus:"' >> /root/.bashrc && \
-    echo 'echo "  🎯 C# CSPGateway porting to C++"' >> /root/.bashrc && \
-    echo 'echo "  📊 Alarm priority processing"' >> /root/.bashrc && \
-    echo 'echo "  ☁️  AWS S3 integration"' >> /root/.bashrc && \
-    echo 'echo "  🔄 API retry logic"' >> /root/.bashrc && \
+    echo 'echo " 🎯 C# CSPGateway porting to C++"' >> /root/.bashrc && \
+    echo 'echo " 📊 Alarm priority processing"' >> /root/.bashrc && \
+    echo 'echo " ☁️ AWS S3 integration"' >> /root/.bashrc && \
+    echo 'echo " 🔄 API retry logic"' >> /root/.bashrc && \
     echo 'echo ""' >> /root/.bashrc
 
 WORKDIR /app
