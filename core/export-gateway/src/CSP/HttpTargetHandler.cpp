@@ -339,8 +339,16 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(const AlarmMessage& ala
         std::string method = config.value("method", "POST");
         std::transform(method.begin(), method.end(), method.begin(), ::toupper);
         
-        // 엔드포인트 URL 구성
-        std::string endpoint = config.value("endpoint", "/api/alarms");
+        // ✅ 수정: endpoint는 config에 명시적으로 있을 때만 사용
+        std::string endpoint = "";
+        if (config.contains("endpoint")) {
+            endpoint = config["endpoint"].get<std::string>();
+        }
+        
+        // ✅ 로그 개선
+        std::string log_endpoint = endpoint.empty() ? "(using base URL only)" : endpoint;
+        LogManager::getInstance().Debug("HTTP 요청 - Method: " + method + 
+                                       ", Endpoint: " + log_endpoint);
         
         // 요청 헤더 구성
         auto headers = buildRequestHeaders(config);
@@ -348,43 +356,42 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(const AlarmMessage& ala
         // 요청 본문 생성
         std::string request_body = buildRequestBody(alarm, config);
         
-        LogManager::getInstance().Debug("HTTP 요청 - Method: " + method + 
-                                       ", Endpoint: " + endpoint +
-                                       ", Body length: " + std::to_string(request_body.length()));
+        LogManager::getInstance().Debug("Body length: " + std::to_string(request_body.length()));
         
         // HTTP 요청 실행
         PulseOne::Client::HttpResponse response;
         
         if (method == "POST") {
-            // POST(path, body, content_type, headers)
             response = http_client_->post(endpoint, request_body, "application/json", headers);
         } else if (method == "PUT") {
-            // PUT(path, body, content_type, headers)
             response = http_client_->put(endpoint, request_body, "application/json", headers);
         } else if (method == "PATCH") {
-            // PATCH는 지원되지 않으므로 POST로 대체하고 헤더로 오버라이드
-            headers["X-HTTP-Method-Override"] = "PATCH";
-            response = http_client_->post(endpoint, request_body, "application/json", headers);
+            response = http_client_->patch(endpoint, request_body, "application/json", headers);
         } else {
-            result.error_message = "지원하지 않는 HTTP 메서드: " + method;
-            return result;
+            response = http_client_->get(endpoint);
         }
         
-        // 응답 처리 (올바른 필드명 사용)
+        // 응답 처리
+        result.success = (response.status_code >= 200 && response.status_code < 300);
         result.status_code = response.status_code;
         result.response_body = response.body;
-        result.success = response.isSuccess();
-        result.content_size = request_body.length();
         
-        if (!result.success) {
-            result.error_message = "HTTP " + std::to_string(response.status_code) + ": " + response.body;
+        if (result.success) {
+            LogManager::getInstance().Debug("HTTP " + method + " " + log_endpoint + 
+                                           " -> " + std::to_string(response.status_code) + 
+                                           " (" + std::to_string(response.elapsed_ms) + "ms)");
+        } else {
+            result.error_message = "HTTP " + std::to_string(response.status_code) + ": " + 
+                                  response.body.substr(0, 200);
         }
         
+        return result;
+        
     } catch (const std::exception& e) {
-        result.error_message = "HTTP 요청 실행 예외: " + std::string(e.what());
+        result.error_message = "HTTP 요청 예외: " + std::string(e.what());
+        LogManager::getInstance().Error(result.error_message);
+        return result;
     }
-    
-    return result;
 }
 
 std::unordered_map<std::string, std::string> HttpTargetHandler::buildRequestHeaders(const json& config) {

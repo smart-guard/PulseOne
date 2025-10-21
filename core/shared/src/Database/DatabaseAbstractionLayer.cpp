@@ -614,6 +614,7 @@ std::vector<std::string> DatabaseAbstractionLayer::getTableColumnsFromSchema(con
 // 🎯 CREATE TABLE 관련 메서드들
 // =============================================================================
 
+// DatabaseAbstractionLayer.cpp - executeCreateTable() 수정
 bool DatabaseAbstractionLayer::executeCreateTable(const std::string& create_sql) {
     std::string table_name = extractTableNameFromCreateSQL(create_sql);
     if (table_name.empty()) {
@@ -622,16 +623,27 @@ bool DatabaseAbstractionLayer::executeCreateTable(const std::string& create_sql)
         return false;
     }
     
+    // ✅ 추가: 테이블 존재 확인 전 로그
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "🔍 테이블 확인 중: " + table_name);
+    
     if (doesTableExist(table_name)) {
         LogManager::getInstance().log("database", LogLevel::DEBUG, 
             "✅ 테이블 이미 존재: " + table_name);
         return true;
     }
     
+    // ✅ 추가: 생성 시도 전 로그
     LogManager::getInstance().log("database", LogLevel::INFO, 
-        "📋 테이블 생성 시도: " + table_name);
+        "📋 테이블 생성 실행: " + table_name);
     
-    return executeNonQuery(create_sql);
+    bool result = executeNonQuery(create_sql);
+    
+    // ✅ 추가: 결과 로그
+    LogManager::getInstance().log("database", result ? LogLevel::INFO : LogLevel::LOG_ERROR, 
+        result ? "✅ 테이블 생성 성공: " + table_name : "❌ 테이블 생성 실패: " + table_name);
+    
+    return result;
 }
 
 bool DatabaseAbstractionLayer::doesTableExist(const std::string& table_name) {

@@ -131,10 +131,21 @@ bool DatabaseManager::connectSQLite() {
     auto& config = ConfigManager::getInstance();
     std::string db_path = config.getOrDefault("SQLITE_DB_PATH", "pulseone.db");
     
+    // ✅ 추가: 연결 시도 전 로그
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "🔌 SQLite 연결 시도: " + db_path);
+    
     int result = sqlite3_open(db_path.c_str(), &sqlite_conn_);
     if (result == SQLITE_OK) {
+        LogManager::getInstance().log("database", LogLevel::INFO, 
+            "✅ SQLite 파일 열기 성공: " + db_path);
         return true;
     }
+    
+    // ✅ 추가: 연결 실패 시 상세 로그
+    std::string error_msg = sqlite3_errmsg(sqlite_conn_);
+    LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
+        "❌ SQLite 연결 실패: " + error_msg);
     
     if (sqlite_conn_) {
         sqlite3_close(sqlite_conn_);
@@ -151,20 +162,29 @@ bool DatabaseManager::executeQuerySQLite(const std::string& sql,
         return false;
     }
     
+    // ✅ 추가: 쿼리 실행 전 로그 (너무 길면 잘라냄)
+    std::string query_preview = sql.length() > 150 ? sql.substr(0, 150) + "..." : sql;
+    LogManager::getInstance().log("database", LogLevel::DEBUG, 
+        "🔍 SQLite 쿼리 실행: " + query_preview);
+    
     char* error_msg = nullptr;
     int result = sqlite3_exec(sqlite_conn_, sql.c_str(), callback, data, &error_msg);
     
     if (result != SQLITE_OK) {
-        // ✅ 에러 메시지 로깅 추가!
         std::string error_str = error_msg ? std::string(error_msg) : "Unknown SQLite error";
-        LogManager::getInstance().Error("SQLite error: " + error_str);
-        LogManager::getInstance().Error("Failed query: " + sql.substr(0, 200));
+        LogManager::getInstance().Error("❌ SQLite error: " + error_str);
+        LogManager::getInstance().Error("   Failed query: " + sql.substr(0, 200));
         
         if (error_msg) {
             sqlite3_free(error_msg);
         }
         return false;
     }
+    
+    // ✅ 추가: 성공 로그
+    LogManager::getInstance().log("database", LogLevel::DEBUG, 
+        "✅ SQLite 쿼리 성공");
+    
     return true;
 }
 
@@ -453,14 +473,22 @@ std::map<std::string, std::string> DatabaseManager::getRedisInfo() {
 }
 
 // ========================================================================
-// 통합 쿼리 인터페이스
+// 통합 쿼리 인터페이스 - ✅ 디버깅 로그 강화
 // ========================================================================
 bool DatabaseManager::executeQuery(const std::string& query, 
                                   std::vector<std::vector<std::string>>& results) {
+    // ✅ 추가: 실행 전 로그
+    LogManager::getInstance().log("database", LogLevel::DEBUG, 
+        "🔧 DatabaseManager::executeQuery 호출");
+    LogManager::getInstance().log("database", LogLevel::DEBUG, 
+        "   쿼리: " + query.substr(0, 100) + (query.length() > 100 ? "..." : ""));
+    
+    bool result = false;
+    
     switch (primary_rdb_) {
         case DatabaseType::SQLITE:
             results.clear();
-            return executeQuerySQLite(query, 
+            result = executeQuerySQLite(query, 
                 [](void* data, int argc, char** argv, char**) -> int {
                     auto* res = static_cast<std::vector<std::vector<std::string>>*>(data);
                     std::vector<std::string> row;
@@ -470,6 +498,7 @@ bool DatabaseManager::executeQuery(const std::string& query,
                     res->push_back(row);
                     return 0;
                 }, &results);
+            break;
             
 #ifdef HAS_POSTGRESQL
         case DatabaseType::POSTGRESQL: {
@@ -481,44 +510,72 @@ bool DatabaseManager::executeQuery(const std::string& query,
                 }
                 results.push_back(row_data);
             }
-            return true;
+            result = true;
+            break;
         }
 #endif
 
 #ifdef HAS_MYSQL
         case DatabaseType::MYSQL:
-            return executeQueryMySQL(query, results);
+            result = executeQueryMySQL(query, results);
+            break;
 #endif
 
         case DatabaseType::MSSQL:
-            return executeQueryMSSQL(query, results);
+            result = executeQueryMSSQL(query, results);
+            break;
 
         default:
-            return false;
+            result = false;
     }
+    
+    // ✅ 추가: 결과 로그
+    LogManager::getInstance().log("database", LogLevel::DEBUG, 
+        result ? "   ✅ 쿼리 실행 성공 (반환 행: " + std::to_string(results.size()) + ")" 
+               : "   ❌ 쿼리 실행 실패");
+    
+    return result;
 }
 
 bool DatabaseManager::executeNonQuery(const std::string& query) {
+    // ✅ 추가: 실행 전 로그
+    LogManager::getInstance().log("database", LogLevel::DEBUG, 
+        "🔧 DatabaseManager::executeNonQuery 호출");
+    LogManager::getInstance().log("database", LogLevel::DEBUG, 
+        "   쿼리: " + query.substr(0, 100) + (query.length() > 100 ? "..." : ""));
+    
+    bool result = false;
+    
     switch (primary_rdb_) {
         case DatabaseType::SQLITE:
-            return executeNonQuerySQLite(query);
+            result = executeNonQuerySQLite(query);
+            break;
             
 #ifdef HAS_POSTGRESQL
         case DatabaseType::POSTGRESQL:
-            return executeNonQueryPostgres(query);
+            result = executeNonQueryPostgres(query);
+            break;
 #endif
 
 #ifdef HAS_MYSQL
         case DatabaseType::MYSQL:
-            return executeNonQueryMySQL(query);
+            result = executeNonQueryMySQL(query);
+            break;
 #endif
 
         case DatabaseType::MSSQL:
-            return executeNonQueryMSSQL(query);
+            result = executeNonQueryMSSQL(query);
+            break;
 
         default:
-            return false;
+            result = false;
     }
+    
+    // ✅ 추가: 결과 로그
+    LogManager::getInstance().log("database", result ? LogLevel::DEBUG : LogLevel::LOG_ERROR, 
+        result ? "   ✅ SQLite 실행 성공" : "   ❌ SQLite 실행 실패");
+    
+    return result;
 }
 
 // ========================================================================
@@ -629,8 +686,19 @@ bool DatabaseManager::isConnected(DatabaseType db_type) {
 }
 
 void DatabaseManager::reinitialize() {
+    // ✅ 추가: 재초기화 로그
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "🔄 DatabaseManager 재초기화 시작");
+    
     disconnectAll();
+    
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "✅ 기존 연결 모두 종료됨");
+    
     doInitialize();
+    
+    LogManager::getInstance().log("database", LogLevel::INFO, 
+        "✅ DatabaseManager 재초기화 완료");
 }
 
 void DatabaseManager::setDatabaseEnabled(DatabaseType db_type, bool enabled) {
@@ -642,4 +710,3 @@ void DatabaseManager::ensureInitialized() {
         initialization_success_.store(doInitialize());
     });
 }
-

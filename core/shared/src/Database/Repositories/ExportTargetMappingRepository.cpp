@@ -1,6 +1,6 @@
 /**
  * @file ExportTargetMappingRepository.cpp
- * @brief Export Target Mapping Repository 구현 - 에러 수정 완료
+ * @brief Export Target Mapping Repository 구현 - std::map 순서 문제 수정 완료
  */
 
 #include "Database/Repositories/ExportTargetMappingRepository.h"
@@ -26,11 +26,22 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findAll() 
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Error("ExportTargetMappingRepository::findAll - Failed to map row: " + std::string(e.what()));
+                }
+            } catch (...) {
+                if (logger_) {
+                    logger_->Error("ExportTargetMappingRepository::findAll - Unknown exception");
+                }
+            }
         }
         
         return entities;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetMappingRepository::findAll failed: " + std::string(e.what()));
+        }
         return {};
     }
 }
@@ -79,10 +90,25 @@ bool ExportTargetMappingRepository::save(ExportTargetMappingEntity& entity) {
         auto params = entityToParams(entity);
         std::string query = SQL::ExportTargetMapping::INSERT;
         
-        for (const auto& param : params) {
+        // ✅ INSERT 쿼리의 컬럼 순서대로 파라미터 치환
+        // INSERT INTO export_target_mappings (
+        //     target_id, point_id, target_field_name, target_description,
+        //     conversion_config, is_enabled
+        // ) VALUES (?, ?, ?, ?, ?, ?)
+        
+        std::vector<std::string> insert_order = {
+            "target_id",
+            "point_id",
+            "target_field_name",
+            "target_description",
+            "conversion_config",
+            "is_enabled"
+        };
+        
+        for (const auto& key : insert_order) {
             size_t pos = query.find('?');
             if (pos != std::string::npos) {
-                query.replace(pos, 1, "'" + param.second + "'");
+                query.replace(pos, 1, "'" + params[key] + "'");
             }
         }
         
@@ -97,7 +123,10 @@ bool ExportTargetMappingRepository::save(ExportTargetMappingEntity& entity) {
         }
         
         return success;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetMappingRepository::save failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
@@ -111,13 +140,33 @@ bool ExportTargetMappingRepository::update(const ExportTargetMappingEntity& enti
         auto params = entityToParams(entity);
         std::string query = SQL::ExportTargetMapping::UPDATE;
         
-        for (const auto& param : params) {
+        // ✅ UPDATE 쿼리의 SET 절 순서대로 파라미터 치환
+        // UPDATE export_target_mappings SET
+        //     target_id = ?,
+        //     point_id = ?,
+        //     target_field_name = ?,
+        //     target_description = ?,
+        //     conversion_config = ?,
+        //     is_enabled = ?
+        // WHERE id = ?
+        
+        std::vector<std::string> update_order = {
+            "target_id",
+            "point_id",
+            "target_field_name",
+            "target_description",
+            "conversion_config",
+            "is_enabled"
+        };
+        
+        for (const auto& key : update_order) {
             size_t pos = query.find('?');
             if (pos != std::string::npos) {
-                query.replace(pos, 1, "'" + param.second + "'");
+                query.replace(pos, 1, "'" + params[key] + "'");
             }
         }
         
+        // WHERE id = ? 치환
         size_t pos = query.find('?');
         if (pos != std::string::npos) {
             query.replace(pos, 1, std::to_string(entity.getId()));
@@ -131,7 +180,10 @@ bool ExportTargetMappingRepository::update(const ExportTargetMappingEntity& enti
         }
         
         return success;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetMappingRepository::update failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
@@ -286,11 +338,25 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByTarg
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Error("Failed to map mapping entity: " + std::string(e.what()));
+                }
             } catch (...) {}
         }
         
+        if (logger_) {
+            logger_->Info("ExportTargetMappingRepository::findByTargetId - Found " + 
+                         std::to_string(entities.size()) + " mappings for target_id=" + 
+                         std::to_string(target_id));
+        }
+        
         return entities;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetMappingRepository::findByTargetId failed: " + 
+                          std::string(e.what()));
+        }
         return {};
     }
 }
@@ -523,8 +589,9 @@ ExportTargetMappingEntity ExportTargetMappingRepository::mapRowToEntity(
             entity.setEnabled(std::stoi(it->second) != 0);
         }
         
-    } catch (...) {
-        throw std::runtime_error("Failed to map row to ExportTargetMappingEntity");
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to map row to ExportTargetMappingEntity: " + 
+                                std::string(e.what()));
     }
     
     return entity;
@@ -559,7 +626,11 @@ bool ExportTargetMappingRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
         return db_layer.executeNonQuery(SQL::ExportTargetMapping::CREATE_TABLE);
-    } catch (...) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetMappingRepository::ensureTableExists failed: " + 
+                          std::string(e.what()));
+        }
         return false;
     }
 }
