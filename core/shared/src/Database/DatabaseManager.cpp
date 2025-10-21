@@ -146,13 +146,23 @@ bool DatabaseManager::connectSQLite() {
 bool DatabaseManager::executeQuerySQLite(const std::string& sql, 
                                         int (*callback)(void*, int, char**, char**), 
                                         void* data) {
-    if (!sqlite_conn_) return false;
+    if (!sqlite_conn_) {
+        LogManager::getInstance().Error("SQLite connection is null");
+        return false;
+    }
     
     char* error_msg = nullptr;
     int result = sqlite3_exec(sqlite_conn_, sql.c_str(), callback, data, &error_msg);
     
     if (result != SQLITE_OK) {
-        if (error_msg) sqlite3_free(error_msg);
+        // ✅ 에러 메시지 로깅 추가!
+        std::string error_str = error_msg ? std::string(error_msg) : "Unknown SQLite error";
+        LogManager::getInstance().Error("SQLite error: " + error_str);
+        LogManager::getInstance().Error("Failed query: " + sql.substr(0, 200));
+        
+        if (error_msg) {
+            sqlite3_free(error_msg);
+        }
         return false;
     }
     return true;
