@@ -1,6 +1,7 @@
 // =============================================================================
 // backend/app.js - PulseOne Backend Server 완성본
 // CLI 정리 + 캐시 제어 + 로그 파일 저장 통합
+// ✅ 개발 환경 Frontend 서빙 문제 수정
 // =============================================================================
 
 // =============================================================================
@@ -392,26 +393,42 @@ const maxRequestSize = config.get('MAX_REQUEST_SIZE', '10mb');
 app.use(express.json({ limit: maxRequestSize }));
 app.use(express.urlencoded({ extended: true, limit: maxRequestSize }));
 
-// 정적 파일 서빙
+// =============================================================================
+// ✅ 정적 파일 서빙 (프로덕션 환경에만 활성화)
+// =============================================================================
 const staticMaxAge = serverConfig.env === 'production' ? '1d' : 0;
-app.use(express.static(path.join(__dirname, '../frontend'), {
-    maxAge: staticMaxAge,
-    setHeaders: (res, path) => {
-        // 정적 파일에도 캐시 방지 헤더 추가
-        if (config.getBoolean('DISABLE_ALL_CACHE', noCacheMode)) {
-            res.set({
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-            });
+
+// 개발 환경에서는 Frontend를 별도 컨테이너(Vite 개발 서버, 포트 5173)에서 제공
+// 프로덕션 환경에서만 Backend가 빌드된 정적 파일을 서빙
+if (serverConfig.env === 'production') {
+    app.use(express.static(path.join(__dirname, '../frontend'), {
+        maxAge: staticMaxAge,
+        setHeaders: (res, filepath) => {
+            // 정적 파일에도 캐시 방지 헤더 추가
+            if (config.getBoolean('DISABLE_ALL_CACHE', noCacheMode)) {
+                res.set({
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                });
+            }
         }
-    }
-}));
+    }));
+    
+    logger.system('INFO', '정적 파일 서빙 활성화 (프로덕션)', {
+        staticPath: path.join(__dirname, '../frontend'),
+        maxAge: staticMaxAge
+    });
+} else {
+    logger.system('INFO', '정적 파일 서빙 비활성화 (개발 환경)', {
+        frontendUrl: 'http://localhost:5173',
+        note: 'Frontend는 별도 Vite 개발 서버에서 실행됨'
+    });
+}
 
 logger.system('INFO', '기본 미들웨어 설정 완료', {
     maxRequestSize: maxRequestSize,
-    staticMaxAge: staticMaxAge,
-    staticPath: path.join(__dirname, '../frontend')
+    staticFileServing: serverConfig.env === 'production' ? 'enabled' : 'disabled'
 });
 
 // =============================================================================
@@ -781,7 +798,7 @@ try {
     logger.system('WARN', 'Device 라우트 로드 실패', { error: error.message });
 }
 
-// 🆕 프로토콜 관리 라우트 (이 부분이 빠져있었음!)
+// 프로토콜 관리 라우트
 try {
     const protocolRoutes = require('./routes/protocols');
     app.use('/api/protocols', protocolRoutes);
@@ -906,20 +923,29 @@ app.use((error, req, res, next) => {
 });
 
 // =============================================================================
-// 프론트엔드 서빙 (SPA 지원)
+// ✅ 프론트엔드 서빙 (SPA 지원) - 프로덕션 환경만
 // =============================================================================
-app.use('*', (req, res) => {
-    if (req.originalUrl.startsWith('/api/')) {
-        return res.status(404).json({
+if (serverConfig.env === 'production') {
+    // 프로덕션: SPA를 위한 catch-all 라우트
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, '../frontend/index.html'));
+    });
+    
+    logger.system('INFO', 'SPA Catch-all 라우트 등록 (프로덕션)');
+} else {
+    // 개발 환경: Frontend는 별도 서버에서 제공됨을 안내
+    app.get('*', (req, res) => {
+        res.status(404).json({
             success: false,
-            error: 'API endpoint not found',
-            path: req.originalUrl,
+            error: 'Not Found',
+            message: 'Development mode: Frontend is served at http://localhost:5173',
+            backend_api: `http://localhost:${serverConfig.port}/api`,
             timestamp: new Date().toISOString()
         });
-    }
+    });
     
-    res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
+    logger.system('INFO', 'Development 모드: Frontend 서빙 비활성화');
+}
 
 // =============================================================================
 // Graceful Shutdown (로그 포함)
@@ -994,18 +1020,25 @@ server.listen(PORT, '0.0.0.0', async () => {
         websocket: wsStatus,
         collectorIntegration: !!CollectorProxyService,
         cacheControl: !!CacheControlMiddleware,
-        logManager: true
+        logManager: true,
+        frontendServing: serverConfig.env === 'production' ? 'enabled' : 'disabled'
     });
     
     console.log(`
 🚀 PulseOne Backend Server Started!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 Dashboard:     http://localhost:${PORT}
+📊 Backend API:   http://localhost:${PORT}/api
 🔧 API Health:    http://localhost:${PORT}/api/health
 📋 System Info:   http://localhost:${PORT}/api/system/info
 📝 Log Status:    http://localhost:${PORT}/api/system/logs
 🔥 Alarm Test:    http://localhost:${PORT}/api/alarms/test
 🧪 Test Alarm:    POST http://localhost:${PORT}/api/test/alarm
+
+${serverConfig.env === 'development' ? 
+`🎨 Frontend:      http://localhost:5173 (Vite Dev Server)
+⚠️  Note:          개발 환경 - Frontend는 별도 컨테이너에서 실행됨` :
+`📊 Dashboard:     http://localhost:${PORT}
+✅ Note:          프로덕션 환경 - Backend가 정적 파일 서빙`}
 
 🌐 Environment: ${serverConfig.env}
 🏷️  Stage: ${serverConfig.stage}
@@ -1016,6 +1049,7 @@ server.listen(PORT, '0.0.0.0', async () => {
 📡 WebSocket: ${wsStatus}
 🚨 Alarm Service: ${alarmSubscriber ? '✅ Ready' : '⚠️ Disabled'}
 🔧 Collector: ${CollectorProxyService ? '✅ Available' : '❌ Not Found'}
+📦 Static Files: ${serverConfig.env === 'production' ? '✅ Enabled' : '❌ Disabled (Dev)'}
 
 PID: ${process.pid}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

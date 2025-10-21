@@ -22,6 +22,8 @@
 #include "Database/DatabaseManager.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
+#include "Database/Repositories/ExportTargetRepository.h"
+#include "Database/Entities/ExportTargetEntity.h"
 #include <fstream>
 #include <sstream>
 #include <thread>
@@ -29,6 +31,22 @@
 #include <regex>
 #include <iomanip>
 
+
+namespace {
+    // SQL 문자열 이스케이프 (SQL 인젝션 방지)
+    std::string escapeSqlString(const std::string& value) {
+        std::string result;
+        result.reserve(value.length() + 10);
+        for (char c : value) {
+            if (c == '\'') {
+                result += "''";  // SQLite: 작은따옴표를 두 번 써서 이스케이프
+            } else {
+                result += c;
+            }
+        }
+        return result;
+    }
+}
 namespace PulseOne {
 namespace CSP {
 
@@ -82,23 +100,22 @@ void CSPGateway::initializeDynamicTargetSystem() {
             return;
         }
         
-        // DynamicTargetManager 생성 (빈 설정으로 초기화)
+        LogManager::getInstance().Debug("Database path: " + db_path);
+        
+        // ✅ 수정: DynamicTargetManager 생성 (빈 경로 = 데이터베이스 모드)
         dynamic_target_manager_ = std::make_unique<DynamicTargetManager>("");
         
-        if (!dynamic_target_manager_->start()) {
-            LogManager::getInstance().Error("Failed to start Dynamic Target Manager");
-            dynamic_target_manager_.reset();
-            return;
-        }
+        // ✅ 수정: loadConfiguration() 건너뛰고 직접 DB에서 로드
+        // start() 대신 수동 초기화
+        LogManager::getInstance().Info("Skipping JSON config file - using database mode");
         
         // ✅ 데이터베이스에서 타겟 로드
         if (loadTargetsFromDatabase()) {
             use_dynamic_targets_ = true;
             LogManager::getInstance().Info("Dynamic Target System initialized successfully from database");
         } else {
-            LogManager::getInstance().Error("Failed to load targets from database");
-            dynamic_target_manager_->stop();
-            dynamic_target_manager_.reset();
+            LogManager::getInstance().Warn("No targets loaded from database - system will start with empty target list");
+            use_dynamic_targets_ = true;  // 빈 상태로라도 시스템 활성화
         }
         
     } catch (const std::exception& e) {
@@ -106,6 +123,7 @@ void CSPGateway::initializeDynamicTargetSystem() {
         dynamic_target_manager_.reset();
     }
 }
+
 
 // =============================================================================
 // ✅ 새로운 메서드: 데이터베이스에서 타겟 로드
@@ -115,72 +133,71 @@ bool CSPGateway::loadTargetsFromDatabase() {
     try {
         LogManager::getInstance().Info("Loading targets from database...");
         
-        // DatabaseManager 인스턴스 가져오기
-        auto& db_manager = Database::DatabaseManager::getInstance();
+        // ✅ Repository 사용
+        using namespace PulseOne::Database::Repositories;
+        using namespace PulseOne::Database::Entities;
         
-        // export_targets 테이블에서 활성화된 타겟 조회
-        std::string query = R"(
-            SELECT 
-                id, name, target_type, description, 
-                config, is_enabled, export_mode, 
-                batch_size
-            FROM export_targets 
-            WHERE is_enabled = 1
-            ORDER BY id ASC
-        )";
+        ExportTargetRepository repo;
         
-        auto result = db_manager.executeQuery(query);
+        // ✅ 활성화된 타겟만 조회
+        auto entities = repo.findByEnabled(true);
         
-        if (!result.success) {
-            LogManager::getInstance().Error("Failed to query export_targets: " + result.error_message);
+        if (entities.empty()) {
+            LogManager::getInstance().Warn("No targets loaded from database - system will start with empty target list");
             return false;
         }
         
         int loaded_count = 0;
-        int priority = 1; // 우선순위는 순서대로 증가
-        
-        for (const auto& row : result.rows) {
+        for (const auto& entity : entities) {
             try {
-                // DynamicTarget 구조체 생성
+                // Entity → DynamicTarget 변환
                 DynamicTarget target;
-                
-                target.name = row.at("name");
-                target.type = row.at("target_type");
-                target.enabled = (row.at("is_enabled") == "1");
-                target.priority = priority++;
+                target.name = entity.getName();
+                target.type = entity.getTargetType();
+                target.enabled = entity.isEnabled();
+                target.priority = 0;
                 
                 // config JSON 파싱
                 try {
-                    target.config = json::parse(row.at("config"));
+                    target.config = json::parse(entity.getConfig());
                 } catch (const std::exception& e) {
-                    LogManager::getInstance().Warn("Failed to parse config for target " + target.name + ": " + e.what());
-                    target.config = json::object();
+                    LogManager::getInstance().Error("Failed to parse config JSON for target: " + 
+                                                   target.name + ", error: " + e.what());
+                    continue;
                 }
                 
-                // description 추가
-                if (row.find("description") != row.end()) {
-                    target.config["description"] = row.at("description");
+                // 통계 정보 추가
+                target.config["id"] = entity.getId();
+                target.config["total_exports"] = entity.getTotalExports();
+                target.config["successful_exports"] = entity.getSuccessfulExports();
+                target.config["failed_exports"] = entity.getFailedExports();
+                
+                if (!entity.getDescription().empty()) {
+                    target.config["description"] = entity.getDescription();
                 }
                 
-                // DynamicTargetManager에 타겟 추가
-                if (dynamic_target_manager_->addTarget(target)) {
+                // DynamicTargetManager에 추가
+                if (dynamic_target_manager_ && dynamic_target_manager_->addTarget(target)) {
                     loaded_count++;
-                    LogManager::getInstance().Debug("Loaded target: " + target.name + " (" + target.type + ")");
+                    LogManager::getInstance().Debug("Loaded target: " + target.name + 
+                                                   " (" + target.type + ")");
                 } else {
                     LogManager::getInstance().Warn("Failed to add target to manager: " + target.name);
                 }
                 
             } catch (const std::exception& e) {
-                LogManager::getInstance().Error("Error processing target row: " + std::string(e.what()));
+                LogManager::getInstance().Error("Error processing target entity: " + std::string(e.what()));
                 continue;
             }
         }
         
-        LogManager::getInstance().Info("Loaded " + std::to_string(loaded_count) + " targets from database");
+        LogManager::getInstance().Info("Loaded " + std::to_string(loaded_count) + 
+                                      " targets from database");
         return (loaded_count > 0);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Exception loading targets from database: " + std::string(e.what()));
+        LogManager::getInstance().Error("Exception loading targets from database: " + 
+                                       std::string(e.what()));
         return false;
     }
 }
@@ -331,29 +348,37 @@ std::string CSPGateway::getDatabasePath() const {
 
 bool CSPGateway::saveTargetToDatabase(const DynamicTarget& target) {
     try {
-        auto& db_manager = Database::DatabaseManager::getInstance();
+        auto& db_manager = DatabaseManager::getInstance();
         
-        // config를 JSON 문자열로 변환
-        std::string config_json = target.config.dump();
+        std::string config_str = target.config.dump();
+        std::string safe_name = escapeSqlString(target.name);
+        std::string safe_type = escapeSqlString(target.type);
+        std::string safe_config = escapeSqlString(config_str);
+        std::string safe_desc = target.config.contains("description") 
+            ? escapeSqlString(target.config["description"].get<std::string>()) 
+            : "";
         
-        std::string query = R"(
-            INSERT INTO export_targets 
-                (name, target_type, description, config, is_enabled, export_mode, batch_size)
-            VALUES (?, ?, ?, ?, ?, 'on_change', 100)
-        )";
+        std::ostringstream query_stream;
+        query_stream << "INSERT INTO export_targets "
+                     << "(name, type, config, is_enabled, priority, description) "
+                     << "VALUES ("
+                     << "'" << safe_name << "', "
+                     << "'" << safe_type << "', "
+                     << "'" << safe_config << "', "
+                     << (target.enabled ? "1" : "0") << ", "
+                     << target.priority << ", "
+                     << "'" << safe_desc << "'"
+                     << ") "
+                     << "ON CONFLICT(name) DO UPDATE SET "
+                     << "type = excluded.type, "
+                     << "config = excluded.config, "
+                     << "is_enabled = excluded.is_enabled, "
+                     << "priority = excluded.priority, "
+                     << "description = excluded.description, "
+                     << "updated_at = CURRENT_TIMESTAMP";
         
-        std::vector<std::string> params = {
-            target.name,
-            target.type,
-            target.config.value("description", "Added via API"),
-            config_json,
-            target.enabled ? "1" : "0"
-        };
-        
-        auto result = db_manager.executeUpdate(query, params);
-        
-        if (!result.success) {
-            LogManager::getInstance().Error("Failed to save target to DB: " + result.error_message);
+        if (!db_manager.executeNonQuery(query_stream.str())) {
+            LogManager::getInstance().Error("Failed to save target to DB: " + target.name);
             return false;
         }
         
@@ -361,22 +386,21 @@ bool CSPGateway::saveTargetToDatabase(const DynamicTarget& target) {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Exception saving target to DB: " + std::string(e.what()));
+        LogManager::getInstance().Error("Exception saving target to DB: " + 
+                                       std::string(e.what()));
         return false;
     }
 }
 
 bool CSPGateway::deleteTargetFromDatabase(const std::string& name) {
     try {
-        auto& db_manager = Database::DatabaseManager::getInstance();
+        auto& db_manager = DatabaseManager::getInstance();
         
-        std::string query = "DELETE FROM export_targets WHERE name = ?";
-        std::vector<std::string> params = {name};
+        std::string safe_name = escapeSqlString(name);
+        std::string query = "DELETE FROM export_targets WHERE name = '" + safe_name + "'";
         
-        auto result = db_manager.executeUpdate(query, params);
-        
-        if (!result.success) {
-            LogManager::getInstance().Error("Failed to delete target from DB: " + result.error_message);
+        if (!db_manager.executeNonQuery(query)) {
+            LogManager::getInstance().Error("Failed to delete target from DB: " + name);
             return false;
         }
         
@@ -384,85 +408,75 @@ bool CSPGateway::deleteTargetFromDatabase(const std::string& name) {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Exception deleting target from DB: " + std::string(e.what()));
+        LogManager::getInstance().Error("Exception deleting target from DB: " + 
+                                       std::string(e.what()));
         return false;
     }
 }
 
 bool CSPGateway::updateTargetEnabledStatus(const std::string& name, bool enabled) {
     try {
-        auto& db_manager = Database::DatabaseManager::getInstance();
+        auto& db_manager = DatabaseManager::getInstance();
         
-        std::string query = "UPDATE export_targets SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?";
-        std::vector<std::string> params = {
-            enabled ? "1" : "0",
-            name
-        };
+        std::string safe_name = escapeSqlString(name);
+        std::ostringstream query_stream;
+        query_stream << "UPDATE export_targets SET "
+                     << "is_enabled = " << (enabled ? "1" : "0") << ", "
+                     << "updated_at = CURRENT_TIMESTAMP "
+                     << "WHERE name = '" << safe_name << "'";
         
-        auto result = db_manager.executeUpdate(query, params);
-        
-        if (!result.success) {
-            LogManager::getInstance().Error("Failed to update target status in DB: " + result.error_message);
+        if (!db_manager.executeNonQuery(query_stream.str())) {
+            LogManager::getInstance().Error("Failed to update target status in DB: " + name);
             return false;
         }
         
-        LogManager::getInstance().Debug("Target status updated in DB: " + name + " = " + (enabled ? "enabled" : "disabled"));
+        LogManager::getInstance().Debug("Target status updated in DB: " + name + 
+                                       " = " + (enabled ? "enabled" : "disabled"));
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Exception updating target status in DB: " + std::string(e.what()));
+        LogManager::getInstance().Error("Exception updating target status in DB: " + 
+                                       std::string(e.what()));
         return false;
     }
 }
+
 
 // =============================================================================
 // ✅ 알람 전송 성공 시 DB 통계 업데이트
 // =============================================================================
 
-void CSPGateway::updateExportTargetStats(const std::string& target_name, bool success, 
-                                         double response_time_ms) {
+void CSPGateway::updateExportTargetStats(const std::string& target_name, 
+                                        bool success, 
+                                        double response_time_ms) {
     try {
-        auto& db_manager = Database::DatabaseManager::getInstance();
+        auto& db_manager = DatabaseManager::getInstance();
         
-        std::string query;
-        std::vector<std::string> params;
+        std::string safe_name = escapeSqlString(target_name);
+        std::string timestamp_field = success ? "last_success" : "last_failure";
+        std::string count_field = success ? "success_count" : "failure_count";
         
-        if (success) {
-            query = R"(
-                UPDATE export_targets 
-                SET 
-                    total_exports = total_exports + 1,
-                    successful_exports = successful_exports + 1,
-                    last_export_at = CURRENT_TIMESTAMP,
-                    last_success_at = CURRENT_TIMESTAMP,
-                    avg_export_time_ms = CAST((COALESCE(avg_export_time_ms, 0) * 0.9 + ? * 0.1) AS INTEGER),
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE name = ?
-            )";
-            params = {std::to_string(static_cast<int>(response_time_ms)), target_name};
-        } else {
-            query = R"(
-                UPDATE export_targets 
-                SET 
-                    total_exports = total_exports + 1,
-                    failed_exports = failed_exports + 1,
-                    last_export_at = CURRENT_TIMESTAMP,
-                    last_error_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE name = ?
-            )";
-            params = {target_name};
-        }
+        std::ostringstream query_stream;
+        query_stream << std::fixed << std::setprecision(2);
+        query_stream << "UPDATE export_targets SET "
+                     << count_field << " = " << count_field << " + 1, "
+                     << "avg_response_time_ms = "
+                     << "CASE "
+                     << "  WHEN " << count_field << " = 0 THEN " << response_time_ms << " "
+                     << "  ELSE (avg_response_time_ms * " << count_field << " + " 
+                     << response_time_ms << ") / (" << count_field << " + 1) "
+                     << "END, "
+                     << timestamp_field << " = CURRENT_TIMESTAMP, "
+                     << "updated_at = CURRENT_TIMESTAMP "
+                     << "WHERE name = '" << safe_name << "'";
         
-        auto result = db_manager.executeUpdate(query, params);
-        
-        if (!result.success) {
-            LogManager::getInstance().Debug("Failed to update target stats in DB: " + result.error_message);
+        if (!db_manager.executeNonQuery(query_stream.str())) {
+            LogManager::getInstance().Warn("Failed to update stats for target: " + target_name);
         }
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Debug("Exception updating target stats: " + std::string(e.what()));
-        // 통계 업데이트 실패는 치명적이지 않으므로 계속 진행
+        LogManager::getInstance().Error("Exception updating target stats: " + 
+                                       std::string(e.what()));
     }
 }
 
@@ -577,23 +591,24 @@ bool CSPGateway::start() {
 void CSPGateway::stop() {
     LogManager::getInstance().Info("Stopping CSPGateway service...");
     
-    // 작업자 스레드 종료
+    // 1. 작업자 스레드 중지
     should_stop_ = true;
     if (worker_thread_ && worker_thread_->joinable()) {
         queue_cv_.notify_all();
         worker_thread_->join();
     }
     
-    // 재시도 스레드 종료 대기
+    // 2. 재시도 스레드 중지
     if (retry_thread_ && retry_thread_->joinable()) {
         retry_thread_->join();
     }
     
-    // ✅ 수정: shutdown() → stop()
+    // 3. ✅ 수정: DynamicTargetManager는 stop()만 호출, reset() 제거!
+    //    서비스는 중지하되 객체는 유지하여 재시작 가능하도록 함
     if (dynamic_target_manager_) {
-        LogManager::getInstance().Info("Shutting down Dynamic Target System...");
-        dynamic_target_manager_->stop();
-        dynamic_target_manager_.reset();
+        LogManager::getInstance().Info("Stopping Dynamic Target System...");
+        dynamic_target_manager_->stop();  // 스레드만 정리
+        // dynamic_target_manager_.reset(); ❌ 제거! 객체 유지
     }
     
     is_running_.store(false);

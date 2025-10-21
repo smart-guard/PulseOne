@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # PostgreSQL
   postgres:
     image: postgres:15
     container_name: pulseone-postgres
@@ -21,8 +20,8 @@ services:
       retries: 5
     networks:
       - pulseone_network
+    restart: unless-stopped
 
-  # Redis
   redis:
     image: redis:7-alpine
     container_name: pulseone-redis
@@ -38,8 +37,8 @@ services:
       retries: 5
     networks:
       - pulseone_network
+    restart: unless-stopped
 
-  # InfluxDB
   influxdb:
     image: influxdb:2.7
     container_name: pulseone-influxdb
@@ -62,8 +61,8 @@ services:
       retries: 5
     networks:
       - pulseone_network
+    restart: unless-stopped
 
-  # RabbitMQ
   rabbitmq:
     image: rabbitmq:3-management
     container_name: pulseone-rabbitmq
@@ -82,21 +81,16 @@ services:
       retries: 5
     networks:
       - pulseone_network
+    restart: unless-stopped
 
-  # Backend (Node.js API 서버)
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile.dev
     container_name: pulseone-backend-dev
     working_dir: /app/backend
-    env_file:
-      - ./config/.env
-      - ./config/database.env
-      - ./config/redis.env
-      - ./config/timeseries.env
-      - ./config/messaging.env
     environment:
+      SKIP_COLLECTOR_CHECK: "true"
       NODE_ENV: development
       ENV_STAGE: ${ENV_STAGE:-dev}
       BACKEND_PORT: 3000
@@ -119,24 +113,15 @@ services:
         condition: service_healthy
     networks:
       - pulseone_network
+    restart: unless-stopped
     command: >
       sh -c '
         echo "🚀 PulseOne Backend Starting..."
-        
-        # 데이터 디렉토리 생성
         mkdir -p /app/data/db /app/data/backup /app/data/logs /app/data/temp
-        
-        # npm 의존성 설치
-        if [ ! -d node_modules ]; then
-          echo "📦 Installing npm dependencies..."
-          npm install
-        fi
-        
-        echo "🚀 Starting backend on port $BACKEND_PORT..."
+        if [ ! -d node_modules ]; then npm install; fi
         npm run dev
       '
 
-  # Frontend (React + TypeScript + Vite)
   frontend:
     build:
       context: ./frontend
@@ -159,21 +144,14 @@ services:
       - backend
     networks:
       - pulseone_network
+    restart: unless-stopped
     command: >
       sh -c '
         echo "🎨 PulseOne Frontend Starting..."
-        
-        # npm 의존성 설치
-        if [ ! -d node_modules ]; then
-          echo "📦 Installing npm dependencies..."
-          npm install
-        fi
-        
-        echo "🚀 Starting frontend development server..."
+        if [ ! -d node_modules ]; then npm install; fi
         npm run dev -- --host 0.0.0.0
       '
 
-  # 📚 Shared 라이브러리 빌드 서비스
   shared-libs:
     build:
       context: .
@@ -186,28 +164,15 @@ services:
     command: >
       bash -c '
         echo "📚 Building PulseOne Shared Libraries..."
-        echo "========================================"
-        
-        # 헤더 파일 문법 테스트
-        echo "🔍 Testing header files..."
-        make test-headers || echo "Header test failed, continuing..."
-        
-        # 공유 라이브러리 빌드
-        echo "🔧 Building shared libraries..."
-        make all || echo "Build failed, but container will stay running"
-        
-        echo "✅ Shared libraries build process completed!"
-        if [ -d lib/ ]; then
-          ls -la lib/
-        fi
-        
-        # 무한 대기 (다른 서비스에서 라이브러리 사용 가능하도록)
+        make test-headers || true
+        make all || true
+        ls -la lib/ || true
         tail -f /dev/null
       '
     networks:
       - pulseone_network
+    restart: unless-stopped
 
-  # 🔧 Collector (C++ 데이터 수집 엔진)
   collector:
     build:
       context: .
@@ -216,50 +181,34 @@ services:
     tty: true
     stdin_open: true
     working_dir: /app/core/collector
-    env_file:
-      - ./config/.env
-      - ./config/database.env
-      - ./config/redis.env
-      - ./config/timeseries.env
-      - ./config/messaging.env
     environment:
-      # Build 관련 환경변수
       BUILD_TYPE: Debug
       LOG_LEVEL: debug
       ENV_STAGE: ${ENV_STAGE:-dev}
       AUTO_BUILD: "true"
       AUTO_RUN: "false"
-      
-      # Shared 라이브러리 경로
       SHARED_LIB_DIR: /app/core/shared/lib
       SHARED_INCLUDE_DIR: /app/core/shared/include
-      
-      # 데이터베이스 설정
+      PULSEONE_CONFIG_DIR: /app/config
+      DATA_DIR: /app/data
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
       POSTGRES_DB: ${POSTGRES_DB:-pulseone}
-      
       REDIS_PRIMARY_HOST: redis
       REDIS_PRIMARY_PORT: 6379
-      
-      SQLITE_PATH: /app/data/pulseone.db
+      SQLITE_PATH: /app/data/db/pulseone.db
       DATABASE_TYPE: sqlite
-      
-      # InfluxDB
       INFLUXDB_HOST: influxdb
       INFLUXDB_PORT: 8086
       INFLUXDB_TOKEN: ${INFLUX_TOKEN:-my-super-secret-auth-token}
       INFLUXDB_ORG: ${INFLUX_ORG:-pulseone}
       INFLUXDB_BUCKET: ${INFLUX_BUCKET:-timeseries}
-      
-      # RabbitMQ
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: ${RABBITMQ_USER:-rabbitmq}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbitmq123}
-      
     volumes:
       - ./core:/app/core
       - ./config:/app/config
@@ -282,110 +231,28 @@ services:
       - pulseone_network
     ports:
       - "8080:8080"
+    restart: unless-stopped
     command: >
       bash -c '
         echo "🔧 PulseOne Collector Development Environment"
-        echo "=============================================="
-        
-        # API Key 로드
         if [ -f /app/secrets/anthropic_api_key ]; then
           export ANTHROPIC_API_KEY=$(cat /app/secrets/anthropic_api_key)
-          echo "✅ Claude Code API Key loaded"
         fi
-        
-        echo "📋 System Info:"
-        echo "  OS: $(uname -s) $(uname -r)"
-        echo "  Compiler: $(g++ --version | head -n1)"
-        echo "  Build Type: $BUILD_TYPE"
-        echo "  Working Dir: $(pwd)"
-        
-        # 🔧 빌드 디렉토리 자동 생성
-        echo "📁 Creating build directories..."
         create-build-dirs.sh
-        
-        # Shared 라이브러리 확인
-        echo "📚 Shared Libraries Status:"
-        if [ -d "/app/core/shared/lib" ] && [ "$(ls -A /app/core/shared/lib 2>/dev/null)" ]; then
-          echo "  ✅ Shared libraries found:"
-          ls -la /app/core/shared/lib/ | grep "\.a$" || echo "  ⚠️ No .a files yet"
-        else
-          echo "  ⚠️ Waiting for shared libraries to build..."
-          sleep 10
-        fi
-        
-        # 데이터베이스 설정 확인
-        echo "🗄️ Database Configuration:"
-        echo "  DATABASE_TYPE: $DATABASE_TYPE"
-        echo "  SQLITE_PATH: $SQLITE_PATH"
-        echo "  REDIS_HOST: $REDIS_PRIMARY_HOST:$REDIS_PRIMARY_PORT"
-        
-        # SQLite 파일 준비
         if [ ! -f "$SQLITE_PATH" ]; then
-          echo "📝 Creating SQLite file..."
           mkdir -p $(dirname "$SQLITE_PATH")
           touch "$SQLITE_PATH"
         fi
-        
-        # 서비스 연결 확인
-        echo "🌐 Service Connectivity:"
-        timeout 5 bash -c "</dev/tcp/postgres/5432" 2>/dev/null && echo "  ✅ PostgreSQL" || echo "  ❌ PostgreSQL"
-        timeout 5 bash -c "</dev/tcp/$REDIS_PRIMARY_HOST/$REDIS_PRIMARY_PORT" 2>/dev/null && echo "  ✅ Redis" || echo "  ❌ Redis"
-        timeout 5 bash -c "</dev/tcp/influxdb/8086" 2>/dev/null && echo "  ✅ InfluxDB" || echo "  ❌ InfluxDB"
-        timeout 5 bash -c "</dev/tcp/rabbitmq/5672" 2>/dev/null && echo "  ✅ RabbitMQ" || echo "  ❌ RabbitMQ"
-        
-        # httplib 확인
-        echo "🔍 Library Status:"
         test-httplib.sh
         check-deps.sh
-        
-        # 자동 빌드
         if [ "$AUTO_BUILD" = "true" ]; then
-          echo "🔨 Starting automatic build..."
-          
-          echo "🔧 Building collector with shared libraries..."
           make clean 2>/dev/null || true
-          
-          if make debug \
-            REDIS_HOST=$REDIS_PRIMARY_HOST \
-            POSTGRES_HOST=$POSTGRES_HOST \
-            INFLUX_HOST=$INFLUXDB_HOST \
-            SHARED_LIB_DIR=$SHARED_LIB_DIR \
-            SHARED_INCLUDE_DIR=$SHARED_INCLUDE_DIR; then
-            echo "✅ Build successful!"
-            
-            if [ "$AUTO_RUN" = "true" ]; then
-              echo "🚀 Starting collector..."
-              make run
-            else
-              echo "💡 Build completed. Use make run to start collector."
-            fi
-          else
-            echo "❌ Build failed. Check the error messages above."
-            echo "💡 Container will stay running for debugging."
-          fi
+          make debug SHARED_LIB_DIR=$SHARED_LIB_DIR SHARED_INCLUDE_DIR=$SHARED_INCLUDE_DIR || true
         fi
-        
-        echo ""
-        echo "🚀 Available Commands:"
-        echo "  make clean && make debug   - Clean and build"
-        echo "  make run                   - Run collector"
-        echo "  check-deps.sh              - Check dependencies"
-        echo "  test-httplib.sh            - Test httplib"
-        echo ""
         echo "🔧 PulseOne Collector Ready!"
-        echo "💡 Use: docker exec -it pulseone-collector-dev bash"
-        
-        # 무한 대기 (컨테이너 유지)
         tail -f /dev/null
       '
-    healthcheck:
-      test: ["CMD-SHELL", "test -f bin/collector || echo 'Container running'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
 
-  # 🌐 Export Gateway (C++ 외부 연동 엔진)
   export-gateway:
     build:
       context: .
@@ -394,47 +261,46 @@ services:
     tty: true
     stdin_open: true
     working_dir: /app/core/export-gateway
-    env_file:
-      - ./config/.env
-      - ./config/database.env
-      - ./config/redis.env
     environment:
-      # Build 관련 환경변수
       BUILD_TYPE: Debug
       LOG_LEVEL: debug
       ENV_STAGE: ${ENV_STAGE:-dev}
       AUTO_BUILD: "false"
-      
-      # Shared 라이브러리 경로
       SHARED_LIB_DIR: /app/core/shared/lib
       SHARED_INCLUDE_DIR: /app/core/shared/include
-      
-      # 외부 연동 설정
-      EXPORT_MODE: development
-      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
-      
-      # Redis (읽기 전용)
+      PULSEONE_CONFIG_DIR: /app/config
+      DATA_DIR: /app/data
+      SQLITE_DB_PATH: /app/data/db/pulseone.db
+      LOG_FILE_PATH: /app/logs
+      DATABASE_TYPE: SQLITE
+      REDIS_PRIMARY_ENABLED: "true"
       REDIS_PRIMARY_HOST: redis
       REDIS_PRIMARY_PORT: 6379
-      REDIS_PRIMARY_DB: ${REDIS_PRIMARY_DB:-0}
-      
-      # PostgreSQL (읽기 전용)
+      REDIS_PRIMARY_DB: 0
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
       POSTGRES_DB: ${POSTGRES_DB:-pulseone}
-      
+      CSP_GATEWAY_ENABLED: "true"
+      CSP_GATEWAY_DEBUG_MODE: "true"
+      CSP_GATEWAY_BUILDING_ID: "1001"
+      CSP_USE_DYNAMIC_TARGETS: "true"
+      CSP_BATCH_PROCESSING_ENABLED: "true"
+      CSP_BATCH_SIZE: "100"
+      EXPORT_MODE: development
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
     volumes:
       - ./core:/app/core
       - ./config:/app/config
-      - ./secrets:/app/secrets
+      - ./data:/app/data
       - ./logs:/app/logs
+      - ./secrets:/app/secrets
       - shared_libs:/app/core/shared/lib
+      - export_gateway_build:/app/core/export-gateway/build
+      - export_gateway_bin:/app/core/export-gateway/bin
     depends_on:
       shared-libs:
-        condition: service_started
-      collector:
         condition: service_started
       redis:
         condition: service_healthy
@@ -444,55 +310,22 @@ services:
       - pulseone_network
     ports:
       - "8081:8081"
+      - "18080:18080"
+    restart: unless-stopped
     command: >
       bash -c '
-        echo "🌐 PulseOne Export Gateway Development Environment"
-        echo "================================================="
-        
-        echo "📋 Export Gateway Info:"
-        echo "  Working Dir: $(pwd)"
-        echo "  Export Mode: $EXPORT_MODE"
-        echo "  AWS Region: $AWS_REGION"
-        
-        # Shared 라이브러리 확인
-        echo "📚 Shared Libraries Status:"
-        if [ -d "/app/core/shared/lib" ] && [ "$(ls -A /app/core/shared/lib 2>/dev/null)" ]; then
-          echo "  ✅ Shared libraries available"
-          ls -la /app/core/shared/lib/
-        else
-          echo "  ⚠️ Waiting for shared libraries..."
-          sleep 10
-        fi
-        
-        # 의존 서비스 연결 확인
-        echo "🌐 Dependency Services:"
-        timeout 5 bash -c "</dev/tcp/redis/6379" 2>/dev/null && echo "  ✅ Redis (data source)" || echo "  ❌ Redis"
-        timeout 5 bash -c "</dev/tcp/postgres/5432" 2>/dev/null && echo "  ✅ PostgreSQL (config)" || echo "  ❌ PostgreSQL"
-        
-        # Collector 데이터 확인
-        echo "📊 Data Source Status:"
-        if timeout 3 redis-cli -h redis ping >/dev/null 2>&1; then
-          echo "  📈 Redis connection successful"
-        else
-          echo "  ❌ Redis connection failed"
-        fi
-        
-        echo ""
-        echo "🚀 Export Gateway Development Focus:"
-        echo "  🎯 C# CSPGateway porting to C++"
-        echo "  📊 Alarm priority processing (CRITICAL → HIGH → MEDIUM → LOW)"
-        echo "  ☁️  AWS S3 integration"
-        echo "  🔄 API retry logic"
-        echo "  📈 Real-time statistics monitoring"
-        echo ""
-        echo "🌐 PulseOne Export Gateway Ready!"
-        echo "💡 Use: docker exec -it pulseone-export-gateway-dev bash"
-        
-        # 무한 대기
+        echo "🌐 Export Gateway Starting..."
+        echo "Config: $PULSEONE_CONFIG_DIR"
+        echo "Data: $DATA_DIR"
+        echo "DB: $SQLITE_DB_PATH"
+        ls -la /app/data/db/ || echo "No db directory"
+        ls -la /app/config/ || echo "No config directory"
+        mount | grep /app/data
+        echo "🌐 Export Gateway Ready!"
         tail -f /dev/null
       '
     healthcheck:
-      test: ["CMD-SHELL", "echo 'Export Gateway container running'"]
+      test: ["CMD-SHELL", "test -d /app/data"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -508,3 +341,5 @@ volumes:
   influxdb_config:
   rabbitmq_data:
   shared_libs:
+  export_gateway_build:
+  export_gateway_bin:
