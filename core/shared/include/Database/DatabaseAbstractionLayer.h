@@ -1,5 +1,5 @@
 // =============================================================================
-// collector/include/Database/DatabaseAbstractionLayer.h
+// core/shared/include/Database/DatabaseAbstractionLayer.h
 // 🎯 올바른 DB 추상화 - 헤더 파일 (선언만)
 // =============================================================================
 
@@ -10,12 +10,25 @@
 #include <vector>
 #include <map>
 #include <memory>
+#include <chrono>
+#include <iomanip>
 
 // Forward declarations
 class DatabaseManager;
 
 namespace PulseOne {
 namespace Database {
+
+/**
+ * @brief SQL 구문 타입 열거형
+ */
+enum class SQLStatementType {
+    DDL,      // CREATE, ALTER, DROP, TRUNCATE 등
+    DML,      // SELECT, INSERT, UPDATE, DELETE
+    DCL,      // GRANT, REVOKE
+    TCL,      // COMMIT, ROLLBACK, SAVEPOINT
+    UNKNOWN
+};
 
 /**
  * @brief DB별 SQL 방언(Dialect) 처리 인터페이스
@@ -212,6 +225,13 @@ private:
     
     void initializeDialect();
     
+    /**
+     * @brief SQL 구문 타입 판별
+     * @param query SQL 쿼리
+     * @return SQL 구문 타입
+     */
+    SQLStatementType detectStatementType(const std::string& query);
+    
     std::string adaptQuery(const std::string& query);
     std::string adaptUpsertQuery(const std::string& query);
     std::string adaptBooleanValues(const std::string& query);
@@ -232,6 +252,7 @@ private:
     std::string trimColumn(const std::string& column);
     std::string extractTableNameFromQuery(const std::string& query);
     std::vector<std::string> getTableColumnsFromSchema(const std::string& table_name);
+
 private:
     // =======================================================================
     // 멤버 변수들

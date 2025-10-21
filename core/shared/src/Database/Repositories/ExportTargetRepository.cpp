@@ -533,8 +533,26 @@ std::map<std::string, std::string> ExportTargetRepository::entityToParams(
 bool ExportTargetRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
-        return db_layer.executeNonQuery(SQL::ExportTarget::CREATE_TABLE);
-    } catch (...) {
+        
+        // executeCreateTable 사용 (테이블 존재 여부 자동 확인)
+        bool success = db_layer.executeCreateTable(SQL::ExportTarget::CREATE_TABLE);
+        
+        if (success) {
+            if (logger_) {
+                logger_->Debug("ExportTargetRepository::ensureTableExists - Table ready");
+            }
+        } else {
+            if (logger_) {
+                logger_->Error("ExportTargetRepository::ensureTableExists - executeCreateTable returned false");
+            }
+        }
+        
+        return success;
+        
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetRepository::ensureTableExists failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
