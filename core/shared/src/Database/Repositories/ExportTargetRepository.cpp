@@ -1,6 +1,7 @@
 /**
  * @file ExportTargetRepository.cpp
- * @brief Export Target Repository 구현 - 최종 수정 완료
+ * @brief Export Target Repository 구현 - 완전 수정 완료
+ * @note std::map 알파벳 정렬 문제 해결
  */
 
 #include "Database/Repositories/ExportTargetRepository.h"
@@ -26,11 +27,33 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findAll() {
         for (const auto& row : results) {
             try {
                 entities.push_back(mapRowToEntity(row));
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                if (logger_) {
+                    logger_->Error("ExportTargetRepository::findAll - Failed to map row: " + std::string(e.what()));
+                    std::string row_info = "Row data: ";
+                    for (const auto& [key, value] : row) {
+                        row_info += key + "=" + value.substr(0, 50) + " ";
+                    }
+                    logger_->Debug(row_info);
+                }
+            } catch (...) {
+                if (logger_) {
+                    logger_->Error("ExportTargetRepository::findAll - Unknown exception while mapping row");
+                }
+            }
+        }
+        
+        if (logger_) {
+            logger_->Info("ExportTargetRepository::findAll - Successfully mapped " + 
+                         std::to_string(entities.size()) + " out of " + 
+                         std::to_string(results.size()) + " rows");
         }
         
         return entities;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetRepository::findAll failed: " + std::string(e.what()));
+        }
         return {};
     }
 }
@@ -79,10 +102,28 @@ bool ExportTargetRepository::save(ExportTargetEntity& entity) {
         auto params = entityToParams(entity);
         std::string query = SQL::ExportTarget::INSERT;
         
-        for (const auto& param : params) {
+        // ✅ INSERT 쿼리의 컬럼 순서대로 파라미터 치환
+        // INSERT INTO export_targets (
+        //     profile_id, name, target_type, description, is_enabled, config,
+        //     export_mode, export_interval, batch_size
+        // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        
+        std::vector<std::string> insert_order = {
+            "profile_id",
+            "name",
+            "target_type",
+            "description",
+            "is_enabled",
+            "config",
+            "export_mode",
+            "export_interval",
+            "batch_size"
+        };
+        
+        for (const auto& key : insert_order) {
             size_t pos = query.find('?');
             if (pos != std::string::npos) {
-                query.replace(pos, 1, "'" + param.second + "'");
+                query.replace(pos, 1, "'" + params[key] + "'");
             }
         }
         
@@ -97,7 +138,10 @@ bool ExportTargetRepository::save(ExportTargetEntity& entity) {
         }
         
         return success;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetRepository::save failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
@@ -111,13 +155,27 @@ bool ExportTargetRepository::update(const ExportTargetEntity& entity) {
         auto params = entityToParams(entity);
         std::string query = SQL::ExportTarget::UPDATE;
         
-        for (const auto& param : params) {
+        // ✅ UPDATE 쿼리의 SET 절 순서대로 파라미터 치환
+        std::vector<std::string> update_order = {
+            "profile_id",
+            "name",
+            "target_type",
+            "description",
+            "is_enabled",
+            "config",
+            "export_mode",
+            "export_interval",
+            "batch_size"
+        };
+        
+        for (const auto& key : update_order) {
             size_t pos = query.find('?');
             if (pos != std::string::npos) {
-                query.replace(pos, 1, "'" + param.second + "'");
+                query.replace(pos, 1, "'" + params[key] + "'");
             }
         }
         
+        // WHERE id = ? 치환
         size_t pos = query.find('?');
         if (pos != std::string::npos) {
             query.replace(pos, 1, std::to_string(entity.getId()));
@@ -131,7 +189,10 @@ bool ExportTargetRepository::update(const ExportTargetEntity& entity) {
         }
         
         return success;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("ExportTargetRepository::update failed: " + std::string(e.what()));
+        }
         return false;
     }
 }
@@ -294,7 +355,6 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByEnabled(bool enabl
             return {};
         }
         
-        // ✅ FIND_BY_ENABLED 사용 (파라미터 필요: WHERE is_enabled = ?)
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTarget::FIND_BY_ENABLED,
             enabled ? "1" : "0"
@@ -354,7 +414,6 @@ bool ExportTargetRepository::updateStatistics(
         
         std::string query = SQL::ExportTarget::UPDATE_STATISTICS;
         
-        // 7개 플레이스홀더를 순서대로 치환
         query = RepositoryHelpers::replaceParameter(query, success ? "1" : "0");
         query = RepositoryHelpers::replaceParameter(query, success ? "0" : "1");
         query = RepositoryHelpers::replaceParameter(query, success ? "1" : "0");
@@ -398,7 +457,6 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
     try {
         auto it = row.end();
         
-        // 기본 식별 정보
         it = row.find("id");
         if (it != row.end() && !it->second.empty()) {
             entity.setId(std::stoi(it->second));
@@ -424,7 +482,6 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
             entity.setDescription(it->second);
         }
         
-        // 상태 및 설정
         it = row.find("is_enabled");
         if (it != row.end() && !it->second.empty()) {
             entity.setEnabled(std::stoi(it->second) != 0);
@@ -450,7 +507,6 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
             entity.setBatchSize(std::stoi(it->second));
         }
         
-        // 통계 데이터 (uint64_t)
         it = row.find("total_exports");
         if (it != row.end() && !it->second.empty()) {
             entity.setTotalExports(std::stoull(it->second));
@@ -471,7 +527,6 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
             entity.setAvgExportTimeMs(std::stoi(it->second));
         }
         
-        // 타임스탬프 필드들 (optional<time_point>)
         it = row.find("last_export_at");
         if (it != row.end() && !it->second.empty()) {
             try {
@@ -500,9 +555,6 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
         if (it != row.end()) {
             entity.setLastError(it->second);
         }
-        
-        // 🔥 BaseEntity 타임스탬프는 자동 관리되므로 건드리지 않음!
-        // created_at, updated_at은 BaseEntity가 알아서 처리
         
     } catch (const std::exception& e) {
         throw std::runtime_error("Failed to map row to ExportTargetEntity: " + 
@@ -533,8 +585,6 @@ std::map<std::string, std::string> ExportTargetRepository::entityToParams(
 bool ExportTargetRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
-        
-        // executeCreateTable 사용 (테이블 존재 여부 자동 확인)
         bool success = db_layer.executeCreateTable(SQL::ExportTarget::CREATE_TABLE);
         
         if (success) {
@@ -548,7 +598,6 @@ bool ExportTargetRepository::ensureTableExists() {
         }
         
         return success;
-        
     } catch (const std::exception& e) {
         if (logger_) {
             logger_->Error("ExportTargetRepository::ensureTableExists failed: " + std::string(e.what()));
@@ -563,9 +612,7 @@ int ExportTargetRepository::getTotalCount() {
             return 0;
         }
         
-        // countByConditions()를 조건 없이 호출 = 전체 카운트
         return countByConditions({});
-        
     } catch (const std::exception& e) {
         if (logger_) {
             logger_->Error("ExportTargetRepository::getTotalCount failed: " + 
