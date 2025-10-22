@@ -39,6 +39,7 @@ namespace Repositories {
     class ExportTargetRepository;
     class ExportTargetMappingRepository;
     class ExportLogRepository;
+    class ExportScheduleRepository;
 }
 
 /**
@@ -209,6 +210,15 @@ public:
         return export_log_repository_;
     }
 
+    std::shared_ptr<Repositories::ExportScheduleRepository> getExportScheduleRepository() {
+        std::lock_guard<std::mutex> lock(factory_mutex_);
+        if (!initialized_.load()) {
+            throw std::runtime_error("RepositoryFactory not initialized");
+        }
+        creation_count_.fetch_add(1);
+        return export_schedule_repository_;
+    }
+
     // =============================================================================
     // 통계 및 디버깅
     // =============================================================================
@@ -269,6 +279,7 @@ private:
     std::shared_ptr<Repositories::ExportTargetRepository> export_target_repository_;
     std::shared_ptr<Repositories::ExportTargetMappingRepository> export_target_mapping_repository_;
     std::shared_ptr<Repositories::ExportLogRepository> export_log_repository_;
+    std::shared_ptr<Repositories::ExportScheduleRepository> export_schedule_repository_;
     
     // 상태 관리
     std::atomic<bool> initialized_{false};

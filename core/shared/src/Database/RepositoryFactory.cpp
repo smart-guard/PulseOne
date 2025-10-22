@@ -30,6 +30,8 @@
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/ExportTargetMappingRepository.h"
 #include "Database/Repositories/ExportLogRepository.h"
+#include "Database/Repositories/ExportScheduleRepository.h"
+
 
 // ✅ 필수 STL 헤더들
 #include <map>
@@ -319,6 +321,13 @@ bool RepositoryFactory::createRepositoryInstances() {
             return false;
         }
         logger_->Info("✅ ExportLogRepository created");
+
+        export_schedule_repository_ = std::make_shared<Repositories::ExportScheduleRepository>();
+        if (!export_schedule_repository_) {
+            logger_->Error("Failed to create ExportScheduleRepository");
+            return false;
+        }
+        logger_->Info("✅ ExportScheduleRepository created");
         
         logger_->Info("All repository instances created successfully");
         return true;
