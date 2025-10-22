@@ -1,5 +1,6 @@
 # =============================================================================
 # shared/Makefile - PulseOne 공유 라이브러리 (OpenSSL + Security + Data 지원)
+# 🔥 Redis 활성화 수정 완료 (HAVE_REDIS=1 플래그 추가)
 # =============================================================================
 
 # 플랫폼 감지
@@ -82,8 +83,10 @@ ifeq ($(HAS_NLOHMANN_JSON),1)
     CXXFLAGS += -DHAS_NLOHMANN_JSON
 endif
 
+# 🔥🔥🔥 Redis 플래그 수정 (핵심!)
 ifeq ($(HAS_HIREDIS),1)
-    CXXFLAGS += -DHAS_HIREDIS
+    CXXFLAGS += -DHAS_HIREDIS -DHAVE_REDIS=1
+    $(info ✅ Redis enabled: -DHAVE_REDIS=1)
 endif
 
 # 🔥 OpenSSL 컴파일 플래그 (가장 중요!)
@@ -282,6 +285,25 @@ else
 endif
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+# 🔥 Redis 설정 확인 타겟 추가
+redis-check:
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "🔴 Redis/hiredis 설정 확인 (Shared 라이브러리)"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "HAS_HIREDIS = $(HAS_HIREDIS)"
+ifeq ($(HAS_HIREDIS),1)
+	@echo "✅ hiredis 활성화됨"
+	@echo "   컴파일 플래그 확인:"
+	@echo "$(CXXFLAGS)" | grep -q "DHAVE_REDIS=1" && echo "     ✅ -DHAVE_REDIS=1 적용됨" || echo "     ❌ -DHAVE_REDIS=1 누락!"
+	@echo "$(CXXFLAGS)" | grep -q "DHAS_HIREDIS" && echo "     ✅ -DHAS_HIREDIS 적용됨" || echo "     ❌ -DHAS_HIREDIS 누락!"
+	@pkg-config --exists hiredis && echo "   hiredis pkg-config: ✅ 사용 가능" || echo "   hiredis pkg-config: ❌ 없음"
+	@pkg-config --modversion hiredis 2>/dev/null && echo "   hiredis 버전: $$(pkg-config --modversion hiredis)" || echo "   버전 확인 불가"
+else
+	@echo "❌ hiredis 비활성화됨 - Redis가 시뮬레이션 모드로 동작!"
+	@echo "   해결: sudo apt-get install libhiredis-dev"
+endif
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
 # =============================================================================
 # 테스트 및 검증 (Data 헤더 추가!)
 # =============================================================================
@@ -397,6 +419,7 @@ help:
 	@echo "  make test-headers - Test header file syntax"
 	@echo "  make test-compile - Test compilation"
 	@echo "  make openssl-check - Check OpenSSL configuration"
+	@echo "  make redis-check  - Check Redis/hiredis configuration 🆕"
 	@echo ""
 	@echo -e "$(GREEN)Cross-Compilation:$(NC)"
 	@echo "  make windows-cross - Build for Windows (requires mingw-w64)"
@@ -409,6 +432,7 @@ help:
 	@echo ""
 	@echo -e "$(YELLOW)Current Platform: $(PLATFORM)$(NC)"
 	@echo -e "$(YELLOW)OpenSSL Status: $(if $(filter 1,$(HAS_OPENSSL)),✅ Enabled,❌ Disabled)$(NC)"
+	@echo -e "$(YELLOW)Redis Status: $(if $(filter 1,$(HAS_HIREDIS)),✅ Enabled with HAVE_REDIS=1,❌ Disabled)$(NC)"
 	@echo -e "$(YELLOW)Data Library: DataReader.cpp + DataWriter.cpp 🆕$(NC)"
 
 # =============================================================================
