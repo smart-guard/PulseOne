@@ -206,7 +206,11 @@ ScheduledExporter::getUpcomingSchedules() const {
     std::map<int, std::chrono::system_clock::time_point> upcoming;
     
     for (const auto& pair : active_schedules_) {
-        upcoming[pair.first] = pair.second.getNextRunAt();
+        // getNextRunAt()은 optional을 반환
+        auto next_run = pair.second.getNextRunAt();
+        if (next_run.has_value()) {
+            upcoming[pair.first] = next_run.value();
+        }
     }
     
     return upcoming;
@@ -443,7 +447,8 @@ std::vector<ExportDataPoint> ScheduledExporter::collectDataForSchedule(
         
         // 3. 각 매핑된 포인트의 데이터 조회
         for (const auto& mapping : mappings) {
-            if (!mapping.getIsEnabled()) continue;
+            // ✅ isEnabled() 사용
+            if (!mapping.isEnabled()) continue;
             
             auto point_data = fetchPointData(
                 mapping.getPointId(),
@@ -626,13 +631,19 @@ void ScheduledExporter::logExecutionResult(const ScheduleExecutionResult& result
         log.setTargetId(result.schedule_id); // schedule_id를 임시로 사용
         log.setTimestamp(std::chrono::system_clock::now());
         log.setStatus(result.success ? "success" : "failed");
-        log.setTotalRecords(result.total_points);
-        log.setSuccessRecords(result.exported_points);
-        log.setFailedRecords(result.failed_points);
-        log.setDuration(result.execution_time.count());
         
+        // ✅ ExportLogEntity에 setTotalRecords 등이 없으므로
+        // 메시지에 포함하거나 나중에 추가
+        std::string details = "Points: " + std::to_string(result.total_points) +
+                             ", Success: " + std::to_string(result.exported_points) +
+                             ", Failed: " + std::to_string(result.failed_points) +
+                             ", Duration: " + std::to_string(result.execution_time.count()) + "ms";
+        
+        // ErrorMessage 필드를 활용하여 상세 정보 저장
         if (!result.error_message.empty()) {
-            log.setErrorMessage(result.error_message);
+            log.setErrorMessage(result.error_message + " | " + details);
+        } else {
+            log.setErrorMessage(details);
         }
         
         log_repo_->save(log);
