@@ -723,10 +723,23 @@ bool ScheduledExporter::initializeDynamicTargetManager() {
     try {
         LogManager::getInstance().Info("DynamicTargetManager 초기화 중...");
         
-        // TODO: 실제 설정 파일 경로
+        // ✅ 수정: 빈 문자열로 초기화 (DB 모드 사용)
+        // CSPGateway와 동일한 방식
         dynamic_target_manager_ = std::make_unique<
-            PulseOne::CSP::DynamicTargetManager>("targets.json");
+            PulseOne::CSP::DynamicTargetManager>("");
         
+        LogManager::getInstance().Info("JSON 설정 파일 건너뜀 - DB 모드 사용");
+        
+        // ✅ DB에서 타겟 로드
+        if (loadTargetsFromDatabase()) {
+            LogManager::getInstance().Info(
+                "Dynamic Target System 초기화 성공 (DB 모드)");
+        } else {
+            LogManager::getInstance().Warn(
+                "DB에서 타겟 로드 실패 - 빈 타겟 리스트로 시작");
+        }
+        
+        // DynamicTargetManager 시작
         if (!dynamic_target_manager_->start()) {
             LogManager::getInstance().Error("DynamicTargetManager 시작 실패");
             return false;
@@ -736,11 +749,99 @@ bool ScheduledExporter::initializeDynamicTargetManager() {
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("DynamicTargetManager 초기화 실패: " + 
-            std::string(e.what()));
+        LogManager::getInstance().Error(
+            "DynamicTargetManager 초기화 실패: " + std::string(e.what()));
+        dynamic_target_manager_.reset();
         return false;
     }
 }
+
+bool ScheduledExporter::loadTargetsFromDatabase() {
+    try {
+        LogManager::getInstance().Info("DB에서 타겟 로드 중...");
+        
+        using namespace PulseOne::Database::Repositories;
+        using namespace PulseOne::Database::Entities;
+        using namespace PulseOne::CSP;
+        
+        // 1. ExportTargetRepository로 활성화된 타겟 조회
+        ExportTargetRepository target_repo;
+        auto entities = target_repo.findByEnabled(true);
+        
+        if (entities.empty()) {
+            LogManager::getInstance().Warn("활성화된 타겟이 없음");
+            return false;
+        }
+        
+        // 2. 각 Entity를 DynamicTarget으로 변환하여 등록
+        int loaded_count = 0;
+        for (const auto& entity : entities) {
+            try {
+                DynamicTarget target;
+                target.name = entity.getName();
+                target.type = entity.getTargetType();
+                target.enabled = entity.isEnabled();
+                target.priority = 0;  // 기본 우선순위
+                target.description = "";  // Entity에 description 없으면 빈 문자열
+                
+                // protocol_config JSON 파싱
+                try {
+                    std::string protocol_config = entity.getProtocolConfig();
+                    if (!protocol_config.empty()) {
+                        target.config = json::parse(protocol_config);
+                    } else {
+                        target.config = json::object();
+                    }
+                } catch (const json::parse_error& e) {
+                    LogManager::getInstance().Warn(
+                        "타겟 [" + entity.getName() + "] config 파싱 실패, 빈 객체 사용: " + 
+                        std::string(e.what()));
+                    target.config = json::object();
+                }
+                
+                // endpoint, auth 정보 config에 추가
+                if (!entity.getEndpoint().empty()) {
+                    target.config["endpoint"] = entity.getEndpoint();
+                }
+                if (!entity.getAuthType().empty()) {
+                    target.config["auth_type"] = entity.getAuthType();
+                }
+                // auth_credentials는 보안상 로그에 남기지 않음
+                
+                // DynamicTargetManager에 타겟 추가
+                if (dynamic_target_manager_->addTarget(target)) {
+                    loaded_count++;
+                    LogManager::getInstance().Info(
+                        "타겟 로드 성공: " + target.name + 
+                        " (타입: " + target.type + ")");
+                } else {
+                    LogManager::getInstance().Warn(
+                        "타겟 추가 실패: " + target.name + 
+                        " (중복 또는 지원되지 않는 타입)");
+                }
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().Error(
+                    "타겟 변환 실패 [" + entity.getName() + "]: " + 
+                    std::string(e.what()));
+                continue;
+            }
+        }
+        
+        LogManager::getInstance().Info(
+            "DB에서 " + std::to_string(loaded_count) + 
+            "개 타겟 로드 완료 (전체 " + std::to_string(entities.size()) + "개)");
+        
+        return loaded_count > 0;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error(
+            "DB 타겟 로드 중 예외 발생: " + std::string(e.what()));
+        return false;
+    }
+}
+
+
 
 } // namespace Schedule
 } // namespace PulseOne
