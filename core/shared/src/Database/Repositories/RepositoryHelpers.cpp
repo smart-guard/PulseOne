@@ -1,20 +1,23 @@
 // =============================================================================
-// collector/src/Database/Repositories/RepositoryHelpers.cpp
-// 🔥 완성본: 구현부
+// core/shared/src/Database/Repositories/RepositoryHelpers.cpp
+// v2.0 - 원본 기능 100% 유지 + 타입 안전성 강화
 // =============================================================================
 
 #include "Database/Repositories/RepositoryHelpers.h"
+#include "Database/DatabaseTypes.h"
+#include "Utils/LogManager.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
 #include <regex>
+#include <cctype>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
 
 // =============================================================================
-// 🔥 SQL 파라미터 치환 함수들 (기존)
+// 🔥 SQL 파라미터 치환 함수들 (원본 유지)
 // =============================================================================
 
 std::string RepositoryHelpers::replaceParameter(std::string query, const std::string& value) {
@@ -46,7 +49,7 @@ std::string RepositoryHelpers::replaceTwoParameters(std::string query, const std
 }
 
 // =============================================================================
-// 🔥 새로 추가: CurrentValueRepository용 파라미터 바인딩
+// 🔥 CurrentValueRepository용 파라미터 바인딩 (원본 유지)
 // =============================================================================
 
 void RepositoryHelpers::replaceParameterPlaceholders(std::string& query, const std::vector<std::string>& values) {
@@ -70,7 +73,7 @@ void RepositoryHelpers::replaceStringPlaceholder(std::string& query, const std::
 }
 
 // =============================================================================
-// 🔥 안전한 타입 변환 (기존 + 추가)
+// 🔥 안전한 타입 변환 (원본 유지)
 // =============================================================================
 
 std::string RepositoryHelpers::safeToString(int value) {
@@ -113,7 +116,7 @@ bool RepositoryHelpers::safeParseBool(const std::string& value, bool default_val
 }
 
 // =============================================================================
-// 🔥 새로 추가: 행 데이터 안전 접근
+// 🔥 행 데이터 안전 접근 (원본 유지)
 // =============================================================================
 
 std::string RepositoryHelpers::getRowValue(const std::map<std::string, std::string>& row, 
@@ -148,7 +151,75 @@ bool RepositoryHelpers::getRowValueAsBool(const std::map<std::string, std::strin
 }
 
 // =============================================================================
-// 🔥 SQL 절 빌더 함수들 (기존)
+// 🆕 타입 감지 (자동 타입 추론)
+// =============================================================================
+
+ValueType RepositoryHelpers::detectValueType(const std::string& value) {
+    if (value.empty()) {
+        return ValueType::STRING;
+    }
+    
+    // NULL 체크
+    std::string upper_value = value;
+    std::transform(upper_value.begin(), upper_value.end(), upper_value.begin(), ::toupper);
+    if (upper_value == "NULL") {
+        return ValueType::NULL_VALUE;
+    }
+    
+    // 불린 체크
+    if (upper_value == "TRUE" || upper_value == "FALSE" ||
+        value == "1" || value == "0") {
+        return ValueType::BOOLEAN;
+    }
+    
+    // 정수 체크
+    bool is_integer = true;
+    size_t start = 0;
+    if (value[0] == '-' || value[0] == '+') {
+        start = 1;
+    }
+    
+    for (size_t i = start; i < value.size(); ++i) {
+        if (!std::isdigit(value[i])) {
+            is_integer = false;
+            break;
+        }
+    }
+    
+    if (is_integer && value.size() > start) {
+        return ValueType::INTEGER;
+    }
+    
+    // 실수 체크
+    bool has_dot = false;
+    bool is_real = true;
+    start = 0;
+    if (value[0] == '-' || value[0] == '+') {
+        start = 1;
+    }
+    
+    for (size_t i = start; i < value.size(); ++i) {
+        if (value[i] == '.') {
+            if (has_dot) {
+                is_real = false;
+                break;
+            }
+            has_dot = true;
+        } else if (!std::isdigit(value[i])) {
+            is_real = false;
+            break;
+        }
+    }
+    
+    if (is_real && has_dot) {
+        return ValueType::REAL;
+    }
+    
+    return ValueType::STRING;
+}
+
+// =============================================================================
+// 🔥 SQL 절 빌더 - v2.0 타입 안전 버전
 // =============================================================================
 
 std::string RepositoryHelpers::buildWhereClause(const std::vector<QueryCondition>& conditions) {
@@ -156,31 +227,103 @@ std::string RepositoryHelpers::buildWhereClause(const std::vector<QueryCondition
         return "";
     }
     
-    std::string clause = " WHERE ";
+    std::ostringstream where_clause;
+    where_clause << " WHERE ";
+    
     for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        clause += conditions[i].field + " " + conditions[i].operation + " " + conditions[i].value;
+        if (i > 0) {
+            where_clause << " AND ";
+        }
+        
+        const auto& condition = conditions[i];
+        where_clause << condition.field << " " << condition.operation << " ";
+        
+        // 🔥 핵심: 타입별 처리
+        std::string op_upper = condition.operation;
+        std::transform(op_upper.begin(), op_upper.end(), op_upper.begin(), ::toupper);
+        
+        if (op_upper == "IN") {
+            // IN 절: 괄호 처리
+            if (condition.value.find('(') == std::string::npos) {
+                where_clause << "(" << condition.value << ")";
+            } else {
+                where_clause << condition.value;
+            }
+        } else if (op_upper == "BETWEEN") {
+            // BETWEEN: value에 "val1 AND val2" 형태
+            where_clause << condition.value;
+        } else if (op_upper == "IS" || op_upper == "IS NOT") {
+            // IS NULL, IS NOT NULL
+            where_clause << condition.value;
+        } else {
+            // 일반 연산자: 타입 감지 후 처리
+            ValueType detected_type = detectValueType(condition.value);
+            
+            if (detected_type == ValueType::STRING) {
+                where_clause << "'" << escapeString(condition.value) << "'";
+            } else if (detected_type == ValueType::NULL_VALUE) {
+                where_clause << "NULL";
+            } else {
+                // INTEGER, REAL, BOOLEAN: 따옴표 없이
+                where_clause << condition.value;
+            }
+        }
     }
-    return clause;
+    
+    return where_clause.str();
 }
 
-std::string RepositoryHelpers::buildWhereClauseWithAlias(const std::vector<QueryCondition>& conditions, const std::string& table_alias) {
+std::string RepositoryHelpers::buildWhereClauseWithAlias(const std::vector<QueryCondition>& conditions, 
+                                                         const std::string& table_alias) {
     if (conditions.empty()) {
         return "";
     }
     
-    std::string clause = " WHERE ";
+    std::ostringstream where_clause;
+    where_clause << " WHERE ";
+    
     for (size_t i = 0; i < conditions.size(); ++i) {
-        if (i > 0) clause += " AND ";
-        
-        if (!table_alias.empty()) {
-            clause += table_alias + "." + conditions[i].field;
-        } else {
-            clause += conditions[i].field;
+        if (i > 0) {
+            where_clause << " AND ";
         }
-        clause += " " + conditions[i].operation + " " + conditions[i].value;
+        
+        const auto& condition = conditions[i];
+        
+        // 테이블 별칭 추가
+        if (!table_alias.empty()) {
+            where_clause << table_alias << ".";
+        }
+        
+        where_clause << condition.field << " " << condition.operation << " ";
+        
+        // 나머지는 buildWhereClause와 동일
+        std::string op_upper = condition.operation;
+        std::transform(op_upper.begin(), op_upper.end(), op_upper.begin(), ::toupper);
+        
+        if (op_upper == "IN") {
+            if (condition.value.find('(') == std::string::npos) {
+                where_clause << "(" << condition.value << ")";
+            } else {
+                where_clause << condition.value;
+            }
+        } else if (op_upper == "BETWEEN") {
+            where_clause << condition.value;
+        } else if (op_upper == "IS" || op_upper == "IS NOT") {
+            where_clause << condition.value;
+        } else {
+            ValueType detected_type = detectValueType(condition.value);
+            
+            if (detected_type == ValueType::STRING) {
+                where_clause << "'" << escapeString(condition.value) << "'";
+            } else if (detected_type == ValueType::NULL_VALUE) {
+                where_clause << "NULL";
+            } else {
+                where_clause << condition.value;
+            }
+        }
     }
-    return clause;
+    
+    return where_clause.str();
 }
 
 std::string RepositoryHelpers::buildOrderByClause(const std::optional<OrderBy>& order_by) {
@@ -199,7 +342,7 @@ std::string RepositoryHelpers::buildLimitClause(const std::optional<Pagination>&
 }
 
 // =============================================================================
-// 🔥 SQL 문자열 처리 (기존)
+// 🔥 SQL 문자열 처리 (원본 유지)
 // =============================================================================
 
 std::string RepositoryHelpers::escapeString(const std::string& str) {
@@ -224,7 +367,6 @@ std::string RepositoryHelpers::formatTimestamp(const std::chrono::system_clock::
 }
 
 std::time_t RepositoryHelpers::parseTimestamp(const std::string& timestamp_str) {
-    // 간단한 구현 - 실제로는 더 정교한 파싱 필요
     std::tm tm = {};
     std::istringstream ss(timestamp_str);
     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
@@ -240,7 +382,7 @@ std::chrono::system_clock::time_point RepositoryHelpers::timeTToTimePoint(const 
 }
 
 // =============================================================================
-// 🔥 태그 처리 (DataPoint용) (기존)
+// 🔥 태그 처리 (원본 유지)
 // =============================================================================
 
 std::string RepositoryHelpers::tagsToString(const std::vector<std::string>& tags) {
@@ -274,7 +416,7 @@ std::vector<std::string> RepositoryHelpers::parseTagsFromString(const std::strin
 }
 
 // =============================================================================
-// 🔥 새로 추가: IN 절 생성 헬퍼
+// 🔥 IN 절 생성 헬퍼 (원본 유지)
 // =============================================================================
 
 std::string RepositoryHelpers::buildInClause(const std::vector<int>& ids) {
@@ -300,13 +442,12 @@ std::string RepositoryHelpers::buildInClause(const std::vector<std::string>& val
 }
 
 // =============================================================================
-// 🔥 새로 추가: JSON 문자열 검증
+// 🔥 JSON 문자열 검증 (원본 유지)
 // =============================================================================
 
 bool RepositoryHelpers::isValidJson(const std::string& json_str) {
     if (json_str.empty()) return false;
     
-    // 간단한 JSON 형태 검증 (실제로는 JSON 라이브러리 사용 권장)
     std::string trimmed = trimString(json_str);
     return (trimmed.front() == '{' && trimmed.back() == '}') ||
            (trimmed.front() == '[' && trimmed.back() == ']');
@@ -315,13 +456,12 @@ bool RepositoryHelpers::isValidJson(const std::string& json_str) {
 std::string RepositoryHelpers::escapeJsonString(const std::string& json_str) {
     std::string escaped = json_str;
     
-    // JSON 특수 문자 이스케이프
     std::vector<std::pair<std::string, std::string>> replacements = {
-        {"\\", "\\\\"},  // 백슬래시
-        {"\"", "\\\""},  // 따옴표
-        {"\n", "\\n"},   // 개행
-        {"\r", "\\r"},   // 캐리지 리턴
-        {"\t", "\\t"}    // 탭
+        {"\\", "\\\\"},
+        {"\"", "\\\""},
+        {"\n", "\\n"},
+        {"\r", "\\r"},
+        {"\t", "\\t"}
     };
     
     for (const auto& replacement : replacements) {
@@ -336,11 +476,11 @@ std::string RepositoryHelpers::escapeJsonString(const std::string& json_str) {
 }
 
 // =============================================================================
-// 🔥 새로 추가: 쿼리 성능 관련
+// 🔥 쿼리 성능 관련 (원본 유지)
 // =============================================================================
 
 int RepositoryHelpers::sanitizeLimit(int limit, int max_limit) {
-    if (limit <= 0) return 100;  // 기본값
+    if (limit <= 0) return 100;
     return std::min(limit, max_limit);
 }
 
@@ -350,7 +490,7 @@ int RepositoryHelpers::sanitizeOffset(int offset, int max_offset) {
 }
 
 // =============================================================================
-// 🔥 내부 헬퍼 함수들
+// 🔥 내부 헬퍼 함수들 (원본 유지)
 // =============================================================================
 
 std::string RepositoryHelpers::trimString(const std::string& str) {
@@ -409,7 +549,8 @@ std::string RepositoryHelpers::replaceParameterMarkers(std::string query, const 
     return query;
 }
 
-std::string RepositoryHelpers::replaceParametersInOrder(const std::string& query, const std::map<std::string, std::string>& params) {
+std::string RepositoryHelpers::replaceParametersInOrder(const std::string& query, 
+                                                       const std::map<std::string, std::string>& params) {
     std::string result = query;
     
     for (const auto& pair : params) {

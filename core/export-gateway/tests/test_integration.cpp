@@ -201,6 +201,9 @@ private:
         
         try {
             auto& factory = Database::RepositoryFactory::getInstance();
+            if (!factory.initialize()) {  // 🔥 이 줄이 필수!
+                throw std::runtime_error("RepositoryFactory 초기화 실패");
+            }
             auto target_repo = factory.getExportTargetRepository();
             
             if (!target_repo) {
