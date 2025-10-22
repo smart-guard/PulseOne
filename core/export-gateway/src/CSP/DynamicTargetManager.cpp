@@ -1074,8 +1074,12 @@ bool DynamicTargetManager::processTargetByIndex(
     result.success = false;
     
     try {
+        // =================================================================
+        // 1. 기본 검증
+        // =================================================================
         if (index >= targets_.size()) {
-            result.error_message = "Invalid target index";
+            result.error_message = "Invalid target index: " + std::to_string(index);
+            LogManager::getInstance().Error(result.error_message);
             return false;
         }
         
@@ -1083,37 +1087,54 @@ bool DynamicTargetManager::processTargetByIndex(
         result.target_name = target.name;
         result.target_type = target.type;
         
+        // Rate limit 체크
         if (!checkRateLimit()) {
             result.error_message = "Rate limit exceeded";
+            LogManager::getInstance().Warn("Rate limit exceeded for target: " + target.name);
             return false;
         }
         
+        // =================================================================
+        // 2. 핸들러 조회 및 초기화
+        // =================================================================
         auto handler_it = handlers_.find(target.type);
         if (handler_it == handlers_.end()) {
             result.error_message = "Handler not found for type: " + target.type;
+            LogManager::getInstance().Error(result.error_message);
             return false;
         }
         
+        // 설정 변수 확장 (alarm 정보로 {{variable}} 치환)
         json expanded_config = target.config;
         expandConfigVariables(expanded_config, alarm);
         
         auto& mutable_target = targets_[index];
         
+        // 핸들러 초기화 (최초 1회만)
         if (mutable_target.handler_initialized.load() == false) {
+            LogManager::getInstance().Info("Initializing handler for target: " + target.name);
             if (!handler_it->second->initialize(expanded_config)) {
                 result.error_message = "Handler initialization failed";
+                LogManager::getInstance().Error("Handler init failed: " + target.name);
                 return false;
             }
             mutable_target.handler_initialized.store(true);
         }
         
+        // =================================================================
+        // 3. 알람 전송 (핵심 로직)
+        // =================================================================
+        LogManager::getInstance().Debug("Sending alarm to target: " + target.name);
         result = handler_it->second->sendAlarm(alarm, expanded_config);
         
         auto end_time = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
             end_time - start_time);
+        result.response_time = duration;
         
-        // 통계 업데이트
+        // =================================================================
+        // 4. 통계 업데이트 (메모리 내 통계)
+        // =================================================================
         if (result.success) {
             mutable_target.success_count.fetch_add(1);
             mutable_target.consecutive_failures.store(0);
@@ -1121,32 +1142,41 @@ bool DynamicTargetManager::processTargetByIndex(
             mutable_target.last_success_time = std::chrono::system_clock::now();
             total_requests_.fetch_add(1);
             successful_requests_.fetch_add(1);
+            
+            LogManager::getInstance().Debug(
+                "✅ Target success: " + target.name + 
+                " (time: " + std::to_string(duration.count()) + "ms, " +
+                "status: " + std::to_string(result.status_code) + ")");
         } else {
             mutable_target.failure_count.fetch_add(1);
             mutable_target.consecutive_failures.fetch_add(1);
             mutable_target.last_failure_time = std::chrono::system_clock::now();
             
-            // 🔥 수정 1: last_error_message 제거 (구조체에 없음)
-            // mutable_target.last_error_message = result.error_message;  // ← 삭제
-            
+            // 연속 실패 5회 → 타겟 비활성화
             if (mutable_target.consecutive_failures.load() >= 5) {
                 mutable_target.healthy.store(false);
                 LogManager::getInstance().Warn(
-                    "타겟 비활성화 (연속 실패): " + target.name);
+                    "⚠️ Target marked unhealthy (5 consecutive failures): " + target.name);
             }
             
             total_requests_.fetch_add(1);
             failed_requests_.fetch_add(1);
+            
+            LogManager::getInstance().Warn(
+                "❌ Target failure: " + target.name + 
+                " - " + result.error_message);
         }
         
+        // 평균 응답 시간 업데이트 (지수 이동 평균)
         double current_avg = mutable_target.avg_response_time_ms.load();
         double new_avg = (current_avg * 0.8) + (duration.count() * 0.2);
         mutable_target.avg_response_time_ms.store(new_avg);
         
-        // Export Log 저장
+        // =================================================================
+        // 5. Export Log 저장 (DB 영구 저장)
+        // =================================================================
         if (expanded_config.value("save_log", true)) {
             try {
-                // 🔥 수정 2: 네임스페이스 명시
                 using namespace PulseOne::Database;
                 using namespace PulseOne::Database::Repositories;
                 using namespace PulseOne::Database::Entities;
@@ -1154,47 +1184,95 @@ bool DynamicTargetManager::processTargetByIndex(
                 ExportLogRepository log_repo;
                 ExportLogEntity log_entity;
                 
-                // 🔥 수정 3: log_type 설정
+                // log_type 설정 (소문자로 정규화)
                 std::string log_type = target.type;
                 std::transform(log_type.begin(), log_type.end(), 
                              log_type.begin(), ::tolower);
                 log_entity.setLogType(log_type);
                 
-                int target_id = expanded_config.value("id", 0);
+                // ✅ 핵심 수정: target.name으로 DB에서 실제 ID 조회
+                ExportTargetRepository target_repo;
+                auto target_entity = target_repo.findByName(target.name);
+                
+                int target_id = 0;
+                if (target_entity.has_value()) {
+                    target_id = target_entity->getId();
+                    LogManager::getInstance().Debug(
+                        "📍 Target ID resolved: " + target.name + 
+                        " → " + std::to_string(target_id));
+                } else {
+                    LogManager::getInstance().Warn(
+                        "⚠️ Failed to resolve target_id for: " + target.name + 
+                        ", export log will use target_id=0");
+                    // target_id = 0으로 저장 (나중에 수동 매핑 가능)
+                }
+                
                 log_entity.setTargetId(target_id);
+                
+                // 전송 결과 저장
                 log_entity.setStatus(result.success ? "success" : "failed");
                 log_entity.setHttpStatusCode(result.status_code);
                 log_entity.setProcessingTimeMs(static_cast<int>(duration.count()));
                 
+                // 에러 정보 저장
                 if (!result.success && !result.error_message.empty()) {
                     log_entity.setErrorMessage(result.error_message);
                 }
                 
+                // 응답 데이터 저장 (선택적)
                 if (!result.response_body.empty()) {
-                    log_entity.setResponseData(result.response_body);
+                    // 응답 크기 제한 (최대 4KB)
+                    std::string response = result.response_body;
+                    if (response.length() > 4096) {
+                        response = response.substr(0, 4093) + "...";
+                    }
+                    log_entity.setResponseData(response);
                 }
                 
-                if (!log_repo.save(log_entity)) {
+                // 클라이언트 정보 저장 (선택적)
+                json client_info = {
+                    {"target_name", target.name},
+                    {"target_type", target.type},
+                    {"handler_version", "v5.0"},
+                    {"alarm_level", alarm.alarm_level},
+                    {"point_name", alarm.point_name}
+                };
+                log_entity.setClientInfo(client_info.dump());
+                
+                // DB 저장
+                if (log_repo.save(log_entity)) {
+                    LogManager::getInstance().Debug(
+                        "💾 Export log saved: target=" + target.name + 
+                        ", target_id=" + std::to_string(target_id) +
+                        ", status=" + (result.success ? "success" : "failed"));
+                } else {
                     LogManager::getInstance().Warn(
-                        "Failed to save export log for target: " + target.name);
+                        "⚠️ Failed to save export log for target: " + target.name);
                 }
                 
             } catch (const std::exception& e) {
                 LogManager::getInstance().Error(
-                    "Exception saving export log: " + std::string(e.what()));
+                    "❌ Exception saving export log: " + std::string(e.what()) +
+                    " (target: " + target.name + ")");
+                // Export Log 저장 실패는 치명적이지 않으므로 계속 진행
             }
+        } else {
+            LogManager::getInstance().Debug(
+                "⏭️ Export log saving disabled for target: " + target.name);
         }
         
         return result.success;
         
     } catch (const std::exception& e) {
         result.success = false;
-        result.error_message = "processTargetByIndex 예외: " + std::string(e.what());
+        result.error_message = "processTargetByIndex exception: " + std::string(e.what());
         LogManager::getInstance().Error(
-            "processTargetByIndex 예외 발생: " + std::string(e.what()));
+            "💥 processTargetByIndex exception: " + std::string(e.what()) +
+            " (target_index: " + std::to_string(index) + ")");
         return false;
     }
 }
+
 
 bool DynamicTargetManager::checkRateLimit() {
     return true;  // 간단한 구현
