@@ -89,6 +89,20 @@ public:
     int getSuccessfulRuns() const { return successful_runs_; }
     int getFailedRuns() const { return failed_runs_; }
     
+    // Time getters (optional 처리)
+    std::optional<std::chrono::system_clock::time_point> getLastRunAt() const { 
+        return last_run_at_; 
+    }
+    std::optional<std::chrono::system_clock::time_point> getNextRunAt() const { 
+        return next_run_at_; 
+    }
+    std::optional<std::chrono::system_clock::time_point> getCreatedAt() const { 
+        return created_at_; 
+    }
+    std::optional<std::chrono::system_clock::time_point> getUpdatedAt() const { 
+        return updated_at_; 
+    }
+    
     // Setters (간결하게)
     void setProfileId(int id) { profile_id_ = id; markModified(); }
     void setTargetId(int id) { target_id_ = id; markModified(); }
