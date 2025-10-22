@@ -341,6 +341,8 @@ private:
      * @brief DynamicTargetManager 초기화
      */
     bool initializeDynamicTargetManager();
+
+    bool loadTargetsFromDatabase();
     
     // =========================================================================
     // 멤버 변수
