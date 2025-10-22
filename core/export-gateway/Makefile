@@ -1,6 +1,6 @@
 # =============================================================================
 # core/export-gateway/Makefile - PulseOne Export Gateway (크로스플랫폼)
-# 🔥 hiredis 링크 추가 완료 버전
+# 🔥 AlarmSubscriber & PeriodicExporter 추가 완료 버전
 # =============================================================================
 
 # 플랫폼 감지
@@ -229,6 +229,15 @@ NC = \033[0m
 # 소스 파일 및 오브젝트 파일
 # =============================================================================
 
+# 🆕 Alarm 디렉토리
+ALARM_SOURCES = $(wildcard $(SRC_DIR)/Alarm/*.cpp)
+ALARM_OBJECTS = $(ALARM_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+
+# 🆕 Schedule 디렉토리 (Periodic → Schedule로 변경)
+SCHEDULE_SOURCES = $(wildcard $(SRC_DIR)/Schedule/*.cpp)
+SCHEDULE_OBJECTS = $(SCHEDULE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+
+# 기존 디렉토리들
 CSP_SOURCES = $(wildcard $(SRC_DIR)/CSP/*.cpp)
 CSP_OBJECTS = $(CSP_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
@@ -241,7 +250,8 @@ UTILS_OBJECTS = $(UTILS_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 MAIN_SOURCES = $(wildcard $(SRC_DIR)/*.cpp)
 MAIN_OBJECTS = $(MAIN_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-ALL_OBJECTS = $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECTS)
+# 🔥 모든 오브젝트 파일 (Alarm, Schedule 추가)
+ALL_OBJECTS = $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECTS)
 
 TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)
 
@@ -265,7 +275,7 @@ release:
 
 $(BUILD_DIR) $(BIN_DIR):
 	@mkdir -p $@
-	@mkdir -p $(BUILD_DIR)/CSP $(BUILD_DIR)/Export $(BUILD_DIR)/Utils
+	@mkdir -p $(BUILD_DIR)/Alarm $(BUILD_DIR)/Schedule $(BUILD_DIR)/CSP $(BUILD_DIR)/Export $(BUILD_DIR)/Utils
 
 # =============================================================================
 # Shared 라이브러리 의존성 체크
@@ -307,6 +317,13 @@ $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
 	@echo -e "$(GREEN)🔗 Linking Export Gateway [$(BUILD_TYPE)]...$(NC)"
 	@$(CXX) $(ALL_OBJECTS) -o $@ $(LDFLAGS)
 	@echo -e "$(GREEN)✅ Export Gateway built: $@$(NC)"
+	@echo -e "$(BLUE)📊 Compiled modules:$(NC)"
+	@echo -e "  ✅ Alarm: $(words $(ALARM_OBJECTS)) files"
+	@echo -e "  ✅ Schedule: $(words $(SCHEDULE_OBJECTS)) files"
+	@echo -e "  ✅ CSP: $(words $(CSP_OBJECTS)) files"
+	@echo -e "  ✅ Export: $(words $(EXPORT_OBJECTS)) files"
+	@echo -e "  ✅ Utils: $(words $(UTILS_OBJECTS)) files"
+	@echo -e "  ✅ Main: $(words $(MAIN_OBJECTS)) files"
 
 # =============================================================================
 # 오브젝트 파일 컴파일
@@ -314,7 +331,7 @@ $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@mkdir -p $(dir $@)
-	@echo -e "$(YELLOW)⚙️ Compiling $< [$(BUILD_TYPE)]$(NC)"
+	@echo -e "$(YELLOW)⚙️  Compiling $< [$(BUILD_TYPE)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
@@ -345,13 +362,22 @@ help:
 	@echo "  make clean        - Clean build files"
 	@echo "  make help         - Show this help"
 	@echo ""
+	@echo "Modules:"
+	@echo "  📡 Alarm          - AlarmSubscriber (Redis Pub/Sub)"
+	@echo "  📅 Schedule       - ScheduledExporter (Cron-based scheduling)"
+	@echo "  🔌 CSP            - CSP Gateway & Protocol"
+	@echo "  📤 Export         - Export handlers"
+	@echo "  🛠️  Utils         - Utilities"
+	@echo ""
 	@echo "Current: Platform=$(PLATFORM), HAS_HIREDIS=$(HAS_HIREDIS), HAS_CURL=$(HAS_CURL), HAS_OPENSSL=$(HAS_OPENSSL)"
 	@echo ""
-	@echo -e "$(GREEN)🔥 Fixed linking errors:$(NC)"
-	@echo "  ✅ libpulseone-data linked (DataReader/DataWriter)"
-	@echo "  ✅ SQLite3 linked (DatabaseManager)"
+	@echo -e "$(GREEN)🔥 New features:$(NC)"
+	@echo "  ✅ AlarmSubscriber - Real-time alarm broadcasting"
+	@echo "  ✅ ScheduledExporter - DB-based Cron scheduling"
+	@echo "  ✅ ExportScheduleRepository - Schedule management"
 	@echo "  ✅ hiredis linked (Redis client)"
-	@echo "  ✅ Correct library order"
+	@echo "  ✅ libcurl linked (HTTP/S3)"
+	@echo "  ✅ OpenSSL linked (Signing)"
 
 .DEFAULT_GOAL := all
 
@@ -374,7 +400,7 @@ tests: $(TEST_BIN_DIR) $(TEST_TARGETS)
 $(TEST_BIN_DIR) $(TEST_BUILD_DIR):
 	@mkdir -p $@
 
-$(TEST_BIN_DIR)/test_integration: $(TEST_BUILD_DIR)/test_integration.o $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS)
+$(TEST_BIN_DIR)/test_integration: $(TEST_BUILD_DIR)/test_integration.o $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS)
 	@echo -e "🔗 Linking integration test..."
 	@$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo -e "✅ Integration test built: $@"
@@ -400,3 +426,21 @@ test: tests
 .PHONY: clean-tests
 clean-tests:
 	@rm -rf $(TEST_BUILD_DIR) $(TEST_BIN_DIR)
+
+# =============================================================================
+# 디버그 정보 출력
+# =============================================================================
+
+.PHONY: debug-vars
+debug-vars:
+	@echo "=== Source Files ==="
+	@echo "ALARM_SOURCES: $(ALARM_SOURCES)"
+	@echo "SCHEDULE_SOURCES: $(SCHEDULE_SOURCES)"
+	@echo "CSP_SOURCES: $(CSP_SOURCES)"
+	@echo ""
+	@echo "=== Object Files ==="
+	@echo "ALARM_OBJECTS: $(ALARM_OBJECTS)"
+	@echo "SCHEDULE_OBJECTS: $(SCHEDULE_OBJECTS)"
+	@echo ""
+	@echo "=== Total ==="
+	@echo "ALL_OBJECTS count: $(words $(ALL_OBJECTS))"
