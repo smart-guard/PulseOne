@@ -130,21 +130,79 @@ std::vector<std::map<std::string, std::string>> DatabaseAbstractionLayer::execut
 }
 
 // =============================================================================
-// 🎯 executeNonQuery - 표준 SQL을 DB 방언으로 변환 후 실행
+// 🎯 executeNonQuery - 자동 트랜잭션 관리 추가 (v2.0 - 핵심 수정!)
 // =============================================================================
 
 bool DatabaseAbstractionLayer::executeNonQuery(const std::string& query) {
     try {
-        // 표준 SQL을 DB 방언으로 변환
-        std::string adapted_query = adaptQuery(query);
+        // 1. 쿼리 타입 판별
+        std::string upper_query = query;
+        std::transform(upper_query.begin(), upper_query.end(), upper_query.begin(), ::toupper);
         
+        // 2. 트랜잭션 제어 구문인지 확인
+        bool is_transaction_control = 
+            (upper_query.find("BEGIN") == 0 || 
+             upper_query.find("COMMIT") == 0 || 
+             upper_query.find("ROLLBACK") == 0 ||
+             upper_query.find("SAVEPOINT") == 0);
+        
+        // 3. DDL/DCL 구문인지 확인
+        SQLStatementType stmt_type = detectStatementType(query);
+        bool is_ddl_dcl = (stmt_type == SQLStatementType::DDL || 
+                           stmt_type == SQLStatementType::DCL);
+        
+        // 4. 표준 SQL을 DB 방언으로 변환
+        std::string adapted_query = adaptQuery(query);
         LogManager::getInstance().Debug("DatabaseAbstractionLayer::executeNonQuery - Adapted query");
         
-        // DatabaseManager를 통해 실행
-        return db_manager_->executeNonQuery(adapted_query);
+        // 5. 자동 트랜잭션 필요 여부 판단
+        // - DML만 자동 트랜잭션 관리
+        // - TCL(트랜잭션 제어), DDL, DCL은 그대로 실행
+        bool needs_auto_transaction = !is_transaction_control && !is_ddl_dcl;
+        
+        if (needs_auto_transaction) {
+            // ✅ 자동 트랜잭션 시작
+            LogManager::getInstance().Debug("🔄 Auto-transaction: BEGIN");
+            if (!db_manager_->executeNonQuery("BEGIN TRANSACTION")) {
+                LogManager::getInstance().Warn("⚠️ Failed to start auto-transaction, continuing without it");
+                needs_auto_transaction = false; // 트랜잭션 없이 계속 진행
+            }
+        }
+        
+        // 6. 실제 쿼리 실행
+        bool success = db_manager_->executeNonQuery(adapted_query);
+        
+        // 7. 자동 트랜잭션 종료
+        if (needs_auto_transaction) {
+            if (success) {
+                // ✅ 성공 시 자동 커밋
+                LogManager::getInstance().Debug("✅ Auto-transaction: COMMIT");
+                if (!db_manager_->executeNonQuery("COMMIT")) {
+                    LogManager::getInstance().Error("❌ Failed to commit auto-transaction");
+                    db_manager_->executeNonQuery("ROLLBACK");
+                    return false;
+                }
+            } else {
+                // ✅ 실패 시 자동 롤백
+                LogManager::getInstance().Debug("🔙 Auto-transaction: ROLLBACK (query failed)");
+                db_manager_->executeNonQuery("ROLLBACK");
+            }
+        }
+        
+        return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("DatabaseAbstractionLayer::executeNonQuery failed: " + std::string(e.what()));
+        LogManager::getInstance().Error("DatabaseAbstractionLayer::executeNonQuery failed: " + 
+                                       std::string(e.what()));
+        
+        // ✅ 예외 발생 시 롤백 시도
+        try {
+            db_manager_->executeNonQuery("ROLLBACK");
+            LogManager::getInstance().Debug("🔙 Auto-transaction: ROLLBACK (exception)");
+        } catch (...) {
+            // 롤백 실패는 무시 (이미 에러 상태)
+        }
+        
         return false;
     }
 }
