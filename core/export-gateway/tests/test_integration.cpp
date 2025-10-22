@@ -508,75 +508,58 @@ private:
     
     void insertTestTargets() {
         std::string url = "http://localhost:18080/webhook";
-#ifdef HAVE_HTTPLIB
+    #ifdef HAVE_HTTPLIB
         if (mock_server_) {
             url = "http://localhost:" + std::to_string(mock_server_->getPort()) + "/webhook";
         }
-#endif
+    #endif
         
-        std::string create_table_sql = R"(
-            CREATE TABLE IF NOT EXISTS export_targets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                profile_id INTEGER,
-                name VARCHAR(100) NOT NULL UNIQUE,
-                target_type VARCHAR(20) NOT NULL,
-                description TEXT,
-                is_enabled BOOLEAN DEFAULT 1,
-                config TEXT NOT NULL,
-                export_mode VARCHAR(20) DEFAULT 'on_change',
-                export_interval INTEGER DEFAULT 0,
-                batch_size INTEGER DEFAULT 100,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        )";
+        // ========================================================================
+        // ✅ Repository 패턴으로 완전 재작성!
+        // ========================================================================
         
-        if (!db_manager_.executeNonQuery(create_table_sql)) {
-            throw std::runtime_error("테이블 생성 실패: export_targets");
-        }
+        using namespace PulseOne::Database::Repositories;
+        using namespace PulseOne::Database::Entities;
         
-        std::string create_log_table_sql = R"(
-            CREATE TABLE IF NOT EXISTS export_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                log_type VARCHAR(20) NOT NULL DEFAULT 'http',
-                service_id INTEGER,
-                target_id INTEGER,
-                mapping_id INTEGER,
-                point_id INTEGER,
-                source_value TEXT,
-                converted_value TEXT,
-                status VARCHAR(20) NOT NULL,
-                error_message TEXT,
-                error_code VARCHAR(50),
-                response_data TEXT,
-                http_status_code INTEGER,
-                processing_time_ms INTEGER,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                client_info TEXT,
-                FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE SET NULL
-            )
-        )";
+        // 1. ✅ Repository 생성 시 자동으로 테이블 생성됨!
+        //    (생성자에서 ensureTableExists() 호출)
+        ExportTargetRepository target_repo;
+        ExportLogRepository log_repo;
         
-        if (!db_manager_.executeNonQuery(create_log_table_sql)) {
-            throw std::runtime_error("테이블 생성 실패: export_logs");
-        }
+        LogManager::getInstance().Info("✅ Repository 초기화 완료 (테이블 자동 생성)");
         
-        LogManager::getInstance().Info("✅ export_targets, export_logs 테이블 준비 완료");
+        // 2. ExportTargetEntity 생성
+        ExportTargetEntity target_entity;
+        target_entity.setName(url);
+        target_entity.setTargetType("http");  // 소문자!
+        target_entity.setDescription("Test target for integration test");
+        target_entity.setEnabled(true);
         
+        // 3. Config JSON 생성
         json config = {
             {"url", url}, 
             {"method", "POST"}, 
-            {"content_type", "application/json"}
+            {"content_type", "application/json"},
+            {"save_log", true}  // ← 로그 저장 활성화
         };
         
-        std::string sql = 
-            "INSERT INTO export_targets (name, target_type, config, is_enabled) VALUES "
-            "('" + url + "', 'http', '" + config.dump() + "', 1);";
+        target_entity.setConfig(config.dump());
         
-        if (!db_manager_.executeNonQuery(sql)) {
-            throw std::runtime_error("테스트 타겟 삽입 실패");
+        // 4. ✅ Repository로 저장 (자동으로 ID 생성됨!)
+        if (!target_repo.save(target_entity)) {
+            throw std::runtime_error("테스트 타겟 삽입 실패 (Repository)");
         }
-        LogManager::getInstance().Info("✅ 테스트 타겟 삽입 완료 (name: " + url + ")");
+        
+        // 5. ✅ 저장 후 자동으로 ID가 entity에 설정됨!
+        int target_id = target_entity.getId();
+        
+        LogManager::getInstance().Info(
+            "✅ Repository로 테스트 타겟 삽입 완료 (name: " + url + 
+            ", id: " + std::to_string(target_id) + ")");
+        
+        // 6. ✅ DynamicTargetManager에 추가할 때 ID 포함
+        // gateway_->loadTargetsFromDatabase()를 호출하면
+        // 자동으로 config에 id가 포함되어 로드됨!
     }
     
     void cleanup() {
