@@ -327,64 +327,136 @@ bool CSPGateway::updateTargetEnabledStatus(const std::string& name, bool enabled
     }
 }
 
-void CSPGateway::updateExportTargetStats(const std::string& target_name, bool success, double response_time_ms) {
+/**
+ * @brief Export 타겟 통계 업데이트 및 로그 저장
+ * @param target_name 타겟 이름
+ * @param target_type 타겟 타입 (HTTP, HTTPS, S3, FILE 등)
+ * @param success 성공 여부
+ * @param response_time_ms 응답 시간 (밀리초)
+ */
+void CSPGateway::updateExportTargetStats(
+    const std::string& target_name,
+    const std::string& target_type,  // ✅ 추가된 파라미터
+    bool success,
+    double response_time_ms
+) {
     try {
         using namespace PulseOne::Database::Repositories;
         using namespace PulseOne::Database::Entities;
+        
+        // 1. 타겟 조회
         ExportTargetRepository target_repo;
         auto target = target_repo.findByName(target_name);
         if (!target.has_value()) {
             LogManager::getInstance().Warn("Target not found for stats update: " + target_name);
             return;
         }
+        
+        // 2. 로그 엔티티 생성
         ExportLogRepository log_repo;
         ExportLogEntity log_entity;
-        log_entity.setLogType("export");
+        
+        // ✅ 핵심 수정: target_type을 소문자로 정규화하여 log_type에 설정
+        std::string normalized_type = normalizeTargetType(target_type);
+        log_entity.setLogType(normalized_type);
+        
         log_entity.setTargetId(target->getId());
         log_entity.setStatus(success ? "success" : "failed");
         log_entity.setProcessingTimeMs(static_cast<int>(response_time_ms));
+        
         if (!success) {
             log_entity.setErrorMessage("Export failed");
         }
+        
+        // 3. 로그 저장
         if (!log_repo.save(log_entity)) {
             LogManager::getInstance().Warn("Failed to save export log for target: " + target_name);
+        } else {
+            LogManager::getInstance().Debug(
+                "Export log saved - target: " + target_name + 
+                ", type: " + normalized_type + 
+                ", status: " + (success ? "success" : "failed")
+            );
         }
+        
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("Exception updating target stats: " + std::string(e.what()));
     }
 }
 
+/**
+ * @brief 타겟 타입을 log_type 형식으로 정규화
+ * @param target_type 원본 타겟 타입 (HTTP, HTTPS, S3, FILE 등)
+ * @return 정규화된 타입 (http, s3, file)
+ */
+std::string CSPGateway::normalizeTargetType(const std::string& target_type) {
+    // 소문자로 변환
+    std::string normalized = target_type;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), 
+                   [](unsigned char c) { return std::tolower(c); });
+    
+    // HTTPS는 http로 통일
+    if (normalized == "https") {
+        normalized = "http";
+    }
+    
+    LogManager::getInstance().Debug("Normalized target type: " + target_type + " -> " + normalized);
+    
+    return normalized;
+}
+
 AlarmSendResult CSPGateway::taskAlarmSingleDynamic(const AlarmMessage& alarm_message) {
     try {
         LogManager::getInstance().Debug("Using Dynamic Target System for: " + alarm_message.nm);
+        
         auto start_time = std::chrono::high_resolution_clock::now();
         auto target_results = dynamic_target_manager_->sendAlarmToAllTargets(alarm_message);
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
         AlarmSendResult result;
         bool has_success = false;
         size_t successful_targets = 0;
+        
+        // 각 타겟 결과 처리
         for (const auto& target_result : target_results) {
             double response_time_ms = std::chrono::duration<double, std::milli>(target_result.response_time).count();
-            updateExportTargetStats(target_result.target_name, target_result.success, response_time_ms);
+            
+            // ✅ 핵심 수정: target_type 파라미터 추가
+            updateExportTargetStats(
+                target_result.target_name,
+                target_result.target_type,  // ✅ 추가 - 타겟 타입 전달
+                target_result.success,
+                response_time_ms
+            );
+            
             if (target_result.success) {
                 successful_targets++;
                 has_success = true;
+                
+                // HTTP/HTTPS 결과 처리
                 if (target_result.target_type == "HTTP" || target_result.target_type == "HTTPS") {
                     result.status_code = target_result.status_code;
                     result.response_body = target_result.response_body;
                 }
+                
+                // S3 결과 처리
                 if (target_result.target_type == "S3") {
                     result.s3_success = true;
                     result.s3_file_path = target_result.s3_object_key;
                 }
+                
+                // FILE 결과 처리
                 if (target_result.target_type == "FILE") {
                     result.s3_file_path = target_result.file_path;
                 }
             }
         }
+        
         result.success = has_success;
         result.response_time = duration;
+        
+        // 에러 메시지 수집
         if (!has_success || successful_targets < target_results.size()) {
             std::string error_msg = "Dynamic targets errors: ";
             bool first = true;
@@ -399,9 +471,16 @@ AlarmSendResult CSPGateway::taskAlarmSingleDynamic(const AlarmMessage& alarm_mes
                 result.error_message = error_msg;
             }
         }
+        
         updateStatsFromDynamicResults(target_results, static_cast<double>(duration.count()));
-        LogManager::getInstance().Debug("Dynamic target system processed " + std::to_string(target_results.size()) + " targets, " + std::to_string(successful_targets) + " successful");
+        
+        LogManager::getInstance().Debug(
+            "Dynamic target system processed " + std::to_string(target_results.size()) + 
+            " targets, " + std::to_string(successful_targets) + " successful"
+        );
+        
         return result;
+        
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("Exception in taskAlarmSingleDynamic: " + std::string(e.what()));
         AlarmSendResult result;

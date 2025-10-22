@@ -469,8 +469,12 @@ private:
      * @param success 성공 여부
      * @param response_time_ms 응답 시간 (밀리초)
      */
-    void updateExportTargetStats(const std::string& target_name, bool success, 
-                                double response_time_ms);
+    void updateExportTargetStats(
+        const std::string& target_name,
+        const std::string& target_type,  // ✅ 추가
+        bool success,
+        double response_time_ms
+    );
 
     /**
      * @brief export_logs 테이블에서 타겟 통계 집계
@@ -496,7 +500,8 @@ private:
      * @param hours 집계 시간 범위 (기본 24시간)
      * @return 통계 정보 (조회 실패 시 std::nullopt)
      */
-    std::optional<TargetStatistics> getTargetStatisticsFromLogs(int target_id, int hours = 24);                            
+    std::optional<TargetStatistics> getTargetStatisticsFromLogs(int target_id, int hours = 24);    
+    std::string normalizeTargetType(const std::string& target_type);                        
 };
 
 } // namespace CSP

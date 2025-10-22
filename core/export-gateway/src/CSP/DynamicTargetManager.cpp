@@ -12,6 +12,8 @@
 #include "CSP/FileTargetHandler.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
+#include "Database/Repositories/ExportLogRepository.h"
+#include "Database/Entities/ExportLogEntity.h"
 #include <fstream>
 #include <thread>
 #include <algorithm>
@@ -23,7 +25,8 @@
 
 namespace PulseOne {
 namespace CSP {
-
+using PulseOne::Database::Repositories::ExportLogRepository;
+using PulseOne::Database::Entities::ExportLogEntity;
 // =============================================================================
 // 생성자 및 소멸자
 // =============================================================================
@@ -1061,9 +1064,13 @@ void DynamicTargetManager::stopBackgroundThreads() {
     LogManager::getInstance().Info("백그라운드 스레드 종료 완료");
 }
 
-bool DynamicTargetManager::processTargetByIndex(size_t index, const AlarmMessage& alarm, TargetSendResult& result) {
-    auto start_time = std::chrono::steady_clock::now();
+
+bool DynamicTargetManager::processTargetByIndex(
+    size_t index, 
+    const AlarmMessage& alarm, 
+    TargetSendResult& result) {
     
+    auto start_time = std::chrono::steady_clock::now();
     result.success = false;
     
     try {
@@ -1090,10 +1097,8 @@ bool DynamicTargetManager::processTargetByIndex(size_t index, const AlarmMessage
         json expanded_config = target.config;
         expandConfigVariables(expanded_config, alarm);
         
-        // ✅ mutable_target 선언을 여기로 이동
         auto& mutable_target = targets_[index];
         
-        // 핸들러 초기화 (타겟마다 한 번만)
         if (mutable_target.handler_initialized.load() == false) {
             if (!handler_it->second->initialize(expanded_config)) {
                 result.error_message = "Handler initialization failed";
@@ -1105,22 +1110,31 @@ bool DynamicTargetManager::processTargetByIndex(size_t index, const AlarmMessage
         result = handler_it->second->sendAlarm(alarm, expanded_config);
         
         auto end_time = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time);
         
-        // 통계 업데이트 (mutable_target 이미 선언됨)
+        // 통계 업데이트
         if (result.success) {
             mutable_target.success_count.fetch_add(1);
             mutable_target.consecutive_failures.store(0);
             mutable_target.healthy.store(true);
+            mutable_target.last_success_time = std::chrono::system_clock::now();
             total_requests_.fetch_add(1);
             successful_requests_.fetch_add(1);
         } else {
             mutable_target.failure_count.fetch_add(1);
             mutable_target.consecutive_failures.fetch_add(1);
+            mutable_target.last_failure_time = std::chrono::system_clock::now();
+            
+            // 🔥 수정 1: last_error_message 제거 (구조체에 없음)
+            // mutable_target.last_error_message = result.error_message;  // ← 삭제
             
             if (mutable_target.consecutive_failures.load() >= 5) {
                 mutable_target.healthy.store(false);
+                LogManager::getInstance().Warn(
+                    "타겟 비활성화 (연속 실패): " + target.name);
             }
+            
             total_requests_.fetch_add(1);
             failed_requests_.fetch_add(1);
         }
@@ -1129,11 +1143,55 @@ bool DynamicTargetManager::processTargetByIndex(size_t index, const AlarmMessage
         double new_avg = (current_avg * 0.8) + (duration.count() * 0.2);
         mutable_target.avg_response_time_ms.store(new_avg);
         
+        // Export Log 저장
+        if (expanded_config.value("save_log", true)) {
+            try {
+                // 🔥 수정 2: 네임스페이스 명시
+                using namespace PulseOne::Database;
+                using namespace PulseOne::Database::Repositories;
+                using namespace PulseOne::Database::Entities;
+                
+                ExportLogRepository log_repo;
+                ExportLogEntity log_entity;
+                
+                // 🔥 수정 3: log_type 설정
+                std::string log_type = target.type;
+                std::transform(log_type.begin(), log_type.end(), 
+                             log_type.begin(), ::tolower);
+                log_entity.setLogType(log_type);
+                
+                int target_id = expanded_config.value("id", 0);
+                log_entity.setTargetId(target_id);
+                log_entity.setStatus(result.success ? "success" : "failed");
+                log_entity.setHttpStatusCode(result.status_code);
+                log_entity.setProcessingTimeMs(static_cast<int>(duration.count()));
+                
+                if (!result.success && !result.error_message.empty()) {
+                    log_entity.setErrorMessage(result.error_message);
+                }
+                
+                if (!result.response_body.empty()) {
+                    log_entity.setResponseData(result.response_body);
+                }
+                
+                if (!log_repo.save(log_entity)) {
+                    LogManager::getInstance().Warn(
+                        "Failed to save export log for target: " + target.name);
+                }
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().Error(
+                    "Exception saving export log: " + std::string(e.what()));
+            }
+        }
+        
         return result.success;
         
     } catch (const std::exception& e) {
         result.success = false;
         result.error_message = "processTargetByIndex 예외: " + std::string(e.what());
+        LogManager::getInstance().Error(
+            "processTargetByIndex 예외 발생: " + std::string(e.what()));
         return false;
     }
 }
