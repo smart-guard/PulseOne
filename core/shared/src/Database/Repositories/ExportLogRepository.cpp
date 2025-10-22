@@ -690,7 +690,6 @@ std::optional<ExportLogEntity> ExportLogRepository::findById(int id) {
 }
 
 bool ExportLogRepository::save(ExportLogEntity& entity) {
-    // 기존 코드와 동일
     try {
         if (!ensureTableExists()) {
             return false;
@@ -699,10 +698,49 @@ bool ExportLogRepository::save(ExportLogEntity& entity) {
         auto params = entityToParams(entity);
         std::string query = SQL::ExportLog::INSERT;
         
-        for (const auto& param : params) {
+        // ✅ SQL INSERT 컬럼 순서와 정확히 일치시킴
+        // INSERT INTO export_logs (
+        //     log_type, service_id, target_id, mapping_id, point_id,
+        //     source_value, converted_value, status, error_message, error_code,
+        //     response_data, http_status_code, processing_time_ms, client_info
+        // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        
+        std::vector<std::string> insert_order = {
+            "log_type",
+            "service_id",
+            "target_id",
+            "mapping_id",
+            "point_id",
+            "source_value",
+            "converted_value",
+            "status",
+            "error_message",
+            "error_code",
+            "response_data",
+            "http_status_code",
+            "processing_time_ms",
+            "client_info"
+        };
+        
+        // ✅ 순서대로 파라미터 치환
+        for (const auto& key : insert_order) {
             size_t pos = query.find('?');
             if (pos != std::string::npos) {
-                query.replace(pos, 1, "'" + param.second + "'");
+                auto it = params.find(key);
+                if (it != params.end() && !it->second.empty()) {
+                    query.replace(pos, 1, "'" + it->second + "'");
+                } else {
+                    // 빈 값 처리
+                    if (key == "service_id" || key == "target_id" || 
+                        key == "mapping_id" || key == "point_id" ||
+                        key == "http_status_code" || key == "processing_time_ms") {
+                        // 정수형: NULL
+                        query.replace(pos, 1, "NULL");
+                    } else {
+                        // 문자열: 빈 문자열
+                        query.replace(pos, 1, "''");
+                    }
+                }
             }
         }
         

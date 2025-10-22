@@ -22,6 +22,7 @@
 #include <sstream>
 #include <iomanip>
 #include <unordered_set>
+#include <regex>
 
 namespace PulseOne {
 namespace CSP {
@@ -1070,207 +1071,204 @@ bool DynamicTargetManager::processTargetByIndex(
     const AlarmMessage& alarm, 
     TargetSendResult& result) {
     
+    // targets_mutex_는 이미 caller에서 잠금 상태
+    
+    // =======================================================================
+    // 1. 타겟 유효성 검증
+    // =======================================================================
+    
+    if (index >= targets_.size()) {
+        result.success = false;
+        result.error_message = "잘못된 타겟 인덱스: " + std::to_string(index);
+        LogManager::getInstance().Error(result.error_message);
+        return false;
+    }
+    
+    const auto& target = targets_[index];
+    result.target_name = target.name;
+    
+    if (!target.enabled) {
+        result.success = false;
+        result.error_message = "타겟이 비활성화됨";
+        LogManager::getInstance().Warn("타겟 비활성화됨: " + target.name);
+        return false;
+    }
+    
+    // =======================================================================
+    // 2. Circuit Breaker 체크 (실패 방지)
+    // =======================================================================
+    
+    auto protector_it = failure_protectors_.find(target.name);
+    if (protector_it != failure_protectors_.end()) {
+        if (!protector_it->second->canExecute()) {
+            result.success = false;
+            result.error_message = "Circuit Breaker OPEN - 타겟이 일시적으로 차단됨";
+            LogManager::getInstance().Warn("Circuit Breaker OPEN: " + target.name);
+            return false;
+        }
+    }
+    
+    // =======================================================================
+    // 3. 핸들러 찾기
+    // =======================================================================
+    
+    auto handler_it = handlers_.find(target.type);
+    if (handler_it == handlers_.end()) {
+        result.success = false;
+        result.error_message = "지원되지 않는 타겟 타입: " + target.type;
+        LogManager::getInstance().Error(result.error_message);
+        return false;
+    }
+    
+    // =======================================================================
+    // 4. Config 변수 확장 (Initialize 전에 수행!)
+    // =======================================================================
+    
+    json expanded_config = target.config;
+    expandConfigVariables(expanded_config, alarm);  // alarm 데이터로 {{variable}} 치환
+    
+    LogManager::getInstance().Debug("Expanded config: " + expanded_config.dump());
+    
+    // =======================================================================
+    // 5. 핸들러 초기화 (최초 1회만, expanded_config 사용!)
+    // =======================================================================
+    
+    auto& mutable_target = targets_[index];
+    
+    if (mutable_target.handler_initialized.load() == false) {
+        LogManager::getInstance().Info("핸들러 초기화 시작 - 타겟: " + target.name + ", 타입: " + target.type);
+        LogManager::getInstance().Debug("초기화 config: " + expanded_config.dump());
+        
+        if (!handler_it->second->initialize(expanded_config)) {
+            result.success = false;
+            result.error_message = "핸들러 초기화 실패";
+            LogManager::getInstance().Error("핸들러 초기화 실패 - 타겟: " + target.name);
+            return false;
+        }
+        
+        mutable_target.handler_initialized.store(true);
+        LogManager::getInstance().Info("핸들러 초기화 완료 - 타겟: " + target.name);
+    }
+    
+    // =======================================================================
+    // 6. 알람 전송 시작
+    // =======================================================================
+    
+    LogManager::getInstance().Info("알람 전송 시작 - 타겟: " + target.name + 
+                                  ", 타입: " + target.type + 
+                                  ", 알람: " + alarm.nm);
+    
+    // =======================================================================
+    // 7. 실제 전송 수행 (시간 측정)
+    // =======================================================================
+    
     auto start_time = std::chrono::steady_clock::now();
-    result.success = false;
     
     try {
-        // =================================================================
-        // 1. 기본 검증
-        // =================================================================
-        if (index >= targets_.size()) {
-            result.error_message = "Invalid target index: " + std::to_string(index);
-            LogManager::getInstance().Error(result.error_message);
-            return false;
-        }
-        
-        const auto& target = targets_[index];
-        result.target_name = target.name;
-        result.target_type = target.type;
-        
-        // Rate limit 체크
-        if (!checkRateLimit()) {
-            result.error_message = "Rate limit exceeded";
-            LogManager::getInstance().Warn("Rate limit exceeded for target: " + target.name);
-            return false;
-        }
-        
-        // =================================================================
-        // 2. 핸들러 조회 및 초기화
-        // =================================================================
-        auto handler_it = handlers_.find(target.type);
-        if (handler_it == handlers_.end()) {
-            result.error_message = "Handler not found for type: " + target.type;
-            LogManager::getInstance().Error(result.error_message);
-            return false;
-        }
-        
-        // 설정 변수 확장 (alarm 정보로 {{variable}} 치환)
-        json expanded_config = target.config;
-        expandConfigVariables(expanded_config, alarm);
-        
-        auto& mutable_target = targets_[index];
-        
-        // 핸들러 초기화 (최초 1회만)
-        if (mutable_target.handler_initialized.load() == false) {
-            LogManager::getInstance().Info("Initializing handler for target: " + target.name);
-            if (!handler_it->second->initialize(expanded_config)) {
-                result.error_message = "Handler initialization failed";
-                LogManager::getInstance().Error("Handler init failed: " + target.name);
-                return false;
-            }
-            mutable_target.handler_initialized.store(true);
-        }
-        
-        // =================================================================
-        // 3. 알람 전송 (핵심 로직)
-        // =================================================================
-        LogManager::getInstance().Debug("Sending alarm to target: " + target.name);
+        // 핸들러를 통한 전송
         result = handler_it->second->sendAlarm(alarm, expanded_config);
+        result.target_name = target.name;
         
         auto end_time = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(
             end_time - start_time);
-        result.response_time = duration;
         
-        // =================================================================
-        // 4. 통계 업데이트 (메모리 내 통계)
-        // =================================================================
+        // 전송 성공/실패 로그
         if (result.success) {
-            mutable_target.success_count.fetch_add(1);
-            mutable_target.consecutive_failures.store(0);
-            mutable_target.healthy.store(true);
-            mutable_target.last_success_time = std::chrono::system_clock::now();
-            total_requests_.fetch_add(1);
-            successful_requests_.fetch_add(1);
-            
-            LogManager::getInstance().Debug(
-                "✅ Target success: " + target.name + 
-                " (time: " + std::to_string(duration.count()) + "ms, " +
-                "status: " + std::to_string(result.status_code) + ")");
+            LogManager::getInstance().Info(
+                "알람 전송 성공 - 타겟: " + target.name + 
+                ", 응답시간: " + std::to_string(result.response_time.count()) + "ms");
         } else {
-            mutable_target.failure_count.fetch_add(1);
-            mutable_target.consecutive_failures.fetch_add(1);
-            mutable_target.last_failure_time = std::chrono::system_clock::now();
-            
-            // 연속 실패 5회 → 타겟 비활성화
-            if (mutable_target.consecutive_failures.load() >= 5) {
-                mutable_target.healthy.store(false);
-                LogManager::getInstance().Warn(
-                    "⚠️ Target marked unhealthy (5 consecutive failures): " + target.name);
-            }
-            
-            total_requests_.fetch_add(1);
-            failed_requests_.fetch_add(1);
-            
-            LogManager::getInstance().Warn(
-                "❌ Target failure: " + target.name + 
-                " - " + result.error_message);
+            LogManager::getInstance().Error(
+                "알람 전송 실패 - 타겟: " + target.name + 
+                ", 오류: " + result.error_message);
         }
-        
-        // 평균 응답 시간 업데이트 (지수 이동 평균)
-        double current_avg = mutable_target.avg_response_time_ms.load();
-        double new_avg = (current_avg * 0.8) + (duration.count() * 0.2);
-        mutable_target.avg_response_time_ms.store(new_avg);
-        
-        // =================================================================
-        // 5. Export Log 저장 (DB 영구 저장)
-        // =================================================================
-        if (expanded_config.value("save_log", true)) {
-            try {
-                using namespace PulseOne::Database;
-                using namespace PulseOne::Database::Repositories;
-                using namespace PulseOne::Database::Entities;
-                
-                ExportLogRepository log_repo;
-                ExportLogEntity log_entity;
-                
-                // log_type 설정 (소문자로 정규화)
-                std::string log_type = target.type;
-                std::transform(log_type.begin(), log_type.end(), 
-                             log_type.begin(), ::tolower);
-                log_entity.setLogType(log_type);
-                
-                // ✅ 핵심 수정: target.name으로 DB에서 실제 ID 조회
-                ExportTargetRepository target_repo;
-                auto target_entity = target_repo.findByName(target.name);
-                
-                int target_id = 0;
-                if (target_entity.has_value()) {
-                    target_id = target_entity->getId();
-                    LogManager::getInstance().Debug(
-                        "📍 Target ID resolved: " + target.name + 
-                        " → " + std::to_string(target_id));
-                } else {
-                    LogManager::getInstance().Warn(
-                        "⚠️ Failed to resolve target_id for: " + target.name + 
-                        ", export log will use target_id=0");
-                    // target_id = 0으로 저장 (나중에 수동 매핑 가능)
-                }
-                
-                log_entity.setTargetId(target_id);
-                
-                // 전송 결과 저장
-                log_entity.setStatus(result.success ? "success" : "failed");
-                log_entity.setHttpStatusCode(result.status_code);
-                log_entity.setProcessingTimeMs(static_cast<int>(duration.count()));
-                
-                // 에러 정보 저장
-                if (!result.success && !result.error_message.empty()) {
-                    log_entity.setErrorMessage(result.error_message);
-                }
-                
-                // 응답 데이터 저장 (선택적)
-                if (!result.response_body.empty()) {
-                    // 응답 크기 제한 (최대 4KB)
-                    std::string response = result.response_body;
-                    if (response.length() > 4096) {
-                        response = response.substr(0, 4093) + "...";
-                    }
-                    log_entity.setResponseData(response);
-                }
-                
-                // 클라이언트 정보 저장 (선택적)
-                json client_info = {
-                    {"target_name", target.name},
-                    {"target_type", target.type},
-                    {"handler_version", "v5.0"},
-                    {"alarm_level", alarm.alarm_level},
-                    {"point_name", alarm.point_name}
-                };
-                log_entity.setClientInfo(client_info.dump());
-                
-                // DB 저장
-                if (log_repo.save(log_entity)) {
-                    LogManager::getInstance().Debug(
-                        "💾 Export log saved: target=" + target.name + 
-                        ", target_id=" + std::to_string(target_id) +
-                        ", status=" + (result.success ? "success" : "failed"));
-                } else {
-                    LogManager::getInstance().Warn(
-                        "⚠️ Failed to save export log for target: " + target.name);
-                }
-                
-            } catch (const std::exception& e) {
-                LogManager::getInstance().Error(
-                    "❌ Exception saving export log: " + std::string(e.what()) +
-                    " (target: " + target.name + ")");
-                // Export Log 저장 실패는 치명적이지 않으므로 계속 진행
-            }
-        } else {
-            LogManager::getInstance().Debug(
-                "⏭️ Export log saving disabled for target: " + target.name);
-        }
-        
-        return result.success;
         
     } catch (const std::exception& e) {
         result.success = false;
-        result.error_message = "processTargetByIndex exception: " + std::string(e.what());
+        result.error_message = "전송 예외: " + std::string(e.what());
+        
+        auto end_time = std::chrono::steady_clock::now();
+        result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time);
+        
         LogManager::getInstance().Error(
-            "💥 processTargetByIndex exception: " + std::string(e.what()) +
-            " (target_index: " + std::to_string(index) + ")");
-        return false;
+            "알람 전송 예외 - 타겟: " + target.name + ", 예외: " + result.error_message);
     }
+    
+    // =======================================================================
+    // 8. Circuit Breaker 업데이트
+    // =======================================================================
+    
+    if (protector_it != failure_protectors_.end()) {
+        if (result.success) {
+            protector_it->second->recordSuccess();
+        } else {
+            protector_it->second->recordFailure();
+        }
+    }
+    
+    // =======================================================================
+    // 9. 타겟 통계 업데이트
+    // =======================================================================
+    
+    updateTargetStatistics(target.name, result);
+    
+    // =======================================================================
+    // 10. export_logs 테이블에 로그 기록 (선택적)
+    // =======================================================================
+    
+    try {
+        using PulseOne::Database::Repositories::ExportLogRepository;
+        using PulseOne::Database::Entities::ExportLogEntity;
+        
+        #ifdef HAS_EXPORT_LOG_REPOSITORY
+        ExportLogRepository log_repo;
+        
+        if (log_repo.initialize()) {
+            ExportLogEntity log_entity;
+            
+            int target_id = target.config.value("target_id", 0);
+            log_entity.setTargetId(target_id);
+            log_entity.setPointId(alarm.bd);
+            
+            json alarm_json = alarm.to_json();
+            log_entity.setSourceValue(alarm_json.dump());
+            
+            log_entity.setStatus(result.success ? "SUCCESS" : "FAILED");
+            log_entity.setProcessingTimeMs(
+                static_cast<int>(result.response_time.count()));
+            
+            if (!result.success) {
+                log_entity.setErrorMessage(result.error_message);
+                log_entity.setErrorCode("SEND_FAILED");
+            }
+            
+            if (result.status_code > 0) {
+                log_entity.setHttpStatusCode(result.status_code);
+            }
+            
+            json metadata = {
+                {"target_name", target.name},
+                {"target_type", target.type},
+                {"handler_version", "v5.3"},
+                {"alarm_flag", alarm.al},
+                {"point_name", alarm.nm}
+            };
+            
+            if (!log_repo.save(log_entity)) {
+                LogManager::getInstance().Warn(
+                    "Export log 저장 실패 - 타겟: " + target.name);
+            }
+        }
+        #endif
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Warn(
+            "Export log 기록 실패: " + std::string(e.what()));
+    }
+    
+    return result.success;
 }
 
 
@@ -1376,10 +1374,39 @@ void DynamicTargetManager::expandConfigVariables(json& config, const AlarmMessag
     }
     
     try {
-        LogManager::getInstance().Debug("알람 변수 확장 - Building: " + std::to_string(alarm.bd) + 
-                                      ", Point: " + alarm.nm + ", Value: " + std::to_string(alarm.vl));
+        // JSON 전체를 순회하며 {{variable}} 패턴 치환
+        std::function<void(json&)> expand = [&](json& obj) {
+            if (obj.is_string()) {
+                std::string str = obj.get<std::string>();
+                
+                // AlarmMessage 필드로 치환
+                str = std::regex_replace(str, std::regex("\\{\\{building_id\\}\\}"), std::to_string(alarm.bd));
+                str = std::regex_replace(str, std::regex("\\{\\{point_name\\}\\}"), alarm.nm);
+                str = std::regex_replace(str, std::regex("\\{\\{value\\}\\}"), std::to_string(alarm.vl));
+                str = std::regex_replace(str, std::regex("\\{\\{timestamp\\}\\}"), alarm.tm);
+                str = std::regex_replace(str, std::regex("\\{\\{alarm_flag\\}\\}"), std::to_string(alarm.al));
+                str = std::regex_replace(str, std::regex("\\{\\{status\\}\\}"), std::to_string(alarm.st));
+                str = std::regex_replace(str, std::regex("\\{\\{description\\}\\}"), alarm.des);
+                
+                obj = str;
+            } else if (obj.is_object()) {
+                for (auto& [key, value] : obj.items()) {
+                    expand(value);
+                }
+            } else if (obj.is_array()) {
+                for (auto& item : obj) {
+                    expand(item);
+                }
+            }
+        };
+        
+        expand(config);
+        
+        LogManager::getInstance().Debug("Config 변수 확장 완료 - Building: " + std::to_string(alarm.bd) + 
+                                      ", Point: " + alarm.nm);
+        
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("설정 변수 확장 실패: " + std::string(e.what()));
+        LogManager::getInstance().Error("Config 변수 확장 실패: " + std::string(e.what()));
     }
 }
 

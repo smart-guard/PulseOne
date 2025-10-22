@@ -41,6 +41,7 @@ namespace Repositories {
     class ExportLogRepository;
     class ExportTargetRepository;
     class ExportTargetMappingRepository;
+    class ExportScheduleRepository;
 }
 
 /**
@@ -228,6 +229,7 @@ private:
     std::shared_ptr<Repositories::ExportLogRepository> getRepositoryImpl(class ExportLogEntity*);
     std::shared_ptr<Repositories::ExportTargetRepository> getRepositoryImpl(class ExportTargetEntity*);
     std::shared_ptr<Repositories::ExportTargetMappingRepository> getRepositoryImpl(class ExportTargetMappingEntity*);
+    std::shared_ptr<Repositories::ExportScheduleRepository> getRepositoryImpl(class ExportScheduleEntity*);
 
     int getEntityId() const {
         if constexpr (std::is_same_v<DerivedType, class DeviceSettingsEntity>) {
@@ -237,7 +239,7 @@ private:
         }
     }
 
-    std::string getEntityTypeName() const {
+    virtual std::string getEntityTypeName() const {
         if constexpr (std::is_same_v<DerivedType, class DeviceEntity>) {
             return "DeviceEntity";
         } else if constexpr (std::is_same_v<DerivedType, class DeviceSettingsEntity>) {
@@ -246,6 +248,24 @@ private:
             return "DataPointEntity";
         } else if constexpr (std::is_same_v<DerivedType, class CurrentValueEntity>) {
             return "CurrentValueEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class VirtualPointEntity>) {
+            return "VirtualPointEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class SiteEntity>) {
+            return "SiteEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class TenantEntity>) {
+            return "TenantEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class UserEntity>) {
+            return "UserEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class AlarmConfigEntity>) {
+            return "AlarmConfigEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class ExportLogEntity>) {
+            return "ExportLogEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class ExportTargetEntity>) {
+            return "ExportTargetEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class ExportTargetMappingEntity>) {
+            return "ExportTargetMappingEntity";
+        } else if constexpr (std::is_same_v<DerivedType, class ExportScheduleEntity>) {
+            return "ExportScheduleEntity";
         } else {
             return "UnknownEntity";
         }

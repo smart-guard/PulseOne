@@ -681,6 +681,136 @@ namespace ExportLog {
 } // namespace ExportLog
 
 // =============================================================================
+// 🎯 ExportSchedule 쿼리들 (export_schedules 테이블) - ✨ NEW
+// =============================================================================
+namespace ExportSchedule {
+    
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS export_schedules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id INTEGER,
+            target_id INTEGER NOT NULL,
+            schedule_name VARCHAR(100) NOT NULL,
+            description TEXT,
+            
+            cron_expression VARCHAR(100) NOT NULL,
+            timezone VARCHAR(50) DEFAULT 'UTC',
+            data_range VARCHAR(20) DEFAULT 'day',
+            lookback_periods INTEGER DEFAULT 1,
+            
+            is_enabled BOOLEAN DEFAULT 1,
+            last_run_at DATETIME,
+            last_status VARCHAR(20),
+            next_run_at DATETIME,
+            
+            total_runs INTEGER DEFAULT 0,
+            successful_runs INTEGER DEFAULT 0,
+            failed_runs INTEGER DEFAULT 0,
+            
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            
+            FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
+            FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE
+        )
+    )";
+    
+    const std::string CREATE_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_export_schedules_enabled ON export_schedules(is_enabled);
+        CREATE INDEX IF NOT EXISTS idx_export_schedules_next_run ON export_schedules(next_run_at);
+        CREATE INDEX IF NOT EXISTS idx_export_schedules_target ON export_schedules(target_id);
+    )";
+    
+    const std::string FIND_ALL = R"(
+        SELECT id, profile_id, target_id, schedule_name, description,
+               cron_expression, timezone, data_range, lookback_periods,
+               is_enabled, last_run_at, last_status, next_run_at,
+               total_runs, successful_runs, failed_runs,
+               created_at, updated_at
+        FROM export_schedules
+        ORDER BY schedule_name ASC
+    )";
+    
+    const std::string FIND_BY_ID = R"(
+        SELECT id, profile_id, target_id, schedule_name, description,
+               cron_expression, timezone, data_range, lookback_periods,
+               is_enabled, last_run_at, last_status, next_run_at,
+               total_runs, successful_runs, failed_runs,
+               created_at, updated_at
+        FROM export_schedules WHERE id = ?
+    )";
+    
+    const std::string FIND_ENABLED = R"(
+        SELECT id, profile_id, target_id, schedule_name, description,
+               cron_expression, timezone, data_range, lookback_periods,
+               is_enabled, last_run_at, last_status, next_run_at,
+               total_runs, successful_runs, failed_runs,
+               created_at, updated_at
+        FROM export_schedules 
+        WHERE is_enabled = 1
+        ORDER BY next_run_at ASC
+    )";
+    
+    const std::string FIND_BY_TARGET_ID = R"(
+        SELECT id, profile_id, target_id, schedule_name, description,
+               cron_expression, timezone, data_range, lookback_periods,
+               is_enabled, last_run_at, last_status, next_run_at,
+               total_runs, successful_runs, failed_runs,
+               created_at, updated_at
+        FROM export_schedules 
+        WHERE target_id = ?
+        ORDER BY schedule_name ASC
+    )";
+    
+    const std::string FIND_PENDING = R"(
+        SELECT id, profile_id, target_id, schedule_name, description,
+               cron_expression, timezone, data_range, lookback_periods,
+               is_enabled, last_run_at, last_status, next_run_at,
+               total_runs, successful_runs, failed_runs,
+               created_at, updated_at
+        FROM export_schedules 
+        WHERE is_enabled = 1 
+          AND next_run_at <= datetime('now')
+        ORDER BY next_run_at ASC
+    )";
+    
+    const std::string INSERT = R"(
+        INSERT INTO export_schedules (
+            profile_id, target_id, schedule_name, description,
+            cron_expression, timezone, data_range, lookback_periods,
+            is_enabled, next_run_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+    
+    const std::string UPDATE = R"(
+        UPDATE export_schedules SET
+            profile_id = ?, target_id = ?, schedule_name = ?, description = ?,
+            cron_expression = ?, timezone = ?, data_range = ?, lookback_periods = ?,
+            is_enabled = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string UPDATE_RUN_STATUS = R"(
+        UPDATE export_schedules SET
+            last_run_at = ?,
+            last_status = ?,
+            next_run_at = ?,
+            total_runs = total_runs + 1,
+            successful_runs = successful_runs + ?,
+            failed_runs = failed_runs + ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string DELETE_BY_ID = "DELETE FROM export_schedules WHERE id = ?";
+    
+    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM export_schedules WHERE id = ?";
+    
+    const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM export_schedules WHERE is_enabled = 1";
+    
+} // namespace ExportSchedule
+
+// =============================================================================
 // 🎯 ExportTargetStats VIEW (실시간 통계 뷰)
 // =============================================================================
 namespace ExportTargetStatsView {
