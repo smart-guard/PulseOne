@@ -35,32 +35,23 @@ std::vector<TimeBasedStats> ExportLogRepository::getHourlyStatistics(
             return stats;
         }
         
-        std::ostringstream query;
-        query << R"(
-            SELECT 
-                strftime('%Y-%m-%d %H:00', timestamp) as time_label,
-                COUNT(*) as total_count,
-                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
-                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
-                CAST(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS REAL) 
-                    / COUNT(*) * 100.0 as success_rate,
-                AVG(CASE WHEN status = 'success' THEN processing_time_ms END) 
-                    as avg_processing_time_ms
-            FROM export_logs
-            WHERE timestamp >= datetime('now', '-' || )" << hours << R"( || ' hours')
-        )";
-        
+        // ✅ 정의된 쿼리 사용
+        std::string query;
         if (target_id > 0) {
-            query << " AND target_id = " << target_id;
+            query = RepositoryHelpers::replaceTwoParameters(
+                SQL::ExportLog::GET_HOURLY_STATISTICS_BY_TARGET,
+                std::to_string(hours),
+                std::to_string(target_id)
+            );
+        } else {
+            query = RepositoryHelpers::replaceParameter(
+                SQL::ExportLog::GET_HOURLY_STATISTICS_ALL,
+                std::to_string(hours)
+            );
         }
         
-        query << R"(
-            GROUP BY strftime('%Y-%m-%d %H:00', timestamp)
-            ORDER BY time_label DESC
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query.str());
+        auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
             try {
@@ -90,32 +81,23 @@ std::vector<TimeBasedStats> ExportLogRepository::getDailyStatistics(
             return stats;
         }
         
-        std::ostringstream query;
-        query << R"(
-            SELECT 
-                strftime('%Y-%m-%d', timestamp) as time_label,
-                COUNT(*) as total_count,
-                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
-                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
-                CAST(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS REAL) 
-                    / COUNT(*) * 100.0 as success_rate,
-                AVG(CASE WHEN status = 'success' THEN processing_time_ms END) 
-                    as avg_processing_time_ms
-            FROM export_logs
-            WHERE timestamp >= datetime('now', '-' || )" << days << R"( || ' days')
-        )";
-        
+        // ✅ 정의된 쿼리 사용
+        std::string query;
         if (target_id > 0) {
-            query << " AND target_id = " << target_id;
+            query = RepositoryHelpers::replaceTwoParameters(
+                SQL::ExportLog::GET_DAILY_STATISTICS_BY_TARGET,
+                std::to_string(days),
+                std::to_string(target_id)
+            );
+        } else {
+            query = RepositoryHelpers::replaceParameter(
+                SQL::ExportLog::GET_DAILY_STATISTICS_ALL,
+                std::to_string(days)
+            );
         }
         
-        query << R"(
-            GROUP BY strftime('%Y-%m-%d', timestamp)
-            ORDER BY time_label DESC
-        )";
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query.str());
+        auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
             try {
@@ -149,30 +131,43 @@ std::vector<ErrorTypeStats> ExportLogRepository::getErrorTypeStatistics(
             return stats;
         }
         
-        std::ostringstream query;
-        query << R"(
-            SELECT 
-                error_code,
-                error_message,
-                COUNT(*) as occurrence_count,
-                MIN(timestamp) as first_occurred,
-                MAX(timestamp) as last_occurred
-            FROM export_logs
-            WHERE status = 'failed'
-              AND timestamp >= datetime('now', '-' || )" << hours << R"( || ' hours')
-        )";
-        
+        // ✅ 직접 파라미터 교체 (replaceThreeParameters 없음)
+        std::string query;
         if (target_id > 0) {
-            query << " AND target_id = " << target_id;
+            query = SQL::ExportLog::GET_ERROR_TYPE_STATISTICS_BY_TARGET;
+            // ? 를 값으로 교체
+            size_t pos = 0;
+            // 첫 번째 ? → hours
+            pos = query.find('?', pos);
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(hours));
+            }
+            // 두 번째 ? → target_id
+            pos = query.find('?', pos);
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(target_id));
+            }
+            // 세 번째 ? → limit
+            pos = query.find('?', pos);
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(limit));
+            }
+        } else {
+            query = SQL::ExportLog::GET_ERROR_TYPE_STATISTICS_ALL;
+            // 첫 번째 ? → hours
+            size_t pos = query.find('?');
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(hours));
+            }
+            // 두 번째 ? → limit
+            pos = query.find('?', pos);
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(limit));
+            }
         }
         
-        query << R"(
-            GROUP BY error_code, error_message
-            ORDER BY occurrence_count DESC
-            LIMIT )" << limit;
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query.str());
+        auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
             try {
@@ -191,6 +186,8 @@ std::vector<ErrorTypeStats> ExportLogRepository::getErrorTypeStatistics(
     
     return stats;
 }
+
+
 
 std::optional<ErrorTypeStats> ExportLogRepository::getMostFrequentError(
     int target_id, int hours) {
@@ -221,33 +218,40 @@ std::vector<PointPerformanceStats> ExportLogRepository::getPointPerformanceStats
             return stats;
         }
         
-        std::ostringstream query;
-        query << R"(
-            SELECT 
-                point_id,
-                COUNT(*) as total_exports,
-                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_exports,
-                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_exports,
-                CAST(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS REAL) 
-                    / COUNT(*) * 100.0 as success_rate,
-                AVG(CASE WHEN status = 'success' THEN processing_time_ms END) 
-                    as avg_processing_time_ms,
-                MAX(timestamp) as last_export_time
-            FROM export_logs
-            WHERE timestamp >= datetime('now', '-' || )" << hours << R"( || ' hours')
-        )";
-        
+        // ✅ 직접 파라미터 교체
+        std::string query;
         if (target_id > 0) {
-            query << " AND target_id = " << target_id;
+            query = SQL::ExportLog::GET_POINT_PERFORMANCE_STATS_BY_TARGET;
+            size_t pos = 0;
+            // 첫 번째 ? → hours
+            pos = query.find('?', pos);
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(hours));
+            }
+            // 두 번째 ? → target_id
+            pos = query.find('?', pos);
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(target_id));
+            }
+            // 세 번째 ? → limit
+            pos = query.find('?', pos);
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(limit));
+            }
+        } else {
+            query = SQL::ExportLog::GET_POINT_PERFORMANCE_STATS_ALL;
+            size_t pos = query.find('?');
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(hours));
+            }
+            pos = query.find('?', pos);
+            if (pos != std::string::npos) {
+                query.replace(pos, 1, std::to_string(limit));
+            }
         }
         
-        query << R"(
-            GROUP BY point_id
-            ORDER BY total_exports DESC
-            LIMIT )" << limit;
-        
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query.str());
+        auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
             try {
@@ -266,6 +270,8 @@ std::vector<PointPerformanceStats> ExportLogRepository::getPointPerformanceStats
     
     return stats;
 }
+
+
 
 std::vector<PointPerformanceStats> ExportLogRepository::getProblematicPoints(
     int target_id, double threshold, int hours) {
@@ -312,53 +318,33 @@ TargetHealthCheck ExportLogRepository::getTargetHealthCheck(int target_id) {
             return health;
         }
         
-        std::ostringstream query;
-        query << R"(
-            SELECT 
-                )" << target_id << R"( as target_id,
-                
-                -- 최근 1시간 성공률
-                CAST(SUM(CASE WHEN status = 'success' 
-                    AND timestamp >= datetime('now', '-1 hours') 
-                    THEN 1 ELSE 0 END) AS REAL) / 
-                NULLIF(SUM(CASE WHEN timestamp >= datetime('now', '-1 hours') 
-                    THEN 1 ELSE 0 END), 0) * 100.0 as success_rate_1h,
-                
-                -- 최근 24시간 성공률
-                CAST(SUM(CASE WHEN status = 'success' 
-                    AND timestamp >= datetime('now', '-24 hours') 
-                    THEN 1 ELSE 0 END) AS REAL) / 
-                NULLIF(SUM(CASE WHEN timestamp >= datetime('now', '-24 hours') 
-                    THEN 1 ELSE 0 END), 0) * 100.0 as success_rate_24h,
-                
-                -- 평균 응답 시간
-                AVG(CASE WHEN status = 'success' 
-                    AND timestamp >= datetime('now', '-1 hours')
-                    THEN processing_time_ms END) as avg_response_time_ms,
-                
-                -- 최근 성공/실패 시간
-                MAX(CASE WHEN status = 'success' THEN timestamp END) as last_success_time,
-                MAX(CASE WHEN status = 'failed' THEN timestamp END) as last_failure_time,
-                
-                -- 마지막 에러 메시지
-                (SELECT error_message FROM export_logs 
-                 WHERE target_id = )" << target_id << R"(
-                   AND status = 'failed'
-                 ORDER BY timestamp DESC LIMIT 1) as last_error_message
-                
-            FROM export_logs
-            WHERE target_id = )" << target_id;
+        // ✅ 직접 파라미터 교체 (target_id 3번 사용)
+        std::string query = SQL::ExportLog::GET_TARGET_HEALTH_CHECK;
+        
+        // 첫 번째 ?
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(target_id));
+        }
+        
+        // 두 번째 ?
+        pos = query.find('?', pos);
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(target_id));
+        }
+        
+        // 세 번째 ?
+        pos = query.find('?', pos);
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(target_id));
+        }
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query.str());
+        auto results = db_layer.executeQuery(query);
         
         if (!results.empty()) {
             health = mapToHealthCheck(results[0]);
-            
-            // 연속 실패 횟수 조회
             health.consecutive_failures = getConsecutiveFailures(target_id);
-            
-            // 헬스 상태 결정
             health.health_status = determineHealthStatus(
                 health.success_rate_1h,
                 health.success_rate_24h,
@@ -384,16 +370,9 @@ std::vector<TargetHealthCheck> ExportLogRepository::getAllTargetsHealthCheck() {
             return health_checks;
         }
         
-        // 활성화된 모든 타겟 ID 조회
-        std::string query = R"(
-            SELECT DISTINCT target_id 
-            FROM export_logs 
-            WHERE timestamp >= datetime('now', '-24 hours')
-            ORDER BY target_id
-        )";
-        
+        // ✅ 정의된 쿼리 사용
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query);
+        auto results = db_layer.executeQuery(SQL::ExportLog::GET_DISTINCT_TARGET_IDS);
         
         for (const auto& row : results) {
             if (row.find("target_id") != row.end() && !row.at("target_id").empty()) {
@@ -418,17 +397,14 @@ int ExportLogRepository::getConsecutiveFailures(int target_id) {
             return 0;
         }
         
-        std::ostringstream query;
-        query << R"(
-            SELECT status
-            FROM export_logs
-            WHERE target_id = )" << target_id << R"(
-            ORDER BY timestamp DESC
-            LIMIT 100
-        )";
+        // ✅ 정의된 쿼리 사용
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportLog::GET_CONSECUTIVE_FAILURES,
+            std::to_string(target_id)
+        );
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(query.str());
+        auto results = db_layer.executeQuery(query);
         
         int consecutive = 0;
         for (const auto& row : results) {
@@ -436,7 +412,7 @@ int ExportLogRepository::getConsecutiveFailures(int target_id) {
                 if (row.at("status") == "failed") {
                     consecutive++;
                 } else if (row.at("status") == "success") {
-                    break;  // 성공을 만나면 중단
+                    break;
                 }
             }
         }
@@ -836,104 +812,713 @@ bool ExportLogRepository::exists(int id) {
 }
 
 std::vector<ExportLogEntity> ExportLogRepository::findByIds(const std::vector<int>& ids) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    std::vector<ExportLogEntity> entities;
+    
+    if (ids.empty()) {
+        return entities;
+    }
+    
+    try {
+        if (!ensureTableExists()) {
+            return entities;
+        }
+        
+        std::ostringstream id_list;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) id_list << ",";
+            id_list << ids[i];
+        }
+        
+        std::string query = "SELECT * FROM export_logs WHERE id IN (" + id_list.str() + ")";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        entities.reserve(results.size());
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row in findByIds: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("findByIds failed: " + std::string(e.what()));
+    }
+    
+    return entities;
 }
 
 std::vector<ExportLogEntity> ExportLogRepository::findByConditions(
     const std::vector<QueryCondition>& conditions,
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    
+    std::vector<ExportLogEntity> entities;
+    
+    try {
+        if (!ensureTableExists()) {
+            return entities;
+        }
+        
+        std::ostringstream query;
+        query << "SELECT * FROM export_logs";
+        
+        if (!conditions.empty()) {
+            query << " WHERE ";
+            for (size_t i = 0; i < conditions.size(); ++i) {
+                if (i > 0) query << " AND ";
+                // ✅ 수정: op → operation
+                query << conditions[i].field << " " 
+                      << conditions[i].operation << " '" 
+                      << conditions[i].value << "'";
+            }
+        }
+        
+        if (order_by.has_value()) {
+            query << " ORDER BY " << order_by->field << " " 
+                  << (order_by->ascending ? "ASC" : "DESC");
+        }
+        
+        if (pagination.has_value()) {
+            // ✅ 수정: page_size/page_number → limit/offset
+            query << " LIMIT " << pagination->limit
+                  << " OFFSET " << pagination->offset;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query.str());
+        
+        entities.reserve(results.size());
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("findByConditions failed: " + std::string(e.what()));
+    }
+    
+    return entities;
 }
 
 int ExportLogRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    // 기존 코드와 동일 - 생략
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        std::ostringstream query;
+        query << "SELECT COUNT(*) as count FROM export_logs";
+        
+        if (!conditions.empty()) {
+            query << " WHERE ";
+            for (size_t i = 0; i < conditions.size(); ++i) {
+                if (i > 0) query << " AND ";
+                // ✅ 수정: op → operation
+                query << conditions[i].field << " " 
+                      << conditions[i].operation << " '" 
+                      << conditions[i].value << "'";
+            }
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query.str());
+        
+        if (!results.empty() && results[0].find("count") != results[0].end()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("countByConditions failed: " + std::string(e.what()));
+    }
+    
     return 0;
 }
 
 std::vector<ExportLogEntity> ExportLogRepository::findByTargetId(int target_id, int limit) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    std::vector<ExportLogEntity> entities;
+    
+    try {
+        if (!ensureTableExists()) {
+            return entities;
+        }
+        
+        std::string query = SQL::ExportLog::FIND_BY_TARGET_ID;
+        
+        // 첫 번째 ? → target_id
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(target_id));
+        }
+        
+        // 두 번째 ? → limit
+        pos = query.find('?', pos);
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(limit));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        entities.reserve(results.size());
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("findByTargetId failed: " + std::string(e.what()));
+    }
+    
+    return entities;
 }
 
 std::vector<ExportLogEntity> ExportLogRepository::findByStatus(
     const std::string& status, int limit) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    
+    std::vector<ExportLogEntity> entities;
+    
+    try {
+        if (!ensureTableExists()) {
+            return entities;
+        }
+        
+        std::string query = SQL::ExportLog::FIND_BY_STATUS;
+        
+        // 첫 번째 ? → status
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, "'" + status + "'");
+        }
+        
+        // 두 번째 ? → limit
+        pos = query.find('?', pos);
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(limit));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        entities.reserve(results.size());
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("findByStatus failed: " + std::string(e.what()));
+    }
+    
+    return entities;
 }
 
 std::vector<ExportLogEntity> ExportLogRepository::findByTimeRange(
     const std::chrono::system_clock::time_point& start_time,
     const std::chrono::system_clock::time_point& end_time) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    
+    std::vector<ExportLogEntity> entities;
+    
+    try {
+        if (!ensureTableExists()) {
+            return entities;
+        }
+        
+        auto start_t = std::chrono::system_clock::to_time_t(start_time);
+        auto end_t = std::chrono::system_clock::to_time_t(end_time);
+        
+        char start_buf[20], end_buf[20];
+        std::strftime(start_buf, sizeof(start_buf), "%Y-%m-%d %H:%M:%S", std::gmtime(&start_t));
+        std::strftime(end_buf, sizeof(end_buf), "%Y-%m-%d %H:%M:%S", std::gmtime(&end_t));
+        
+        std::ostringstream query;
+        query << "SELECT * FROM export_logs WHERE timestamp BETWEEN '"
+              << start_buf << "' AND '" << end_buf << "' ORDER BY timestamp DESC";
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query.str());
+        
+        entities.reserve(results.size());
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("findByTimeRange failed: " + std::string(e.what()));
+    }
+    
+    return entities;
 }
 
 std::vector<ExportLogEntity> ExportLogRepository::findRecent(int hours, int limit) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    std::vector<ExportLogEntity> entities;
+    
+    try {
+        if (!ensureTableExists()) {
+            return entities;
+        }
+        
+        std::string query = SQL::ExportLog::FIND_RECENT;
+        
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(hours));
+        }
+        
+        pos = query.find('?', pos);
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(limit));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        entities.reserve(results.size());
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("findRecent failed: " + std::string(e.what()));
+    }
+    
+    return entities;
 }
 
 std::vector<ExportLogEntity> ExportLogRepository::findRecentFailures(int hours, int limit) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    std::vector<ExportLogEntity> entities;
+    
+    try {
+        if (!ensureTableExists()) {
+            return entities;
+        }
+        
+        std::string query = SQL::ExportLog::FIND_RECENT_FAILURES;
+        
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(hours));
+        }
+        
+        pos = query.find('?', pos);
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(limit));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        entities.reserve(results.size());
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("findRecentFailures failed: " + std::string(e.what()));
+    }
+    
+    return entities;
 }
 
 std::vector<ExportLogEntity> ExportLogRepository::findByPointId(int point_id, int limit) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    std::vector<ExportLogEntity> entities;
+    
+    try {
+        if (!ensureTableExists()) {
+            return entities;
+        }
+        
+        std::string query = SQL::ExportLog::FIND_BY_POINT_ID;
+        
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(point_id));
+        }
+        
+        pos = query.find('?', pos);
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(limit));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        entities.reserve(results.size());
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("findByPointId failed: " + std::string(e.what()));
+    }
+    
+    return entities;
 }
 
 std::map<std::string, int> ExportLogRepository::getTargetStatistics(int target_id, int hours) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    std::map<std::string, int> stats;
+    
+    try {
+        if (!ensureTableExists()) {
+            return stats;
+        }
+        
+        std::string query = SQL::ExportLog::GET_STATUS_DISTRIBUTION;
+        
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(target_id));
+        }
+        
+        pos = query.find('?', pos);
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(hours));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        for (const auto& row : results) {
+            try {
+                auto status_it = row.find("status");
+                auto count_it = row.find("count");
+                
+                if (status_it != row.end() && count_it != row.end()) {
+                    stats[status_it->second] = std::stoi(count_it->second);
+                }
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to parse stats row: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("getTargetStatistics failed: " + std::string(e.what()));
+    }
+    
+    return stats;
 }
 
 std::map<std::string, int> ExportLogRepository::getOverallStatistics(int hours) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    std::map<std::string, int> stats;
+    
+    try {
+        if (!ensureTableExists()) {
+            return stats;
+        }
+        
+        std::string query = SQL::ExportLog::GET_OVERALL_STATISTICS;
+        
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(hours));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty()) {
+            const auto& row = results[0];
+            
+            try {
+                if (row.find("total_exports") != row.end()) {
+                    stats["total_exports"] = std::stoi(row.at("total_exports"));
+                }
+                if (row.find("successful_exports") != row.end()) {
+                    stats["successful_exports"] = std::stoi(row.at("successful_exports"));
+                }
+                if (row.find("failed_exports") != row.end()) {
+                    stats["failed_exports"] = std::stoi(row.at("failed_exports"));
+                }
+                if (row.find("avg_export_time_ms") != row.end() && !row.at("avg_export_time_ms").empty()) {
+                    stats["avg_export_time_ms"] = static_cast<int>(std::stod(row.at("avg_export_time_ms")));
+                }
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to parse overall stats: " + std::string(e.what()));
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("getOverallStatistics failed: " + std::string(e.what()));
+    }
+    
+    return stats;
 }
 
 double ExportLogRepository::getAverageProcessingTime(int target_id, int hours) {
-    // 기존 코드와 동일 - 생략
+    try {
+        if (!ensureTableExists()) {
+            return 0.0;
+        }
+        
+        std::string query = SQL::ExportLog::GET_AVERAGE_PROCESSING_TIME;
+        
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(target_id));
+        }
+        
+        pos = query.find('?', pos);
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(hours));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty() && results[0].find("avg_time") != results[0].end()) {
+            const std::string& avg_str = results[0].at("avg_time");
+            if (!avg_str.empty()) {
+                return std::stod(avg_str);
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        logger_->Error("getAverageProcessingTime failed: " + std::string(e.what()));
+    }
+    
     return 0.0;
 }
 
 int ExportLogRepository::deleteOlderThan(int days) {
-    // 기존 코드와 동일 - 생략
-    return 0;
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        std::string query = SQL::ExportLog::DELETE_OLDER_THAN;
+        
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(days));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success && isCacheEnabled()) {
+            clearCache();
+        }
+        
+        return success ? 1 : 0;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("deleteOlderThan failed: " + std::string(e.what()));
+        return 0;
+    }
 }
 
 int ExportLogRepository::deleteSuccessLogsOlderThan(int days) {
-    // 기존 코드와 동일 - 생략
-    return 0;
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        std::string query = SQL::ExportLog::DELETE_SUCCESS_LOGS_OLDER_THAN;
+        
+        size_t pos = query.find('?');
+        if (pos != std::string::npos) {
+            query.replace(pos, 1, std::to_string(days));
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        bool success = db_layer.executeNonQuery(query);
+        
+        if (success && isCacheEnabled()) {
+            clearCache();
+        }
+        
+        return success ? 1 : 0;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("deleteSuccessLogsOlderThan failed: " + std::string(e.what()));
+        return 0;
+    }
 }
 
 std::map<std::string, int> ExportLogRepository::getCacheStats() const {
-    // 기존 코드와 동일 - 생략
-    return {};
+    std::map<std::string, int> stats;
+    
+    if (isCacheEnabled()) {
+        stats["cache_enabled"] = 1;
+        
+        // 부모 클래스의 getCacheStats 호출
+        auto base_stats = IRepository<ExportLogEntity>::getCacheStats();
+        
+        // 부모 클래스 통계 병합
+        for (const auto& [key, value] : base_stats) {
+            stats[key] = value;
+        }
+        
+    } else {
+        stats["cache_enabled"] = 0;
+        stats["cache_size"] = 0;
+        stats["cache_hits"] = 0;
+        stats["cache_misses"] = 0;
+    }
+    
+    return stats;
 }
 
 ExportLogEntity ExportLogRepository::mapRowToEntity(
     const std::map<std::string, std::string>& row) {
-    // 기존 코드와 동일 - 생략
-    return ExportLogEntity();
+    
+    ExportLogEntity entity;
+    
+    try {
+        auto it = row.end();
+        
+        it = row.find("id");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setId(std::stoi(it->second));
+        }
+        
+        it = row.find("log_type");
+        if (it != row.end()) {
+            entity.setLogType(it->second);
+        }
+        
+        it = row.find("service_id");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setServiceId(std::stoi(it->second));
+        }
+        
+        it = row.find("target_id");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setTargetId(std::stoi(it->second));
+        }
+        
+        it = row.find("mapping_id");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setMappingId(std::stoi(it->second));
+        }
+        
+        it = row.find("point_id");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setPointId(std::stoi(it->second));
+        }
+        
+        it = row.find("source_value");
+        if (it != row.end()) {
+            entity.setSourceValue(it->second);
+        }
+        
+        it = row.find("converted_value");
+        if (it != row.end()) {
+            entity.setConvertedValue(it->second);
+        }
+        
+        it = row.find("status");
+        if (it != row.end()) {
+            entity.setStatus(it->second);
+        }
+        
+        it = row.find("error_message");
+        if (it != row.end()) {
+            entity.setErrorMessage(it->second);
+        }
+        
+        it = row.find("error_code");
+        if (it != row.end()) {
+            entity.setErrorCode(it->second);
+        }
+        
+        it = row.find("response_data");
+        if (it != row.end()) {
+            entity.setResponseData(it->second);
+        }
+        
+        it = row.find("http_status_code");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setHttpStatusCode(std::stoi(it->second));
+        }
+        
+        it = row.find("processing_time_ms");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setProcessingTimeMs(std::stoi(it->second));
+        }
+        
+        it = row.find("client_info");
+        if (it != row.end()) {
+            entity.setClientInfo(it->second);
+        }
+        
+        it = row.find("timestamp");
+        if (it != row.end() && !it->second.empty()) {
+            std::tm tm = {};
+            std::istringstream ss(it->second);
+            ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+            auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+            entity.setTimestamp(tp);
+        }
+        
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to map row to ExportLogEntity: " + 
+                                std::string(e.what()));
+    }
+    
+    return entity;
 }
 
 std::map<std::string, std::string> ExportLogRepository::entityToParams(
     const ExportLogEntity& entity) {
-    // 기존 코드와 동일 - 생략
-    return {};
+    
+    std::map<std::string, std::string> params;
+    
+    params["log_type"] = entity.getLogType();
+    params["service_id"] = entity.getServiceId() > 0 ? 
+        std::to_string(entity.getServiceId()) : "";
+    params["target_id"] = entity.getTargetId() > 0 ? 
+        std::to_string(entity.getTargetId()) : "";
+    params["mapping_id"] = entity.getMappingId() > 0 ? 
+        std::to_string(entity.getMappingId()) : "";
+    params["point_id"] = entity.getPointId() > 0 ? 
+        std::to_string(entity.getPointId()) : "";
+    params["source_value"] = entity.getSourceValue();
+    params["converted_value"] = entity.getConvertedValue();
+    params["status"] = entity.getStatus();
+    params["error_message"] = entity.getErrorMessage();
+    params["error_code"] = entity.getErrorCode();
+    params["response_data"] = entity.getResponseData();
+    params["http_status_code"] = std::to_string(entity.getHttpStatusCode());
+    params["processing_time_ms"] = std::to_string(entity.getProcessingTimeMs());
+    params["client_info"] = entity.getClientInfo();
+    
+    return params;
 }
 
 bool ExportLogRepository::ensureTableExists() {
-    // 기존 코드와 동일 - 생략
     try {
         DatabaseAbstractionLayer db_layer;
-        return db_layer.executeNonQuery(SQL::ExportLog::CREATE_TABLE) &&
-               db_layer.executeNonQuery(SQL::ExportLog::CREATE_INDEXES);
+        bool table_created = db_layer.executeNonQuery(SQL::ExportLog::CREATE_TABLE);
+        bool indexes_created = db_layer.executeNonQuery(SQL::ExportLog::CREATE_INDEXES);
+        return table_created && indexes_created;
     } catch (const std::exception& e) {
         logger_->Error("ensureTableExists failed: " + std::string(e.what()));
         return false;

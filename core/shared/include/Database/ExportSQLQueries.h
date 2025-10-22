@@ -499,6 +499,185 @@ namespace ExportLog {
         WHERE timestamp < datetime('now', '-' || ? || ' days')
     )";
     
+    
+    // ========================================================================
+    // 🆕 고급 통계 쿼리들 (v2.1.0 추가)
+    // ========================================================================
+    
+    const std::string GET_HOURLY_STATISTICS_ALL = R"(
+        SELECT 
+            strftime('%Y-%m-%d %H:00', timestamp) as time_label,
+            COUNT(*) as total_count,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+            CAST(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS REAL) 
+                / COUNT(*) * 100.0 as success_rate,
+            AVG(CASE WHEN status = 'success' THEN processing_time_ms END) 
+                as avg_processing_time_ms
+        FROM export_logs
+        WHERE timestamp >= datetime('now', '-' || ? || ' hours')
+        GROUP BY strftime('%Y-%m-%d %H:00', timestamp)
+        ORDER BY time_label DESC
+    )";
+    
+    const std::string GET_HOURLY_STATISTICS_BY_TARGET = R"(
+        SELECT 
+            strftime('%Y-%m-%d %H:00', timestamp) as time_label,
+            COUNT(*) as total_count,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+            CAST(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS REAL) 
+                / COUNT(*) * 100.0 as success_rate,
+            AVG(CASE WHEN status = 'success' THEN processing_time_ms END) 
+                as avg_processing_time_ms
+        FROM export_logs
+        WHERE timestamp >= datetime('now', '-' || ? || ' hours')
+          AND target_id = ?
+        GROUP BY strftime('%Y-%m-%d %H:00', timestamp)
+        ORDER BY time_label DESC
+    )";
+    
+    const std::string GET_DAILY_STATISTICS_ALL = R"(
+        SELECT 
+            strftime('%Y-%m-%d', timestamp) as time_label,
+            COUNT(*) as total_count,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+            CAST(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS REAL) 
+                / COUNT(*) * 100.0 as success_rate,
+            AVG(CASE WHEN status = 'success' THEN processing_time_ms END) 
+                as avg_processing_time_ms
+        FROM export_logs
+        WHERE timestamp >= datetime('now', '-' || ? || ' days')
+        GROUP BY strftime('%Y-%m-%d', timestamp)
+        ORDER BY time_label DESC
+    )";
+    
+    const std::string GET_DAILY_STATISTICS_BY_TARGET = R"(
+        SELECT 
+            strftime('%Y-%m-%d', timestamp) as time_label,
+            COUNT(*) as total_count,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+            CAST(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS REAL) 
+                / COUNT(*) * 100.0 as success_rate,
+            AVG(CASE WHEN status = 'success' THEN processing_time_ms END) 
+                as avg_processing_time_ms
+        FROM export_logs
+        WHERE timestamp >= datetime('now', '-' || ? || ' days')
+          AND target_id = ?
+        GROUP BY strftime('%Y-%m-%d', timestamp)
+        ORDER BY time_label DESC
+    )";
+    
+    const std::string GET_ERROR_TYPE_STATISTICS_ALL = R"(
+        SELECT 
+            error_code,
+            error_message,
+            COUNT(*) as occurrence_count,
+            MIN(timestamp) as first_occurred,
+            MAX(timestamp) as last_occurred
+        FROM export_logs
+        WHERE status = 'failed'
+          AND timestamp >= datetime('now', '-' || ? || ' hours')
+        GROUP BY error_code, error_message
+        ORDER BY occurrence_count DESC
+        LIMIT ?
+    )";
+    
+    const std::string GET_ERROR_TYPE_STATISTICS_BY_TARGET = R"(
+        SELECT 
+            error_code,
+            error_message,
+            COUNT(*) as occurrence_count,
+            MIN(timestamp) as first_occurred,
+            MAX(timestamp) as last_occurred
+        FROM export_logs
+        WHERE status = 'failed'
+          AND timestamp >= datetime('now', '-' || ? || ' hours')
+          AND target_id = ?
+        GROUP BY error_code, error_message
+        ORDER BY occurrence_count DESC
+        LIMIT ?
+    )";
+    
+    const std::string GET_POINT_PERFORMANCE_STATS_ALL = R"(
+        SELECT 
+            point_id,
+            COUNT(*) as total_exports,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_exports,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_exports,
+            CAST(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS REAL) 
+                / COUNT(*) * 100.0 as success_rate,
+            AVG(CASE WHEN status = 'success' THEN processing_time_ms END) 
+                as avg_processing_time_ms,
+            MAX(timestamp) as last_export_time
+        FROM export_logs
+        WHERE timestamp >= datetime('now', '-' || ? || ' hours')
+        GROUP BY point_id
+        ORDER BY total_exports DESC
+        LIMIT ?
+    )";
+    
+    const std::string GET_POINT_PERFORMANCE_STATS_BY_TARGET = R"(
+        SELECT 
+            point_id,
+            COUNT(*) as total_exports,
+            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_exports,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_exports,
+            CAST(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS REAL) 
+                / COUNT(*) * 100.0 as success_rate,
+            AVG(CASE WHEN status = 'success' THEN processing_time_ms END) 
+                as avg_processing_time_ms,
+            MAX(timestamp) as last_export_time
+        FROM export_logs
+        WHERE timestamp >= datetime('now', '-' || ? || ' hours')
+          AND target_id = ?
+        GROUP BY point_id
+        ORDER BY total_exports DESC
+        LIMIT ?
+    )";
+    
+    const std::string GET_TARGET_HEALTH_CHECK = R"(
+        SELECT 
+            ? as target_id,
+            CAST(SUM(CASE WHEN status = 'success' 
+                AND timestamp >= datetime('now', '-1 hours') 
+                THEN 1 ELSE 0 END) AS REAL) / 
+            NULLIF(SUM(CASE WHEN timestamp >= datetime('now', '-1 hours') 
+                THEN 1 ELSE 0 END), 0) * 100.0 as success_rate_1h,
+            CAST(SUM(CASE WHEN status = 'success' 
+                AND timestamp >= datetime('now', '-24 hours') 
+                THEN 1 ELSE 0 END) AS REAL) / 
+            NULLIF(SUM(CASE WHEN timestamp >= datetime('now', '-24 hours') 
+                THEN 1 ELSE 0 END), 0) * 100.0 as success_rate_24h,
+            AVG(CASE WHEN status = 'success' 
+                AND timestamp >= datetime('now', '-1 hours')
+                THEN processing_time_ms END) as avg_response_time_ms,
+            MAX(CASE WHEN status = 'success' THEN timestamp END) as last_success_time,
+            MAX(CASE WHEN status = 'failed' THEN timestamp END) as last_failure_time,
+            (SELECT error_message FROM export_logs 
+             WHERE target_id = ?
+               AND status = 'failed'
+             ORDER BY timestamp DESC LIMIT 1) as last_error_message
+        FROM export_logs
+        WHERE target_id = ?
+    )";
+    
+    const std::string GET_CONSECUTIVE_FAILURES = R"(
+        SELECT status
+        FROM export_logs
+        WHERE target_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 100
+    )";
+    
+    const std::string GET_DISTINCT_TARGET_IDS = R"(
+        SELECT DISTINCT target_id 
+        FROM export_logs 
+        WHERE timestamp >= datetime('now', '-24 hours')
+        ORDER BY target_id
+    )";
 } // namespace ExportLog
 
 // =============================================================================
