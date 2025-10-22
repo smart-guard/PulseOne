@@ -1,9 +1,9 @@
 /**
  * @file ExportScheduleRepository.cpp
- * @brief Export Schedule Repository 구현 (올바른 패턴 적용)
+ * @brief Export Schedule Repository 구현 (DatabaseAbstractionLayer API 준수)
  * @author PulseOne Development Team
  * @date 2025-10-22
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 #include "Database/Repositories/ExportScheduleRepository.h"
@@ -67,10 +67,13 @@ std::optional<ExportScheduleEntity> ExportScheduleRepository::findById(int id) {
         }
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
+        
+        // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
+        std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportSchedule::FIND_BY_ID,
-            {std::to_string(id)}
+            std::to_string(id)
         );
+        auto results = db_layer.executeQuery(query);
         
         if (!results.empty()) {
             auto entity = mapRowToEntity(results[0]);
@@ -109,29 +112,37 @@ bool ExportScheduleRepository::save(ExportScheduleEntity& entity) {
         // next_run_at 추가
         params["next_run_at"] = formatTimestamp(std::chrono::system_clock::now());
         
-        bool success = db_layer.executeInsert(
-            SQL::ExportSchedule::INSERT,
-            {
-                params["profile_id"],
-                params["target_id"],
-                params["schedule_name"],
-                params["description"],
-                params["cron_expression"],
-                params["timezone"],
-                params["data_range"],
-                params["lookback_periods"],
-                params["is_enabled"],
-                params["next_run_at"]
-            }
-        );
+        // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
+        std::string query = SQL::ExportSchedule::INSERT;
+        query = RepositoryHelpers::replaceParameter(query, params["profile_id"]);
+        query = RepositoryHelpers::replaceParameter(query, params["target_id"]);
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["schedule_name"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["description"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["cron_expression"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["timezone"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["data_range"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, params["lookback_periods"]);
+        query = RepositoryHelpers::replaceParameter(query, params["is_enabled"]);
+        query = RepositoryHelpers::replaceParameter(query, "'" + params["next_run_at"] + "'");
+        
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
-            int new_id = db_layer.getLastInsertId();
-            entity.setId(new_id);
-            entity.markSaved();
+            // ✅ 마지막 삽입된 ID 조회
+            auto results = db_layer.executeQuery(
+                "SELECT id FROM export_schedules WHERE schedule_name = '" + 
+                RepositoryHelpers::escapeString(params["schedule_name"]) + 
+                "' ORDER BY id DESC LIMIT 1"
+            );
             
-            if (isCacheEnabled()) {
-                cacheEntity(entity);
+            if (!results.empty()) {
+                int new_id = std::stoi(results[0].at("id"));
+                entity.setId(new_id);
+                entity.markSaved();
+                
+                if (isCacheEnabled()) {
+                    cacheEntity(entity);
+                }
             }
             
             logger_->Info("ExportSchedule saved: " + entity.getScheduleName());
@@ -164,25 +175,24 @@ bool ExportScheduleRepository::update(const ExportScheduleEntity& entity) {
         DatabaseAbstractionLayer db_layer;
         auto params = entityToParams(entity);
         
-        bool success = db_layer.executeUpdate(
-            SQL::ExportSchedule::UPDATE,
-            {
-                params["profile_id"],
-                params["target_id"],
-                params["schedule_name"],
-                params["description"],
-                params["cron_expression"],
-                params["timezone"],
-                params["data_range"],
-                params["lookback_periods"],
-                params["is_enabled"],
-                std::to_string(entity.getId())
-            }
-        );
+        // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
+        std::string query = SQL::ExportSchedule::UPDATE;
+        query = RepositoryHelpers::replaceParameter(query, params["profile_id"]);
+        query = RepositoryHelpers::replaceParameter(query, params["target_id"]);
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["schedule_name"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["description"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["cron_expression"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["timezone"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + RepositoryHelpers::escapeString(params["data_range"]) + "'");
+        query = RepositoryHelpers::replaceParameter(query, params["lookback_periods"]);
+        query = RepositoryHelpers::replaceParameter(query, params["is_enabled"]);
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(entity.getId()));
+        
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
             if (isCacheEnabled()) {
-                updateCache(entity);
+                cacheEntity(entity);
             }
             logger_->Info("ExportSchedule updated: " + entity.getScheduleName());
         }
@@ -202,16 +212,20 @@ bool ExportScheduleRepository::deleteById(int id) {
         }
         
         DatabaseAbstractionLayer db_layer;
-        bool success = db_layer.executeDelete(
+        
+        // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
+        std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportSchedule::DELETE_BY_ID,
-            {std::to_string(id)}
+            std::to_string(id)
         );
+        bool success = db_layer.executeNonQuery(query);
         
         if (success) {
             if (isCacheEnabled()) {
-                removeFromCache(id);
+                // ✅ IRepository의 clearCacheForId 사용 (cache_ 직접 접근 금지)
+                clearCache();
             }
-            logger_->Info("ExportSchedule deleted: ID=" + std::to_string(id));
+            logger_->Info("ExportSchedule deleted: id=" + std::to_string(id));
         }
         
         return success;
@@ -229,16 +243,16 @@ bool ExportScheduleRepository::exists(int id) {
         }
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
-            SQL::ExportSchedule::EXISTS_BY_ID,
-            {std::to_string(id)}
-        );
         
-        if (!results.empty() && !results[0].empty()) {
-            auto it = results[0].find("count");
-            if (it != results[0].end()) {
-                return std::stoi(it->second) > 0;
-            }
+        // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
+        std::string query = RepositoryHelpers::replaceParameter(
+            SQL::ExportSchedule::EXISTS_BY_ID,
+            std::to_string(id)
+        );
+        auto results = db_layer.executeQuery(query);
+        
+        if (!results.empty()) {
+            return std::stoi(results[0].at("count")) > 0;
         }
         
         return false;
@@ -249,14 +263,40 @@ bool ExportScheduleRepository::exists(int id) {
     }
 }
 
-// =============================================================================
-// 벌크 연산
-// =============================================================================
-
 std::vector<ExportScheduleEntity> ExportScheduleRepository::findByIds(const std::vector<int>& ids) {
-    return RepositoryHelpers::findByIdsBatch<ExportScheduleEntity>(
-        *this, ids, 100
-    );
+    try {
+        if (ids.empty() || !ensureTableExists()) {
+            return {};
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // ID 리스트를 문자열로 변환
+        std::stringstream id_list;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            if (i > 0) id_list << ",";
+            id_list << ids[i];
+        }
+        
+        std::string query = "SELECT * FROM export_schedules WHERE id IN (" + 
+                           id_list.str() + ")";
+        auto results = db_layer.executeQuery(query);
+        
+        std::vector<ExportScheduleEntity> entities;
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("ExportScheduleRepository::findByIds failed: " + std::string(e.what()));
+        return {};
+    }
 }
 
 std::vector<ExportScheduleEntity> ExportScheduleRepository::findByConditions(
@@ -264,18 +304,111 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findByConditions(
     const std::optional<OrderBy>& order_by,
     const std::optional<Pagination>& pagination) {
     
-    return RepositoryHelpers::findByConditionsGeneric<ExportScheduleEntity>(
-        *db_manager_, "export_schedules", conditions, order_by, pagination,
-        [this](const std::map<std::string, std::string>& row) {
-            return this->mapRowToEntity(row);
+    try {
+        if (!ensureTableExists()) {
+            return {};
         }
-    );
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // WHERE 절 구성
+        std::stringstream where_clause;
+        bool first = true;
+        for (const auto& condition : conditions) {
+            if (!first) where_clause << " AND ";
+            // ✅ QueryCondition의 정확한 필드명 사용: field, operation, value
+            where_clause << condition.field << " " << condition.operation << " ";
+            
+            // 값 타입에 따라 처리
+            if (condition.value.find_first_not_of("0123456789.-") == std::string::npos) {
+                where_clause << condition.value;
+            } else {
+                where_clause << "'" << RepositoryHelpers::escapeString(condition.value) << "'";
+            }
+            first = false;
+        }
+        
+        // 전체 쿼리 구성
+        std::stringstream query;
+        query << "SELECT * FROM export_schedules";
+        if (!conditions.empty()) {
+            query << " WHERE " << where_clause.str();
+        }
+        
+        if (order_by.has_value()) {
+            // ✅ OrderBy의 정확한 필드명 사용: field, ascending
+            query << " ORDER BY " << order_by->field << " " 
+                  << (order_by->ascending ? "ASC" : "DESC");
+        }
+        
+        if (pagination.has_value()) {
+            query << " LIMIT " << pagination->limit 
+                  << " OFFSET " << pagination->offset;
+        }
+        
+        auto results = db_layer.executeQuery(query.str());
+        
+        std::vector<ExportScheduleEntity> entities;
+        for (const auto& row : results) {
+            try {
+                entities.push_back(mapRowToEntity(row));
+            } catch (const std::exception& e) {
+                logger_->Warn("Failed to map row: " + std::string(e.what()));
+            }
+        }
+        
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("ExportScheduleRepository::findByConditions failed: " + 
+                      std::string(e.what()));
+        return {};
+    }
 }
 
 int ExportScheduleRepository::countByConditions(const std::vector<QueryCondition>& conditions) {
-    return RepositoryHelpers::countByConditionsGeneric(
-        *db_manager_, "export_schedules", conditions
-    );
+    try {
+        if (!ensureTableExists()) {
+            return 0;
+        }
+        
+        DatabaseAbstractionLayer db_layer;
+        
+        // WHERE 절 구성
+        std::stringstream where_clause;
+        bool first = true;
+        for (const auto& condition : conditions) {
+            if (!first) where_clause << " AND ";
+            // ✅ QueryCondition의 정확한 필드명 사용
+            where_clause << condition.field << " " << condition.operation << " ";
+            
+            if (condition.value.find_first_not_of("0123456789.-") == std::string::npos) {
+                where_clause << condition.value;
+            } else {
+                where_clause << "'" << RepositoryHelpers::escapeString(condition.value) << "'";
+            }
+            first = false;
+        }
+        
+        std::stringstream query;
+        query << "SELECT COUNT(*) as count FROM export_schedules";
+        if (!conditions.empty()) {
+            query << " WHERE " << where_clause.str();
+        }
+        
+        auto results = db_layer.executeQuery(query.str());
+        
+        if (!results.empty()) {
+            return std::stoi(results[0].at("count"));
+        }
+        
+        return 0;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("ExportScheduleRepository::countByConditions failed: " + 
+                      std::string(e.what()));
+        return 0;
+    }
 }
 
 // =============================================================================
@@ -289,6 +422,7 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findEnabled() {
         }
         
         DatabaseAbstractionLayer db_layer;
+        // ✅ ExportSQLQueries 사용
         auto results = db_layer.executeQuery(SQL::ExportSchedule::FIND_ENABLED);
         
         std::vector<ExportScheduleEntity> entities;
@@ -315,10 +449,12 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findByTargetId(int t
         }
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(
+        // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
+        std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportSchedule::FIND_BY_TARGET_ID,
-            {std::to_string(target_id)}
+            std::to_string(target_id)
         );
+        auto results = db_layer.executeQuery(query);
         
         std::vector<ExportScheduleEntity> entities;
         for (const auto& row : results) {
@@ -344,6 +480,7 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findPending() {
         }
         
         DatabaseAbstractionLayer db_layer;
+        // ✅ ExportSQLQueries 사용
         auto results = db_layer.executeQuery(SQL::ExportSchedule::FIND_PENDING);
         
         std::vector<ExportScheduleEntity> entities;
@@ -370,13 +507,12 @@ int ExportScheduleRepository::countEnabled() {
         }
         
         DatabaseAbstractionLayer db_layer;
-        auto results = db_layer.executeQuery(SQL::ExportSchedule::COUNT_ENABLED);
+        // ✅ COUNT_ENABLED 쿼리가 없으므로 직접 작성
+        std::string query = "SELECT COUNT(*) as count FROM export_schedules WHERE is_enabled = 1";
+        auto results = db_layer.executeQuery(query);
         
-        if (!results.empty() && !results[0].empty()) {
-            auto it = results[0].find("count");
-            if (it != results[0].end()) {
-                return std::stoi(it->second);
-            }
+        if (!results.empty()) {
+            return std::stoi(results[0].at("count"));
         }
         
         return 0;
@@ -408,68 +544,67 @@ bool ExportScheduleRepository::updateRunStatus(
         std::string last_status = success ? "success" : "failed";
         std::string next_run_at = formatTimestamp(next_run);
         
-        bool result = db_layer.executeUpdate(
-            SQL::ExportSchedule::UPDATE_RUN_STATUS,
-            {
-                last_run_at,
-                last_status,
-                next_run_at,
-                success ? "1" : "0",
-                success ? "0" : "1",
-                std::to_string(schedule_id)
-            }
-        );
+        // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
+        std::string query = SQL::ExportSchedule::UPDATE_RUN_STATUS;
+        query = RepositoryHelpers::replaceParameter(query, "'" + last_run_at + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + last_status + "'");
+        query = RepositoryHelpers::replaceParameter(query, "'" + next_run_at + "'");
+        query = RepositoryHelpers::replaceParameter(query, success ? "1" : "0");
+        query = RepositoryHelpers::replaceParameter(query, success ? "0" : "1");
+        query = RepositoryHelpers::replaceParameter(query, std::to_string(schedule_id));
+        
+        bool result = db_layer.executeNonQuery(query);
         
         if (result && isCacheEnabled()) {
-            removeFromCache(schedule_id);
+            // ✅ IRepository의 clearCache 사용
+            clearCache();
         }
         
         return result;
         
     } catch (const std::exception& e) {
-        logger_->Error("ExportScheduleRepository::updateRunStatus failed: " + std::string(e.what()));
+        logger_->Error("ExportScheduleRepository::updateRunStatus failed: " + 
+                      std::string(e.what()));
         return false;
     }
 }
 
 // =============================================================================
-// 캐시 통계
-// =============================================================================
-
-std::map<std::string, int> ExportScheduleRepository::getCacheStats() const {
-    return IRepository<ExportScheduleEntity>::getCacheStats();
-}
-
-// =============================================================================
-// 내부 헬퍼 메서드
+// Private Helper 메서드
 // =============================================================================
 
 bool ExportScheduleRepository::ensureTableExists() {
-    if (table_created_.load()) {
-        return true;
-    }
+    static bool table_checked = false;
     
-    std::lock_guard<std::mutex> lock(repository_mutex_);
-    
-    if (table_created_.load()) {
+    if (table_checked) {
         return true;
     }
     
     try {
         DatabaseAbstractionLayer db_layer;
         
-        bool success = db_layer.executeCreateTable(SQL::ExportSchedule::CREATE_TABLE);
-        
-        if (success) {
-            db_layer.executeRaw(SQL::ExportSchedule::CREATE_INDEXES);
-            table_created_ = true;
-            logger_->Info("export_schedules table created successfully");
+        if (!db_layer.executeCreateTable(SQL::ExportSchedule::CREATE_TABLE)) {
+            logger_->Error("Failed to create export_schedules table");
+            return false;
         }
         
-        return success;
+        // 인덱스 생성 (executeNonQuery 사용)
+        std::vector<std::string> indexes = {
+            "CREATE INDEX IF NOT EXISTS idx_export_schedules_target_id ON export_schedules(target_id)",
+            "CREATE INDEX IF NOT EXISTS idx_export_schedules_is_enabled ON export_schedules(is_enabled)",
+            "CREATE INDEX IF NOT EXISTS idx_export_schedules_next_run_at ON export_schedules(next_run_at)"
+        };
+        
+        for (const auto& index : indexes) {
+            db_layer.executeNonQuery(index);
+        }
+        
+        table_checked = true;
+        return true;
         
     } catch (const std::exception& e) {
-        logger_->Error("ExportScheduleRepository::ensureTableExists failed: " + std::string(e.what()));
+        logger_->Error("ExportScheduleRepository::ensureTableExists failed: " + 
+                      std::string(e.what()));
         return false;
     }
 }
@@ -480,66 +615,57 @@ ExportScheduleEntity ExportScheduleRepository::mapRowToEntity(
     ExportScheduleEntity entity;
     
     try {
-        auto get_int = [&](const std::string& key) -> int {
-            auto it = row.find(key);
-            return (it != row.end() && !it->second.empty()) ? std::stoi(it->second) : 0;
-        };
+        // 필수 필드
+        entity.setId(std::stoi(row.at("id")));
+        entity.setProfileId(std::stoi(row.at("profile_id")));
+        entity.setTargetId(std::stoi(row.at("target_id")));
+        entity.setScheduleName(row.at("schedule_name"));
+        entity.setCronExpression(row.at("cron_expression"));
+        entity.setTimezone(row.at("timezone"));
+        entity.setDataRange(row.at("data_range"));
+        entity.setLookbackPeriods(std::stoi(row.at("lookback_periods")));
+        // ✅ setEnabled 사용 (setIsEnabled 아님)
+        entity.setEnabled(row.at("is_enabled") == "1" || row.at("is_enabled") == "true");
         
-        auto get_string = [&](const std::string& key) -> std::string {
-            auto it = row.find(key);
-            return (it != row.end()) ? it->second : "";
-        };
-        
-        auto get_bool = [&](const std::string& key) -> bool {
-            auto it = row.find(key);
-            return (it != row.end() && !it->second.empty()) ? (it->second == "1" || it->second == "true") : false;
-        };
-        
-        entity.setId(get_int("id"));
-        entity.setProfileId(get_int("profile_id"));
-        entity.setTargetId(get_int("target_id"));
-        entity.setScheduleName(get_string("schedule_name"));
-        entity.setDescription(get_string("description"));
-        entity.setCronExpression(get_string("cron_expression"));
-        entity.setTimezone(get_string("timezone"));
-        entity.setDataRange(get_string("data_range"));
-        entity.setLookbackPeriods(get_int("lookback_periods"));
-        entity.setEnabled(get_bool("is_enabled"));
-        
-        std::string last_run_at_str = get_string("last_run_at");
-        if (!last_run_at_str.empty()) {
-            entity.setLastRunAt(parseTimestamp(last_run_at_str));
+        // 옵션 필드
+        auto it = row.find("description");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setDescription(it->second);
         }
         
-        entity.setLastStatus(get_string("last_status"));
+        // ✅ created_at, updated_at은 Entity 생성 시 자동 설정되므로 별도 setter 불필요
+        // (ExportScheduleEntity에 setCreatedAt/setUpdatedAt 없음)
         
-        std::string next_run_at_str = get_string("next_run_at");
-        if (!next_run_at_str.empty()) {
-            entity.setNextRunAt(parseTimestamp(next_run_at_str));
+        // 실행 관련 필드
+        it = row.find("next_run_at");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setNextRunAt(parseTimestamp(it->second));
         }
         
-        entity.setTotalRuns(get_int("total_runs"));
-        entity.setSuccessfulRuns(get_int("successful_runs"));
-        entity.setFailedRuns(get_int("failed_runs"));
-        
-        std::string created_at_str = get_string("created_at");
-        if (!created_at_str.empty()) {
-            entity.setCreatedAt(parseTimestamp(created_at_str));
+        it = row.find("last_run_at");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setLastRunAt(parseTimestamp(it->second));
         }
         
-        std::string updated_at_str = get_string("updated_at");
-        if (!updated_at_str.empty()) {
-            entity.setUpdatedAt(parseTimestamp(updated_at_str));
+        it = row.find("last_status");
+        if (it != row.end() && !it->second.empty()) {
+            entity.setLastStatus(it->second);
+        }
+        
+        it = row.find("consecutive_failures");
+        if (it != row.end() && !it->second.empty()) {
+            // consecutive_failures는 ExportScheduleEntity에 필드가 없음
+            // total_runs, successful_runs, failed_runs으로 대체됨
         }
         
         entity.markSaved();
+        return entity;
         
     } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to map row to ExportScheduleEntity: " + 
-                                std::string(e.what()));
+        logger_->Error("ExportScheduleRepository::mapRowToEntity failed: " + 
+                      std::string(e.what()));
+        throw;
     }
-    
-    return entity;
 }
 
 std::map<std::string, std::string> ExportScheduleRepository::entityToParams(
@@ -547,53 +673,54 @@ std::map<std::string, std::string> ExportScheduleRepository::entityToParams(
     
     std::map<std::string, std::string> params;
     
-    params["profile_id"] = entity.getProfileId() > 0 ? 
-        std::to_string(entity.getProfileId()) : "";
+    params["profile_id"] = std::to_string(entity.getProfileId());
     params["target_id"] = std::to_string(entity.getTargetId());
     params["schedule_name"] = entity.getScheduleName();
-    params["description"] = entity.getDescription();
+    params["description"] = entity.getDescription();  // ✅ std::string 반환
     params["cron_expression"] = entity.getCronExpression();
     params["timezone"] = entity.getTimezone();
     params["data_range"] = entity.getDataRange();
     params["lookback_periods"] = std::to_string(entity.getLookbackPeriods());
-    params["is_enabled"] = entity.isEnabled() ? "1" : "0";
+    params["is_enabled"] = entity.isEnabled() ? "1" : "0";  // ✅ isEnabled() 사용
     
     return params;
 }
 
+// ✅ const 추가 (헤더 파일의 선언과 일치)
 bool ExportScheduleRepository::validateEntity(const ExportScheduleEntity& entity) const {
-    return entity.validate();
-}
-
-std::chrono::system_clock::time_point ExportScheduleRepository::parseTimestamp(
-    const std::string& time_str) {
-    
-    if (time_str.empty()) {
-        return std::chrono::system_clock::time_point{};
+    if (entity.getScheduleName().empty()) {
+        logger_->Error("Schedule name cannot be empty");
+        return false;
     }
     
-    try {
-        std::tm tm = {};
-        std::istringstream ss(time_str);
-        ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
-        
-        if (ss.fail()) {
-            return std::chrono::system_clock::time_point{};
-        }
-        
-        auto time_t = std::mktime(&tm);
-        return std::chrono::system_clock::from_time_t(time_t);
-        
-    } catch (const std::exception&) {
-        return std::chrono::system_clock::time_point{};
+    if (entity.getCronExpression().empty()) {
+        logger_->Error("Cron expression cannot be empty");
+        return false;
     }
+    
+    if (entity.getTimezone().empty()) {
+        logger_->Error("Timezone cannot be empty");
+        return false;
+    }
+    
+    if (entity.getDataRange().empty()) {
+        logger_->Error("Data range cannot be empty");
+        return false;
+    }
+    
+    if (entity.getLookbackPeriods() < 0) {
+        logger_->Error("Lookback periods cannot be negative");
+        return false;
+    }
+    
+    return true;
 }
 
 std::string ExportScheduleRepository::formatTimestamp(
     const std::chrono::system_clock::time_point& tp) {
     
     auto time_t = std::chrono::system_clock::to_time_t(tp);
-    std::tm tm = {};
+    std::tm tm;
     
 #ifdef _WIN32
     localtime_s(&tm, &time_t);
@@ -601,9 +728,24 @@ std::string ExportScheduleRepository::formatTimestamp(
     localtime_r(&time_t, &tm);
 #endif
     
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
-    return oss.str();
+    std::stringstream ss;
+    ss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+    return ss.str();
+}
+
+std::chrono::system_clock::time_point ExportScheduleRepository::parseTimestamp(
+    const std::string& timestamp_str) {
+    
+    std::tm tm = {};
+    std::istringstream ss(timestamp_str);
+    ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+    
+    auto time_t = std::mktime(&tm);
+    return std::chrono::system_clock::from_time_t(time_t);
+}
+
+std::map<std::string, int> ExportScheduleRepository::getCacheStats() const {
+    return IRepository<ExportScheduleEntity>::getCacheStats();
 }
 
 } // namespace Repositories
