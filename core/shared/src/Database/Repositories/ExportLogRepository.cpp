@@ -1386,101 +1386,288 @@ std::map<std::string, int> ExportLogRepository::getCacheStats() const {
     return stats;
 }
 
+/**
+ * @brief DB 행을 ExportLogEntity로 매핑 (완전 수정본)
+ * @param row DB 쿼리 결과의 한 행 (컬럼명 → 값)
+ * @return ExportLogEntity 객체
+ * @throws std::runtime_error 매핑 실패 시
+ * 
+ * 주요 수정사항:
+ * 1. safeStoi() 헬퍼 함수 추가 (안전한 정수 변환)
+ * 2. 모든 정수 필드에 안전한 변환 적용
+ * 3. 빈 문자열, NULL, "0" 처리 개선
+ * 4. 예외 처리 강화
+ * 
+ * 파일: core/shared/src/Database/Repositories/ExportLogRepository.cpp
+ */
 ExportLogEntity ExportLogRepository::mapRowToEntity(
     const std::map<std::string, std::string>& row) {
     
     ExportLogEntity entity;
     
     try {
+        // =================================================================
+        // 안전한 정수 변환 헬퍼 함수
+        // =================================================================
+        /**
+         * @brief 안전한 문자열 → 정수 변환
+         * @param str 변환할 문자열
+         * @param default_value 변환 실패 시 기본값 (기본: 0)
+         * @return 변환된 정수 또는 기본값
+         * 
+         * 처리 케이스:
+         * - empty string → default_value
+         * - "NULL", "null" → default_value
+         * - "0" → 0 (정상 변환)
+         * - 숫자 문자열 → 정수 (정상 변환)
+         * - 잘못된 형식 → default_value (예외 catch)
+         */
+        auto safeStoi = [this](const std::string& str, int default_value = 0) -> int {
+            // 1. 빈 문자열 체크
+            if (str.empty()) {
+                return default_value;
+            }
+            
+            // 2. NULL 문자열 체크 (대소문자 무관)
+            std::string lower_str = str;
+            std::transform(lower_str.begin(), lower_str.end(), 
+                         lower_str.begin(), ::tolower);
+            if (lower_str == "null") {
+                return default_value;
+            }
+            
+            // 3. 안전한 stoi 변환 (예외 처리)
+            try {
+                return std::stoi(str);
+            } catch (const std::invalid_argument& e) {
+                // 형식 오류 (예: "abc")
+                if (logger_) {
+                    logger_->Debug(
+                        "ExportLogRepository::safeStoi - Invalid format: '" + 
+                        str + "', using default: " + std::to_string(default_value));
+                }
+                return default_value;
+            } catch (const std::out_of_range& e) {
+                // 범위 초과 (예: "999999999999999999")
+                if (logger_) {
+                    logger_->Warn(
+                        "ExportLogRepository::safeStoi - Out of range: '" + 
+                        str + "', using default: " + std::to_string(default_value));
+                }
+                return default_value;
+            } catch (...) {
+                // 기타 예외
+                if (logger_) {
+                    logger_->Error(
+                        "ExportLogRepository::safeStoi - Unknown error for: '" + 
+                        str + "', using default: " + std::to_string(default_value));
+                }
+                return default_value;
+            }
+        };
+        
+        // =================================================================
+        // 필드 매핑 (안전한 변환 적용)
+        // =================================================================
+        
         auto it = row.end();
         
+        // -----------------------------------------------------------------
+        // 1. ID (Primary Key)
+        // -----------------------------------------------------------------
         it = row.find("id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setId(std::stoi(it->second));
+        if (it != row.end()) {
+            entity.setId(safeStoi(it->second, 0));
         }
         
+        // -----------------------------------------------------------------
+        // 2. log_type (필수 필드)
+        // -----------------------------------------------------------------
         it = row.find("log_type");
         if (it != row.end()) {
             entity.setLogType(it->second);
+        } else {
+            // log_type이 없으면 경고 로그
+            if (logger_) {
+                logger_->Warn("ExportLogRepository::mapRowToEntity - Missing log_type");
+            }
         }
         
+        // -----------------------------------------------------------------
+        // 3. Foreign Keys (nullable)
+        // -----------------------------------------------------------------
+        
+        // service_id (nullable)
         it = row.find("service_id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setServiceId(std::stoi(it->second));
+        if (it != row.end()) {
+            entity.setServiceId(safeStoi(it->second, 0));
         }
         
+        // target_id (nullable) - ✅ 핵심 수정!
         it = row.find("target_id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setTargetId(std::stoi(it->second));
+        if (it != row.end()) {
+            entity.setTargetId(safeStoi(it->second, 0));
         }
         
+        // mapping_id (nullable)
         it = row.find("mapping_id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setMappingId(std::stoi(it->second));
+        if (it != row.end()) {
+            entity.setMappingId(safeStoi(it->second, 0));
         }
         
+        // point_id (nullable)
         it = row.find("point_id");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setPointId(std::stoi(it->second));
+        if (it != row.end()) {
+            entity.setPointId(safeStoi(it->second, 0));
         }
         
+        // -----------------------------------------------------------------
+        // 4. 데이터 필드 (텍스트)
+        // -----------------------------------------------------------------
+        
+        // source_value
         it = row.find("source_value");
         if (it != row.end()) {
             entity.setSourceValue(it->second);
         }
         
+        // converted_value
         it = row.find("converted_value");
         if (it != row.end()) {
             entity.setConvertedValue(it->second);
         }
         
+        // -----------------------------------------------------------------
+        // 5. 결과 필드
+        // -----------------------------------------------------------------
+        
+        // status (필수 필드)
         it = row.find("status");
         if (it != row.end()) {
             entity.setStatus(it->second);
+        } else {
+            // status가 없으면 경고
+            if (logger_) {
+                logger_->Warn("ExportLogRepository::mapRowToEntity - Missing status");
+            }
+            entity.setStatus("unknown");  // 기본값
         }
         
+        // http_status_code (정수)
+        it = row.find("http_status_code");
+        if (it != row.end()) {
+            entity.setHttpStatusCode(safeStoi(it->second, 0));
+        }
+        
+        // -----------------------------------------------------------------
+        // 6. 에러 정보 (텍스트)
+        // -----------------------------------------------------------------
+        
+        // error_message
         it = row.find("error_message");
         if (it != row.end()) {
             entity.setErrorMessage(it->second);
         }
         
+        // error_code
         it = row.find("error_code");
         if (it != row.end()) {
             entity.setErrorCode(it->second);
         }
         
+        // response_data
         it = row.find("response_data");
         if (it != row.end()) {
             entity.setResponseData(it->second);
         }
         
-        it = row.find("http_status_code");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setHttpStatusCode(std::stoi(it->second));
-        }
+        // -----------------------------------------------------------------
+        // 7. 성능 정보 (정수)
+        // -----------------------------------------------------------------
         
+        // processing_time_ms
         it = row.find("processing_time_ms");
-        if (it != row.end() && !it->second.empty()) {
-            entity.setProcessingTimeMs(std::stoi(it->second));
+        if (it != row.end()) {
+            entity.setProcessingTimeMs(safeStoi(it->second, 0));
         }
         
+        // -----------------------------------------------------------------
+        // 8. 메타 정보
+        // -----------------------------------------------------------------
+        
+        // client_info (JSON 문자열)
         it = row.find("client_info");
         if (it != row.end()) {
             entity.setClientInfo(it->second);
         }
         
+        // timestamp (날짜/시간 변환)
         it = row.find("timestamp");
         if (it != row.end() && !it->second.empty()) {
-            std::tm tm = {};
-            std::istringstream ss(it->second);
-            ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
-            auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
-            entity.setTimestamp(tp);
+            try {
+                // SQLite 기본 포맷: "YYYY-MM-DD HH:MM:SS"
+                std::tm tm = {};
+                std::istringstream ss(it->second);
+                ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+                
+                if (ss.fail()) {
+                    // 파싱 실패 시 현재 시각 사용
+                    if (logger_) {
+                        logger_->Warn(
+                            "ExportLogRepository::mapRowToEntity - " 
+                            "Failed to parse timestamp: '" + it->second + 
+                            "', using current time");
+                    }
+                    entity.setTimestamp(std::chrono::system_clock::now());
+                } else {
+                    // 파싱 성공
+                    auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+                    entity.setTimestamp(tp);
+                }
+            } catch (const std::exception& e) {
+                // 예외 발생 시 현재 시각 사용
+                if (logger_) {
+                    logger_->Error(
+                        "ExportLogRepository::mapRowToEntity - "
+                        "Exception parsing timestamp: " + std::string(e.what()));
+                }
+                entity.setTimestamp(std::chrono::system_clock::now());
+            }
+        } else {
+            // timestamp가 없으면 현재 시각 사용
+            entity.setTimestamp(std::chrono::system_clock::now());
+        }
+        
+        // =================================================================
+        // 매핑 완료 - 디버그 로그
+        // =================================================================
+        if (logger_ && logger_->getLogLevel() <= LogLevel::DEBUG_LEVEL) {
+            logger_->Debug(
+                "ExportLogRepository::mapRowToEntity - Mapped successfully: " 
+                "id=" + std::to_string(entity.getId()) + 
+                ", target_id=" + std::to_string(entity.getTargetId()) +
+                ", status=" + entity.getStatus());
         }
         
     } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to map row to ExportLogEntity: " + 
-                                std::string(e.what()));
+        // 최상위 예외 처리 - 매핑 실패
+        std::string error_msg = "Failed to map row to ExportLogEntity: " + 
+                               std::string(e.what());
+        
+        if (logger_) {
+            logger_->Error(error_msg);
+        }
+        
+        throw std::runtime_error(error_msg);
+    } catch (...) {
+        // 알 수 없는 예외
+        std::string error_msg = "Unknown exception in mapRowToEntity";
+        
+        if (logger_) {
+            logger_->Error(error_msg);
+        }
+        
+        throw std::runtime_error(error_msg);
     }
     
     return entity;
