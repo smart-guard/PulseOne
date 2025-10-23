@@ -31,6 +31,7 @@
 #include "Database/Repositories/ExportTargetMappingRepository.h"
 #include "Database/Repositories/ExportLogRepository.h"
 #include "Database/Repositories/ExportScheduleRepository.h"
+#include "Database/Repositories/PayloadTemplateRepository.h"
 
 
 // ✅ 필수 STL 헤더들
@@ -328,6 +329,13 @@ bool RepositoryFactory::createRepositoryInstances() {
             return false;
         }
         logger_->Info("✅ ExportScheduleRepository created");
+
+        payload_template_repository_ = std::make_shared<Repositories::PayloadTemplateRepository>();
+        if (!payload_template_repository_) {
+            logger_->Error("Failed to create PayloadTemplateRepository");
+            return false;
+        }
+        logger_->Info("✅ PayloadTemplateRepository created");
         
         logger_->Info("All repository instances created successfully");
         return true;

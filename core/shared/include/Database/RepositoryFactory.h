@@ -40,6 +40,7 @@ namespace Repositories {
     class ExportTargetMappingRepository;
     class ExportLogRepository;
     class ExportScheduleRepository;
+    class PayloadTemplateRepository;
 }
 
 /**
@@ -219,6 +220,15 @@ public:
         return export_schedule_repository_;
     }
 
+    std::shared_ptr<Repositories::PayloadTemplateRepository> getPayloadTemplateRepository() {
+        std::lock_guard<std::mutex> lock(factory_mutex_);
+        if (!initialized_.load()) {
+            throw std::runtime_error("RepositoryFactory not initialized");
+        }
+        creation_count_.fetch_add(1);
+        return payload_template_repository_;
+    }
+
     // =============================================================================
     // 통계 및 디버깅
     // =============================================================================
@@ -280,6 +290,7 @@ private:
     std::shared_ptr<Repositories::ExportTargetMappingRepository> export_target_mapping_repository_;
     std::shared_ptr<Repositories::ExportLogRepository> export_log_repository_;
     std::shared_ptr<Repositories::ExportScheduleRepository> export_schedule_repository_;
+    std::shared_ptr<Repositories::PayloadTemplateRepository> payload_template_repository_;
     
     // 상태 관리
     std::atomic<bool> initialized_{false};
