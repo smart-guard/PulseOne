@@ -1,23 +1,27 @@
 /**
- * @file CSPDynamicTargets.h
- * @brief CSP 동적 타겟 관련 모든 타입 정의 - 완전 통합 (컴파일 에러 해결)
+ * @file ExportTypes.h
+ * @brief Export Gateway 공통 타입 정의 (완전 통합)
  * @author PulseOne Development Team
- * @date 2025-09-29
- * @version 3.0.0 (모든 타입 통합 + 타입 정의 순서 수정)
- * 저장 위치: core/export-gateway/include/CSP/CSPDynamicTargets.h
+ * @date 2025-10-23
+ * @version 4.0.0 (CSPDynamicTargets.h → ExportTypes.h 이름 변경)
+ * 저장 위치: core/export-gateway/include/Export/ExportTypes.h
  * 
- * 🎯 모든 CSP Gateway 관련 타입들을 이 파일 하나에 정의:
+ * 🎯 Export Gateway 시스템의 모든 공통 타입을 이 파일에 정의:
  * - TargetSendResult (전송 결과) - ITargetHandler보다 먼저 정의
- * - FailureProtectorConfig/Stats (Circuit Breaker)
+ * - FailureProtectorConfig/Stats (Circuit Breaker 패턴)
  * - DynamicTarget (타겟 정보 - atomic 복사 문제 해결)
  * - ITargetHandler (공통 인터페이스)
- * - TargetHandlerFactory (팩토리)
+ * - TargetHandlerFactory (팩토리 패턴)
  * - BatchTargetResult (배치 처리)
  * - 유틸리티 함수들
+ * 
+ * 🔄 변경 이력:
+ * - v4.0.0 (2025-10-23): CSPDynamicTargets.h → ExportTypes.h 이름 변경
+ * - v3.0.0 (2025-09-29): 모든 타입 통합 + 타입 정의 순서 수정
  */
 
-#ifndef CSP_DYNAMIC_TARGETS_H
-#define CSP_DYNAMIC_TARGETS_H
+#ifndef EXPORT_TYPES_H
+#define EXPORT_TYPES_H
 
 #include <string>
 #include <vector>
@@ -29,12 +33,12 @@
 #include <mutex>
 #include <functional>
 #include <nlohmann/json.hpp>
-#include "AlarmMessage.h"
+#include "CSP/AlarmMessage.h"
 
 using json = nlohmann::json;
 
 namespace PulseOne {
-namespace CSP {
+namespace Export {
 
 // =============================================================================
 // 전방 선언
@@ -78,7 +82,6 @@ struct TargetSendResult {
     // 편의 생성자들
     TargetSendResult() = default;
     
-    // 🔥 생성자 순서 수정 (success를 마지막에)
     TargetSendResult(const std::string& name, const std::string& type, bool result)
         : success(result), target_name(name), target_type(type) {}
     
@@ -182,12 +185,12 @@ public:
     virtual ~ITargetHandler() = default;
     
     // 필수 메서드들
-    virtual TargetSendResult sendAlarm(const AlarmMessage& alarm, const json& config) = 0;
+    virtual TargetSendResult sendAlarm(const PulseOne::CSP::AlarmMessage& alarm, const json& config) = 0;
     virtual bool testConnection(const json& config) = 0;
     virtual std::string getHandlerType() const = 0;
     virtual bool validateConfig(const json& config, std::vector<std::string>& errors) = 0;
     
-    // 선택적 메서드들 (기본 구현 제공) - unused parameter warning 제거
+    // 선택적 메서드들 (기본 구현 제공)
     virtual bool initialize(const json& /* config */) { return true; }
     virtual void cleanup() { /* 기본: 아무 작업 없음 */ }
     virtual json getStatus() const {
@@ -213,7 +216,7 @@ struct DynamicTarget {
     
     // 런타임 상태 (atomic 멤버들)
     mutable std::atomic<bool> healthy{true};
-    mutable std::atomic<bool> handler_initialized{false};  // ← 추가
+    mutable std::atomic<bool> handler_initialized{false};
     mutable std::atomic<size_t> success_count{0};
     mutable std::atomic<size_t> failure_count{0};
     mutable std::atomic<size_t> consecutive_failures{0};
@@ -234,16 +237,16 @@ struct DynamicTarget {
         created_time = now;
     }
     
-    // 복사 생성자 (atomic 멤버들 처리)
-    DynamicTarget(const DynamicTarget& other) 
-        : name(other.name)
-        , type(other.type)
+    // 이동 생성자
+    DynamicTarget(DynamicTarget&& other) noexcept
+        : name(std::move(other.name))
+        , type(std::move(other.type))
         , enabled(other.enabled)
         , priority(other.priority)
-        , description(other.description)
-        , config(other.config)
+        , description(std::move(other.description))
+        , config(std::move(other.config))
         , healthy(other.healthy.load())
-        , handler_initialized(other.handler_initialized.load())  // ← 추가
+        , handler_initialized(other.handler_initialized.load())
         , success_count(other.success_count.load())
         , failure_count(other.failure_count.load())
         , consecutive_failures(other.consecutive_failures.load())
@@ -254,16 +257,16 @@ struct DynamicTarget {
         , last_failure_time(other.last_failure_time)
         , created_time(other.created_time) {}
     
-    // 이동 생성자 (atomic 멤버들 처리)
-    DynamicTarget(DynamicTarget&& other) noexcept
-        : name(std::move(other.name))
-        , type(std::move(other.type))
+    // 복사 생성자
+    DynamicTarget(const DynamicTarget& other)
+        : name(other.name)
+        , type(other.type)
         , enabled(other.enabled)
         , priority(other.priority)
-        , description(std::move(other.description))
-        , config(std::move(other.config))
+        , description(other.description)
+        , config(other.config)
         , healthy(other.healthy.load())
-        , handler_initialized(other.handler_initialized.load())  // ← 추가
+        , handler_initialized(other.handler_initialized.load())
         , success_count(other.success_count.load())
         , failure_count(other.failure_count.load())
         , consecutive_failures(other.consecutive_failures.load())
@@ -284,7 +287,7 @@ struct DynamicTarget {
             description = other.description;
             config = other.config;
             healthy.store(other.healthy.load());
-            handler_initialized.store(other.handler_initialized.load());  // ← 추가
+            handler_initialized.store(other.handler_initialized.load());
             success_count.store(other.success_count.load());
             failure_count.store(other.failure_count.load());
             consecutive_failures.store(other.consecutive_failures.load());
@@ -308,7 +311,7 @@ struct DynamicTarget {
             description = std::move(other.description);
             config = std::move(other.config);
             healthy.store(other.healthy.load());
-            handler_initialized.store(other.handler_initialized.load());  // ← 추가
+            handler_initialized.store(other.handler_initialized.load());
             success_count.store(other.success_count.load());
             failure_count.store(other.failure_count.load());
             consecutive_failures.store(other.consecutive_failures.load());
@@ -338,7 +341,7 @@ struct DynamicTarget {
             {"priority", priority},
             {"description", description},
             {"healthy", healthy.load()},
-            {"handler_initialized", handler_initialized.load()},  // ← 추가
+            {"handler_initialized", handler_initialized.load()},
             {"success_count", success_count.load()},
             {"failure_count", failure_count.load()},
             {"consecutive_failures", consecutive_failures.load()},
@@ -460,7 +463,7 @@ struct BatchTargetResult {
 /**
  * @brief 알람 메시지 유효성 검증
  */
-inline bool isValidAlarmMessage(const AlarmMessage& alarm) {
+inline bool isValidAlarmMessage(const PulseOne::CSP::AlarmMessage& alarm) {
     // 실제 AlarmMessage 필드: bd, nm, vl, tm, al, st, des
     return !alarm.nm.empty() && alarm.bd > 0;
 }
@@ -484,16 +487,29 @@ inline bool isValidTargetConfig(const json& config, const std::string& target_ty
 }
 
 // =============================================================================
-// 전방 선언 (호환성)
+// 전방 선언 (호환성 - CSP 네임스페이스)
 // =============================================================================
 
-class HttpTargetHandler;
-class S3TargetHandler;
-class MqttTargetHandler;
-class FileTargetHandler;
-class CSPGatewayEnhanced;
+// DynamicTargetManager는 아직 CSP 네임스페이스에 있음 (별도 파일)
+class DynamicTargetManager;
 
-} // namespace CSP
+} // namespace Export
+
+// CSP 네임스페이스에 별칭 제공 (하위 호환성)
+namespace CSP {
+    using TargetSendResult = Export::TargetSendResult;
+    using FailureProtectorConfig = Export::FailureProtectorConfig;
+    using FailureProtectorStats = Export::FailureProtectorStats;
+    using ITargetHandler = Export::ITargetHandler;
+    using DynamicTarget = Export::DynamicTarget;
+    using TargetHandlerFactory = Export::TargetHandlerFactory;
+    using TargetHandlerCreator = Export::TargetHandlerCreator;
+    using BatchTargetResult = Export::BatchTargetResult;
+    
+    // DynamicTargetManager는 CSP 네임스페이스에 정의됨 (DynamicTargetManager.h)
+    // class DynamicTargetManager; // 이미 CSP에 있음
+}
+
 } // namespace PulseOne
 
-#endif // CSP_DYNAMIC_TARGETS_H
+#endif // EXPORT_TYPES_H

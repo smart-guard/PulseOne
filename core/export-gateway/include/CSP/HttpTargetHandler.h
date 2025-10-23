@@ -15,7 +15,7 @@
 #ifndef HTTP_TARGET_HANDLER_H
 #define HTTP_TARGET_HANDLER_H
 
-#include "CSPDynamicTargets.h"
+#include "ExportTypes.h"
 #include <unordered_map>
 #include <memory>
 #include <mutex>
