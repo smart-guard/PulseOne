@@ -188,9 +188,9 @@ int ScheduledExporter::reloadSchedules() {
         auto schedules = schedule_repo_->findEnabled();
         
         // 캐시 업데이트
-        active_schedules_.clear();
+        cached_schedules_.clear();
         for (const auto& schedule : schedules) {
-            active_schedules_[schedule.getId()] = schedule;
+            cached_schedules_[schedule.getId()] = schedule;
         }
         
         last_reload_time_ = std::chrono::system_clock::now();
@@ -210,9 +210,9 @@ std::vector<int> ScheduledExporter::getActiveScheduleIds() const {
     std::lock_guard<std::mutex> lock(schedule_mutex_);
     
     std::vector<int> ids;
-    ids.reserve(active_schedules_.size());
+    ids.reserve(cached_schedules_.size());
     
-    for (const auto& pair : active_schedules_) {
+    for (const auto& pair : cached_schedules_) {
         ids.push_back(pair.first);
     }
     
@@ -226,7 +226,7 @@ ScheduledExporter::getUpcomingSchedules() const {
     
     std::map<int, std::chrono::system_clock::time_point> upcoming;
     
-    for (const auto& pair : active_schedules_) {
+    for (const auto& pair : cached_schedules_) {
         // getNextRunAt()은 optional을 반환
         auto next_run = pair.second.getNextRunAt();
         if (next_run.has_value()) {
@@ -248,12 +248,12 @@ json ScheduledExporter::getStatistics() const {
     stats["total_executions"] = total_executions_.load();
     stats["successful_executions"] = successful_executions_.load();
     stats["failed_executions"] = failed_executions_.load();
-    stats["total_points_exported"] = total_points_exported_.load();
+    stats["total_points_exported"] = total_data_points_exported_.load();
     stats["total_execution_time_ms"] = total_execution_time_ms_.load();
     
     {
         std::lock_guard<std::mutex> lock(schedule_mutex_);
-        stats["active_schedules"] = active_schedules_.size();
+        stats["active_schedules"] = cached_schedules_.size();
     }
     
     // 평균 계산
@@ -275,7 +275,7 @@ void ScheduledExporter::resetStatistics() {
     total_executions_ = 0;
     successful_executions_ = 0;
     failed_executions_ = 0;
-    total_points_exported_ = 0;
+    total_data_points_exported_ = 0;
     total_execution_time_ms_ = 0;
     
     LogManager::getInstance().Info("통계 초기화 완료");
