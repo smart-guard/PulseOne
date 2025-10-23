@@ -3,13 +3,12 @@
 -- 
 -- 파일명: 10-export_system.sql
 -- 목적: Export Gateway 및 Protocol Server를 위한 데이터베이스 스키마
--- 버전: 2.0 (리팩토링)
--- 작성일: 2025-10-21
+-- 버전: 2.1 (PayloadTransformer 통합)
+-- 작성일: 2025-10-23
 --
--- 주요 변경사항 (v1.0 → v2.0):
---   - export_targets: 통계 필드 제거 (설정만 보관)
---   - export_logs: 확장 (모든 전송 로그 저장)
---   - VIEW 추가: 실시간 통계 집계
+-- 주요 변경사항 (v2.0 → v2.1):
+--   - payload_templates 테이블 추가 (시스템별 기본 템플릿 관리)
+--   - export_targets.config에 payload_template 포함 지원
 --
 -- 적용 방법:
 --   sqlite3 /app/data/pulseone.db < 10-export_system.sql
@@ -128,7 +127,7 @@ CREATE TABLE IF NOT EXISTS export_targets (
     target_type VARCHAR(20) NOT NULL,
     description TEXT,
     
-    -- 설정 정보
+    -- 설정 정보 (JSON: payload_template 포함)
     config TEXT NOT NULL,
     is_enabled BOOLEAN DEFAULT 1,
     
@@ -251,6 +250,104 @@ CREATE INDEX IF NOT EXISTS idx_export_schedules_enabled ON export_schedules(is_e
 CREATE INDEX IF NOT EXISTS idx_export_schedules_next_run ON export_schedules(next_run_at);
 
 -- ============================================================================
+-- 9. value_conversion_rules (값 변환 규칙 - 상세)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS value_conversion_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mapping_id INTEGER NOT NULL,
+    
+    -- 변환 규칙
+    source_value VARCHAR(100) NOT NULL,
+    target_value VARCHAR(100) NOT NULL,
+    
+    -- 메타 정보
+    description TEXT,
+    priority INTEGER DEFAULT 0,
+    
+    -- 메타
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (mapping_id) REFERENCES export_target_mappings(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_value_rules_mapping ON value_conversion_rules(mapping_id);
+CREATE INDEX IF NOT EXISTS idx_value_rules_source ON value_conversion_rules(mapping_id, source_value);
+
+-- ============================================================================
+-- 10. payload_templates (Payload 템플릿 관리) - NEW!
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS payload_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    system_type VARCHAR(50) NOT NULL,
+    description TEXT,
+    template_json TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_payload_templates_system ON payload_templates(system_type);
+CREATE INDEX IF NOT EXISTS idx_payload_templates_active ON payload_templates(is_active);
+
+-- ============================================================================
+-- 기본 Payload 템플릿 데이터
+-- ============================================================================
+
+INSERT OR IGNORE INTO payload_templates (name, system_type, description, template_json) VALUES 
+('Insite 기본 템플릿', 'insite', 'HDC Insite 시스템용 기본 템플릿',
+'{
+    "controlpoint": "{{target_field_name}}",
+    "description": "{{target_description}}",
+    "value": "{{converted_value}}",
+    "time": "{{timestamp_iso8601}}",
+    "status": "{{alarm_status}}"
+}'),
+
+('HDC 기본 템플릿', 'hdc', 'HDC 빌딩 시스템용 기본 템플릿',
+'{
+    "building_id": "{{building_id}}",
+    "point_id": "{{target_field_name}}",
+    "data": {
+        "value": "{{converted_value}}",
+        "timestamp": "{{timestamp_unix_ms}}"
+    },
+    "metadata": {
+        "description": "{{target_description}}",
+        "alarm_status": "{{alarm_status}}",
+        "source": "PulseOne-ExportGateway"
+    }
+}'),
+
+('BEMS 기본 템플릿', 'bems', 'BEMS 에너지 관리 시스템용 기본 템플릿',
+'{
+    "buildingId": "{{building_id}}",
+    "sensorName": "{{target_field_name}}",
+    "sensorValue": "{{converted_value}}",
+    "timestamp": "{{timestamp_iso8601}}",
+    "description": "{{target_description}}",
+    "alarmLevel": "{{alarm_status}}"
+}'),
+
+('Generic 기본 템플릿', 'custom', '일반 범용 템플릿',
+'{
+    "building_id": "{{building_id}}",
+    "point_name": "{{point_name}}",
+    "value": "{{value}}",
+    "converted_value": "{{converted_value}}",
+    "timestamp": "{{timestamp_iso8601}}",
+    "alarm_flag": "{{alarm_flag}}",
+    "status": "{{status}}",
+    "description": "{{description}}",
+    "alarm_status": "{{alarm_status}}",
+    "mapped_field": "{{target_field_name}}",
+    "mapped_description": "{{target_description}}",
+    "source": "PulseOne-ExportGateway"
+}');
+
+-- ============================================================================
 -- 뷰 (View) - 통계 조회용
 -- ============================================================================
 
@@ -263,22 +360,18 @@ SELECT
     t.is_enabled,
     t.description,
     
-    -- 최근 24시간 통계
     COALESCE(COUNT(l.id), 0) as total_exports_24h,
     COALESCE(SUM(CASE WHEN l.status = 'success' THEN 1 ELSE 0 END), 0) as successful_exports_24h,
     COALESCE(SUM(CASE WHEN l.status = 'failure' THEN 1 ELSE 0 END), 0) as failed_exports_24h,
     
-    -- 성공률 (%)
     CASE 
         WHEN COUNT(l.id) > 0 THEN 
             ROUND((SUM(CASE WHEN l.status = 'success' THEN 1 ELSE 0 END) * 100.0) / COUNT(l.id), 2)
         ELSE 0 
     END as success_rate_24h,
     
-    -- 평균 응답 시간
     ROUND(AVG(CASE WHEN l.status = 'success' THEN l.processing_time_ms END), 2) as avg_time_ms_24h,
     
-    -- 마지막 정보
     MAX(CASE WHEN l.status = 'success' THEN l.timestamp END) as last_success_at,
     MAX(CASE WHEN l.status = 'failure' THEN l.timestamp END) as last_failure_at,
     
@@ -300,12 +393,10 @@ SELECT
     t.target_type,
     t.is_enabled,
     
-    -- 전체 통계
     COALESCE(COUNT(l.id), 0) as total_exports,
     COALESCE(SUM(CASE WHEN l.status = 'success' THEN 1 ELSE 0 END), 0) as successful_exports,
     COALESCE(SUM(CASE WHEN l.status = 'failure' THEN 1 ELSE 0 END), 0) as failed_exports,
     
-    -- 성공률
     CASE 
         WHEN COUNT(l.id) > 0 THEN 
             ROUND((SUM(CASE WHEN l.status = 'success' THEN 1 ELSE 0 END) * 100.0) / COUNT(l.id), 2)
@@ -378,6 +469,14 @@ BEGIN
     WHERE id = NEW.id;
 END;
 
+CREATE TRIGGER IF NOT EXISTS tr_payload_templates_update
+AFTER UPDATE ON payload_templates
+BEGIN
+    UPDATE payload_templates 
+    SET updated_at = CURRENT_TIMESTAMP 
+    WHERE id = NEW.id;
+END;
+
 CREATE TRIGGER IF NOT EXISTS tr_profile_points_insert
 AFTER INSERT ON export_profile_points
 BEGIN
@@ -411,34 +510,25 @@ INSERT OR IGNORE INTO export_profiles (name, description) VALUES
     ('공조기 실시간 데이터', 'AHU-01의 운전 상태 및 센서값');
 
 -- ============================================================================
--- 9. value_conversion_rules (값 변환 규칙 - 상세)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS value_conversion_rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    mapping_id INTEGER NOT NULL,
-    
-    -- 변환 규칙
-    source_value VARCHAR(100) NOT NULL,      -- "open", "true", "25.5"
-    target_value VARCHAR(100) NOT NULL,      -- "1", "ON", "77.9"
-    
-    -- 메타 정보
-    description TEXT,                         -- "문 열림 → 1로 변환"
-    priority INTEGER DEFAULT 0,               -- 매칭 우선순위 (높을수록 우선)
-    
-    -- 메타
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (mapping_id) REFERENCES export_target_mappings(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_value_rules_mapping ON value_conversion_rules(mapping_id);
-CREATE INDEX IF NOT EXISTS idx_value_rules_source ON value_conversion_rules(mapping_id, source_value);
-
--- ============================================================================
 -- 완료 메시지
 -- ============================================================================
 
 SELECT '✅ PulseOne Export System 스키마 생성 완료!' as message;
 SELECT '📊 통계는 VIEW를 통해 조회하세요 (v_export_targets_stats_24h, v_export_targets_stats_all)' as note;
-SELECT '🔄 값 변환은 value_conversion_rules 테이블을 사용하세요' as tip;
+SELECT '🎨 Payload 템플릿은 payload_templates 테이블에서 관리됩니다' as info;
+
+-- ============================================================================
+-- 사용 가능한 템플릿 변수
+-- ============================================================================
+
+/*
+AlarmMessage 원본:
+  {{building_id}}, {{point_name}}, {{value}}, {{timestamp}}
+  {{alarm_flag}}, {{status}}, {{description}}
+
+매핑 필드:
+  {{target_field_name}}, {{target_description}}, {{converted_value}}
+
+계산된 필드:
+  {{timestamp_iso8601}}, {{timestamp_unix_ms}}, {{alarm_status}}
+*/

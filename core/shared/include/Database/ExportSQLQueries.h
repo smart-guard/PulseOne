@@ -680,6 +680,91 @@ namespace ExportLog {
     )";
 } // namespace ExportLog
 
+namespace PayloadTemplate {
+    
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS payload_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name VARCHAR(100) NOT NULL UNIQUE,
+            system_type VARCHAR(50) NOT NULL,
+            description TEXT,
+            template_json TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    )";
+    
+    const std::string CREATE_INDEXES = R"(
+        CREATE INDEX IF NOT EXISTS idx_payload_templates_system ON payload_templates(system_type);
+        CREATE INDEX IF NOT EXISTS idx_payload_templates_active ON payload_templates(is_active);
+    )";
+    
+    const std::string FIND_ALL = R"(
+        SELECT id, name, system_type, description, template_json, is_active,
+               created_at, updated_at
+        FROM payload_templates
+        ORDER BY system_type, name
+    )";
+    
+    const std::string FIND_BY_ID = R"(
+        SELECT id, name, system_type, description, template_json, is_active,
+               created_at, updated_at
+        FROM payload_templates
+        WHERE id = ?
+    )";
+    
+    const std::string FIND_BY_NAME = R"(
+        SELECT id, name, system_type, description, template_json, is_active,
+               created_at, updated_at
+        FROM payload_templates
+        WHERE name = ?
+    )";
+    
+    const std::string FIND_BY_SYSTEM_TYPE = R"(
+        SELECT id, name, system_type, description, template_json, is_active,
+               created_at, updated_at
+        FROM payload_templates
+        WHERE system_type = ?
+        ORDER BY name
+    )";
+    
+    const std::string FIND_ACTIVE = R"(
+        SELECT id, name, system_type, description, template_json, is_active,
+               created_at, updated_at
+        FROM payload_templates
+        WHERE is_active = 1
+        ORDER BY system_type, name
+    )";
+    
+    const std::string INSERT = R"(
+        INSERT INTO payload_templates (
+            name, system_type, description, template_json, is_active
+        ) VALUES (?, ?, ?, ?, ?)
+    )";
+    
+    const std::string UPDATE = R"(
+        UPDATE payload_templates SET
+            name = ?, system_type = ?, description = ?,
+            template_json = ?, is_active = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    )";
+    
+    const std::string DELETE_BY_ID = "DELETE FROM payload_templates WHERE id = ?";
+    
+    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM payload_templates WHERE id = ?";
+    
+    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM payload_templates";
+    
+    const std::string COUNT_BY_SYSTEM_TYPE = R"(
+        SELECT system_type, COUNT(*) as count
+        FROM payload_templates
+        GROUP BY system_type
+    )";
+
+} // namespace PayloadTemplate
+
 // =============================================================================
 // 🎯 ExportSchedule 쿼리들 (export_schedules 테이블) - ✨ NEW
 // =============================================================================

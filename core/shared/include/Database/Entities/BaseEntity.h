@@ -42,6 +42,7 @@ namespace Repositories {
     class ExportTargetRepository;
     class ExportTargetMappingRepository;
     class ExportScheduleRepository;
+    class PayloadTemplateRepository;
 }
 
 /**
@@ -230,6 +231,7 @@ private:
     std::shared_ptr<Repositories::ExportTargetRepository> getRepositoryImpl(class ExportTargetEntity*);
     std::shared_ptr<Repositories::ExportTargetMappingRepository> getRepositoryImpl(class ExportTargetMappingEntity*);
     std::shared_ptr<Repositories::ExportScheduleRepository> getRepositoryImpl(class ExportScheduleEntity*);
+    std::shared_ptr<Repositories::PayloadTemplateRepository> getRepositoryImpl(class PayloadTemplateEntity*);
 
     int getEntityId() const {
         if constexpr (std::is_same_v<DerivedType, class DeviceSettingsEntity>) {
@@ -266,7 +268,9 @@ private:
             return "ExportTargetMappingEntity";
         } else if constexpr (std::is_same_v<DerivedType, class ExportScheduleEntity>) {
             return "ExportScheduleEntity";
-        } else {
+        } else if constexpr (std::is_same_v<DerivedType, class PayloadTemplateEntity>) {
+            return "PayloadTemplateEntity";
+        }else {
             return "UnknownEntity";
         }
     }
