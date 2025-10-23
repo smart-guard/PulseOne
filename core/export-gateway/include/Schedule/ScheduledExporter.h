@@ -1,16 +1,22 @@
 /**
  * @file ScheduledExporter.h
- * @brief DB 기반 스케줄 관리 및 실행 (Cron 표현식 지원)
+ * @brief DB 기반 스케줄 관리 및 실행 (리팩토링 버전)
  * @author PulseOne Development Team
- * @date 2025-10-22
- * @version 1.0.0
+ * @date 2025-10-23
+ * @version 2.0.0
+ * 
+ * 주요 변경사항 (v1.0 → v2.0):
+ * - ❌ DynamicTargetManager 멤버 소유 제거
+ * - ✅ DynamicTargetManager::getInstance() 싱글턴 사용
+ * - ✅ getTargetWithTemplate() 메서드 활용 (템플릿 로드)
+ * - ✅ 초기화 로직 단순화
  * 
  * 기능:
  * - ExportScheduleRepository에서 활성화된 스케줄 로드
  * - Cron 표현식 파싱 및 다음 실행 시각 계산
  * - 각 스케줄의 next_run_at 체크 후 자동 실행
  * - Redis에서 데이터 수집 (data_range, lookback_periods 적용)
- * - ExportTarget별로 데이터 전송
+ * - ExportTarget별로 데이터 전송 (템플릿 지원)
  * - 실행 결과를 ExportLog에 기록
  * - 스케줄 상태 업데이트 (total_runs, successful_runs 등)
  * 
@@ -24,11 +30,12 @@
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/ExportLogRepository.h"
 #include "Database/Repositories/ExportTargetMappingRepository.h"
+#include "Database/Repositories/PayloadTemplateRepository.h"  // ✅ 추가
 #include "Database/Entities/ExportScheduleEntity.h"
 #include "Database/Entities/ExportTargetEntity.h"
 #include "Database/Entities/ExportLogEntity.h"
 #include "Client/RedisClient.h"
-#include "CSP/DynamicTargetManager.h"
+// ❌ #include "CSP/DynamicTargetManager.h" 제거 (싱글턴 사용)
 #include <memory>
 #include <thread>
 #include <atomic>
@@ -101,16 +108,30 @@ struct ExportDataPoint {
 struct ScheduleExecutionResult {
     int schedule_id = 0;
     bool success = false;
-    size_t total_points = 0;
-    size_t exported_points = 0;
-    size_t failed_points = 0;
-    std::chrono::milliseconds execution_time{0};
     std::string error_message;
-    std::chrono::system_clock::time_point next_run_time;
+    int data_point_count = 0;
+    int64_t execution_time_ms = 0;
+    std::chrono::system_clock::time_point execution_timestamp;
+    std::vector<std::string> target_names;
+    int successful_targets = 0;
+    int failed_targets = 0;
+    
+    json to_json() const {
+        return json{
+            {"schedule_id", schedule_id},
+            {"success", success},
+            {"error_message", error_message},
+            {"data_point_count", data_point_count},
+            {"execution_time_ms", execution_time_ms},
+            {"target_names", target_names},
+            {"successful_targets", successful_targets},
+            {"failed_targets", failed_targets}
+        };
+    }
 };
 
 // =============================================================================
-// ScheduledExporter 클래스
+// ScheduledExporter 클래스 (v2.0)
 // =============================================================================
 
 class ScheduledExporter {
@@ -133,18 +154,19 @@ public:
     // =========================================================================
     
     /**
-     * @brief 스케줄러 시작
+     * @brief 스케줄 관리 시작
      * @return 성공 시 true
      */
     bool start();
     
     /**
-     * @brief 스케줄러 중지
+     * @brief 스케줄 관리 중지
      */
     void stop();
     
     /**
      * @brief 실행 중 여부
+     * @return 실행 중이면 true
      */
     bool isRunning() const { return is_running_.load(); }
     
@@ -153,7 +175,7 @@ public:
     // =========================================================================
     
     /**
-     * @brief 특정 스케줄 즉시 실행
+     * @brief 특정 스케줄 수동 실행
      * @param schedule_id 스케줄 ID
      * @return 실행 결과
      */
@@ -176,24 +198,26 @@ public:
     int reloadSchedules();
     
     /**
-     * @brief 활성 스케줄 목록 조회
-     * @return 스케줄 ID 목록
+     * @brief 활성 스케줄 목록
+     * @return 스케줄 엔티티 목록
      */
-    std::vector<int> getActiveScheduleIds() const;
+    std::vector<PulseOne::Database::Entities::ExportScheduleEntity> getActiveSchedules() const;
     
     /**
-     * @brief 다음 실행 대기 중인 스케줄 조회
-     * @return 스케줄 정보 (ID, 다음 실행 시각)
+     * @brief 특정 스케줄 정보
+     * @param schedule_id 스케줄 ID
+     * @return 스케줄 엔티티 (optional)
      */
-    std::map<int, std::chrono::system_clock::time_point> getUpcomingSchedules() const;
+    std::optional<PulseOne::Database::Entities::ExportScheduleEntity> 
+        getSchedule(int schedule_id) const;
     
     // =========================================================================
     // 통계
     // =========================================================================
     
     /**
-     * @brief 통계 조회
-     * @return 통계 정보 JSON
+     * @brief 실행 통계
+     * @return 통계 JSON
      */
     json getStatistics() const;
     
@@ -201,10 +225,10 @@ public:
      * @brief 통계 초기화
      */
     void resetStatistics();
-    
+
 private:
     // =========================================================================
-    // 내부 메서드 - 메인 루프
+    // 내부 메서드
     // =========================================================================
     
     /**
@@ -213,136 +237,89 @@ private:
     void scheduleCheckLoop();
     
     /**
-     * @brief 실행할 스케줄 확인
-     * @return 실행할 스케줄 목록
-     */
-    std::vector<PulseOne::Database::Entities::ExportScheduleEntity> 
-        findDueSchedules();
-    
-    /**
-     * @brief 스케줄 실행
+     * @brief 스케줄 실행 (내부)
      * @param schedule 스케줄 엔티티
      * @return 실행 결과
      */
     ScheduleExecutionResult executeScheduleInternal(
         const PulseOne::Database::Entities::ExportScheduleEntity& schedule);
     
-    // =========================================================================
-    // 내부 메서드 - 데이터 수집
-    // =========================================================================
-    
     /**
-     * @brief 스케줄에 따른 데이터 수집
+     * @brief Redis에서 데이터 수집
      * @param schedule 스케줄 엔티티
-     * @param target 타겟 엔티티
      * @return 데이터 포인트 목록
      */
-    std::vector<ExportDataPoint> collectDataForSchedule(
-        const PulseOne::Database::Entities::ExportScheduleEntity& schedule,
-        const PulseOne::Database::Entities::ExportTargetEntity& target);
+    std::vector<ExportDataPoint> collectDataFromRedis(
+        const PulseOne::Database::Entities::ExportScheduleEntity& schedule);
     
     /**
-     * @brief 시간 범위 계산 (data_range, lookback_periods 기반)
-     * @param data_range "day", "hour", "minute" 등
-     * @param lookback_periods 몇 개 단위 (예: 7일, 24시간)
-     * @return (시작 시각, 종료 시각)
-     */
-    std::pair<std::chrono::system_clock::time_point, 
-              std::chrono::system_clock::time_point>
-        calculateTimeRange(const std::string& data_range, int lookback_periods);
-    
-    /**
-     * @brief Redis에서 포인트 데이터 조회
-     * @param point_id 포인트 ID
-     * @param start_time 시작 시각
-     * @param end_time 종료 시각
-     * @return 데이터 포인트 (최신값 또는 평균)
-     */
-    std::optional<ExportDataPoint> fetchPointData(
-        int point_id,
-        const std::chrono::system_clock::time_point& start_time,
-        const std::chrono::system_clock::time_point& end_time);
-    
-    // =========================================================================
-    // 내부 메서드 - 데이터 전송
-    // =========================================================================
-    
-    /**
-     * @brief 타겟으로 데이터 전송
-     * @param target 타겟 엔티티
+     * @brief 데이터를 타겟으로 전송 (v2.0 - 템플릿 지원)
+     * @param target_name 타겟 이름
      * @param data_points 데이터 포인트 목록
-     * @return 성공 여부
+     * @param schedule 스케줄 엔티티
+     * @return 성공 시 true
      */
     bool sendDataToTarget(
-        const PulseOne::Database::Entities::ExportTargetEntity& target,
-        const std::vector<ExportDataPoint>& data_points);
+        const std::string& target_name,
+        const std::vector<ExportDataPoint>& data_points,
+        const PulseOne::Database::Entities::ExportScheduleEntity& schedule);
     
     /**
-     * @brief 배치 생성
+     * @brief 데이터를 템플릿 형식으로 변환 (v2.0 추가)
+     * @param template_json 템플릿 JSON
+     * @param field_mappings 필드 매핑
      * @param data_points 데이터 포인트 목록
-     * @return 배치 목록
+     * @return 변환된 JSON
      */
-    std::vector<std::vector<ExportDataPoint>> createBatches(
+    json transformDataWithTemplate(
+        const json& template_json,
+        const json& field_mappings,
         const std::vector<ExportDataPoint>& data_points);
     
-    // =========================================================================
-    // 내부 메서드 - Cron 처리
-    // =========================================================================
-    
     /**
-     * @brief Cron 표현식 파싱하여 다음 실행 시각 계산
-     * @param cron_expression Cron 표현식 (예: "0 * * * *")
-     * @param timezone 타임존 (예: "Asia/Seoul")
-     * @param from_time 기준 시각 (기본: 현재)
-     * @return 다음 실행 시각
-     */
-    std::chrono::system_clock::time_point calculateNextRunTime(
-        const std::string& cron_expression,
-        const std::string& timezone,
-        const std::chrono::system_clock::time_point& from_time = 
-            std::chrono::system_clock::now());
-    
-    // =========================================================================
-    // 내부 메서드 - DB 연동
-    // =========================================================================
-    
-    /**
-     * @brief 실행 결과를 ExportLog에 기록
+     * @brief 실행 로그 저장
+     * @param schedule 스케줄 엔티티
      * @param result 실행 결과
      */
-    void logExecutionResult(const ScheduleExecutionResult& result);
+    void saveExecutionLog(
+        const PulseOne::Database::Entities::ExportScheduleEntity& schedule,
+        const ScheduleExecutionResult& result);
     
     /**
-     * @brief 스케줄 상태 업데이트 (total_runs, next_run_at 등)
-     * @param schedule_id 스케줄 ID
+     * @brief 스케줄 상태 업데이트
+     * @param schedule 스케줄 엔티티
      * @param success 성공 여부
-     * @param next_run 다음 실행 시각
      */
-    bool updateScheduleStatus(
-        int schedule_id,
-        bool success,
-        const std::chrono::system_clock::time_point& next_run);
+    void updateScheduleStatus(
+        PulseOne::Database::Entities::ExportScheduleEntity& schedule,
+        bool success);
     
-    // =========================================================================
-    // 내부 메서드 - 초기화
-    // =========================================================================
+    /**
+     * @brief 다음 실행 시각 계산
+     * @param cron_expression Cron 표현식
+     * @param from_time 기준 시각
+     * @return 다음 실행 시각
+     */
+    std::chrono::system_clock::time_point calculateNextRun(
+        const std::string& cron_expression,
+        std::chrono::system_clock::time_point from_time);
     
     /**
      * @brief Redis 연결 초기화
+     * @return 성공 시 true
      */
     bool initializeRedisConnection();
     
     /**
-     * @brief Repository 초기화
+     * @brief Repositories 초기화
+     * @return 성공 시 true
      */
     bool initializeRepositories();
     
     /**
-     * @brief DynamicTargetManager 초기화
+     * @brief ❌ initializeDynamicTargetManager() 제거
+     * (DynamicTargetManager 싱글턴 사용)
      */
-    bool initializeDynamicTargetManager();
-
-    bool loadTargetsFromDatabase();
     
     // =========================================================================
     // 멤버 변수
@@ -351,41 +328,34 @@ private:
     // 설정
     ScheduledExporterConfig config_;
     
-    // Repositories
-    std::unique_ptr<PulseOne::Database::Repositories::ExportScheduleRepository> 
-        schedule_repo_;
-    std::unique_ptr<PulseOne::Database::Repositories::ExportTargetRepository> 
-        target_repo_;
-    std::unique_ptr<PulseOne::Database::Repositories::ExportLogRepository> 
-        log_repo_;
-    std::unique_ptr<PulseOne::Database::Repositories::ExportTargetMappingRepository> 
-        mapping_repo_;
-    
     // Redis 클라이언트
     std::shared_ptr<RedisClient> redis_client_;
     
-    // DynamicTargetManager
-    std::unique_ptr<PulseOne::CSP::DynamicTargetManager> dynamic_target_manager_;
+    // Repositories
+    std::unique_ptr<PulseOne::Database::Repositories::ExportScheduleRepository> schedule_repo_;
+    std::unique_ptr<PulseOne::Database::Repositories::ExportTargetRepository> target_repo_;
+    std::unique_ptr<PulseOne::Database::Repositories::ExportLogRepository> log_repo_;
+    std::unique_ptr<PulseOne::Database::Repositories::ExportTargetMappingRepository> mapping_repo_;
+    std::unique_ptr<PulseOne::Database::Repositories::PayloadTemplateRepository> template_repo_;  // ✅ 추가
+    
+    // ❌ DynamicTargetManager 멤버 제거 (싱글턴 사용)
+    // std::unique_ptr<PulseOne::CSP::DynamicTargetManager> dynamic_target_manager_;
     
     // 스레드 관리
     std::unique_ptr<std::thread> worker_thread_;
     std::atomic<bool> is_running_{false};
     std::atomic<bool> should_stop_{false};
     
-    // 스케줄 캐시 (메모리)
-    std::map<int, PulseOne::Database::Entities::ExportScheduleEntity> active_schedules_;
+    // 스케줄 캐시
+    std::vector<PulseOne::Database::Entities::ExportScheduleEntity> cached_schedules_;
     mutable std::mutex schedule_mutex_;
-    
-    // 마지막 리로드 시각
     std::chrono::system_clock::time_point last_reload_time_;
     
     // 통계
-    std::atomic<size_t> total_executions_{0};
-    std::atomic<size_t> successful_executions_{0};
-    std::atomic<size_t> failed_executions_{0};
-    std::atomic<size_t> total_points_exported_{0};
-    std::atomic<int64_t> total_execution_time_ms_{0};
-    mutable std::mutex stats_mutex_;
+    std::atomic<uint64_t> total_executions_{0};
+    std::atomic<uint64_t> successful_executions_{0};
+    std::atomic<uint64_t> failed_executions_{0};
+    std::atomic<int64_t> total_data_points_exported_{0};
 };
 
 } // namespace Schedule

@@ -1,15 +1,20 @@
 /**
  * @file AlarmSubscriber.h
- * @brief Redis Pub/Sub 알람 구독 및 전송 클래스
+ * @brief Redis Pub/Sub 알람 구독 및 전송 클래스 (리팩토링 버전)
  * @author PulseOne Development Team
- * @date 2025-10-22
- * @version 1.0.0
+ * @date 2025-10-23
+ * @version 2.0.0
+ * 
+ * 주요 변경사항 (v1.0 → v2.0):
+ * - ❌ CSPGateway 제거 → ✅ DynamicTargetManager 싱글턴 사용
+ * - ❌ CSPGatewayConfig 제거
+ * - ✅ 초기화 로직 단순화
  * 
  * 기능:
  * - Redis Pub/Sub 채널 구독 (alarms:all, alarms:critical 등)
  * - 알람 메시지 실시간 수신
  * - JSON 파싱하여 AlarmMessage 객체 생성
- * - CSPGateway를 통해 타겟들에 전송
+ * - DynamicTargetManager를 통해 타겟들에 전송
  * - 멀티스레드 안전
  * 
  * 저장 위치: core/export-gateway/include/Alarm/AlarmSubscriber.h
@@ -19,7 +24,6 @@
 #define ALARM_SUBSCRIBER_H
 
 #include "Client/RedisClient.h"
-#include "CSP/CSPGateway.h"
 #include "CSP/AlarmMessage.h"
 #include <memory>
 #include <thread>
@@ -37,7 +41,7 @@ namespace PulseOne {
 namespace Alarm {
 
 // =============================================================================
-// 설정 구조체
+// 설정 구조체 (v2.0 - CSPGatewayConfig 제거)
 // =============================================================================
 
 struct AlarmSubscriberConfig {
@@ -50,8 +54,7 @@ struct AlarmSubscriberConfig {
     std::vector<std::string> subscribe_channels = {"alarms:all"};
     std::vector<std::string> subscribe_patterns;  // 패턴 구독 (예: "tenant:*:alarms")
     
-    // CSPGateway 설정
-    PulseOne::CSP::CSPGatewayConfig gateway_config;
+    // ❌ CSPGatewayConfig 제거 (DynamicTargetManager 싱글턴 사용)
     
     // 처리 옵션
     int worker_thread_count = 1;          // 처리 워커 스레드 수
@@ -62,6 +65,10 @@ struct AlarmSubscriberConfig {
     // 필터링
     bool filter_by_severity = false;      // 심각도별 필터링
     std::vector<std::string> allowed_severities;  // 허용된 심각도 (예: ["CRITICAL", "HIGH"])
+    
+    // 전송 옵션 (새로 추가)
+    bool use_parallel_send = false;       // 병렬 전송 사용 여부
+    int max_priority_filter = 1000;       // 우선순위 필터 (이하만 전송)
     
     // 로깅
     bool enable_debug_log = false;
@@ -96,7 +103,7 @@ struct SubscriptionStats {
 };
 
 // =============================================================================
-// AlarmSubscriber 클래스
+// AlarmSubscriber 클래스 (v2.0)
 // =============================================================================
 
 class AlarmSubscriber {
@@ -254,7 +261,7 @@ private:
     std::optional<PulseOne::CSP::AlarmMessage> parseAlarmMessage(const std::string& json_str);
     
     /**
-     * @brief 알람 메시지 처리
+     * @brief 알람 메시지 처리 (v2.0 - DynamicTargetManager 사용)
      * @param alarm 알람 메시지
      */
     void processAlarm(const PulseOne::CSP::AlarmMessage& alarm);
@@ -273,10 +280,8 @@ private:
     bool initializeRedisConnection();
     
     /**
-     * @brief CSPGateway 초기화
-     * @return 성공 시 true
+     * @brief ❌ initializeCSPGateway 제거 (DynamicTargetManager 싱글턴 사용)
      */
-    bool initializeCSPGateway();
     
     /**
      * @brief 모든 채널 구독
@@ -308,8 +313,8 @@ private:
     // Redis 클라이언트
     std::shared_ptr<RedisClient> redis_client_;
     
-    // CSPGateway
-    std::unique_ptr<PulseOne::CSP::CSPGateway> csp_gateway_;
+    // ❌ CSPGateway 제거 (DynamicTargetManager 싱글턴 사용)
+    // std::unique_ptr<PulseOne::CSP::CSPGateway> csp_gateway_;
     
     // 스레드 관리
     std::unique_ptr<std::thread> subscribe_thread_;

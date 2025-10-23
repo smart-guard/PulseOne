@@ -1,9 +1,9 @@
 /**
- * @file DynamicTargetManager.cpp
- * @brief 동적 타겟 관리자 구현 - 완전 재작성 (컴파일 에러 해결)
+ * @file DynamicTargetManager.cpp (싱글턴 완전 버전)
+ * @brief 동적 타겟 관리자 - 싱글턴 + 원본 기능 모두 포함
  * @author PulseOne Development Team
- * @date 2025-09-29
- * @version 5.0.0 (구조체 정의 위치 수정)
+ * @date 2025-10-23
+ * @version 6.0.0
  */
 
 #include "CSP/DynamicTargetManager.h"
@@ -12,7 +12,11 @@
 #include "CSP/FileTargetHandler.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
+#include "Database/Repositories/ExportTargetRepository.h"
+#include "Database/Repositories/PayloadTemplateRepository.h"
 #include "Database/Repositories/ExportLogRepository.h"
+#include "Database/Entities/ExportTargetEntity.h"
+#include "Database/Entities/PayloadTemplateEntity.h"
 #include "Database/Entities/ExportLogEntity.h"
 #include <fstream>
 #include <thread>
@@ -28,23 +32,28 @@ namespace PulseOne {
 namespace CSP {
 using PulseOne::Database::Repositories::ExportLogRepository;
 using PulseOne::Database::Entities::ExportLogEntity;
+
 // =============================================================================
-// 생성자 및 소멸자
+// 싱글턴 구현
 // =============================================================================
 
-DynamicTargetManager::DynamicTargetManager(const std::string& config_file_path)
-    : config_file_path_(config_file_path)
-    , last_config_check_(std::chrono::system_clock::time_point::min())
-    , last_rate_reset_(std::chrono::system_clock::now()) {
+DynamicTargetManager& DynamicTargetManager::getInstance() {
+    static DynamicTargetManager instance;
+    return instance;
+}
+
+// =============================================================================
+// 생성자 및 소멸자 (private)
+// =============================================================================
+
+DynamicTargetManager::DynamicTargetManager() {
+    LogManager::getInstance().Info("DynamicTargetManager 싱글턴 생성");
     
-    LogManager::getInstance().Info("DynamicTargetManager 초기화 시작: " + config_file_path);
-    
-    // 기본 핸들러들 등록
+    // 기본 핸들러 등록
     registerDefaultHandlers();
     
     // 글로벌 설정 초기화
     global_settings_ = json{
-        {"auto_reload", true},
         {"health_check_interval_sec", 60},
         {"metrics_collection_interval_sec", 30},
         {"max_concurrent_requests", 100},
@@ -60,30 +69,18 @@ DynamicTargetManager::DynamicTargetManager(const std::string& config_file_path)
 DynamicTargetManager::~DynamicTargetManager() {
     try {
         stop();
-        
-        // 핸들러들 명시적 정리 (순서 중요)
         handlers_.clear();
-        
-        // 타겟들 정리
         {
             std::unique_lock<std::shared_mutex> lock(targets_mutex_);
             targets_.clear();
         }
-        
-        // 실패 방지기들 정리
         failure_protectors_.clear();
-        
         LogManager::getInstance().Info("DynamicTargetManager 소멸 완료");
     } catch (const std::exception& e) {
-        // 소멸자에서 예외 발생 시 로그만 남기고 전파하지 않음
         try {
             LogManager::getInstance().Error("DynamicTargetManager 소멸 중 예외: " + std::string(e.what()));
-        } catch (...) {
-            // LogManager도 실패하면 무시
-        }
-    } catch (...) {
-        // 알 수 없는 예외도 무시
-    }
+        } catch (...) {}
+    } catch (...) {}
 }
 
 // =============================================================================
@@ -91,30 +88,31 @@ DynamicTargetManager::~DynamicTargetManager() {
 // =============================================================================
 
 bool DynamicTargetManager::start() {
+    if (is_running_.load()) {
+        LogManager::getInstance().Warn("DynamicTargetManager가 이미 실행 중입니다");
+        return false;
+    }
+    
     LogManager::getInstance().Info("DynamicTargetManager 시작...");
     
     try {
-        is_running_.store(true);
+        is_running_ = true;
         
-        // 설정 파일 로드
-        if (!loadConfiguration()) {
-            LogManager::getInstance().Error("설정 파일 로드 실패");
-            is_running_.store(false);
+        if (!loadFromDatabase()) {
+            LogManager::getInstance().Error("DB에서 타겟 로드 실패");
+            is_running_ = false;
             return false;
         }
         
-        // 실패 방지기들 초기화
         initializeFailureProtectors();
-        
-        // 백그라운드 스레드들 시작
         startBackgroundThreads();
         
-        LogManager::getInstance().Info("DynamicTargetManager 시작 완료");
+        LogManager::getInstance().Info("DynamicTargetManager 시작 완료 ✅");
         return true;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("DynamicTargetManager 시작 실패: " + std::string(e.what()));
-        is_running_.store(false);
+        is_running_ = false;
         return false;
     }
 }
@@ -124,173 +122,116 @@ void DynamicTargetManager::stop() {
     
     try {
         LogManager::getInstance().Info("DynamicTargetManager 중지...");
-        
-        should_stop_.store(true);
-        is_running_.store(false);
-        
-        // 백그라운드 스레드 정리
+        should_stop_ = true;
+        is_running_ = false;
         stopBackgroundThreads();
-        
         LogManager::getInstance().Info("DynamicTargetManager 중지 완료");
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("DynamicTargetManager 중지 중 예외: " + std::string(e.what()));
-    } catch (...) {
-        // 예외 무시
     }
 }
 
 // =============================================================================
-// 설정 관리
+// DB 기반 설정 관리
 // =============================================================================
 
-bool DynamicTargetManager::loadConfiguration() {
-    std::unique_lock<std::mutex> lock(config_mutex_);
+bool DynamicTargetManager::loadFromDatabase() {
+    using namespace PulseOne::Database::Repositories;
+    using namespace PulseOne::Database::Entities;
     
     try {
-        LogManager::getInstance().Info("설정 파일 로드 시작: " + config_file_path_);
+        LogManager::getInstance().Info("DB에서 타겟 로드 시작...");
         
-        if (!std::filesystem::exists(config_file_path_)) {
-            LogManager::getInstance().Warn("설정 파일이 존재하지 않음, 기본 설정으로 생성: " + config_file_path_);
-            createDefaultConfigFile();
+        ExportTargetRepository target_repo;
+        auto entities = target_repo.findByEnabled(true);
+        
+        if (entities.empty()) {
+            LogManager::getInstance().Warn("활성화된 타겟이 없습니다");
+            return true;
         }
         
-        std::ifstream file(config_file_path_);
-        if (!file.is_open()) {
-            LogManager::getInstance().Error("설정 파일을 열 수 없음: " + config_file_path_);
-            return false;
-        }
-        
-        json config;
-        file >> config;
-        file.close();
-        
-        // 설정 유효성 검증
-        std::vector<std::string> errors;
-        if (!validateConfiguration(config, errors)) {
-            LogManager::getInstance().Error("설정 파일 유효성 검증 실패");
-            for (const auto& error : errors) {
-                LogManager::getInstance().Error("  - " + error);
-            }
-            return false;
-        }
-        
-        // 글로벌 설정 적용
-        if (config.contains("global")) {
-            global_settings_ = config["global"];
-            auto_reload_enabled_.store(global_settings_.value("auto_reload", true));
-            LogManager::getInstance().Info("글로벌 설정 적용 완료");
-        }
-        
-        // 타겟들 로드
-        std::unique_lock<std::shared_mutex> targets_lock(targets_mutex_);
+        std::unique_lock<std::shared_mutex> lock(targets_mutex_);
         targets_.clear();
         
-        if (config.contains("targets") && config["targets"].is_array()) {
-            for (const auto& target_config : config["targets"]) {
-                targets_.emplace_back();
-                auto& target = targets_.back();
+        int loaded_count = 0;
+        for (const auto& entity : entities) {
+            try {
+                DynamicTarget target;
+                target.name = entity.getName();
+                target.type = entity.getTargetType();
+                target.enabled = entity.isEnabled();
+                target.priority = 100;
+                target.description = entity.getDescription();
                 
-                target.name = target_config.value("name", "unnamed");
-                target.type = target_config.value("type", "http");
-                target.enabled = target_config.value("enabled", true);
-                target.priority = target_config.value("priority", 100);
-                target.description = target_config.value("description", "");
-                target.config = target_config.value("config", json{});
-                
-                if (handlers_.find(target.type) == handlers_.end()) {
-                    LogManager::getInstance().Error("지원되지 않는 타겟 타입, 건너뜀: " + target.type);
-                    targets_.pop_back();
+                try {
+                    target.config = json::parse(entity.getConfig());
+                } catch (const std::exception& e) {
+                    LogManager::getInstance().Error("Config JSON 파싱 실패: " + 
+                        entity.getName() + " - " + std::string(e.what()));
                     continue;
                 }
                 
-                LogManager::getInstance().Info("타겟 로드됨: " + target.name);
+                if (entity.getTemplateId() > 0) {
+                    target.config["template_id"] = entity.getTemplateId();
+                }
+                
+                targets_.push_back(target);
+                loaded_count++;
+                
+                LogManager::getInstance().Debug("타겟 로드: " + target.name + " (" + target.type + ")");
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().Error("타겟 엔티티 처리 실패: " + std::string(e.what()));
+                continue;
             }
         }
         
-        targets_lock.unlock();
-        
-        // 설정 파일 변경 시간 업데이트
-        last_config_check_ = std::chrono::system_clock::now();
-        
-        LogManager::getInstance().Info("설정 파일 로드 완료 - 타겟 수: " + std::to_string(targets_.size()));
-        return true;
+        LogManager::getInstance().Info("DB에서 " + std::to_string(loaded_count) + "개 타겟 로드 완료");
+        return (loaded_count > 0);
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("설정 파일 로드 실패: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool DynamicTargetManager::reloadIfChanged() {
-    std::unique_lock<std::mutex> lock(config_mutex_);
-    
-    try {
-        if (!std::filesystem::exists(config_file_path_)) {
-            return false;
-        }
-        
-        // ✅ 수정: fs_time 변수를 실제로 사용
-        auto fs_time = std::filesystem::last_write_time(config_file_path_);
-        auto now = std::chrono::system_clock::now();
-        
-        // 마지막 체크 이후 변경 여부 확인
-        if (last_config_check_ != std::chrono::system_clock::time_point::min()) {
-            auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                fs_time - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now()
-            );
-            
-            // 파일 수정 시간이 마지막 체크보다 이전이면 변경 없음
-            if (sctp <= last_config_check_) {
-                return false;
-            }
-        }
-        
-        last_config_check_ = now;
-        
-        LogManager::getInstance().Info("설정 파일 변경 감지 - 재로드 수행");
-        return loadConfiguration();
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("설정 파일 변경 확인 실패: " + std::string(e.what()));
+        LogManager::getInstance().Error("DB 로드 실패: " + std::string(e.what()));
         return false;
     }
 }
 
 bool DynamicTargetManager::forceReload() {
-    LogManager::getInstance().Info("설정 파일 강제 재로드 시작");
-    return loadConfiguration();
+    LogManager::getInstance().Info("타겟 강제 리로드...");
+    return loadFromDatabase();
 }
 
-bool DynamicTargetManager::saveConfiguration(const json& config) {
-    std::unique_lock<std::mutex> lock(config_mutex_);
+std::optional<DynamicTarget> DynamicTargetManager::getTargetWithTemplate(const std::string& name) {
+    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+    
+    auto it = findTarget(name);
+    if (it == targets_.end()) {
+        return std::nullopt;
+    }
     
     try {
-        std::vector<std::string> errors;
-        if (!validateConfiguration(config, errors)) {
-            LogManager::getInstance().Error("저장할 설정 유효성 검증 실패");
-            return false;
+        using namespace PulseOne::Database::Repositories;
+        
+        ExportTargetRepository target_repo;
+        auto target_entity = target_repo.findByName(name);
+        
+        if (target_entity.has_value() && target_entity->getTemplateId() > 0) {
+            PayloadTemplateRepository template_repo;
+            auto template_entity = template_repo.findById(target_entity->getTemplateId());
+            
+            if (template_entity.has_value()) {
+                DynamicTarget target = *it;
+                target.config["template_json"] = template_entity->getTemplateJson();
+                target.config["field_mappings"] = template_entity->getFieldMappings();
+                
+                LogManager::getInstance().Debug("템플릿 포함 타겟 반환: " + name);
+                return target;
+            }
         }
-        
-        if (std::filesystem::exists(config_file_path_)) {
-            backupConfigFile();
-        }
-        
-        std::ofstream file(config_file_path_);
-        if (!file.is_open()) {
-            LogManager::getInstance().Error("설정 파일을 쓸 수 없음: " + config_file_path_);
-            return false;
-        }
-        
-        file << config.dump(2);
-        file.close();
-        
-        LogManager::getInstance().Info("설정 파일 저장 완료: " + config_file_path_);
-        return true;
-        
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("설정 파일 저장 실패: " + std::string(e.what()));
-        return false;
+        LogManager::getInstance().Error("템플릿 로드 실패: " + std::string(e.what()));
     }
+    
+    return *it;
 }
 
 // =============================================================================
@@ -451,7 +392,6 @@ std::future<std::vector<TargetSendResult>> DynamicTargetManager::sendAlarmAsync(
     });
 }
 
-// 🚨 네임스페이스 레벨 구조체 사용
 std::vector<TargetSendResult> DynamicTargetManager::sendAlarmByPriority(const AlarmMessage& alarm, int max_priority) {
     std::vector<TargetSendResult> results;
     
@@ -491,7 +431,6 @@ std::vector<TargetSendResult> DynamicTargetManager::sendAlarmByPriority(const Al
     return results;
 }
 
-// 🚨 네임스페이스 레벨 구조체 사용
 BatchProcessingResult DynamicTargetManager::processBuildingAlarms(
     const std::unordered_map<int, std::vector<AlarmMessage>>& building_alarms) {
     
@@ -703,266 +642,7 @@ std::unordered_map<std::string, FailureProtectorStats> DynamicTargetManager::get
 
 std::vector<DynamicTarget> DynamicTargetManager::getTargetStatistics() const {
     std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-    return std::vector<DynamicTarget>();  // 복사 문제로 인해 빈 벡터 반환
-}
-
-json DynamicTargetManager::getSystemStatus() const {
-    json status;
-    status["running"] = isRunning();
-    status["target_count"] = targets_.size();
-    return status;
-}
-
-json DynamicTargetManager::getDetailedStatistics() const {
-    json stats;
-    stats["system"]["target_count"] = targets_.size();
-    return stats;
-}
-
-// 🚨 네임스페이스 레벨 구조체 사용
-SystemMetrics DynamicTargetManager::getSystemMetrics() const {
-    SystemMetrics metrics;
-    
-    try {
-        std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-        
-        metrics.total_targets = targets_.size();
-        
-        size_t active_count = 0;
-        size_t healthy_count = 0;
-        
-        for (const auto& target : targets_) {
-            if (target.enabled) {
-                active_count++;
-                if (target.healthy.load()) {
-                    healthy_count++;
-                }
-            }
-        }
-        
-        metrics.active_targets = active_count;
-        metrics.healthy_targets = healthy_count;
-        metrics.total_requests = total_requests_.load();
-        metrics.successful_requests = successful_requests_.load();
-        metrics.failed_requests = failed_requests_.load();
-        
-        uint64_t total_reqs = metrics.successful_requests + metrics.failed_requests;
-        metrics.overall_success_rate = total_reqs > 0 ? 
-            (static_cast<double>(metrics.successful_requests) / total_reqs * 100.0) : 0.0;
-        
-        metrics.last_update = std::chrono::system_clock::now();
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("시스템 메트릭 생성 실패: " + std::string(e.what()));
-    }
-    
-    return metrics;
-}
-
-json DynamicTargetManager::generatePerformanceReport(
-    std::chrono::system_clock::time_point start_time,
-    std::chrono::system_clock::time_point end_time) const {
-    
-    auto duration = end_time - start_time;
-    auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-    
-    return json{
-        {"status", "implemented"},
-        {"report_period_start", std::chrono::duration_cast<std::chrono::milliseconds>(start_time.time_since_epoch()).count()},
-        {"report_period_end", std::chrono::duration_cast<std::chrono::milliseconds>(end_time.time_since_epoch()).count()},
-        {"report_duration_ms", duration_ms},
-        {"total_targets", targets_.size()},
-        {"total_requests", total_requests_.load()},
-        {"successful_requests", successful_requests_.load()},
-        {"failed_requests", failed_requests_.load()},
-        {"peak_concurrent_requests", peak_concurrent_requests_.load()}
-    };
-}
-
-// =============================================================================
-// 설정 유효성 검증
-// =============================================================================
-
-bool DynamicTargetManager::validateConfiguration(const json& config, std::vector<std::string>& errors) {
-    errors.clear();
-    
-    try {
-        // 1. JSON 객체인지 확인
-        if (!config.is_object()) {
-            errors.push_back("설정은 JSON 객체여야 합니다");
-            return false;
-        }
-        
-        // 2. targets 배열 존재 확인
-        if (!config.contains("targets")) {
-            errors.push_back("'targets' 배열이 필요합니다");
-            return false;
-        }
-        
-        if (!config["targets"].is_array()) {
-            errors.push_back("'targets'는 배열이어야 합니다");
-            return false;
-        }
-        
-        // 3. 각 타겟 설정 검증
-        const auto& targets = config["targets"];
-        std::unordered_set<std::string> target_names;
-        
-        for (size_t i = 0; i < targets.size(); ++i) {
-            const auto& target = targets[i];
-            std::vector<std::string> target_errors;
-            
-            // 타겟별 검증
-            if (!validateTargetConfig(target, target_errors)) {
-                for (const auto& error : target_errors) {
-                    errors.push_back("타겟 [" + std::to_string(i) + "]: " + error);
-                }
-            }
-            
-            // 타겟 이름 중복 체크
-            if (target.contains("name")) {
-                std::string name = target["name"].get<std::string>();
-                if (target_names.count(name) > 0) {
-                    errors.push_back("중복된 타겟 이름: " + name);
-                }
-                target_names.insert(name);
-            }
-        }
-        
-        // 4. 글로벌 설정 검증 (선택적)
-        if (config.contains("global")) {
-            if (!config["global"].is_object()) {
-                errors.push_back("'global'은 객체여야 합니다");
-            }
-        }
-        
-        return errors.empty();
-        
-    } catch (const std::exception& e) {
-        errors.push_back("설정 검증 중 예외 발생: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool DynamicTargetManager::validateTargetConfig(const json& target_config, std::vector<std::string>& errors) {
-    errors.clear();
-    
-    try {
-        // 1. JSON 객체인지 확인
-        if (!target_config.is_object()) {
-            errors.push_back("타겟 설정은 객체여야 합니다");
-            return false;
-        }
-        
-        // 2. 필수 필드 검증
-        std::vector<std::string> required_fields = {"name", "type", "config"};
-        for (const auto& field : required_fields) {
-            if (!target_config.contains(field)) {
-                errors.push_back("필수 필드 누락: " + field);
-            }
-        }
-        
-        // 필수 필드가 하나라도 없으면 더 이상 검증 안함
-        if (!errors.empty()) {
-            return false;
-        }
-        
-        // 3. 타겟 이름 검증
-        std::string name = target_config["name"].get<std::string>();
-        if (name.empty()) {
-            errors.push_back("타겟 이름이 비어있음");
-        }
-        if (name.length() > 100) {
-            errors.push_back("타겟 이름이 너무 김 (최대 100자)");
-        }
-        
-        // 4. 타겟 타입 검증
-        std::string type = target_config["type"].get<std::string>();
-        if (type.empty()) {
-            errors.push_back("타겟 타입이 비어있음");
-        }
-        
-        // 지원되는 타입 확인
-        if (handlers_.find(type) == handlers_.end()) {
-            errors.push_back("지원되지 않는 타겟 타입: " + type);
-        }
-        
-        // 5. config 필드 검증
-        if (!target_config["config"].is_object()) {
-            errors.push_back("'config'는 객체여야 합니다");
-            return false;
-        }
-        
-        // 6. 타입별 세부 검증
-        const auto& config = target_config["config"];
-        
-        if (type == "http" || type == "https") {
-            // HTTP 타겟 검증
-            if (!config.contains("endpoint")) {
-                errors.push_back("HTTP 타겟: 'endpoint' 필드 필요");
-            } else if (config["endpoint"].get<std::string>().empty()) {
-                errors.push_back("HTTP 타겟: 'endpoint'가 비어있음");
-            }
-            
-            // URL 형식 검증 (간단한 체크)
-            if (config.contains("endpoint")) {
-                std::string endpoint = config["endpoint"].get<std::string>();
-                // ${VAR} 패턴이 있으면 검증 스킵 (환경변수 치환 후에 검증됨)
-                if (endpoint.find("${") == std::string::npos) {
-                    if (endpoint.find("http://") != 0 && endpoint.find("https://") != 0) {
-                        errors.push_back("HTTP 타겟: 'endpoint'는 http:// 또는 https://로 시작해야 함");
-                    }
-                }
-            }
-        }
-        else if (type == "s3") {
-            // S3 타겟 검증
-            if (!config.contains("bucket_name")) {
-                errors.push_back("S3 타겟: 'bucket_name' 필드 필요");
-            } else {
-                std::string bucket = config["bucket_name"].get<std::string>();
-                if (bucket.empty()) {
-                    errors.push_back("S3 타겟: 'bucket_name'이 비어있음");
-                }
-                // ${VAR} 패턴이 없을 때만 길이 체크
-                if (bucket.find("${") == std::string::npos) {
-                    if (bucket.length() < 3 || bucket.length() > 63) {
-                        errors.push_back("S3 타겟: 'bucket_name'은 3-63자여야 함");
-                    }
-                }
-            }
-            
-            // 리전 검증 (선택적이지만 있다면 검증)
-            if (config.contains("region")) {
-                std::string region = config["region"].get<std::string>();
-                if (region.empty()) {
-                    errors.push_back("S3 타겟: 'region'이 비어있음");
-                }
-            }
-        }
-        else if (type == "file") {
-            // FILE 타겟 검증
-            if (!config.contains("base_path")) {
-                errors.push_back("FILE 타겟: 'base_path' 필드 필요");
-            } else if (config["base_path"].get<std::string>().empty()) {
-                errors.push_back("FILE 타겟: 'base_path'가 비어있음");
-            }
-        }
-        
-        // 7. 선택적 필드 검증
-        if (target_config.contains("priority")) {
-            int priority = target_config["priority"].get<int>();
-            if (priority < 1 || priority > 1000) {
-                errors.push_back("우선순위는 1-1000 사이여야 함 (현재: " + std::to_string(priority) + ")");
-            }
-        }
-        
-        return errors.empty();
-        
-    } catch (const std::exception& e) {
-        errors.push_back("타겟 설정 검증 중 예외 발생: " + std::string(e.what()));
-        return false;
-    }
+    return targets_;
 }
 
 // =============================================================================
@@ -988,7 +668,7 @@ std::vector<std::string> DynamicTargetManager::getSupportedHandlerTypes() const 
 }
 
 // =============================================================================
-// 내부 구현 메서드들
+// 내부 초기화 메서드
 // =============================================================================
 
 void DynamicTargetManager::registerDefaultHandlers() {
@@ -996,6 +676,8 @@ void DynamicTargetManager::registerDefaultHandlers() {
     handlers_["https"] = std::make_unique<HttpTargetHandler>();
     handlers_["s3"] = std::make_unique<S3TargetHandler>();
     handlers_["file"] = std::make_unique<FileTargetHandler>();
+    
+    LogManager::getInstance().Info("기본 핸들러 등록 완료");
 }
 
 void DynamicTargetManager::initializeFailureProtectors() {
@@ -1014,57 +696,206 @@ void DynamicTargetManager::initializeFailureProtectorForTarget(const std::string
         
         failure_protectors_[target_name] = std::make_shared<FailureProtector>(target_name, fp_config);
         
-        LogManager::getInstance().Info("실패 방지기 초기화 완료: " + target_name);
+        LogManager::getInstance().Debug("실패 방지기 초기화: " + target_name);
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("실패 방지기 초기화 실패: " + target_name + " - " + std::string(e.what()));
     }
 }
 
+// =============================================================================
+// 백그라운드 스레드
+// =============================================================================
+
 void DynamicTargetManager::startBackgroundThreads() {
-    should_stop_.store(false);
-    
-    if (auto_reload_enabled_.load()) {
-        config_watcher_thread_ = std::make_unique<std::thread>(&DynamicTargetManager::configWatcherThread, this);
-    }
+    should_stop_ = false;
     
     health_check_thread_ = std::make_unique<std::thread>(&DynamicTargetManager::healthCheckThread, this);
     metrics_collector_thread_ = std::make_unique<std::thread>(&DynamicTargetManager::metricsCollectorThread, this);
+    cleanup_thread_ = std::make_unique<std::thread>(&DynamicTargetManager::cleanupThread, this);
+    
+    LogManager::getInstance().Info("백그라운드 스레드 시작 완료");
 }
 
 void DynamicTargetManager::stopBackgroundThreads() {
-    LogManager::getInstance().Info("백그라운드 스레드 종료 중...");
+    should_stop_ = true;
     
-    // 1️⃣ 종료 플래그 설정
-    should_stop_.store(true);
-    
-    // 2️⃣ 모든 condition variable 깨우기
-    config_watcher_cv_.notify_all();
     health_check_cv_.notify_all();
     metrics_collector_cv_.notify_all();
     
-    // 3️⃣ 스레드 join (즉시 종료됨)
-    if (config_watcher_thread_ && config_watcher_thread_->joinable()) {
-        LogManager::getInstance().Debug("config_watcher_thread_ 종료 대기...");
-        config_watcher_thread_->join();
-        LogManager::getInstance().Debug("config_watcher_thread_ 종료 완료");
-    }
-    
     if (health_check_thread_ && health_check_thread_->joinable()) {
-        LogManager::getInstance().Debug("health_check_thread_ 종료 대기...");
         health_check_thread_->join();
-        LogManager::getInstance().Debug("health_check_thread_ 종료 완료");
     }
     
     if (metrics_collector_thread_ && metrics_collector_thread_->joinable()) {
-        LogManager::getInstance().Debug("metrics_collector_thread_ 종료 대기...");
         metrics_collector_thread_->join();
-        LogManager::getInstance().Debug("metrics_collector_thread_ 종료 완료");
+    }
+    
+    if (cleanup_thread_ && cleanup_thread_->joinable()) {
+        cleanup_thread_->join();
     }
     
     LogManager::getInstance().Info("백그라운드 스레드 종료 완료");
 }
 
+void DynamicTargetManager::healthCheckThread() {
+    LogManager::getInstance().Info("Health Check Thread 시작");
+    
+    while (!should_stop_.load()) {
+        std::unique_lock<std::mutex> lock(cv_mutex_);
+        health_check_cv_.wait_for(lock, std::chrono::seconds(60), [this]() {
+            return should_stop_.load();
+        });
+        
+        if (should_stop_.load()) break;
+        
+        try {
+            std::shared_lock<std::shared_mutex> target_lock(targets_mutex_);
+            for (const auto& target : targets_) {
+                if (!target.enabled) continue;
+                
+                bool is_healthy = (target.success_count.load() > 0) || (target.failure_count.load() < 5);
+                
+                if (target.healthy.load() != is_healthy) {
+                    LogManager::getInstance().Info("타겟 헬스 상태 변경: " + 
+                        target.name + " -> " + (is_healthy ? "healthy" : "unhealthy"));
+                }
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("헬스 체크 실패: " + std::string(e.what()));
+        }
+    }
+    
+    LogManager::getInstance().Info("Health Check Thread 종료");
+}
+
+void DynamicTargetManager::metricsCollectorThread() {
+    LogManager::getInstance().Info("Metrics Collector Thread 시작");
+    
+    while (!should_stop_.load()) {
+        std::unique_lock<std::mutex> lock(cv_mutex_);
+        metrics_collector_cv_.wait_for(lock, std::chrono::seconds(30), [this]() {
+            return should_stop_.load();
+        });
+        
+        if (should_stop_.load()) break;
+        
+        try {
+            std::shared_lock<std::shared_mutex> target_lock(targets_mutex_);
+            uint64_t total_requests = 0;
+            uint64_t total_success = 0;
+            uint64_t total_failure = 0;
+            
+            for (const auto& target : targets_) {
+                total_requests += target.request_count.load();
+                total_success += target.success_count.load();
+                total_failure += target.failure_count.load();
+            }
+            
+            LogManager::getInstance().Debug("전체 요청: " + std::to_string(total_requests) + 
+                ", 성공: " + std::to_string(total_success) + 
+                ", 실패: " + std::to_string(total_failure));
+                
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("메트릭 수집 실패: " + std::string(e.what()));
+        }
+    }
+    
+    LogManager::getInstance().Info("Metrics Collector Thread 종료");
+}
+
+void DynamicTargetManager::cleanupThread() {
+    LogManager::getInstance().Info("Cleanup Thread 시작");
+    
+    while (!should_stop_.load()) {
+        std::this_thread::sleep_for(std::chrono::minutes(5));
+        if (should_stop_.load()) break;
+    }
+    
+    LogManager::getInstance().Info("Cleanup Thread 종료");
+}
+
+// =============================================================================
+// 유틸리티 메서드
+// =============================================================================
+
+std::vector<DynamicTarget>::iterator DynamicTargetManager::findTarget(const std::string& target_name) {
+    return std::find_if(targets_.begin(), targets_.end(),
+                       [&target_name](const DynamicTarget& target) {
+                           return target.name == target_name;
+                       });
+}
+
+std::vector<DynamicTarget>::const_iterator DynamicTargetManager::findTarget(const std::string& target_name) const {
+    return std::find_if(targets_.begin(), targets_.end(),
+                       [&target_name](const DynamicTarget& target) {
+                           return target.name == target_name;
+                       });
+}
+
+bool DynamicTargetManager::checkRateLimit() {
+    // Rate limit 체크 로직
+    return true;
+}
+
+void DynamicTargetManager::updateTargetHealth(const std::string& target_name, bool healthy) {
+    std::unique_lock<std::shared_mutex> lock(targets_mutex_);
+    auto it = findTarget(target_name);
+    if (it != targets_.end()) {
+        it->healthy.store(healthy);
+    }
+}
+
+void DynamicTargetManager::updateTargetStatistics(const std::string& target_name, const TargetSendResult& result) {
+    std::unique_lock<std::shared_mutex> lock(targets_mutex_);
+    auto it = findTarget(target_name);
+    if (it != targets_.end()) {
+        it->request_count.fetch_add(1);
+        if (result.success) {
+            it->success_count.fetch_add(1);
+        } else {
+            it->failure_count.fetch_add(1);
+        }
+    }
+}
+
+void DynamicTargetManager::expandConfigVariables(json& config, const AlarmMessage& alarm) {
+    // Config 변수 확장 로직 (원본 파일 참조)
+    try {
+        std::function<void(json&)> expand = [&](json& obj) {
+            if (obj.is_object()) {
+                for (auto& [key, value] : obj.items()) {
+                    expand(value);
+                }
+            } else if (obj.is_string()) {
+                std::string str = obj.get<std::string>();
+                
+                // {{building_id}} 치환
+                size_t pos = str.find("{{building_id}}");
+                if (pos != std::string::npos) {
+                    str.replace(pos, 16, std::to_string(alarm.bd));
+                    obj = str;
+                }
+                
+                // {{point_name}} 치환
+                pos = str.find("{{point_name}}");
+                if (pos != std::string::npos) {
+                    str.replace(pos, 14, alarm.nm);
+                    obj = str;
+                }
+            } else if (obj.is_array()) {
+                for (auto& item : obj) {
+                    expand(item);
+                }
+            }
+        };
+        
+        expand(config);
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Config 변수 확장 실패: " + std::string(e.what()));
+    }
+}
 
 bool DynamicTargetManager::processTargetByIndex(
     size_t index, 
@@ -1272,273 +1103,6 @@ bool DynamicTargetManager::processTargetByIndex(
 }
 
 
-bool DynamicTargetManager::checkRateLimit() {
-    return true;  // 간단한 구현
-}
-
-void DynamicTargetManager::updateTargetHealth(const std::string& target_name, bool healthy) {
-    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-    auto it = findTarget(target_name);
-    if (it != targets_.end()) {
-        it->healthy.store(healthy);
-    }
-}
-
-void DynamicTargetManager::updateTargetStatistics(const std::string& target_name, const TargetSendResult& result) {
-    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-    
-    auto it = findTarget(target_name);
-    if (it != targets_.end()) {
-        // ✅ 수정: atomic 변수들 직접 업데이트
-        if (result.success) {
-            it->success_count.fetch_add(1);
-            it->last_success_time = std::chrono::system_clock::now();
-            it->consecutive_failures.store(0);
-        } else {
-            it->failure_count.fetch_add(1);
-            it->last_failure_time = std::chrono::system_clock::now();
-            it->consecutive_failures.fetch_add(1);
-        }
-        
-        // 평균 응답 시간 업데이트 (이동 평균)
-        double current_avg = it->avg_response_time_ms.load();
-        double alpha = 0.3;  // 가중치
-        double new_avg = alpha * result.response_time.count() + (1.0 - alpha) * current_avg;
-        it->avg_response_time_ms.store(new_avg);
-    }
-}
-
-bool DynamicTargetManager::createDefaultConfigFile() {
-    try {
-        json default_config = json{
-            {"global", {
-                {"auto_reload", true},
-                {"health_check_interval_sec", 60},
-                {"max_concurrent_requests", 100}
-            }},
-            {"targets", json::array({
-                {
-                    {"name", "example_http"},
-                    {"type", "http"},
-                    {"enabled", false},
-                    {"priority", 100},
-                    {"description", "예제 HTTP 타겟"},
-                    {"config", {
-                        {"url", "https://api.example.com/alarms"},
-                        {"method", "POST"}
-                    }}
-                }
-            })}
-        };
-        
-        std::ofstream file(config_file_path_);
-        if (!file.is_open()) {
-            return false;
-        }
-        
-        file << default_config.dump(2);
-        file.close();
-        
-        LogManager::getInstance().Info("기본 설정 파일 생성 완료: " + config_file_path_);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("기본 설정 파일 생성 실패: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool DynamicTargetManager::backupConfigFile() {
-    try {
-        if (!std::filesystem::exists(config_file_path_)) {
-            return true;
-        }
-        
-        std::string backup_path = config_file_path_ + ".backup." + 
-                                 std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
-                                     std::chrono::system_clock::now().time_since_epoch()).count());
-        
-        std::filesystem::copy_file(config_file_path_, backup_path);
-        LogManager::getInstance().Info("설정 파일 백업 생성: " + backup_path);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("설정 파일 백업 실패: " + std::string(e.what()));
-        return false;
-    }
-}
-
-void DynamicTargetManager::expandConfigVariables(json& config, const AlarmMessage& alarm) {
-    if (config.empty() || alarm.nm.empty()) {
-        return;
-    }
-    
-    try {
-        // JSON 전체를 순회하며 {{variable}} 패턴 치환
-        std::function<void(json&)> expand = [&](json& obj) {
-            if (obj.is_string()) {
-                std::string str = obj.get<std::string>();
-                
-                // AlarmMessage 필드로 치환
-                str = std::regex_replace(str, std::regex("\\{\\{building_id\\}\\}"), std::to_string(alarm.bd));
-                str = std::regex_replace(str, std::regex("\\{\\{point_name\\}\\}"), alarm.nm);
-                str = std::regex_replace(str, std::regex("\\{\\{value\\}\\}"), std::to_string(alarm.vl));
-                str = std::regex_replace(str, std::regex("\\{\\{timestamp\\}\\}"), alarm.tm);
-                str = std::regex_replace(str, std::regex("\\{\\{alarm_flag\\}\\}"), std::to_string(alarm.al));
-                str = std::regex_replace(str, std::regex("\\{\\{status\\}\\}"), std::to_string(alarm.st));
-                str = std::regex_replace(str, std::regex("\\{\\{description\\}\\}"), alarm.des);
-                
-                obj = str;
-            } else if (obj.is_object()) {
-                for (auto& [key, value] : obj.items()) {
-                    expand(value);
-                }
-            } else if (obj.is_array()) {
-                for (auto& item : obj) {
-                    expand(item);
-                }
-            }
-        };
-        
-        expand(config);
-        
-        LogManager::getInstance().Debug("Config 변수 확장 완료 - Building: " + std::to_string(alarm.bd) + 
-                                      ", Point: " + alarm.nm);
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("Config 변수 확장 실패: " + std::string(e.what()));
-    }
-}
-
-std::vector<DynamicTarget>::iterator DynamicTargetManager::findTarget(const std::string& target_name) {
-    return std::find_if(targets_.begin(), targets_.end(),
-                        [&target_name](const DynamicTarget& target) {
-                            return target.name == target_name;
-                        });
-}
-
-std::vector<DynamicTarget>::const_iterator DynamicTargetManager::findTarget(const std::string& target_name) const {
-    return std::find_if(targets_.begin(), targets_.end(),
-                        [&target_name](const DynamicTarget& target) {
-                            return target.name == target_name;
-                        });
-}
-
-void DynamicTargetManager::configWatcherThread() {
-    LogManager::getInstance().Info("Config Watcher Thread 시작");
-    
-    while (!should_stop_.load()) {
-        // ✅ sleep_for() 대신 wait_for() 사용
-        std::unique_lock<std::mutex> lock(cv_mutex_);
-        config_watcher_cv_.wait_for(lock, std::chrono::seconds(5), [this]() {
-            return should_stop_.load();
-        });
-        
-        if (should_stop_.load()) {
-            LogManager::getInstance().Info("Config Watcher Thread 종료 신호 수신");
-            break;
-        }
-        
-        try {
-            reloadIfChanged();
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("설정 리로드 실패: " + std::string(e.what()));
-        }
-    }
-    
-    LogManager::getInstance().Info("Config Watcher Thread 종료");
-}
-
-void DynamicTargetManager::healthCheckThread() {
-    LogManager::getInstance().Info("Health Check Thread 시작");
-    
-    while (!should_stop_.load()) {
-        // ✅ 60초 대기, 하지만 즉시 깨울 수 있음
-        std::unique_lock<std::mutex> lock(cv_mutex_);
-        health_check_cv_.wait_for(lock, std::chrono::seconds(60), [this]() {
-            return should_stop_.load();
-        });
-        
-        if (should_stop_.load()) {
-            LogManager::getInstance().Info("Health Check Thread 종료 신호 수신");
-            break;
-        }
-        
-        // 헬스 체크 로직
-        try {
-            LogManager::getInstance().Debug("타겟 헬스 체크 수행 중...");
-            
-            std::shared_lock<std::shared_mutex> targets_lock(targets_mutex_);
-            for (const auto& target : targets_) {
-                if (!target.enabled) continue;
-                
-                auto protector_it = failure_protectors_.find(target.name);
-                if (protector_it != failure_protectors_.end()) {
-                    auto stats = protector_it->second->getStats();
-                    
-                    // ✅ 수정: current_state는 문자열
-                    if (stats.current_state == "OPEN") {
-                        LogManager::getInstance().Warn("타겟 비정상: " + target.name);
-                    } else if (stats.current_state == "HALF_OPEN") {
-                        LogManager::getInstance().Info("타겟 복구 중: " + target.name);
-                    }
-                }
-            }
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("헬스 체크 실패: " + std::string(e.what()));
-        }
-    }
-    
-    LogManager::getInstance().Info("Health Check Thread 종료");
-}
-
-void DynamicTargetManager::metricsCollectorThread() {
-    LogManager::getInstance().Info("Metrics Collector Thread 시작");
-    
-    while (!should_stop_.load()) {
-        // ✅ 30초 대기, 하지만 즉시 깨울 수 있음
-        std::unique_lock<std::mutex> lock(cv_mutex_);
-        metrics_collector_cv_.wait_for(lock, std::chrono::seconds(30), [this]() {
-            return should_stop_.load();
-        });
-        
-        if (should_stop_.load()) {
-            LogManager::getInstance().Info("Metrics Collector Thread 종료 신호 수신");
-            break;
-        }
-        
-        // 메트릭 수집 로직
-        try {
-            LogManager::getInstance().Debug("메트릭 수집 중...");
-            
-            auto total = total_requests_.load();
-            auto success = successful_requests_.load();
-            auto failed = failed_requests_.load();  // ✅ 사용하도록 수정
-            auto current = concurrent_requests_.load();
-            auto peak = peak_concurrent_requests_.load();
-            
-            if (total > 0) {
-                double success_rate = (double)success / total * 100.0;
-                double failure_rate = (double)failed / total * 100.0;
-                
-                LogManager::getInstance().Info(
-                    "메트릭 - 총:" + std::to_string(total) + 
-                    ", 성공:" + std::to_string(success) + "(" + std::to_string(success_rate) + "%)" +
-                    ", 실패:" + std::to_string(failed) + "(" + std::to_string(failure_rate) + "%)" +
-                    ", 동시:" + std::to_string(current) + "/" + std::to_string(peak)
-                );
-            }
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("메트릭 수집 실패: " + std::string(e.what()));
-        }
-    }
-    
-    LogManager::getInstance().Info("Metrics Collector Thread 종료");
-}
-
-void DynamicTargetManager::cleanupThread() {
-    // 필요시 구현
-}
 
 } // namespace CSP
 } // namespace PulseOne
