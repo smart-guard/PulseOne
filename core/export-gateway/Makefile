@@ -1,6 +1,6 @@
 # =============================================================================
 # core/export-gateway/Makefile - PulseOne Export Gateway (크로스플랫폼)
-# 🔥 AlarmSubscriber & PeriodicExporter 추가 완료 버전
+# 🔥 완전 수정 버전 - 실제 파일 구조 반영
 # =============================================================================
 
 # 플랫폼 감지
@@ -226,32 +226,39 @@ RED = \033[0;31m
 NC = \033[0m
 
 # =============================================================================
-# 소스 파일 및 오브젝트 파일
+# 소스 파일 및 오브젝트 파일 (✅ 실제 존재하는 파일만)
 # =============================================================================
 
-# 🆕 Alarm 디렉토리
+# 🆕 Alarm 디렉토리 (실제 존재 확인됨)
 ALARM_SOURCES = $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 ALARM_OBJECTS = $(ALARM_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 🆕 Schedule 디렉토리 (Periodic → Schedule로 변경)
+# 🆕 Schedule 디렉토리 (실제 존재 확인됨)
 SCHEDULE_SOURCES = $(wildcard $(SRC_DIR)/Schedule/*.cpp)
 SCHEDULE_OBJECTS = $(SCHEDULE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 기존 디렉토리들
+# 🔄 Transform 디렉토리 (PayloadTransformer)
+TRANSFORM_SOURCES = $(wildcard $(SRC_DIR)/Transform/*.cpp)
+TRANSFORM_OBJECTS = $(TRANSFORM_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+
+# 🔌 CSP 디렉토리 (실제 존재 확인됨)
 CSP_SOURCES = $(wildcard $(SRC_DIR)/CSP/*.cpp)
 CSP_OBJECTS = $(CSP_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
+# 📤 Export 디렉토리 (존재하면 추가)
 EXPORT_SOURCES = $(wildcard $(SRC_DIR)/Export/*.cpp)
 EXPORT_OBJECTS = $(EXPORT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
+# 🛠️ Utils 디렉토리 (존재하면 추가)
 UTILS_SOURCES = $(wildcard $(SRC_DIR)/Utils/*.cpp)
 UTILS_OBJECTS = $(UTILS_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
+# 📂 Main 디렉토리 (src/ 직속 파일들)
 MAIN_SOURCES = $(wildcard $(SRC_DIR)/*.cpp)
 MAIN_OBJECTS = $(MAIN_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 🔥 모든 오브젝트 파일 (Alarm, Schedule 추가)
-ALL_OBJECTS = $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECTS)
+# 🔥 모든 오브젝트 파일
+ALL_OBJECTS = $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECTS)
 
 TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)
 
@@ -259,7 +266,7 @@ TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)
 # 메인 타겟들
 # =============================================================================
 
-.PHONY: all clean debug release test install help shared-check debug-config
+.PHONY: all clean clean-all debug release test install help shared-check debug-config debug-vars
 
 all: shared-check $(BUILD_DIR) $(BIN_DIR) $(TARGET)
 
@@ -275,7 +282,7 @@ release:
 
 $(BUILD_DIR) $(BIN_DIR):
 	@mkdir -p $@
-	@mkdir -p $(BUILD_DIR)/Alarm $(BUILD_DIR)/Schedule $(BUILD_DIR)/CSP $(BUILD_DIR)/Export $(BUILD_DIR)/Utils
+	@mkdir -p $(BUILD_DIR)/Alarm $(BUILD_DIR)/Schedule $(BUILD_DIR)/Transform $(BUILD_DIR)/CSP $(BUILD_DIR)/Export $(BUILD_DIR)/Utils
 
 # =============================================================================
 # Shared 라이브러리 의존성 체크
@@ -320,6 +327,7 @@ $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
 	@echo -e "$(BLUE)📊 Compiled modules:$(NC)"
 	@echo -e "  ✅ Alarm: $(words $(ALARM_OBJECTS)) files"
 	@echo -e "  ✅ Schedule: $(words $(SCHEDULE_OBJECTS)) files"
+	@echo -e "  ✅ Transform: $(words $(TRANSFORM_OBJECTS)) files"
 	@echo -e "  ✅ CSP: $(words $(CSP_OBJECTS)) files"
 	@echo -e "  ✅ Export: $(words $(EXPORT_OBJECTS)) files"
 	@echo -e "  ✅ Utils: $(words $(UTILS_OBJECTS)) files"
@@ -331,21 +339,21 @@ $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@mkdir -p $(dir $@)
-	@echo -e "$(YELLOW)⚙️  Compiling $< [$(BUILD_TYPE)]$(NC)"
+	@echo -e "$(YELLOW)⚙️  Compiling $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
 # 유틸리티
 # =============================================================================
 
-# ✅ 수정된 clean (디렉토리 삭제 안전)
+# ✅ clean (빌드 파일만 삭제)
 clean:
-	@echo -e "$(YELLOW)🧹 Cleaning...$(NC)"
-	@find $(BUILD_DIR) -type f -delete 2>/dev/null || true
+	@echo -e "$(YELLOW)🧹 Cleaning build files...$(NC)"
+	@find $(BUILD_DIR) -type f -name '*.o' -delete 2>/dev/null || true
 	@find $(BIN_DIR) -type f -delete 2>/dev/null || true
 	@echo -e "$(GREEN)✅ Clean completed$(NC)"
 
-# ✅ 추가: 강제 clean (디렉토리까지 삭제)
+# ✅ clean-all (디렉토리까지 삭제)
 clean-all:
 	@echo -e "$(YELLOW)🧹 Deep cleaning...$(NC)"
 	@rm -rf $(BUILD_DIR) $(BIN_DIR) 2>/dev/null || true
@@ -360,18 +368,25 @@ help:
 	@echo "  make debug        - Build in debug mode"
 	@echo "  make release      - Build in release mode"
 	@echo "  make clean        - Clean build files"
+	@echo "  make clean-all    - Deep clean (remove directories)"
 	@echo "  make help         - Show this help"
 	@echo ""
 	@echo "Modules:"
 	@echo "  📡 Alarm          - AlarmSubscriber (Redis Pub/Sub)"
 	@echo "  📅 Schedule       - ScheduledExporter (Cron-based scheduling)"
+	@echo "  🔄 Transform      - PayloadTransformer (Template-based)"
 	@echo "  🔌 CSP            - CSP Gateway & Protocol"
 	@echo "  📤 Export         - Export handlers"
-	@echo "  🛠️  Utils         - Utilities"
+	@echo "  🛠️  Utils          - Utilities"
 	@echo ""
-	@echo "Current: Platform=$(PLATFORM), HAS_HIREDIS=$(HAS_HIREDIS), HAS_CURL=$(HAS_CURL), HAS_OPENSSL=$(HAS_OPENSSL)"
+	@echo "Current Configuration:"
+	@echo "  Platform: $(PLATFORM)"
+	@echo "  HAS_HIREDIS: $(HAS_HIREDIS)"
+	@echo "  HAS_CURL: $(HAS_CURL)"
+	@echo "  HAS_OPENSSL: $(HAS_OPENSSL)"
+	@echo "  HAS_SHARED: $(HAS_SHARED)"
 	@echo ""
-	@echo -e "$(GREEN)🔥 New features:$(NC)"
+	@echo -e "$(GREEN)🔥 Features:$(NC)"
 	@echo "  ✅ AlarmSubscriber - Real-time alarm broadcasting"
 	@echo "  ✅ ScheduledExporter - DB-based Cron scheduling"
 	@echo "  ✅ ExportScheduleRepository - Schedule management"
@@ -393,54 +408,78 @@ TEST_SOURCES := $(wildcard $(TEST_DIR)/*.cpp)
 TEST_OBJECTS := $(TEST_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_BUILD_DIR)/%.o)
 TEST_TARGETS := $(TEST_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_BIN_DIR)/%)
 
-.PHONY: tests
+.PHONY: tests test-integration test clean-tests
+
 tests: $(TEST_BIN_DIR) $(TEST_TARGETS)
-	@echo -e "✅ All tests built successfully"
+	@echo -e "$(GREEN)✅ All tests built successfully$(NC)"
 
 $(TEST_BIN_DIR) $(TEST_BUILD_DIR):
 	@mkdir -p $@
 
-$(TEST_BIN_DIR)/test_integration: $(TEST_BUILD_DIR)/test_integration.o $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS)
-	@echo -e "🔗 Linking integration test..."
+$(TEST_BIN_DIR)/test_integration: $(TEST_BUILD_DIR)/test_integration.o $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS)
+	@echo -e "$(GREEN)🔗 Linking integration test...$(NC)"
 	@$(CXX) $^ -o $@ $(LDFLAGS)
-	@echo -e "✅ Integration test built: $@"
+	@echo -e "$(GREEN)✅ Integration test built: $@$(NC)"
 
 $(TEST_BUILD_DIR)/%.o: $(TEST_DIR)/%.cpp | $(TEST_BUILD_DIR)
-	@echo -e "⚙️  Compiling test $<..."
+	@echo -e "$(YELLOW)⚙️  Compiling test $<...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-.PHONY: test-integration
 test-integration: $(TEST_BIN_DIR)/test_integration
-	@echo -e "🧪 Running integration tests..."
+	@echo -e "$(BLUE)🧪 Running integration tests...$(NC)"
 	@$(TEST_BIN_DIR)/test_integration
 
-.PHONY: test
 test: tests
-	@echo -e "🧪 Running all tests..."
+	@echo -e "$(BLUE)🧪 Running all tests...$(NC)"
 	@for test in $(TEST_TARGETS); do \
 		echo -e "Running $$test..."; \
 		$$test || exit 1; \
 	done
-	@echo -e "✅ All tests passed!"
+	@echo -e "$(GREEN)✅ All tests passed!$(NC)"
 
-.PHONY: clean-tests
 clean-tests:
+	@echo -e "$(YELLOW)🧹 Cleaning tests...$(NC)"
 	@rm -rf $(TEST_BUILD_DIR) $(TEST_BIN_DIR)
+	@echo -e "$(GREEN)✅ Tests cleaned$(NC)"
 
 # =============================================================================
 # 디버그 정보 출력
 # =============================================================================
 
-.PHONY: debug-vars
 debug-vars:
+	@echo "=== Platform Info ==="
+	@echo "PLATFORM: $(PLATFORM)"
+	@echo "IS_WINDOWS: $(IS_WINDOWS)"
+	@echo "EXE_SUFFIX: $(EXE_SUFFIX)"
+	@echo ""
+	@echo "=== Directories ==="
+	@echo "PROJECT_ROOT: $(PROJECT_ROOT)"
+	@echo "SHARED_DIR: $(SHARED_DIR)"
+	@echo "SHARED_LIB_DIR: $(SHARED_LIB_DIR)"
+	@echo ""
 	@echo "=== Source Files ==="
 	@echo "ALARM_SOURCES: $(ALARM_SOURCES)"
 	@echo "SCHEDULE_SOURCES: $(SCHEDULE_SOURCES)"
+	@echo "TRANSFORM_SOURCES: $(TRANSFORM_SOURCES)"
 	@echo "CSP_SOURCES: $(CSP_SOURCES)"
+	@echo "EXPORT_SOURCES: $(EXPORT_SOURCES)"
+	@echo "UTILS_SOURCES: $(UTILS_SOURCES)"
+	@echo "MAIN_SOURCES: $(MAIN_SOURCES)"
 	@echo ""
 	@echo "=== Object Files ==="
 	@echo "ALARM_OBJECTS: $(ALARM_OBJECTS)"
 	@echo "SCHEDULE_OBJECTS: $(SCHEDULE_OBJECTS)"
+	@echo "TRANSFORM_OBJECTS: $(TRANSFORM_OBJECTS)"
+	@echo "CSP_OBJECTS: $(CSP_OBJECTS)"
 	@echo ""
 	@echo "=== Total ==="
 	@echo "ALL_OBJECTS count: $(words $(ALL_OBJECTS))"
+	@echo ""
+	@echo "=== Flags ==="
+	@echo "CXXFLAGS: $(CXXFLAGS)"
+	@echo "INCLUDES: $(INCLUDES)"
+	@echo "LDFLAGS: $(LDFLAGS)"
+
+# =============================================================================
+# End of Makefile
+# =============================================================================

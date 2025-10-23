@@ -2,19 +2,20 @@
  * @file ExportSQLQueries.h
  * @brief Export 시스템 SQL 쿼리 중앙 관리 (리팩토링 v2.0.1)
  * @author PulseOne Development Team
- * @date 2025-10-21
- * @version 2.0.1
+ * @date 2025-10-23
+ * @version 2.1.0
  * 
  * 저장 위치: core/shared/include/Database/ExportSQLQueries.h
  * 참조: 10-export_system.sql
  * 
- * 🔧 긴급 수정 (v2.0.0 → v2.0.1):
- *   - ExportTargetMapping::EXISTS_BY_ID 추가 (컴파일 에러 수정)
+ * 🔧 주요 변경사항 (v2.0.1 → v2.1.0):
+ *   - export_targets: template_id 컬럼 추가
+ *   - payload_templates 외래키 참조 추가
+ *   - FIND_WITH_TEMPLATE, FIND_ALL_WITH_TEMPLATE 쿼리 추가
  * 
- * 주요 변경사항 (v1.0 → v2.0):
- *   - export_targets: 통계 필드 제거 (설정만 보관)
- *   - export_logs: 확장 및 통계 집계 쿼리 추가
- *   - VIEW를 통한 실시간 통계 제공
+ * 이전 변경사항:
+ *   - v2.0.1: ExportTargetMapping::EXISTS_BY_ID 추가
+ *   - v2.0.0: export_targets 통계 필드 제거, export_logs 확장
  */
 
 #ifndef EXPORT_SQL_QUERIES_H
@@ -80,7 +81,7 @@ namespace ExportProfile {
 
 // =============================================================================
 // 🎯 ExportTarget 쿼리들 (export_targets 테이블)
-// 변경: 통계 필드 완전 제거, 설정만 보관
+// v2.1.0: template_id 추가
 // =============================================================================
 namespace ExportTarget {
     
@@ -93,13 +94,15 @@ namespace ExportTarget {
             description TEXT,
             is_enabled BOOLEAN DEFAULT 1,
             config TEXT NOT NULL,
+            template_id INTEGER,
             export_mode VARCHAR(20) DEFAULT 'on_change',
             export_interval INTEGER DEFAULT 0,
             batch_size INTEGER DEFAULT 100,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             
-            FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL
+            FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
+            FOREIGN KEY (template_id) REFERENCES payload_templates(id) ON DELETE SET NULL
         )
     )";
     
@@ -108,57 +111,58 @@ namespace ExportTarget {
         CREATE INDEX IF NOT EXISTS idx_export_targets_profile ON export_targets(profile_id);
         CREATE INDEX IF NOT EXISTS idx_export_targets_enabled ON export_targets(is_enabled);
         CREATE INDEX IF NOT EXISTS idx_export_targets_name ON export_targets(name);
+        CREATE INDEX IF NOT EXISTS idx_export_targets_template ON export_targets(template_id);
     )";
     
     // 기본 CRUD (통계 필드 제거됨)
     const std::string FIND_ALL = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets
         ORDER BY name ASC
     )";
     
     const std::string FIND_BY_ID = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets WHERE id = ?
     )";
     
     const std::string FIND_BY_NAME = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets WHERE name = ?
     )";
     
     const std::string FIND_BY_ENABLED = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets WHERE is_enabled = ? ORDER BY name ASC
     )";
     
     const std::string FIND_BY_TARGET_TYPE = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets WHERE target_type = ? ORDER BY name ASC
     )";
     
     const std::string FIND_BY_PROFILE_ID = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets WHERE profile_id = ? ORDER BY name ASC
     )";
     
     const std::string INSERT = R"(
         INSERT INTO export_targets (
             profile_id, name, target_type, description, is_enabled, config,
-            export_mode, export_interval, batch_size
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            template_id, export_mode, export_interval, batch_size
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE = R"(
         UPDATE export_targets SET
             profile_id = ?, name = ?, target_type = ?, description = ?, is_enabled = ?,
-            config = ?, export_mode = ?, export_interval = ?, batch_size = ?,
+            config = ?, template_id = ?, export_mode = ?, export_interval = ?, batch_size = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
@@ -175,6 +179,30 @@ namespace ExportTarget {
         SELECT target_type, COUNT(*) as count 
         FROM export_targets 
         GROUP BY target_type
+    )";
+    
+    // 🆕 타겟과 템플릿을 JOIN한 쿼리들
+    const std::string FIND_WITH_TEMPLATE = R"(
+        SELECT 
+            t.id, t.profile_id, t.name, t.target_type, t.description, t.is_enabled, t.config,
+            t.template_id, t.export_mode, t.export_interval, t.batch_size, 
+            t.created_at, t.updated_at,
+            p.template_json, p.system_type as template_system_type, p.name as template_name
+        FROM export_targets t
+        LEFT JOIN payload_templates p ON t.template_id = p.id
+        WHERE t.id = ?
+    )";
+    
+    const std::string FIND_ALL_WITH_TEMPLATE = R"(
+        SELECT 
+            t.id, t.profile_id, t.name, t.target_type, t.description, t.is_enabled, t.config,
+            t.template_id, t.export_mode, t.export_interval, t.batch_size, 
+            t.created_at, t.updated_at,
+            p.template_json, p.system_type as template_system_type, p.name as template_name
+        FROM export_targets t
+        LEFT JOIN payload_templates p ON t.template_id = p.id
+        WHERE t.is_enabled = 1
+        ORDER BY t.name ASC
     )";
     
 } // namespace ExportTarget

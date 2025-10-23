@@ -1,12 +1,17 @@
 /**
  * @file ExportTargetEntity.cpp
  * @brief Export Target 엔티티 구현부
- * @version 3.0.0 - 통계 필드 완전 제거
- * @date 2025-10-21
+ * @version 3.1.0 - template_id 필드 추가
+ * @date 2025-10-23
  * 
  * 저장 위치: core/shared/src/Database/Entities/ExportTargetEntity.cpp
  * 
- * 주요 변경사항:
+ * 주요 변경사항 (v3.0.0 → v3.1.0):
+ *   - template_id 필드 초기화 추가
+ *   - toJson()에 template_id 직렬화 추가
+ *   - fromJson()에 template_id 역직렬화 추가
+ * 
+ * 이전 변경사항 (v3.0.0):
  *   - 통계 필드 관련 모든 코드 제거
  *   - 설정 정보만 처리
  *   - validate() 간소화
@@ -34,6 +39,7 @@ ExportTargetEntity::ExportTargetEntity()
     : BaseEntity()
     , profile_id_(0)
     , is_enabled_(true)
+    , template_id_(std::nullopt)     // 🔥 v3.1.0 추가: NULL 초기화
     , export_mode_("on_change")
     , export_interval_(0)
     , batch_size_(100) {
@@ -44,6 +50,7 @@ ExportTargetEntity::ExportTargetEntity(int id)
     : BaseEntity(id)
     , profile_id_(0)
     , is_enabled_(true)
+    , template_id_(std::nullopt)     // 🔥 v3.1.0 추가: NULL 초기화
     , export_mode_("on_change")
     , export_interval_(0)
     , batch_size_(100) {
@@ -99,6 +106,12 @@ bool ExportTargetEntity::validate() const {
     
     // batch_size 범위 체크 (1~10000)
     if (batch_size_ <= 0 || batch_size_ > 10000) {
+        return false;
+    }
+    
+    // 🔥 v3.1.0: template_id 검증은 선택사항 (NULL 허용)
+    // template_id가 있다면 양수여야 함
+    if (template_id_.has_value() && template_id_.value() <= 0) {
         return false;
     }
     
@@ -237,6 +250,14 @@ json ExportTargetEntity::toJson() const {
         
         // 설정 정보
         j["config"] = parseConfig();  // JSON 문자열을 객체로 파싱
+        
+        // 🔥 v3.1.0 추가: template_id 직렬화 (NULL 가능)
+        if (template_id_.has_value()) {
+            j["template_id"] = template_id_.value();
+        } else {
+            j["template_id"] = nullptr;
+        }
+        
         j["export_mode"] = export_mode_;
         j["export_interval"] = export_interval_;
         j["batch_size"] = batch_size_;
@@ -299,6 +320,15 @@ bool ExportTargetEntity::fromJson(const json& data) {
             }
         }
         
+        // 🔥 v3.1.0 추가: template_id 역직렬화 (NULL 허용)
+        if (data.contains("template_id")) {
+            if (data["template_id"].is_null()) {
+                template_id_ = std::nullopt;
+            } else if (data["template_id"].is_number_integer()) {
+                template_id_ = data["template_id"].get<int>();
+            }
+        }
+        
         if (data.contains("export_mode")) {
             export_mode_ = data["export_mode"].get<std::string>();
         }
@@ -327,6 +357,14 @@ std::string ExportTargetEntity::toString() const {
     oss << "id=" << getId();
     oss << ", name=" << name_;
     oss << ", type=" << target_type_;
+    
+    // 🔥 v3.1.0 추가: template_id 표시
+    if (template_id_.has_value()) {
+        oss << ", template_id=" << template_id_.value();
+    } else {
+        oss << ", template_id=NULL";
+    }
+    
     oss << ", mode=" << export_mode_;
     oss << ", enabled=" << (is_enabled_ ? "true" : "false");
     oss << "]";
