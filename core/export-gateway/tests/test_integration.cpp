@@ -22,7 +22,7 @@
 #include <nlohmann/json.hpp>
 
 // PulseOne 헤더 (v2.0)
-#include "Coordinator/ExportCoordinator.h"
+#include "CSP/ExportCoordinator.h"
 #include "CSP/DynamicTargetManager.h"
 #include "CSP/AlarmMessage.h"
 #include "Database/DatabaseManager.h"

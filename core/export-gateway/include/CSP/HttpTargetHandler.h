@@ -15,7 +15,7 @@
 #ifndef HTTP_TARGET_HANDLER_H
 #define HTTP_TARGET_HANDLER_H
 
-#include "ExportTypes.h"
+#include "Export/ExportTypes.h"
 #include <unordered_map>
 #include <memory>
 #include <mutex>

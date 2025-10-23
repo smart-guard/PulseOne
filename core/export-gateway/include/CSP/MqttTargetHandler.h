@@ -9,7 +9,7 @@
 #ifndef MQTT_TARGET_HANDLER_H
 #define MQTT_TARGET_HANDLER_H
 
-#include "ExportTypes.h"
+#include "Export/ExportTypes.h"
 #include <string>
 #include <memory>
 #include <mutex>

@@ -1,6 +1,6 @@
 # =============================================================================
 # core/export-gateway/Makefile - PulseOne Export Gateway (크로스플랫폼)
-# 🔥 완전 수정 버전 - 실제 파일 구조 반영
+# 🔥 완전 수정 버전 - include 경로 우선순위 수정
 # =============================================================================
 
 # 플랫폼 감지
@@ -100,13 +100,15 @@ ifeq ($(HAS_OPENSSL),0)
 endif
 
 # =============================================================================
-# Include 경로들
+# Include 경로들 (🔥 로컬 include를 최우선으로!)
 # =============================================================================
 
+# 🔥 1순위: 로컬 include (export-gateway 자체)
 INCLUDES = -I$(INCLUDE_DIR)
 
+# 🔥 2순위: Shared 라이브러리 include
 ifeq ($(HAS_SHARED),1)
-    INCLUDES := -I$(SHARED_INCLUDE_DIR) $(INCLUDES)
+    INCLUDES += -I$(SHARED_INCLUDE_DIR)
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Platform
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Common
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Utils
@@ -120,6 +122,7 @@ ifeq ($(HAS_SHARED),1)
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Data
 endif
 
+# 🔥 3순위: 시스템 include
 INCLUDES += -I/usr/local/include
 
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
@@ -130,8 +133,10 @@ endif
 # 라이브러리 링크
 # =============================================================================
 
-# Shared 라이브러리
+# Shared 라이브러리들 (의존성 순서 중요!)
+SHARED_LIBS =
 ifeq ($(HAS_SHARED),1)
+    CXXFLAGS += -DHAS_SHARED_LIBS=1
     SHARED_LIBS = -L$(SHARED_LIB_DIR)
     SHARED_LIBS += -lpulseone-alarm
     SHARED_LIBS += -lpulseone-export
@@ -140,11 +145,7 @@ ifeq ($(HAS_SHARED),1)
     SHARED_LIBS += -lpulseone-client
     SHARED_LIBS += -lpulseone-common
     SHARED_LIBS += -lpulseone-security
-    CXXFLAGS += -DHAS_SHARED_LIBS=1
-    $(info ✅ HAS_SHARED=1 detected - LogManager available)
-else
-    SHARED_LIBS =
-    $(info ⚠️  HAS_SHARED=0 - LogManager not available)
+    SHARED_LIBS += -L/usr/local/lib
 endif
 
 # 외부 라이브러리들
@@ -249,94 +250,53 @@ CSP_OBJECTS = $(CSP_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 EXPORT_SOURCES = $(wildcard $(SRC_DIR)/Export/*.cpp)
 EXPORT_OBJECTS = $(EXPORT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 🛠️ Utils 디렉토리 (존재하면 추가)
+# 🛠️ Utils 디렉토리 (있으면 추가)
 UTILS_SOURCES = $(wildcard $(SRC_DIR)/Utils/*.cpp)
 UTILS_OBJECTS = $(UTILS_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 📂 Main 디렉토리 (src/ 직속 파일들)
-MAIN_SOURCES = $(wildcard $(SRC_DIR)/*.cpp)
-MAIN_OBJECTS = $(MAIN_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+# 📌 Main 파일
+MAIN_SOURCES = $(SRC_DIR)/main.cpp
+MAIN_OBJECT = $(BUILD_DIR)/main.o
 
-# 🔥 모든 오브젝트 파일
-ALL_OBJECTS = $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECTS)
+# 📦 전체 오브젝트 파일
+ALL_OBJECTS = $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECT)
 
+# 🎯 최종 실행 파일
 TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)
+
+# =============================================================================
+# 테스트 디렉토리 구조
+# =============================================================================
+
+TEST_DIR = tests
+TEST_BUILD_DIR = build/tests
+TEST_BIN_DIR = bin/tests
+
+TEST_SOURCES = $(wildcard $(TEST_DIR)/*.cpp)
+TEST_OBJECTS = $(TEST_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_BUILD_DIR)/%.o)
+TEST_EXECUTABLES = $(TEST_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_BIN_DIR)/%)
 
 # =============================================================================
 # 메인 타겟들
 # =============================================================================
 
-.PHONY: all clean clean-all debug release test install help shared-check debug-config debug-vars
+.PHONY: all clean clean-all run test check-libs debug-vars
 
-all: shared-check $(BUILD_DIR) $(BIN_DIR) $(TARGET)
+# 기본 타겟
+all: check-libs $(TARGET)
+	@echo -e "$(GREEN)✅ Build completed: $(TARGET)$(NC)"
 
-debug:
-	@$(MAKE) BUILD_TYPE=Debug all
-
-release:
-	@$(MAKE) BUILD_TYPE=Release all
-
-# =============================================================================
-# 디렉토리 생성
-# =============================================================================
-
-$(BUILD_DIR) $(BIN_DIR):
-	@mkdir -p $@
-	@mkdir -p $(BUILD_DIR)/Alarm $(BUILD_DIR)/Schedule $(BUILD_DIR)/Transform $(BUILD_DIR)/CSP $(BUILD_DIR)/Export $(BUILD_DIR)/Utils
-
-# =============================================================================
-# Shared 라이브러리 의존성 체크
-# =============================================================================
-
-shared-check:
-	@echo -e "$(BLUE)🔍 Checking PulseOne Shared Libraries [$(PLATFORM)]...$(NC)"
-	@echo "Shared lib directory: $(SHARED_LIB_DIR)"
-	@echo "HAS_SHARED: $(HAS_SHARED)"
-	@echo "HAS_HIREDIS: $(HAS_HIREDIS)"
-	@echo "HAS_CURL: $(HAS_CURL)"
-	@echo "HAS_OPENSSL: $(HAS_OPENSSL)"
-	@if [ ! -d "$(SHARED_LIB_DIR)" ]; then \
-		echo -e "$(RED)❌ Shared library directory not found$(NC)"; \
-		echo -e "$(YELLOW)💡 Build shared libraries: cd $(SHARED_DIR) && make all$(NC)"; \
-		exit 1; \
-	fi
-	@echo -e "Shared libs:"
-	@echo -e "  libpulseone-security: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-security$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
-	@echo -e "  libpulseone-common: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-common$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
-	@echo -e "  libpulseone-database: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-database$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
-	@echo -e "  libpulseone-client: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-client$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
-	@echo -e "  libpulseone-data: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-data$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌ MISSING - Run: cd $(SHARED_DIR) && make data$(NC))"
-	@echo -e "  libpulseone-export: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-export$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
-	@echo -e "  libpulseone-alarm: $(if $(wildcard $(SHARED_LIB_DIR)/libpulseone-alarm$(LIB_SUFFIX)),$(GREEN)✅$(NC),$(RED)❌$(NC))"
-ifeq ($(HAS_SHARED),1)
-	@echo -e "$(GREEN)✅ HAS_SHARED_LIBS=1 - LogManager available$(NC)"
-else
-	@echo -e "$(YELLOW)⚠️  HAS_SHARED_LIBS not set - Logging disabled$(NC)"
-endif
-	@echo -e "$(GREEN)✅ Shared libraries checked$(NC)"
-
-# =============================================================================
-# 실행 파일 빌드
-# =============================================================================
-
+# 최종 링크
 $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(GREEN)🔗 Linking Export Gateway [$(BUILD_TYPE)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) -o $@ $(LDFLAGS)
-	@echo -e "$(GREEN)✅ Export Gateway built: $@$(NC)"
-	@echo -e "$(BLUE)📊 Compiled modules:$(NC)"
-	@echo -e "  ✅ Alarm: $(words $(ALARM_OBJECTS)) files"
-	@echo -e "  ✅ Schedule: $(words $(SCHEDULE_OBJECTS)) files"
-	@echo -e "  ✅ Transform: $(words $(TRANSFORM_OBJECTS)) files"
-	@echo -e "  ✅ CSP: $(words $(CSP_OBJECTS)) files"
-	@echo -e "  ✅ Export: $(words $(EXPORT_OBJECTS)) files"
-	@echo -e "  ✅ Utils: $(words $(UTILS_OBJECTS)) files"
-	@echo -e "  ✅ Main: $(words $(MAIN_OBJECTS)) files"
+	@echo -e "$(BLUE)🔗 Linking $@$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(LDFLAGS) -o $@
+	@echo -e "$(GREEN)✅ Export Gateway built successfully!$(NC)"
 
-# =============================================================================
-# 오브젝트 파일 컴파일
-# =============================================================================
+# 디렉토리 생성
+$(BUILD_DIR) $(BIN_DIR) $(TEST_BUILD_DIR) $(TEST_BIN_DIR):
+	@mkdir -p $@
 
+# 컴파일 규칙
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@mkdir -p $(dir $@)
 	@echo -e "$(YELLOW)⚙️  Compiling $< [$(PLATFORM)]$(NC)"
@@ -359,93 +319,36 @@ clean-all:
 	@rm -rf $(BUILD_DIR) $(BIN_DIR) 2>/dev/null || true
 	@echo -e "$(GREEN)✅ Deep clean completed$(NC)"
 
-help:
-	@echo -e "$(BLUE)🚀 PulseOne Export Gateway Makefile$(NC)"
-	@echo "====================================="
-	@echo ""
-	@echo "Main Targets:"
-	@echo "  make all          - Build export gateway"
-	@echo "  make debug        - Build in debug mode"
-	@echo "  make release      - Build in release mode"
-	@echo "  make clean        - Clean build files"
-	@echo "  make clean-all    - Deep clean (remove directories)"
-	@echo "  make help         - Show this help"
-	@echo ""
-	@echo "Modules:"
-	@echo "  📡 Alarm          - AlarmSubscriber (Redis Pub/Sub)"
-	@echo "  📅 Schedule       - ScheduledExporter (Cron-based scheduling)"
-	@echo "  🔄 Transform      - PayloadTransformer (Template-based)"
-	@echo "  🔌 CSP            - CSP Gateway & Protocol"
-	@echo "  📤 Export         - Export handlers"
-	@echo "  🛠️  Utils          - Utilities"
-	@echo ""
-	@echo "Current Configuration:"
-	@echo "  Platform: $(PLATFORM)"
-	@echo "  HAS_HIREDIS: $(HAS_HIREDIS)"
-	@echo "  HAS_CURL: $(HAS_CURL)"
-	@echo "  HAS_OPENSSL: $(HAS_OPENSSL)"
-	@echo "  HAS_SHARED: $(HAS_SHARED)"
-	@echo ""
-	@echo -e "$(GREEN)🔥 Features:$(NC)"
-	@echo "  ✅ AlarmSubscriber - Real-time alarm broadcasting"
-	@echo "  ✅ ScheduledExporter - DB-based Cron scheduling"
-	@echo "  ✅ ExportScheduleRepository - Schedule management"
-	@echo "  ✅ hiredis linked (Redis client)"
-	@echo "  ✅ libcurl linked (HTTP/S3)"
-	@echo "  ✅ OpenSSL linked (Signing)"
+# ✅ run (실행)
+run: $(TARGET)
+	@echo -e "$(BLUE)🚀 Running Export Gateway...$(NC)"
+	@$(TARGET)
 
-.DEFAULT_GOAL := all
+# ✅ check-libs (라이브러리 확인)
+check-libs:
+	@echo -e "$(BLUE)🔍 Checking PulseOne Shared Libraries [$(PLATFORM)]...$(NC)"
+	@echo "Shared lib directory: $(SHARED_LIB_DIR)"
+	@echo "HAS_SHARED: $(HAS_SHARED)"
+	@echo "HAS_HIREDIS: $(HAS_HIREDIS)"
+	@echo "HAS_CURL: $(HAS_CURL)"
+	@echo "HAS_OPENSSL: $(HAS_OPENSSL)"
+ifeq ($(HAS_SHARED),1)
+	@echo -e "Shared libs:"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-security$(LIB_SUFFIX)" ] && echo -e "  libpulseone-security: ✅" || echo -e "  libpulseone-security: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-common$(LIB_SUFFIX)" ] && echo -e "  libpulseone-common: ✅" || echo -e "  libpulseone-common: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-database$(LIB_SUFFIX)" ] && echo -e "  libpulseone-database: ✅" || echo -e "  libpulseone-database: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-client$(LIB_SUFFIX)" ] && echo -e "  libpulseone-client: ✅" || echo -e "  libpulseone-client: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-data$(LIB_SUFFIX)" ] && echo -e "  libpulseone-data: ✅" || echo -e "  libpulseone-data: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-export$(LIB_SUFFIX)" ] && echo -e "  libpulseone-export: ✅" || echo -e "  libpulseone-export: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-alarm$(LIB_SUFFIX)" ] && echo -e "  libpulseone-alarm: ✅" || echo -e "  libpulseone-alarm: ❌"
+	@echo -e "$(GREEN)✅ HAS_SHARED_LIBS=1 - LogManager available$(NC)"
+else
+	@echo -e "$(YELLOW)⚠️  Shared libraries not found$(NC)"
+	@echo -e "$(YELLOW)⚠️  Build will continue without shared libraries$(NC)"
+endif
+	@echo -e "$(GREEN)✅ Shared libraries checked$(NC)"
 
-# =============================================================================
-# 테스트 설정
-# =============================================================================
-
-TEST_DIR := tests
-TEST_BUILD_DIR := build/tests
-TEST_BIN_DIR := bin/tests
-
-TEST_SOURCES := $(wildcard $(TEST_DIR)/*.cpp)
-TEST_OBJECTS := $(TEST_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_BUILD_DIR)/%.o)
-TEST_TARGETS := $(TEST_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_BIN_DIR)/%)
-
-.PHONY: tests test-integration test clean-tests
-
-tests: $(TEST_BIN_DIR) $(TEST_TARGETS)
-	@echo -e "$(GREEN)✅ All tests built successfully$(NC)"
-
-$(TEST_BIN_DIR) $(TEST_BUILD_DIR):
-	@mkdir -p $@
-
-$(TEST_BIN_DIR)/test_integration: $(TEST_BUILD_DIR)/test_integration.o $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS)
-	@echo -e "$(GREEN)🔗 Linking integration test...$(NC)"
-	@$(CXX) $^ -o $@ $(LDFLAGS)
-	@echo -e "$(GREEN)✅ Integration test built: $@$(NC)"
-
-$(TEST_BUILD_DIR)/%.o: $(TEST_DIR)/%.cpp | $(TEST_BUILD_DIR)
-	@echo -e "$(YELLOW)⚙️  Compiling test $<...$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-test-integration: $(TEST_BIN_DIR)/test_integration
-	@echo -e "$(BLUE)🧪 Running integration tests...$(NC)"
-	@$(TEST_BIN_DIR)/test_integration
-
-test: tests
-	@echo -e "$(BLUE)🧪 Running all tests...$(NC)"
-	@for test in $(TEST_TARGETS); do \
-		echo -e "Running $$test..."; \
-		$$test || exit 1; \
-	done
-	@echo -e "$(GREEN)✅ All tests passed!$(NC)"
-
-clean-tests:
-	@echo -e "$(YELLOW)🧹 Cleaning tests...$(NC)"
-	@rm -rf $(TEST_BUILD_DIR) $(TEST_BIN_DIR)
-	@echo -e "$(GREEN)✅ Tests cleaned$(NC)"
-
-# =============================================================================
-# 디버그 정보 출력
-# =============================================================================
-
+# ✅ debug-vars (디버깅용 변수 출력)
 debug-vars:
 	@echo "=== Platform Info ==="
 	@echo "PLATFORM: $(PLATFORM)"
@@ -481,5 +384,56 @@ debug-vars:
 	@echo "LDFLAGS: $(LDFLAGS)"
 
 # =============================================================================
-# End of Makefile
+# 테스트 타겟들
 # =============================================================================
+
+test: $(TEST_BIN_DIR)/test_integration
+	@echo -e "$(BLUE)🧪 Running integration tests...$(NC)"
+	@$(TEST_BIN_DIR)/test_integration
+
+$(TEST_BIN_DIR)/test_integration: $(TEST_BUILD_DIR)/test_integration.o $(filter-out $(MAIN_OBJECT), $(ALL_OBJECTS)) | $(TEST_BIN_DIR)
+	@echo -e "$(BLUE)🔗 Linking test_integration$(NC)"
+	@$(CXX) $^ $(LDFLAGS) -o $@
+
+$(TEST_BUILD_DIR)/%.o: $(TEST_DIR)/%.cpp | $(TEST_BUILD_DIR)
+	@echo -e "$(YELLOW)⚙️  Compiling test $<...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# =============================================================================
+# 특수 타겟들
+# =============================================================================
+
+.PHONY: install uninstall help
+
+install:
+	@echo -e "$(BLUE)📦 Installing Export Gateway...$(NC)"
+	@mkdir -p /usr/local/bin
+	@cp $(TARGET) /usr/local/bin/
+	@chmod +x /usr/local/bin/export-gateway$(EXE_SUFFIX)
+	@echo -e "$(GREEN)✅ Installation completed$(NC)"
+
+uninstall:
+	@echo -e "$(YELLOW)🗑️  Uninstalling Export Gateway...$(NC)"
+	@rm -f /usr/local/bin/export-gateway$(EXE_SUFFIX)
+	@echo -e "$(GREEN)✅ Uninstallation completed$(NC)"
+
+help:
+	@echo "PulseOne Export Gateway - Makefile Commands"
+	@echo ""
+	@echo "Build Commands:"
+	@echo "  make              - Build the project"
+	@echo "  make clean        - Clean build files (keep directories)"
+	@echo "  make clean-all    - Deep clean (remove directories)"
+	@echo "  make run          - Build and run"
+	@echo ""
+	@echo "Test Commands:"
+	@echo "  make test         - Run integration tests"
+	@echo ""
+	@echo "Utility Commands:"
+	@echo "  make check-libs   - Check library dependencies"
+	@echo "  make debug-vars   - Show build variables"
+	@echo "  make install      - Install to /usr/local/bin"
+	@echo "  make uninstall    - Uninstall from /usr/local/bin"
+	@echo ""
+	@echo "Platform: $(PLATFORM)"
+	@echo "Target: $(TARGET)"

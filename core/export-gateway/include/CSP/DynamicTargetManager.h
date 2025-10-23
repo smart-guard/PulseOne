@@ -19,8 +19,8 @@
 #ifndef DYNAMIC_TARGET_MANAGER_H
 #define DYNAMIC_TARGET_MANAGER_H
 
-#include "CSP/AlarmMessage.h"
 #include "Export/ExportTypes.h"  // ← CSP/ITargetHandler.h 대체
+#include "CSP/AlarmMessage.h"
 #include "CSP/FailureProtector.h"
 #include <string>
 #include <vector>

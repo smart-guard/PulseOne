@@ -1,15 +1,15 @@
 /**
  * @file FailureProtector.h
- * @brief 실패 방지기 - CircuitBreaker 패턴 (중복 정의 제거)
+ * @brief 실패 방지기 - CircuitBreaker 패턴 (ExportTypes.h 사용)
  * @author PulseOne Development Team
- * @date 2025-09-29
- * @version 3.0.0 (CSPDynamicTargets.h 통합 타입 사용)
+ * @date 2025-10-23
+ * @version 4.0.0 (using 선언 추가)
  */
 
 #ifndef FAILURE_PROTECTOR_H
 #define FAILURE_PROTECTOR_H
 
-#include "ExportTypes.h"  // 모든 타입이 여기서 정의됨
+#include "Export/ExportTypes.h"  // 모든 타입이 여기서 정의됨
 #include <atomic>
 #include <mutex>
 #include <chrono>
@@ -18,7 +18,16 @@
 namespace PulseOne {
 namespace CSP {
 
-// FailureProtectorConfig, FailureProtectorStats는 CSPDynamicTargets.h에서 정의됨
+// =============================================================================
+// Export 네임스페이스 타입 사용 (명시적 using 선언)
+// =============================================================================
+
+using PulseOne::Export::FailureProtectorConfig;
+using PulseOne::Export::FailureProtectorStats;
+
+// =============================================================================
+// FailureProtector 클래스
+// =============================================================================
 
 /**
  * @brief 실패 방지기 - CircuitBreaker 패턴 구현
@@ -37,7 +46,7 @@ public:
 private:
     // 기본 설정 및 상태
     std::string target_name_;
-    FailureProtectorConfig config_;  // CSPDynamicTargets.h에서 정의됨
+    FailureProtectorConfig config_;
     std::atomic<State> state_;
     
     // 통계 정보 (atomic)
@@ -61,7 +70,7 @@ public:
     /**
      * @brief 생성자
      * @param target_name 타겟 이름
-     * @param config 설정 구조체 (CSPDynamicTargets.h에서 정의됨)
+     * @param config 설정 구조체
      */
     FailureProtector(const std::string& target_name, const FailureProtectorConfig& config);
     
@@ -118,7 +127,7 @@ public:
     // =======================================================================
     
     /**
-     * @brief 통계 정보 반환 (CSPDynamicTargets.h의 FailureProtectorStats 사용)
+     * @brief 통계 정보 반환
      */
     FailureProtectorStats getStats() const;
     
