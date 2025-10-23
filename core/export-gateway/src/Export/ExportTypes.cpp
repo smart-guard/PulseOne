@@ -1,13 +1,17 @@
 /**
- * @file CSPDynamicTargets.cpp
+ * @file ExportTypes.cpp
  * @brief CSP Gateway 동적 전송 대상 시스템 구현 - 완성본
  * @author PulseOne Development Team  
- * @date 2025-09-29
- * @version 3.0.0 (모든 컴파일 에러 해결)
+ * @date 2025-10-23
+ * @version 4.0.0 (ExportTypes.h 사용으로 업데이트)
+ * 
+ * 🔄 변경사항:
+ * - CSPDynamicTargets.h → Export/ExportTypes.h로 변경
+ * - 모든 타입이 Export 네임스페이스로 이동
+ * - CSP 네임스페이스는 using 선언으로 호환성 유지
  */
 
-#include "CSP/CSPDynamicTargets.h"
-// #include "CSP/FailureProtector.h"  // 제거됨 - 모든 타입이 CSPDynamicTargets.h에 정의됨
+#include "Export/ExportTypes.h"  // ✅ 변경됨: CSP/CSPDynamicTargets.h → Export/ExportTypes.h
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include <filesystem>
@@ -22,6 +26,12 @@
 
 namespace PulseOne {
 namespace CSP {
+
+// =============================================================================
+// Export 네임스페이스 타입 사용 (호환성)
+// =============================================================================
+
+using namespace PulseOne::Export;
 
 // =============================================================================
 // 헬퍼 함수들 (사용되는 함수보다 먼저 정의)
@@ -260,6 +270,7 @@ std::string createAlarmXml(const AlarmMessage& alarm) {
         << "  <alarm_flag>" << alarm.al << "</alarm_flag>\n"
         << "  <status>" << alarm.st << "</status>\n"
         << "  <description>" << escapeXmlText(alarm.des) << "</description>\n"
+        << "  <severity>1</severity>\n"
         << "  <source>PulseOne CSP Gateway</source>\n"
         << "</alarm>";
     
@@ -267,52 +278,24 @@ std::string createAlarmXml(const AlarmMessage& alarm) {
 }
 
 /**
- * @brief 타임스탬프 문자열 생성 (다양한 형식 지원)
+ * @brief 현재 타임스탬프 문자열 생성 (용도별 포맷)
  */
-std::string getCurrentTimestamp(const std::string& format) {
+std::string getCurrentTimestamp(const std::string& format_type) {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
     
-    if (format == "iso8601") {
+    if (format_type == "iso8601") {
         ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
-    } else if (format == "filename") {
-        ss << std::put_time(std::gmtime(&time_t), "%Y%m%d_%H%M%S");
-    } else if (format == "date") {
-        ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d");
-    } else if (format == "time") {
-        ss << std::put_time(std::gmtime(&time_t), "%H:%M:%S");
+    } else if (format_type == "filename") {
+        ss << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
+    } else if (format_type == "readable") {
+        ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
     } else {
-        // 기본 형식
-        ss << std::put_time(std::gmtime(&time_t), "%Y%m%d_%H%M%S");
+        ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
     }
     
     return ss.str();
-}
-
-/**
- * @brief 디렉토리 생성 (재귀적)
- */
-bool createDirectoryRecursive(const std::string& path) {
-    try {
-        std::filesystem::create_directories(path);
-        return true;
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("디렉토리 생성 실패: " + path + " - " + e.what());
-        return false;
-    }
-}
-
-/**
- * @brief 파일 존재 여부 확인
- */
-bool fileExists(const std::string& file_path) {
-    try {
-        return std::filesystem::exists(file_path) && std::filesystem::is_regular_file(file_path);
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("파일 존재 확인 실패: " + file_path + " - " + e.what());
-        return false;
-    }
 }
 
 /**
@@ -330,7 +313,7 @@ size_t getFileSize(const std::string& file_path) {
 }
 
 /**
- * @brief 파일의 마지막 수정 시간 조회
+ * @brief 파일 수정 시간 조회
  */
 std::chrono::system_clock::time_point getFileModificationTime(const std::string& file_path) {
     try {
