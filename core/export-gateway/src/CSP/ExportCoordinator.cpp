@@ -6,7 +6,7 @@
  * @version 1.0.0
  */
 
-#include "Coordinator/ExportCoordinator.h"
+#include "CSP/ExportCoordinator.h"
 #include "Database/DatabaseManager.h"
 #include <algorithm>
 #include <numeric>
