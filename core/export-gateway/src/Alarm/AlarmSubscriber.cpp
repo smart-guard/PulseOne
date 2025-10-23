@@ -1,13 +1,19 @@
 /**
  * @file AlarmSubscriber.cpp
- * @brief Redis Pub/Sub 알람 구독 및 전송 구현
+ * @brief Redis Pub/Sub 알람 구독 및 전송 구현 (리팩토링 버전)
  * @author PulseOne Development Team
- * @date 2025-10-22
- * @version 1.0.0
+ * @date 2025-10-23
+ * @version 2.0.0
+ * 
+ * 주요 변경사항:
+ * - ❌ CSPGateway 제거
+ * - ✅ DynamicTargetManager::getInstance() 사용
+ * - ✅ processAlarm() 메서드 수정
  */
 
 #include "Alarm/AlarmSubscriber.h"
 #include "Client/RedisClientImpl.h"
+#include "CSP/DynamicTargetManager.h" 
 #include "Utils/LogManager.h"
 #include <sstream>
 #include <iomanip>
@@ -22,10 +28,11 @@ namespace Alarm {
 AlarmSubscriber::AlarmSubscriber(const AlarmSubscriberConfig& config)
     : config_(config) {
     
-    LogManager::getInstance().Info("AlarmSubscriber 초기화 시작");
+    LogManager::getInstance().Info("AlarmSubscriber v2.0 초기화 시작");
     LogManager::getInstance().Info("구독 채널: " + std::to_string(config_.subscribe_channels.size()) + "개");
     LogManager::getInstance().Info("워커 스레드: " + std::to_string(config_.worker_thread_count) + "개");
     LogManager::getInstance().Info("최대 큐 크기: " + std::to_string(config_.max_queue_size));
+    LogManager::getInstance().Info("✅ DynamicTargetManager 싱글턴 사용");
 }
 
 AlarmSubscriber::~AlarmSubscriber() {
@@ -45,18 +52,25 @@ bool AlarmSubscriber::start() {
     
     LogManager::getInstance().Info("AlarmSubscriber 시작 중...");
     
-    // 1. Redis 연결 초기화
+    // ✅ 1. DynamicTargetManager 확인 (싱글턴이 초기화되었는지)
+    try {
+        auto& manager = PulseOne::CSP::DynamicTargetManager::getInstance();
+        if (!manager.isRunning()) {
+            LogManager::getInstance().Error("DynamicTargetManager가 실행되지 않음");
+            return false;
+        }
+        LogManager::getInstance().Info("✅ DynamicTargetManager 연결 확인");
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("DynamicTargetManager 접근 실패: " + std::string(e.what()));
+        return false;
+    }
+    
+    // 2. Redis 연결 초기화
     if (!initializeRedisConnection()) {
         LogManager::getInstance().Error("Redis 연결 초기화 실패");
         return false;
     }
-    
-    // 2. CSPGateway 초기화
-    if (!initializeCSPGateway()) {
-        LogManager::getInstance().Error("CSPGateway 초기화 실패");
-        return false;
-    }
-    
+       
     // 3. 구독 채널 복사
     {
         std::lock_guard<std::mutex> lock(channel_mutex_);
@@ -85,7 +99,7 @@ bool AlarmSubscriber::start() {
             &AlarmSubscriber::reconnectLoop, this);
     }
     
-    LogManager::getInstance().Info("AlarmSubscriber 시작 완료");
+    LogManager::getInstance().Info("AlarmSubscriber 시작 완료 ✅");
     return true;
 }
 
@@ -365,68 +379,50 @@ void AlarmSubscriber::subscribeLoop() {
 }
 
 void AlarmSubscriber::workerLoop(int thread_index) {
-    LogManager::getInstance().Info("워커 " + std::to_string(thread_index) + " 시작");
+    LogManager::getInstance().Info("워커 스레드 [" + std::to_string(thread_index) + "] 시작");
     
     while (!should_stop_.load()) {
         PulseOne::CSP::AlarmMessage alarm;
         
         // 큐에서 알람 가져오기
         if (!dequeueAlarm(alarm)) {
+            // 큐가 비어있으면 대기
             std::unique_lock<std::mutex> lock(queue_mutex_);
-            queue_cv_.wait_for(lock, std::chrono::milliseconds(100), 
-                [this] { return !message_queue_.empty() || should_stop_.load(); });
+            queue_cv_.wait_for(lock, std::chrono::milliseconds(100), [this]() {
+                return should_stop_.load() || !message_queue_.empty();
+            });
             continue;
         }
         
-        // 처리
-        auto start_time = std::chrono::steady_clock::now();
-        
+        // 알람 처리
         try {
-            // Pre-process 콜백
-            {
-                std::lock_guard<std::mutex> lock(callback_mutex_);
-                if (pre_process_callback_) {
-                    pre_process_callback_(alarm);
-                }
-            }
+            auto process_start = std::chrono::steady_clock::now();
             
-            // 알람 처리
             processAlarm(alarm);
             
-            // Post-process 콜백
-            {
-                std::lock_guard<std::mutex> lock(callback_mutex_);
-                if (post_process_callback_) {
-                    post_process_callback_(alarm);
-                }
-            }
+            auto process_end = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                process_end - process_start).count();
             
-            // 통계 업데이트
             total_processed_.fetch_add(1);
-            
-            auto now = std::chrono::system_clock::now();
             last_processed_timestamp_ = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now.time_since_epoch()).count();
+                std::chrono::system_clock::now().time_since_epoch()).count();
             
             if (config_.enable_debug_log) {
                 LogManager::getInstance().Debug(
-                    "워커 " + std::to_string(thread_index) + " 알람 처리: " + alarm.nm);
+                    "워커 [" + std::to_string(thread_index) + "] 처리 완료: " + 
+                    alarm.nm + " (" + std::to_string(elapsed) + "ms)");
             }
             
         } catch (const std::exception& e) {
             total_failed_.fetch_add(1);
             LogManager::getInstance().Error(
-                "워커 " + std::to_string(thread_index) + 
-                " 알람 처리 실패: " + std::string(e.what()));
+                "워커 [" + std::to_string(thread_index) + "] 처리 실패: " + 
+                alarm.nm + " - " + std::string(e.what()));
         }
-        
-        auto end_time = std::chrono::steady_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-            end_time - start_time);
-        total_processing_time_ms_.fetch_add(duration.count());
     }
     
-    LogManager::getInstance().Info("워커 " + std::to_string(thread_index) + " 종료");
+    LogManager::getInstance().Info("워커 스레드 [" + std::to_string(thread_index) + "] 종료");
 }
 
 void AlarmSubscriber::reconnectLoop() {
@@ -564,17 +560,79 @@ AlarmSubscriber::parseAlarmMessage(const std::string& json_str) {
 }
 
 void AlarmSubscriber::processAlarm(const PulseOne::CSP::AlarmMessage& alarm) {
-    if (!csp_gateway_) {
-        throw std::runtime_error("CSPGateway가 초기화되지 않음");
-    }
+    auto start_time = std::chrono::steady_clock::now();
     
-    // CSPGateway를 통해 전송
-    auto result = csp_gateway_->taskAlarmSingle(alarm);
-    
-    if (!result.success) {
-        LogManager::getInstance().Warn(
-            "알람 전송 실패: " + alarm.nm + " - " + result.error_message);
-        throw std::runtime_error("알람 전송 실패: " + result.error_message);
+    try {
+        // ✅ DynamicTargetManager 싱글턴 사용
+        auto& manager = PulseOne::CSP::DynamicTargetManager::getInstance();
+        
+        // Pre-process 콜백 실행
+        {
+            std::lock_guard<std::mutex> lock(callback_mutex_);
+            if (pre_process_callback_) {
+                pre_process_callback_(alarm);
+            }
+        }
+        
+        // 전송 방식 선택
+        std::vector<PulseOne::CSP::TargetSendResult> results;
+        
+        if (config_.use_parallel_send) {
+            // 병렬 전송
+            results = manager.sendAlarmToAllTargetsParallel(alarm);
+        } else if (config_.max_priority_filter < 1000) {
+            // 우선순위 필터 적용
+            results = manager.sendAlarmByPriority(alarm, config_.max_priority_filter);
+        } else {
+            // 기본 순차 전송
+            results = manager.sendAlarmToAllTargets(alarm);
+        }
+        
+        // 결과 처리
+        int success_count = 0;
+        int failure_count = 0;
+        
+        for (const auto& result : results) {
+            if (result.success) {
+                success_count++;
+            } else {
+                failure_count++;
+                LogManager::getInstance().Warn(
+                    "타겟 전송 실패 [" + result.target_name + "]: " + 
+                    alarm.nm + " - " + result.error_message);
+            }
+        }
+        
+        // Post-process 콜백 실행
+        {
+            std::lock_guard<std::mutex> lock(callback_mutex_);
+            if (post_process_callback_) {
+                post_process_callback_(alarm);
+            }
+        }
+        
+        // 통계 업데이트
+        auto end_time = std::chrono::steady_clock::now();
+        auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time).count();
+        
+        total_processing_time_ms_.fetch_add(elapsed_ms);
+        
+        if (failure_count > 0) {
+            throw std::runtime_error(
+                "일부 타겟 전송 실패: " + std::to_string(failure_count) + "/" + 
+                std::to_string(results.size()));
+        }
+        
+        LogManager::getInstance().Info(
+            "알람 처리 완료: " + alarm.nm + " (" + 
+            std::to_string(success_count) + "개 타겟, " + 
+            std::to_string(elapsed_ms) + "ms)");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error(
+            "알람 처리 실패: " + alarm.nm + " - " + std::string(e.what()));
+        throw;
     }
 }
 
@@ -609,23 +667,6 @@ bool AlarmSubscriber::initializeRedisConnection() {
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("Redis 연결 실패: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool AlarmSubscriber::initializeCSPGateway() {
-    try {
-        LogManager::getInstance().Info("CSPGateway 초기화 중...");
-        
-        csp_gateway_ = std::make_unique<PulseOne::CSP::CSPGateway>(
-            config_.gateway_config);
-        
-        LogManager::getInstance().Info("CSPGateway 초기화 완료");
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error(
-            "CSPGateway 초기화 실패: " + std::string(e.what()));
         return false;
     }
 }
