@@ -3,13 +3,13 @@
  * @brief 동적 타겟 관리자 - 싱글턴 패턴 적용
  * @author PulseOne Development Team
  * @date 2025-10-23
- * @version 6.0.0 (싱글턴 변환)
+ * @version 6.1.0 (ExportTypes.h 사용)
  * 
  * 주요 변경사항:
  * - 싱글턴 패턴 적용
  * - JSON 파일 로드 제거 (DB 전용)
- * - 생성자 private으로 변경
- * - getInstance() 정적 메서드 추가
+ * - ExportTypes.h 사용 (CSPDynamicTargets.h 대체)
+ * - Export 네임스페이스 타입을 CSP에서 사용
  * 
  * 사용법:
  *   auto& manager = DynamicTargetManager::getInstance();
@@ -20,7 +20,7 @@
 #define DYNAMIC_TARGET_MANAGER_H
 
 #include "CSP/AlarmMessage.h"
-#include "CSP/ITargetHandler.h"
+#include "Export/ExportTypes.h"  // ← CSP/ITargetHandler.h 대체
 #include "CSP/FailureProtector.h"
 #include <string>
 #include <vector>
@@ -29,6 +29,7 @@
 #include <shared_mutex>
 #include <atomic>
 #include <thread>
+#include <future>
 #include <condition_variable>
 #include <nlohmann/json.hpp>
 
@@ -38,40 +39,23 @@ namespace PulseOne {
 namespace CSP {
 
 // =============================================================================
-// 구조체 정의 (네임스페이스 레벨)
+// Export 네임스페이스 타입들을 CSP에서 사용
 // =============================================================================
 
-struct DynamicTarget {
-    std::string name;
-    std::string type;
-    bool enabled = true;
-    int priority = 100;
-    std::string description;
-    json config;
-    
-    std::atomic<bool> healthy{true};
-    std::atomic<bool> handler_initialized{false};
-    std::atomic<uint64_t> request_count{0};
-    std::atomic<uint64_t> success_count{0};
-    std::atomic<uint64_t> failure_count{0};
-};
+using PulseOne::Export::TargetSendResult;
+using PulseOne::Export::ITargetHandler;
+using PulseOne::Export::DynamicTarget;
+using PulseOne::Export::FailureProtectorConfig;
+using PulseOne::Export::FailureProtectorStats;
+using PulseOne::Export::BatchTargetResult;
+using PulseOne::Export::TargetHandlerFactory;
+using PulseOne::Export::TargetHandlerCreator;
 
-struct TargetSendResult {
-    std::string target_name;
-    bool success = false;
-    std::string error_message;
-    int http_status_code = 0;
-    std::string response_body;
-    std::chrono::milliseconds response_time{0};
-};
+// =============================================================================
+// 배치 처리 결과 (호환성 - 이전 이름 유지)
+// =============================================================================
 
-struct BatchProcessingResult {
-    std::vector<TargetSendResult> results;
-    int total_processed = 0;
-    int successful_count = 0;
-    int failed_count = 0;
-    std::chrono::milliseconds total_processing_time{0};
-};
+using BatchProcessingResult = BatchTargetResult;
 
 // =============================================================================
 // DynamicTargetManager 싱글턴 클래스
@@ -137,6 +121,19 @@ public:
      * @return 타겟 정보 (템플릿 포함)
      */
     std::optional<DynamicTarget> getTargetWithTemplate(const std::string& name);
+    
+    /**
+     * @brief 타겟 조회
+     * @param name 타겟 이름
+     * @return 타겟 정보
+     */
+    std::optional<DynamicTarget> getTarget(const std::string& name);
+    
+    /**
+     * @brief 동적 타겟 리로드
+     * @return 성공 시 true
+     */
+    bool reloadDynamicTargets();
     
     // =======================================================================
     // 알람 전송 (핵심 기능)
@@ -216,50 +213,45 @@ private:
     
     std::vector<DynamicTarget>::iterator findTarget(const std::string& target_name);
     std::vector<DynamicTarget>::const_iterator findTarget(const std::string& target_name) const;
+    
     bool processTargetByIndex(size_t index, const AlarmMessage& alarm, TargetSendResult& result);
-    bool checkRateLimit();
-    void updateTargetHealth(const std::string& target_name, bool healthy);
-    void updateTargetStatistics(const std::string& target_name, const TargetSendResult& result);
-    void expandConfigVariables(json& config, const AlarmMessage& alarm);
+    json expandConfigVariables(const json& config, const AlarmMessage& alarm);
     
     // =======================================================================
-    // 멤버 변수
+    // 멤버 변수들
     // =======================================================================
     
-    // 핸들러
+    // 타겟 목록 (shared_mutex로 보호)
+    mutable std::shared_mutex targets_mutex_;
+    std::vector<DynamicTarget> targets_;
+    
+    // 핸들러 맵
     std::unordered_map<std::string, std::unique_ptr<ITargetHandler>> handlers_;
     
-    // 타겟 리스트
-    std::vector<DynamicTarget> targets_;
-    mutable std::shared_mutex targets_mutex_;
+    // 실패 방지기 맵
+    std::unordered_map<std::string, std::unique_ptr<FailureProtector>> failure_protectors_;
     
-    // 실패 방지기
-    std::unordered_map<std::string, std::shared_ptr<FailureProtector>> failure_protectors_;
-    
-    // 글로벌 설정
-    json global_settings_;
-    std::mutex config_mutex_;
-    
-    // 상태
+    // 실행 상태
     std::atomic<bool> is_running_{false};
     std::atomic<bool> should_stop_{false};
     
-    // Rate Limiting
-    std::atomic<int> concurrent_requests_{0};
-    std::atomic<int> peak_concurrent_requests_{0};
-    std::atomic<uint64_t> total_requests_{0};
-    std::chrono::system_clock::time_point last_rate_reset_;
-    std::mutex rate_limit_mutex_;
-    
-    // 백그라운드 스레드
+    // 백그라운드 스레드들
     std::unique_ptr<std::thread> health_check_thread_;
-    std::unique_ptr<std::thread> metrics_collector_thread_;
+    std::unique_ptr<std::thread> metrics_thread_;
     std::unique_ptr<std::thread> cleanup_thread_;
     
-    // Condition Variables
-    std::condition_variable health_check_cv_;
-    std::condition_variable metrics_collector_cv_;
-    std::mutex cv_mutex_;
+    // 설정
+    json global_settings_;
+    
+    // 통계 변수들
+    std::atomic<uint64_t> total_requests_{0};
+    std::atomic<uint64_t> total_successes_{0};
+    std::atomic<uint64_t> total_failures_{0};
+    std::atomic<uint64_t> concurrent_requests_{0};
+    std::atomic<uint64_t> peak_concurrent_requests_{0};
+    std::atomic<uint64_t> total_bytes_sent_{0};
+    std::atomic<uint64_t> total_response_time_ms_{0};
+    std::chrono::system_clock::time_point startup_time_;
 };
 
 } // namespace CSP

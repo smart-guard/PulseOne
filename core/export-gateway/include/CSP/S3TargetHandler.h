@@ -10,7 +10,7 @@
 #ifndef S3_TARGET_HANDLER_H
 #define S3_TARGET_HANDLER_H
 
-#include "CSPDynamicTargets.h"
+#include "ExportTypes.h"
 #include <string>
 #include <memory>
 #include <mutex>

@@ -17,7 +17,7 @@
 #ifndef FILE_TARGET_HANDLER_H
 #define FILE_TARGET_HANDLER_H
 
-#include "CSPDynamicTargets.h"
+#include "ExportTypes.h"
 #include <string>
 #include <memory>
 #include <mutex>

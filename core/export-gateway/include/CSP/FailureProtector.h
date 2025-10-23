@@ -9,7 +9,7 @@
 #ifndef FAILURE_PROTECTOR_H
 #define FAILURE_PROTECTOR_H
 
-#include "CSPDynamicTargets.h"  // 모든 타입이 여기서 정의됨
+#include "ExportTypes.h"  // 모든 타입이 여기서 정의됨
 #include <atomic>
 #include <mutex>
 #include <chrono>
