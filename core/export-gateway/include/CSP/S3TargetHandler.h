@@ -10,7 +10,7 @@
 #ifndef S3_TARGET_HANDLER_H
 #define S3_TARGET_HANDLER_H
 
-#include "ExportTypes.h"
+#include "Export/ExportTypes.h"
 #include <string>
 #include <memory>
 #include <mutex>
