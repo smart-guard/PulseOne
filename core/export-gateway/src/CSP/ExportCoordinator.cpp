@@ -373,7 +373,7 @@ std::vector<ExportResult> ExportCoordinator::handleAlarmEvent(
         }
         
         // DynamicTargetManager를 통한 전송
-        auto target_results = target_manager->sendAlarmToAllTargets(alarm);
+        auto target_results = target_manager->sendAlarmToTargets(alarm);
         
         // 결과 변환 및 로깅
         for (const auto& target_result : target_results) {
@@ -589,16 +589,22 @@ int ExportCoordinator::reloadTargets() {
             return 0;
         }
         
-        auto target_names = target_manager->getTargetNames(false);
-        int count = static_cast<int>(target_names.size());
+        auto targets = target_manager->getAllTargets();
+        int reloaded_count = targets.size();
+        
+        std::vector<std::string> target_names;
+        for (const auto& target : targets) {
+            target_names.push_back(target.name);
+        }
         
         LogManager::getInstance().Info("타겟 리로드 완료: " + 
-                                      std::to_string(count) + "개");
-        return count;
+            std::to_string(reloaded_count) + "개");  // ✅ count → reloaded_count
+        
+        return reloaded_count;  // ✅ count → reloaded_count
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("타겟 리로드 실패: " + 
-                                       std::string(e.what()));
+            std::string(e.what()));
         return 0;
     }
 }
