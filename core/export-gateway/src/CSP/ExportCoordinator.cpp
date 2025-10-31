@@ -151,15 +151,17 @@ bool ExportCoordinator::initializeSharedResources() {
     try {
         LogManager::getInstance().Info("공유 리소스 초기화 시작...");
         
-        // 1. DynamicTargetManager 싱글턴 생성
+        // 1. DynamicTargetManager 싱글턴 가져오기 및 시작
         if (!shared_target_manager_) {
-            LogManager::getInstance().Info("DynamicTargetManager 생성 중...");
+            LogManager::getInstance().Info("DynamicTargetManager 초기화 중...");
             
-            // 빈 문자열로 생성 (DB 모드 사용)
-            shared_target_manager_ = std::make_shared<PulseOne::CSP::DynamicTargetManager>("");
+            // 싱글턴 인스턴스 가져오기
+            shared_target_manager_ = std::shared_ptr<PulseOne::CSP::DynamicTargetManager>(
+                &PulseOne::CSP::DynamicTargetManager::getInstance(),
+                [](PulseOne::CSP::DynamicTargetManager*){} // no-op 삭제자 (싱글턴이므로)
+            );
             
-            // DB에서 타겟 로드
-            // Note: DynamicTargetManager::start()에서 자동으로 DB 로드됨
+            // DB에서 타겟 로드 및 시작
             if (!shared_target_manager_->start()) {
                 LogManager::getInstance().Error("DynamicTargetManager 시작 실패");
                 return false;
@@ -168,11 +170,16 @@ bool ExportCoordinator::initializeSharedResources() {
             LogManager::getInstance().Info("DynamicTargetManager 초기화 완료");
         }
         
-        // 2. PayloadTransformer 싱글턴 생성
+        // 2. PayloadTransformer 싱글턴 가져오기
         if (!shared_payload_transformer_) {
-            LogManager::getInstance().Info("PayloadTransformer 생성 중...");
-            shared_payload_transformer_ = 
-                std::make_shared<PulseOne::Transform::PayloadTransformer>();
+            LogManager::getInstance().Info("PayloadTransformer 초기화 중...");
+            
+            // 싱글턴 인스턴스 가져오기
+            shared_payload_transformer_ = std::shared_ptr<PulseOne::Transform::PayloadTransformer>(
+                &PulseOne::Transform::PayloadTransformer::getInstance(),
+                [](PulseOne::Transform::PayloadTransformer*){} // no-op 삭제자 (싱글턴이므로)
+            );
+            
             LogManager::getInstance().Info("PayloadTransformer 초기화 완료");
         }
         
@@ -189,6 +196,7 @@ bool ExportCoordinator::initializeSharedResources() {
         return false;
     }
 }
+
 
 void ExportCoordinator::cleanupSharedResources() {
     std::lock_guard<std::mutex> lock(init_mutex_);
@@ -239,7 +247,7 @@ bool ExportCoordinator::initializeDatabase() {
         std::string db_path = getDatabasePath();
         
         // DatabaseManager를 통한 연결 확인
-        auto& db_manager = PulseOne::Database::DatabaseManager::getInstance();
+        auto& db_manager = DatabaseManager::getInstance();
         
         // 연결 테스트
         std::vector<std::vector<std::string>> test_result;
@@ -696,9 +704,9 @@ ExportResult ExportCoordinator::convertTargetSendResult(
     result.success = target_result.success;
     result.target_name = target_result.target_name;
     result.error_message = target_result.error_message;
-    result.http_status_code = target_result.http_status_code;
+    result.http_status_code = target_result.status_code;  // ✅ 수정: status_code 사용
     result.processing_time = target_result.response_time;
-    result.data_size = target_result.response_body.size();
+    result.data_size = target_result.content_size;  // ✅ response_body.size() 대신 content_size 사용
     
     // target_id 조회 (target_name으로 DB 검색)
     try {
@@ -715,6 +723,7 @@ ExportResult ExportCoordinator::convertTargetSendResult(
     
     return result;
 }
+
 
 void ExportCoordinator::updateStats(const ExportResult& result) {
     std::lock_guard<std::mutex> lock(stats_mutex_);

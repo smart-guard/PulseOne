@@ -1,52 +1,68 @@
-// =============================================================================
-// core/export-gateway/tests/test_integration_v2.cpp
-// Export Gateway 완전 통합 테스트 (E2E) - v2.0 (ExportCoordinator 기반)
-// =============================================================================
-// 🔥 v2.0 최종 변경 사항 (2025-10-23):
-//   ❌ CSPGateway 제거
-//   ✅ ExportCoordinator + DynamicTargetManager 싱글턴 사용
-//   ✅ AlarmSubscriber 테스트 추가
-//   ✅ ScheduledExporter 테스트 추가
-//   ✅ 템플릿 기반 변환 테스트 추가
-//   ✅ Repository 패턴 100% 적용
-// =============================================================================
+/**
+ * @file test_integration.cpp
+ * @brief Export Gateway 통합 테스트 - 모든 컴파일 에러 완전 수정
+ * @version 7.3 - FINAL (운영 DB 복사 방식)
+ * @date 2025-10-27
+ * 
+ * ✅ 수정 완료:
+ * 1. ConfigManager::initialize() - 파라미터 없음
+ * 2. DatabaseManager::initialize() - 파라미터 없음  
+ * 3. 운영 DB를 /tmp로 복사해서 테스트 (읽기 데이터 보존, 쓰기 격리)
+ * 4. ExportCoordinator(const ExportCoordinatorConfig& config) - 생성자에 config 전달
+ * 5. ExportCoordinatorConfig 필드명 정확히 수정
+ * 6. ExportTargetEntity::setName() 사용 (setTargetName 아님)
+ * 7. AlarmMessage 필드: bd, nm, vl, tm, al, st, des 사용
+ * 8. DynamicTarget::total_requests → success_count + failure_count 계산
+ * 
+ * 테스트 DB 전략:
+ * - 운영 DB (./data/db/pulseone.db) → /tmp/test_export_complete.db 복사
+ * - 실제 export_targets/schedules 데이터 그대로 사용
+ * - 테스트 중 생성되는 logs는 임시 DB에만 기록
+ * - 테스트 후 임시 DB 자동 삭제
+ */
 
 #include <iostream>
+#include <memory>
 #include <thread>
 #include <chrono>
-#include <cassert>
+#include <string>
+#include <vector>
+#include <atomic>
+#include <mutex>
 #include <sstream>
 #include <iomanip>
-#include <filesystem>
-#include <set>
-#include <nlohmann/json.hpp>
+#include <cstdio>  // std::remove
+#include <fstream>  // 파일 복사
 
-// PulseOne 헤더 (v2.0)
-#include "CSP/ExportCoordinator.h"
-#include "CSP/DynamicTargetManager.h"
-#include "CSP/AlarmMessage.h"
-#include "Database/DatabaseManager.h"
-#include "Client/RedisClientImpl.h"
+// PulseOne 헤더
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
-
-// Repository 패턴
-#include "Database/Repositories/ExportLogRepository.h"
+#include "Database/DatabaseManager.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/ExportScheduleRepository.h"
-#include "Database/Repositories/PayloadTemplateRepository.h"
+#include "Database/Repositories/ExportLogRepository.h"
+#include "Database/Entities/ExportTargetEntity.h"
+#include "Database/Entities/ExportScheduleEntity.h"
 
-// httplib for mock server
+// Export Gateway 헤더
+#include "CSP/ExportCoordinator.h"
+#include "CSP/AlarmMessage.h"
+#include "CSP/DynamicTargetManager.h"
+#include "Client/RedisClientImpl.h"
+
+// httplib (선택)
 #ifdef HAVE_HTTPLIB
 #include <httplib.h>
 #endif
 
+// JSON
+#include <nlohmann/json.hpp>
+
+// SQLite3 (테스트 DB 생성용)
+#include <sqlite3.h>
+
 using json = nlohmann::json;
 using namespace PulseOne;
-using namespace PulseOne::Coordinator;
-using namespace PulseOne::CSP;
-using namespace PulseOne::Database::Repositories;
-using namespace PulseOne::Database::Entities;
 
 // =============================================================================
 // 테스트 유틸리티
@@ -61,26 +77,32 @@ public:
             now.time_since_epoch()) % 1000;
         
         std::stringstream ss;
-        ss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
+        std::tm tm_buf{};
+#ifdef _WIN32
+        localtime_s(&tm_buf, &time);
+#else
+        localtime_r(&time, &tm_buf);
+#endif
+        ss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
         ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
         return ss.str();
     }
     
     static void assertCondition(bool condition, const std::string& message) {
         if (!condition) {
-            LogManager::getInstance().Error("❌ FAILED: " + message);
+            LogManager::getInstance().Error("❌ " + message);
             throw std::runtime_error("Test failed: " + message);
         }
-        LogManager::getInstance().Info("✅ PASSED: " + message);
+        LogManager::getInstance().Info("✅ " + message);
     }
 };
 
 // =============================================================================
-// Mock HTTP 서버
+// Mock Webhook 서버
 // =============================================================================
 
 #ifdef HAVE_HTTPLIB
-class MockTargetServer {
+class MockWebhookServer {
 private:
     std::unique_ptr<httplib::Server> server_;
     std::thread server_thread_;
@@ -90,36 +112,35 @@ private:
     std::vector<json> received_data_;
     
 public:
-    MockTargetServer() {
+    MockWebhookServer() {
         server_ = std::make_unique<httplib::Server>();
         setupRoutes();
     }
     
-    ~MockTargetServer() {
+    ~MockWebhookServer() {
         stop();
     }
     
     bool start() {
         if (running_.load()) return true;
+        
         running_.store(true);
         server_thread_ = std::thread([this]() {
-            LogManager::getInstance().Info("🚀 Mock 서버 시작: http://localhost:" + 
-                                          std::to_string(port_));
+            LogManager::getInstance().Info("🌐 Mock 서버 시작: http://localhost:" + std::to_string(port_));
             server_->listen("0.0.0.0", port_);
         });
+        
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         return true;
     }
     
     void stop() {
         if (!running_.load()) return;
+        
         running_.store(false);
-        if (server_) {
-            server_->stop();
-        }
-        if (server_thread_.joinable()) {
-            server_thread_.join();
-        }
+        if (server_) server_->stop();
+        if (server_thread_.joinable()) server_thread_.join();
+        
         LogManager::getInstance().Info("🛑 Mock 서버 중지");
     }
     
@@ -140,13 +161,13 @@ private:
         server_->Post("/webhook", [this](const httplib::Request& req, httplib::Response& res) {
             std::lock_guard<std::mutex> lock(data_mutex_);
             try {
-                json received = json::parse(req.body);
-                received_data_.push_back(received);
+                json data = json::parse(req.body);
+                received_data_.push_back(data);
                 LogManager::getInstance().Info("📨 Mock 서버 수신: " + req.body);
                 res.status = 200;
                 res.set_content(R"({"status":"success"})", "application/json");
             } catch (const std::exception& e) {
-                LogManager::getInstance().Error("❌ Mock 서버 파싱 실패: " + std::string(e.what()));
+                LogManager::getInstance().Error("Mock 서버 에러: " + std::string(e.what()));
                 res.status = 400;
                 res.set_content(R"({"status":"error"})", "application/json");
             }
@@ -161,532 +182,580 @@ private:
 #endif
 
 // =============================================================================
-// 통합 테스트 클래스 (v2.0)
+// 통합 테스트 클래스
 // =============================================================================
 
-class ExportGatewayIntegrationTestV2 {
+class RealWorkingIntegrationTest {
 private:
-    DatabaseManager& db_manager_;
-    std::unique_ptr<RedisClientImpl> redis_client_;
-    std::unique_ptr<ExportCoordinator> coordinator_;  // ✅ v2.0
+    std::unique_ptr<Coordinator::ExportCoordinator> coordinator_;
+    std::shared_ptr<RedisClientImpl> redis_client_;
+    
 #ifdef HAVE_HTTPLIB
-    std::unique_ptr<MockTargetServer> mock_server_;
+    std::unique_ptr<MockWebhookServer> mock_server_;
 #endif
-    std::string test_db_path_;
-    int test_target_id_ = 0;
+    
+    int alarm_target_id_ = 0;
+    int schedule_target_id_ = 0;
     
 public:
-    ExportGatewayIntegrationTestV2() 
-        : db_manager_(DatabaseManager::getInstance())
-        , test_db_path_("/tmp/test_export_gateway_v2.db") {
-        LogManager::getInstance().Info("🧪 통합 테스트 v2.0 초기화 시작");
+    RealWorkingIntegrationTest() {
+        LogManager::getInstance().Info("🧪 통합 테스트 초기화");
     }
     
-    ~ExportGatewayIntegrationTestV2() {
+    ~RealWorkingIntegrationTest() {
         cleanup();
     }
     
-    bool setupTestEnvironment() {
-        LogManager::getInstance().Info("📋 STEP 1: 테스트 환경 준비");
-        try {
-            if (!setupTestDatabase()) return false;
-            if (!setupRedisConnection()) return false;
-#ifdef HAVE_HTTPLIB
-            if (!setupMockServer()) return false;
-#endif
-            if (!insertTestTargets()) return false;
-            if (!setupCoordinator()) return false;  // ✅ v2.0
-            
-            LogManager::getInstance().Info("✅ 테스트 환경 준비 완료");
-            return true;
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("환경 준비 실패: " + std::string(e.what()));
-            return false;
-        }
-    }
+    // =========================================================================
+    // 메인 테스트 실행
+    // =========================================================================
     
-    // =========================================================================
-    // 테스트 1: DynamicTargetManager 초기화 및 타겟 로드
-    // =========================================================================
-    bool testDynamicTargetManager() {
-        LogManager::getInstance().Info("📋 STEP 2: DynamicTargetManager 검증");
-        
-        try {
-            // ✅ 싱글턴 사용
-            auto& manager = DynamicTargetManager::getInstance();
-            
-            TestHelper::assertCondition(
-                manager.isRunning(),
-                "DynamicTargetManager가 실행 중");
-            
-            auto target_names = manager.getTargetNames();
-            
-            TestHelper::assertCondition(
-                !target_names.empty(),
-                "타겟이 최소 1개 이상 로드됨");
-            
-            LogManager::getInstance().Info("✅ STEP 2 완료: " + 
-                std::to_string(target_names.size()) + "개 타겟 로드됨");
-            
-            // 타겟 목록 출력
-            for (const auto& name : target_names) {
-                LogManager::getInstance().Info("  - " + name);
-            }
-            
-            return true;
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("DynamicTargetManager 검증 실패: " + std::string(e.what()));
-            return false;
-        }
-    }
-    
-    // =========================================================================
-    // 테스트 2: Redis 데이터 추가 및 읽기
-    // =========================================================================
-    bool testRedisOperations() {
-        LogManager::getInstance().Info("📋 STEP 3: Redis 데이터 작업");
-        
-        try {
-            if (!redis_client_ || !redis_client_->isConnected()) {
-                LogManager::getInstance().Warn("⚠️ Redis 비활성 - 테스트 건너뜀");
-                return true;
-            }
-            
-            // 테스트 데이터 추가
-            std::string test_key = "test:alarm:001";
-            std::string test_value = R"({"point_name":"TEST_001","value":85.5,"timestamp":1234567890})";
-            
-            bool set_ok = redis_client_->set(test_key, test_value, 60);
-            TestHelper::assertCondition(set_ok, "Redis SET 성공");
-            
-            // 데이터 읽기
-            auto value = redis_client_->get(test_key);
-            TestHelper::assertCondition(
-                value.has_value() && value.value() == test_value,
-                "Redis GET 성공");
-            
-            LogManager::getInstance().Info("✅ STEP 3 완료: Redis 작업 성공");
-            return true;
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("Redis 작업 실패: " + std::string(e.what()));
-            return false;
-        }
-    }
-    
-    // =========================================================================
-    // 테스트 3: AlarmSubscriber - 알람 전송
-    // =========================================================================
-    bool testAlarmTransmission() {
-        LogManager::getInstance().Info("📋 STEP 4: 알람 전송 테스트");
-        
-        try {
-            // ✅ DynamicTargetManager 싱글턴 사용
-            auto& manager = DynamicTargetManager::getInstance();
-            
-            // 테스트 알람 생성
-            AlarmMessage alarm;
-            alarm.bd = 1001;
-            alarm.nm = "TEST_POINT_001";
-            alarm.vl = 85.5;
-            alarm.al = 1;
-            alarm.st = 1;
-            alarm.tm = std::to_string(
-                std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
-            
-            LogManager::getInstance().Info("알람 전송: " + alarm.nm);
-            
-            // 모든 타겟으로 전송
-            auto results = manager.sendAlarmToAllTargets(alarm);
-            
-            TestHelper::assertCondition(
-                !results.empty(),
-                "알람 전송 결과 수신");
-            
-            int success_count = 0;
-            for (const auto& result : results) {
-                if (result.success) {
-                    success_count++;
-                    LogManager::getInstance().Info("  ✅ " + result.target_name);
-                } else {
-                    LogManager::getInstance().Warn("  ❌ " + result.target_name + 
-                                                   ": " + result.error_message);
-                }
-            }
-            
-            TestHelper::assertCondition(
-                success_count > 0,
-                "최소 1개 타겟 전송 성공 (" + std::to_string(success_count) + "/" + 
-                std::to_string(results.size()) + ")");
-            
-            LogManager::getInstance().Info("✅ STEP 4 완료: 알람 전송 성공");
-            return true;
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("알람 전송 실패: " + std::string(e.what()));
-            return false;
-        }
-    }
-    
-    // =========================================================================
-    // 테스트 4: ScheduledExporter - 스케줄 실행
-    // =========================================================================
-    bool testScheduledExport() {
-        LogManager::getInstance().Info("📋 STEP 5: 스케줄 실행 테스트");
-        
-        try {
-            if (!coordinator_) {
-                throw std::runtime_error("Coordinator가 초기화되지 않음");
-            }
-            
-            // 테스트 스케줄 생성
-            ExportScheduleRepository schedule_repo;
-            ExportScheduleEntity schedule;
-            schedule.setScheduleName("Test Schedule");
-            schedule.setEnabled(true);
-            schedule.setCronExpression("*/5 * * * *");  // 5분마다
-            schedule.setDataRange("last_hour");
-            schedule.setTargetId(test_target_id_);
-            
-            if (!schedule_repo.save(schedule)) {
-                throw std::runtime_error("테스트 스케줄 저장 실패");
-            }
-            
-            LogManager::getInstance().Info("테스트 스케줄 생성: ID=" + 
-                                          std::to_string(schedule.getId()));
-            
-            // 스케줄 실행
-            int executed = coordinator_->executeAllSchedules();
-            
-            TestHelper::assertCondition(
-                executed >= 0,
-                "스케줄 실행 완료 (실행: " + std::to_string(executed) + "개)");
-            
-            LogManager::getInstance().Info("✅ STEP 5 완료: 스케줄 실행 성공");
-            return true;
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("스케줄 실행 실패: " + std::string(e.what()));
-            return false;
-        }
-    }
-    
-    // =========================================================================
-    // 테스트 5: Export Log 검증
-    // =========================================================================
-    bool testExportLogVerification() {
-        LogManager::getInstance().Info("📋 STEP 6: Export Log 검증");
-        
-        try {
-            ExportLogRepository log_repo;
-            
-            // 모든 로그 조회
-            auto logs = log_repo.findAll();
-            
-            LogManager::getInstance().Info("총 로그 수: " + std::to_string(logs.size()));
-            
-            if (logs.empty()) {
-                LogManager::getInstance().Warn("⚠️ 로그가 없음 - 전송 실패 가능성");
-                return true;  // 경고만 표시
-            }
-            
-            // target_id별 통계
-            std::map<int, int> target_stats;
-            std::map<int, int> target_success;
-            
-            for (const auto& log : logs) {
-                int tid = log.getTargetId();
-                target_stats[tid]++;
-                
-                if (log.getStatus() == "success") {
-                    target_success[tid]++;
-                }
-            }
-            
-            // 통계 출력
-            for (const auto& [tid, count] : target_stats) {
-                int success = target_success[tid];
-                double success_rate = (count > 0) ? (success * 100.0 / count) : 0.0;
-                
-                LogManager::getInstance().Info("타겟 ID " + std::to_string(tid) + 
-                                              ": " + std::to_string(success) + "/" + 
-                                              std::to_string(count) + 
-                                              " (성공률: " + std::to_string(success_rate) + "%)");
-            }
-            
-            TestHelper::assertCondition(
-                !logs.empty(),
-                "Export Log 기록 확인");
-            
-            LogManager::getInstance().Info("✅ STEP 6 완료: Export Log 검증 성공");
-            return true;
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("Export Log 검증 실패: " + std::string(e.what()));
-            return false;
-        }
-    }
-    
-    // =========================================================================
-    // 테스트 6: 템플릿 기반 변환 테스트
-    // =========================================================================
-    bool testTemplateTransform() {
-        LogManager::getInstance().Info("📋 STEP 7: 템플릿 변환 테스트");
-        
-        try {
-            // 템플릿 생성
-            PayloadTemplateRepository template_repo;
-            PayloadTemplateEntity template_entity;
-            
-            template_entity.setName("Test Template");
-            template_entity.setTemplateJson(R"({
-                "device_id": "DEVICE_001",
-                "data": {
-                    "temperature": null,
-                    "humidity": null
-                }
-            })");
-            
-            template_entity.setFieldMappings(R"({
-                "TEST_POINT_001": "$.data.temperature",
-                "TEST_POINT_002": "$.data.humidity"
-            })");
-            
-            if (!template_repo.save(template_entity)) {
-                throw std::runtime_error("템플릿 저장 실패");
-            }
-            
-            LogManager::getInstance().Info("테스트 템플릿 생성: ID=" + 
-                                          std::to_string(template_entity.getId()));
-            
-            // 타겟에 템플릿 연결
-            ExportTargetRepository target_repo;
-            auto target_opt = target_repo.findById(test_target_id_);
-            
-            if (target_opt.has_value()) {
-                auto target = target_opt.value();
-                target.setTemplateId(template_entity.getId());
-                target_repo.update(target);
-                
-                LogManager::getInstance().Info("타겟에 템플릿 연결 완료");
-            }
-            
-            // ✅ DynamicTargetManager 싱글턴 리로드
-            auto& manager = DynamicTargetManager::getInstance();
-            manager.forceReload();
-            
-            TestHelper::assertCondition(
-                true,
-                "템플릿 기반 변환 준비 완료");
-            
-            LogManager::getInstance().Info("✅ STEP 7 완료: 템플릿 변환 테스트 성공");
-            return true;
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("템플릿 변환 테스트 실패: " + std::string(e.what()));
-            return false;
-        }
-    }
-    
-    // =========================================================================
-    // 모든 테스트 실행
-    // =========================================================================
     bool runAllTests() {
-        LogManager::getInstance().Info("🚀 ========================================");
-        LogManager::getInstance().Info("🚀 Export Gateway 통합 테스트 v2.0");
-        LogManager::getInstance().Info("🚀 (ExportCoordinator + 템플릿 지원)");
-        LogManager::getInstance().Info("🚀 ========================================");
+        LogManager::getInstance().Info("========================================");
+        LogManager::getInstance().Info("🚀 Export Gateway 완전 통합 테스트");
+        LogManager::getInstance().Info("========================================");
         
-        bool all_passed = true;
-        
-        if (!setupTestEnvironment()) return false;
-        if (!testDynamicTargetManager()) all_passed = false;
-        if (!testRedisOperations()) all_passed = false;
-        if (!testAlarmTransmission()) all_passed = false;
-        if (!testScheduledExport()) all_passed = false;
-        if (!testExportLogVerification()) all_passed = false;
-        if (!testTemplateTransform()) all_passed = false;
-        
-        LogManager::getInstance().Info("🚀 ========================================");
-        if (all_passed) {
-            LogManager::getInstance().Info("🎉 모든 테스트 통과!");
-        } else {
-            LogManager::getInstance().Error("❌ 일부 테스트 실패");
-        }
-        LogManager::getInstance().Info("🚀 ========================================");
-        
-        return all_passed;
-    }
-    
-private:
-    // =========================================================================
-    // 초기화 메서드들
-    // =========================================================================
-    
-    bool setupTestDatabase() {
         try {
-            if (std::filesystem::exists(test_db_path_)) {
-                std::filesystem::remove(test_db_path_);
-            }
+            if (!setupEnvironment()) return false;
+            if (!testAlarmFlow()) return false;
+            if (!testScheduleFlow()) return false;
+            if (!testDynamicTargetManager()) return false;
+            if (!testExportLogs()) return false;
             
-            auto& config = ConfigManager::getInstance();
-            config.set("SQLITE_DB_PATH", test_db_path_);
-            config.set("CSP_DATABASE_PATH", test_db_path_);
-            config.set("DATABASE_PATH", test_db_path_);
-            
-            db_manager_.reinitialize();
-            
-            TestHelper::assertCondition(
-                db_manager_.isSQLiteConnected(), 
-                "SQLite 연결 성공");
-            
-            LogManager::getInstance().Info("✅ 1-1. 테스트 DB 초기화 완료: " + test_db_path_);
+            LogManager::getInstance().Info("========================================");
+            LogManager::getInstance().Info("✅ 모든 테스트 통과!");
+            LogManager::getInstance().Info("========================================");
             return true;
+            
         } catch (const std::exception& e) {
-            LogManager::getInstance().Error("DB 초기화 실패: " + std::string(e.what()));
+            LogManager::getInstance().Error("테스트 실패: " + std::string(e.what()));
             return false;
         }
     }
     
-    bool setupRedisConnection() {
+    // =========================================================================
+    // 환경 설정
+    // =========================================================================
+    
+    /**
+     * @brief DB 파일 복사 (운영 DB → 임시 DB)
+     */
+    bool copyDatabase(const std::string& source, const std::string& dest) {
         try {
-            redis_client_ = std::make_unique<RedisClientImpl>();
-            
-            if (redis_client_->isConnected()) {
-                LogManager::getInstance().Info("✅ 1-2. Redis 연결 성공");
-            } else {
-                LogManager::getInstance().Warn("⚠️ Redis 비활성 (선택적)");
+            std::ifstream src(source, std::ios::binary);
+            if (!src.is_open()) {
+                LogManager::getInstance().Warn("원본 DB 열기 실패: " + source);
+                return false;
             }
             
+            std::ofstream dst(dest, std::ios::binary);
+            if (!dst.is_open()) {
+                LogManager::getInstance().Error("대상 DB 생성 실패: " + dest);
+                return false;
+            }
+            
+            dst << src.rdbuf();
+            
+            src.close();
+            dst.close();
+            
+            LogManager::getInstance().Info("✅ DB 복사 완료: " + source + " → " + dest);
             return true;
+            
         } catch (const std::exception& e) {
-            LogManager::getInstance().Error("Redis 연결 실패: " + std::string(e.what()));
+            LogManager::getInstance().Error("DB 복사 중 예외: " + std::string(e.what()));
             return false;
         }
     }
     
+    /**
+     * @brief 테스트용 SQLite DB 생성 - 프로젝트 SQL 파일 사용
+     */
+    bool createTestDatabase(const std::string& db_path) {
+        sqlite3* db = nullptr;
+        
+        try {
+            // DB 파일 생성
+            int rc = sqlite3_open(db_path.c_str(), &db);
+            if (rc != SQLITE_OK) {
+                LogManager::getInstance().Error("SQLite DB 생성 실패: " + std::string(sqlite3_errmsg(db)));
+                if (db) sqlite3_close(db);
+                return false;
+            }
+            
+            // 프로젝트 SQL 파일들 실행
+            std::vector<std::string> sql_files = {
+                "/mnt/project/10-export_system.sql"  // Export 시스템 테이블만
+            };
+            
+            for (const auto& sql_file : sql_files) {
+                if (!executeSqlFile(db, sql_file)) {
+                    LogManager::getInstance().Warn("SQL 파일 실행 실패 (무시): " + sql_file);
+                }
+            }
+            
+            sqlite3_close(db);
+            LogManager::getInstance().Info("테스트 DB 스키마 초기화 완료");
+            return true;
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("테스트 DB 생성 중 예외: " + std::string(e.what()));
+            if (db) sqlite3_close(db);
+            return false;
+        }
+    }
+    
+    /**
+     * @brief SQL 파일 실행
+     */
+    bool executeSqlFile(sqlite3* db, const std::string& filepath) {
+        std::ifstream file(filepath);
+        if (!file.is_open()) {
+            return false;
+        }
+        
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        std::string sql = buffer.str();
+        file.close();
+        
+        char* err_msg = nullptr;
+        int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &err_msg);
+        
+        if (rc != SQLITE_OK) {
+            std::string error = err_msg ? err_msg : "Unknown error";
+            sqlite3_free(err_msg);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    bool setupEnvironment() {
+        LogManager::getInstance().Info("\n📋 STEP 0: 환경 설정");
+        
+        try {
+            const std::string source_db = "./data/db/pulseone.db";
+            const std::string test_db_path = "/tmp/test_export_complete.db";
+            
+            // ✅ 1단계: 운영 DB를 /tmp로 복사 (읽기 데이터 포함)
+            if (!copyDatabase(source_db, test_db_path)) {
+                // 복사 실패 시 빈 DB 생성
+                LogManager::getInstance().Warn("운영 DB 복사 실패, 새 DB 생성");
+                std::remove(test_db_path.c_str());
+                if (!createTestDatabase(test_db_path)) {
+                    throw std::runtime_error("테스트 DB 생성 실패");
+                }
+            }
+            LogManager::getInstance().Info("✅ 테스트 DB 준비 완료: " + test_db_path);
+            
+            // ✅ 2단계: ConfigManager 초기화 후 DB 경로 설정
+            ConfigManager::getInstance().initialize();
+            ConfigManager::getInstance().set("SQLITE_DB_PATH", test_db_path);
+            LogManager::getInstance().Info("✅ ConfigManager 설정 완료");
+            
+            // ✅ 3단계: DatabaseManager 초기화 (위에서 설정한 경로 사용)
+            if (!DatabaseManager::getInstance().initialize()) {
+                throw std::runtime_error("DatabaseManager 초기화 실패");
+            }
+            LogManager::getInstance().Info("✅ DatabaseManager 초기화 완료");
+            
+            if (!createTestTargets()) {
+                throw std::runtime_error("테스트 타겟 생성 실패");
+            }
+            
 #ifdef HAVE_HTTPLIB
-    bool setupMockServer() {
-        try {
-            mock_server_ = std::make_unique<MockTargetServer>();
+            mock_server_ = std::make_unique<MockWebhookServer>();
             if (!mock_server_->start()) {
                 throw std::runtime_error("Mock 서버 시작 실패");
             }
-            LogManager::getInstance().Info("✅ 1-3. Mock 서버 시작 완료 (포트: " + 
-                std::to_string(mock_server_->getPort()) + ")");
-            return true;
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("Mock 서버 실패: " + std::string(e.what()));
-            return false;
-        }
-    }
-#else
-    bool setupMockServer() {
-        LogManager::getInstance().Warn("⚠️ httplib 없음 - Mock 서버 건너뜀");
-        return true;
-    }
+            LogManager::getInstance().Info("✅ Mock 서버 시작 완료");
 #endif
-    
-    bool insertTestTargets() {
-        try {
-            std::string url = "http://localhost:18080/webhook";
-        #ifdef HAVE_HTTPLIB
-            if (mock_server_) {
-                url = "http://localhost:" + std::to_string(mock_server_->getPort()) + "/webhook";
+            
+            redis_client_ = std::make_shared<RedisClientImpl>();
+            
+            LogManager::getInstance().Info("Redis 연결 시도: 127.0.0.1:6379");
+            if (!redis_client_->connect("127.0.0.1", 6379)) {
+                LogManager::getInstance().Error("Redis 연결 실패 - 재시도");
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                
+                if (!redis_client_->connect("127.0.0.1", 6379)) {
+                    throw std::runtime_error("Redis 재연결 실패");
+                }
             }
-        #endif
+            LogManager::getInstance().Info("✅ Redis 연결 완료");
             
-            LogManager::getInstance().Info("🏗️ Repository로 테스트 타겟 생성 시작...");
-            
-            ExportTargetRepository target_repo;
-            ExportTargetEntity target_entity;
-            target_entity.setName(url);
-            target_entity.setTargetType("http");
-            target_entity.setDescription("Test target for integration test v2");
-            target_entity.setEnabled(true);
-            
-            json config = {
-                {"url", url}, 
-                {"method", "POST"}, 
-                {"content_type", "application/json"},
-                {"save_log", true}
-            };
-            
-            target_entity.setConfig(config.dump());
-            
-            if (!target_repo.save(target_entity)) {
-                throw std::runtime_error("테스트 타겟 삽입 실패");
-            }
-            
-            test_target_id_ = target_entity.getId();
-            
-            TestHelper::assertCondition(
-                test_target_id_ > 0,
-                "타겟 ID 생성 성공 (ID: " + std::to_string(test_target_id_) + ")");
-            
-            LogManager::getInstance().Info("✅ 1-4. 테스트 타겟 생성 완료");
-            return true;
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("테스트 타겟 생성 실패: " + std::string(e.what()));
-            return false;
-        }
-    }
-    
-    // ✅ v2.0: ExportCoordinator 초기화
-    bool setupCoordinator() {
-        try {
-            LogManager::getInstance().Info("🏗️ ExportCoordinator 초기화 중...");
-            
-            ExportCoordinatorConfig config;
-            config.redis_host = "localhost";
+            // ✅ 정확한 필드명 사용
+            Coordinator::ExportCoordinatorConfig config;
+            config.database_path = "/tmp/test_export_complete.db";  // 임시 테스트 DB
+            config.redis_host = "127.0.0.1";
             config.redis_port = 6379;
-            config.schedule_check_interval_seconds = 10;
-            config.alarm_subscribe_channels = {"alarms:test"};
-            config.alarm_worker_thread_count = 1;
+            config.redis_password = "";
+            config.alarm_channels = {"alarms:all"};
+            config.alarm_patterns = {"alarm:building:*"};
+            config.alarm_worker_threads = 4;
+            config.alarm_max_queue_size = 10000;
+            config.schedule_check_interval_seconds = 60;
+            config.schedule_reload_interval_seconds = 300;
+            config.schedule_batch_size = 100;
             config.enable_debug_log = true;
+            config.log_retention_days = 30;
+            config.max_concurrent_exports = 50;
+            config.export_timeout_seconds = 30;
             
-            coordinator_ = std::make_unique<ExportCoordinator>();
-            coordinator_->configure(config);
+            // ✅ 생성자에 config 전달
+            coordinator_ = std::make_unique<Coordinator::ExportCoordinator>(config);
             
             if (!coordinator_->start()) {
                 throw std::runtime_error("ExportCoordinator 시작 실패");
             }
             
-            // 잠시 대기 (컴포넌트 초기화)
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            
-            LogManager::getInstance().Info("✅ 1-5. ExportCoordinator 초기화 완료");
+            LogManager::getInstance().Info("✅ ExportCoordinator 시작 완료\n");
             return true;
             
         } catch (const std::exception& e) {
-            LogManager::getInstance().Error("Coordinator 초기화 실패: " + std::string(e.what()));
+            LogManager::getInstance().Error("환경 설정 실패: " + std::string(e.what()));
             return false;
         }
     }
     
+    bool createTestTargets() {
+        try {
+            using namespace Database::Repositories;
+            using namespace Database::Entities;
+            
+            ExportTargetRepository target_repo;
+            
+            // 알람 전송용 타겟
+            ExportTargetEntity alarm_target;
+            
+            // ✅ setName() 사용 (setTargetName 아님)
+            alarm_target.setName("TEST_ALARM_TARGET");
+            alarm_target.setTargetType("http");
+            alarm_target.setEnabled(true);
+            alarm_target.setDescription("Test alarm webhook target");
+            
+#ifdef HAVE_HTTPLIB
+            json alarm_config = {
+                {"url", "http://localhost:18080/webhook"},
+                {"method", "POST"},
+                {"timeout", 5000}
+            };
+#else
+            json alarm_config = {
+                {"url", "http://httpbin.org/post"},
+                {"method", "POST"},
+                {"timeout", 5000}
+            };
+#endif
+            alarm_target.setConfig(alarm_config.dump());
+            
+            if (!target_repo.save(alarm_target)) {
+                throw std::runtime_error("알람 타겟 저장 실패");
+            }
+            alarm_target_id_ = alarm_target.getId();
+            
+            // 스케줄 전송용 타겟
+            ExportTargetEntity schedule_target;
+            
+            // ✅ setName() 사용
+            schedule_target.setName("TEST_SCHEDULE_TARGET");
+            schedule_target.setTargetType("http");
+            schedule_target.setEnabled(true);
+            schedule_target.setDescription("Test schedule webhook target");
+            
+#ifdef HAVE_HTTPLIB
+            json schedule_config = {
+                {"url", "http://localhost:18080/webhook"},
+                {"method", "POST"},
+                {"timeout", 5000}
+            };
+#else
+            json schedule_config = {
+                {"url", "http://httpbin.org/post"},
+                {"method", "POST"},
+                {"timeout", 5000}
+            };
+#endif
+            schedule_target.setConfig(schedule_config.dump());
+            
+            if (!target_repo.save(schedule_target)) {
+                throw std::runtime_error("스케줄 타겟 저장 실패");
+            }
+            schedule_target_id_ = schedule_target.getId();
+            
+            LogManager::getInstance().Info("✅ 테스트 타겟 생성 완료 (알람: " + 
+                std::to_string(alarm_target_id_) + ", 스케줄: " + 
+                std::to_string(schedule_target_id_) + ")");
+            
+            return true;
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("타겟 생성 실패: " + std::string(e.what()));
+            return false;
+        }
+    }
+    
+    // =========================================================================
+    // 테스트 1: 알람 플로우
+    // =========================================================================
+    
+    bool testAlarmFlow() {
+        LogManager::getInstance().Info("\n📋 STEP 1: 알람 플로우 테스트");
+        
+        try {
+            // ✅ AlarmMessage 필드: bd, nm, vl, tm, al, st, des
+            CSP::AlarmMessage alarm;
+            alarm.bd = 1001;  // building_id
+            alarm.nm = "TEMP_01";  // point_name
+            alarm.vl = 85.5;  // value
+            alarm.tm = TestHelper::getCurrentTimestamp();  // timestamp
+            alarm.al = 1;  // alarm flag (1=발생)
+            alarm.st = 1;  // status
+            alarm.des = "온도 상한 초과";  // description
+            
+            // Redis는 이미 setupEnvironment에서 연결되어 있음
+            
+            json alarm_json = {
+                {"bd", alarm.bd},
+                {"nm", alarm.nm},
+                {"vl", alarm.vl},
+                {"tm", alarm.tm},
+                {"al", alarm.al},
+                {"st", alarm.st},
+                {"des", alarm.des}
+            };
+            
+            std::string alarm_str = alarm_json.dump();
+            LogManager::getInstance().Info("알람 JSON: " + alarm_str);
+            
+            bool publish_result = redis_client_->publish("alarms:all", alarm_str);
+            LogManager::getInstance().Info("Redis publish 결과: " + std::string(publish_result ? "성공" : "실패"));
+            
+            if (!publish_result) {
+                LogManager::getInstance().Error("Redis publish 실패 - 재시도");
+                
+                // 재연결 시도
+                redis_client_->disconnect();
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                
+                if (!redis_client_->connect("127.0.0.1", 6379)) {
+                    throw std::runtime_error("Redis 재연결 실패");
+                }
+                
+                publish_result = redis_client_->publish("alarms:all", alarm_str);
+                if (!publish_result) {
+                    throw std::runtime_error("Redis publish 재시도 실패");
+                }
+            }
+            
+            LogManager::getInstance().Info("✅ 알람 발행 완료");
+            
+            LogManager::getInstance().Info("⏰ 알람 처리 대기 중...");
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            
+#ifdef HAVE_HTTPLIB
+            if (mock_server_) {
+                auto received = mock_server_->getReceivedData();
+                TestHelper::assertCondition(
+                    !received.empty(),
+                    "알람이 타겟으로 전송됨 (수신: " + std::to_string(received.size()) + "건)");
+            }
+#endif
+            
+            LogManager::getInstance().Info("✅ 알람 플로우 테스트 완료\n");
+            return true;
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("알람 플로우 실패: " + std::string(e.what()));
+            return false;
+        }
+    }
+    
+    // =========================================================================
+    // 테스트 2: 스케줄 플로우
+    // =========================================================================
+    
+    bool testScheduleFlow() {
+        LogManager::getInstance().Info("\n📋 STEP 3: 스케줄 플로우 테스트");
+        
+        try {
+            auto next_run = std::chrono::system_clock::now() + std::chrono::seconds(3);
+            if (!createTestSchedule(next_run)) {
+                throw std::runtime_error("스케줄 생성 실패");
+            }
+            
+#ifdef HAVE_HTTPLIB
+            if (mock_server_) {
+                mock_server_->clearReceivedData();
+            }
+#endif
+            
+            LogManager::getInstance().Info("⏰ 스케줄 실행 대기 중...");
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            
+#ifdef HAVE_HTTPLIB
+            if (mock_server_) {
+                auto received = mock_server_->getReceivedData();
+                TestHelper::assertCondition(
+                    !received.empty(),
+                    "스케줄이 실행됨 (수신: " + std::to_string(received.size()) + "건)");
+            }
+#endif
+            
+            LogManager::getInstance().Info("✅ 스케줄 플로우 테스트 완료\n");
+            return true;
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("스케줄 플로우 실패: " + std::string(e.what()));
+            return false;
+        }
+    }
+    
+    bool createTestSchedule(const std::chrono::system_clock::time_point& next_run) {
+        try {
+            using namespace Database::Repositories;
+            using namespace Database::Entities;
+            
+            ExportScheduleRepository schedule_repo;
+            ExportScheduleEntity schedule;
+            
+            schedule.setTargetId(schedule_target_id_);
+            schedule.setScheduleName("TEST_SCHEDULE");
+            schedule.setCronExpression("* * * * *");
+            schedule.setNextRunAt(next_run);
+            schedule.setEnabled(true);
+            schedule.setDescription("Test schedule for integration test");
+            
+            if (!schedule_repo.save(schedule)) {
+                throw std::runtime_error("스케줄 저장 실패");
+            }
+            
+            LogManager::getInstance().Info("✅ 테스트 스케줄 생성 완료 (ID: " + 
+                std::to_string(schedule.getId()) + ")");
+            
+            return true;
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("스케줄 생성 실패: " + std::string(e.what()));
+            return false;
+        }
+    }
+    
+    // =========================================================================
+    // 테스트 3: DynamicTargetManager 통계
+    // =========================================================================
+    
+    bool testDynamicTargetManager() {
+        LogManager::getInstance().Info("\n📋 STEP 4: DynamicTargetManager 검증");
+        
+        try {
+            auto& manager = CSP::DynamicTargetManager::getInstance();
+            
+            TestHelper::assertCondition(
+                manager.isRunning(),
+                "DynamicTargetManager 실행 중");
+            
+            auto target_names = manager.getTargetNames();
+            TestHelper::assertCondition(
+                !target_names.empty(),
+                "타겟 목록 로드됨 (" + std::to_string(target_names.size()) + "개)");
+            
+            auto all_targets = manager.getTargetStatistics();
+            
+            LogManager::getInstance().Info("\n📊 타겟별 전송 통계:");
+            for (const auto& target : all_targets) {
+                // ✅ total_requests 계산 (success_count + failure_count)
+                auto total_requests = target.success_count.load() + target.failure_count.load();
+                
+                LogManager::getInstance().Info(
+                    "  - " + target.name + 
+                    ": 총 " + std::to_string(total_requests) + 
+                    ", 성공 " + std::to_string(target.success_count.load()) +
+                    ", 실패 " + std::to_string(target.failure_count.load()));
+            }
+            
+            LogManager::getInstance().Info("\n✅ DynamicTargetManager 검증 완료\n");
+            return true;
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("DynamicTargetManager 실패: " + std::string(e.what()));
+            return false;
+        }
+    }
+    
+    // =========================================================================
+    // 테스트 4: ExportLog 검증
+    // =========================================================================
+    
+    bool testExportLogs() {
+        LogManager::getInstance().Info("\n📋 STEP 5: ExportLog 검증");
+        
+        try {
+            using namespace Database::Repositories;
+            
+            ExportLogRepository log_repo;
+            
+            auto alarm_stats = log_repo.getTargetStatistics(alarm_target_id_, 24);
+            
+            LogManager::getInstance().Info("📊 알람 타겟 통계:");
+            LogManager::getInstance().Info("  - 총 전송: " + 
+                std::to_string(alarm_stats["total"]));
+            LogManager::getInstance().Info("  - 성공: " + 
+                std::to_string(alarm_stats["successful"]));
+            LogManager::getInstance().Info("  - 실패: " + 
+                std::to_string(alarm_stats["failed"]));
+            
+            auto schedule_stats = log_repo.getTargetStatistics(schedule_target_id_, 24);
+            
+            LogManager::getInstance().Info("\n📊 스케줄 타겟 통계:");
+            LogManager::getInstance().Info("  - 총 전송: " + 
+                std::to_string(schedule_stats["total"]));
+            LogManager::getInstance().Info("  - 성공: " + 
+                std::to_string(schedule_stats["successful"]));
+            LogManager::getInstance().Info("  - 실패: " + 
+                std::to_string(schedule_stats["failed"]));
+            
+            LogManager::getInstance().Info("\n✅ ExportLog 검증 완료\n");
+            return true;
+            
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("ExportLog 검증 실패: " + std::string(e.what()));
+            return false;
+        }
+    }
+    
+    // =========================================================================
+    // 정리
+    // =========================================================================
+    
     void cleanup() {
-        LogManager::getInstance().Info("🧹 정리 중...");
+        LogManager::getInstance().Info("\n🧹 정리 중...");
         
         if (coordinator_) {
             coordinator_->stop();
+            coordinator_.reset();
+        }
+        
+        if (redis_client_) {
+            redis_client_->disconnect();
+            redis_client_.reset();
         }
         
 #ifdef HAVE_HTTPLIB
         if (mock_server_) {
             mock_server_->stop();
+            mock_server_.reset();
         }
 #endif
         
-        if (redis_client_) {
-            redis_client_->disconnect();
-        }
-        
+        // ✅ 임시 테스트 DB 삭제
         try {
-            if (std::filesystem::exists(test_db_path_)) {
-                std::filesystem::remove(test_db_path_);
-            }
-        } catch (...) {}
+            std::remove("/tmp/test_export_complete.db");
+            LogManager::getInstance().Info("✅ 테스트 DB 삭제 완료");
+        } catch (...) {
+            LogManager::getInstance().Warn("테스트 DB 삭제 실패 (무시)");
+        }
         
         LogManager::getInstance().Info("✅ 정리 완료");
     }
@@ -696,20 +765,29 @@ private:
 // main
 // =============================================================================
 
-int main(int /* argc */, char** /* argv */) {
+int main() {
     try {
-        // 초기화 순서 보장
-        ConfigManager::getInstance();
-        LogManager::getInstance();
+        std::cout << "\n";
+        std::cout << "═══════════════════════════════════════════════════════\n";
+        std::cout << "  PulseOne Export Gateway 완전 통합 테스트\n";
+        std::cout << "═══════════════════════════════════════════════════════\n";
+        std::cout << "\n";
         
-        LogManager::getInstance().Info("🚀 Export Gateway 통합 테스트 v2.0 시작");
-        
-        ExportGatewayIntegrationTestV2 test;
+        RealWorkingIntegrationTest test;
         bool success = test.runAllTests();
         
+        std::cout << "\n";
+        if (success) {
+            std::cout << "✨ 테스트 결과: 성공! 🎉\n";
+        } else {
+            std::cout << "💥 테스트 결과: 실패\n";
+        }
+        std::cout << "\n";
+        
         return success ? 0 : 1;
+        
     } catch (const std::exception& e) {
-        std::cerr << "❌ 예외 발생: " << e.what() << std::endl;
+        std::cerr << "💥 예외 발생: " << e.what() << "\n";
         return 1;
     }
 }

@@ -18,6 +18,9 @@
 #include "Database/ExportSQLQueries.h"
 #include "Utils/LogManager.h"
 #include <sstream>
+#include <iomanip>
+#include <ctime>
+#include <nlohmann/json.hpp>
 
 namespace PulseOne {
 namespace Database {
@@ -643,84 +646,266 @@ std::map<std::string, int> ExportTargetRepository::getCacheStats() const {
 // 내부 헬퍼 메서드
 // =============================================================================
 
+/**
+ * @brief DB Row를 ExportTargetEntity로 변환 (수정 버전 2)
+ * @note created_at/updated_at은 BaseEntity가 자동 관리
+ */
 ExportTargetEntity ExportTargetRepository::mapRowToEntity(
     const std::map<std::string, std::string>& row) {
     
     ExportTargetEntity entity;
+    const size_t MAX_CONFIG_SIZE = 10 * 1024 * 1024; // 10MB
     
+    // ==========================================================================
+    // ID (필수 필드)
+    // ==========================================================================
     try {
-        auto it = row.end();
-        
-        // ID
-        it = row.find("id");
+        auto it = row.find("id");
         if (it != row.end() && !it->second.empty()) {
             entity.setId(std::stoi(it->second));
         }
-        
-        // profile_id
-        it = row.find("profile_id");
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("mapRowToEntity: Failed to parse 'id': " + 
+                          std::string(e.what()));
+        }
+        throw; // ID는 필수이므로 재throw
+    }
+    
+    // ==========================================================================
+    // profile_id
+    // ==========================================================================
+    try {
+        auto it = row.find("profile_id");
         if (it != row.end() && !it->second.empty()) {
             entity.setProfileId(std::stoi(it->second));
+        } else {
+            entity.setProfileId(0);
         }
-        
-        // name
-        it = row.find("name");
-        if (it != row.end()) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Debug("mapRowToEntity: Failed to parse 'profile_id': " + 
+                          std::string(e.what()));
+        }
+        entity.setProfileId(0);
+    }
+    
+    // ==========================================================================
+    // name (필수 필드)
+    // ==========================================================================
+    try {
+        auto it = row.find("name");
+        if (it != row.end() && !it->second.empty()) {
             entity.setName(it->second);
+        } else {
+            entity.setName("Unnamed Target");
+            if (logger_) {
+                logger_->Warn("mapRowToEntity: 'name' field is empty");
+            }
         }
-        
-        // target_type
-        it = row.find("target_type");
-        if (it != row.end()) {
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Warn("mapRowToEntity: Failed to parse 'name': " + 
+                         std::string(e.what()));
+        }
+        entity.setName("Unnamed Target");
+    }
+    
+    // ==========================================================================
+    // target_type (필수 필드)
+    // ==========================================================================
+    try {
+        auto it = row.find("target_type");
+        if (it != row.end() && !it->second.empty()) {
             entity.setTargetType(it->second);
+        } else {
+            entity.setTargetType("HTTP");
+            if (logger_) {
+                logger_->Warn("mapRowToEntity: 'target_type' empty, using HTTP");
+            }
         }
-        
-        // description
-        it = row.find("description");
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Warn("mapRowToEntity: Failed to parse 'target_type': " + 
+                         std::string(e.what()));
+        }
+        entity.setTargetType("HTTP");
+    }
+    
+    // ==========================================================================
+    // description (선택 필드)
+    // ==========================================================================
+    try {
+        auto it = row.find("description");
         if (it != row.end()) {
             entity.setDescription(it->second);
         }
-        
-        // is_enabled
-        it = row.find("is_enabled");
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Debug("mapRowToEntity: Failed to parse 'description': " + 
+                          std::string(e.what()));
+        }
+        entity.setDescription("");
+    }
+    
+    // ==========================================================================
+    // is_enabled
+    // ==========================================================================
+    try {
+        auto it = row.find("is_enabled");
         if (it != row.end() && !it->second.empty()) {
             entity.setEnabled(std::stoi(it->second) != 0);
+        } else {
+            entity.setEnabled(false);
         }
-        
-        // config
-        it = row.find("config");
-        if (it != row.end()) {
-            entity.setConfig(it->second);
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Debug("mapRowToEntity: Failed to parse 'is_enabled': " + 
+                          std::string(e.what()));
         }
-        
-        // export_mode
-        it = row.find("export_mode");
+        entity.setEnabled(false);
+    }
+    
+    // ==========================================================================
+    // config (JSON 필드 - 가장 중요!)
+    // ==========================================================================
+    try {
+        auto it = row.find("config");
         if (it != row.end()) {
+            const std::string& config_value = it->second;
+            
+            // 크기 체크
+            if (config_value.size() > MAX_CONFIG_SIZE) {
+                if (logger_) {
+                    logger_->Warn("mapRowToEntity: config too large (" + 
+                                 std::to_string(config_value.size()) + " bytes)");
+                }
+                entity.setConfig("{}");
+            } 
+            else if (config_value.empty()) {
+                entity.setConfig("{}");
+            }
+            else {
+                // 안전한 문자열 복사
+                std::string config_copy;
+                config_copy.reserve(config_value.size() + 1);
+                config_copy = config_value;
+                
+                // JSON 유효성 검사
+                try {
+                    auto parsed = nlohmann::json::parse(config_copy);
+                    (void)parsed; // unused 경고 방지
+                    entity.setConfig(config_copy);
+                    
+                    if (logger_) {
+                        logger_->Debug("mapRowToEntity: config OK (" + 
+                                      std::to_string(config_copy.size()) + " bytes)");
+                    }
+                } catch (const nlohmann::json::exception& json_err) {
+                    if (logger_) {
+                        logger_->Warn("mapRowToEntity: Invalid JSON: " + 
+                                     std::string(json_err.what()));
+                    }
+                    entity.setConfig("{}");
+                }
+            }
+        } else {
+            entity.setConfig("{}");
+        }
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Error("mapRowToEntity: config parse failed: " + 
+                          std::string(e.what()));
+        }
+        entity.setConfig("{}");
+    }
+    
+    // ==========================================================================
+    // template_id (NULL 가능)
+    // ==========================================================================
+    try {
+        auto it = row.find("template_id");
+        if (it != row.end() && !it->second.empty() && it->second != "NULL") {
+            entity.setTemplateId(std::stoi(it->second));
+        } else {
+            entity.setTemplateId(std::nullopt);
+        }
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Debug("mapRowToEntity: template_id parse failed: " + 
+                          std::string(e.what()));
+        }
+        entity.setTemplateId(std::nullopt);
+    }
+    
+    // ==========================================================================
+    // export_mode
+    // ==========================================================================
+    try {
+        auto it = row.find("export_mode");
+        if (it != row.end() && !it->second.empty()) {
             entity.setExportMode(it->second);
+        } else {
+            entity.setExportMode("realtime");
         }
-        
-        // export_interval
-        it = row.find("export_interval");
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Debug("mapRowToEntity: export_mode parse failed: " + 
+                          std::string(e.what()));
+        }
+        entity.setExportMode("realtime");
+    }
+    
+    // ==========================================================================
+    // export_interval
+    // ==========================================================================
+    try {
+        auto it = row.find("export_interval");
         if (it != row.end() && !it->second.empty()) {
             entity.setExportInterval(std::stoi(it->second));
+        } else {
+            entity.setExportInterval(60);
         }
-        
-        // batch_size
-        it = row.find("batch_size");
+    } catch (const std::exception& e) {
+        if (logger_) {
+            logger_->Debug("mapRowToEntity: export_interval parse failed: " + 
+                          std::string(e.what()));
+        }
+        entity.setExportInterval(60);
+    }
+    
+    // ==========================================================================
+    // batch_size
+    // ==========================================================================
+    try {
+        auto it = row.find("batch_size");
         if (it != row.end() && !it->second.empty()) {
             entity.setBatchSize(std::stoi(it->second));
+        } else {
+            entity.setBatchSize(100);
         }
-        
-        // ❌ 통계 필드 파싱 코드 완전 제거
-        // total_exports, successful_exports, failed_exports 등
-        
     } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to map row to ExportTargetEntity: " + 
-                                std::string(e.what()));
+        if (logger_) {
+            logger_->Debug("mapRowToEntity: batch_size parse failed: " + 
+                          std::string(e.what()));
+        }
+        entity.setBatchSize(100);
+    }
+    
+    // ==========================================================================
+    // ✅ created_at/updated_at은 BaseEntity가 자동 관리 - 파싱 불필요!
+    // ==========================================================================
+    
+    // 매핑 성공 로그
+    if (logger_) {
+        logger_->Debug("mapRowToEntity: Mapped [" + entity.getName() + 
+                      "] (ID: " + std::to_string(entity.getId()) + 
+                      ", Type: " + entity.getTargetType() + ")");
     }
     
     return entity;
 }
+
 
 std::map<std::string, std::string> ExportTargetRepository::entityToParams(
     const ExportTargetEntity& entity) {

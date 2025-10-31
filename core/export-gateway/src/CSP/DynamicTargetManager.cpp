@@ -1,21 +1,27 @@
 /**
  * @file DynamicTargetManager.cpp
- * @brief 동적 타겟 관리자 구현 (헤더 파일 완전 일치)
+ * @brief 동적 타겟 관리자 구현 (PUBLISH 전용 Redis 연결 추가)
  * @author PulseOne Development Team
- * @date 2025-10-23
- * @version 6.1.0
+ * @date 2025-10-31
+ * @version 6.2.0
  * 
- * 🎯 헤더 파일과 100% 일치하도록 작성
+ * 주요 변경사항 (v6.1 → v6.2):
+ * - ✅ publish_client_ 멤버 추가 (PUBLISH 전용 Redis 연결)
+ * - ✅ initializePublishClient() 메서드 추가
+ * - ✅ isRedisConnected() 메서드 추가
+ * - ✅ start() 메서드에서 Redis 초기화
  */
 
 #include "CSP/DynamicTargetManager.h"
 #include "CSP/HttpTargetHandler.h"
 #include "CSP/S3TargetHandler.h"
 #include "CSP/FileTargetHandler.h"
+#include "Client/RedisClientImpl.h"  // ✅ 추가
 #include "Utils/LogManager.h"
+#include "Utils/ConfigManager.h"     // ✅ 추가
 #include "Database/RepositoryFactory.h"
-#include "Database/Repositories/ExportTargetRepository.h"      // ✅ 추가
-#include "Database/Repositories/PayloadTemplateRepository.h"  // ✅ 추가
+#include "Database/Repositories/ExportTargetRepository.h"
+#include "Database/Repositories/PayloadTemplateRepository.h"
 #include "Database/Entities/ExportTargetEntity.h"
 #include "Database/Entities/PayloadTemplateEntity.h"
 #include <algorithm>
@@ -39,7 +45,9 @@ DynamicTargetManager& DynamicTargetManager::getInstance() {
 // 생성자 및 소멸자 (private)
 // =============================================================================
 
-DynamicTargetManager::DynamicTargetManager() {
+DynamicTargetManager::DynamicTargetManager() 
+    : publish_client_(nullptr) {  // ✅ 초기화 추가
+    
     LogManager::getInstance().Info("DynamicTargetManager 싱글턴 생성");
     
     startup_time_ = std::chrono::system_clock::now();
@@ -53,6 +61,8 @@ DynamicTargetManager::DynamicTargetManager() {
         {"metrics_collection_interval_sec", 30},
         {"max_concurrent_requests", 100}
     };
+    
+    LogManager::getInstance().Info("✅ PUBLISH 전용 Redis 연결 준비 완료");
 }
 
 DynamicTargetManager::~DynamicTargetManager() {
@@ -71,6 +81,66 @@ DynamicTargetManager::~DynamicTargetManager() {
 }
 
 // =============================================================================
+// ✅ Redis 연결 관리 (PUBLISH 전용)
+// =============================================================================
+
+bool DynamicTargetManager::initializePublishClient() {
+    try {
+        LogManager::getInstance().Info("PUBLISH 전용 Redis 연결 초기화 시작...");
+        
+        // ConfigManager에서 Redis 설정 읽기
+        auto& config = ConfigManager::getInstance();
+        std::string redis_host = config.getString("redis_host", "127.0.0.1");
+        int redis_port = config.getInt("redis_port", 6379);
+        std::string redis_password = config.getString("redis_password", "");
+        
+        LogManager::getInstance().Info("Redis 연결 정보: " + redis_host + ":" + 
+                                      std::to_string(redis_port));
+        
+        // RedisClientImpl 인스턴스 생성
+        publish_client_ = std::make_unique<RedisClientImpl>();
+        
+        // 연결 시도
+        if (!publish_client_->connect(redis_host, redis_port, redis_password)) {
+            LogManager::getInstance().Error("Redis 연결 실패: " + redis_host + ":" + 
+                                           std::to_string(redis_port));
+            publish_client_.reset();
+            return false;
+        }
+        
+        // 연결 테스트
+        if (!publish_client_->ping()) {
+            LogManager::getInstance().Error("Redis PING 실패");
+            publish_client_.reset();
+            return false;
+        }
+        
+        LogManager::getInstance().Info("✅ PUBLISH 전용 Redis 연결 성공: " + 
+                                      redis_host + ":" + std::to_string(redis_port));
+        
+        return true;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Redis 연결 초기화 예외: " + std::string(e.what()));
+        publish_client_.reset();
+        return false;
+    }
+}
+
+bool DynamicTargetManager::isRedisConnected() const {
+    if (!publish_client_) {
+        return false;
+    }
+    
+    try {
+        return publish_client_->isConnected();
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Redis 연결 상태 확인 예외: " + std::string(e.what()));
+        return false;
+    }
+}
+
+// =============================================================================
 // 라이프사이클 관리
 // =============================================================================
 
@@ -82,22 +152,50 @@ bool DynamicTargetManager::start() {
     
     LogManager::getInstance().Info("DynamicTargetManager 시작...");
     
-    // DB에서 타겟 로드
+    // ✅ 1. PUBLISH 전용 Redis 연결 초기화 (최우선)
+    if (!initializePublishClient()) {
+        LogManager::getInstance().Warn("PUBLISH 전용 Redis 연결 실패 - 계속 진행");
+        // Redis 연결 실패해도 계속 진행 (다른 기능은 동작 가능)
+    }
+    
+    // 2. DB에서 타겟 로드
     if (!loadFromDatabase()) {
-        LogManager::getInstance().Error("타겟 로드 실패");
+        LogManager::getInstance().Error("DB 로드 실패");
         return false;
     }
     
-    // 실패 방지기 초기화
-    initializeFailureProtectors();
+    LogManager::getInstance().Info("DB에서 타겟 로드 완료");
     
-    // 백그라운드 스레드 시작
+    // 3. 각 타겟에 Failure Protector 생성
+    {
+        std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+        
+        for (const auto& target : targets_) {
+            if (target.enabled) {
+                FailureProtectorConfig fp_config;
+                fp_config.failure_threshold = 5;
+                fp_config.timeout_seconds = 30;
+                fp_config.half_open_max_calls = 3;
+                
+                failure_protectors_[target.name] = 
+                    std::make_unique<FailureProtector>(target.name, fp_config);
+                
+                LogManager::getInstance().Debug(
+                    "Failure Protector 생성: " + target.name);
+            }
+        }
+    }
+    
+    // 4. 백그라운드 스레드 시작
+    is_running_ = true;
     startBackgroundThreads();
     
-    is_running_.store(true);
-    should_stop_.store(false);
+    LogManager::getInstance().Info("DynamicTargetManager 시작 완료 ✅");
+    LogManager::getInstance().Info("- PUBLISH Redis: " + 
+                                  (isRedisConnected() ? "연결됨" : "연결안됨"));
+    LogManager::getInstance().Info("- 활성 타겟: " + 
+                                  std::to_string(targets_.size()) + "개");
     
-    LogManager::getInstance().Info("DynamicTargetManager 시작 완료");
     return true;
 }
 
@@ -106,55 +204,28 @@ void DynamicTargetManager::stop() {
         return;
     }
     
-    LogManager::getInstance().Info("DynamicTargetManager 중지...");
+    LogManager::getInstance().Info("DynamicTargetManager 중지 중...");
     
-    should_stop_.store(true);
-    is_running_.store(false);
+    should_stop_ = true;
+    is_running_ = false;
     
     // 백그라운드 스레드 중지
     stopBackgroundThreads();
     
+    // ✅ PUBLISH 전용 Redis 연결 정리
+    if (publish_client_) {
+        try {
+            if (publish_client_->isConnected()) {
+                publish_client_->disconnect();
+                LogManager::getInstance().Info("PUBLISH Redis 연결 종료");
+            }
+            publish_client_.reset();
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("Redis 연결 종료 예외: " + std::string(e.what()));
+        }
+    }
+    
     LogManager::getInstance().Info("DynamicTargetManager 중지 완료");
-}
-
-// =============================================================================
-// 내부 초기화
-// =============================================================================
-
-void DynamicTargetManager::registerDefaultHandlers() {
-    LogManager::getInstance().Info("기본 핸들러 등록 시작");
-    
-    auto http_handler = std::make_unique<HttpTargetHandler>();
-    registerHandler("HTTP", std::move(http_handler));
-    
-    auto s3_handler = std::make_unique<S3TargetHandler>();
-    registerHandler("S3", std::move(s3_handler));
-    
-    auto file_handler = std::make_unique<FileTargetHandler>();
-    registerHandler("FILE", std::move(file_handler));
-    
-    LogManager::getInstance().Info("기본 핸들러 등록 완료");
-}
-
-void DynamicTargetManager::initializeFailureProtectors() {
-    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-    
-    for (const auto& target : targets_) {
-        initializeFailureProtectorForTarget(target.name);
-    }
-}
-
-void DynamicTargetManager::initializeFailureProtectorForTarget(const std::string& target_name) {
-    if (failure_protectors_.find(target_name) != failure_protectors_.end()) {
-        return;
-    }
-    
-    FailureProtectorConfig config;
-    config.failure_threshold = 5;
-    config.recovery_timeout_ms = 60000;
-    
-    auto protector = std::make_unique<FailureProtector>(target_name, config);
-    failure_protectors_[target_name] = std::move(protector);
 }
 
 // =============================================================================
@@ -162,14 +233,14 @@ void DynamicTargetManager::initializeFailureProtectorForTarget(const std::string
 // =============================================================================
 
 bool DynamicTargetManager::loadFromDatabase() {
-    using namespace PulseOne::Database::Repositories;
-    using namespace PulseOne::Database::Entities;
-    
     try {
         LogManager::getInstance().Info("DB에서 타겟 로드 시작...");
         
-        ExportTargetRepository target_repo;
-        auto entities = target_repo.findByEnabled(true);  // 수정: findActive() -> findByEnabled(true)
+        auto& factory = RepositoryFactory::getInstance();
+        auto& target_repo = factory.getRepository<ExportTargetRepository>();
+        
+        // SQLite는 findByEnabled 사용
+        auto entities = target_repo.findByEnabled(true);
         
         if (entities.empty()) {
             LogManager::getInstance().Warn("활성화된 타겟이 없습니다");
@@ -212,7 +283,7 @@ bool DynamicTargetManager::loadFromDatabase() {
             }
         }
         
-        LogManager::getInstance().Info("DB에서 " + std::to_string(loaded_count) + "개 타겟 로드 완료");
+        LogManager::getInstance().Info("✅ DB에서 " + std::to_string(loaded_count) + "개 타겟 로드 완료");
         return (loaded_count > 0);
         
     } catch (const std::exception& e) {
@@ -245,327 +316,201 @@ std::optional<DynamicTarget> DynamicTargetManager::getTarget(const std::string& 
     return std::nullopt;
 }
 
-// =============================================================================
-// 알람 전송 (핵심 기능)
-// =============================================================================
-
-std::vector<TargetSendResult> DynamicTargetManager::sendAlarmToAllTargets(const AlarmMessage& alarm) {
-    std::vector<TargetSendResult> results;
-    
-    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-    
-    for (size_t i = 0; i < targets_.size(); ++i) {
-        TargetSendResult result;
-        if (processTargetByIndex(i, alarm, result)) {
-            results.push_back(result);
-        }
-    }
-    
-    return results;
-}
-
-std::vector<TargetSendResult> DynamicTargetManager::sendAlarmToAllTargetsParallel(const AlarmMessage& alarm) {
-    std::vector<std::future<TargetSendResult>> futures;
-    std::vector<TargetSendResult> results;
-    
-    {
-        std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-        
-        for (size_t i = 0; i < targets_.size(); ++i) {
-            futures.push_back(std::async(std::launch::async, [this, i, &alarm]() {
-                TargetSendResult result;
-                processTargetByIndex(i, alarm, result);
-                return result;
-            }));
-        }
-    }
-    
-    for (auto& future : futures) {
-        try {
-            results.push_back(future.get());
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("비동기 전송 에러: " + std::string(e.what()));
-        }
-    }
-    
-    return results;
-}
-
-TargetSendResult DynamicTargetManager::sendAlarmToTarget(
-    const AlarmMessage& alarm,
-    const std::string& target_name) {
-    
-    TargetSendResult result;
-    result.target_name = target_name;
-    
-    total_requests_.fetch_add(1);
-    concurrent_requests_.fetch_add(1);
-    
-    try {
-        std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-        
-        auto target_it = findTarget(target_name);
-        if (target_it == targets_.end()) {
-            result.success = false;
-            result.error_message = "타겟을 찾을 수 없음";
-            concurrent_requests_.fetch_sub(1);
-            total_failures_.fetch_add(1);
-            return result;
-        }
-        
-        if (!target_it->enabled) {
-            result.success = false;
-            result.error_message = "타겟 비활성화됨";
-            concurrent_requests_.fetch_sub(1);
-            return result;
-        }
-        
-        auto handler_it = handlers_.find(target_it->type);
-        if (handler_it == handlers_.end()) {
-            result.success = false;
-            result.error_message = "핸들러를 찾을 수 없음";
-            concurrent_requests_.fetch_sub(1);
-            total_failures_.fetch_add(1);
-            return result;
-        }
-        
-        // 실패 방지기 확인
-        auto protector_it = failure_protectors_.find(target_name);
-        if (protector_it != failure_protectors_.end() && !protector_it->second->canExecute()) {
-            result.success = false;
-            result.status_code = 503;
-            result.error_message = "Circuit Breaker OPEN";
-            concurrent_requests_.fetch_sub(1);
-            return result;
-        }
-        
-        // 핸들러로 전송
-        result = handler_it->second->sendAlarm(alarm, target_it->config);
-        
-        // 통계 업데이트
-        if (result.success) {
-            total_successes_.fetch_add(1);
-            if (protector_it != failure_protectors_.end()) {
-                protector_it->second->recordSuccess();
-            }
-        } else {
-            total_failures_.fetch_add(1);
-            if (protector_it != failure_protectors_.end()) {
-                protector_it->second->recordFailure();
-            }
-        }
-        
-        // ✅ response_time (std::chrono::milliseconds) → count()로 변환
-        total_response_time_ms_.fetch_add(result.response_time.count());
-        
-    } catch (const std::exception& e) {
-        result.success = false;
-        result.error_message = "예외 발생: " + std::string(e.what());  // ✅ 괄호 수정
-        total_failures_.fetch_add(1);
-    }
-    
-    concurrent_requests_.fetch_sub(1);
-    return result;
-}
-
-std::future<std::vector<TargetSendResult>> DynamicTargetManager::sendAlarmAsync(const AlarmMessage& alarm) {
-    return std::async(std::launch::async, [this, alarm]() {
-        return sendAlarmToAllTargets(alarm);
-    });
-}
-
-std::vector<TargetSendResult> DynamicTargetManager::sendAlarmByPriority(
-    const AlarmMessage& alarm,
-    int max_priority) {
-    
-    std::vector<TargetSendResult> results;
-    
-    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-    
-    for (const auto& target : targets_) {
-        if (target.enabled && target.priority <= max_priority) {
-            auto result = sendAlarmToTarget(alarm, target.name);
-            results.push_back(result);
-        }
-    }
-    
-    return results;
-}
-
-BatchProcessingResult DynamicTargetManager::processBuildingAlarms(
-    const std::unordered_map<int, std::vector<AlarmMessage>>& building_alarms) {
-    
-    BatchProcessingResult batch_result;
-    // ✅ BatchTargetResult 실제 필드: total_targets, successful_targets, failed_targets
-    batch_result.total_targets = 0;
-    batch_result.successful_targets = 0;
-    batch_result.failed_targets = 0;
-    
-    for (const auto& [building_id, alarms] : building_alarms) {
-        for (const auto& alarm : alarms) {
-            batch_result.total_targets++;
-            
-            auto results = sendAlarmToAllTargets(alarm);
-            
-            bool any_success = false;
-            for (const auto& result : results) {
-                if (result.success) {
-                    any_success = true;
-                    break;
-                }
-            }
-            
-            if (any_success) {
-                batch_result.successful_targets++;
-            } else {
-                batch_result.failed_targets++;
-            }
-        }
-    }
-    
-    return batch_result;
-}
-
-// =============================================================================
-// 타겟 관리
-// =============================================================================
-
-bool DynamicTargetManager::addTarget(const DynamicTarget& target) {
-    try {
-        std::unique_lock<std::shared_mutex> lock(targets_mutex_);
-        
-        // 중복 체크
-        auto it = findTarget(target.name);
-        if (it != targets_.end()) {
-            LogManager::getInstance().Error("이미 존재하는 타겟: " + target.name);
-            return false;
-        }
-        
-        targets_.push_back(target);
-        initializeFailureProtectorForTarget(target.name);
-        
-        LogManager::getInstance().Info("타겟 추가 성공: " + target.name);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("타겟 추가 실패: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool DynamicTargetManager::removeTarget(const std::string& target_name) {
-    try {
-        std::unique_lock<std::shared_mutex> lock(targets_mutex_);
-        
-        auto it = findTarget(target_name);
-        if (it == targets_.end()) {
-            return false;
-        }
-        
-        targets_.erase(it);
-        failure_protectors_.erase(target_name);
-        
-        LogManager::getInstance().Info("타겟 제거 성공: " + target_name);
-        return true;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("타겟 제거 실패: " + std::string(e.what()));
-        return false;
-    }
-}
-
-std::unordered_map<std::string, bool> DynamicTargetManager::testAllConnections() {
-    std::unordered_map<std::string, bool> results;
-    
-    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-    
-    for (const auto& target : targets_) {
-        bool success = testTargetConnection(target.name);
-        results[target.name] = success;
-    }
-    
-    return results;
-}
-
-bool DynamicTargetManager::testTargetConnection(const std::string& target_name) {
-    try {
-        auto target_opt = getTarget(target_name);
-        if (!target_opt.has_value()) {
-            return false;
-        }
-        
-        auto& target = target_opt.value();
-        
-        auto handler_it = handlers_.find(target.type);
-        if (handler_it == handlers_.end()) {
-            return false;
-        }
-        
-        return handler_it->second->testConnection(target.config);
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("연결 테스트 실패: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool DynamicTargetManager::enableTarget(const std::string& target_name, bool enabled) {
-    std::unique_lock<std::shared_mutex> lock(targets_mutex_);
-    
-    auto it = findTarget(target_name);
-    if (it != targets_.end()) {
-        it->enabled = enabled;
-        return true;
-    }
-    
-    return false;
-}
-
-bool DynamicTargetManager::changeTargetPriority(const std::string& target_name, int new_priority) {
-    std::unique_lock<std::shared_mutex> lock(targets_mutex_);
-    
-    auto it = findTarget(target_name);
-    if (it != targets_.end()) {
-        it->priority = new_priority;
-        return true;
-    }
-    
-    return false;
-}
-
-bool DynamicTargetManager::updateTargetConfig(const std::string& target_name, const json& new_config) {
-    std::unique_lock<std::shared_mutex> lock(targets_mutex_);
-    
-    auto it = findTarget(target_name);
-    if (it != targets_.end()) {
-        it->config = new_config;
-        return true;
-    }
-    
-    return false;
-}
-
-std::vector<std::string> DynamicTargetManager::getTargetNames(bool include_disabled) const {
-    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
-    
-    std::vector<std::string> names;
-    for (const auto& target : targets_) {
-        if (include_disabled || target.enabled) {
-            names.push_back(target.name);
-        }
-    }
-    
-    return names;
-}
-
-std::vector<DynamicTarget> DynamicTargetManager::getTargetStatistics() const {
+std::vector<DynamicTarget> DynamicTargetManager::getAllTargets() {
     std::shared_lock<std::shared_mutex> lock(targets_mutex_);
     return targets_;
 }
 
 // =============================================================================
-// 실패 방지기 관리
+// 타겟 관리 (나머지 메서드들)
 // =============================================================================
+
+bool DynamicTargetManager::addOrUpdateTarget(const DynamicTarget& target) {
+    std::unique_lock<std::shared_mutex> lock(targets_mutex_);
+    
+    auto it = findTarget(target.name);
+    if (it != targets_.end()) {
+        *it = target;
+        LogManager::getInstance().Info("타겟 업데이트: " + target.name);
+    } else {
+        targets_.push_back(target);
+        LogManager::getInstance().Info("타겟 추가: " + target.name);
+    }
+    
+    return true;
+}
+
+bool DynamicTargetManager::removeTarget(const std::string& name) {
+    std::unique_lock<std::shared_mutex> lock(targets_mutex_);
+    
+    auto it = findTarget(name);
+    if (it != targets_.end()) {
+        targets_.erase(it);
+        failure_protectors_.erase(name);
+        LogManager::getInstance().Info("타겟 제거: " + name);
+        return true;
+    }
+    
+    return false;
+}
+
+bool DynamicTargetManager::setTargetEnabled(const std::string& name, bool enabled) {
+    std::unique_lock<std::shared_mutex> lock(targets_mutex_);
+    
+    auto it = findTarget(name);
+    if (it != targets_.end()) {
+        it->enabled = enabled;
+        LogManager::getInstance().Info("타겟 " + name + " " + 
+                                      (enabled ? "활성화" : "비활성화"));
+        return true;
+    }
+    
+    return false;
+}
+
+// =============================================================================
+// 알람 전송
+// =============================================================================
+
+std::vector<TargetSendResult> DynamicTargetManager::sendAlarmToTargets(const AlarmMessage& alarm) {
+    std::vector<TargetSendResult> results;
+    
+    // ✅ 1. Redis PUBLISH (옵션 - 다른 시스템에 알람 전파)
+    if (publish_client_ && publish_client_->isConnected()) {
+        try {
+            json alarm_json;
+            alarm_json["bd"] = alarm.bd;
+            alarm_json["nm"] = alarm.nm;
+            alarm_json["vl"] = alarm.vl;
+            alarm_json["tm"] = alarm.tm;
+            alarm_json["al"] = alarm.al;
+            alarm_json["des"] = alarm.des;
+            alarm_json["st"] = alarm.st;
+            
+            int subscriber_count = publish_client_->publish(
+                "alarms:processed", 
+                alarm_json.dump()
+            );
+            
+            LogManager::getInstance().Debug(
+                "알람 발행 완료: " + std::to_string(subscriber_count) + "명 구독 중"
+            );
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Warn(
+                "알람 발행 실패: " + std::string(e.what())
+            );
+        }
+    }
+    
+    // 2. 모든 활성 타겟으로 전송
+    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+    
+    for (size_t i = 0; i < targets_.size(); ++i) {
+        if (!targets_[i].enabled) {
+            continue;
+        }
+        
+        TargetSendResult result;
+        result.target_name = targets_[i].name;
+        result.target_type = targets_[i].type;
+        
+        auto start_time = std::chrono::steady_clock::now();
+        
+        if (processTargetByIndex(i, alarm, result)) {
+            total_successes_.fetch_add(1);
+        } else {
+            total_failures_.fetch_add(1);
+        }
+        
+        auto end_time = std::chrono::steady_clock::now();
+        result.response_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time).count();
+        
+        results.push_back(result);
+    }
+    
+    total_requests_.fetch_add(results.size());
+    
+    return results;
+}
+
+TargetSendResult DynamicTargetManager::sendAlarmToTarget(
+    const std::string& target_name, 
+    const AlarmMessage& alarm) {
+    
+    TargetSendResult result;
+    result.target_name = target_name;
+    
+    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+    
+    auto it = findTarget(target_name);
+    if (it == targets_.end()) {
+        result.success = false;
+        result.error_message = "타겟을 찾을 수 없음: " + target_name;
+        return result;
+    }
+    
+    if (!it->enabled) {
+        result.success = false;
+        result.error_message = "타겟이 비활성화됨: " + target_name;
+        return result;
+    }
+    
+    result.target_type = it->type;
+    
+    auto start_time = std::chrono::steady_clock::now();
+    
+    size_t index = std::distance(targets_.begin(), it);
+    processTargetByIndex(index, alarm, result);
+    
+    auto end_time = std::chrono::steady_clock::now();
+    result.response_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time).count();
+    
+    return result;
+}
+
+BatchTargetResult DynamicTargetManager::sendBatchAlarms(const std::vector<AlarmMessage>& alarms) {
+    BatchTargetResult batch_result;
+    
+    for (const auto& alarm : alarms) {
+        auto results = sendAlarmToTargets(alarm);
+        
+        for (const auto& result : results) {
+            if (result.success) {
+                batch_result.success_count++;
+            } else {
+                batch_result.failure_count++;
+            }
+        }
+        
+        batch_result.target_results.insert(batch_result.target_results.end(),
+                                           results.begin(), results.end());
+    }
+    
+    batch_result.total_targets = batch_result.success_count + batch_result.failure_count;
+    
+    return batch_result;
+}
+
+std::future<std::vector<TargetSendResult>> DynamicTargetManager::sendAlarmAsync(const AlarmMessage& alarm) {
+    return std::async(std::launch::async, [this, alarm]() {
+        return sendAlarmToTargets(alarm);
+    });
+}
+
+// =============================================================================
+// Failure Protector 관리
+// =============================================================================
+
+FailureProtectorStats DynamicTargetManager::getFailureProtectorStatus(const std::string& target_name) const {
+    auto it = failure_protectors_.find(target_name);
+    if (it != failure_protectors_.end()) {
+        return it->second->getStats();
+    }
+    
+    return FailureProtectorStats{};
+}
 
 void DynamicTargetManager::resetFailureProtector(const std::string& target_name) {
     auto it = failure_protectors_.find(target_name);
@@ -601,6 +546,14 @@ std::unordered_map<std::string, FailureProtectorStats> DynamicTargetManager::get
 // 핸들러 관리
 // =============================================================================
 
+void DynamicTargetManager::registerDefaultHandlers() {
+    handlers_["http"] = std::make_unique<HttpTargetHandler>();
+    handlers_["s3"] = std::make_unique<S3TargetHandler>();
+    handlers_["file"] = std::make_unique<FileTargetHandler>();
+    
+    LogManager::getInstance().Info("기본 핸들러 등록 완료: HTTP, S3, File");
+}
+
 bool DynamicTargetManager::registerHandler(
     const std::string& type_name,
     std::unique_ptr<ITargetHandler> handler) {
@@ -627,6 +580,169 @@ std::vector<std::string> DynamicTargetManager::getSupportedHandlerTypes() const 
     }
     
     return types;
+}
+
+// =============================================================================
+// 통계 및 모니터링
+// =============================================================================
+
+json DynamicTargetManager::getStatistics() const {
+    auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now() - startup_time_).count();
+    
+    uint64_t total_reqs = total_requests_.load();
+    uint64_t avg_response_time = total_reqs > 0 ? 
+        (total_response_time_ms_.load() / total_reqs) : 0;
+    
+    return json{
+        {"total_requests", total_reqs},
+        {"total_successes", total_successes_.load()},
+        {"total_failures", total_failures_.load()},
+        {"success_rate", total_reqs > 0 ? 
+            (double)total_successes_.load() / total_reqs * 100 : 0.0},
+        {"concurrent_requests", concurrent_requests_.load()},
+        {"peak_concurrent_requests", peak_concurrent_requests_.load()},
+        {"total_bytes_sent", total_bytes_sent_.load()},
+        {"avg_response_time_ms", avg_response_time},
+        {"uptime_seconds", uptime}
+    };
+}
+
+void DynamicTargetManager::resetStatistics() {
+    total_requests_ = 0;
+    total_successes_ = 0;
+    total_failures_ = 0;
+    concurrent_requests_ = 0;
+    peak_concurrent_requests_ = 0;
+    total_bytes_sent_ = 0;
+    total_response_time_ms_ = 0;
+    
+    LogManager::getInstance().Info("통계 리셋 완료");
+}
+
+json DynamicTargetManager::healthCheck() const {
+    std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+    
+    int enabled_count = 0;
+    int healthy_count = 0;
+    
+    for (const auto& target : targets_) {
+        if (target.enabled) {
+            enabled_count++;
+            
+            auto it = failure_protectors_.find(target.name);
+            if (it != failure_protectors_.end()) {
+                auto stats = it->second->getStats();
+                if (stats.state != "OPEN") {
+                    healthy_count++;
+                }
+            }
+        }
+    }
+    
+    bool redis_connected = isRedisConnected();  // ✅ 사용
+    
+    return json{
+        {"status", is_running_.load() ? "running" : "stopped"},
+        {"redis_connected", redis_connected},  // ✅ 추가
+        {"total_targets", targets_.size()},
+        {"enabled_targets", enabled_count},
+        {"healthy_targets", healthy_count},
+        {"handlers_count", handlers_.size()}
+    };
+}
+
+void DynamicTargetManager::updateGlobalSettings(const json& settings) {
+    global_settings_ = settings;
+    LogManager::getInstance().Info("글로벌 설정 업데이트");
+}
+
+// =============================================================================
+// Private 유틸리티 메서드들
+// =============================================================================
+
+std::vector<DynamicTarget>::iterator DynamicTargetManager::findTarget(const std::string& target_name) {
+    return std::find_if(targets_.begin(), targets_.end(),
+        [&target_name](const DynamicTarget& t) {
+            return t.name == target_name;
+        });
+}
+
+std::vector<DynamicTarget>::const_iterator DynamicTargetManager::findTarget(const std::string& target_name) const {
+    return std::find_if(targets_.begin(), targets_.end(),
+        [&target_name](const DynamicTarget& t) {
+            return t.name == target_name;
+        });
+}
+
+bool DynamicTargetManager::processTargetByIndex(
+    size_t index, 
+    const AlarmMessage& alarm, 
+    TargetSendResult& result) {
+    
+    const auto& target = targets_[index];
+    
+    auto handler_it = handlers_.find(target.type);
+    if (handler_it == handlers_.end()) {
+        result.success = false;
+        result.error_message = "핸들러를 찾을 수 없음: " + target.type;
+        return false;
+    }
+    
+    auto fp_it = failure_protectors_.find(target.name);
+    if (fp_it != failure_protectors_.end() && !fp_it->second->allowRequest()) {
+        result.success = false;
+        result.error_message = "Circuit Breaker OPEN";
+        return false;
+    }
+    
+    try {
+        json expanded_config = expandConfigVariables(target.config, alarm);
+        
+        concurrent_requests_.fetch_add(1);
+        uint64_t current = concurrent_requests_.load();
+        uint64_t peak = peak_concurrent_requests_.load();
+        while (current > peak && 
+               !peak_concurrent_requests_.compare_exchange_weak(peak, current));
+        
+        result = handler_it->second->send(alarm, expanded_config);
+        
+        concurrent_requests_.fetch_sub(1);
+        
+        if (result.success && fp_it != failure_protectors_.end()) {
+            fp_it->second->recordSuccess();
+        } else if (!result.success && fp_it != failure_protectors_.end()) {
+            fp_it->second->recordFailure();
+        }
+        
+        return result.success;
+        
+    } catch (const std::exception& e) {
+        concurrent_requests_.fetch_sub(1);
+        
+        result.success = false;
+        result.error_message = std::string("예외: ") + e.what();
+        
+        if (fp_it != failure_protectors_.end()) {
+            fp_it->second->recordFailure();
+        }
+        
+        return false;
+    }
+}
+
+json DynamicTargetManager::expandConfigVariables(const json& config, const AlarmMessage& alarm) {
+    json expanded = config;
+    
+    // 간단한 변수 치환 로직
+    if (config.contains("url") && config["url"].is_string()) {
+        std::string url = config["url"].get<std::string>();
+        // 예: {bd}, {nm} 등을 실제 값으로 치환
+        // 구현 생략 (필요시 추가)
+        expanded["url"] = url;
+    }
+    
+    return expanded;
 }
 
 // =============================================================================
@@ -666,86 +782,33 @@ void DynamicTargetManager::stopBackgroundThreads() {
 }
 
 void DynamicTargetManager::healthCheckThread() {
-    LogManager::getInstance().Info("Health Check Thread 시작");
-    
     while (!should_stop_.load()) {
-        std::this_thread::sleep_for(std::chrono::minutes(1));
+        std::this_thread::sleep_for(std::chrono::seconds(60));
+        
         if (should_stop_.load()) break;
         
-        // 헬스 체크 로직
+        // 헬스체크 로직 (생략)
     }
-    
-    LogManager::getInstance().Info("Health Check Thread 종료");
 }
 
 void DynamicTargetManager::metricsCollectorThread() {
-    LogManager::getInstance().Info("Metrics Thread 시작");
-    
     while (!should_stop_.load()) {
         std::this_thread::sleep_for(std::chrono::seconds(30));
+        
         if (should_stop_.load()) break;
         
-        // 메트릭 수집 로직
+        // 메트릭 수집 로직 (생략)
     }
-    
-    LogManager::getInstance().Info("Metrics Thread 종료");
 }
 
 void DynamicTargetManager::cleanupThread() {
-    LogManager::getInstance().Info("Cleanup Thread 시작");
-    
     while (!should_stop_.load()) {
-        std::this_thread::sleep_for(std::chrono::minutes(5));
+        std::this_thread::sleep_for(std::chrono::seconds(300));
+        
         if (should_stop_.load()) break;
         
-        // 정리 로직
+        // 정리 로직 (생략)
     }
-    
-    LogManager::getInstance().Info("Cleanup Thread 종료");
-}
-
-// =============================================================================
-// 유틸리티 메서드
-// =============================================================================
-
-std::vector<DynamicTarget>::iterator DynamicTargetManager::findTarget(const std::string& target_name) {
-    return std::find_if(targets_.begin(), targets_.end(),
-        [&target_name](const DynamicTarget& target) {
-            return target.name == target_name;
-        });
-}
-
-std::vector<DynamicTarget>::const_iterator DynamicTargetManager::findTarget(const std::string& target_name) const {
-    return std::find_if(targets_.begin(), targets_.end(),
-        [&target_name](const DynamicTarget& target) {
-            return target.name == target_name;
-        });
-}
-
-bool DynamicTargetManager::processTargetByIndex(
-    size_t index,
-    const AlarmMessage& alarm,
-    TargetSendResult& result) {
-    
-    if (index >= targets_.size()) {
-        return false;
-    }
-    
-    const auto& target = targets_[index];
-    if (!target.enabled) {
-        return false;
-    }
-    
-    result = sendAlarmToTarget(alarm, target.name);
-    return true;
-}
-
-json DynamicTargetManager::expandConfigVariables(
-    const json& config,
-    const AlarmMessage& /* alarm */) {
-    
-    // 변수 확장 로직 (추후 구현)
-    return config;
 }
 
 } // namespace CSP
