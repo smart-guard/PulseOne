@@ -880,5 +880,86 @@ bool ScheduledExporter::initializeRepositories() {
     }
 }
 
+std::vector<ExportDataPoint> ScheduledExporter::collectDataFromRedis(
+    const PulseOne::Database::Entities::ExportScheduleEntity& schedule) {
+    
+    std::vector<ExportDataPoint> data_points;
+    
+    try {
+        LogManager::getInstance().Info("Redis에서 데이터 수집 시작: " + schedule.getScheduleName());
+        
+        // 1. 타겟 조회
+        auto target_id = schedule.getTargetId();
+        auto target_entity = target_repo_->findById(target_id);
+        
+        if (!target_entity.has_value()) {
+            LogManager::getInstance().Error("타겟을 찾을 수 없음 (ID: " + std::to_string(target_id) + ")");
+            return data_points;
+        }
+        
+        // 2. collectDataForSchedule 호출 (이미 구현된 함수 사용)
+        data_points = collectDataForSchedule(schedule, target_entity.value());
+        
+        LogManager::getInstance().Info("Redis 데이터 수집 완료: " + 
+                                      std::to_string(data_points.size()) + "개 포인트");
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("Redis 데이터 수집 실패: " + std::string(e.what()));
+    }
+    
+    return data_points;
+}
+
+void ScheduledExporter::saveExecutionLog(
+    const PulseOne::Database::Entities::ExportScheduleEntity& schedule,
+    const ScheduleExecutionResult& result) {
+    
+    try {
+        if (!log_repo_) {
+            LogManager::getInstance().Warn("ExportLogRepository가 초기화되지 않음");
+            return;
+        }
+        
+        // ExportLogEntity 생성
+        PulseOne::Database::Entities::ExportLogEntity log;
+        
+        // ✅ 실제 존재하는 필드만 사용
+        log.setLogType("schedule");                    // 스케줄 실행 로그
+        log.setTargetId(schedule.getTargetId());       // 타겟 ID
+        log.setServiceId(schedule.getId());            // ✅ schedule_id를 service_id에 저장
+        log.setStatus(result.success ? "success" : "failure");
+        log.setProcessingTimeMs(static_cast<int>(result.execution_time_ms));
+        
+        // 상세 정보를 JSON으로 구성
+        json details = {
+            {"schedule_id", schedule.getId()},
+            {"schedule_name", schedule.getScheduleName()},
+            {"data_point_count", result.data_point_count},
+            {"successful_targets", result.successful_targets},
+            {"failed_targets", result.failed_targets},
+            {"execution_time_ms", result.execution_time_ms}
+        };
+        
+        // ✅ 실제 존재하는 setter 사용
+        log.setResponseData(details.dump());           // 상세 정보는 JSON으로 저장
+        
+        if (!result.error_message.empty()) {
+            log.setErrorMessage(result.error_message);
+        }
+        
+        // 로그 저장
+        if (!log_repo_->save(log)) {
+            LogManager::getInstance().Error("실행 로그 저장 실패");
+        } else {
+            LogManager::getInstance().Debug("실행 로그 저장 완료: Schedule ID=" + 
+                                           std::to_string(schedule.getId()));
+        }
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("실행 로그 저장 중 예외: " + std::string(e.what()));
+    }
+}
+
+
 } // namespace Schedule
 } // namespace PulseOne

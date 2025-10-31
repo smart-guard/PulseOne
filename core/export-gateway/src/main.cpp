@@ -25,7 +25,7 @@
 #include <iomanip>
 
 // ✅ v2.0 헤더
-#include "Coordinator/ExportCoordinator.h"
+#include "CSP/ExportCoordinator.h"
 #include "CSP/DynamicTargetManager.h"
 #include "CSP/AlarmMessage.h"
 #include "Utils/LogManager.h"
@@ -102,101 +102,100 @@ std::vector<int> parseBuildingIds(const std::string& building_ids_str) {
 /**
  * @brief ConfigManager에서 ExportCoordinatorConfig 로드
  */
-ExportCoordinatorConfig loadCoordinatorConfig() {
-    ExportCoordinatorConfig config;
+PulseOne::Coordinator::ExportCoordinatorConfig loadCoordinatorConfig() {
+    PulseOne::Coordinator::ExportCoordinatorConfig config;
     
     try {
-        ConfigManager& config_mgr = ConfigManager::getInstance();
+        auto& cfg_mgr = ConfigManager::getInstance();
+        
+        // 데이터베이스 설정
+        config.database_path = cfg_mgr.getOrDefault("DATABASE_PATH", "/app/data/db/pulseone.db");
         
         // Redis 설정
-        config.redis_host = config_mgr.getOrDefault("REDIS_HOST", "localhost");
-        config.redis_port = config_mgr.getInt("REDIS_PORT", 6379);
-        config.redis_password = config_mgr.getOrDefault("REDIS_PASSWORD", "");
+        config.redis_host = cfg_mgr.getOrDefault("REDIS_HOST", "localhost");
+        config.redis_port = std::stoi(cfg_mgr.getOrDefault("REDIS_PORT", "6379"));
+        config.redis_password = cfg_mgr.getOrDefault("REDIS_PASSWORD", "");
         
-        // 스케줄 설정
-        config.schedule_check_interval_seconds = 
-            config_mgr.getInt("SCHEDULE_CHECK_INTERVAL_SEC", 10);
-        config.schedule_reload_interval_seconds = 
-            config_mgr.getInt("SCHEDULE_RELOAD_INTERVAL_SEC", 60);
+        // AlarmSubscriber 설정
+        config.alarm_worker_threads = 
+            std::stoi(cfg_mgr.getOrDefault("ALARM_WORKER_THREADS", "4"));
         
-        // 알람 설정
-        config.alarm_worker_thread_count = 
-            config_mgr.getInt("ALARM_WORKER_THREADS", 2);
         config.alarm_max_queue_size = 
-            config_mgr.getInt("ALARM_MAX_QUEUE_SIZE", 10000);
+            std::stoi(cfg_mgr.getOrDefault("ALARM_MAX_QUEUE_SIZE", "10000"));
         
-        // 알람 구독 채널
-        std::string channels_str = config_mgr.getOrDefault(
-            "ALARM_SUBSCRIBE_CHANNELS", "alarms:all");
-        std::stringstream ss(channels_str);
-        std::string channel;
-        while (std::getline(ss, channel, ',')) {
-            channel.erase(0, channel.find_first_not_of(" \t"));
-            channel.erase(channel.find_last_not_of(" \t") + 1);
-            if (!channel.empty()) {
-                config.alarm_subscribe_channels.push_back(channel);
+        // 구독 채널 설정
+        std::string channels = cfg_mgr.getOrDefault("ALARM_CHANNELS", "");
+        if (!channels.empty()) {
+            config.alarm_channels.clear();
+            std::stringstream ss(channels);
+            std::string channel;
+            while (std::getline(ss, channel, ',')) {
+                config.alarm_channels.push_back(channel);
             }
         }
         
-        // 알람 옵션
-        config.alarm_use_parallel_send = 
-            config_mgr.getBool("ALARM_USE_PARALLEL_SEND", false);
-        config.alarm_max_priority_filter = 
-            config_mgr.getInt("ALARM_MAX_PRIORITY_FILTER", 1000);
+        // ScheduledExporter 설정
+        config.schedule_check_interval_seconds = 
+            std::stoi(cfg_mgr.getOrDefault("SCHEDULE_CHECK_INTERVAL", "10"));
         
-        // 디버그
-        config.enable_debug_log = config_mgr.getBool("DEBUG_MODE", false);
+        config.schedule_reload_interval_seconds = 
+            std::stoi(cfg_mgr.getOrDefault("SCHEDULE_RELOAD_INTERVAL", "60"));
         
-        LogManager::getInstance().Info("✅ Coordinator 설정 로드 완료");
+        config.schedule_batch_size = 
+            std::stoi(cfg_mgr.getOrDefault("SCHEDULE_BATCH_SIZE", "100"));
+        
+        // 공통 설정
+        config.enable_debug_log = 
+            (cfg_mgr.getOrDefault("ENABLE_DEBUG_LOG", "false") == "true");
+        
+        config.log_retention_days = 
+            std::stoi(cfg_mgr.getOrDefault("LOG_RETENTION_DAYS", "30"));
+        
+        // 성능 설정
+        config.max_concurrent_exports = 
+            std::stoi(cfg_mgr.getOrDefault("MAX_CONCURRENT_EXPORTS", "50"));
+        
+        config.export_timeout_seconds = 
+            std::stoi(cfg_mgr.getOrDefault("EXPORT_TIMEOUT_SECONDS", "30"));
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Warn(
-            "ConfigManager 설정 로드 실패, 기본값 사용: " + std::string(e.what()));
+        LogManager::getInstance().Error("설정 로드 실패, 기본값 사용: " + std::string(e.what()));
         
-        // 기본값
-        config.redis_host = "localhost";
-        config.redis_port = 6379;
-        config.schedule_check_interval_seconds = 10;
-        config.schedule_reload_interval_seconds = 60;
-        config.alarm_subscribe_channels = {"alarms:all"};
-        config.alarm_worker_thread_count = 2;
-        config.alarm_max_queue_size = 10000;
-        config.alarm_use_parallel_send = false;
-        config.enable_debug_log = false;
+        // 기본값 설정
+        config.alarm_channels = {"alarms:all"};
+        config.alarm_worker_threads = 2;
+        config.alarm_max_queue_size = 5000;
     }
     
     return config;
 }
 
-void logLoadedConfig(const ExportCoordinatorConfig& config) {
-    std::cout << "\n";
+void logLoadedConfig(const PulseOne::Coordinator::ExportCoordinatorConfig& config) {
+    std::cout << "\n========================================\n";
     std::cout << "Export Coordinator 설정:\n";
-    std::cout << "================================\n";
-    
-    std::cout << "\n[Redis 설정]\n";
-    std::cout << "호스트: " << config.redis_host << "\n";
-    std::cout << "포트: " << config.redis_port << "\n";
-    std::cout << "비밀번호: " << (config.redis_password.empty() ? "(없음)" : "***설정됨***") << "\n";
-    
-    std::cout << "\n[스케줄 설정]\n";
-    std::cout << "체크 간격: " << config.schedule_check_interval_seconds << "초\n";
-    std::cout << "리로드 간격: " << config.schedule_reload_interval_seconds << "초\n";
-    
-    std::cout << "\n[알람 설정]\n";
-    std::cout << "구독 채널 (" << config.alarm_subscribe_channels.size() << "개):\n";
-    for (const auto& channel : config.alarm_subscribe_channels) {
+    std::cout << "========================================\n";
+    std::cout << "데이터베이스: " << config.database_path << "\n";
+    std::cout << "Redis: " << config.redis_host << ":" << config.redis_port << "\n";
+    std::cout << "\n[AlarmSubscriber 설정]\n";
+    std::cout << "구독 채널 (" << config.alarm_channels.size() << "개):\n";
+    for (const auto& channel : config.alarm_channels) {
         std::cout << "  - " << channel << "\n";
     }
-    std::cout << "워커 스레드: " << config.alarm_worker_thread_count << "개\n";
+    std::cout << "워커 스레드: " << config.alarm_worker_threads << "개\n";
     std::cout << "최대 큐 크기: " << config.alarm_max_queue_size << "\n";
-    std::cout << "병렬 전송: " << (config.alarm_use_parallel_send ? "활성화" : "비활성화") << "\n";
-    std::cout << "우선순위 필터: " << config.alarm_max_priority_filter << "\n";
     
-    std::cout << "\n[고급 설정]\n";
-    std::cout << "디버그 모드: " << (config.enable_debug_log ? "활성화" : "비활성화") << "\n";
-    std::cout << "================================\n\n";
+    std::cout << "\n[ScheduledExporter 설정]\n";
+    std::cout << "체크 간격: " << config.schedule_check_interval_seconds << "초\n";
+    std::cout << "리로드 간격: " << config.schedule_reload_interval_seconds << "초\n";
+    std::cout << "배치 크기: " << config.schedule_batch_size << "\n";
+    
+    std::cout << "\n[공통 설정]\n";
+    std::cout << "디버그 로그: " << (config.enable_debug_log ? "활성화" : "비활성화") << "\n";
+    std::cout << "로그 보관 기간: " << config.log_retention_days << "일\n";
+    std::cout << "최대 동시 Export: " << config.max_concurrent_exports << "\n";
+    std::cout << "Export 타임아웃: " << config.export_timeout_seconds << "초\n";
+    std::cout << "========================================\n\n";
 }
-
 /**
  * @brief 테스트: 단일 알람 전송
  */
@@ -312,57 +311,61 @@ void testConnection() {
 /**
  * @brief 테스트: 스케줄 실행
  */
-void testSchedule(ExportCoordinator& coordinator) {
-    std::cout << "\n=== 스케줄 테스트 ===\n";
+void testSchedule(PulseOne::Coordinator::ExportCoordinator& coordinator) {
+    std::cout << "\n========================================\n";
+    std::cout << "스케줄 Export 테스트\n";
+    std::cout << "========================================\n";
     
     try {
-        // 모든 활성 스케줄 실행
-        int executed = coordinator.executeAllSchedules();
+        // getComponentStatus() 사용
+        auto status = coordinator.getComponentStatus();
         
-        std::cout << "실행된 스케줄: " << executed << "개\n\n";
+        std::cout << "ScheduledExporter 상태: " 
+                  << (status["scheduled_exporter"].get<bool>() ? "실행 중" : "중지됨") 
+                  << "\n";
+        
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        
+        std::cout << "스케줄 실행 대기 중...\n";
         
     } catch (const std::exception& e) {
-        std::cerr << "스케줄 테스트 실패: " << e.what() << "\n";
+        std::cout << "스케줄 테스트 실패: " << e.what() << "\n";
     }
 }
 
 /**
  * @brief 통계 출력
  */
-void printStatistics(ExportCoordinator& coordinator) {
-    std::cout << "\n=== 시스템 통계 ===\n";
+void printStatistics(PulseOne::Coordinator::ExportCoordinator& coordinator) {
+    std::cout << "\n========================================\n";
+    std::cout << "Export 통계\n";
+    std::cout << "========================================\n";
     
     try {
-        auto stats = coordinator.getStatistics();
+        auto stats = coordinator.getStats();  // ✅ getStatistics() → getStats()
         
-        std::cout << "\n[DynamicTargetManager]\n";
-        if (stats.contains("dynamic_target_manager")) {
-            auto dm_stats = stats["dynamic_target_manager"];
-            std::cout << "  총 요청: " << dm_stats.value("total_requests", 0) << "\n";
-            std::cout << "  성공: " << dm_stats.value("successful_requests", 0) << "\n";
-            std::cout << "  실패: " << dm_stats.value("failed_requests", 0) << "\n";
+        std::cout << "전체 Export: " << stats.total_exports << "\n";
+        std::cout << "성공: " << stats.successful_exports << "\n";
+        std::cout << "실패: " << stats.failed_exports << "\n";
+        
+        if (stats.total_exports > 0) {
+            double success_rate = (double)stats.successful_exports / stats.total_exports * 100.0;
+            std::cout << "성공률: " << std::fixed << std::setprecision(2) 
+                      << success_rate << "%\n";
         }
         
-        std::cout << "\n[AlarmSubscriber]\n";
-        if (stats.contains("alarm_subscriber")) {
-            auto alarm_stats = stats["alarm_subscriber"];
-            std::cout << "  수신: " << alarm_stats.value("total_received", 0) << "\n";
-            std::cout << "  처리: " << alarm_stats.value("total_processed", 0) << "\n";
-            std::cout << "  실패: " << alarm_stats.value("total_failed", 0) << "\n";
-        }
+        std::cout << "\n알람 이벤트: " << stats.alarm_events << "\n";
+        std::cout << "알람 Export: " << stats.alarm_exports << "\n";
+        std::cout << "스케줄 실행: " << stats.schedule_executions << "\n";
+        std::cout << "스케줄 Export: " << stats.schedule_exports << "\n";
         
-        std::cout << "\n[ScheduledExporter]\n";
-        if (stats.contains("scheduled_exporter")) {
-            auto sched_stats = stats["scheduled_exporter"];
-            std::cout << "  총 실행: " << sched_stats.value("total_executions", 0) << "\n";
-            std::cout << "  성공: " << sched_stats.value("successful_executions", 0) << "\n";
-            std::cout << "  실패: " << sched_stats.value("failed_executions", 0) << "\n";
-        }
+        std::cout << "\n평균 처리 시간: " << std::fixed << std::setprecision(2) 
+                  << stats.avg_processing_time_ms << "ms\n";
         
-        std::cout << "\n";
+        std::cout << "========================================\n";
         
     } catch (const std::exception& e) {
-        std::cerr << "통계 조회 실패: " << e.what() << "\n";
+        std::cout << "통계 조회 실패: " << e.what() << "\n";
     }
 }
 
@@ -444,136 +447,63 @@ void runInteractiveMode(ExportCoordinator& coordinator) {
  * @brief 메인 함수 - v2.0 아키텍처
  */
 int main(int argc, char* argv[]) {
-    // 시그널 핸들러 등록
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
-    
-    print_banner();
-    
     try {
-        // ============================================================
-        // 1단계: ConfigManager 초기화
-        // ============================================================
-        std::cout << "1/3 ConfigManager 초기화 중...\n";
-        ConfigManager::getInstance();
-        std::cout << "✅ ConfigManager 초기화 완료\n";
+        std::cout << "===========================================\n";
+        std::cout << "PulseOne Export Gateway v1.0.0\n";
+        std::cout << "===========================================\n\n";
         
-        // ============================================================
-        // 2단계: LogManager 초기화
-        // ============================================================
-        std::cout << "2/3 LogManager 초기화 중...\n";
-        LogManager::getInstance();
-        std::cout << "✅ LogManager 초기화 완료\n";
-        
-        // ============================================================
-        // 3단계: 로그 시작
-        // ============================================================
-        std::cout << "3/3 Export Gateway v2.0 시작...\n\n";
-        LogManager::getInstance().Info("=== Export Gateway v2.0 Starting ===");
-        
-        // ============================================================
-        // 명령행 인자 파싱
-        // ============================================================
-        std::string config_file = "";
-        std::string command = "";
-        bool interactive_mode = false;
-        
-        for (int i = 1; i < argc; ++i) {
-            std::string arg = argv[i];
-            
-            if (arg == "--help" || arg == "-h") {
-                print_usage(argv[0]);
-                return 0;
-            }
-            else if (arg == "--version" || arg == "-v") {
-                std::cout << "PulseOne Export Gateway v2.0.0\n";
-                return 0;
-            }
-            else if (arg.find("--config=") == 0) {
-                config_file = arg.substr(9);
-            }
-            else if (arg == "--interactive") {
-                interactive_mode = true;
-            }
-            else if (arg.find("--") == 0) {
-                command = arg.substr(2);
-            }
-        }
-        
-        // ============================================================
-        // 설정 로드
-        // ============================================================
+        // 1. 설정 로드
         auto config = loadCoordinatorConfig();
         logLoadedConfig(config);
         
-        // ============================================================
-        // ExportCoordinator 생성 및 설정
-        // ============================================================
-        LogManager::getInstance().Info("ExportCoordinator 초기화 중...");
+        // 2. ExportCoordinator 생성 (config 필수)
+        PulseOne::Coordinator::ExportCoordinator coordinator(config);
         
-        ExportCoordinator coordinator;
-        coordinator.configure(config);
-        
-        // ============================================================
-        // ExportCoordinator 시작
-        // ============================================================
+        // 3. ExportCoordinator 시작
         if (!coordinator.start()) {
-            std::cerr << "❌ ExportCoordinator 시작 실패\n";
-            LogManager::getInstance().Error("Failed to start ExportCoordinator");
+            std::cerr << "ExportCoordinator 시작 실패\n";
             return 1;
         }
         
-        std::cout << "✅ Export Gateway v2.0 시작 완료!\n\n";
-        LogManager::getInstance().Info("Export Gateway v2.0 started successfully");
+        std::cout << "ExportCoordinator 시작 완료 ✅\n\n";
         
-        // ============================================================
-        // 명령 처리
-        // ============================================================
-        if (command == "test-alarm") {
-            testSingleAlarm();
-        }
-        else if (command == "test-targets") {
-            testTargets();
-        }
-        else if (command == "test-schedule") {
-            testSchedule(coordinator);
-        }
-        else if (command == "test-connection") {
-            testConnection();
-        }
-        else if (command == "test-all") {
-            std::cout << "모든 기능 테스트를 수행합니다...\n";
-            testConnection();
-            testTargets();
-            testSingleAlarm();
-            testSchedule(coordinator);
-            printStatistics(coordinator);
-            std::cout << "모든 테스트 완료!\n";
-        }
-        else if (interactive_mode) {
-            runInteractiveMode(coordinator);
-        }
-        else {
-            // 기본값: 데몬 모드
-            runDaemonMode(coordinator);
-        }
+        // 4. 상태 확인 - getComponentStatus() 사용
+        auto status = coordinator.getComponentStatus();
+        std::cout << "시스템 상태:\n";
+        std::cout << "  - Running: " << coordinator.isRunning() << "\n";
+        std::cout << "  - AlarmSubscriber: " << status["alarm_subscriber"].get<bool>() << "\n";
+        std::cout << "  - ScheduledExporter: " << status["scheduled_exporter"].get<bool>() << "\n";
+        std::cout << "  - TargetManager: " << status["target_manager"].get<bool>() << "\n\n";
         
-        // ============================================================
-        // 정리 및 종료
-        // ============================================================
-        std::cout << "\n정리 중...\n";
-        LogManager::getInstance().Info("Shutting down Export Gateway...");
+        // 5. 테스트 실행
+        std::cout << "테스트 시작...\n\n";
         
+        // 스케줄 테스트
+        testSchedule(coordinator);
+        
+        // 통계 출력
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        printStatistics(coordinator);
+        
+        // 6. 종료 대기
+        std::cout << "\nExport Gateway 실행 중... (Ctrl+C로 종료)\n";
+        
+        // 신호 처리 대기
+        std::mutex mtx;
+        std::condition_variable cv;
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock);
+        
+        // 7. 정리
         coordinator.stop();
-        
-        std::cout << "✅ Export Gateway v2.0 정상 종료\n";
-        LogManager::getInstance().Info("=== Export Gateway v2.0 Stopped ===");
+        std::cout << "\nExport Gateway 종료 완료\n";
         
         return 0;
         
     } catch (const std::exception& e) {
-        std::cerr << "\n❌ 치명적 오류: " << e.what() << "\n";
-        LogManager::getInstance().Error("Fatal error: " + std::string(e.what()));
+        std::cerr << "심각한 에러: " << e.what() << "\n";
         return 1;
     }
+    
+    return 0;
 }
