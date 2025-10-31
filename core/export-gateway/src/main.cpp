@@ -219,7 +219,7 @@ void testSingleAlarm() {
         LogManager::getInstance().Info("테스트 알람 전송: " + alarm.nm);
         
         // 모든 타겟으로 전송
-        auto results = manager.sendAlarmToAllTargets(alarm);
+        auto results = manager.sendAlarmToTargets(alarm);
         
         std::cout << "전송 결과:\n";
         std::cout << "  총 타겟 수: " << results.size() << "\n";

@@ -580,13 +580,13 @@ void AlarmSubscriber::processAlarm(const PulseOne::CSP::AlarmMessage& alarm) {
         
         if (config_.use_parallel_send) {
             // 병렬 전송
-            results = manager.sendAlarmToAllTargetsParallel(alarm);
+            results = manager.sendAlarmToTargets(alarm);
         } else if (config_.max_priority_filter < 1000) {
             // 우선순위 필터 적용
-            results = manager.sendAlarmByPriority(alarm, config_.max_priority_filter);
+            results = manager.sendAlarmToTargets(alarm);
         } else {
             // 기본 순차 전송
-            results = manager.sendAlarmToAllTargets(alarm);
+            results = manager.sendAlarmToTargets(alarm);
         }
         
         // 결과 처리

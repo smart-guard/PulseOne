@@ -3,22 +3,28 @@
  * @brief 동적 타겟 관리자 구현 (PUBLISH 전용 Redis 연결 추가)
  * @author PulseOne Development Team
  * @date 2025-10-31
- * @version 6.2.0
+ * @version 6.2.1 - 컴파일 에러 완전 수정
  * 
- * 주요 변경사항 (v6.1 → v6.2):
- * - ✅ publish_client_ 멤버 추가 (PUBLISH 전용 Redis 연결)
- * - ✅ initializePublishClient() 메서드 추가
- * - ✅ isRedisConnected() 메서드 추가
- * - ✅ start() 메서드에서 Redis 초기화
+ * 🔧 수정 내역 (v6.2.0 → v6.2.1):
+ * 1. config.getString() → config.getOrDefault()
+ * 2. fp_config.timeout_seconds → fp_config.recovery_timeout_ms
+ * 3. fp_config.half_open_max_calls → fp_config.half_open_max_attempts
+ * 4. 문자열 연결 타입 에러 수정
+ * 5. factory.getRepository<>() → factory.getExportTargetRepository()
+ * 6. response_time_ms → response_time
+ * 7. BatchTargetResult 필드명 수정
+ * 8. stats.state → stats.current_state
+ * 9. allowRequest() → canExecute()
+ * 10. send() → sendAlarm()
  */
 
 #include "CSP/DynamicTargetManager.h"
 #include "CSP/HttpTargetHandler.h"
 #include "CSP/S3TargetHandler.h"
 #include "CSP/FileTargetHandler.h"
-#include "Client/RedisClientImpl.h"  // ✅ 추가
+#include "Client/RedisClientImpl.h"
 #include "Utils/LogManager.h"
-#include "Utils/ConfigManager.h"     // ✅ 추가
+#include "Utils/ConfigManager.h"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
@@ -46,7 +52,7 @@ DynamicTargetManager& DynamicTargetManager::getInstance() {
 // =============================================================================
 
 DynamicTargetManager::DynamicTargetManager() 
-    : publish_client_(nullptr) {  // ✅ 초기화 추가
+    : publish_client_(nullptr) {
     
     LogManager::getInstance().Info("DynamicTargetManager 싱글턴 생성");
     
@@ -88,11 +94,11 @@ bool DynamicTargetManager::initializePublishClient() {
     try {
         LogManager::getInstance().Info("PUBLISH 전용 Redis 연결 초기화 시작...");
         
-        // ConfigManager에서 Redis 설정 읽기
+        // 🔧 수정 1: ConfigManager의 올바른 API 사용
         auto& config = ConfigManager::getInstance();
-        std::string redis_host = config.getString("redis_host", "127.0.0.1");
-        int redis_port = config.getInt("redis_port", 6379);
-        std::string redis_password = config.getString("redis_password", "");
+        std::string redis_host = config.getOrDefault("REDIS_PRIMARY_HOST", "127.0.0.1");
+        int redis_port = config.getInt("REDIS_PRIMARY_PORT", 6379);
+        std::string redis_password = config.getOrDefault("REDIS_PRIMARY_PASSWORD", "");
         
         LogManager::getInstance().Info("Redis 연결 정보: " + redis_host + ":" + 
                                       std::to_string(redis_port));
@@ -172,10 +178,11 @@ bool DynamicTargetManager::start() {
         
         for (const auto& target : targets_) {
             if (target.enabled) {
+                // 🔧 수정 2-3: FailureProtectorConfig 올바른 필드명 사용
                 FailureProtectorConfig fp_config;
                 fp_config.failure_threshold = 5;
-                fp_config.timeout_seconds = 30;
-                fp_config.half_open_max_calls = 3;
+                fp_config.recovery_timeout_ms = 30000;  // 30초 = 30000ms
+                fp_config.half_open_max_attempts = 3;   // half_open_max_calls → half_open_max_attempts
                 
                 failure_protectors_[target.name] = 
                     std::make_unique<FailureProtector>(target.name, fp_config);
@@ -191,8 +198,9 @@ bool DynamicTargetManager::start() {
     startBackgroundThreads();
     
     LogManager::getInstance().Info("DynamicTargetManager 시작 완료 ✅");
+    // 🔧 수정 4: 문자열 연결 타입 에러 수정
     LogManager::getInstance().Info("- PUBLISH Redis: " + 
-                                  (isRedisConnected() ? "연결됨" : "연결안됨"));
+                                  std::string(isRedisConnected() ? "연결됨" : "연결안됨"));
     LogManager::getInstance().Info("- 활성 타겟: " + 
                                   std::to_string(targets_.size()) + "개");
     
@@ -236,11 +244,12 @@ bool DynamicTargetManager::loadFromDatabase() {
     try {
         LogManager::getInstance().Info("DB에서 타겟 로드 시작...");
         
+        // 🔧 수정 5: RepositoryFactory의 올바른 메서드 사용
         auto& factory = RepositoryFactory::getInstance();
-        auto& target_repo = factory.getRepository<ExportTargetRepository>();
+        auto target_repo = factory.getExportTargetRepository();  // getRepository<>() 제거
         
         // SQLite는 findByEnabled 사용
-        auto entities = target_repo.findByEnabled(true);
+        auto entities = target_repo->findByEnabled(true);
         
         if (entities.empty()) {
             LogManager::getInstance().Warn("활성화된 타겟이 없습니다");
@@ -423,8 +432,9 @@ std::vector<TargetSendResult> DynamicTargetManager::sendAlarmToTargets(const Ala
         }
         
         auto end_time = std::chrono::steady_clock::now();
-        result.response_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            end_time - start_time).count();
+        // 🔧 수정 6: response_time_ms → response_time (duration 타입)
+        result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time);
         
         results.push_back(result);
     }
@@ -464,8 +474,9 @@ TargetSendResult DynamicTargetManager::sendAlarmToTarget(
     processTargetByIndex(index, alarm, result);
     
     auto end_time = std::chrono::steady_clock::now();
-    result.response_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        end_time - start_time).count();
+    // 🔧 수정 6: response_time_ms → response_time (duration 타입)
+    result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
     
     return result;
 }
@@ -478,17 +489,21 @@ BatchTargetResult DynamicTargetManager::sendBatchAlarms(const std::vector<AlarmM
         
         for (const auto& result : results) {
             if (result.success) {
-                batch_result.success_count++;
+                // 🔧 수정 7: success_count → successful_targets
+                batch_result.successful_targets++;
             } else {
-                batch_result.failure_count++;
+                // 🔧 수정 7: failure_count → failed_targets
+                batch_result.failed_targets++;
             }
         }
         
-        batch_result.target_results.insert(batch_result.target_results.end(),
-                                           results.begin(), results.end());
+        // 🔧 수정 7: target_results → results
+        batch_result.results.insert(batch_result.results.end(),
+                                    results.begin(), results.end());
     }
     
-    batch_result.total_targets = batch_result.success_count + batch_result.failure_count;
+    // 🔧 수정 7: success_count, failure_count → successful_targets, failed_targets
+    batch_result.total_targets = batch_result.successful_targets + batch_result.failed_targets;
     
     return batch_result;
 }
@@ -633,18 +648,19 @@ json DynamicTargetManager::healthCheck() const {
             auto it = failure_protectors_.find(target.name);
             if (it != failure_protectors_.end()) {
                 auto stats = it->second->getStats();
-                if (stats.state != "OPEN") {
+                // 🔧 수정 8: stats.state → stats.current_state
+                if (stats.current_state != "OPEN") {
                     healthy_count++;
                 }
             }
         }
     }
     
-    bool redis_connected = isRedisConnected();  // ✅ 사용
+    bool redis_connected = isRedisConnected();
     
     return json{
         {"status", is_running_.load() ? "running" : "stopped"},
-        {"redis_connected", redis_connected},  // ✅ 추가
+        {"redis_connected", redis_connected},
         {"total_targets", targets_.size()},
         {"enabled_targets", enabled_count},
         {"healthy_targets", healthy_count},
@@ -690,7 +706,8 @@ bool DynamicTargetManager::processTargetByIndex(
     }
     
     auto fp_it = failure_protectors_.find(target.name);
-    if (fp_it != failure_protectors_.end() && !fp_it->second->allowRequest()) {
+    // 🔧 수정 9: allowRequest() → canExecute()
+    if (fp_it != failure_protectors_.end() && !fp_it->second->canExecute()) {
         result.success = false;
         result.error_message = "Circuit Breaker OPEN";
         return false;
@@ -705,7 +722,8 @@ bool DynamicTargetManager::processTargetByIndex(
         while (current > peak && 
                !peak_concurrent_requests_.compare_exchange_weak(peak, current));
         
-        result = handler_it->second->send(alarm, expanded_config);
+        // 🔧 수정 10: send() → sendAlarm()
+        result = handler_it->second->sendAlarm(alarm, expanded_config);
         
         concurrent_requests_.fetch_sub(1);
         
