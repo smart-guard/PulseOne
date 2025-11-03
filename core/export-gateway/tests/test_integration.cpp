@@ -1,8 +1,8 @@
 /**
  * @file test_integration.cpp
- * @brief Export Gateway 통합 테스트 - 모든 컴파일 에러 완전 수정
- * @version 7.3 - FINAL (운영 DB 복사 방식)
- * @date 2025-10-27
+ * @brief Export Gateway 통합 테스트 - 컴파일 에러 완전 수정
+ * @version 7.4 - FINAL (API 오류 수정)
+ * @date 2025-10-31
  * 
  * ✅ 수정 완료:
  * 1. ConfigManager::initialize() - 파라미터 없음
@@ -12,7 +12,9 @@
  * 5. ExportCoordinatorConfig 필드명 정확히 수정
  * 6. ExportTargetEntity::setName() 사용 (setTargetName 아님)
  * 7. AlarmMessage 필드: bd, nm, vl, tm, al, st, des 사용
- * 8. DynamicTarget::total_requests → success_count + failure_count 계산
+ * 8. ❌ getTargetNames() → ✅ getAllTargets() 사용
+ * 9. ❌ getTargetStatistics() → ✅ getStatistics() 사용
+ * 10. DynamicTarget에 직접 통계 필드 없음 → getStatistics()로 전체 통계 조회
  * 
  * 테스트 DB 전략:
  * - 운영 DB (./data/db/pulseone.db) → /tmp/test_export_complete.db 복사
@@ -38,6 +40,7 @@
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include "Database/DatabaseManager.h"
+#include "Database/RepositoryFactory.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/ExportScheduleRepository.h"
 #include "Database/Repositories/ExportLogRepository.h"
@@ -360,26 +363,32 @@ public:
             }
             LogManager::getInstance().Info("✅ DatabaseManager 초기화 완료");
             
+            // ✅ 4단계: RepositoryFactory 초기화 (필수!)
+            if (!PulseOne::Database::RepositoryFactory::getInstance().initialize()) {
+                throw std::runtime_error("RepositoryFactory 초기화 실패");
+            }
+            LogManager::getInstance().Info("✅ RepositoryFactory 초기화 완료");
+            
             if (!createTestTargets()) {
                 throw std::runtime_error("테스트 타겟 생성 실패");
             }
             
-#ifdef HAVE_HTTPLIB
+    #ifdef HAVE_HTTPLIB
             mock_server_ = std::make_unique<MockWebhookServer>();
             if (!mock_server_->start()) {
                 throw std::runtime_error("Mock 서버 시작 실패");
             }
             LogManager::getInstance().Info("✅ Mock 서버 시작 완료");
-#endif
+    #endif
             
             redis_client_ = std::make_shared<RedisClientImpl>();
             
-            LogManager::getInstance().Info("Redis 연결 시도: 127.0.0.1:6379");
-            if (!redis_client_->connect("127.0.0.1", 6379)) {
+            LogManager::getInstance().Info("Redis 연결 시도: pulseone-redis:6379");
+            if (!redis_client_->connect("pulseone-redis", 6379)) {
                 LogManager::getInstance().Error("Redis 연결 실패 - 재시도");
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 
-                if (!redis_client_->connect("127.0.0.1", 6379)) {
+                if (!redis_client_->connect("pulseone-redis", 6379)) {
                     throw std::runtime_error("Redis 재연결 실패");
                 }
             }
@@ -388,7 +397,7 @@ public:
             // ✅ 정확한 필드명 사용
             Coordinator::ExportCoordinatorConfig config;
             config.database_path = "/tmp/test_export_complete.db";  // 임시 테스트 DB
-            config.redis_host = "127.0.0.1";
+            config.redis_host = "pulseone-redis";
             config.redis_port = 6379;
             config.redis_password = "";
             config.alarm_channels = {"alarms:all"};
@@ -410,7 +419,13 @@ public:
                 throw std::runtime_error("ExportCoordinator 시작 실패");
             }
             
-            LogManager::getInstance().Info("✅ ExportCoordinator 시작 완료\n");
+            LogManager::getInstance().Info("✅ ExportCoordinator 시작 완료");
+            
+            // ✅ 추가: 구독이 완전히 완료될 때까지 대기
+            LogManager::getInstance().Info("⏰ 구독 초기화 대기 중...");
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+            LogManager::getInstance().Info("✅ 구독 준비 완료\n");
+            
             return true;
             
         } catch (const std::exception& e) {
@@ -529,24 +544,37 @@ public:
             std::string alarm_str = alarm_json.dump();
             LogManager::getInstance().Info("알람 JSON: " + alarm_str);
             
-            bool publish_result = redis_client_->publish("alarms:all", alarm_str);
-            LogManager::getInstance().Info("Redis publish 결과: " + std::string(publish_result ? "성공" : "실패"));
+            // ✅ 수정: publish()는 int 반환 (구독자 수)
+            int subscriber_count = redis_client_->publish("alarms:all", alarm_str);
+            bool publish_success = (subscriber_count >= 0);  // 0 이상이면 성공
             
-            if (!publish_result) {
+            LogManager::getInstance().Info(
+                "Redis publish 결과: " + 
+                std::string(publish_success ? "성공" : "실패") + 
+                " (구독자: " + std::to_string(subscriber_count) + "명)"
+            );
+            
+            if (!publish_success) {
                 LogManager::getInstance().Error("Redis publish 실패 - 재시도");
                 
                 // 재연결 시도
                 redis_client_->disconnect();
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 
-                if (!redis_client_->connect("127.0.0.1", 6379)) {
+                if (!redis_client_->connect("pulseone-redis", 6379)) {
                     throw std::runtime_error("Redis 재연결 실패");
                 }
                 
-                publish_result = redis_client_->publish("alarms:all", alarm_str);
-                if (!publish_result) {
+                subscriber_count = redis_client_->publish("alarms:all", alarm_str);
+                publish_success = (subscriber_count >= 0);
+                
+                if (!publish_success) {
                     throw std::runtime_error("Redis publish 재시도 실패");
                 }
+                
+                LogManager::getInstance().Info(
+                    "✅ 재시도 성공 (구독자: " + std::to_string(subscriber_count) + "명)"
+                );
             }
             
             LogManager::getInstance().Info("✅ 알람 발행 완료");
@@ -554,14 +582,14 @@ public:
             LogManager::getInstance().Info("⏰ 알람 처리 대기 중...");
             std::this_thread::sleep_for(std::chrono::seconds(2));
             
-#ifdef HAVE_HTTPLIB
+    #ifdef HAVE_HTTPLIB
             if (mock_server_) {
                 auto received = mock_server_->getReceivedData();
                 TestHelper::assertCondition(
                     !received.empty(),
                     "알람이 타겟으로 전송됨 (수신: " + std::to_string(received.size()) + "건)");
             }
-#endif
+    #endif
             
             LogManager::getInstance().Info("✅ 알람 플로우 테스트 완료\n");
             return true;
@@ -656,23 +684,41 @@ public:
                 manager.isRunning(),
                 "DynamicTargetManager 실행 중");
             
-            auto target_names = manager.getTargetNames();
+            // ✅ 수정 1: getAllTargets() 사용
+            auto targets = manager.getAllTargets();
             TestHelper::assertCondition(
-                !target_names.empty(),
-                "타겟 목록 로드됨 (" + std::to_string(target_names.size()) + "개)");
+                !targets.empty(),
+                "타겟 목록 로드됨 (" + std::to_string(targets.size()) + "개)");
             
-            auto all_targets = manager.getTargetStatistics();
+            // ✅ 수정 2: getStatistics() 사용 (전체 통계)
+            auto stats = manager.getStatistics();
             
-            LogManager::getInstance().Info("\n📊 타겟별 전송 통계:");
-            for (const auto& target : all_targets) {
-                // ✅ total_requests 계산 (success_count + failure_count)
-                auto total_requests = target.success_count.load() + target.failure_count.load();
-                
+            LogManager::getInstance().Info("\n📊 전체 전송 통계:");
+            LogManager::getInstance().Info("  - 총 요청: " + 
+                std::to_string(stats["total_requests"].get<uint64_t>()));
+            LogManager::getInstance().Info("  - 성공: " + 
+                std::to_string(stats["total_successes"].get<uint64_t>()));
+            LogManager::getInstance().Info("  - 실패: " + 
+                std::to_string(stats["total_failures"].get<uint64_t>()));
+            
+            if (stats.contains("success_rate")) {
+                LogManager::getInstance().Info("  - 성공률: " + 
+                    std::to_string(stats["success_rate"].get<double>()) + "%");
+            }
+            
+            if (stats.contains("avg_response_time_ms")) {
+                LogManager::getInstance().Info("  - 평균 응답시간: " + 
+                    std::to_string(stats["avg_response_time_ms"].get<uint64_t>()) + "ms");
+            }
+            
+            // 타겟별 정보 출력
+            LogManager::getInstance().Info("\n📋 로드된 타겟 목록:");
+            for (size_t i = 0; i < targets.size(); ++i) {
+                const auto& target = targets[i];
                 LogManager::getInstance().Info(
-                    "  - " + target.name + 
-                    ": 총 " + std::to_string(total_requests) + 
-                    ", 성공 " + std::to_string(target.success_count.load()) +
-                    ", 실패 " + std::to_string(target.failure_count.load()));
+                    "  " + std::to_string(i + 1) + ". " + target.name + 
+                    " (" + target.type + ") - " + 
+                    (target.enabled ? "활성화" : "비활성화"));
             }
             
             LogManager::getInstance().Info("\n✅ DynamicTargetManager 검증 완료\n");

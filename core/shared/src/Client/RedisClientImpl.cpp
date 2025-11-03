@@ -597,24 +597,110 @@ int RedisClientImpl::publish(const std::string& channel, const std::string& mess
 }
 
 bool RedisClientImpl::subscribe(const std::string& channel) {
-    logInfo("SUBSCRIBE " + channel + " (기본 구현)");
-    return true;
+    return executeWithRetry<bool>([this, &channel]() {
+#ifdef HAVE_REDIS
+        if (!context_) {
+            logError("Redis 연결 없음 - SUBSCRIBE 불가");
+            return false;
+        }
+        
+        redisReply* reply = executeCommandSafe("SUBSCRIBE %s", channel.c_str());
+        bool result = reply && (reply->type == REDIS_REPLY_ARRAY);
+        
+        if (result) {
+            logInfo("SUBSCRIBE " + channel + " (실제 구독 완료)");
+        } else {
+            logError("SUBSCRIBE " + channel + " 실패");
+        }
+        
+        if (reply) freeReplyObject(reply);
+        return result;
+#else
+        logInfo("SUBSCRIBE " + channel + " (시뮬레이션)");
+        return true;
+#endif
+    }, false);
 }
 
 bool RedisClientImpl::unsubscribe(const std::string& channel) {
-    logInfo("UNSUBSCRIBE " + channel + " (기본 구현)");
-    return true;
+    return executeWithRetry<bool>([this, &channel]() {
+#ifdef HAVE_REDIS
+        if (!context_) {
+            logError("Redis 연결 없음 - UNSUBSCRIBE 불가");
+            return false;
+        }
+        
+        redisReply* reply = executeCommandSafe("UNSUBSCRIBE %s", channel.c_str());
+        bool result = reply && (reply->type == REDIS_REPLY_ARRAY);
+        
+        if (result) {
+            logInfo("UNSUBSCRIBE " + channel + " 성공");
+        } else {
+            logError("UNSUBSCRIBE " + channel + " 실패");
+        }
+        
+        if (reply) freeReplyObject(reply);
+        return result;
+#else
+        logInfo("UNSUBSCRIBE " + channel + " (시뮬레이션)");
+        return true;
+#endif
+    }, false);
 }
 
+
 bool RedisClientImpl::psubscribe(const std::string& pattern) {
-    logInfo("PSUBSCRIBE " + pattern + " (기본 구현)");
-    return true;
+    return executeWithRetry<bool>([this, &pattern]() {
+#ifdef HAVE_REDIS
+        if (!context_) {
+            logError("Redis 연결 없음 - PSUBSCRIBE 불가");
+            return false;
+        }
+        
+        redisReply* reply = executeCommandSafe("PSUBSCRIBE %s", pattern.c_str());
+        bool result = reply && (reply->type == REDIS_REPLY_ARRAY);
+        
+        if (result) {
+            logInfo("PSUBSCRIBE " + pattern + " 성공");
+        } else {
+            logError("PSUBSCRIBE " + pattern + " 실패");
+        }
+        
+        if (reply) freeReplyObject(reply);
+        return result;
+#else
+        logInfo("PSUBSCRIBE " + pattern + " (시뮬레이션)");
+        return true;
+#endif
+    }, false);
 }
 
 bool RedisClientImpl::punsubscribe(const std::string& pattern) {
-    logInfo("PUNSUBSCRIBE " + pattern + " (기본 구현)");
-    return true;
+    return executeWithRetry<bool>([this, &pattern]() {
+#ifdef HAVE_REDIS
+        if (!context_) {
+            logError("Redis 연결 없음 - PUNSUBSCRIBE 불가");
+            return false;
+        }
+        
+        redisReply* reply = executeCommandSafe("PUNSUBSCRIBE %s", pattern.c_str());
+        bool result = reply && (reply->type == REDIS_REPLY_ARRAY);
+        
+        if (result) {
+            logInfo("PUNSUBSCRIBE " + pattern + " 성공");
+        } else {
+            logError("PUNSUBSCRIBE " + pattern + " 실패");
+        }
+        
+        if (reply) freeReplyObject(reply);
+        return result;
+#else
+        logInfo("PUNSUBSCRIBE " + pattern + " (시뮬레이션)");
+        return true;
+#endif
+    }, false);
 }
+
 
 void RedisClientImpl::setMessageCallback(MessageCallback callback) {
     std::lock_guard<std::mutex> lock(callback_mutex_);
@@ -622,6 +708,69 @@ void RedisClientImpl::setMessageCallback(MessageCallback callback) {
     logInfo("메시지 콜백 설정 완료");
 }
 
+bool RedisClientImpl::waitForMessage(int timeout_ms) {
+#ifdef HAVE_REDIS
+    if (!context_) {
+        return false;
+    }
+    
+    // 타임아웃 설정
+    struct timeval tv = {
+        .tv_sec = timeout_ms / 1000,
+        .tv_usec = (timeout_ms % 1000) * 1000
+    };
+    
+    // 소켓에서 읽을 데이터가 있는지 확인
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(context_->fd, &readfds);
+    
+    // ✅ 전역 네임스페이스의 select 명시
+    int result = ::select(context_->fd + 1, &readfds, nullptr, nullptr, &tv);
+    
+    if (result > 0 && FD_ISSET(context_->fd, &readfds)) {
+        // 메시지 읽기
+        redisReply* reply = nullptr;
+        if (redisGetReply(context_, (void**)&reply) == REDIS_OK && reply) {
+            // 메시지 타입 확인
+            if (reply->type == REDIS_REPLY_ARRAY && reply->elements >= 3) {
+                std::string msg_type = replyToString(reply->element[0]);
+                
+                if (msg_type == "message") {
+                    // 일반 채널 메시지: ["message", "channel", "payload"]
+                    std::string channel = replyToString(reply->element[1]);
+                    std::string message = replyToString(reply->element[2]);
+                    
+                    // 콜백 호출
+                    std::lock_guard<std::mutex> lock(callback_mutex_);
+                    if (message_callback_) {
+                        message_callback_(channel, message);
+                    }
+                    
+                } else if (msg_type == "pmessage" && reply->elements >= 4) {
+                    // 패턴 메시지: ["pmessage", "pattern", "channel", "payload"]
+                    std::string channel = replyToString(reply->element[2]);
+                    std::string message = replyToString(reply->element[3]);
+                    
+                    // 콜백 호출
+                    std::lock_guard<std::mutex> lock(callback_mutex_);
+                    if (message_callback_) {
+                        message_callback_(channel, message);
+                    }
+                }
+            }
+            
+            freeReplyObject(reply);
+            return true;
+        }
+    }
+    
+    return false;
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+    return false;
+#endif
+}
 // =============================================================================
 // 배치 처리
 // =============================================================================

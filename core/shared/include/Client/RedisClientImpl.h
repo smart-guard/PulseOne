@@ -112,7 +112,7 @@ public:
     bool psubscribe(const std::string& pattern) override;
     bool punsubscribe(const std::string& pattern) override;
     void setMessageCallback(MessageCallback callback) override;
-    
+    bool waitForMessage(int timeout_ms = 100) override;
     // =============================================================================
     // 배치 처리 (RedisClient 인터페이스 구현)
     // =============================================================================
@@ -154,6 +154,7 @@ public:
     ConnectionStats getStats() const;
     void resetStats();
     bool forceReconnect();  // 테스트용 즉시 재연결
+
 private:
     // =============================================================================
     // 내부 헬퍼 메서드들
