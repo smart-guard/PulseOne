@@ -357,16 +357,22 @@ void AlarmSubscriber::subscribeLoop() {
             is_connected_ = true;
             LogManager::getInstance().Info("Redis Pub/Sub 구독 시작됨");
             
-            // 메시지 수신 대기 (블로킹)
+            // ✅ 메시지 수신 대기 루프 (실제 메시지 읽기)
             while (!should_stop_.load() && is_connected_.load()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                
-                // 연결 상태 체크
-                if (redis_client_ && !redis_client_->isConnected()) {
-                    is_connected_ = false;
-                    LogManager::getInstance().Warn("Redis 연결 끊김");
-                    break;
+                // Redis에서 메시지 읽기 시도 (100ms 타임아웃)
+                if (!redis_client_->waitForMessage(100)) {
+                    // 타임아웃 - 연결 상태만 체크
+                    if (redis_client_ && !redis_client_->isConnected()) {
+                        is_connected_ = false;
+                        LogManager::getInstance().Warn("Redis 연결 끊김");
+                        break;
+                    }
+                    // 타임아웃은 정상 - 계속 대기
+                    continue;
                 }
+                
+                // 메시지 수신 성공 - 콜백이 자동으로 호출됨
+                // (waitForMessage 내부에서 message_callback_ 실행)
             }
             
         } catch (const std::exception& e) {

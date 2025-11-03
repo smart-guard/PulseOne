@@ -345,7 +345,12 @@ public:
      * @param callback 메시지 수신 시 호출될 콜백
      */
     virtual void setMessageCallback(MessageCallback callback) = 0;
-    
+    /**
+     * @brief Pub/Sub 메시지 대기 (블로킹)
+     * @param timeout_ms 타임아웃 (밀리초)
+     * @return true if message received, false if timeout
+     */
+    virtual bool waitForMessage(int timeout_ms = 100) = 0;
     // =============================================================================
     // 배치 처리 (성능 최적화)
     // =============================================================================

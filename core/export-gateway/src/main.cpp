@@ -2,15 +2,14 @@
  * @file main.cpp - Export Gateway v2.0
  * @brief ExportCoordinator 기반 통합 아키텍처
  * @author PulseOne Development Team
- * @date 2025-10-23
- * @version 2.0.0
+ * @date 2025-10-31
+ * @version 2.0.1 - 컴파일 에러 수정
  * 
- * 주요 변경사항:
- * - ❌ CSPGateway 제거
- * - ✅ ExportCoordinator 사용
- * - ✅ DynamicTargetManager 싱글턴
- * - ✅ AlarmSubscriber + ScheduledExporter 통합
- * - ✅ 템플릿 기반 데이터 변환 지원
+ * 🔧 주요 수정사항:
+ * - ❌ sendAlarmToAllTargets() → ✅ sendAlarmToTargets()
+ * - ❌ getTargetNames() → ✅ getAllTargets()를 사용하여 이름 추출
+ * - ❌ testAllConnections() → ✅ healthCheck() + 테스트 알람 전송
+ * - ✅ 미사용 파라미터 경고 제거 (argc, argv)
  */
 
 #include <iostream>
@@ -49,7 +48,7 @@ void print_banner() {
     std::cout << R"(
 ╔══════════════════════════════════════════════════════════════╗
 ║                    PulseOne Export Gateway                   ║
-║                        Version 2.0.0                        ║
+║                        Version 2.0.1                        ║
 ║          Coordinator + DynamicTargetManager + Templates     ║
 ╚══════════════════════════════════════════════════════════════╝
 )" << std::endl;
@@ -196,6 +195,7 @@ void logLoadedConfig(const PulseOne::Coordinator::ExportCoordinatorConfig& confi
     std::cout << "Export 타임아웃: " << config.export_timeout_seconds << "초\n";
     std::cout << "========================================\n\n";
 }
+
 /**
  * @brief 테스트: 단일 알람 전송
  */
@@ -218,7 +218,7 @@ void testSingleAlarm() {
         
         LogManager::getInstance().Info("테스트 알람 전송: " + alarm.nm);
         
-        // 모든 타겟으로 전송
+        // ✅ 수정: sendAlarmToTargets() 사용
         auto results = manager.sendAlarmToTargets(alarm);
         
         std::cout << "전송 결과:\n";
@@ -255,23 +255,17 @@ void testTargets() {
     try {
         auto& manager = DynamicTargetManager::getInstance();
         
-        auto target_names = manager.getTargetNames();
+        // ✅ 수정: getAllTargets() 사용하여 타겟 정보 추출
+        auto targets = manager.getAllTargets();
         
-        std::cout << "총 타겟 수: " << target_names.size() << "\n\n";
+        std::cout << "총 타겟 수: " << targets.size() << "\n\n";
         
-        for (size_t i = 0; i < target_names.size(); ++i) {
-            const auto& name = target_names[i];
+        for (size_t i = 0; i < targets.size(); ++i) {
+            const auto& target = targets[i];
             
-            std::cout << (i + 1) << ". " << name;
-            
-            // 타겟 정보 조회
-            auto target_opt = manager.getTarget(name);
-            if (target_opt.has_value()) {
-                const auto& target = target_opt.value();
-                std::cout << " (" << target.type << ")";
-                std::cout << " - " << (target.enabled ? "활성화" : "비활성화");
-            }
-            
+            std::cout << (i + 1) << ". " << target.name;
+            std::cout << " (" << target.type << ")";
+            std::cout << " - " << (target.enabled ? "활성화" : "비활성화");
             std::cout << "\n";
         }
         
@@ -291,17 +285,40 @@ void testConnection() {
     try {
         auto& manager = DynamicTargetManager::getInstance();
         
-        auto results = manager.testAllConnections();
+        // ✅ 수정: healthCheck() 사용
+        auto health = manager.healthCheck();
         
-        std::cout << "총 타겟 수: " << results.size() << "\n\n";
+        std::cout << "시스템 상태: " << health["status"].get<std::string>() << "\n";
+        std::cout << "Redis 연결: " << (health["redis_connected"].get<bool>() ? "✅" : "❌") << "\n";
+        std::cout << "총 타겟: " << health["total_targets"].get<int>() << "\n";
+        std::cout << "활성 타겟: " << health["enabled_targets"].get<int>() << "\n";
+        std::cout << "정상 타겟: " << health["healthy_targets"].get<int>() << "\n\n";
+        
+        // 개별 타겟 테스트를 위한 테스트 알람 전송
+        AlarmMessage test_alarm;
+        test_alarm.bd = 1001;
+        test_alarm.nm = "CONNECTION_TEST";
+        test_alarm.vl = 1.0;
+        test_alarm.al = 0;
+        test_alarm.st = 0;
+        test_alarm.tm = std::to_string(
+            std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+        
+        std::cout << "개별 타겟 연결 테스트:\n";
+        auto results = manager.sendAlarmToTargets(test_alarm);
         
         int success_count = 0;
-        for (const auto& [name, ok] : results) {
-            std::cout << (ok ? "✅" : "❌") << " " << name << "\n";
-            if (ok) success_count++;
+        for (const auto& result : results) {
+            std::cout << (result.success ? "✅" : "❌") << " " << result.target_name;
+            if (!result.success) {
+                std::cout << " (" << result.error_message << ")";
+            }
+            std::cout << "\n";
+            
+            if (result.success) success_count++;
         }
         
-        std::cout << "\n성공: " << success_count << " / " << results.size() << "\n\n";
+        std::cout << "\n연결 성공: " << success_count << " / " << results.size() << "\n\n";
         
     } catch (const std::exception& e) {
         std::cerr << "연결 테스트 실패: " << e.what() << "\n";
@@ -342,7 +359,7 @@ void printStatistics(PulseOne::Coordinator::ExportCoordinator& coordinator) {
     std::cout << "========================================\n";
     
     try {
-        auto stats = coordinator.getStats();  // ✅ getStatistics() → getStats()
+        auto stats = coordinator.getStats();
         
         std::cout << "전체 Export: " << stats.total_exports << "\n";
         std::cout << "성공: " << stats.successful_exports << "\n";
@@ -446,10 +463,10 @@ void runInteractiveMode(ExportCoordinator& coordinator) {
 /**
  * @brief 메인 함수 - v2.0 아키텍처
  */
-int main(int argc, char* argv[]) {
+int main(int, char**) {
     try {
         std::cout << "===========================================\n";
-        std::cout << "PulseOne Export Gateway v1.0.0\n";
+        std::cout << "PulseOne Export Gateway v2.0.1\n";
         std::cout << "===========================================\n\n";
         
         // 1. 설정 로드
