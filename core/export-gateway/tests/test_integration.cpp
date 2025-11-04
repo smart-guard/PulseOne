@@ -647,7 +647,6 @@ public:
             
             ExportScheduleRepository schedule_repo;
             ExportScheduleEntity schedule;
-            
             schedule.setTargetId(schedule_target_id_);
             schedule.setScheduleName("TEST_SCHEDULE");
             schedule.setCronExpression("* * * * *");
@@ -659,8 +658,19 @@ public:
                 throw std::runtime_error("스케줄 저장 실패");
             }
             
+            int schedule_id = schedule.getId();
+            
             LogManager::getInstance().Info("✅ 테스트 스케줄 생성 완료 (ID: " + 
-                std::to_string(schedule.getId()) + ")");
+                std::to_string(schedule_id) + ")");
+            
+            // ✅ Redis 이벤트 발행 (ScheduledExporter 즉시 리로드)
+            if (redis_client_) {
+                std::string event_payload = R"({"type":"created","schedule_id":)" + 
+                    std::to_string(schedule_id) + "}";
+                
+                redis_client_->publish("schedule:reload", event_payload);
+                LogManager::getInstance().Info("📢 스케줄 리로드 이벤트 발행");
+            }
             
             return true;
             

@@ -603,14 +603,17 @@ bool EventSubscriber::initializeRedisConnection() {
         
         if (!redis_client_->isConnected()) {
             LogManager::getInstance().Error("Redis 자동 연결 실패");
+            is_connected_ = false;  // ✅ 명시적 설정
             return false;
         }
         
+        is_connected_ = true;  // ✅ 추가!
         LogManager::getInstance().Info("Redis 연결 성공");
         return true;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("Redis 연결 실패: " + std::string(e.what()));
+        is_connected_ = false;  // ✅ 명시적 설정
         return false;
     }
 }

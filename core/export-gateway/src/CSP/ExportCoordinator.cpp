@@ -388,7 +388,7 @@ bool ExportCoordinator::initializeScheduledExporter() {
 // ✅ 이벤트 핸들러 (간소화)
 // =============================================================================
 
-void ExportCoordinator::handleScheduleEvent(const std::string& channel, const std::string& message) {
+void ExportCoordinator::handleScheduleEvent(const std::string& channel, const std::string& /*message*/) {
     try {
         LogManager::getInstance().Info("🔄 스케줄 이벤트 수신: " + channel);
         
@@ -397,9 +397,17 @@ void ExportCoordinator::handleScheduleEvent(const std::string& channel, const st
             if (channel == "schedule:reload" || 
                 channel.find("schedule:") == 0) {
                 
+                // 1. 스케줄 목록 리로드
                 int loaded = scheduled_exporter_->reloadSchedules();
                 LogManager::getInstance().Info(
                     "✅ 스케줄 리로드 완료: " + std::to_string(loaded) + "개");
+                
+                // 2. ✅ 즉시 실행 가능한 스케줄 체크/실행
+                int executed = scheduled_exporter_->executeAllSchedules();
+                if (executed > 0) {
+                    LogManager::getInstance().Info(
+                        "⚡ 즉시 실행: " + std::to_string(executed) + "개");
+                }
             }
         }
         
