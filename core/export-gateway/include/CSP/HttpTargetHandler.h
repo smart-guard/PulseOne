@@ -1,15 +1,16 @@
 /**
  * @file HttpTargetHandler.h
- * @brief HTTP/HTTPS 타겟 핸들러 - 완전 수정
+ * @brief HTTP/HTTPS 타겟 핸들러 - Stateless 패턴 (v5.0)
  * @author PulseOne Development Team
- * @date 2025-09-29
- * @version 4.0.0 (구현 파일과 완전 일치)
+ * @date 2025-11-04
+ * @version 5.0.0 - Production-Ready 완성본
  * 저장 위치: core/export-gateway/include/CSP/HttpTargetHandler.h
  * 
- * 🚨 수정사항:
- * - 구현 파일의 모든 메서드 헤더에 선언
- * - urlEncode(), base64Encode() const 추가
- * - expandTemplateVariables() 오버로드 추가
+ * 🚀 v5.0 주요 변경:
+ * - http_client_ 멤버 변수 제거 (Stateless)
+ * - ClientCacheManager 사용
+ * - retry_config_, auth_config_ 제거 (config에서 매번 읽음)
+ * - Thread-safe 보장
  */
 
 #ifndef HTTP_TARGET_HANDLER_H
@@ -44,30 +45,21 @@ struct RetryConfig {
 };
 
 /**
- * @brief 인증 설정 구조체
- */
-struct AuthConfig {
-    std::string type = "none";
-    std::string bearer_token;
-    std::string basic_username;
-    std::string basic_password;
-    std::string api_key;
-    std::string api_key_header = "X-API-Key";
-};
-
-/**
- * @brief HTTP/HTTPS 타겟 핸들러
+ * @brief HTTP/HTTPS 타겟 핸들러 (Stateless v5.0)
+ * 
+ * 특징:
+ * - 상태를 가지지 않음 (http_client_ 멤버 제거)
+ * - 각 sendAlarm() 호출마다 config 기반으로 클라이언트 획득
+ * - ClientCacheManager로 클라이언트 재사용 (성능 최적화)
+ * - initialize() 선택적 (호출 안 해도 동작)
+ * - Thread-safe 보장
  */
 class HttpTargetHandler : public ITargetHandler {
 private:
-    mutable std::mutex client_mutex_;
+    // ✅ 통계만 유지 (경량)
     std::atomic<size_t> request_count_{0};
     std::atomic<size_t> success_count_{0};
     std::atomic<size_t> failure_count_{0};
-    
-    std::unique_ptr<PulseOne::Client::HttpClient> http_client_;
-    RetryConfig retry_config_;
-    AuthConfig auth_config_;
     
 public:
     HttpTargetHandler();
@@ -82,35 +74,76 @@ public:
     // ITargetHandler 인터페이스 구현
     // =======================================================================
     
+    /**
+     * @brief 선택적 초기화 (설정 검증만 수행)
+     */
     bool initialize(const json& config) override;
-    TargetSendResult sendAlarm(const AlarmMessage& alarm, const json& config) override;
-    bool testConnection(const json& config) override;
-    std::string getHandlerType() const override { return "HTTP"; }
-    bool validateConfig(const json& config, std::vector<std::string>& errors) override;
-    void cleanup() override;
-    json getStatus() const override;
-
-    // =======================================================================
-    // HTTP 특화 공개 메서드들
-    // =======================================================================
     
-    json getStatistics() const;
-    void resetStatistics();
+    /**
+     * @brief 알람 전송 (Stateless - config 기반 동작)
+     */
+    TargetSendResult sendAlarm(const AlarmMessage& alarm, const json& config) override;
+    
+    /**
+     * @brief 연결 테스트
+     */
+    bool testConnection(const json& config) override;
+    
+    /**
+     * @brief 핸들러 타입
+     */
+    std::string getHandlerType() const override { return "HTTP"; }
+    
+    /**
+     * @brief 설정 검증
+     */
+    bool validateConfig(const json& config, std::vector<std::string>& errors) override;
+    
+    /**
+     * @brief 정리 (캐시 비우기)
+     */
+    void cleanup() override;
+    
+    /**
+     * @brief 상태 조회
+     */
+    json getStatus() const override;
 
 private:
     // =======================================================================
-    // 내부 구현 메서드들 (구현 파일과 완전 일치)
+    // Private 핵심 메서드
     // =======================================================================
+    
+    /**
+     * @brief HttpClient 가져오기 또는 생성 (캐시 사용)
+     * @param config 설정
+     * @param url 기본 URL
+     * @return HttpClient 공유 포인터
+     */
+    std::shared_ptr<Client::HttpClient> getOrCreateClient(
+        const json& config, 
+        const std::string& url);
+    
+    /**
+     * @brief config에서 URL 추출
+     */
+    std::string extractUrl(const json& config) const;
     
     /**
      * @brief 재시도와 함께 HTTP 요청 실행
      */
-    TargetSendResult executeWithRetry(const AlarmMessage& alarm, const json& config);
+    TargetSendResult executeWithRetry(
+        const AlarmMessage& alarm, 
+        const json& config,
+        const std::string& url);
     
     /**
      * @brief 단일 HTTP 요청 실행
      */
-    TargetSendResult executeSingleRequest(const AlarmMessage& alarm, const json& config);
+    TargetSendResult executeSingleRequest(
+        const AlarmMessage& alarm, 
+        const json& config,
+        const std::string& url);
     
     /**
      * @brief 요청 헤더 생성
@@ -123,35 +156,9 @@ private:
     std::string buildRequestBody(const AlarmMessage& alarm, const json& config);
     
     /**
-     * @brief JSON 형식 요청 본문 생성
-     */
-    std::string buildJsonRequestBody(const AlarmMessage& alarm, const json& config);
-    
-    /**
-     * @brief XML 형식 요청 본문 생성
-     */
-    std::string buildXmlRequestBody(const AlarmMessage& alarm, const json& config);
-    
-    /**
-     * @brief Form 형식 요청 본문 생성
-     */
-    std::string buildFormRequestBody(const AlarmMessage& alarm, const json& config);
-    
-    /**
-     * @brief 인증 설정 파싱
-     */
-    void parseAuthenticationConfig(const json& config);
-    
-    /**
-     * @brief 인증 헤더 추가
-     */
-    void addAuthenticationHeaders(std::unordered_map<std::string, std::string>& headers, 
-                                  const json& config);
-    
-    /**
      * @brief 백오프 지연 시간 계산
      */
-    uint32_t calculateBackoffDelay(int attempt) const;
+    uint32_t calculateBackoffDelay(int attempt, const RetryConfig& config) const;
     
     /**
      * @brief 타겟 이름 추출
@@ -172,16 +179,6 @@ private:
      * @brief JSON 객체 템플릿 변수 확장
      */
     void expandTemplateVariables(json& template_json, const AlarmMessage& alarm) const;
-    
-    /**
-     * @brief 문자열 템플릿 변수 확장
-     */
-    std::string expandTemplateVariables(const std::string& template_str, const AlarmMessage& alarm) const;
-    
-    /**
-     * @brief URL 인코딩
-     */
-    std::string urlEncode(const std::string& str) const;
     
     /**
      * @brief Base64 인코딩
