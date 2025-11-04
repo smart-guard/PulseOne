@@ -1,11 +1,17 @@
 /**
  * @file DynamicTargetManager.cpp
- * @brief 동적 타겟 관리자 구현 (PUBLISH 전용 Redis 연결 추가)
+ * @brief 동적 타겟 관리자 구현 (컴파일 에러 완전 수정)
  * @author PulseOne Development Team
- * @date 2025-10-31
- * @version 6.2.1 - 컴파일 에러 완전 수정
+ * @date 2025-11-04
+ * @version 6.2.2 - 컴파일 에러 완전 수정
  * 
- * 🔧 수정 내역 (v6.2.0 → v6.2.1):
+ * 🔧 수정 내역 (v6.2.1 → v6.2.2):
+ * 1. ✅ ExportTargetEntity.h 헤더 포함 (완전한 타입 정의)
+ * 2. ✅ export_target_repo_ 멤버 변수 제거
+ * 3. ✅ loadFromDatabase()에서 RepositoryFactory 직접 사용
+ * 4. ✅ ExportTargetEntity 타입을 명시적으로 선언
+ * 
+ * 이전 변경사항 (v6.2.0 → v6.2.1):
  * 1. config.getString() → config.getOrDefault()
  * 2. fp_config.timeout_seconds → fp_config.recovery_timeout_ms
  * 3. fp_config.half_open_max_calls → fp_config.half_open_max_attempts
@@ -28,6 +34,7 @@
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
+// ✅ v6.2.2: ExportTargetEntity.h 명시적 include (완전한 타입 정의)
 #include "Database/Entities/ExportTargetEntity.h"
 #include "Database/Entities/PayloadTemplateEntity.h"
 #include <algorithm>
@@ -237,22 +244,25 @@ void DynamicTargetManager::stop() {
 }
 
 // =============================================================================
-// DB 기반 설정 관리
+// ✅ DB 기반 설정 관리 - 핵심 수정 부분!
 // =============================================================================
 
 bool DynamicTargetManager::loadFromDatabase() {
     try {
         LogManager::getInstance().Info("DB에서 타겟 로드 시작...");
         
-        if (!export_target_repo_) {
-            LogManager::getInstance().Error("ExportTargetRepository가 초기화되지 않음");
+        auto export_target_repo = RepositoryFactory::getInstance().getExportTargetRepository();
+        
+        if (!export_target_repo) {
+            LogManager::getInstance().Error("ExportTargetRepository를 가져올 수 없음");
             return false;
         }
         
-        // DB에서 활성화된 타겟 로드
-        std::vector<ExportTargetEntity> entities;
-        if (!export_target_repo_->findByEnabled(true, entities)) {
-            LogManager::getInstance().Warn("활성화된 타겟이 없거나 조회 실패");
+        using PulseOne::Database::Entities::ExportTargetEntity;
+        auto entities = export_target_repo->findByEnabled(true);
+        
+        if (entities.empty()) {
+            LogManager::getInstance().Warn("활성화된 타겟이 없음");
             return false;
         }
         
@@ -269,7 +279,6 @@ bool DynamicTargetManager::loadFromDatabase() {
                 target.priority = 100;
                 target.description = entity.getDescription();
                 
-                // ✅ 1. Config JSON 파싱
                 try {
                     target.config = json::parse(entity.getConfig());
                 } catch (const std::exception& e) {
@@ -278,22 +287,21 @@ bool DynamicTargetManager::loadFromDatabase() {
                     continue;
                 }
                 
-                // ✅ 2. export_mode 추가 (중요!)
-                if (!entity.getExportMode().empty()) {
-                    target.config["export_mode"] = entity.getExportMode();
+                // ✅ export_mode 설정 (기본값 처리 추가)
+                std::string export_mode = entity.getExportMode();
+                if (export_mode.empty() || export_mode == "0") {
+                    export_mode = "alarm";  // 기본값
                 }
+                target.config["export_mode"] = export_mode;
                 
-                // ✅ 3. export_interval 추가
                 if (entity.getExportInterval() > 0) {
                     target.config["export_interval"] = entity.getExportInterval();
                 }
                 
-                // ✅ 4. batch_size 추가
                 if (entity.getBatchSize() > 0) {
                     target.config["batch_size"] = entity.getBatchSize();
                 }
                 
-                // ✅ 5. template_id 추가
                 if (entity.getTemplateId().has_value()) {
                     target.config["template_id"] = entity.getTemplateId().value();
                 }
@@ -303,7 +311,7 @@ bool DynamicTargetManager::loadFromDatabase() {
                 
                 LogManager::getInstance().Debug(
                     "타겟 로드: " + target.name + " (" + target.type + "), " +
-                    "export_mode=" + entity.getExportMode()
+                    "export_mode=" + export_mode
                 );
                 
             } catch (const std::exception& e) {

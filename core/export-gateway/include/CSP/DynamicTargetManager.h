@@ -2,17 +2,23 @@
  * @file DynamicTargetManager.h (싱글턴 리팩토링 버전)
  * @brief 동적 타겟 관리자 - 싱글턴 패턴 적용
  * @author PulseOne Development Team
- * @date 2025-10-31
- * @version 6.2.0 (PUBLISH 전용 Redis 연결 추가)
+ * @date 2025-11-04
+ * @version 6.2.2 - 컴파일 에러 완전 수정
  * 
- * 주요 변경사항:
- * - ✅ publish_client_ 멤버 추가 (PUBLISH 전용 Redis 연결)
- * - ✅ getPublishClient() 메서드 추가
- * - ✅ isRedisConnected() 메서드 추가
- * - 싱글턴 패턴 적용
- * - JSON 파일 로드 제거 (DB 전용)
- * - ExportTypes.h 사용 (CSPDynamicTargets.h 대체)
- * - Export 네임스페이스 타입을 CSP에서 사용
+ * 🔧 주요 변경사항 (v6.2.1 → v6.2.2):
+ * 1. ✅ ExportTargetEntity.h 헤더 include 추가
+ * 2. ✅ export_target_repo_ 멤버 변수 제거
+ * 3. ✅ RepositoryFactory를 통한 Repository 접근으로 변경
+ * 
+ * 근본 원인:
+ * - export_target_repo_가 멤버 변수로 선언되지 않음
+ * - ExportTargetEntity가 불완전 타입 (forward declaration만 있음)
+ * - PulseOne 프로젝트의 표준 패턴은 RepositoryFactory 사용
+ * 
+ * 해결 방법:
+ * - ExportTargetEntity.h 헤더 포함
+ * - loadFromDatabase()에서 직접 RepositoryFactory 사용
+ * - 멤버 변수 대신 필요할 때마다 Repository 인스턴스 가져오기
  * 
  * 사용법:
  *   auto& manager = DynamicTargetManager::getInstance();
@@ -31,7 +37,11 @@
 #include "Export/ExportTypes.h"  // ← CSP/ITargetHandler.h 대체
 #include "CSP/AlarmMessage.h"
 #include "CSP/FailureProtector.h"
-#include "Client/RedisClient.h"  // ✅ 추가
+#include "Client/RedisClient.h"
+
+// ✅ v6.2.2: ExportTargetEntity 헤더 포함 (필수!)
+#include "Database/Entities/ExportTargetEntity.h"
+
 #include <string>
 #include <vector>
 #include <memory>
@@ -135,6 +145,8 @@ public:
     /**
      * @brief 데이터베이스에서 타겟 로드
      * @return 성공 시 true
+     * 
+     * @note RepositoryFactory를 통해 ExportTargetRepository 인스턴스 획득
      */
     bool loadFromDatabase();
     
@@ -361,6 +373,9 @@ private:
     
     // ✅ PUBLISH 전용 Redis 클라이언트
     std::unique_ptr<RedisClient> publish_client_;
+    
+    // ❌ export_target_repo_ 멤버 변수 제거!
+    // → loadFromDatabase()에서 직접 RepositoryFactory 사용
     
     // 타겟 목록 (shared_mutex로 보호)
     mutable std::shared_mutex targets_mutex_;
