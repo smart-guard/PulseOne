@@ -1,6 +1,6 @@
 # =============================================================================
 # core/export-gateway/Makefile - PulseOne Export Gateway (크로스플랫폼)
-# 🔥 완전 수정 버전 - include 경로 우선순위 수정
+# 🔥 v3.0 - EventSubscriber 반영 (Alarm → Event)
 # =============================================================================
 
 # 플랫폼 감지
@@ -79,7 +79,7 @@ SHARED_LIB_DIR = $(SHARED_DIR)/lib
 HAS_SHARED := $(shell [ -d "$(SHARED_LIB_DIR)" ] && [ -f "$(SHARED_LIB_DIR)/libpulseone-common$(LIB_SUFFIX)" ] && echo "1" || echo "0")
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
-# 🔥 hiredis 감지 (pkg-config 우선, 없으면 헤더 테스트)
+# 🔥 hiredis 감지
 HAS_HIREDIS := $(shell pkg-config --exists hiredis 2>/dev/null && echo "1" || echo "0")
 ifeq ($(HAS_HIREDIS),0)
     HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
@@ -87,7 +87,7 @@ endif
 
 HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
-# 🔥 libcurl 자동 감지 (pkg-config 우선, 없으면 직접 테스트)
+# 🔥 libcurl 자동 감지
 HAS_CURL := $(shell pkg-config --exists libcurl 2>/dev/null && echo "1" || echo "0")
 ifeq ($(HAS_CURL),0)
     HAS_CURL := $(shell echo '\#include <curl/curl.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
@@ -151,7 +151,7 @@ endif
 # 외부 라이브러리들
 UTILITY_LIBS =
 
-# 🔥 hiredis 링크 (pkg-config 우선, 없으면 직접 링크)
+# 🔥 hiredis 링크
 ifeq ($(HAS_HIREDIS),1)
     HIREDIS_LIBS := $(shell pkg-config --libs hiredis 2>/dev/null)
     ifneq ($(HIREDIS_LIBS),)
@@ -167,7 +167,7 @@ else
     $(info ⚠️  hiredis not found - Redis features disabled)
 endif
 
-# 🔥 libcurl 링크 (pkg-config 우선, 없으면 직접 링크)
+# 🔥 libcurl 링크
 ifeq ($(HAS_CURL),1)
     CURL_LIBS := $(shell pkg-config --libs libcurl 2>/dev/null)
     ifneq ($(CURL_LIBS),)
@@ -216,7 +216,7 @@ else
     PLATFORM_LIBS =
 endif
 
-# 🔥 최종 링크 순서 (중요: curl과 ssl은 shared libs 뒤에)
+# 🔥 최종 링크 순서
 LDFLAGS = $(SHARED_LIBS) $(UTILITY_LIBS) $(BASIC_LIBS) $(PLATFORM_LIBS)
 
 # 색상 정의
@@ -227,14 +227,14 @@ RED = \033[0;31m
 NC = \033[0m
 
 # =============================================================================
-# 소스 파일 및 오브젝트 파일 (✅ 실제 존재하는 파일만)
+# 소스 파일 및 오브젝트 파일 (v3.0 - Event 디렉토리)
 # =============================================================================
 
-# 🆕 Alarm 디렉토리 (실제 존재 확인됨)
-ALARM_SOURCES = $(wildcard $(SRC_DIR)/Alarm/*.cpp)
-ALARM_OBJECTS = $(ALARM_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+# 🆕 Event 디렉토리 (EventSubscriber - 범용 이벤트 구독자) ✅
+EVENT_SOURCES = $(wildcard $(SRC_DIR)/Event/*.cpp)
+EVENT_OBJECTS = $(EVENT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 🆕 Schedule 디렉토리 (실제 존재 확인됨)
+# 🆕 Schedule 디렉토리 (ScheduledExporter)
 SCHEDULE_SOURCES = $(wildcard $(SRC_DIR)/Schedule/*.cpp)
 SCHEDULE_OBJECTS = $(SCHEDULE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
@@ -242,15 +242,15 @@ SCHEDULE_OBJECTS = $(SCHEDULE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 TRANSFORM_SOURCES = $(wildcard $(SRC_DIR)/Transform/*.cpp)
 TRANSFORM_OBJECTS = $(TRANSFORM_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 🔌 CSP 디렉토리 (실제 존재 확인됨)
+# 🔌 CSP 디렉토리 (DynamicTargetManager)
 CSP_SOURCES = $(wildcard $(SRC_DIR)/CSP/*.cpp)
 CSP_OBJECTS = $(CSP_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 📤 Export 디렉토리 (존재하면 추가)
+# 📤 Export 디렉토리
 EXPORT_SOURCES = $(wildcard $(SRC_DIR)/Export/*.cpp)
 EXPORT_OBJECTS = $(EXPORT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
-# 🛠️ Utils 디렉토리 (있으면 추가)
+# 🛠️ Utils 디렉토리
 UTILS_SOURCES = $(wildcard $(SRC_DIR)/Utils/*.cpp)
 UTILS_OBJECTS = $(UTILS_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
@@ -258,8 +258,8 @@ UTILS_OBJECTS = $(UTILS_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 MAIN_SOURCES = $(SRC_DIR)/main.cpp
 MAIN_OBJECT = $(BUILD_DIR)/main.o
 
-# 📦 전체 오브젝트 파일
-ALL_OBJECTS = $(ALARM_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECT)
+# 📦 전체 오브젝트 파일 (EVENT_OBJECTS로 변경) ✅
+ALL_OBJECTS = $(EVENT_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECT)
 
 # 🎯 최종 실행 파일
 TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)
@@ -290,7 +290,8 @@ all: check-libs $(TARGET)
 $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
 	@echo -e "$(BLUE)🔗 Linking $@$(NC)"
 	@$(CXX) $(ALL_OBJECTS) $(LDFLAGS) -o $@
-	@echo -e "$(GREEN)✅ Export Gateway built successfully!$(NC)"
+	@echo -e "$(GREEN)✅ Export Gateway v3.0 built successfully!$(NC)"
+	@echo -e "$(GREEN)   EventSubscriber: 범용 이벤트 구독자$(NC)"
 
 # 디렉토리 생성
 $(BUILD_DIR) $(BIN_DIR) $(TEST_BUILD_DIR) $(TEST_BIN_DIR):
@@ -321,7 +322,7 @@ clean-all:
 
 # ✅ run (실행)
 run: $(TARGET)
-	@echo -e "$(BLUE)🚀 Running Export Gateway...$(NC)"
+	@echo -e "$(BLUE)🚀 Running Export Gateway v3.0...$(NC)"
 	@$(TARGET)
 
 # ✅ check-libs (라이브러리 확인)
@@ -360,8 +361,8 @@ debug-vars:
 	@echo "SHARED_DIR: $(SHARED_DIR)"
 	@echo "SHARED_LIB_DIR: $(SHARED_LIB_DIR)"
 	@echo ""
-	@echo "=== Source Files ==="
-	@echo "ALARM_SOURCES: $(ALARM_SOURCES)"
+	@echo "=== Source Files (v3.0 - Event) ==="
+	@echo "EVENT_SOURCES: $(EVENT_SOURCES)"
 	@echo "SCHEDULE_SOURCES: $(SCHEDULE_SOURCES)"
 	@echo "TRANSFORM_SOURCES: $(TRANSFORM_SOURCES)"
 	@echo "CSP_SOURCES: $(CSP_SOURCES)"
@@ -370,7 +371,7 @@ debug-vars:
 	@echo "MAIN_SOURCES: $(MAIN_SOURCES)"
 	@echo ""
 	@echo "=== Object Files ==="
-	@echo "ALARM_OBJECTS: $(ALARM_OBJECTS)"
+	@echo "EVENT_OBJECTS: $(EVENT_OBJECTS)"
 	@echo "SCHEDULE_OBJECTS: $(SCHEDULE_OBJECTS)"
 	@echo "TRANSFORM_OBJECTS: $(TRANSFORM_OBJECTS)"
 	@echo "CSP_OBJECTS: $(CSP_OBJECTS)"
@@ -403,10 +404,10 @@ $(TEST_BUILD_DIR)/%.o: $(TEST_DIR)/%.cpp | $(TEST_BUILD_DIR)
 # 특수 타겟들
 # =============================================================================
 
-.PHONY: install uninstall help
+.PHONY: install uninstall help version
 
 install:
-	@echo -e "$(BLUE)📦 Installing Export Gateway...$(NC)"
+	@echo -e "$(BLUE)📦 Installing Export Gateway v3.0...$(NC)"
 	@mkdir -p /usr/local/bin
 	@cp $(TARGET) /usr/local/bin/
 	@chmod +x /usr/local/bin/export-gateway$(EXE_SUFFIX)
@@ -417,8 +418,14 @@ uninstall:
 	@rm -f /usr/local/bin/export-gateway$(EXE_SUFFIX)
 	@echo -e "$(GREEN)✅ Uninstallation completed$(NC)"
 
+version:
+	@echo "PulseOne Export Gateway v3.0"
+	@echo "EventSubscriber: 범용 Redis Pub/Sub 이벤트 구독자"
+	@echo "ScheduledExporter: 스케줄 기반 데이터 Export"
+	@echo "Platform: $(PLATFORM)"
+
 help:
-	@echo "PulseOne Export Gateway - Makefile Commands"
+	@echo "PulseOne Export Gateway v3.0 - Makefile Commands"
 	@echo ""
 	@echo "Build Commands:"
 	@echo "  make              - Build the project"
@@ -434,6 +441,12 @@ help:
 	@echo "  make debug-vars   - Show build variables"
 	@echo "  make install      - Install to /usr/local/bin"
 	@echo "  make uninstall    - Uninstall from /usr/local/bin"
+	@echo "  make version      - Show version info"
 	@echo ""
 	@echo "Platform: $(PLATFORM)"
 	@echo "Target: $(TARGET)"
+	@echo ""
+	@echo "v3.0 Changes:"
+	@echo "  - AlarmSubscriber → EventSubscriber (범용 이벤트 구독)"
+	@echo "  - src/Alarm/ → src/Event/"
+	@echo "  - 다중 이벤트 타입 지원 (알람, 스케줄, 시스템)"
