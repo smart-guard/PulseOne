@@ -1,10 +1,16 @@
 /**
  * @file S3TargetHandler.h
- * @brief S3 타겟 핸들러 - 통합 타입 사용
+ * @brief S3 타겟 핸들러 - Stateless 패턴 (v2.0)
  * @author PulseOne Development Team
- * @date 2025-09-24
- * @version 1.1.0 (TargetTypes.h 통합 타입 사용)
+ * @date 2025-11-04
+ * @version 2.0.0 - Production-Ready with ClientCacheManager
  * 저장 위치: core/export-gateway/include/CSP/S3TargetHandler.h
+ * 
+ * 🚀 v2.0 주요 변경:
+ * - s3_client_ 멤버 변수 제거 (Stateless)
+ * - ClientCacheManager 사용
+ * - initialize() 선택적 (없어도 동작)
+ * - Thread-safe 보장
  */
 
 #ifndef S3_TARGET_HANDLER_H
@@ -13,7 +19,6 @@
 #include "Export/ExportTypes.h"
 #include <string>
 #include <memory>
-#include <mutex>
 #include <atomic>
 #include <unordered_map>
 
@@ -22,7 +27,6 @@ namespace PulseOne {
 namespace Client {
     class S3Client;
     struct S3Config;
-    struct S3UploadResult;
 }
 }
 
@@ -30,100 +34,107 @@ namespace PulseOne {
 namespace CSP {
 
 /**
- * @brief S3 타겟 핸들러 클래스
+ * @brief S3 타겟 핸들러 (Stateless v2.0)
+ * 
+ * 특징:
+ * - 상태 없음 (s3_client_ 멤버 제거)
+ * - 각 sendAlarm() 호출마다 config 기반으로 클라이언트 획득
+ * - ClientCacheManager로 클라이언트 재사용 (버킷별 캐싱)
+ * - initialize() 선택적 (호출 안 해도 동작)
+ * - Thread-safe 보장
  * 
  * 주요 기능:
  * - AWS S3 업로드
- * - S3 호환 스토리지 업로드 (MinIO, Ceph, Cloudflare R2 등)
- * - 암호화된 자격증명 관리
- * - 객체 키 템플릿 지원
- * - 스토리지 클래스 설정 (STANDARD, STANDARD_IA, GLACIER 등)
- * - 메타데이터 자동 추가
- * - 서버사이드 암호화 (SSE-S3, SSE-KMS)
- * - 멀티파트 업로드 (대용량 파일용)
- * - 재시도 로직 내장
+ * - S3 호환 스토리지 (MinIO, Ceph, R2 등)
+ * - 객체 키 템플릿
  * - 압축 지원 (gzip)
+ * - 메타데이터 자동 추가
  */
 class S3TargetHandler : public ITargetHandler {
 private:
-    mutable std::mutex client_mutex_;
+    // ✅ 통계만 유지 (경량)
     std::atomic<size_t> upload_count_{0};
     std::atomic<size_t> success_count_{0};
     std::atomic<size_t> failure_count_{0};
     std::atomic<size_t> total_bytes_uploaded_{0};
     
-    // S3 클라이언트 및 설정
-    std::unique_ptr<PulseOne::Client::S3Client> s3_client_;
-    bool compression_enabled_ = false;
-    int compression_level_ = 6;
-    std::string object_key_template_;
-    std::unordered_map<std::string, std::string> metadata_template_;
-    
 public:
     S3TargetHandler();
     ~S3TargetHandler() override;
     
-    // 복사/이동 생성자 비활성화
     S3TargetHandler(const S3TargetHandler&) = delete;
     S3TargetHandler& operator=(const S3TargetHandler&) = delete;
     S3TargetHandler(S3TargetHandler&&) = delete;
     S3TargetHandler& operator=(S3TargetHandler&&) = delete;
     
-    // ITargetHandler 인터페이스 구현 - 통합 타입 사용
+    // =======================================================================
+    // ITargetHandler 인터페이스 구현
+    // =======================================================================
     
     /**
-     * @brief 핸들러 초기화
-     * @param config JSON 설정 객체
-     * @return 초기화 성공 여부
+     * @brief 선택적 초기화 (설정 검증만 수행)
      */
     bool initialize(const json& config) override;
     
     /**
-     * @brief 알람 메시지 전송 (S3 업로드)
-     * @param alarm 업로드할 알람 메시지
-     * @param config 타겟별 설정
-     * @return 업로드 결과 (TargetTypes.h의 TargetSendResult 사용)
+     * @brief 알람 업로드 (Stateless - config 기반 동작)
      */
     TargetSendResult sendAlarm(const AlarmMessage& alarm, const json& config) override;
     
     /**
      * @brief 연결 테스트
-     * @param config 타겟별 설정
-     * @return 연결 성공 여부
      */
     bool testConnection(const json& config) override;
+    
     /**
-     * @brief 핸들러 타입 반환
+     * @brief 핸들러 타입
      */
     std::string getHandlerType() const override { return "S3"; }
-
+    
     /**
-     * @brief 핸들러 상태 반환
+     * @brief 설정 검증
      */
-    json getStatus() const override;
-
+    bool validateConfig(const json& config, std::vector<std::string>& errors) override;
+    
     /**
-     * @brief 핸들러 정리
+     * @brief 정리 (캐시 비우기)
      */
     void cleanup() override;
     
     /**
-     * @brief 설정 유효성 검증
+     * @brief 상태 조회
      */
-    bool validateConfig(const json& config, std::vector<std::string>& errors) override;
+    json getStatus() const override;
 
 private:
-    // 내부 구현 메서드들
+    // =======================================================================
+    // Private 핵심 메서드
+    // =======================================================================
+    
+    /**
+     * @brief S3Client 가져오기 또는 생성 (캐시 사용)
+     * @param config 설정
+     * @param bucket_name 버킷명 (캐시 키)
+     * @return S3Client 공유 포인터
+     */
+    std::shared_ptr<Client::S3Client> getOrCreateClient(
+        const json& config, 
+        const std::string& bucket_name);
+    
+    /**
+     * @brief config에서 버킷명 추출
+     */
+    std::string extractBucketName(const json& config) const;
+    
+    /**
+     * @brief S3Config 구성
+     */
+    Client::S3Config buildS3Config(const json& config) const;
     
     /**
      * @brief 자격증명 로드
      */
-    void loadCredentials(const json& config, PulseOne::Client::S3Config& s3_config);
-    
-    /**
-     * @brief 메타데이터 템플릿 로드
-     */
-    void loadMetadataTemplate(const json& config);
+    void loadCredentials(const json& config, Client::S3Config& s3_config) const;
     
     /**
      * @brief 객체 키 생성
@@ -143,18 +154,14 @@ private:
     /**
      * @brief 메타데이터 빌드
      */
-    std::unordered_map<std::string, std::string> buildMetadata(const AlarmMessage& alarm, 
-                                                              const json& config) const;
+    std::unordered_map<std::string, std::string> buildMetadata(
+        const AlarmMessage& alarm, 
+        const json& config) const;
     
     /**
      * @brief 내용 압축
      */
-    std::string compressContent(const std::string& content) const;
-    
-    /**
-     * @brief 테스트 업로드 수행
-     */
-    bool performTestUpload();
+    std::string compressContent(const std::string& content, int level) const;
     
     /**
      * @brief 타겟 이름 반환
@@ -162,44 +169,48 @@ private:
     std::string getTargetName(const json& config) const;
     
     /**
-     * @brief 현재 타임스탬프 반환 (ISO 8601)
+     * @brief 현재 타임스탬프 (ISO 8601)
      */
     std::string getCurrentTimestamp() const;
     
     /**
-     * @brief 타임스탬프 문자열 생성 (파일명용)
+     * @brief 타임스탬프 문자열 (파일명용)
      */
     std::string generateTimestampString() const;
     
     /**
-     * @brief 날짜 문자열 생성
+     * @brief 날짜 문자열
      */
     std::string generateDateString() const;
     
     /**
-     * @brief 년도 문자열 생성
+     * @brief 년도 문자열
      */
     std::string generateYearString() const;
     
     /**
-     * @brief 월 문자열 생성
+     * @brief 월 문자열
      */
     std::string generateMonthString() const;
     
     /**
-     * @brief 일 문자열 생성
+     * @brief 일 문자열
      */
     std::string generateDayString() const;
     
     /**
-     * @brief 시간 문자열 생성
+     * @brief 시간 문자열
      */
     std::string generateHourString() const;
     
-    // 환경변수 치환
+    /**
+     * @brief 환경변수 치환
+     */
     std::string expandEnvironmentVariables(const std::string& str) const;
     
-    // 리전 기반 엔드포인트 자동 생성
+    /**
+     * @brief S3 엔드포인트 자동 생성
+     */
     std::string generateS3Endpoint(const std::string& region) const;
 };
 

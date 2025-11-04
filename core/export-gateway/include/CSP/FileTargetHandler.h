@@ -1,17 +1,16 @@
 /**
  * @file FileTargetHandler.h
- * @brief 로컬 파일 타겟 핸들러 - ITargetHandler 인터페이스 정확 구현
+ * @brief 로컬 파일 타겟 핸들러 - Stateless 패턴 (v2.0)
  * @author PulseOne Development Team
- * @date 2025-09-29
- * @version 4.0.0 (메서드 시그니처 완전 수정)
+ * @date 2025-11-04
+ * @version 2.0.0 - Production-Ready Stateless
  * 저장 위치: core/export-gateway/include/CSP/FileTargetHandler.h
  * 
- * 🚨 컴파일 에러 완전 수정:
- * 1. buildFileContent() - json& config 파라미터로 변경
- * 2. writeFileAtomic() - alarm, config 파라미터 추가
- * 3. writeFileDirect() → writeFileDirectly() 이름 수정 + alarm, config 추가
- * 4. buildJsonContent(), buildCsvContent(), buildTextContent(), buildXmlContent() 추가
- * 5. 모든 메서드 시그니처를 구현 파일과 완전 일치시킴
+ * 🚀 v2.0 주요 변경:
+ * - 상태 멤버 변수 제거 (base_path_, file_format_, templates 등)
+ * - initialize() 선택적 (없어도 동작)
+ * - config 기반 동작
+ * - Thread-safe 보장
  */
 
 #ifndef FILE_TARGET_HANDLER_H
@@ -19,245 +18,149 @@
 
 #include "Export/ExportTypes.h"
 #include <string>
-#include <memory>
-#include <mutex>
 #include <atomic>
-#include <thread>
-#include <filesystem>
 
 namespace PulseOne {
 namespace CSP {
 
 /**
- * @brief 파일 옵션 구조체
- */
-struct FileOptions {
-    bool append_mode = false;
-    bool create_directories = true;
-    bool atomic_write = true;
-    bool backup_on_overwrite = false;
-};
-
-/**
- * @brief 로테이션 설정 구조체
- */
-struct RotationConfig {
-    bool enabled = true;
-    size_t max_file_size_mb = 100;
-    size_t max_files_per_dir = 1000;
-    int auto_cleanup_days = 30;
-};
-
-/**
- * @brief 로컬 파일 타겟 핸들러
+ * @brief 로컬 파일 타겟 핸들러 (Stateless v2.0)
+ * 
+ * 특징:
+ * - 상태 없음 (base_path, templates 멤버 제거)
+ * - 각 sendAlarm() 호출마다 config에서 설정 읽음
+ * - initialize() 선택적 (호출 안 해도 동작)
+ * - Thread-safe 보장
  * 
  * 지원 기능:
  * - 계층적 디렉토리 구조 (빌딩/날짜별)
- * - 파일명 템플릿 지원
- * - JSON/텍스트/CSV/XML 형식 지원
- * - 파일 압축 (gzip, zip)
- * - 자동 로테이션 (일별, 시간별)
- * - 오래된 파일 자동 정리
- * - 파일 잠금 및 동시성 제어
- * - 디스크 공간 모니터링
- * - 백업 및 아카이빙
- * - 권한 관리
+ * - 파일명 템플릿
+ * - JSON/CSV/TXT/XML 형식
+ * - 파일 압축 (gzip)
+ * - 자동 로테이션
+ * - 오래된 파일 정리
+ * - 원자적 쓰기
  */
 class FileTargetHandler : public ITargetHandler {
 private:
-    mutable std::mutex file_mutex_;    // 파일 작업 보호용
-    mutable std::mutex cleanup_mutex_; // 정리 작업 보호용
-    
+    // ✅ 통계만 유지 (경량)
     std::atomic<size_t> file_count_{0};
     std::atomic<size_t> success_count_{0};
     std::atomic<size_t> failure_count_{0};
     std::atomic<size_t> total_bytes_written_{0};
     
-    // 백그라운드 정리 스레드
-    std::unique_ptr<std::thread> cleanup_thread_;
-    std::atomic<bool> should_stop_{false};
-    
-    // 구현 파일에서 사용하는 멤버 변수들
-    std::string base_path_;
-    std::string file_format_ = "json";
-    std::string filename_template_;
-    std::string directory_template_;
-    std::string compression_format_ = "gzip";
-    bool compression_enabled_ = false;
-    mode_t file_permissions_ = 0644;
-    mode_t dir_permissions_ = 0755;
-    
-    FileOptions file_options_;
-    RotationConfig rotation_config_;
-    
-    std::chrono::system_clock::time_point last_cleanup_time_;
-    std::atomic<size_t> cleanup_file_count_{0};
-    
 public:
-    /**
-     * @brief 생성자
-     */
     FileTargetHandler();
-    
-    /**
-     * @brief 소멸자
-     */
     ~FileTargetHandler() override;
     
-    // 복사/이동 생성자 비활성화
     FileTargetHandler(const FileTargetHandler&) = delete;
     FileTargetHandler& operator=(const FileTargetHandler&) = delete;
     FileTargetHandler(FileTargetHandler&&) = delete;
     FileTargetHandler& operator=(FileTargetHandler&&) = delete;
     
     // =======================================================================
-    // ITargetHandler 인터페이스 정확 구현 (CSPDynamicTargets.h 준수)
+    // ITargetHandler 인터페이스 구현
     // =======================================================================
     
     /**
-     * @brief 핸들러 초기화
+     * @brief 선택적 초기화 (설정 검증 + 디렉토리 생성)
      */
     bool initialize(const json& config) override;
     
     /**
-     * @brief 알람 메시지 전송 (파일 저장)
+     * @brief 알람 파일 저장 (Stateless - config 기반 동작)
      */
     TargetSendResult sendAlarm(const AlarmMessage& alarm, const json& config) override;
     
     /**
-     * @brief 연결 테스트 (디렉토리 접근 및 쓰기 권한 확인)
+     * @brief 연결 테스트
      */
     bool testConnection(const json& config) override;
     
     /**
-     * @brief 핸들러 타입 이름 반환
+     * @brief 핸들러 타입
      */
     std::string getHandlerType() const override { return "FILE"; }
     
     /**
-     * @brief 설정 유효성 검증
+     * @brief 설정 검증
      */
     bool validateConfig(const json& config, std::vector<std::string>& errors) override;
     
     /**
-     * @brief 핸들러 상태 반환
-     */
-    json getStatus() const override;
-    
-    /**
-     * @brief 핸들러 정리
+     * @brief 정리 (통계 리셋)
      */
     void cleanup() override;
+    
+    /**
+     * @brief 상태 조회
+     */
+    json getStatus() const override;
 
 private:
     // =======================================================================
-    // 내부 구현 메서드들 (구현 파일과 시그니처 완전 일치)
+    // Private 핵심 메서드
     // =======================================================================
     
     /**
-     * @brief 기본 디렉토리들 생성
+     * @brief config에서 base_path 추출
      */
-    void createBaseDirectories();
+    std::string extractBasePath(const json& config) const;
     
     /**
-     * @brief 파일 경로의 디렉토리들 생성
+     * @brief config에서 file_format 추출
      */
-    void createDirectoriesForFile(const std::string& file_path);
+    std::string extractFileFormat(const json& config) const;
     
     /**
-     * @brief 알람으로부터 파일 경로 생성
+     * @brief 파일 경로 생성
      */
     std::string generateFilePath(const AlarmMessage& alarm, const json& config) const;
     
     /**
-     * @brief 템플릿 문자열 확장 (변수 치환)
+     * @brief 디렉토리 생성
      */
-    std::string expandTemplate(const std::string& template_str, const AlarmMessage& alarm) const;
+    void createDirectoriesForFile(const std::string& file_path) const;
     
     /**
-     * @brief 파일 내용 생성 - json& config 파라미터 사용 (수정됨)
+     * @brief 파일 내용 생성
      */
     std::string buildFileContent(const AlarmMessage& alarm, const json& config) const;
     
     /**
-     * @brief JSON 형식 내용 생성 - 새로 추가
+     * @brief JSON 형식 내용
      */
     std::string buildJsonContent(const AlarmMessage& alarm, const json& config) const;
     
     /**
-     * @brief CSV 형식 내용 생성 - 새로 추가
+     * @brief CSV 형식 내용
      */
     std::string buildCsvContent(const AlarmMessage& alarm, const json& config) const;
     
     /**
-     * @brief 텍스트 형식 내용 생성 - 새로 추가
+     * @brief 텍스트 형식 내용
      */
     std::string buildTextContent(const AlarmMessage& alarm, const json& config) const;
     
     /**
-     * @brief XML 형식 내용 생성 - 새로 추가
+     * @brief XML 형식 내용
      */
     std::string buildXmlContent(const AlarmMessage& alarm, const json& config) const;
     
     /**
-     * @brief 원자적 파일 쓰기 - alarm, config 파라미터 추가 (수정됨)
+     * @brief 파일 쓰기 (원자적/직접)
      */
-    bool writeFileAtomic(const std::string& file_path, const std::string& content,
-                        const AlarmMessage& alarm, const json& config);
+    bool writeFile(const std::string& file_path, const std::string& content, 
+                   const json& config) const;
     
     /**
-     * @brief 직접 파일 쓰기 - 이름 및 파라미터 수정 (writeFileDirect → writeFileDirectly)
+     * @brief 템플릿 확장
      */
-    bool writeFileDirectly(const std::string& file_path, const std::string& content,
-                          const AlarmMessage& alarm, const json& config);
+    std::string expandTemplate(const std::string& template_str, 
+                               const AlarmMessage& alarm) const;
     
     /**
-     * @brief 백업 파일 생성
-     */
-    void createBackupFile(const std::string& original_path);
-    
-    /**
-     * @brief 로테이션 필요 여부 체크 및 실행
-     */
-    void checkAndRotateIfNeeded(const std::string& file_path);
-    
-    /**
-     * @brief 파일 로테이션 실행
-     */
-    void rotateFile(const std::string& file_path);
-    
-    /**
-     * @brief 디렉토리 내 파일 수 체크
-     */
-    void checkDirectoryFileCount(const std::string& file_path);
-    
-    /**
-     * @brief 오래된 파일 정리
-     */
-    void cleanupOldFiles(const std::string& file_path);
-    
-    /**
-     * @brief 내용 압축
-     */
-    std::string compressContent(const std::string& content) const;
-    
-    /**
-     * @brief 파일 확장자 반환
-     */
-    std::string getFileExtension() const;
-    
-    /**
-     * @brief 압축 확장자 반환
-     */
-    std::string getCompressionExtension() const;
-    
-    /**
-     * @brief 파일 권한 설정
-     */
-    void setFilePermissions(const std::string& file_path);
-    
-    /**
-     * @brief 파일명 안전화 (금지 문자 제거)
+     * @brief 파일명 안전화
      */
     std::string sanitizeFilename(const std::string& filename) const;
     
@@ -272,36 +175,44 @@ private:
     std::string getCurrentTimestamp() const;
     
     /**
-     * @brief 타임스탬프 문자열 생성 (파일명용)
+     * @brief 타임스탬프 문자열 (파일명용)
      */
     std::string generateTimestampString() const;
     
     /**
-     * @brief 날짜 문자열 생성 (YYYY-MM-DD)
+     * @brief 날짜 문자열
      */
     std::string generateDateString() const;
     
     /**
-     * @brief 연도 문자열 생성 (YYYY)
+     * @brief 연도 문자열
      */
     std::string generateYearString() const;
     
     /**
-     * @brief 월 문자열 생성 (MM)
+     * @brief 월 문자열
      */
     std::string generateMonthString() const;
     
     /**
-     * @brief 일 문자열 생성 (DD)
+     * @brief 일 문자열
      */
     std::string generateDayString() const;
     
     /**
-     * @brief 시간 문자열 생성 (HH)
+     * @brief 시간 문자열
      */
     std::string generateHourString() const;
-
+    
+    /**
+     * @brief XML 이스케이프
+     */
     std::string escapeXml(const std::string& text) const;
+    
+    /**
+     * @brief 파일 확장자 반환
+     */
+    std::string getFileExtension(const std::string& format) const;
 };
 
 } // namespace CSP
