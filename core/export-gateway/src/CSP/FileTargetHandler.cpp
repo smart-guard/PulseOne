@@ -464,14 +464,14 @@ std::string FileTargetHandler::buildFileContent(const AlarmMessage& alarm, const
 std::string FileTargetHandler::buildJsonContent(const AlarmMessage& alarm, const json& config) const {
     json content;
     
-    // 기본 알람 데이터
-    content["building_id"] = alarm.bd;
-    content["point_name"] = alarm.nm;
-    content["value"] = alarm.vl;
-    content["timestamp"] = alarm.tm;
-    content["alarm_flag"] = alarm.al;
-    content["status"] = alarm.st;
-    content["description"] = alarm.des;
+    // ✅ icos C# AlarmMessage 포맷 사용
+    content["bd"] = alarm.bd;        // Building ID
+    content["nm"] = alarm.nm;        // Point Name
+    content["vl"] = alarm.vl;        // Value
+    content["tm"] = alarm.tm;        // Timestamp
+    content["al"] = alarm.al;        // Alarm Flag
+    content["st"] = alarm.st;        // Status
+    content["des"] = alarm.des;      // Description
     
     // 메타데이터
     content["source"] = "PulseOne-CSPGateway";
@@ -505,13 +505,14 @@ std::string FileTargetHandler::buildJsonContent(const AlarmMessage& alarm, const
 std::string FileTargetHandler::buildCsvContent(const AlarmMessage& alarm, const json& config) const {
     std::ostringstream csv;
     
-    // CSV 헤더
+    // CSV 헤더 (icos 필드명)
     bool add_header = config.value("csv_add_header", true);
     if (add_header && !file_options_.append_mode) {
-        csv << "building_id,point_name,value,timestamp,alarm_flag,status,description,file_timestamp\n";
+        // ✅ icos 필드명: bd, nm, vl, tm, al, st, des
+        csv << "bd,nm,vl,tm,al,st,des,file_timestamp\n";
     }
     
-    // CSV 데이터 행
+    // CSV 데이터 행 (icos 포맷)
     csv << alarm.bd << ",";
     csv << "\"" << alarm.nm << "\",";
     csv << alarm.vl << ",";
@@ -521,9 +522,8 @@ std::string FileTargetHandler::buildCsvContent(const AlarmMessage& alarm, const 
     csv << "\"" << alarm.des << "\",";
     csv << "\"" << getCurrentTimestamp() << "\"";
     
-    if (file_options_.append_mode) {
-        csv << "\n";
-    }
+    // 줄바꿈
+    csv << "\n";
     
     return csv.str();
 }
@@ -562,30 +562,44 @@ std::string FileTargetHandler::buildTextContent(const AlarmMessage& alarm, const
 std::string FileTargetHandler::buildXmlContent(const AlarmMessage& alarm, const json& config) const {
     std::ostringstream xml;
     
-    bool add_header = config.value("xml_add_header", true);
-    if (add_header && !file_options_.append_mode) {
-        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-        xml << "<alarms>\n";
+    xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    xml << "<alarm>\n";
+    
+    // ✅ icos C# AlarmMessage XML 태그
+    xml << "  <bd>" << alarm.bd << "</bd>\n";
+    xml << "  <nm>" << escapeXml(alarm.nm) << "</nm>\n";
+    xml << "  <vl>" << alarm.vl << "</vl>\n";
+    xml << "  <tm>" << alarm.tm << "</tm>\n";
+    xml << "  <al>" << alarm.al << "</al>\n";
+    xml << "  <st>" << alarm.st << "</st>\n";
+    xml << "  <des>" << escapeXml(alarm.des) << "</des>\n";
+    
+    // 메타데이터
+    xml << "  <source>PulseOne-CSPGateway</source>\n";
+    xml << "  <file_timestamp>" << getCurrentTimestamp() << "</file_timestamp>\n";
+    xml << "  <alarm_status>" << escapeXml(alarm.get_alarm_status_string()) << "</alarm_status>\n";
+    
+    // 추가 필드 (옵션)
+    if (config.contains("additional_fields") && config["additional_fields"].is_object()) {
+        xml << "  <additional>\n";
+        for (auto& [key, value] : config["additional_fields"].items()) {
+            xml << "    <" << key << ">";
+            if (value.is_string()) {
+                xml << escapeXml(value.get<std::string>());
+            } else {
+                xml << value.dump();
+            }
+            xml << "</" << key << ">\n";
+        }
+        xml << "  </additional>\n";
     }
     
-    xml << "  <alarm>\n";
-    xml << "    <building_id>" << alarm.bd << "</building_id>\n";
-    xml << "    <point_name><![CDATA[" << alarm.nm << "]]></point_name>\n";
-    xml << "    <value>" << alarm.vl << "</value>\n";
-    xml << "    <timestamp><![CDATA[" << alarm.tm << "]]></timestamp>\n";
-    xml << "    <alarm_flag>" << alarm.al << "</alarm_flag>\n";
-    xml << "    <status>" << alarm.st << "</status>\n";
-    xml << "    <description><![CDATA[" << alarm.des << "]]></description>\n";
-    xml << "    <file_timestamp><![CDATA[" << getCurrentTimestamp() << "]]></file_timestamp>\n";
-    xml << "    <source>PulseOne-CSPGateway</source>\n";
-    xml << "  </alarm>\n";
-    
-    if (!file_options_.append_mode) {
-        xml << "</alarms>\n";
-    }
+    xml << "</alarm>\n";
     
     return xml.str();
 }
+
+
 
 bool FileTargetHandler::writeFileAtomic(const std::string& file_path, const std::string& content,
                                        const AlarmMessage& /* alarm */, const json& /* config */) {
@@ -911,6 +925,24 @@ std::string FileTargetHandler::generateHourString() const {
     std::ostringstream oss;
     oss << std::put_time(std::gmtime(&time_t), "%H");
     return oss.str();
+}
+
+std::string FileTargetHandler::escapeXml(const std::string& text) const {
+    std::string result;
+    result.reserve(text.length() + 16);
+    
+    for (char c : text) {
+        switch (c) {
+            case '<': result += "&lt;"; break;
+            case '>': result += "&gt;"; break;
+            case '&': result += "&amp;"; break;
+            case '"': result += "&quot;"; break;
+            case '\'': result += "&apos;"; break;
+            default: result += c; break;
+        }
+    }
+    
+    return result;
 }
 
 } // namespace CSP

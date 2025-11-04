@@ -244,16 +244,16 @@ bool DynamicTargetManager::loadFromDatabase() {
     try {
         LogManager::getInstance().Info("DB에서 타겟 로드 시작...");
         
-        // 🔧 수정 5: RepositoryFactory의 올바른 메서드 사용
-        auto& factory = RepositoryFactory::getInstance();
-        auto target_repo = factory.getExportTargetRepository();  // getRepository<>() 제거
+        if (!export_target_repo_) {
+            LogManager::getInstance().Error("ExportTargetRepository가 초기화되지 않음");
+            return false;
+        }
         
-        // SQLite는 findByEnabled 사용
-        auto entities = target_repo->findByEnabled(true);
-        
-        if (entities.empty()) {
-            LogManager::getInstance().Warn("활성화된 타겟이 없습니다");
-            return true;
+        // DB에서 활성화된 타겟 로드
+        std::vector<ExportTargetEntity> entities;
+        if (!export_target_repo_->findByEnabled(true, entities)) {
+            LogManager::getInstance().Warn("활성화된 타겟이 없거나 조회 실패");
+            return false;
         }
         
         std::unique_lock<std::shared_mutex> lock(targets_mutex_);
@@ -269,6 +269,7 @@ bool DynamicTargetManager::loadFromDatabase() {
                 target.priority = 100;
                 target.description = entity.getDescription();
                 
+                // ✅ 1. Config JSON 파싱
                 try {
                     target.config = json::parse(entity.getConfig());
                 } catch (const std::exception& e) {
@@ -277,6 +278,22 @@ bool DynamicTargetManager::loadFromDatabase() {
                     continue;
                 }
                 
+                // ✅ 2. export_mode 추가 (중요!)
+                if (!entity.getExportMode().empty()) {
+                    target.config["export_mode"] = entity.getExportMode();
+                }
+                
+                // ✅ 3. export_interval 추가
+                if (entity.getExportInterval() > 0) {
+                    target.config["export_interval"] = entity.getExportInterval();
+                }
+                
+                // ✅ 4. batch_size 추가
+                if (entity.getBatchSize() > 0) {
+                    target.config["batch_size"] = entity.getBatchSize();
+                }
+                
+                // ✅ 5. template_id 추가
                 if (entity.getTemplateId().has_value()) {
                     target.config["template_id"] = entity.getTemplateId().value();
                 }
@@ -284,7 +301,10 @@ bool DynamicTargetManager::loadFromDatabase() {
                 targets_.push_back(target);
                 loaded_count++;
                 
-                LogManager::getInstance().Debug("타겟 로드: " + target.name + " (" + target.type + ")");
+                LogManager::getInstance().Debug(
+                    "타겟 로드: " + target.name + " (" + target.type + "), " +
+                    "export_mode=" + entity.getExportMode()
+                );
                 
             } catch (const std::exception& e) {
                 LogManager::getInstance().Error("타겟 엔티티 처리 실패: " + std::string(e.what()));
@@ -300,6 +320,7 @@ bool DynamicTargetManager::loadFromDatabase() {
         return false;
     }
 }
+
 
 bool DynamicTargetManager::forceReload() {
     LogManager::getInstance().Info("강제 리로드...");
@@ -411,11 +432,29 @@ std::vector<TargetSendResult> DynamicTargetManager::sendAlarmToTargets(const Ala
         }
     }
     
-    // 2. 모든 활성 타겟으로 전송
+    // 2. export_mode="alarm"인 타겟으로만 전송
     std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+    
+    int filtered_count = 0;
+    int sent_count = 0;
     
     for (size_t i = 0; i < targets_.size(); ++i) {
         if (!targets_[i].enabled) {
+            continue;
+        }
+        
+        // ✅ export_mode 체크
+        std::string export_mode = "alarm"; // 기본값
+        if (targets_[i].config.contains("export_mode")) {
+            export_mode = targets_[i].config["export_mode"].get<std::string>();
+        }
+        
+        // alarm 모드가 아니면 스킵
+        if (export_mode != "alarm") {
+            filtered_count++;
+            LogManager::getInstance().Debug(
+                "타겟 스킵 (export_mode=" + export_mode + "): " + targets_[i].name
+            );
             continue;
         }
         
@@ -427,12 +466,12 @@ std::vector<TargetSendResult> DynamicTargetManager::sendAlarmToTargets(const Ala
         
         if (processTargetByIndex(i, alarm, result)) {
             total_successes_.fetch_add(1);
+            sent_count++;
         } else {
             total_failures_.fetch_add(1);
         }
         
         auto end_time = std::chrono::steady_clock::now();
-        // 🔧 수정 6: response_time_ms → response_time (duration 타입)
         result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(
             end_time - start_time);
         
@@ -440,6 +479,17 @@ std::vector<TargetSendResult> DynamicTargetManager::sendAlarmToTargets(const Ala
     }
     
     total_requests_.fetch_add(results.size());
+    
+    if (results.empty()) {
+        LogManager::getInstance().Warn(
+            "알람 타겟 없음 (필터링: " + std::to_string(filtered_count) + "개)"
+        );
+    } else {
+        LogManager::getInstance().Info(
+            "알람 전송 완료: " + std::to_string(sent_count) + "개 타겟 " +
+            "(필터링: " + std::to_string(filtered_count) + "개)"
+        );
+    }
     
     return results;
 }

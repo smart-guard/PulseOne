@@ -522,14 +522,16 @@ std::string MqttTargetHandler::expandTemplateVariables(const std::string& templa
 std::string MqttTargetHandler::createJsonMessage(const AlarmMessage& alarm, const json& config) const {
     json message;
     
-    // 기본 알람 데이터
-    message["building_id"] = alarm.bd;
-    message["point_name"] = alarm.nm;
-    message["value"] = alarm.vl;
-    message["timestamp"] = alarm.tm;
-    message["alarm_flag"] = alarm.al;
-    message["status"] = alarm.st;
-    message["description"] = alarm.des;
+    // ✅ icos C# AlarmMessage 포맷 사용
+    message["bd"] = alarm.bd;        // Building ID
+    message["nm"] = alarm.nm;        // Point Name
+    message["vl"] = alarm.vl;        // Value
+    message["tm"] = alarm.tm;        // Timestamp
+    message["al"] = alarm.al;        // Alarm Flag
+    message["st"] = alarm.st;        // Status
+    message["des"] = alarm.des;      // Description
+    
+    // 알람 상태 문자열 추가 (선택사항)
     message["alarm_status"] = alarm.get_alarm_status_string();
     
     // 메타데이터 (선택사항)

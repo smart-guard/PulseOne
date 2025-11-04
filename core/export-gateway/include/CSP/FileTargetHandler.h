@@ -300,6 +300,8 @@ private:
      * @brief 시간 문자열 생성 (HH)
      */
     std::string generateHourString() const;
+
+    std::string escapeXml(const std::string& text) const;
 };
 
 } // namespace CSP

@@ -507,54 +507,128 @@ AlarmSubscriber::parseAlarmMessage(const std::string& json_str) {
         
         PulseOne::CSP::AlarmMessage alarm;
         
-        // Redis 알람 구조에서 AlarmMessage로 매핑
-        // tenant_id → building_id
-        alarm.bd = j.value("tenant_id", j.value("building_id", 0));
+        // ✅ icos 포맷 필드 매핑 (우선순위: icos → 기존 형식)
         
-        // point_name
-        alarm.nm = j.value("point_name", j.value("name", ""));
+        // 1. Building ID (bd → tenant_id → building_id)
+        if (j.contains("bd")) {
+            alarm.bd = j["bd"].get<int>();
+        } else if (j.contains("tenant_id")) {
+            alarm.bd = j["tenant_id"].get<int>();
+        } else if (j.contains("building_id")) {
+            alarm.bd = j["building_id"].get<int>();
+        } else {
+            alarm.bd = 0;
+        }
         
-        // value를 double로 변환
-        if (j.contains("value")) {
+        // 2. Point Name (nm → point_name → name)
+        if (j.contains("nm")) {
+            alarm.nm = j["nm"].get<std::string>();
+        } else if (j.contains("point_name")) {
+            alarm.nm = j["point_name"].get<std::string>();
+        } else if (j.contains("name")) {
+            alarm.nm = j["name"].get<std::string>();
+        } else {
+            alarm.nm = "";
+        }
+        
+        // 3. Value (vl → value → trigger_value)
+        if (j.contains("vl")) {
+            if (j["vl"].is_number()) {
+                alarm.vl = j["vl"].get<double>();
+            } else if (j["vl"].is_string()) {
+                try {
+                    alarm.vl = std::stod(j["vl"].get<std::string>());
+                } catch (...) {
+                    alarm.vl = 0.0;
+                }
+            }
+        } else if (j.contains("value")) {
             if (j["value"].is_number()) {
                 alarm.vl = j["value"].get<double>();
             } else if (j["value"].is_string()) {
                 try {
-                    std::string value_str = j["value"].get<std::string>();
-                    alarm.vl = std::stod(value_str);
+                    alarm.vl = std::stod(j["value"].get<std::string>());
                 } catch (...) {
                     alarm.vl = 0.0;
                 }
-            } else {
-                alarm.vl = 0.0;
             }
         } else if (j.contains("trigger_value")) {
             alarm.vl = j["trigger_value"].get<double>();
+        } else {
+            alarm.vl = 0.0;
         }
         
-        // timestamp
-        if (j.contains("timestamp")) {
+        // 4. Timestamp (tm → timestamp)
+        if (j.contains("tm")) {
+            if (j["tm"].is_string()) {
+                alarm.tm = j["tm"].get<std::string>();
+            } else if (j["tm"].is_number()) {
+                int64_t ts = j["tm"].get<int64_t>();
+                alarm.tm = std::to_string(ts);
+            }
+        } else if (j.contains("timestamp")) {
             if (j["timestamp"].is_string()) {
                 alarm.tm = j["timestamp"].get<std::string>();
-            } else {
-                // milliseconds -> string
+            } else if (j["timestamp"].is_number()) {
                 int64_t ts = j["timestamp"].get<int64_t>();
                 alarm.tm = std::to_string(ts);
             }
+        } else {
+            // 현재 시간을 기본값으로
+            auto now = std::chrono::system_clock::now();
+            auto time_t = std::chrono::system_clock::to_time_t(now);
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()) % 1000;
+            
+            std::stringstream ss;
+            ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+            ss << "." << std::setfill('0') << std::setw(3) << ms.count();
+            alarm.tm = ss.str();
         }
         
-        // alarm flag (state가 "active"면 1, 아니면 0)
-        if (j.contains("state")) {
-            std::string state = j["state"].get<std::string>();
-            alarm.al = (state == "active" || state == "ACTIVE") ? 1 : 0;
-            alarm.st = alarm.al;
+        // 5. Alarm Flag (al → alarm_flag → state)
+        if (j.contains("al")) {
+            alarm.al = j["al"].get<int>();
         } else if (j.contains("alarm_flag")) {
             alarm.al = j["alarm_flag"].get<int>();
+        } else if (j.contains("state")) {
+            std::string state = j["state"].get<std::string>();
+            alarm.al = (state == "active" || state == "ACTIVE") ? 1 : 0;
+        } else {
+            alarm.al = 0;
+        }
+        
+        // 6. Status (st → status)
+        if (j.contains("st")) {
+            alarm.st = j["st"].get<int>();
+        } else if (j.contains("status")) {
+            alarm.st = j["status"].get<int>();
+        } else {
+            // 기본값: alarm_flag와 동일
             alarm.st = alarm.al;
         }
         
-        // description/message
-        alarm.des = j.value("message", j.value("description", ""));
+        // 7. Description (des → description → message)
+        if (j.contains("des")) {
+            alarm.des = j["des"].get<std::string>();
+        } else if (j.contains("description")) {
+            alarm.des = j["description"].get<std::string>();
+        } else if (j.contains("message")) {
+            alarm.des = j["message"].get<std::string>();
+        } else {
+            alarm.des = "";
+        }
+        
+        // 유효성 검증
+        if (alarm.nm.empty()) {
+            LogManager::getInstance().Warn("알람 파싱 실패: point_name이 비어있음");
+            return std::nullopt;
+        }
+        
+        if (alarm.bd <= 0) {
+            LogManager::getInstance().Warn("알람 파싱 실패: building_id가 유효하지 않음");
+            return std::nullopt;
+        }
         
         return alarm;
         
