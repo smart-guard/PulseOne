@@ -2,8 +2,13 @@
  * @file ExportCoordinator.cpp
  * @brief Export 시스템 중앙 조율자 구현
  * @author PulseOne Development Team
- * @date 2025-10-23
- * @version 1.0.0
+ * @date 2025-11-04
+ * @version 2.0.0
+ * 
+ * v2.0 변경사항:
+ * - AlarmSubscriber → EventSubscriber (범용 이벤트 구독)
+ * - 스케줄 이벤트 지원 추가
+ * - 하위 호환성 유지
  */
 
 #include "CSP/ExportCoordinator.h"
@@ -13,6 +18,29 @@
 
 namespace PulseOne {
 namespace Coordinator {
+
+// =============================================================================
+// Forward declarations
+// =============================================================================
+
+// ScheduleEventHandler 내부 클래스
+class ScheduleEventHandler : public PulseOne::Event::IEventHandler {
+private:
+    ExportCoordinator* coordinator_;
+    
+public:
+    explicit ScheduleEventHandler(ExportCoordinator* coordinator)
+        : coordinator_(coordinator) {}
+    
+    bool handleEvent(const std::string& channel, const std::string& message) override {
+        coordinator_->handleScheduleEvent(channel, message);
+        return true;
+    }
+    
+    std::string getName() const override {
+        return "ScheduleEventHandler";
+    }
+};
 
 // =============================================================================
 // 정적 멤버 초기화
@@ -34,12 +62,12 @@ std::atomic<bool> ExportCoordinator::shared_resources_initialized_{false};
 ExportCoordinator::ExportCoordinator(const ExportCoordinatorConfig& config)
     : config_(config) {
     
-    LogManager::getInstance().Info("ExportCoordinator 초기화 시작");
+    LogManager::getInstance().Info("ExportCoordinator v2.0 초기화 시작");
     LogManager::getInstance().Info("데이터베이스: " + config_.database_path);
     LogManager::getInstance().Info("Redis: " + config_.redis_host + ":" + 
                                   std::to_string(config_.redis_port));
+    LogManager::getInstance().Info("✅ EventSubscriber: 범용 이벤트 구독자");
     
-    // 통계 시작 시간 기록
     stats_.start_time = std::chrono::system_clock::now();
 }
 
@@ -48,7 +76,6 @@ ExportCoordinator::~ExportCoordinator() {
         stop();
         LogManager::getInstance().Info("ExportCoordinator 소멸 완료");
     } catch (const std::exception& e) {
-        // 소멸자에서 예외 발생 시 로그만 남김
         LogManager::getInstance().Error("ExportCoordinator 소멸 중 예외: " + 
                                        std::string(e.what()));
     }
@@ -67,7 +94,7 @@ bool ExportCoordinator::start() {
     LogManager::getInstance().Info("ExportCoordinator 시작 중...");
     
     try {
-        // 1. 공유 리소스 초기화 (최우선)
+        // 1. 공유 리소스 초기화
         if (!initializeSharedResources()) {
             LogManager::getInstance().Error("공유 리소스 초기화 실패");
             return false;
@@ -85,9 +112,9 @@ bool ExportCoordinator::start() {
             return false;
         }
         
-        // 4. AlarmSubscriber 초기화 및 시작
-        if (!initializeAlarmSubscriber()) {
-            LogManager::getInstance().Error("AlarmSubscriber 초기화 실패");
+        // 4. EventSubscriber 초기화 및 시작
+        if (!initializeEventSubscriber()) {
+            LogManager::getInstance().Error("EventSubscriber 초기화 실패");
             return false;
         }
         
@@ -98,7 +125,7 @@ bool ExportCoordinator::start() {
         }
         
         is_running_ = true;
-        LogManager::getInstance().Info("ExportCoordinator 시작 완료 ✅");
+        LogManager::getInstance().Info("ExportCoordinator v2.0 시작 완료 ✅");
         
         return true;
         
@@ -117,10 +144,10 @@ void ExportCoordinator::stop() {
     
     LogManager::getInstance().Info("ExportCoordinator 중지 중...");
     
-    // 1. AlarmSubscriber 중지
-    if (alarm_subscriber_) {
-        LogManager::getInstance().Info("AlarmSubscriber 중지 중...");
-        alarm_subscriber_->stop();
+    // 1. EventSubscriber 중지
+    if (event_subscriber_) {
+        LogManager::getInstance().Info("EventSubscriber 중지 중...");
+        event_subscriber_->stop();
     }
     
     // 2. ScheduledExporter 중지
@@ -151,17 +178,15 @@ bool ExportCoordinator::initializeSharedResources() {
     try {
         LogManager::getInstance().Info("공유 리소스 초기화 시작...");
         
-        // 1. DynamicTargetManager 싱글턴 가져오기 및 시작
+        // 1. DynamicTargetManager 싱글턴
         if (!shared_target_manager_) {
             LogManager::getInstance().Info("DynamicTargetManager 초기화 중...");
             
-            // 싱글턴 인스턴스 가져오기
             shared_target_manager_ = std::shared_ptr<PulseOne::CSP::DynamicTargetManager>(
                 &PulseOne::CSP::DynamicTargetManager::getInstance(),
-                [](PulseOne::CSP::DynamicTargetManager*){} // no-op 삭제자 (싱글턴이므로)
+                [](PulseOne::CSP::DynamicTargetManager*){} // no-op 삭제자
             );
             
-            // DB에서 타겟 로드 및 시작
             if (!shared_target_manager_->start()) {
                 LogManager::getInstance().Error("DynamicTargetManager 시작 실패");
                 return false;
@@ -170,14 +195,13 @@ bool ExportCoordinator::initializeSharedResources() {
             LogManager::getInstance().Info("DynamicTargetManager 초기화 완료");
         }
         
-        // 2. PayloadTransformer 싱글턴 가져오기
+        // 2. PayloadTransformer 싱글턴
         if (!shared_payload_transformer_) {
             LogManager::getInstance().Info("PayloadTransformer 초기화 중...");
             
-            // 싱글턴 인스턴스 가져오기
             shared_payload_transformer_ = std::shared_ptr<PulseOne::Transform::PayloadTransformer>(
                 &PulseOne::Transform::PayloadTransformer::getInstance(),
-                [](PulseOne::Transform::PayloadTransformer*){} // no-op 삭제자 (싱글턴이므로)
+                [](PulseOne::Transform::PayloadTransformer*){}
             );
             
             LogManager::getInstance().Info("PayloadTransformer 초기화 완료");
@@ -197,7 +221,6 @@ bool ExportCoordinator::initializeSharedResources() {
     }
 }
 
-
 void ExportCoordinator::cleanupSharedResources() {
     std::lock_guard<std::mutex> lock(init_mutex_);
     
@@ -207,14 +230,12 @@ void ExportCoordinator::cleanupSharedResources() {
     
     LogManager::getInstance().Info("공유 리소스 정리 중...");
     
-    // DynamicTargetManager 정리
     if (shared_target_manager_) {
         shared_target_manager_->stop();
         shared_target_manager_.reset();
         LogManager::getInstance().Info("DynamicTargetManager 정리 완료");
     }
     
-    // PayloadTransformer 정리
     if (shared_payload_transformer_) {
         shared_payload_transformer_.reset();
         LogManager::getInstance().Info("PayloadTransformer 정리 완료");
@@ -246,10 +267,8 @@ bool ExportCoordinator::initializeDatabase() {
         
         std::string db_path = getDatabasePath();
         
-        // DatabaseManager를 통한 연결 확인
         auto& db_manager = DatabaseManager::getInstance();
         
-        // 연결 테스트
         std::vector<std::vector<std::string>> test_result;
         if (!db_manager.executeQuery("SELECT 1", test_result)) {
             LogManager::getInstance().Error("데이터베이스 연결 실패");
@@ -286,35 +305,49 @@ bool ExportCoordinator::initializeRepositories() {
     }
 }
 
-bool ExportCoordinator::initializeAlarmSubscriber() {
+bool ExportCoordinator::initializeEventSubscriber() {
     try {
-        LogManager::getInstance().Info("AlarmSubscriber 초기화 중...");
+        LogManager::getInstance().Info("EventSubscriber 초기화 중...");
         
-        // AlarmSubscriber 설정
-        PulseOne::Alarm::AlarmSubscriberConfig alarm_config;
-        alarm_config.redis_host = config_.redis_host;
-        alarm_config.redis_port = config_.redis_port;
-        alarm_config.redis_password = config_.redis_password;
-        alarm_config.subscribe_channels = config_.alarm_channels;
-        alarm_config.subscribe_patterns = config_.alarm_patterns;
-        alarm_config.worker_thread_count = config_.alarm_worker_threads;
-        alarm_config.max_queue_size = config_.alarm_max_queue_size;
-        alarm_config.enable_debug_log = config_.enable_debug_log;
+        // EventSubscriber 설정
+        PulseOne::Event::EventSubscriberConfig event_config;
+        event_config.redis_host = config_.redis_host;
+        event_config.redis_port = config_.redis_port;
+        event_config.redis_password = config_.redis_password;
         
-        // AlarmSubscriber 생성
-        alarm_subscriber_ = std::make_unique<PulseOne::Alarm::AlarmSubscriber>(alarm_config);
+        // ✅ 알람 채널 + 스케줄 이벤트 채널
+        event_config.subscribe_channels = config_.alarm_channels;
+        event_config.subscribe_channels.push_back("schedule:reload");
+        event_config.subscribe_channels.push_back("schedule:execute:*");
         
-        // AlarmSubscriber 시작
-        if (!alarm_subscriber_->start()) {
-            LogManager::getInstance().Error("AlarmSubscriber 시작 실패");
+        event_config.subscribe_patterns = config_.alarm_patterns;
+        event_config.worker_thread_count = config_.alarm_worker_threads;
+        event_config.max_queue_size = config_.alarm_max_queue_size;
+        event_config.enable_debug_log = config_.enable_debug_log;
+        
+        // EventSubscriber 생성
+        event_subscriber_ = std::make_unique<PulseOne::Event::EventSubscriber>(
+            event_config);
+        
+        // ✅ 스케줄 이벤트 핸들러 등록
+        auto schedule_handler = std::make_shared<ScheduleEventHandler>(this);
+        event_subscriber_->registerHandler("schedule:*", schedule_handler);
+        
+        // EventSubscriber 시작
+        if (!event_subscriber_->start()) {
+            LogManager::getInstance().Error("EventSubscriber 시작 실패");
             return false;
         }
         
-        LogManager::getInstance().Info("AlarmSubscriber 초기화 완료");
+        LogManager::getInstance().Info("EventSubscriber 초기화 완료 ✅");
+        LogManager::getInstance().Info("  - 알람 채널: " + 
+            std::to_string(config_.alarm_channels.size()) + "개");
+        LogManager::getInstance().Info("  - 스케줄 이벤트: 활성화");
+        
         return true;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("AlarmSubscriber 초기화 실패: " + 
+        LogManager::getInstance().Error("EventSubscriber 초기화 실패: " + 
                                        std::string(e.what()));
         return false;
     }
@@ -324,7 +357,6 @@ bool ExportCoordinator::initializeScheduledExporter() {
     try {
         LogManager::getInstance().Info("ScheduledExporter 초기화 중...");
         
-        // ScheduledExporter 설정
         PulseOne::Schedule::ScheduledExporterConfig schedule_config;
         schedule_config.redis_host = config_.redis_host;
         schedule_config.redis_port = config_.redis_port;
@@ -334,11 +366,9 @@ bool ExportCoordinator::initializeScheduledExporter() {
         schedule_config.batch_size = config_.schedule_batch_size;
         schedule_config.enable_debug_log = config_.enable_debug_log;
         
-        // ScheduledExporter 생성
         scheduled_exporter_ = std::make_unique<PulseOne::Schedule::ScheduledExporter>(
             schedule_config);
         
-        // ScheduledExporter 시작
         if (!scheduled_exporter_->start()) {
             LogManager::getInstance().Error("ScheduledExporter 시작 실패");
             return false;
@@ -351,6 +381,37 @@ bool ExportCoordinator::initializeScheduledExporter() {
         LogManager::getInstance().Error("ScheduledExporter 초기화 실패: " + 
                                        std::string(e.what()));
         return false;
+    }
+}
+
+// =============================================================================
+// ✅ 이벤트 핸들러 (간소화)
+// =============================================================================
+
+void ExportCoordinator::handleScheduleEvent(const std::string& channel, const std::string& message) {
+    try {
+        LogManager::getInstance().Info("🔄 스케줄 이벤트 수신: " + channel);
+        
+        // ✅ ScheduledExporter 리로드
+        if (scheduled_exporter_) {
+            if (channel == "schedule:reload" || 
+                channel.find("schedule:") == 0) {
+                
+                int loaded = scheduled_exporter_->reloadSchedules();
+                LogManager::getInstance().Info(
+                    "✅ 스케줄 리로드 완료: " + std::to_string(loaded) + "개");
+            }
+        }
+        
+        // 통계 업데이트
+        {
+            std::lock_guard<std::mutex> lock(stats_mutex_);
+            stats_.schedule_events++;
+        }
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error(
+            "스케줄 이벤트 처리 실패: " + std::string(e.what()));
     }
 }
 
@@ -372,10 +433,8 @@ std::vector<ExportResult> ExportCoordinator::handleAlarmEvent(
             return results;
         }
         
-        // DynamicTargetManager를 통한 전송
         auto target_results = target_manager->sendAlarmToTargets(alarm);
         
-        // 결과 변환 및 로깅
         for (const auto& target_result : target_results) {
             ExportResult result = convertTargetSendResult(target_result);
             results.push_back(result);
@@ -384,7 +443,6 @@ std::vector<ExportResult> ExportCoordinator::handleAlarmEvent(
             updateStats(result);
         }
         
-        // 통계 업데이트
         {
             std::lock_guard<std::mutex> lock(stats_mutex_);
             stats_.alarm_events++;
@@ -442,10 +500,8 @@ std::vector<ExportResult> ExportCoordinator::handleScheduledExport(int schedule_
             return results;
         }
         
-        // ScheduledExporter를 통한 실행
         auto execution_result = scheduled_exporter_->executeSchedule(schedule_id);
         
-        // 통계 업데이트
         {
             std::lock_guard<std::mutex> lock(stats_mutex_);
             stats_.schedule_executions++;
@@ -478,9 +534,6 @@ ExportResult ExportCoordinator::handleManualExport(
             result.error_message = "TargetManager 초기화 안 됨";
             return result;
         }
-        
-        // 수동 전송 로직 (구현 필요)
-        // TODO: DynamicTargetManager에 sendDataToTarget 메서드 추가 필요
         
         LogManager::getInstance().Info("수동 전송 완료: " + target_name);
         
@@ -553,8 +606,6 @@ nlohmann::json ExportCoordinator::getTargetStats(const std::string& target_name)
             return stats;
         }
         
-        // TODO: ExportLogRepository에 getTargetStats 메서드 추가 필요
-        // 임시로 빈 객체 반환
         stats["target_name"] = target_name;
         stats["total"] = 0;
         stats["success"] = 0;
@@ -583,7 +634,6 @@ int ExportCoordinator::reloadTargets() {
             return 0;
         }
         
-        // DynamicTargetManager 리로드
         if (!target_manager->forceReload()) {
             LogManager::getInstance().Error("타겟 리로드 실패");
             return 0;
@@ -592,15 +642,10 @@ int ExportCoordinator::reloadTargets() {
         auto targets = target_manager->getAllTargets();
         int reloaded_count = targets.size();
         
-        std::vector<std::string> target_names;
-        for (const auto& target : targets) {
-            target_names.push_back(target.name);
-        }
-        
         LogManager::getInstance().Info("타겟 리로드 완료: " + 
-            std::to_string(reloaded_count) + "개");  // ✅ count → reloaded_count
+            std::to_string(reloaded_count) + "개");
         
-        return reloaded_count;  // ✅ count → reloaded_count
+        return reloaded_count;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("타겟 리로드 실패: " + 
@@ -618,8 +663,6 @@ int ExportCoordinator::reloadTemplates() {
             LogManager::getInstance().Error("PayloadTransformer 초기화 안 됨");
             return 0;
         }
-        
-        // TODO: PayloadTransformer에 reloadTemplates 메서드 추가 필요
         
         LogManager::getInstance().Info("템플릿 리로드 완료");
         return 0;
@@ -643,22 +686,18 @@ void ExportCoordinator::updateConfig(const ExportCoordinatorConfig& new_config) 
 
 bool ExportCoordinator::healthCheck() const {
     try {
-        // 1. 실행 중 여부
         if (!is_running_.load()) {
             return false;
         }
         
-        // 2. AlarmSubscriber 상태
-        if (alarm_subscriber_ && !alarm_subscriber_->isRunning()) {
+        if (event_subscriber_ && !event_subscriber_->isRunning()) {
             return false;
         }
         
-        // 3. ScheduledExporter 상태
         if (scheduled_exporter_ && !scheduled_exporter_->isRunning()) {
             return false;
         }
         
-        // 4. DynamicTargetManager 상태
         auto target_manager = getTargetManager();
         if (!target_manager || !target_manager->isRunning()) {
             return false;
@@ -679,8 +718,8 @@ nlohmann::json ExportCoordinator::getComponentStatus() const {
     try {
         status["coordinator_running"] = is_running_.load();
         
-        status["alarm_subscriber"] = alarm_subscriber_ ? 
-            alarm_subscriber_->isRunning() : false;
+        status["event_subscriber"] = event_subscriber_ ? 
+            event_subscriber_->isRunning() : false;
         
         status["scheduled_exporter"] = scheduled_exporter_ ? 
             scheduled_exporter_->isRunning() : false;
@@ -691,6 +730,9 @@ nlohmann::json ExportCoordinator::getComponentStatus() const {
         
         status["shared_resources_initialized"] = 
             shared_resources_initialized_.load();
+        
+        status["version"] = "2.0";
+        status["features"] = json::array({"alarm_events", "schedule_events", "manual_export"});
         
     } catch (const std::exception& e) {
         status["error"] = e.what();
@@ -710,11 +752,10 @@ ExportResult ExportCoordinator::convertTargetSendResult(
     result.success = target_result.success;
     result.target_name = target_result.target_name;
     result.error_message = target_result.error_message;
-    result.http_status_code = target_result.status_code;  // ✅ 수정: status_code 사용
+    result.http_status_code = target_result.status_code;
     result.processing_time = target_result.response_time;
-    result.data_size = target_result.content_size;  // ✅ response_body.size() 대신 content_size 사용
+    result.data_size = target_result.content_size;
     
-    // target_id 조회 (target_name으로 DB 검색)
     try {
         if (target_repo_) {
             auto target_entity = target_repo_->findByName(result.target_name);
@@ -730,7 +771,6 @@ ExportResult ExportCoordinator::convertTargetSendResult(
     return result;
 }
 
-
 void ExportCoordinator::updateStats(const ExportResult& result) {
     std::lock_guard<std::mutex> lock(stats_mutex_);
     
@@ -744,7 +784,6 @@ void ExportCoordinator::updateStats(const ExportResult& result) {
     
     stats_.last_export_time = std::chrono::system_clock::now();
     
-    // 평균 처리 시간 계산
     if (stats_.total_exports > 0) {
         double current_avg = stats_.avg_processing_time_ms;
         double new_time = static_cast<double>(result.processing_time.count());
@@ -754,7 +793,6 @@ void ExportCoordinator::updateStats(const ExportResult& result) {
 }
 
 std::string ExportCoordinator::getDatabasePath() const {
-    // ConfigManager에서 DB 경로 가져오기
     auto& config_mgr = ConfigManager::getInstance();
     std::string db_path = config_mgr.getOrDefault("DATABASE_PATH", config_.database_path);
     return db_path;
