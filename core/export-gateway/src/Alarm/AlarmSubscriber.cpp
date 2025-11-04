@@ -503,75 +503,172 @@ void AlarmSubscriber::handleMessage(const std::string& channel,
 std::optional<PulseOne::CSP::AlarmMessage> 
 AlarmSubscriber::parseAlarmMessage(const std::string& json_str) {
     try {
+        // ===================================================================
+        // 1단계: JSON 파싱
+        // ===================================================================
+        LogManager::getInstance().Debug("🔍 [parseAlarm] JSON 파싱 시작");
+        LogManager::getInstance().Debug("📄 [parseAlarm] JSON 원본: " + json_str);
+        
         auto j = json::parse(json_str);
+        
+        LogManager::getInstance().Debug("✅ [parseAlarm] JSON 파싱 성공");
+        LogManager::getInstance().Debug("📊 [parseAlarm] JSON 키 개수: " + 
+            std::to_string(j.size()));
+        
+        // JSON 키 목록 출력 (디버그)
+        std::stringstream keys_ss;
+        keys_ss << "🔑 [parseAlarm] 발견된 키: [";
+        bool first = true;
+        for (auto it = j.begin(); it != j.end(); ++it) {
+            if (!first) keys_ss << ", ";
+            keys_ss << "\"" << it.key() << "\"";
+            first = false;
+        }
+        keys_ss << "]";
+        LogManager::getInstance().Debug(keys_ss.str());
         
         PulseOne::CSP::AlarmMessage alarm;
         
-        // ✅ icos 포맷 필드 매핑 (우선순위: icos → 기존 형식)
+        // ===================================================================
+        // 2단계: 필드별 파싱 (icos 형식 우선)
+        // ===================================================================
         
+        // -------------------------------------------------------------------
         // 1. Building ID (bd → tenant_id → building_id)
+        // -------------------------------------------------------------------
+        LogManager::getInstance().Debug("🏢 [parseAlarm] Building ID 파싱 시작");
+        
         if (j.contains("bd")) {
             alarm.bd = j["bd"].get<int>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] bd 필드 발견 → 값: " + 
+                std::to_string(alarm.bd));
         } else if (j.contains("tenant_id")) {
             alarm.bd = j["tenant_id"].get<int>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] tenant_id 필드 발견 → 값: " + 
+                std::to_string(alarm.bd));
         } else if (j.contains("building_id")) {
             alarm.bd = j["building_id"].get<int>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] building_id 필드 발견 → 값: " + 
+                std::to_string(alarm.bd));
         } else {
             alarm.bd = 0;
+            LogManager::getInstance().Warn("⚠️ [parseAlarm] Building ID 필드 없음, 기본값: 0");
         }
         
+        // -------------------------------------------------------------------
         // 2. Point Name (nm → point_name → name)
+        // -------------------------------------------------------------------
+        LogManager::getInstance().Debug("📍 [parseAlarm] Point Name 파싱 시작");
+        
+        bool nm_found = false;
+        
         if (j.contains("nm")) {
-            alarm.nm = j["nm"].get<std::string>();
+            std::string nm_value = j["nm"].get<std::string>();
+            alarm.nm = nm_value;
+            nm_found = true;
+            LogManager::getInstance().Debug("✅ [parseAlarm] nm 필드 발견");
+            LogManager::getInstance().Debug("📝 [parseAlarm] nm 원본 값: \"" + nm_value + "\"");
+            LogManager::getInstance().Debug("📝 [parseAlarm] alarm.nm 설정: \"" + alarm.nm + "\"");
+            LogManager::getInstance().Debug("📏 [parseAlarm] alarm.nm 길이: " + 
+                std::to_string(alarm.nm.length()));
         } else if (j.contains("point_name")) {
-            alarm.nm = j["point_name"].get<std::string>();
+            std::string pn_value = j["point_name"].get<std::string>();
+            alarm.nm = pn_value;
+            nm_found = true;
+            LogManager::getInstance().Debug("✅ [parseAlarm] point_name 필드 발견 → 값: \"" + 
+                alarm.nm + "\"");
         } else if (j.contains("name")) {
-            alarm.nm = j["name"].get<std::string>();
+            std::string name_value = j["name"].get<std::string>();
+            alarm.nm = name_value;
+            nm_found = true;
+            LogManager::getInstance().Debug("✅ [parseAlarm] name 필드 발견 → 값: \"" + 
+                alarm.nm + "\"");
         } else {
             alarm.nm = "";
+            LogManager::getInstance().Warn("⚠️ [parseAlarm] Point Name 필드 없음!");
+            LogManager::getInstance().Warn("❌ [parseAlarm] bd, point_name, name 모두 없음");
         }
         
+        // nm 필드 최종 확인
+        LogManager::getInstance().Debug("🔍 [parseAlarm] Point Name 최종 확인:");
+        LogManager::getInstance().Debug("   - nm_found: " + std::string(nm_found ? "true" : "false"));
+        LogManager::getInstance().Debug("   - alarm.nm: \"" + alarm.nm + "\"");
+        LogManager::getInstance().Debug("   - alarm.nm.empty(): " + 
+            std::string(alarm.nm.empty() ? "true" : "false"));
+        LogManager::getInstance().Debug("   - alarm.nm.length(): " + 
+            std::to_string(alarm.nm.length()));
+        
+        // -------------------------------------------------------------------
         // 3. Value (vl → value → trigger_value)
+        // -------------------------------------------------------------------
+        LogManager::getInstance().Debug("💰 [parseAlarm] Value 파싱 시작");
+        
         if (j.contains("vl")) {
             if (j["vl"].is_number()) {
                 alarm.vl = j["vl"].get<double>();
+                LogManager::getInstance().Debug("✅ [parseAlarm] vl 필드(숫자) → 값: " + 
+                    std::to_string(alarm.vl));
             } else if (j["vl"].is_string()) {
                 try {
-                    alarm.vl = std::stod(j["vl"].get<std::string>());
+                    std::string vl_str = j["vl"].get<std::string>();
+                    alarm.vl = std::stod(vl_str);
+                    LogManager::getInstance().Debug("✅ [parseAlarm] vl 필드(문자열) → 값: " + 
+                        std::to_string(alarm.vl));
                 } catch (...) {
                     alarm.vl = 0.0;
+                    LogManager::getInstance().Warn("⚠️ [parseAlarm] vl 문자열 변환 실패, 기본값: 0.0");
                 }
             }
         } else if (j.contains("value")) {
             if (j["value"].is_number()) {
                 alarm.vl = j["value"].get<double>();
+                LogManager::getInstance().Debug("✅ [parseAlarm] value 필드 → 값: " + 
+                    std::to_string(alarm.vl));
             } else if (j["value"].is_string()) {
                 try {
                     alarm.vl = std::stod(j["value"].get<std::string>());
+                    LogManager::getInstance().Debug("✅ [parseAlarm] value 필드(문자열) → 값: " + 
+                        std::to_string(alarm.vl));
                 } catch (...) {
                     alarm.vl = 0.0;
+                    LogManager::getInstance().Warn("⚠️ [parseAlarm] value 문자열 변환 실패");
                 }
             }
         } else if (j.contains("trigger_value")) {
             alarm.vl = j["trigger_value"].get<double>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] trigger_value 필드 → 값: " + 
+                std::to_string(alarm.vl));
         } else {
             alarm.vl = 0.0;
+            LogManager::getInstance().Warn("⚠️ [parseAlarm] Value 필드 없음, 기본값: 0.0");
         }
         
+        // -------------------------------------------------------------------
         // 4. Timestamp (tm → timestamp)
+        // -------------------------------------------------------------------
+        LogManager::getInstance().Debug("⏰ [parseAlarm] Timestamp 파싱 시작");
+        
         if (j.contains("tm")) {
             if (j["tm"].is_string()) {
                 alarm.tm = j["tm"].get<std::string>();
+                LogManager::getInstance().Debug("✅ [parseAlarm] tm 필드(문자열) → 값: \"" + 
+                    alarm.tm + "\"");
             } else if (j["tm"].is_number()) {
                 int64_t ts = j["tm"].get<int64_t>();
                 alarm.tm = std::to_string(ts);
+                LogManager::getInstance().Debug("✅ [parseAlarm] tm 필드(숫자) → 값: " + 
+                    alarm.tm);
             }
         } else if (j.contains("timestamp")) {
             if (j["timestamp"].is_string()) {
                 alarm.tm = j["timestamp"].get<std::string>();
+                LogManager::getInstance().Debug("✅ [parseAlarm] timestamp 필드 → 값: \"" + 
+                    alarm.tm + "\"");
             } else if (j["timestamp"].is_number()) {
                 int64_t ts = j["timestamp"].get<int64_t>();
                 alarm.tm = std::to_string(ts);
+                LogManager::getInstance().Debug("✅ [parseAlarm] timestamp 필드(숫자) → 값: " + 
+                    alarm.tm);
             }
         } else {
             // 현재 시간을 기본값으로
@@ -584,61 +681,142 @@ AlarmSubscriber::parseAlarmMessage(const std::string& json_str) {
             ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
             ss << "." << std::setfill('0') << std::setw(3) << ms.count();
             alarm.tm = ss.str();
+            LogManager::getInstance().Warn("⚠️ [parseAlarm] Timestamp 필드 없음, 현재 시간 사용: " + 
+                alarm.tm);
         }
         
+        // -------------------------------------------------------------------
         // 5. Alarm Flag (al → alarm_flag → state)
+        // -------------------------------------------------------------------
+        LogManager::getInstance().Debug("🚨 [parseAlarm] Alarm Flag 파싱 시작");
+        
         if (j.contains("al")) {
             alarm.al = j["al"].get<int>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] al 필드 → 값: " + 
+                std::to_string(alarm.al));
         } else if (j.contains("alarm_flag")) {
             alarm.al = j["alarm_flag"].get<int>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] alarm_flag 필드 → 값: " + 
+                std::to_string(alarm.al));
         } else if (j.contains("state")) {
             std::string state = j["state"].get<std::string>();
             alarm.al = (state == "active" || state == "ACTIVE") ? 1 : 0;
+            LogManager::getInstance().Debug("✅ [parseAlarm] state 필드 → 값: " + 
+                std::to_string(alarm.al));
         } else {
             alarm.al = 0;
+            LogManager::getInstance().Warn("⚠️ [parseAlarm] Alarm Flag 필드 없음, 기본값: 0");
         }
         
+        // -------------------------------------------------------------------
         // 6. Status (st → status)
+        // -------------------------------------------------------------------
+        LogManager::getInstance().Debug("📊 [parseAlarm] Status 파싱 시작");
+        
         if (j.contains("st")) {
             alarm.st = j["st"].get<int>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] st 필드 → 값: " + 
+                std::to_string(alarm.st));
         } else if (j.contains("status")) {
             alarm.st = j["status"].get<int>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] status 필드 → 값: " + 
+                std::to_string(alarm.st));
         } else {
             // 기본값: alarm_flag와 동일
             alarm.st = alarm.al;
+            LogManager::getInstance().Debug("ℹ️ [parseAlarm] Status 필드 없음, alarm_flag 사용: " + 
+                std::to_string(alarm.st));
         }
         
+        // -------------------------------------------------------------------
         // 7. Description (des → description → message)
+        // -------------------------------------------------------------------
+        LogManager::getInstance().Debug("📝 [parseAlarm] Description 파싱 시작");
+        
         if (j.contains("des")) {
             alarm.des = j["des"].get<std::string>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] des 필드 → 값: \"" + 
+                alarm.des + "\"");
         } else if (j.contains("description")) {
             alarm.des = j["description"].get<std::string>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] description 필드 → 값: \"" + 
+                alarm.des + "\"");
         } else if (j.contains("message")) {
             alarm.des = j["message"].get<std::string>();
+            LogManager::getInstance().Debug("✅ [parseAlarm] message 필드 → 값: \"" + 
+                alarm.des + "\"");
         } else {
             alarm.des = "";
+            LogManager::getInstance().Debug("ℹ️ [parseAlarm] Description 필드 없음");
         }
         
-        // 유효성 검증
+        // ===================================================================
+        // 3단계: 파싱 결과 요약
+        // ===================================================================
+        LogManager::getInstance().Debug("📋 [parseAlarm] ===== 파싱 결과 요약 =====");
+        LogManager::getInstance().Debug("   bd (Building ID): " + std::to_string(alarm.bd));
+        LogManager::getInstance().Debug("   nm (Point Name): \"" + alarm.nm + "\"");
+        LogManager::getInstance().Debug("   vl (Value): " + std::to_string(alarm.vl));
+        LogManager::getInstance().Debug("   tm (Timestamp): \"" + alarm.tm + "\"");
+        LogManager::getInstance().Debug("   al (Alarm Flag): " + std::to_string(alarm.al));
+        LogManager::getInstance().Debug("   st (Status): " + std::to_string(alarm.st));
+        LogManager::getInstance().Debug("   des (Description): \"" + alarm.des + "\"");
+        LogManager::getInstance().Debug("========================================");
+        
+        // ===================================================================
+        // 4단계: 유효성 검증
+        // ===================================================================
+        LogManager::getInstance().Debug("🔍 [parseAlarm] 유효성 검증 시작");
+        
+        // Point Name 검증
         if (alarm.nm.empty()) {
-            LogManager::getInstance().Warn("알람 파싱 실패: point_name이 비어있음");
+            LogManager::getInstance().Warn("❌ [parseAlarm] 유효성 검증 실패: point_name이 비어있음");
+            LogManager::getInstance().Warn("📄 [parseAlarm] 원본 JSON: " + json_str);
             return std::nullopt;
         }
+        LogManager::getInstance().Debug("✅ [parseAlarm] Point Name 검증 통과");
         
+        // Building ID 검증
         if (alarm.bd <= 0) {
-            LogManager::getInstance().Warn("알람 파싱 실패: building_id가 유효하지 않음");
+            LogManager::getInstance().Warn("❌ [parseAlarm] 유효성 검증 실패: building_id가 유효하지 않음 (값: " + 
+                std::to_string(alarm.bd) + ")");
+            LogManager::getInstance().Warn("📄 [parseAlarm] 원본 JSON: " + json_str);
             return std::nullopt;
         }
+        LogManager::getInstance().Debug("✅ [parseAlarm] Building ID 검증 통과");
+        
+        // ===================================================================
+        // 5단계: 성공 반환
+        // ===================================================================
+        LogManager::getInstance().Debug("🎉 [parseAlarm] 알람 파싱 완전 성공!");
+        LogManager::getInstance().Debug("✅ [parseAlarm] 최종 AlarmMessage:");
+        LogManager::getInstance().Debug("   - Building: " + std::to_string(alarm.bd));
+        LogManager::getInstance().Debug("   - Point: \"" + alarm.nm + "\"");
+        LogManager::getInstance().Debug("   - Value: " + std::to_string(alarm.vl));
+        LogManager::getInstance().Debug("   - Alarm: " + std::to_string(alarm.al));
         
         return alarm;
         
+    } catch (const json::parse_error& e) {
+        LogManager::getInstance().Error("❌ [parseAlarm] JSON 파싱 예외 (parse_error): " + 
+            std::string(e.what()));
+        LogManager::getInstance().Error("📄 [parseAlarm] 문제 JSON: " + json_str);
+        return std::nullopt;
+        
+    } catch (const json::type_error& e) {
+        LogManager::getInstance().Error("❌ [parseAlarm] JSON 타입 예외 (type_error): " + 
+            std::string(e.what()));
+        LogManager::getInstance().Error("📄 [parseAlarm] 문제 JSON: " + json_str);
+        return std::nullopt;
+        
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error(
-            "알람 메시지 파싱 실패: " + std::string(e.what()) + 
-            " - JSON: " + json_str);
+        LogManager::getInstance().Error("❌ [parseAlarm] 알람 메시지 파싱 실패 (일반 예외): " + 
+            std::string(e.what()));
+        LogManager::getInstance().Error("📄 [parseAlarm] 문제 JSON: " + json_str);
         return std::nullopt;
     }
 }
+
 
 void AlarmSubscriber::processAlarm(const PulseOne::CSP::AlarmMessage& alarm) {
     auto start_time = std::chrono::steady_clock::now();
