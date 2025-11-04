@@ -1,17 +1,23 @@
 /**
  * @file ExportTypes.cpp
- * @brief CSP Gateway 동적 전송 대상 시스템 구현 - 완성본
+ * @brief CSP Gateway 동적 전송 대상 시스템 구현 - icos 포맷 완성본
  * @author PulseOne Development Team  
- * @date 2025-10-23
- * @version 4.0.0 (ExportTypes.h 사용으로 업데이트)
+ * @date 2025-11-04
+ * @version 5.0.0 (icos C# 호환 포맷)
  * 
- * 🔄 변경사항:
- * - CSPDynamicTargets.h → Export/ExportTypes.h로 변경
- * - 모든 타입이 Export 네임스페이스로 이동
- * - CSP 네임스페이스는 using 선언으로 호환성 유지
+ * 🔄 주요 변경사항:
+ * - ❌ building_id → ✅ bd
+ * - ❌ point_name → ✅ nm
+ * - ❌ value → ✅ vl
+ * - ❌ timestamp → ✅ tm
+ * - ❌ alarm_flag → ✅ al
+ * - ✅ status → ✅ st (유지)
+ * - ❌ description → ✅ des
+ * 
+ * icos C# AlarmMessage 구조와 100% 호환
  */
 
-#include "Export/ExportTypes.h"  // ✅ 변경됨: CSP/CSPDynamicTargets.h → Export/ExportTypes.h
+#include "Export/ExportTypes.h"
 #include "Utils/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include <filesystem>
@@ -59,14 +65,14 @@ std::string escapeXmlText(const std::string& text) {
 }
 
 // =============================================================================
-// 유틸리티 함수들 구현 (헤더에서 inline으로 정의되지 않은 것들)
+// 유틸리티 함수들 구현
 // =============================================================================
 
 /**
- * @brief 확장된 알람 메시지 유효성 검증 (헤더의 간단한 버전 확장)
+ * @brief 확장된 알람 메시지 유효성 검증
  */
 bool isValidAlarmMessageExtended(const AlarmMessage& alarm) {
-    // 기본 검증 (헤더의 inline 함수 호출)
+    // 기본 검증
     if (!isValidAlarmMessage(alarm)) {
         return false;
     }
@@ -92,10 +98,10 @@ bool isValidAlarmMessageExtended(const AlarmMessage& alarm) {
 }
 
 /**
- * @brief 확장된 타겟 설정 유효성 검증 (헤더의 간단한 버전 확장)
+ * @brief 확장된 타겟 설정 유효성 검증
  */
 bool isValidTargetConfigExtended(const json& config, const std::string& target_type) {
-    // 기본 검증 (헤더의 inline 함수 호출)
+    // 기본 검증
     if (!isValidTargetConfig(config, target_type)) {
         return false;
     }
@@ -164,12 +170,12 @@ bool isValidTargetConfigExtended(const json& config, const std::string& target_t
 }
 
 /**
- * @brief 문자열에서 변수 치환 (실제 AlarmMessage 필드 기준)
+ * @brief 문자열에서 변수 치환 (icos 포맷)
  */
 std::string replaceVariables(const std::string& template_str, const AlarmMessage& alarm) {
     std::string result = template_str;
     
-    // 실제 AlarmMessage 필드들 치환: bd, nm, vl, tm, al, st, des
+    // ✅ icos C# AlarmMessage 필드 치환: bd, nm, vl, tm, al, st, des
     std::regex building_regex(R"(\{building_id\}|\{bd\})");
     result = std::regex_replace(result, building_regex, std::to_string(alarm.bd));
     
@@ -188,7 +194,7 @@ std::string replaceVariables(const std::string& template_str, const AlarmMessage
     std::regex description_regex(R"(\{description\}|\{des\})");
     result = std::regex_replace(result, description_regex, alarm.des);
     
-    // 타임스탬프 처리 (직접 생성)
+    // 타임스탬프 처리
     std::regex timestamp_regex(R"(\{timestamp\}|\{tm\})");
     std::string timestamp_str;
     if (alarm.tm.empty()) {
@@ -206,7 +212,7 @@ std::string replaceVariables(const std::string& template_str, const AlarmMessage
 }
 
 /**
- * @brief JSON 알람 메시지 생성 (실제 AlarmMessage 필드 기준)
+ * @brief JSON 알람 메시지 생성 (icos C# 호환 포맷)
  */
 json createAlarmJson(const AlarmMessage& alarm) {
     auto now = std::chrono::system_clock::now();
@@ -214,24 +220,21 @@ json createAlarmJson(const AlarmMessage& alarm) {
     std::stringstream ss;
     ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
     
-    // 실제 AlarmMessage 필드만 사용: bd, nm, vl, tm, al, st, des
+    // ✅ icos C# AlarmMessage 포맷 그대로 사용
     json j;
-    j["building_id"] = alarm.bd;
-    j["point_name"] = alarm.nm;
-    j["value"] = alarm.vl;
-    j["timestamp"] = alarm.tm.empty() ? ss.str() : alarm.tm;
-    j["alarm_flag"] = alarm.al;
-    j["status"] = alarm.st;
-    j["description"] = alarm.des;
-    j["source"] = "PulseOne CSP Gateway";
-    j["severity"] = 1;
-    j["alarm_type"] = "CRITICAL";
+    j["bd"] = alarm.bd;        // Building ID
+    j["nm"] = alarm.nm;        // Point Name
+    j["vl"] = alarm.vl;        // Value
+    j["tm"] = alarm.tm.empty() ? ss.str() : alarm.tm;  // Timestamp
+    j["al"] = alarm.al;        // Alarm Status (1=발생, 0=해제)
+    j["st"] = alarm.st;        // Communication Status
+    j["des"] = alarm.des;      // Description
     
     return j;
 }
 
 /**
- * @brief 알람 메시지를 CSV 형식으로 변환 (실제 필드 기준)
+ * @brief 알람 메시지를 CSV 형식으로 변환 (icos 포맷)
  */
 std::string createAlarmCsv(const AlarmMessage& alarm) {
     auto now = std::chrono::system_clock::now();
@@ -240,6 +243,7 @@ std::string createAlarmCsv(const AlarmMessage& alarm) {
     ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
     
     std::stringstream csv;
+    // ✅ icos 필드 순서: bd, nm, vl, tm, al, st, des
     csv << alarm.bd << ","
         << "\"" << alarm.nm << "\","
         << alarm.vl << ","
@@ -252,7 +256,7 @@ std::string createAlarmCsv(const AlarmMessage& alarm) {
 }
 
 /**
- * @brief 알람 메시지를 XML 형식으로 변환 (실제 필드 기준)
+ * @brief 알람 메시지를 XML 형식으로 변환 (icos 포맷)
  */
 std::string createAlarmXml(const AlarmMessage& alarm) {
     auto now = std::chrono::system_clock::now();
@@ -263,15 +267,14 @@ std::string createAlarmXml(const AlarmMessage& alarm) {
     std::stringstream xml;
     xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         << "<alarm>\n"
-        << "  <building_id>" << alarm.bd << "</building_id>\n"
-        << "  <point_name>" << escapeXmlText(alarm.nm) << "</point_name>\n"
-        << "  <value>" << alarm.vl << "</value>\n"
-        << "  <timestamp>" << (alarm.tm.empty() ? ss.str() : alarm.tm) << "</timestamp>\n"
-        << "  <alarm_flag>" << alarm.al << "</alarm_flag>\n"
-        << "  <status>" << alarm.st << "</status>\n"
-        << "  <description>" << escapeXmlText(alarm.des) << "</description>\n"
-        << "  <severity>1</severity>\n"
-        << "  <source>PulseOne CSP Gateway</source>\n"
+        // ✅ icos XML 태그: bd, nm, vl, tm, al, st, des
+        << "  <bd>" << alarm.bd << "</bd>\n"
+        << "  <nm>" << escapeXmlText(alarm.nm) << "</nm>\n"
+        << "  <vl>" << alarm.vl << "</vl>\n"
+        << "  <tm>" << (alarm.tm.empty() ? ss.str() : alarm.tm) << "</tm>\n"
+        << "  <al>" << alarm.al << "</al>\n"
+        << "  <st>" << alarm.st << "</st>\n"
+        << "  <des>" << escapeXmlText(alarm.des) << "</des>\n"
         << "</alarm>";
     
     return xml.str();
@@ -381,13 +384,13 @@ std::chrono::milliseconds calculateRetryDelay(int retry_count, int base_delay_ms
 }
 
 /**
- * @brief 문자열을 안전하게 이스케이프 (warning 완전 해결)
+ * @brief 문자열을 안전하게 이스케이프
  */
 std::string escapeJsonString(const std::string& input) {
     std::string output;
     output.reserve(input.length() + 16);
     
-    for (unsigned char c : input) {  // unsigned char로 변경
+    for (unsigned char c : input) {
         switch (c) {
             case '"': output += "\\\""; break;
             case '\\': output += "\\\\"; break;
@@ -397,7 +400,7 @@ std::string escapeJsonString(const std::string& input) {
             case '\r': output += "\\r"; break;
             case '\t': output += "\\t"; break;
             default:
-                if (c < 32) {  // >= 0 조건 완전 제거
+                if (c < 32) {
                     char hex_buf[8];
                     snprintf(hex_buf, sizeof(hex_buf), "\\u%04x", c);
                     output += hex_buf;
@@ -423,7 +426,7 @@ std::string escapeCsvField(const std::string& field) {
         std::string escaped = "\"";
         for (char c : field) {
             if (c == '"') {
-                escaped += "\"\"";  // 큰따옴표 이스케이프
+                escaped += "\"\"";
             } else {
                 escaped += c;
             }
@@ -461,7 +464,6 @@ std::string readFileContents(const std::string& file_path) {
 bool writeFileContents(const std::string& file_path, const std::string& content, bool create_dirs) {
     try {
         if (create_dirs) {
-            // 디렉토리 생성
             std::filesystem::path path(file_path);
             std::filesystem::create_directories(path.parent_path());
         }
@@ -490,7 +492,6 @@ std::string urlEncode(const std::string& value) {
     escaped << std::hex;
 
     for (char c : value) {
-        // RFC 3986에 따른 안전한 문자들
         if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
             escaped << c;
         } else {
@@ -504,7 +505,7 @@ std::string urlEncode(const std::string& value) {
 }
 
 /**
- * @brief Base64 인코딩 (간단한 구현)
+ * @brief Base64 인코딩
  */
 std::string base64Encode(const std::string& input) {
     const std::string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -546,7 +547,7 @@ std::string severityToString(int severity) {
 }
 
 /**
- * @brief 안전한 파일명 생성 (특수 문자 제거)
+ * @brief 안전한 파일명 생성
  */
 std::string sanitizeFileName(const std::string& filename) {
     std::string result;
@@ -561,7 +562,7 @@ std::string sanitizeFileName(const std::string& filename) {
 }
 
 // =============================================================================
-// 레거시 호환성 함수들 (기존 코드와의 호환성 유지)
+// 레거시 호환성 함수들
 // =============================================================================
 
 /**

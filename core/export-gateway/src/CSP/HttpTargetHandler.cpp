@@ -428,17 +428,21 @@ std::string HttpTargetHandler::buildRequestBody(const AlarmMessage& alarm, const
 std::string HttpTargetHandler::buildJsonRequestBody(const AlarmMessage& alarm, const json& config) {
     json request_body;
     
-    // 기본 알람 데이터 매핑
-    request_body["building_id"] = alarm.bd;
-    request_body["point_name"] = alarm.nm;
-    request_body["value"] = alarm.vl;
-    request_body["timestamp"] = alarm.tm;
-    request_body["alarm_flag"] = alarm.al;
-    request_body["status"] = alarm.st;
-    request_body["description"] = alarm.des;
-    request_body["source"] = "PulseOne-CSPGateway";
-    request_body["version"] = "1.0";
-    request_body["alarm_status"] = alarm.get_alarm_status_string();
+    // ✅ icos C# AlarmMessage 포맷 사용
+    request_body["bd"] = alarm.bd;        // Building ID
+    request_body["nm"] = alarm.nm;        // Point Name
+    request_body["vl"] = alarm.vl;        // Value
+    request_body["tm"] = alarm.tm;        // Timestamp
+    request_body["al"] = alarm.al;        // Alarm Flag
+    request_body["st"] = alarm.st;        // Status
+    request_body["des"] = alarm.des;      // Description
+    
+    // 메타데이터 (선택사항)
+    if (config.value("include_metadata", false)) {
+        request_body["source"] = "PulseOne-CSPGateway";
+        request_body["version"] = "1.0";
+        request_body["alarm_status"] = alarm.get_alarm_status_string();
+    }
     
     // 사용자 정의 필드 매핑
     if (config.contains("field_mapping") && config["field_mapping"].is_object()) {
@@ -472,29 +476,36 @@ std::string HttpTargetHandler::buildXmlRequestBody(const AlarmMessage& alarm, co
     std::ostringstream xml;
     xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     xml << "<alarm>\n";
-    xml << "  <building_id>" << alarm.bd << "</building_id>\n";
-    xml << "  <point_name><![CDATA[" << alarm.nm << "]]></point_name>\n";
-    xml << "  <value>" << alarm.vl << "</value>\n";
-    xml << "  <timestamp><![CDATA[" << alarm.tm << "]]></timestamp>\n";
-    xml << "  <alarm_flag>" << alarm.al << "</alarm_flag>\n";
-    xml << "  <status>" << alarm.st << "</status>\n";
-    xml << "  <description><![CDATA[" << alarm.des << "]]></description>\n";
+    
+    // ✅ icos C# AlarmMessage XML 태그
+    xml << "  <bd>" << alarm.bd << "</bd>\n";
+    xml << "  <nm><![CDATA[" << alarm.nm << "]]></nm>\n";
+    xml << "  <vl>" << alarm.vl << "</vl>\n";
+    xml << "  <tm><![CDATA[" << alarm.tm << "]]></tm>\n";
+    xml << "  <al>" << alarm.al << "</al>\n";
+    xml << "  <st>" << alarm.st << "</st>\n";
+    xml << "  <des><![CDATA[" << alarm.des << "]]></des>\n";
+    
     xml << "  <source>PulseOne-CSPGateway</source>\n";
     xml << "</alarm>\n";
+    
     return xml.str();
 }
 
 // ✅ 수정: 헤더와 일치하도록 config 파라미터 추가
 std::string HttpTargetHandler::buildFormRequestBody(const AlarmMessage& alarm, const json& /* config */) {
     std::ostringstream form;
-    form << "building_id=" << alarm.bd;
-    form << "&point_name=" << urlEncode(alarm.nm);
-    form << "&value=" << alarm.vl;
-    form << "&timestamp=" << urlEncode(alarm.tm);
-    form << "&alarm_flag=" << alarm.al;
-    form << "&status=" << alarm.st;
-    form << "&description=" << urlEncode(alarm.des);
+    
+    // ✅ icos C# AlarmMessage 필드를 Form 데이터로
+    form << "bd=" << alarm.bd;
+    form << "&nm=" << urlEncode(alarm.nm);
+    form << "&vl=" << alarm.vl;
+    form << "&tm=" << urlEncode(alarm.tm);
+    form << "&al=" << alarm.al;
+    form << "&st=" << alarm.st;
+    form << "&des=" << urlEncode(alarm.des);
     form << "&source=PulseOne-CSPGateway";
+    
     return form.str();
 }
 
