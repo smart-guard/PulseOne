@@ -388,26 +388,45 @@ bool ExportCoordinator::initializeScheduledExporter() {
 // ✅ 이벤트 핸들러 (간소화)
 // =============================================================================
 
-void ExportCoordinator::handleScheduleEvent(const std::string& channel, const std::string& /*message*/) {
+void ExportCoordinator::handleScheduleEvent(const std::string& channel, const std::string& message) {
     try {
         LogManager::getInstance().Info("🔄 스케줄 이벤트 수신: " + channel);
         
-        // ✅ ScheduledExporter 리로드
-        if (scheduled_exporter_) {
-            if (channel == "schedule:reload" || 
-                channel.find("schedule:") == 0) {
-                
-                // 1. 스케줄 목록 리로드
-                int loaded = scheduled_exporter_->reloadSchedules();
+        if (!scheduled_exporter_) {
+            LogManager::getInstance().Warn("ScheduledExporter가 초기화되지 않음");
+            return;
+        }
+        
+        // ✅ schedule:reload 처리
+        if (channel == "schedule:reload") {
+            int loaded = scheduled_exporter_->reloadSchedules();
+            LogManager::getInstance().Info(
+                "✅ 스케줄 리로드 완료: " + std::to_string(loaded) + "개");
+        }
+        // ✅ schedule:execute:{id} 처리 (NEW!)
+        else if (channel.find("schedule:execute:") == 0) {
+            std::string id_str = channel.substr(17); // "schedule:execute:" 이후
+            try {
+                int schedule_id = std::stoi(id_str);
                 LogManager::getInstance().Info(
-                    "✅ 스케줄 리로드 완료: " + std::to_string(loaded) + "개");
+                    "⚡ 스케줄 실행 요청: ID=" + std::to_string(schedule_id)
+                );
                 
-                // 2. ✅ 즉시 실행 가능한 스케줄 체크/실행
-                int executed = scheduled_exporter_->executeAllSchedules();
-                if (executed > 0) {
+                auto result = scheduled_exporter_->executeSchedule(schedule_id);
+                
+                if (result.success) {
                     LogManager::getInstance().Info(
-                        "⚡ 즉시 실행: " + std::to_string(executed) + "개");
+                        "✅ 스케줄 실행 완료: " + std::to_string(result.data_point_count) + "개 데이터 포인트"
+                    );
+                } else {
+                    LogManager::getInstance().Error(
+                        "❌ 스케줄 실행 실패: " + result.error_message
+                    );
                 }
+            } catch (const std::exception& e) {
+                LogManager::getInstance().Error(
+                    "스케줄 ID 파싱 실패: " + std::string(e.what())
+                );
             }
         }
         

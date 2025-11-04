@@ -387,7 +387,7 @@ std::unordered_map<std::string, std::string> HttpTargetHandler::buildRequestHead
 std::string HttpTargetHandler::buildRequestBody(const AlarmMessage& alarm, const json& config) {
     json request_body;
     
-    // icos C# AlarmMessage 포맷
+    // ✅ 기본 AlarmMessage 포맷 (항상 포함)
     request_body["bd"] = alarm.bd;
     request_body["nm"] = alarm.nm;
     request_body["vl"] = alarm.vl;
@@ -396,11 +396,15 @@ std::string HttpTargetHandler::buildRequestBody(const AlarmMessage& alarm, const
     request_body["st"] = alarm.st;
     request_body["des"] = alarm.des;
     
-    // 템플릿 기반 커스터마이징
+    // ✅ 템플릿이 있으면 병합 (덮어쓰지 않고 추가)
     if (config.contains("body_template") && config["body_template"].is_object()) {
         json template_body = config["body_template"];
         expandTemplateVariables(template_body, alarm);
-        request_body = template_body;
+        
+        // 템플릿의 내용을 request_body에 병합
+        for (auto& [key, value] : template_body.items()) {
+            request_body[key] = value;  // 기존 키는 덮어쓰지만 새 키는 추가
+        }
     }
     
     return request_body.dump();
