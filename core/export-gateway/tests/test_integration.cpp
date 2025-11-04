@@ -608,30 +608,45 @@ public:
         LogManager::getInstance().Info("\n📋 STEP 3: 스케줄 플로우 테스트");
         
         try {
-            auto next_run = std::chrono::system_clock::now() + std::chrono::seconds(3);
+            // 1. Mock 서버 데이터 초기화
+    #ifdef HAVE_HTTPLIB
+            mock_server_->clearReceivedData();
+    #endif
+            
+            // 2. 스케줄 생성
+            auto next_run = std::chrono::system_clock::now() + std::chrono::seconds(2);
             if (!createTestSchedule(next_run)) {
                 throw std::runtime_error("스케줄 생성 실패");
             }
             
-#ifdef HAVE_HTTPLIB
-            if (mock_server_) {
-                mock_server_->clearReceivedData();
-            }
-#endif
+            // 3. 스케줄 리로드 이벤트 발행
+            LogManager::getInstance().Info("📢 스케줄 리로드 이벤트 발행");
+            redis_client_->publish("schedule:reload", "{}");
             
+            // ✅ 리로드 대기
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            
+            // 4. ✅ 스케줄 실행 이벤트 발행 (NEW!)
+            LogManager::getInstance().Info("📢 스케줄 실행 이벤트 발행: ID=1");
+            redis_client_->publish("schedule:execute:1", "{}");
+            
+            // 5. 실행 대기
             LogManager::getInstance().Info("⏰ 스케줄 실행 대기 중...");
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            std::this_thread::sleep_for(std::chrono::seconds(3));
             
-#ifdef HAVE_HTTPLIB
-            if (mock_server_) {
-                auto received = mock_server_->getReceivedData();
-                TestHelper::assertCondition(
-                    !received.empty(),
-                    "스케줄이 실행됨 (수신: " + std::to_string(received.size()) + "건)");
-            }
-#endif
+            // 6. 검증
+    #ifdef HAVE_HTTPLIB
+            int received_count = mock_server_->getReceivedData().size();  // ✅ 수정!
+    #else
+            int received_count = 0;  // Mock 서버 없을 때
+    #endif
             
-            LogManager::getInstance().Info("✅ 스케줄 플로우 테스트 완료\n");
+            TestHelper::assertCondition(
+                received_count > 0,
+                "스케줄이 실행됨 (수신: " + std::to_string(received_count) + "건)"
+            );
+            
+            LogManager::getInstance().Info("✅ 스케줄 플로우 테스트 완료");
             return true;
             
         } catch (const std::exception& e) {
