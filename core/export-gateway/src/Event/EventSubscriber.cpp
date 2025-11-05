@@ -549,7 +549,7 @@ PulseOne::CSP::AlarmMessage EventSubscriber::parseAlarmMessage(const std::string
         alarm.bd = j.value("bd", 0);           // int (빌딩 ID)
         alarm.nm = j.value("nm", "");          // string (포인트 이름)
         alarm.vl = j.value("vl", 0.0);         // double (값)
-        alarm.tm = j.value("tm", 0L);          // long (타임스탬프)
+        alarm.tm = j.value("tm", "");          // ✅ string으로 수정 (기존: 0L)
         alarm.al = j.value("al", 0);           // int (알람 상태)
         alarm.st = j.value("st", 0);           // int (심각도)
         alarm.des = j.value("des", "");        // string (설명)
