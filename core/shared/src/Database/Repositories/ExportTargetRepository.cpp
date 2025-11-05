@@ -108,6 +108,7 @@ std::optional<ExportTargetEntity> ExportTargetRepository::findById(int id) {
     }
 }
 
+// ExportTargetRepository.cpp의 save() 메서드 - 완전 수정 버전
 bool ExportTargetRepository::save(ExportTargetEntity& entity) {
     try {
         if (!ensureTableExists()) {
@@ -117,17 +118,18 @@ bool ExportTargetRepository::save(ExportTargetEntity& entity) {
         auto params = entityToParams(entity);
         std::string query = SQL::ExportTarget::INSERT;
         
-        // INSERT 쿼리의 컬럼 순서대로 파라미터 치환
+        // ✅ FIX: template_id 포함하여 10개 파라미터 모두 처리
         std::vector<std::string> insert_order = {
-            "profile_id",
-            "name",
-            "target_type",
-            "description",
-            "is_enabled",
-            "config",
-            "export_mode",
-            "export_interval",
-            "batch_size"
+            "profile_id",      // 1
+            "name",            // 2
+            "target_type",     // 3
+            "description",     // 4
+            "is_enabled",      // 5
+            "config",          // 6
+            "template_id",     // 7 ← 이것이 누락되어 있었음!
+            "export_mode",     // 8
+            "export_interval", // 9
+            "batch_size"       // 10
         };
         
         for (const auto& key : insert_order) {
