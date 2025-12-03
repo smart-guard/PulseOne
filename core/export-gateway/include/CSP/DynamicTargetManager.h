@@ -203,7 +203,14 @@ public:
      * @return 성공 시 true
      */
     bool reloadDynamicTargets();
-    
+    /**
+     * @brief 중지 요청 여부 확인
+     * @return true면 중지 요청됨
+     * @note 내부 디버깅용
+     */
+    bool shouldStop() const {
+        return should_stop_.load(std::memory_order_acquire);
+    }   
     // =======================================================================
     // 알람 전송
     // =======================================================================

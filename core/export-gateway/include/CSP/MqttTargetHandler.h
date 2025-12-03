@@ -2,8 +2,8 @@
  * @file MqttTargetHandler.h
  * @brief MQTT 타겟 핸들러 - MQTT 브로커를 통한 실시간 메시지 발행
  * @author PulseOne Development Team
- * @date 2025-09-23
- * 저장 위치: core/export-gateway/include/CSP/MqttTargetHandler.h
+ * @date 2025-12-03
+ * @version 1.0.3 - validateConfig 시그니처 수정
  */
 
 #ifndef MQTT_TARGET_HANDLER_H
@@ -83,6 +83,10 @@ public:
     MqttTargetHandler(MqttTargetHandler&&) = delete;
     MqttTargetHandler& operator=(MqttTargetHandler&&) = delete;
     
+    // =======================================================================
+    // ITargetHandler 인터페이스 구현
+    // =======================================================================
+    
     /**
      * @brief 핸들러 초기화
      * @param config JSON 설정 객체
@@ -146,6 +150,14 @@ public:
      * @brief 핸들러 정리
      */
     void cleanup() override;
+    
+    /**
+     * @brief 설정 검증 (ITargetHandler 인터페이스)
+     * @param config 검증할 설정
+     * @param errors 에러 메시지 목록
+     * @return 검증 성공 여부
+     */
+    bool validateConfig(const json& config, std::vector<std::string>& errors) override;
 
 private:
     /**
@@ -259,14 +271,6 @@ private:
     bool isValidQoS(int qos) const;
     
     /**
-     * @brief 설정 검증
-     * @param config 검증할 설정
-     * @param error_message 오류 메시지 (출력용)
-     * @return 설정이 유효한지 여부
-     */
-    bool validateConfig(const json& config, std::string& error_message) const;
-    
-    /**
      * @brief JSON 메시지 생성 (메타데이터 포함)
      * @param alarm 알람 메시지
      * @param config 설정 객체
@@ -318,3 +322,5 @@ private:
 } // namespace PulseOne
 
 #endif // MQTT_TARGET_HANDLER_H
+
+

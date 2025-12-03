@@ -2,15 +2,8 @@
  * @file MqttTargetHandler.cpp
  * @brief CSP Gateway MQTT 타겟 핸들러 구현
  * @author PulseOne Development Team
- * @date 2025-09-23
- * 저장 위치: core/export-gateway/src/CSP/MqttTargetHandler.cpp
- * 
- * 기존 PulseOne 패턴 100% 준수:
- * - MqttDriver.cpp의 MQTT 연결 패턴 차용
- * - ConfigManager를 통한 암호화된 자격증명 로드
- * - 표준 LogManager 사용법
- * - 토픽 템플릿 확장 지원
- * - 자동 재연결 및 메시지 큐잉
+ * @date 2025-12-03
+ * @version 1.0.3 - validateConfig 시그니처 수정
  */
 
 #include "CSP/MqttTargetHandler.h"
@@ -21,9 +14,6 @@
 #include <iomanip>
 #include <algorithm>
 #include <random>
-
-// Paho MQTT 라이브러리 (실제 구현에서 사용)
-// #include <MQTTClient.h>
 
 namespace PulseOne {
 namespace CSP {
@@ -49,9 +39,12 @@ bool MqttTargetHandler::initialize(const json& config) {
     try {
         LogManager::getInstance().Info("MQTT 타겟 핸들러 초기화 시작");
         
-        // 필수 설정 검증
-        if (!config.contains("broker_host") || config["broker_host"].get<std::string>().empty()) {
-            LogManager::getInstance().Error("MQTT 브로커 호스트가 설정되지 않음");
+        // 설정 검증 (ITargetHandler 시그니처 사용)
+        std::vector<std::string> errors;
+        if (!validateConfig(config, errors)) {
+            for (const auto& error : errors) {
+                LogManager::getInstance().Error("초기화 검증 실패: " + error);
+            }
             return false;
         }
         
@@ -95,9 +88,6 @@ bool MqttTargetHandler::initialize(const json& config) {
         }
         
         LogManager::getInstance().Info("MQTT 타겟 핸들러 초기화 완료");
-        LogManager::getInstance().Debug("설정 - client_id: " + client_id_ + 
-                                       ", ssl: " + (ssl_enabled ? "enabled" : "disabled") +
-                                       ", auto_reconnect: " + (auto_reconnect ? "enabled" : "disabled"));
         
         return true;
         
@@ -105,6 +95,51 @@ bool MqttTargetHandler::initialize(const json& config) {
         LogManager::getInstance().Error("MQTT 타겟 핸들러 초기화 실패: " + std::string(e.what()));
         return false;
     }
+}
+
+bool MqttTargetHandler::validateConfig(const json& config, std::vector<std::string>& errors) {
+    errors.clear();
+    
+    // 필수 필드: broker_host
+    if (!config.contains("broker_host")) {
+        errors.push_back("broker_host 필드가 필수입니다");
+        return false;
+    }
+    
+    std::string broker_host = config["broker_host"].get<std::string>();
+    if (broker_host.empty()) {
+        errors.push_back("broker_host가 비어있습니다");
+        return false;
+    }
+    
+    // broker_port 검증 (선택사항, 기본값 1883)
+    if (config.contains("broker_port")) {
+        int port = config["broker_port"].get<int>();
+        if (port <= 0 || port > 65535) {
+            errors.push_back("broker_port는 1-65535 범위여야 합니다");
+            return false;
+        }
+    }
+    
+    // QoS 검증 (선택사항)
+    if (config.contains("qos")) {
+        int qos = config["qos"].get<int>();
+        if (qos < 0 || qos > 2) {
+            errors.push_back("qos는 0, 1, 2 중 하나여야 합니다");
+            return false;
+        }
+    }
+    
+    // max_queue_size 검증 (선택사항)
+    if (config.contains("max_queue_size")) {
+        int queue_size = config["max_queue_size"].get<int>();
+        if (queue_size <= 0) {
+            errors.push_back("max_queue_size는 양수여야 합니다");
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 TargetSendResult MqttTargetHandler::sendAlarm(const AlarmMessage& alarm, const json& config) {
@@ -126,9 +161,7 @@ TargetSendResult MqttTargetHandler::sendAlarm(const AlarmMessage& alarm, const j
         int qos = config.value("qos", 1);
         bool retain = config.value("retain", false);
         
-        LogManager::getInstance().Debug("MQTT 발행 - Topic: " + topic + 
-                                       ", QoS: " + std::to_string(qos) +
-                                       ", Retain: " + (retain ? "true" : "false"));
+        LogManager::getInstance().Debug("MQTT 발행 - Topic: " + topic);
         
         // 연결 상태 확인 및 발행
         if (is_connected_.load()) {
@@ -215,8 +248,6 @@ bool MqttTargetHandler::testConnection(const json& config) {
     }
 }
 
-// getTypeName()은 헤더에서 인라인으로 정의되어 있으므로 여기서 제거
-
 json MqttTargetHandler::getStatus() const {
     std::lock_guard<std::mutex> queue_lock(queue_mutex_);
     
@@ -274,23 +305,17 @@ bool MqttTargetHandler::connectToBroker(const json& config) {
     try {
         LogManager::getInstance().Info("MQTT 브로커 연결 시도: " + broker_uri_);
         
-        // 실제 구현에서는 Paho MQTT 라이브러리 사용
-        // MQTTClient_create(&mqtt_client_, broker_uri_.c_str(), client_id_.c_str(), 
-        //                   MQTTCLIENT_PERSISTENCE_NONE, NULL);
-        
         // 임시 구현: 설정 검증 및 로깅
         std::string username = config.value("username", "");
         bool ssl_enabled = config.value("ssl_enabled", false);
         int keep_alive = config.value("keep_alive_sec", 60);
-        // connect_timeout은 실제 구현에서 사용됨
-        // int connect_timeout = config.value("connect_timeout_sec", 30);
         
         LogManager::getInstance().Debug("MQTT 연결 설정 - username: " + 
                                        (username.empty() ? "none" : username) +
                                        ", ssl: " + (ssl_enabled ? "enabled" : "disabled") +
                                        ", keep_alive: " + std::to_string(keep_alive) + "s");
         
-        // 임시로 연결 성공으로 처리 (실제 구현에서는 MQTTClient_connect 호출)
+        // 임시로 연결 성공으로 처리
         is_connected_ = true;
         is_connecting_ = false;
         
@@ -318,10 +343,6 @@ void MqttTargetHandler::disconnectFromBroker() {
     
     try {
         LogManager::getInstance().Info("MQTT 브로커 연결 해제 시작");
-        
-        // 실제 구현에서는 Paho MQTT 라이브러리 사용
-        // MQTTClient_disconnect(mqtt_client_, 10000);
-        // MQTTClient_destroy(&mqtt_client_);
         
         is_connected_ = false;
         mqtt_client_ = nullptr;
@@ -367,23 +388,7 @@ TargetSendResult MqttTargetHandler::publishMessage(const std::string& topic,
             return result;
         }
         
-        // 실제 구현에서는 Paho MQTT 라이브러리 사용
-        // MQTTClient_message pubmsg = MQTTClient_message_initializer;
-        // pubmsg.payload = (void*)payload.c_str();
-        // pubmsg.payloadlen = payload.length();
-        // pubmsg.qos = qos;
-        // pubmsg.retained = retain;
-        // 
-        // MQTTClient_deliveryToken token;
-        // int rc = MQTTClient_publishMessage(mqtt_client_, topic.c_str(), &pubmsg, &token);
-        // 
-        // if (rc == MQTTCLIENT_SUCCESS) {
-        //     if (qos > 0) {
-        //         rc = MQTTClient_waitForCompletion(mqtt_client_, token, timeout_ms);
-        //     }
-        // }
-        
-        // 임시 구현: 성공으로 처리 (qos, retain 매개변수는 실제 구현에서 사용됨)
+        // 임시 구현: 성공으로 처리
         result.success = true;
         
         LogManager::getInstance().Debug("MQTT 메시지 발행 성공 - Topic: " + topic + 
@@ -401,12 +406,10 @@ TargetSendResult MqttTargetHandler::publishMessage(const std::string& topic,
 
 std::string MqttTargetHandler::generateClientId(const std::string& base_id) const {
     if (!base_id.empty()) {
-        // 타임스탬프 추가하여 유니크하게 만들기
         auto now = std::chrono::system_clock::now();
         auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
         return base_id + "_" + std::to_string(timestamp);
     } else {
-        // 자동 생성
         auto now = std::chrono::system_clock::now();
         auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
         return "pulseone_csp_" + std::to_string(timestamp);
@@ -415,10 +418,9 @@ std::string MqttTargetHandler::generateClientId(const std::string& base_id) cons
 
 void MqttTargetHandler::reconnectThread(json config) {
     int reconnect_interval = config.value("reconnect_interval_sec", 5);
-    int max_attempts = config.value("max_reconnect_attempts", -1); // -1은 무제한
+    int max_attempts = config.value("max_reconnect_attempts", -1);
     
-    LogManager::getInstance().Info("MQTT 재연결 스레드 시작 - 간격: " + 
-                                  std::to_string(reconnect_interval) + "초");
+    LogManager::getInstance().Info("MQTT 재연결 스레드 시작");
     
     while (!should_stop_.load()) {
         std::this_thread::sleep_for(std::chrono::seconds(reconnect_interval));
@@ -428,14 +430,12 @@ void MqttTargetHandler::reconnectThread(json config) {
         }
         
         if (!is_connected_.load() && !is_connecting_.load()) {
-            // 최대 재연결 시도 횟수 확인
             if (max_attempts > 0 && connection_attempts_.load() >= max_attempts) {
                 LogManager::getInstance().Warn("MQTT 최대 재연결 시도 횟수 초과");
                 continue;
             }
             
-            LogManager::getInstance().Info("MQTT 자동 재연결 시도 (" + 
-                                          std::to_string(connection_attempts_.load() + 1) + "회)");
+            LogManager::getInstance().Info("MQTT 자동 재연결 시도");
             
             if (connectToBroker(config)) {
                 LogManager::getInstance().Info("MQTT 자동 재연결 성공");
@@ -463,57 +463,42 @@ void MqttTargetHandler::processQueuedMessages() {
         auto message = message_queue_.front();
         message_queue_.pop();
         
-        // QoS 0으로 빠르게 발행 (큐된 메시지는 Best Effort)
         auto result = publishMessage(message.first, message.second, 0, false);
         
         if (result.success) {
             processed++;
         } else {
             failed++;
-            LogManager::getInstance().Warn("큐된 메시지 발행 실패: " + message.first);
         }
     }
     
-    LogManager::getInstance().Info("큐된 MQTT 메시지 처리 완료 - 성공: " + 
-                                  std::to_string(processed) + ", 실패: " + std::to_string(failed));
+    LogManager::getInstance().Info("큐된 MQTT 메시지 처리 완료");
 }
 
 bool MqttTargetHandler::enqueueMessage(const std::string& topic, const std::string& payload) {
     std::lock_guard<std::mutex> queue_lock(queue_mutex_);
     
     if (message_queue_.size() >= max_queue_size_) {
-        LogManager::getInstance().Warn("MQTT 메시지 큐 가득참 - 오래된 메시지 제거");
-        message_queue_.pop(); // 오래된 메시지 제거
+        LogManager::getInstance().Warn("MQTT 메시지 큐 가득참");
+        message_queue_.pop();
     }
     
     message_queue_.emplace(topic, payload);
     
-    LogManager::getInstance().Debug("MQTT 메시지를 큐에 저장: " + topic + 
-                                   " (큐 크기: " + std::to_string(message_queue_.size()) + ")");
-    
     return true;
 }
-
-// =============================================================================
-// 유틸리티 메서드들
-// =============================================================================
 
 std::string MqttTargetHandler::expandTemplateVariables(const std::string& template_str, const AlarmMessage& alarm) const {
     std::string result = template_str;
     
-    // 기본 변수 치환
     result = std::regex_replace(result, std::regex("\\{building_id\\}"), std::to_string(alarm.bd));
     result = std::regex_replace(result, std::regex("\\{nm\\}"), alarm.nm);
     result = std::regex_replace(result, std::regex("\\{point_name\\}"), alarm.nm);
     result = std::regex_replace(result, std::regex("\\{value\\}"), std::to_string(alarm.vl));
     result = std::regex_replace(result, std::regex("\\{alarm_flag\\}"), std::to_string(alarm.al));
     result = std::regex_replace(result, std::regex("\\{status\\}"), std::to_string(alarm.st));
-    result = std::regex_replace(result, std::regex("\\{alarm_status\\}"), alarm.get_alarm_status_string());
-    
-    // 클라이언트 ID 변수
     result = std::regex_replace(result, std::regex("\\{client_id\\}"), client_id_);
     
-    // 특수문자 정리 (MQTT 토픽 규칙 준수)
     result = std::regex_replace(result, std::regex("[^a-zA-Z0-9/_.-]"), "_");
     
     return result;
@@ -522,28 +507,20 @@ std::string MqttTargetHandler::expandTemplateVariables(const std::string& templa
 std::string MqttTargetHandler::createJsonMessage(const AlarmMessage& alarm, const json& config) const {
     json message;
     
-    // ✅ icos C# AlarmMessage 포맷 사용
-    message["bd"] = alarm.bd;        // Building ID
-    message["nm"] = alarm.nm;        // Point Name
-    message["vl"] = alarm.vl;        // Value
-    message["tm"] = alarm.tm;        // Timestamp
-    message["al"] = alarm.al;        // Alarm Flag
-    message["st"] = alarm.st;        // Status
-    message["des"] = alarm.des;      // Description
+    message["bd"] = alarm.bd;
+    message["nm"] = alarm.nm;
+    message["vl"] = alarm.vl;
+    message["tm"] = alarm.tm;
+    message["al"] = alarm.al;
+    message["st"] = alarm.st;
+    message["des"] = alarm.des;
     
-    // 알람 상태 문자열 추가 (선택사항)
-    message["alarm_status"] = alarm.get_alarm_status_string();
-    
-    // 메타데이터 (선택사항)
     if (config.value("include_metadata", true)) {
         message["source"] = "PulseOne-CSPGateway";
         message["version"] = "1.0";
         message["client_id"] = client_id_;
-        message["publish_timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
     }
     
-    // 사용자 정의 필드
     if (config.contains("additional_fields") && config["additional_fields"].is_object()) {
         for (auto& [key, value] : config["additional_fields"].items()) {
             message[key] = value;
@@ -559,23 +536,16 @@ std::string MqttTargetHandler::createTextMessage(const AlarmMessage& alarm, cons
     std::string format = config.value("text_format", "default");
     
     if (format == "simple") {
-        text << alarm.nm << "=" << alarm.vl << " (" << alarm.get_alarm_status_string() << ")";
+        text << alarm.nm << "=" << alarm.vl;
     } else if (format == "detailed") {
         text << "[" << alarm.bd << "] " << alarm.nm << " = " << alarm.vl 
-             << " | Status: " << alarm.get_alarm_status_string()
              << " | " << alarm.des;
     } else {
-        // 기본 형식
-        text << "Building " << alarm.bd << " - " << alarm.nm << ": " << alarm.vl 
-             << " (" << alarm.get_alarm_status_string() << ")";
+        text << "Building " << alarm.bd << " - " << alarm.nm << ": " << alarm.vl;
     }
     
     return text.str();
 }
-
-// =============================================================================
-// MQTT 콜백 함수들 (C 스타일)
-// =============================================================================
 
 void MqttTargetHandler::onConnectionLost(void* context, char* cause) {
     auto* handler = static_cast<MqttTargetHandler*>(context);
@@ -586,23 +556,17 @@ void MqttTargetHandler::onConnectionLost(void* context, char* cause) {
 }
 
 int MqttTargetHandler::onMessageArrived(void* context, char* topicName, int topicLen, void* message) {
-    // CSP Gateway는 발행만 하므로 메시지 수신 처리 불필요
-    LogManager::getInstance().Debug("MQTT 메시지 수신 (무시됨)");
-    
-    // 사용하지 않는 매개변수 경고 방지
     (void)context;
     (void)topicName;
     (void)topicLen;
     (void)message;
     
-    return 1; // 메시지 처리 완료
+    return 1;
 }
 
 void MqttTargetHandler::onDeliveryComplete(void* context, MQTTClient_deliveryToken token) {
-    LogManager::getInstance().Debug("MQTT 메시지 전달 완료: " + std::to_string(token.msgid));
-    
-    // 사용하지 않는 매개변수 경고 방지
     (void)context;
+    (void)token;
 }
 
 } // namespace CSP
