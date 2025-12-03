@@ -131,7 +131,7 @@ void FailureProtector::recordFailure() {
                                               "/" + std::to_string(config_.failure_threshold) + ")");
                 transitionToOpen();
             }
-            success_count_ = 0;  // 성공 카운터 리셋
+            // success_count_는 건드리지 않음 (누적 통계 유지)
             break;
             
         case State::HALF_OPEN:

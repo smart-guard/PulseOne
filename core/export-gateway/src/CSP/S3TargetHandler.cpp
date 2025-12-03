@@ -157,41 +157,65 @@ bool S3TargetHandler::testConnection(const json& config) {
     try {
         LogManager::getInstance().Info("S3 연결 테스트 시작");
         
+        // ✅ 설정 검증 먼저 (크래시 방지)
+        std::vector<std::string> errors;
+        if (!validateConfig(config, errors)) {
+            for (const auto& err : errors) {
+                LogManager::getInstance().Error("설정 검증 실패: " + err);
+            }
+            LogManager::getInstance().Error("❌ S3 연결 테스트 실패: 설정 오류");
+            return false;
+        }
+        
         std::string bucket_name = extractBucketName(config);
         if (bucket_name.empty()) {
-            LogManager::getInstance().Error("테스트 실패: 버킷명이 없음");
+            LogManager::getInstance().Error("❌ S3 연결 테스트 실패: 버킷명이 없음");
             return false;
         }
         
-        // 클라이언트 획득
+        // ✅ 클라이언트 생성 (검증 포함)
         auto client = getOrCreateClient(config, bucket_name);
         if (!client) {
-            LogManager::getInstance().Error("클라이언트 생성 실패");
+            LogManager::getInstance().Error("❌ S3 연결 테스트 실패: 클라이언트 생성 실패 (설정 확인 필요)");
             return false;
         }
         
-        // S3Client의 testConnection 메서드 활용
-        bool success = client->testConnection();
+        // ✅ 안전한 testConnection 호출
+        bool success = false;
+        try {
+            success = client->testConnection();
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("❌ S3 연결 테스트 실패: " + std::string(e.what()));
+            return false;
+        } catch (...) {
+            LogManager::getInstance().Error("❌ S3 연결 테스트 실패: 알 수 없는 예외");
+            return false;
+        }
         
         if (success) {
             LogManager::getInstance().Info("✅ S3 연결 테스트 성공");
             
             // 추가 검증: 테스트 업로드/삭제 (선택사항)
             if (config.value("test_upload", false)) {
-                std::string test_key = "test/connection_test_" + 
-                    generateTimestampString() + ".json";
-                json test_content = {
-                    {"test", true},
-                    {"timestamp", getCurrentTimestamp()},
-                    {"source", "PulseOne-CSPGateway-Test"}
-                };
-                
-                auto result = client->uploadJson(test_key, test_content.dump(), {});
-                if (result.success) {
-                    LogManager::getInstance().Info("✅ 테스트 업로드 성공: " + test_key);
-                } else {
-                    LogManager::getInstance().Error("❌ 테스트 업로드 실패");
-                    success = false;
+                try {
+                    std::string test_key = "test/connection_test_" + 
+                        generateTimestampString() + ".json";
+                    json test_content = {
+                        {"test", true},
+                        {"timestamp", getCurrentTimestamp()},
+                        {"source", "PulseOne-CSPGateway-Test"}
+                    };
+                    
+                    auto result = client->uploadJson(test_key, test_content.dump(), {});
+                    if (result.success) {
+                        LogManager::getInstance().Info("✅ 테스트 업로드 성공: " + test_key);
+                    } else {
+                        LogManager::getInstance().Warn("⚠️  테스트 업로드 실패 (연결은 성공)");
+                        // 연결은 성공했으므로 true 유지
+                    }
+                } catch (const std::exception& e) {
+                    LogManager::getInstance().Warn("⚠️  테스트 업로드 예외: " + std::string(e.what()));
+                    // 연결은 성공했으므로 true 유지
                 }
             }
         } else {
@@ -201,7 +225,11 @@ bool S3TargetHandler::testConnection(const json& config) {
         return success;
         
     } catch (const std::exception& e) {
-        LogManager::getInstance().Error("S3 연결 테스트 예외: " + std::string(e.what()));
+        LogManager::getInstance().Error("❌ S3 연결 테스트 예외: " + std::string(e.what()));
+        return false;
+    } catch (...) {
+        // ✅ 모든 예외 처리
+        LogManager::getInstance().Error("❌ S3 연결 테스트 알 수 없는 예외 발생");
         return false;
     }
 }
@@ -271,10 +299,36 @@ std::shared_ptr<Client::S3Client> S3TargetHandler::getOrCreateClient(
     // S3 설정 구성
     Client::S3Config s3_config = buildS3Config(config);
     
-    // ✅ 캐시에서 가져오거나 생성
-    auto client = getS3ClientCache().getOrCreate(cache_key, s3_config);
+    // ✅ 설정 유효성 검증 (크래시 방지)
+    if (!s3_config.isValid()) {
+        std::string error_detail = "Invalid S3 configuration: ";
+        if (s3_config.access_key.empty()) error_detail += "access_key is empty; ";
+        if (s3_config.secret_key.empty()) error_detail += "secret_key is empty; ";
+        if (s3_config.bucket_name.empty()) error_detail += "bucket_name is empty; ";
+        
+        LogManager::getInstance().Error(error_detail);
+        return nullptr;  // ✅ nullptr 반환 (크래시 방지)
+    }
     
-    return client;
+    // ✅ 캐시에서 가져오거나 생성
+    try {
+        auto client = getS3ClientCache().getOrCreate(cache_key, s3_config);
+        
+        // ✅ 생성 실패 시 nullptr 체크
+        if (!client) {
+            LogManager::getInstance().Error("S3Client 생성 실패: " + bucket_name);
+            return nullptr;
+        }
+        
+        return client;
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("S3Client 생성 예외: " + std::string(e.what()));
+        return nullptr;
+    } catch (...) {
+        LogManager::getInstance().Error("S3Client 생성 알 수 없는 예외");
+        return nullptr;
+    }
 }
 
 std::string S3TargetHandler::extractBucketName(const json& config) const {

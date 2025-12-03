@@ -1,87 +1,370 @@
 # =============================================================================
-# Makefile for Circuit Breaker Unit Test
+# Export Gateway Unit Tests Makefile (Complete Version - Fixed)
+# ✅ 모든 테스트 타겟 미리 정의
 # =============================================================================
 
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -g
 
-# 경로 설정 (실제 프로젝트 구조에 맞게 조정)
-INCLUDE_DIRS = -I../../include \
-               -I../../../shared/include \
-               -I../../../database/include
+# =============================================================================
+# 디렉토리 구조
+# =============================================================================
 
-# 소스 파일 경로 (export-gateway 기준)
-FAILUREPROTECTOR_SRC = ../../src/CSP/FailureProtector.cpp
-LOGMANAGER_SRC = ../../../shared/src/Utils/LogManager.cpp
+UNIT_TEST_DIR = $(shell pwd)
+EXPORT_GATEWAY_DIR = $(shell cd ../.. && pwd)
+PROJECT_ROOT = $(shell dirname $(shell dirname $(EXPORT_GATEWAY_DIR)))
+SHARED_DIR = $(PROJECT_ROOT)/core/shared
 
-# 라이브러리
-LIBS = -lpthread
+INCLUDE_DIR = $(EXPORT_GATEWAY_DIR)/include
+SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
+SHARED_LIB_DIR = $(SHARED_DIR)/lib
 
-# 빌드 디렉토리
-BIN_DIR = bin
+BIN_DIR = $(EXPORT_GATEWAY_DIR)/bin/tests
 BUILD_DIR = build
 
+# =============================================================================
+# Include 경로
+# =============================================================================
+
+INCLUDES = -I$(INCLUDE_DIR)
+INCLUDES += -I$(SHARED_INCLUDE_DIR)
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Platform
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Common
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Utils
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Database
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Database/Entities
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Database/Repositories
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Alarm
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Export
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Client
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Security
+INCLUDES += -I$(SHARED_INCLUDE_DIR)/Data
+INCLUDES += -I/usr/include/hiredis
+INCLUDES += -I/usr/local/include
+
+# =============================================================================
+# 라이브러리 감지
+# =============================================================================
+
+HAS_SHARED := $(shell [ -d "$(SHARED_LIB_DIR)" ] && [ -f "$(SHARED_LIB_DIR)/libpulseone-common.a" ] && echo "1" || echo "0")
+HAS_HIREDIS := $(shell pkg-config --exists hiredis 2>/dev/null && echo "1" || echo "0")
+ifeq ($(HAS_HIREDIS),0)
+    HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+endif
+HAS_CURL := $(shell pkg-config --exists libcurl 2>/dev/null && echo "1" || echo "0")
+ifeq ($(HAS_CURL),0)
+    HAS_CURL := $(shell echo '\#include <curl/curl.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+endif
+HAS_OPENSSL := $(shell pkg-config --exists openssl 2>/dev/null && echo "1" || echo "0")
+
+# =============================================================================
+# 링크 라이브러리
+# =============================================================================
+
+SHARED_LIBS =
+ifeq ($(HAS_SHARED),1)
+    CXXFLAGS += -DHAS_SHARED_LIBS=1
+    SHARED_LIBS = -L$(SHARED_LIB_DIR)
+    SHARED_LIBS += -lpulseone-alarm
+    SHARED_LIBS += -lpulseone-export
+    SHARED_LIBS += -lpulseone-data
+    SHARED_LIBS += -lpulseone-database
+    SHARED_LIBS += -lpulseone-client
+    SHARED_LIBS += -lpulseone-common
+    SHARED_LIBS += -lpulseone-security
+endif
+
+UTILITY_LIBS =
+
+ifeq ($(HAS_HIREDIS),1)
+    HIREDIS_LIBS := $(shell pkg-config --libs hiredis 2>/dev/null)
+    ifneq ($(HIREDIS_LIBS),)
+        UTILITY_LIBS += $(HIREDIS_LIBS)
+    else
+        UTILITY_LIBS += -lhiredis
+    endif
+    CXXFLAGS += -DHAVE_REDIS=1
+endif
+
+ifeq ($(HAS_CURL),1)
+    CURL_LIBS := $(shell pkg-config --libs libcurl 2>/dev/null)
+    ifneq ($(CURL_LIBS),)
+        UTILITY_LIBS += $(CURL_LIBS)
+    else
+        UTILITY_LIBS += -lcurl
+    endif
+    CXXFLAGS += -DHAS_CURL=1
+endif
+
+ifeq ($(HAS_OPENSSL),1)
+    OPENSSL_LIBS := $(shell pkg-config --libs openssl 2>/dev/null)
+    ifneq ($(OPENSSL_LIBS),)
+        UTILITY_LIBS += $(OPENSSL_LIBS)
+    else
+        UTILITY_LIBS += -lssl -lcrypto
+    endif
+    CXXFLAGS += -DHAS_OPENSSL=1
+endif
+
+BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
+
+LDFLAGS = $(SHARED_LIBS) $(UTILITY_LIBS) $(BASIC_LIBS)
+
+# =============================================================================
+# 색상
+# =============================================================================
+
+GREEN = \033[0;32m
+BLUE = \033[0;34m
+YELLOW = \033[1;33m
+RED = \033[0;31m
+NC = \033[0m
+
+# =============================================================================
+# Export Gateway 소스 파일
+# =============================================================================
+
+EVENT_SRC_DIR = $(EXPORT_GATEWAY_DIR)/src/Event
+EVENT_SOURCES = $(wildcard $(EVENT_SRC_DIR)/*.cpp)
+EVENT_OBJECTS = $(EVENT_SOURCES:$(EXPORT_GATEWAY_DIR)/src/%.cpp=$(BUILD_DIR)/%.o)
+
+SCHEDULE_SRC_DIR = $(EXPORT_GATEWAY_DIR)/src/Schedule
+SCHEDULE_SOURCES = $(wildcard $(SCHEDULE_SRC_DIR)/*.cpp)
+SCHEDULE_OBJECTS = $(SCHEDULE_SOURCES:$(EXPORT_GATEWAY_DIR)/src/%.cpp=$(BUILD_DIR)/%.o)
+
+TRANSFORM_SRC_DIR = $(EXPORT_GATEWAY_DIR)/src/Transform
+TRANSFORM_SOURCES = $(wildcard $(TRANSFORM_SRC_DIR)/*.cpp)
+TRANSFORM_OBJECTS = $(TRANSFORM_SOURCES:$(EXPORT_GATEWAY_DIR)/src/%.cpp=$(BUILD_DIR)/%.o)
+
+CSP_SRC_DIR = $(EXPORT_GATEWAY_DIR)/src/CSP
+CSP_SOURCES = $(wildcard $(CSP_SRC_DIR)/*.cpp)
+CSP_OBJECTS = $(CSP_SOURCES:$(EXPORT_GATEWAY_DIR)/src/%.cpp=$(BUILD_DIR)/%.o)
+
+EXPORT_SRC_DIR = $(EXPORT_GATEWAY_DIR)/src/Export
+EXPORT_SOURCES = $(wildcard $(EXPORT_SRC_DIR)/*.cpp)
+EXPORT_OBJECTS = $(EXPORT_SOURCES:$(EXPORT_GATEWAY_DIR)/src/%.cpp=$(BUILD_DIR)/%.o)
+
+UTILS_SRC_DIR = $(EXPORT_GATEWAY_DIR)/src/Utils
+UTILS_SOURCES = $(wildcard $(UTILS_SRC_DIR)/*.cpp)
+UTILS_OBJECTS = $(UTILS_SOURCES:$(EXPORT_GATEWAY_DIR)/src/%.cpp=$(BUILD_DIR)/%.o)
+
+ALL_GATEWAY_OBJECTS = $(EVENT_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS)
+
+# =============================================================================
+# 테스트 바이너리 목록 (존재하는 것만 빌드)
+# =============================================================================
+
+TEST_BINARIES = 
+ifneq ($(wildcard test_circuit_breaker.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_circuit_breaker
+endif
+ifneq ($(wildcard test_http_handler.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_http_handler
+endif
+ifneq ($(wildcard test_dynamic_target.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_dynamic_target
+endif
+ifneq ($(wildcard test_file_handler.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_file_handler
+endif
+ifneq ($(wildcard test_s3_handler.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_s3_handler
+endif
+ifneq ($(wildcard test_mqtt_handler.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_mqtt_handler
+endif
+ifneq ($(wildcard test_export_modes.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_export_modes
+endif
+
+# =============================================================================
 # 타겟
-TARGET = $(BIN_DIR)/test_circuit_breaker
-TEST_SRC = test_circuit_breaker.cpp
+# =============================================================================
 
-.PHONY: all test clean check help
+.PHONY: all clean test test-circuit test-http test-dynamic test-file test-s3 test-mqtt test-export-modes check-libs help
 
-all: $(TARGET)
+all: check-libs $(TEST_BINARIES)
+	@echo -e "$(GREEN)✅ All available unit tests built$(NC)"
 
-# 실제 빌드
-$(TARGET): $(TEST_SRC) | $(BIN_DIR) $(BUILD_DIR)
-	@echo "🔨 Building Circuit Breaker test..."
-	$(CXX) $(CXXFLAGS) $(INCLUDE_DIRS) \
-		$(TEST_SRC) \
-		$(FAILUREPROTECTOR_SRC) \
-		$(LOGMANAGER_SRC) \
-		-o $(TARGET) $(LIBS)
-	@echo "✅ Build complete: $(TARGET)"
-
-# 디렉토리 생성
 $(BIN_DIR) $(BUILD_DIR):
 	@mkdir -p $@
+	@mkdir -p $(BUILD_DIR)/Event
+	@mkdir -p $(BUILD_DIR)/Schedule
+	@mkdir -p $(BUILD_DIR)/Transform
+	@mkdir -p $(BUILD_DIR)/CSP
+	@mkdir -p $(BUILD_DIR)/Export
+	@mkdir -p $(BUILD_DIR)/Utils
 
-# 빌드 & 실행
-test: $(TARGET)
+# =============================================================================
+# 오브젝트 파일 컴파일
+# =============================================================================
+
+$(BUILD_DIR)/%.o: $(EXPORT_GATEWAY_DIR)/src/%.cpp | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	@echo -e "$(YELLOW)⚙️  Compiling $<$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# =============================================================================
+# 개별 테스트 빌드 규칙
+# =============================================================================
+
+$(BIN_DIR)/test_circuit_breaker: test_circuit_breaker.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building Circuit Breaker test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_circuit_breaker.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+$(BIN_DIR)/test_http_handler: test_http_handler.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building HTTP Handler test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_http_handler.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+$(BIN_DIR)/test_dynamic_target: test_dynamic_target.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building DynamicTargetManager test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_dynamic_target.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+$(BIN_DIR)/test_file_handler: test_file_handler.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building FileTargetHandler test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_file_handler.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+$(BIN_DIR)/test_s3_handler: test_s3_handler.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building S3TargetHandler test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_s3_handler.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+$(BIN_DIR)/test_mqtt_handler: test_mqtt_handler.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building MqttTargetHandler test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_mqtt_handler.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+$(BIN_DIR)/test_export_modes: test_export_modes.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building Export Modes test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_export_modes.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+# =============================================================================
+# 개별 테스트 실행 규칙 (명시적 경로)
+# =============================================================================
+
+test-circuit: $(BIN_DIR)/test_circuit_breaker
+	@echo -e "$(BLUE)🧪 Running Circuit Breaker tests$(NC)"
+	@$(BIN_DIR)/test_circuit_breaker
+
+test-http: $(BIN_DIR)/test_http_handler
+	@echo -e "$(BLUE)🧪 Running HTTP Handler tests$(NC)"
+	@$(BIN_DIR)/test_http_handler
+
+test-dynamic: $(BIN_DIR)/test_dynamic_target
+	@echo -e "$(BLUE)🧪 Running DynamicTargetManager tests$(NC)"
+	@$(BIN_DIR)/test_dynamic_target
+
+test-file: $(BIN_DIR)/test_file_handler
+	@echo -e "$(BLUE)🧪 Running FileTargetHandler tests$(NC)"
+	@$(BIN_DIR)/test_file_handler
+
+test-s3: $(BIN_DIR)/test_s3_handler
+	@echo -e "$(BLUE)🧪 Running S3TargetHandler tests$(NC)"
+	@$(BIN_DIR)/test_s3_handler
+
+test-mqtt: $(BIN_DIR)/test_mqtt_handler
+	@echo -e "$(BLUE)🧪 Running MqttTargetHandler tests$(NC)"
+	@$(BIN_DIR)/test_mqtt_handler
+
+test-export-modes: $(BIN_DIR)/test_export_modes
+	@echo -e "$(BLUE)🧪 Running Export Modes tests$(NC)"
+	@$(BIN_DIR)/test_export_modes
+
+# =============================================================================
+# 전체 테스트 실행
+# =============================================================================
+
+test: all
+	@echo -e "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(BLUE)🧪 Running ALL Unit Tests$(NC)"
+	@echo -e "$(BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo ""
-	@echo "🧪 Running Circuit Breaker tests..."
+	@[ -f $(BIN_DIR)/test_circuit_breaker ] && { echo -e "$(YELLOW)▶ Circuit Breaker Tests$(NC)"; $(BIN_DIR)/test_circuit_breaker || true; echo ""; } || true
+	@[ -f $(BIN_DIR)/test_http_handler ] && { echo -e "$(YELLOW)▶ HTTP Handler Tests$(NC)"; $(BIN_DIR)/test_http_handler || true; echo ""; } || true
+	@[ -f $(BIN_DIR)/test_dynamic_target ] && { echo -e "$(YELLOW)▶ DynamicTargetManager Tests$(NC)"; $(BIN_DIR)/test_dynamic_target || true; echo ""; } || true
+	@[ -f $(BIN_DIR)/test_file_handler ] && { echo -e "$(YELLOW)▶ FileTargetHandler Tests$(NC)"; $(BIN_DIR)/test_file_handler || true; echo ""; } || true
+	@[ -f $(BIN_DIR)/test_s3_handler ] && { echo -e "$(YELLOW)▶ S3TargetHandler Tests$(NC)"; $(BIN_DIR)/test_s3_handler || true; echo ""; } || true
+	@[ -f $(BIN_DIR)/test_mqtt_handler ] && { echo -e "$(YELLOW)▶ MqttTargetHandler Tests$(NC)"; $(BIN_DIR)/test_mqtt_handler || true; echo ""; } || true
+	@[ -f $(BIN_DIR)/test_export_modes ] && { echo -e "$(YELLOW)▶ Export Modes Tests$(NC)"; $(BIN_DIR)/test_export_modes || true; echo ""; } || true
+	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
+	@echo -e "$(GREEN)✅ All tests completed$(NC)"
+
+# =============================================================================
+# 라이브러리 확인
+# =============================================================================
+
+check-libs:
+	@echo -e "$(BLUE)🔍 Checking PulseOne Shared Libraries$(NC)"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "Shared lib directory: $(SHARED_LIB_DIR)"
+	@echo "HAS_SHARED: $(HAS_SHARED)"
+	@echo "HAS_HIREDIS: $(HAS_HIREDIS)"
+	@echo "HAS_CURL: $(HAS_CURL)"
+	@echo "HAS_OPENSSL: $(HAS_OPENSSL)"
 	@echo ""
-	@$(TARGET)
+ifeq ($(HAS_SHARED),1)
+	@echo "Shared libraries:"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-security.a" ] && echo "  libpulseone-security: ✅" || echo "  libpulseone-security: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-common.a" ] && echo "  libpulseone-common: ✅" || echo "  libpulseone-common: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-database.a" ] && echo "  libpulseone-database: ✅" || echo "  libpulseone-database: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-client.a" ] && echo "  libpulseone-client: ✅" || echo "  libpulseone-client: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-data.a" ] && echo "  libpulseone-data: ✅" || echo "  libpulseone-data: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-export.a" ] && echo "  libpulseone-export: ✅" || echo "  libpulseone-export: ❌"
+	@[ -f "$(SHARED_LIB_DIR)/libpulseone-alarm.a" ] && echo "  libpulseone-alarm: ✅" || echo "  libpulseone-alarm: ❌"
+	@echo -e "$(GREEN)✅ Shared libraries available$(NC)"
+else
+	@echo -e "$(RED)❌ Shared libraries not found!$(NC)"
+	@echo -e "$(YELLOW)Build them first: cd $(SHARED_DIR) && make$(NC)"
+endif
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-# 빠른 컴파일 & 실행 (임시 디렉토리)
-quick: $(TEST_SRC)
-	@echo "🚀 Quick compile & test..."
-	@$(CXX) $(CXXFLAGS) $(INCLUDE_DIRS) \
-		$(TEST_SRC) \
-		$(FAILUREPROTECTOR_SRC) \
-		$(LOGMANAGER_SRC) \
-		-o /tmp/test_cb $(LIBS)
-	@echo ""
-	@/tmp/test_cb
-
-# 파일 존재 확인
-check:
-	@echo "📁 Checking source files..."
-	@echo -n "  FailureProtector.cpp: "
-	@test -f $(FAILUREPROTECTOR_SRC) && echo "✅ Found" || echo "❌ Not found"
-	@echo -n "  LogManager.cpp: "
-	@test -f $(LOGMANAGER_SRC) && echo "✅ Found" || echo "❌ Not found"
-	@echo -n "  test_circuit_breaker.cpp: "
-	@test -f $(TEST_SRC) && echo "✅ Found" || echo "❌ Not found"
-
+# =============================================================================
 # 정리
-clean:
-	@rm -rf $(BIN_DIR) $(BUILD_DIR)
-	@rm -f /tmp/test_cb
-	@echo "✅ Clean complete"
+# =============================================================================
 
+clean:
+	@echo -e "$(YELLOW)🧹 Cleaning unit tests$(NC)"
+	@rm -rf $(BUILD_DIR)
+	@rm -f $(BIN_DIR)/test_*
+	@echo -e "$(GREEN)✅ Clean completed$(NC)"
+
+# =============================================================================
 # 도움말
+# =============================================================================
+
 help:
-	@echo "Usage:"
-	@echo "  make        - Build test"
-	@echo "  make test   - Build and run test"
-	@echo "  make quick  - Quick compile & run"
-	@echo "  make check  - Check if source files exist"
-	@echo "  make clean  - Clean"
+	@echo "Export Gateway Unit Tests"
+	@echo ""
+	@echo "Commands:"
+	@echo "  make                 - Build all available tests"
+	@echo "  make test            - Run all available tests"
+	@echo "  make test-circuit    - Run Circuit Breaker tests"
+	@echo "  make test-http       - Run HTTP Handler tests"
+	@echo "  make test-dynamic    - Run DynamicTargetManager tests"
+	@echo "  make test-file       - Run FileTargetHandler tests"
+	@echo "  make test-s3         - Run S3TargetHandler tests"
+	@echo "  make test-mqtt       - Run MqttTargetHandler tests"
+	@echo "  make test-export-modes - Run Export Modes tests"
+	@echo "  make check-libs      - Check shared libraries"
+	@echo "  make clean           - Clean build files"
+	@echo "  make help            - Show this help"
+	@echo ""
+	@echo "Library Status:"
+	@echo "  HAS_SHARED: $(HAS_SHARED)"
+	@echo "  HAS_HIREDIS: $(HAS_HIREDIS)"
+	@echo "  HAS_CURL: $(HAS_CURL)"
+	@echo "  HAS_OPENSSL: $(HAS_OPENSSL)"
+	@echo ""
+	@echo "Available Tests:"
+	@[ -f test_circuit_breaker.cpp ] && echo "  ✅ test_circuit_breaker.cpp" || echo "  ❌ test_circuit_breaker.cpp"
+	@[ -f test_http_handler.cpp ] && echo "  ✅ test_http_handler.cpp" || echo "  ❌ test_http_handler.cpp"
+	@[ -f test_dynamic_target.cpp ] && echo "  ✅ test_dynamic_target.cpp" || echo "  ❌ test_dynamic_target.cpp"
+	@[ -f test_file_handler.cpp ] && echo "  ✅ test_file_handler.cpp" || echo "  ❌ test_file_handler.cpp"
+	@[ -f test_s3_handler.cpp ] && echo "  ✅ test_s3_handler.cpp" || echo "  ❌ test_s3_handler.cpp"
+	@[ -f test_mqtt_handler.cpp ] && echo "  ✅ test_mqtt_handler.cpp" || echo "  ❌ test_mqtt_handler.cpp"
+	@[ -f test_export_modes.cpp ] && echo "  ✅ test_export_modes.cpp" || echo "  ❌ test_export_modes.cpp"

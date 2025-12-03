@@ -201,7 +201,7 @@ bool DynamicTargetManager::start() {
     }
     
     // 4. 백그라운드 스레드 시작
-    is_running_ = true;
+    is_running_.store(true, std::memory_order_release);
     startBackgroundThreads();
     
     LogManager::getInstance().Info("DynamicTargetManager 시작 완료 ✅");
@@ -251,7 +251,20 @@ bool DynamicTargetManager::loadFromDatabase() {
     try {
         LogManager::getInstance().Info("DB에서 타겟 로드 시작...");
         
-        auto export_target_repo = RepositoryFactory::getInstance().getExportTargetRepository();
+        // ✅ RepositoryFactory 자동 초기화 추가
+        auto& factory = RepositoryFactory::getInstance();
+        if (!factory.isInitialized()) {
+            LogManager::getInstance().Warn("⚠️ RepositoryFactory 미초기화 감지 - 자동 초기화 시도");
+            
+            if (!factory.initialize()) {
+                LogManager::getInstance().Error("❌ RepositoryFactory 초기화 실패");
+                return false;
+            }
+            
+            LogManager::getInstance().Info("✅ RepositoryFactory 자동 초기화 완료");
+        }
+        
+        auto export_target_repo = factory.getExportTargetRepository();
         
         if (!export_target_repo) {
             LogManager::getInstance().Error("ExportTargetRepository를 가져올 수 없음");
@@ -287,10 +300,10 @@ bool DynamicTargetManager::loadFromDatabase() {
                     continue;
                 }
                 
-                // ✅ export_mode 설정 (기본값 처리 추가)
+                // export_mode 설정
                 std::string export_mode = entity.getExportMode();
                 if (export_mode.empty() || export_mode == "0") {
-                    export_mode = "alarm";  // 기본값
+                    export_mode = "alarm";
                 }
                 target.config["export_mode"] = export_mode;
                 
@@ -328,6 +341,10 @@ bool DynamicTargetManager::loadFromDatabase() {
         return false;
     }
 }
+
+
+
+
 
 
 bool DynamicTargetManager::forceReload() {
@@ -756,6 +773,10 @@ bool DynamicTargetManager::processTargetByIndex(
     
     const auto& target = targets_[index];
     
+    // ✅ 타겟 이름 먼저 설정
+    result.target_name = target.name;
+    result.target_type = target.type;
+    
     auto handler_it = handlers_.find(target.type);
     if (handler_it == handlers_.end()) {
         result.success = false;
@@ -764,48 +785,81 @@ bool DynamicTargetManager::processTargetByIndex(
     }
     
     auto fp_it = failure_protectors_.find(target.name);
-    // 🔧 수정 9: allowRequest() → canExecute()
     if (fp_it != failure_protectors_.end() && !fp_it->second->canExecute()) {
         result.success = false;
-        result.error_message = "Circuit Breaker OPEN";
+        result.error_message = "Circuit Breaker OPEN 상태";
+        
+        auto stats = fp_it->second->getStats();
+        LogManager::getInstance().Warn(
+            "Circuit Breaker OPEN: " + target.name + 
+            " (실패: " + std::to_string(stats.total_failures) + "회)");
+        
         return false;
     }
     
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
     try {
-        json expanded_config = expandConfigVariables(target.config, alarm);
+        // ✅ send() → sendAlarm()
+        auto handler_result = handler_it->second->sendAlarm(alarm, target.config);
         
-        concurrent_requests_.fetch_add(1);
-        uint64_t current = concurrent_requests_.load();
-        uint64_t peak = peak_concurrent_requests_.load();
-        while (current > peak && 
-               !peak_concurrent_requests_.compare_exchange_weak(peak, current));
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time);
         
-        // 🔧 수정 10: send() → sendAlarm()
-        result = handler_it->second->sendAlarm(alarm, expanded_config);
+        // ✅ 필요한 필드만 복사
+        result.success = handler_result.success;
+        result.status_code = handler_result.status_code;  // http_status_code → status_code
+        result.response_time = handler_result.response_time;
+        result.error_message = handler_result.error_message;
+        result.content_size = handler_result.content_size;  // bytes_sent → content_size
+        result.retry_count = handler_result.retry_count;
         
-        concurrent_requests_.fetch_sub(1);
-        
-        if (result.success && fp_it != failure_protectors_.end()) {
-            fp_it->second->recordSuccess();
-        } else if (!result.success && fp_it != failure_protectors_.end()) {
-            fp_it->second->recordFailure();
+        // Circuit Breaker 업데이트
+        if (fp_it != failure_protectors_.end()) {
+            if (result.success) {
+                fp_it->second->recordSuccess();  // 파라미터 제거
+            } else {
+                fp_it->second->recordFailure();
+            }
         }
+        
+        // 통계 업데이트
+        total_requests_.fetch_add(1, std::memory_order_relaxed);
+        if (result.success) {
+            total_successes_.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            total_failures_.fetch_add(1, std::memory_order_relaxed);
+        }
+        
+        total_response_time_ms_.fetch_add(duration.count(), std::memory_order_relaxed);
+        // total_bytes_sent_ 라인 제거 (content_size는 TargetSendResult에만 있음)
         
         return result.success;
         
     } catch (const std::exception& e) {
-        concurrent_requests_.fetch_sub(1);
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time);
         
         result.success = false;
-        result.error_message = std::string("예외: ") + e.what();
+        result.error_message = "핸들러 예외: " + std::string(e.what());
+        result.response_time = duration;
         
         if (fp_it != failure_protectors_.end()) {
             fp_it->second->recordFailure();
         }
         
+        total_requests_.fetch_add(1, std::memory_order_relaxed);
+        total_failures_.fetch_add(1, std::memory_order_relaxed);
+        
+        LogManager::getInstance().Error(
+            "타겟 처리 예외: " + target.name + " - " + std::string(e.what()));
+        
         return false;
     }
 }
+
 
 json DynamicTargetManager::expandConfigVariables(const json& config, const AlarmMessage& alarm) {
     json expanded = config;
