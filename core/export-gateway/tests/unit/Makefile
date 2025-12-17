@@ -385,3 +385,11 @@ help:
 	@[ -f test_s3_handler.cpp ] && echo "  ✅ test_s3_handler.cpp" || echo "  ❌ test_s3_handler.cpp"
 	@[ -f test_mqtt_handler.cpp ] && echo "  ✅ test_mqtt_handler.cpp" || echo "  ❌ test_mqtt_handler.cpp"
 	@[ -f test_export_modes.cpp ] && echo "  ✅ test_export_modes.cpp" || echo "  ❌ test_export_modes.cpp"
+$(BIN_DIR)/test_payload_transformer: test_payload_transformer.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building PayloadTransformer test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_payload_transformer.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+test-payload: $(BIN_DIR)/test_payload_transformer
+	@echo -e "$(BLUE)🧪 Running PayloadTransformer tests$(NC)"
+	@$(BIN_DIR)/test_payload_transformer
