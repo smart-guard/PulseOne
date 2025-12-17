@@ -1,6 +1,5 @@
 # =============================================================================
-# Export Gateway Unit Tests Makefile (Complete Version - Fixed)
-# ✅ 모든 테스트 타겟 미리 정의
+# Export Gateway Unit Tests Makefile (Complete Version - Paho MQTT C++ 지원)
 # =============================================================================
 
 CXX = g++
@@ -39,6 +38,7 @@ INCLUDES += -I$(SHARED_INCLUDE_DIR)/Export
 INCLUDES += -I$(SHARED_INCLUDE_DIR)/Client
 INCLUDES += -I$(SHARED_INCLUDE_DIR)/Security
 INCLUDES += -I$(SHARED_INCLUDE_DIR)/Data
+INCLUDES += -I$(PROJECT_ROOT)/core/collector/include
 INCLUDES += -I/usr/include/hiredis
 INCLUDES += -I/usr/local/include
 
@@ -56,6 +56,9 @@ ifeq ($(HAS_CURL),0)
     HAS_CURL := $(shell echo '\#include <curl/curl.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 endif
 HAS_OPENSSL := $(shell pkg-config --exists openssl 2>/dev/null && echo "1" || echo "0")
+
+# Paho MQTT C++ 라이브러리 감지
+HAS_PAHO_MQTT := $(shell [ -f /usr/include/mqtt/async_client.h ] && echo "1" || echo "0")
 
 # =============================================================================
 # 링크 라이브러리
@@ -104,6 +107,12 @@ ifeq ($(HAS_OPENSSL),1)
         UTILITY_LIBS += -lssl -lcrypto
     endif
     CXXFLAGS += -DHAS_OPENSSL=1
+endif
+
+# Paho MQTT C++ 라이브러리 링크
+ifeq ($(HAS_PAHO_MQTT),1)
+    CXXFLAGS += -DHAS_PAHO_MQTT
+    UTILITY_LIBS += -lpaho-mqttpp3 -lpaho-mqtt3a
 endif
 
 BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
@@ -234,7 +243,7 @@ $(BIN_DIR)/test_s3_handler: test_s3_handler.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_D
 	@echo -e "$(GREEN)✅ Built: $@$(NC)"
 
 $(BIN_DIR)/test_mqtt_handler: test_mqtt_handler.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
-	@echo -e "$(BLUE)🔨 Building MqttTargetHandler test$(NC)"
+	@echo -e "$(BLUE)🔨 Building MqttTargetHandler test (Paho MQTT: $(HAS_PAHO_MQTT))$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_mqtt_handler.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
 	@echo -e "$(GREEN)✅ Built: $@$(NC)"
 
@@ -306,6 +315,7 @@ check-libs:
 	@echo "HAS_HIREDIS: $(HAS_HIREDIS)"
 	@echo "HAS_CURL: $(HAS_CURL)"
 	@echo "HAS_OPENSSL: $(HAS_OPENSSL)"
+	@echo "HAS_PAHO_MQTT: $(HAS_PAHO_MQTT)"
 	@echo ""
 ifeq ($(HAS_SHARED),1)
 	@echo "Shared libraries:"
@@ -320,6 +330,12 @@ ifeq ($(HAS_SHARED),1)
 else
 	@echo -e "$(RED)❌ Shared libraries not found!$(NC)"
 	@echo -e "$(YELLOW)Build them first: cd $(SHARED_DIR) && make$(NC)"
+endif
+ifeq ($(HAS_PAHO_MQTT),1)
+	@echo -e "$(GREEN)✅ Paho MQTT C++ available$(NC)"
+else
+	@echo -e "$(YELLOW)⚠️  Paho MQTT not found - MQTT tests will run in Mock mode$(NC)"
+	@echo -e "$(YELLOW)   Install: apt install libpaho-mqtt-dev libpaho-mqttpp-dev$(NC)"
 endif
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -338,7 +354,7 @@ clean:
 # =============================================================================
 
 help:
-	@echo "Export Gateway Unit Tests"
+	@echo "Export Gateway Unit Tests (Paho MQTT C++ Support)"
 	@echo ""
 	@echo "Commands:"
 	@echo "  make                 - Build all available tests"
@@ -359,6 +375,7 @@ help:
 	@echo "  HAS_HIREDIS: $(HAS_HIREDIS)"
 	@echo "  HAS_CURL: $(HAS_CURL)"
 	@echo "  HAS_OPENSSL: $(HAS_OPENSSL)"
+	@echo "  HAS_PAHO_MQTT: $(HAS_PAHO_MQTT)"
 	@echo ""
 	@echo "Available Tests:"
 	@[ -f test_circuit_breaker.cpp ] && echo "  ✅ test_circuit_breaker.cpp" || echo "  ❌ test_circuit_breaker.cpp"
