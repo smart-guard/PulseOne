@@ -25,6 +25,7 @@
 #include "Database/Entities/VirtualPointEntity.h"
 
 // QuickJS 헤더
+#if HAS_QUICKJS
 #ifdef _WIN32
     extern "C" {
         #include <quickjs.h>
@@ -33,6 +34,7 @@
     extern "C" {
         #include <quickjs/quickjs.h>
     }
+#endif
 #endif
 
 // JSON 라이브러리
@@ -221,6 +223,7 @@ private:
     // =======================================================================
     bool initJSEngine();
     void cleanupJSEngine();
+    bool resetJSEngine();
     bool registerSystemFunctions();
     
     // =======================================================================
@@ -242,9 +245,14 @@ private:
     // =======================================================================
     
     // JavaScript 엔진
+#if HAS_QUICKJS
     JSRuntime* js_runtime_{nullptr};
     JSContext* js_context_{nullptr};
-    mutable std::mutex js_mutex_;
+#else
+    void* js_runtime_{nullptr};
+    void* js_context_{nullptr};
+#endif
+    mutable std::recursive_mutex js_mutex_;
     
     // 가상포인트 캐시
     std::unordered_map<int, VirtualPointDef> virtual_points_;

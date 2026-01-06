@@ -22,7 +22,7 @@
 #include <unordered_map>
 
 // BACnet 스택 조건부 포함
-#ifdef HAS_BACNET_STACK
+#if HAS_BACNET_STACK
 extern "C" {
     #include <bacnet/bacdef.h>
     #include <bacnet/bacenum.h>

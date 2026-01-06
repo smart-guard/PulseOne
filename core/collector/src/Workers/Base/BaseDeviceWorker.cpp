@@ -355,8 +355,9 @@ void BaseDeviceWorker::HandleConnectionError(const std::string& error_message) {
     
     SetConnectionState(false);
     
-    // 재연결 상태로 변경
-    if (current_state_.load() == WorkerState::RUNNING) {
+    // 재연결 상태로 변경 (RUNNING 또는 DEVICE_OFFLINE 상태에서 RECONNECTING으로)
+    WorkerState current = current_state_.load();
+    if (current == WorkerState::RUNNING || current == WorkerState::DEVICE_OFFLINE) {
         ChangeState(WorkerState::RECONNECTING);
     }
 }
@@ -550,17 +551,15 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         message.site_id = device_info_.site_id;
         
         // 처리 제어 (프로토콜별 최적화)
+        // 처리 제어 (모든 프로토콜에 대해 가상 포인트 활성화)
         message.trigger_alarms = true;
-        message.trigger_virtual_points = false;
+        message.trigger_virtual_points = true;
         
-        if (device_info_.GetProtocolName() == "MODBUS_TCP") {
-            message.trigger_virtual_points = true;
+        if (device_info_.GetProtocolName() == "MODBUS_TCP" || device_info_.GetProtocolName() == "MODBUS_RTU") {
             message.high_priority = (priority > 3);
         } else if (device_info_.GetProtocolName() == "MQTT") {
-            message.trigger_virtual_points = false;
-            message.high_priority = (priority > 7);
-        } else if (device_info_.GetProtocolName() == "BACNET") {
-            message.trigger_virtual_points = false;
+            message.high_priority = (priority > 0); // MQTT는 실시간성 중요
+        } else if (device_info_.GetProtocolName() == "BACNET_IP" || device_info_.GetProtocolName() == "BACNET_MSTP") {
             message.high_priority = (priority > 5);
         } else {
             message.high_priority = (priority > 5);
@@ -611,7 +610,7 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         // 디바이스 상태 자동 판단을 위한 임계값 설정
         PulseOne::Structs::StatusThresholds thresholds;
         
-        if (device_info_.GetProtocolName() == "MODBUS_TCP" || "MODBUS_RTU") {
+        if (device_info_.GetProtocolName() == "MODBUS_TCP" || device_info_.GetProtocolName() == "MODBUS_RTU") {
             thresholds.offline_failure_count = 3;
             thresholds.timeout_threshold = std::chrono::seconds(3);
             thresholds.partial_failure_ratio = 0.2;
@@ -623,7 +622,7 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
             thresholds.partial_failure_ratio = 0.5;
             thresholds.error_failure_ratio = 0.8;
             thresholds.offline_timeout = std::chrono::seconds(60);
-        } else if (device_info_.GetProtocolName() == "BACNET") {
+        } else if (device_info_.GetProtocolName() == "BACNET_IP" || device_info_.GetProtocolName() == "BACNET_MSTP") {
             thresholds.offline_failure_count = 5;
             thresholds.timeout_threshold = std::chrono::seconds(5);
             thresholds.partial_failure_ratio = 0.3;

@@ -22,7 +22,7 @@
 namespace PulseOne {
 namespace Client {
 
-#ifdef HAS_CURL
+#if HAS_CURL
 bool HttpClient::curl_global_initialized_ = false;
 #endif
 
@@ -38,7 +38,7 @@ HttpClient::HttpClient(const std::string& base_url, const HttpRequestOptions& op
 }
 
 HttpClient::~HttpClient() {
-#ifdef HAS_CURL
+#if HAS_CURL
     if (curl_handle_) {
         curl_easy_cleanup(curl_handle_);
         curl_handle_ = nullptr;
@@ -51,7 +51,7 @@ void HttpClient::initializeHttpLibrary() {
     LOG_DEBUG("base_url: " + base_url_);
     
     // httplib 우선 사용
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
     try {
         LOG_DEBUG("Trying httplib initialization...");
         
@@ -64,33 +64,42 @@ void HttpClient::initializeHttpLibrary() {
             LOG_DEBUG("Parsed - scheme: " + parsed["scheme"] + ", host: " + host + ", port: " + std::to_string(port));
             
             if (parsed["scheme"] == "https") {
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
                 httplib_client_ = std::make_unique<httplib::SSLClient>(host, port);
                 LOG_DEBUG("SSLClient created");
+#else
+                LOG_ERROR("HTTPS requested but httplib has no SSL support. Falling back to Curl if available.");
+                // continue to try curl
+#endif
             } else {
                 httplib_client_ = std::make_unique<httplib::Client>(host, port);
                 LOG_DEBUG("Client created");
             }
             
-            httplib_client_->set_connection_timeout(options_.connect_timeout_sec);
-            httplib_client_->set_read_timeout(options_.timeout_sec);
-            httplib_client_->set_follow_redirects(options_.follow_redirects);
-            
-            if (parsed["scheme"] == "https" && !options_.verify_ssl) {
-                auto ssl_client = dynamic_cast<httplib::SSLClient*>(httplib_client_.get());
-                if (ssl_client) {
-                    ssl_client->set_ca_cert_path("");
-                    LOG_DEBUG("SSL verification disabled");
+            if (httplib_client_) {
+                httplib_client_->set_connection_timeout(options_.connect_timeout_sec);
+                httplib_client_->set_read_timeout(options_.timeout_sec);
+                
+                // set_follow_redirects is not available in very old versions
+#ifdef CPPHTTPLIB_FOLLOW_LOCATION_SUPPORT
+                httplib_client_->set_follow_redirects(options_.follow_redirects);
+#endif
+                
+                if (parsed["scheme"] == "https" && !options_.verify_ssl) {
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+                    auto ssl_client = dynamic_cast<httplib::SSLClient*>(httplib_client_.get());
+                    if (ssl_client) {
+                        ssl_client->set_ca_cert_path("");
+                        LOG_DEBUG("SSL verification disabled");
+                    }
+#endif
                 }
+                
+                library_type_ = HttpLibraryType::HTTPLIB;
+                LOG_DEBUG("HttpClient initialized with httplib successfully");
+                return;
             }
-        } else {
-            httplib_client_ = std::make_unique<httplib::Client>();
-            LOG_DEBUG("Empty base_url - default client created");
         }
-        
-        library_type_ = HttpLibraryType::HTTPLIB;
-        LOG_DEBUG("HttpClient initialized with httplib successfully");
-        return;
-        
     } catch (const std::exception& e) {
         LOG_ERROR("Failed to initialize httplib: " + std::string(e.what()));
     }
@@ -99,7 +108,7 @@ void HttpClient::initializeHttpLibrary() {
 #endif
 
     // httplib 실패 시 curl 사용
-#ifdef HAS_CURL
+#if HAS_CURL
     try {
         LOG_DEBUG("Trying curl initialization...");
         
@@ -125,13 +134,13 @@ void HttpClient::initializeHttpLibrary() {
 #endif
 
     LOG_ERROR("No HTTP library available - HAVE_HTTPLIB=" 
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
               "1"
 #else
               "0"
 #endif
               ", HAS_CURL="
-#ifdef HAS_CURL
+#if HAS_CURL
               "1"
 #else
               "0"
@@ -176,12 +185,12 @@ HttpResponse HttpClient::executeRequest(const std::string& method,
     HttpResponse response;
     
     switch (library_type_) {
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
         case HttpLibraryType::HTTPLIB:
             response = executeWithHttplib(method, path, body, content_type, headers);
             break;
 #endif
-#ifdef HAS_CURL
+#if HAS_CURL
         case HttpLibraryType::CURL:
             response = executeWithCurl(method, path, body, content_type, headers);
             break;
@@ -207,7 +216,7 @@ HttpResponse HttpClient::executeRequest(const std::string& method,
     return response;
 }
 
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
 HttpResponse HttpClient::executeWithHttplib(const std::string& method,
                                            const std::string& path,
                                            const std::string& body,
@@ -274,7 +283,7 @@ HttpResponse HttpClient::executeWithHttplib(const std::string& method,
 }
 #endif
 
-#ifdef HAS_CURL
+#if HAS_CURL
 HttpResponse HttpClient::executeWithCurl(const std::string& method,
                                         const std::string& path,
                                         const std::string& body,

@@ -898,6 +898,10 @@ void DynamicTargetManager::startBackgroundThreads() {
 void DynamicTargetManager::stopBackgroundThreads() {
     LogManager::getInstance().Info("백그라운드 스레드 중지");
     
+    // 스레드들이 자고 있다면 즉시 깨움
+    should_stop_.store(true);
+    cv_.notify_all();
+    
     if (health_check_thread_ && health_check_thread_->joinable()) {
         health_check_thread_->join();
     }
@@ -911,9 +915,11 @@ void DynamicTargetManager::stopBackgroundThreads() {
     }
 }
 
+// 헬스체크 스레드 (60초 주기)
 void DynamicTargetManager::healthCheckThread() {
     while (!should_stop_.load()) {
-        std::this_thread::sleep_for(std::chrono::seconds(60));
+        std::unique_lock<std::mutex> lock(cv_mutex_);
+        cv_.wait_for(lock, std::chrono::seconds(60), [this]{ return should_stop_.load(); });
         
         if (should_stop_.load()) break;
         
@@ -921,9 +927,11 @@ void DynamicTargetManager::healthCheckThread() {
     }
 }
 
+// 메트릭 수집 스레드 (30초 주기)
 void DynamicTargetManager::metricsCollectorThread() {
     while (!should_stop_.load()) {
-        std::this_thread::sleep_for(std::chrono::seconds(30));
+        std::unique_lock<std::mutex> lock(cv_mutex_);
+        cv_.wait_for(lock, std::chrono::seconds(30), [this]{ return should_stop_.load(); });
         
         if (should_stop_.load()) break;
         
@@ -931,9 +939,11 @@ void DynamicTargetManager::metricsCollectorThread() {
     }
 }
 
+// 정리 스레드 (300초 주기)
 void DynamicTargetManager::cleanupThread() {
     while (!should_stop_.load()) {
-        std::this_thread::sleep_for(std::chrono::seconds(300));
+        std::unique_lock<std::mutex> lock(cv_mutex_);
+        cv_.wait_for(lock, std::chrono::seconds(300), [this]{ return should_stop_.load(); });
         
         if (should_stop_.load()) break;
         

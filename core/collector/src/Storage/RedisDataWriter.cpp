@@ -257,6 +257,10 @@ bool RedisDataWriter::PublishAlarmEvent(const BackendFormat::AlarmEventData& ala
             std::string active_key = "alarm:active:" + std::to_string(alarm_data.rule_id);
             redis_client_->setex(active_key, json_str, 7200); // 2시간 TTL
         }
+
+        // 2.5 History List 저장 (테스트 및 감사용) - Added
+        redis_client_->lpush("alarm:history", json_str);
+        // redis_client_->ltrim("alarm:history", 0, 999); // Not supported in interface yet
         
         // 3. 알람 카운터 업데이트
         std::string counter_key = "alarms:count:today";

@@ -84,6 +84,7 @@ public:
     
     // 상태 관리
     bool isAlarmActive(int rule_id) const;
+    void SeedPointValue(int point_id, const DataValue& value);
 
 private:
     // =======================================================================

@@ -29,8 +29,22 @@
 #include <nlohmann/json.hpp>
 
 // 🔥 HTTP 라이브러리 조건부 포함 (프로젝트 패턴 준수)
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
 #include <httplib.h>
+#else
+namespace httplib {
+    struct Request {
+        std::map<std::string, std::string> headers;
+        std::string body;
+        std::vector<std::string> matches;
+    };
+    struct Response {
+        int status;
+        std::string body;
+        void set_content(const std::string&, const std::string&) {}
+        void set_header(const std::string&, const std::string&) {}
+    };
+}
 #endif
 
 namespace PulseOne {
@@ -119,7 +133,6 @@ private:
     void SetupRoutes();
     
     // 🔥 핸들러들을 조건부 컴파일로 선언
-#ifdef HAVE_HTTPLIB
     // 기본 핸들러들
     void HandleGetDevices(const httplib::Request& req, httplib::Response& res);
     void HandleGetDeviceStatus(const httplib::Request& req, httplib::Response& res);
@@ -188,11 +201,10 @@ private:
     void HandleGetErrorStatistics(const httplib::Request& req, httplib::Response& res);
     void HandleGetErrorCodeInfo(const httplib::Request& req, httplib::Response& res);
     
-    // 유틸리티 메서드들 (httplib 의존적)
+    // 유틸리티 메서드들
     void SetCorsHeaders(httplib::Response& res);
     std::string ExtractDeviceId(const httplib::Request& req, int match_index = 1);
     std::string ExtractGroupId(const httplib::Request& req, int match_index = 1);
-#endif
     
     // 유틸리티 메서드들 (httplib 비의존적)
     nlohmann::json CreateErrorResponse(const std::string& error, 
@@ -224,7 +236,7 @@ private:
     int port_;
     
     // 🔥 unique_ptr 타입 문제 해결
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
     std::unique_ptr<httplib::Server> server_;
 #else
     std::unique_ptr<char> server_;  // void* 대신 char 사용

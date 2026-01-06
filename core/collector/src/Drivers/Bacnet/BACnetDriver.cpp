@@ -5,6 +5,7 @@
 
 #include "Platform/PlatformCompat.h"
 #include "Drivers/Bacnet/BACnetDriver.h"
+#include "Drivers/Common/DriverFactory.h"
 #include "Utils/LogManager.h"
 
 // =============================================================================
@@ -605,6 +606,21 @@ bool BACnetDriver::WriteSingleProperty(const PulseOne::Structs::DataPoint& point
     logger.Debug("Simulated write to " + address_str);
     
     return true;
+}
+
+// =============================================================================
+// 🔥 플러그인 등록용 C 인터페이스 (PluginLoader가 호출)
+// =============================================================================
+extern "C" {
+#ifdef _WIN32
+    __declspec(dllexport) void RegisterPlugin() {
+#else
+    void RegisterPlugin() {
+#endif
+        DriverFactory::GetInstance().RegisterDriver("BACNET_IP", []() {
+            return std::make_unique<BACnetDriver>();
+        });
+    }
 }
 
 } // namespace Drivers

@@ -162,7 +162,7 @@ ifeq ($(HAS_HIREDIS),1)
         CXXFLAGS += -DHAVE_REDIS=1
         $(info ✅ hiredis found via pkg-config)
     else
-        UTILITY_LIBS += -lhiredis
+        UTILITY_LIBS += /usr/local/lib/libhiredis.so.1.1.0
         CXXFLAGS += -DHAVE_REDIS=1
         $(info ✅ hiredis found (direct link))
     endif

@@ -1,0 +1,22 @@
+[Unit]
+Description=PulseOne Data Collector Service
+After=network.target redis-server.service postgresql.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=pulseone
+Group=pulseone
+WorkingDirectory=/opt/pulseone/collector
+ExecStart=/opt/pulseone/collector/bin/pulseone-collector
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/pulseone/collector.log
+StandardError=append:/var/log/pulseone/collector.err.log
+
+# Resource Limits (Optimized for Raspberry Pi)
+MemoryLimit=512M
+CPUWeight=100
+
+[Install]
+WantedBy=multi-user.target

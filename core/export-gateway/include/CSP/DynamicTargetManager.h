@@ -403,6 +403,10 @@ private:
     std::unique_ptr<std::thread> metrics_thread_;
     std::unique_ptr<std::thread> cleanup_thread_;
     
+    // 스레드 제어용 CV
+    std::mutex cv_mutex_;
+    std::condition_variable cv_;
+    
     // 설정
     json global_settings_;
     

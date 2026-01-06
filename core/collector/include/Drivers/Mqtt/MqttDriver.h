@@ -32,12 +32,14 @@
 #endif
 
 // Eclipse Paho MQTT C++ 헤더들
+#if HAVE_MQTT_CPP
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
 #include <mqtt/iaction_listener.h>
 #include <mqtt/connect_options.h>
 #include <mqtt/message.h>
 #include <mqtt/token.h>
+#endif
 
 namespace PulseOne {
 namespace Drivers {
@@ -178,6 +180,10 @@ public:
     /**
      * @brief 연결 성공 콜백
      */
+#if HAVE_MQTT_CPP
+    /**
+     * @brief 연결 성공 콜백
+     */
     void OnConnected(const std::string& cause);
     
     /**
@@ -204,6 +210,7 @@ public:
      * @brief 액션 성공 콜백
      */
     void OnActionSuccess(const mqtt::token& token);
+#endif
 
     // =======================================================================
     // 🔍 진단 기능 제어 (MqttDiagnostics)
@@ -451,9 +458,16 @@ public:
     // =======================================================================
     
     // Eclipse Paho MQTT 클라이언트
+#if HAVE_MQTT_CPP
+    // Eclipse Paho MQTT 클라이언트
     std::unique_ptr<mqtt::async_client> mqtt_client_;
     std::shared_ptr<MqttCallbackImpl> mqtt_callback_;
     std::shared_ptr<MqttActionListener> mqtt_action_listener_;
+#else
+    void* mqtt_client_;
+    void* mqtt_callback_;
+    void* mqtt_action_listener_;
+#endif
     
     // 연결 설정
     std::string broker_url_;

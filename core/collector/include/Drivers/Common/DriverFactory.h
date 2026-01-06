@@ -33,10 +33,7 @@ public:
      * @brief 팩토리 인스턴스 반환
      * @return 팩토리 인스턴스 참조
      */
-    static DriverFactory& GetInstance() {
-        static DriverFactory instance;
-        return instance;
-    }
+    static DriverFactory& GetInstance();
     
     /**
      * @brief 드라이버 등록
@@ -44,94 +41,66 @@ public:
      * @param creator 드라이버 생성자 함수
      * @return 성공 시 true
      */
-    virtual bool RegisterDriver(ProtocolType protocol, DriverCreator creator) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        if (creators_.find(protocol) != creators_.end()) {
-            return false; // 이미 등록된 프로토콜
-        }
-        
-        creators_[protocol] = creator;
-        return true;
-    }
+    virtual bool RegisterDriver(ProtocolType protocol, DriverCreator creator);
     
     /**
      * @brief 드라이버 등록 해제
      * @param protocol 프로토콜 타입
      * @return 성공 시 true
      */
-    virtual bool UnregisterDriver(ProtocolType protocol) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return creators_.erase(protocol) > 0;
-    }
+    virtual bool UnregisterDriver(ProtocolType protocol);
+
+    /**
+     * @brief 드라이버 등록 (문자열 기반 - 플러그인용)
+     */
+    virtual bool RegisterDriver(const std::string& protocol_name, DriverCreator creator);
+
+    /**
+     * @brief 드라이버 등록 해제 (문자열 기반)
+     */
+    virtual bool UnregisterDriver(const std::string& protocol_name);
     
     /**
      * @brief 드라이버 생성
      * @param protocol 프로토콜 타입
      * @return 드라이버 인스턴스 (실패 시 nullptr)
      */
-    virtual std::unique_ptr<IProtocolDriver> CreateDriver(ProtocolType protocol) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        auto it = creators_.find(protocol);
-        if (it == creators_.end()) {
-            return nullptr;
-        }
-        
-        try {
-            return it->second();
-        } catch (const std::exception& e) {
-            // 로깅 필요 시 추가
-            return nullptr;
-        }
-    }
+    virtual std::unique_ptr<IProtocolDriver> CreateDriver(ProtocolType protocol);
+
+    /**
+     * @brief 드라이버 생성 (문자열 기반)
+     */
+    virtual std::unique_ptr<IProtocolDriver> CreateDriver(const std::string& protocol_name);
     
     /**
      * @brief 등록된 프로토콜 목록 반환
      * @return 프로토콜 타입 벡터
      */
-    virtual std::vector<ProtocolType> GetAvailableProtocols() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        std::vector<ProtocolType> protocols;
-        protocols.reserve(creators_.size());
-        
-        for (const auto& pair : creators_) {
-            protocols.push_back(pair.first);
-        }
-        
-        return protocols;
-    }
+    virtual std::vector<ProtocolType> GetAvailableProtocols() const;
     
     /**
      * @brief 프로토콜 지원 여부 확인
      * @param protocol 프로토콜 타입
      * @return 지원 시 true
      */
-    virtual bool IsProtocolSupported(ProtocolType protocol) const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return creators_.find(protocol) != creators_.end();
-    }
+    virtual bool IsProtocolSupported(ProtocolType protocol) const;
     
     /**
      * @brief 등록된 드라이버 수 반환
      * @return 드라이버 수
      */
-    virtual size_t GetDriverCount() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return creators_.size();
-    }
+    virtual size_t GetDriverCount() const;
     
     /**
      * @brief 가상 소멸자 (상속 가능하도록)
      */
-    virtual ~DriverFactory() = default;
+    virtual ~DriverFactory();
 
 protected:
     /**
      * @brief 생성자 (보호된 접근)
      */
-    DriverFactory() = default;
+    DriverFactory();
     
     // 복사 및 이동 방지
     DriverFactory(const DriverFactory&) = delete;
@@ -141,6 +110,7 @@ protected:
     
     mutable std::mutex mutex_;
     std::map<ProtocolType, DriverCreator> creators_;
+    std::map<std::string, DriverCreator> custom_creators_;
 };
 
 // =============================================================================

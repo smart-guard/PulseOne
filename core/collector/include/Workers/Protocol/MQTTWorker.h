@@ -10,7 +10,7 @@
 #define PULSEONE_WORKERS_PROTOCOL_MQTT_WORKER_H
 
 #include "Workers/Base/BaseDeviceWorker.h"
-#include "Drivers/Mqtt/MqttDriver.h"
+#include "Drivers/Common/IProtocolDriver.h"
 #include "Common/Structs.h"
 #include "Common/Enums.h" 
 #include <memory>
@@ -693,12 +693,7 @@ public:
         }
     }
     
-    /**
-     * @brief MqttDriver 인스턴스 접근
-     */
-    PulseOne::Drivers::MqttDriver* GetMqttDriver() const {
-        return mqtt_driver_.get();
-    }
+
 
     // =============================================================================
     // 재연결 관리 (BaseDeviceWorker에서 사용)
@@ -719,8 +714,8 @@ private:
     // 모드 및 기본 설정
     MQTTWorkerMode worker_mode_;
     
-    // MQTT 드라이버 및 설정
-    std::unique_ptr<PulseOne::Drivers::MqttDriver> mqtt_driver_;
+    // MQTT 드라이버 (인터페이스 사용)
+    std::unique_ptr<PulseOne::Drivers::IProtocolDriver> mqtt_driver_;
     
     // 구독 관리
     std::map<uint32_t, MQTTSubscription> active_subscriptions_;

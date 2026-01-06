@@ -72,7 +72,6 @@ RepositoryFactory::RepositoryFactory()
 
 RepositoryFactory::~RepositoryFactory() {
     shutdown();
-    logger_->Info("🏭 RepositoryFactory destroyed");
 }
 
 // =============================================================================
@@ -153,36 +152,14 @@ void RepositoryFactory::shutdown() {
     }
     
     try {
-        logger_->Info("🔧 RepositoryFactory shutting down...");
-        
-        // 모든 캐시 클리어
-        clearAllCaches();
-        
-        // Repository 인스턴스 해제
-        device_repository_.reset();
-        data_point_repository_.reset();
-        user_repository_.reset();
-        tenant_repository_.reset();
-        alarm_rule_repository_.reset();
-        site_repository_.reset();
-        virtual_point_repository_.reset();
-        current_value_repository_.reset();
-        device_settings_repository_.reset(); 
-        alarm_occurrence_repository_.reset();
-        script_library_repository_.reset();
-        protocol_repository_.reset();
-        
-        // 🆕 Export 시스템 Repository 해제
-        export_target_repository_.reset();
-        export_target_mapping_repository_.reset();
-        export_log_repository_.reset();
+        // [RAII 패턴 적용]
+        // 명시적인 로그 출력이나 reset() 호출 없이 스마트 포인터의 소멸자에 의존합니다.
+        // 종료 시점(Static Destruction)에 Logger나 다른 객체 사용 시 데드락/Hang 위험이 있습니다.
         
         initialized_.store(false);
-        logger_->Info("✅ RepositoryFactory shutdown completed");
         
-    } catch (const std::exception& e) {
-        logger_->Error("RepositoryFactory::shutdown failed: " + std::string(e.what()));
-        error_count_.fetch_add(1);
+    } catch (...) {
+        // 모든 예외 무시
     }
 }
 
@@ -200,14 +177,36 @@ void RepositoryFactory::setCacheEnabled(bool enabled) {
 
 void RepositoryFactory::clearAllCaches() {
     std::lock_guard<std::mutex> lock(factory_mutex_);
-    
+    clearAllCachesInternal();
+}
+
+void RepositoryFactory::clearAllCachesInternal() {
     logger_->Info("Clearing all repository caches...");
     
     int total_cleared = 0;
     
-    // 각 Repository 캐시 클리어 (구현되어 있다면)
+    // 기본 Repository
+    if (device_repository_) device_repository_->clearCache();
+    if (data_point_repository_) data_point_repository_->clearCache();
+    if (device_settings_repository_) device_settings_repository_->clearCache();
+    if (user_repository_) user_repository_->clearCache();
+    if (tenant_repository_) tenant_repository_->clearCache();
+    if (alarm_rule_repository_) alarm_rule_repository_->clearCache();
+    if (site_repository_) site_repository_->clearCache();
+    if (virtual_point_repository_) virtual_point_repository_->clearCache();
+    if (current_value_repository_) current_value_repository_->clearCache();
+    if (alarm_occurrence_repository_) alarm_occurrence_repository_->clearCache();
+    if (script_library_repository_) script_library_repository_->clearCache();
+    if (protocol_repository_) protocol_repository_->clearCache();
     
-    logger_->Info("Cleared " + std::to_string(total_cleared) + " cached items from all repositories");
+    // Export Repository
+    if (export_target_repository_) export_target_repository_->clearCache();
+    if (export_target_mapping_repository_) export_target_mapping_repository_->clearCache();
+    if (export_log_repository_) export_log_repository_->clearCache();
+    if (export_schedule_repository_) export_schedule_repository_->clearCache();
+    if (payload_template_repository_) payload_template_repository_->clearCache();
+    
+    logger_->Info("All repository caches cleared");
 }
 
 void RepositoryFactory::setCacheTTL(int ttl_seconds) {

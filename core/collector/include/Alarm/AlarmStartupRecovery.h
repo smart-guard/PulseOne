@@ -98,6 +98,12 @@ public:
      * @return 복구된 알람 수
      */
     size_t RecoverActiveAlarmsByTenant(int tenant_id);
+
+    /**
+     * @brief RDB에서 최신 포인트 값들을 읽어 Redis로 복구 (Warm Startup)
+     * @return 복구된 포인트 수
+     */
+    size_t RecoverLatestPointValues();
     
     /**
      * @brief 복구 상태 확인

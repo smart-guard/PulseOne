@@ -185,6 +185,12 @@ endif
 ifneq ($(wildcard test_export_modes.cpp),)
     TEST_BINARIES += $(BIN_DIR)/test_export_modes
 endif
+ifneq ($(wildcard test_performance.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_performance
+endif
+ifneq ($(wildcard test_performance_e2e.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_performance_e2e
+endif
 
 # =============================================================================
 # 타겟
@@ -252,6 +258,16 @@ $(BIN_DIR)/test_export_modes: test_export_modes.cpp $(ALL_GATEWAY_OBJECTS) | $(B
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_export_modes.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
 	@echo -e "$(GREEN)✅ Built: $@$(NC)"
 
+$(BIN_DIR)/test_performance: test_performance.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building Performance test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_performance.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+$(BIN_DIR)/test_performance_e2e: test_performance_e2e.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building E2E Performance test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_performance_e2e.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
 # =============================================================================
 # 개별 테스트 실행 규칙 (명시적 경로)
 # =============================================================================
@@ -283,6 +299,14 @@ test-mqtt: $(BIN_DIR)/test_mqtt_handler
 test-export-modes: $(BIN_DIR)/test_export_modes
 	@echo -e "$(BLUE)🧪 Running Export Modes tests$(NC)"
 	@$(BIN_DIR)/test_export_modes
+
+test-perf: $(BIN_DIR)/test_performance
+	@echo -e "$(BLUE)🧪 Running Performance tests$(NC)"
+	@$(BIN_DIR)/test_performance
+
+test-perf-e2e: $(BIN_DIR)/test_performance_e2e
+	@echo -e "$(BLUE)🧪 Running E2E Performance tests$(NC)"
+	@$(BIN_DIR)/test_performance_e2e
 
 # =============================================================================
 # 전체 테스트 실행
@@ -393,3 +417,12 @@ $(BIN_DIR)/test_payload_transformer: test_payload_transformer.cpp $(ALL_GATEWAY_
 test-payload: $(BIN_DIR)/test_payload_transformer
 	@echo -e "$(BLUE)🧪 Running PayloadTransformer tests$(NC)"
 	@$(BIN_DIR)/test_payload_transformer
+
+$(BIN_DIR)/test_export_coordinator: test_export_coordinator.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building ExportCoordinator test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_export_coordinator.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+test-coordinator: $(BIN_DIR)/test_export_coordinator
+	@echo -e "$(BLUE)🧪 Running ExportCoordinator tests$(NC)"
+	@$(BIN_DIR)/test_export_coordinator

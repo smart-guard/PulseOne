@@ -9,7 +9,9 @@
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/SiteRepository.h"
 #include <nlohmann/json.hpp>
-#include <quickjs.h>
+#if HAS_QUICKJS
+#include <quickjs/quickjs.h>
+#endif
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
@@ -527,6 +529,7 @@ AlarmEvaluation AlarmEngine::evaluateScriptAlarm(const AlarmRuleEntity& rule,
     eval.condition_met = "SCRIPT_FALSE";
     eval.message = "스크립트 알람 평가됨";
     
+#if HAS_QUICKJS
     if (!js_context_) {
         LogManager::getInstance().Error("JavaScript 컨텍스트 초기화되지 않음");
         eval.condition_met = "JS_NOT_INITIALIZED";
@@ -606,6 +609,10 @@ AlarmEvaluation AlarmEngine::evaluateScriptAlarm(const AlarmRuleEntity& rule,
         eval.condition_met = "SCRIPT_EXCEPTION";
         eval.message = "스크립트 평가 예외: " + std::string(e.what());
     }
+#else
+    eval.condition_met = "SCRIPT_SKIPPED";
+    eval.message = "QuickJS disabled";
+#endif
     
     return eval;
 }
@@ -615,6 +622,7 @@ AlarmEvaluation AlarmEngine::evaluateScriptAlarm(const AlarmRuleEntity& rule,
 // =============================================================================
 
 bool AlarmEngine::initScriptEngine() {
+#if HAS_QUICKJS
     try {
         js_runtime_ = JS_NewRuntime();
         if (!js_runtime_) {
@@ -640,9 +648,13 @@ bool AlarmEngine::initScriptEngine() {
         LogManager::getInstance().Error("JavaScript 엔진 초기화 실패: " + std::string(e.what()));
         return false;
     }
+#else
+    return false;
+#endif
 }
 
 void AlarmEngine::cleanupScriptEngine() {
+#if HAS_QUICKJS
     if (js_context_) {
         JS_FreeContext((JSContext*)js_context_);
         js_context_ = nullptr;
@@ -651,9 +663,11 @@ void AlarmEngine::cleanupScriptEngine() {
         JS_FreeRuntime((JSRuntime*)js_runtime_);
         js_runtime_ = nullptr;
     }
+#endif
 }
 
 bool AlarmEngine::registerSystemFunctions() {
+#if HAS_QUICKJS
     if (!js_context_) {
         LogManager::getInstance().Error("JS 컨텍스트 초기화되지 않음");
         return false;
@@ -805,6 +819,9 @@ function log(message) {
         LogManager::getInstance().Error("시스템 함수 등록 실패: " + std::string(e.what()));
         return false;
     }
+#else
+    return false;
+#endif
 }
 
 nlohmann::json AlarmEngine::prepareScriptContextFromValue(const AlarmRuleEntity& rule, 
@@ -1314,6 +1331,22 @@ size_t AlarmEngine::getActiveAlarmsCount() const {
         LogManager::getInstance().Error("활성 알람 개수 조회 실패: " + std::string(e.what()));
         return 0;
     }
+}
+
+void AlarmEngine::SeedPointValue(int point_id, const DataValue& value) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    
+    std::visit([&](const auto& v) {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, bool>) {
+            last_digital_states_[point_id] = v;
+        } else if constexpr (std::is_arithmetic_v<T>) {
+            last_values_[point_id] = static_cast<double>(v);
+        }
+    }, value);
+    
+    LogManager::getInstance().log("alarm_engine", PulseOne::Enums::LogLevel::DEBUG_LEVEL,
+        "포인트 시딩 완료: id=" + std::to_string(point_id));
 }
 
 } // namespace Alarm

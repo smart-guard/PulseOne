@@ -27,7 +27,7 @@
 using nlohmann::json;
 
 // 🔥 조건부 httplib 포함 (기존 패턴 100% 준수)
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
 #include <httplib.h>
 #endif
 
@@ -42,7 +42,7 @@ RestApiServer::RestApiServer(int port)
     : port_(port)
     , running_(false)
 {
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
     server_ = std::make_unique<httplib::Server>();
     SetupRoutes();
 #else
@@ -60,7 +60,7 @@ RestApiServer::~RestApiServer() {
 // =============================================================================
 
 bool RestApiServer::Start() {
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
     if (running_) {
         return true;
     }
@@ -84,7 +84,7 @@ bool RestApiServer::Start() {
 
 
 void RestApiServer::Stop() {
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
     if (!running_) {
         return;
     }
@@ -113,7 +113,7 @@ bool RestApiServer::IsRunning() const {
 // =============================================================================
 
 void RestApiServer::SetupRoutes() {
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
     auto* httplib_server = static_cast<httplib::Server*>(server_.get());
     
     // CORS 미들웨어
@@ -251,7 +251,7 @@ void RestApiServer::SetupRoutes() {
 // 핵심 API 핸들러들 - ClassifyHardwareError 활용
 // =============================================================================
 
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
 void RestApiServer::HandleGetDevices(const httplib::Request& req, httplib::Response& res) {
     try {
         SetCorsHeaders(res);
@@ -1203,14 +1203,12 @@ void RestApiServer::SetLogDownloadCallback(LogDownloadCallback callback) {
 // 유틸리티 메소드들 - 100% 조건부 컴파일 보호
 // =============================================================================
 
-#ifdef HAVE_HTTPLIB
 void RestApiServer::SetCorsHeaders(httplib::Response& res) {
     res.set_header("Access-Control-Allow-Origin", "*");
     res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    res.set_header("Access-Control-Max-Age", "3600");
 }
-#endif
-
 json RestApiServer::CreateErrorResponse(const std::string& error, const std::string& error_code, const std::string& details) {
     json response = json::object();
     response["success"] = false;
@@ -1274,7 +1272,6 @@ json RestApiServer::CreateGroupActionResponse(const std::string& group_id, const
     return response;
 }
 
-#ifdef HAVE_HTTPLIB
 std::string RestApiServer::ExtractDeviceId(const httplib::Request& req, int match_index) {
     if (match_index > 0 && match_index < static_cast<int>(req.matches.size())) {
         return req.matches[match_index];
@@ -1288,7 +1285,6 @@ std::string RestApiServer::ExtractGroupId(const httplib::Request& req, int match
     }
     return "";
 }
-#endif
 
 bool RestApiServer::ValidateJsonSchema(const nlohmann::json& data, const std::string& schema_type) {
     try {

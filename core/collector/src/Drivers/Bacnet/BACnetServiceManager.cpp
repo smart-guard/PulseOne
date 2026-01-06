@@ -192,7 +192,7 @@ bool BACnetServiceManager::ReadProperty(uint32_t device_id,
         return false;
     }
     
-#ifdef HAS_BACNET_STACK
+#if HAS_BACNET_STACK
     // BACnet 읽기 구현 (실제 스택 사용 - Linux)
     // 실제 BACnet 읽기는 driver에서 처리
     result.timestamp = std::chrono::system_clock::now();
@@ -275,7 +275,7 @@ bool BACnetServiceManager::WriteProperty(uint32_t device_id,
         return false;
     }
     
-#ifdef HAS_BACNET_STACK
+#if HAS_BACNET_STACK
     // BACnet 쓰기 구현 (실제 스택 사용 - Linux)
     // 실제 쓰기는 driver에서 처리
     return true;
@@ -636,7 +636,7 @@ TimestampedValue BACnetServiceManager::BACnetValueToTimestampedValue(
     result.timestamp = std::chrono::system_clock::now();
     result.quality = DataQuality::GOOD;
     
-#ifdef HAS_BACNET_STACK
+#if HAS_BACNET_STACK
     // 실제 BACnet 값 변환
     switch (bacnet_value.tag) {
         case BACNET_APPLICATION_TAG_BOOLEAN:
@@ -655,11 +655,7 @@ TimestampedValue BACnetServiceManager::BACnetValueToTimestampedValue(
             result.value = bacnet_value.type.Double;
             break;
         case BACNET_APPLICATION_TAG_CHARACTER_STRING:
-            if (bacnet_value.type.Character_String.value) {
-                result.value = std::string(bacnet_value.type.Character_String.value);
-            } else {
-                result.value = std::string("");
-            }
+            result.value = std::string(bacnet_value.type.Character_String.value);
             break;
         default:
             result.value = 0.0;
@@ -681,7 +677,7 @@ bool BACnetServiceManager::DataValueToBACnetValue(const DataValue& data_value,
     
     memset(&bacnet_value, 0, sizeof(bacnet_value));
     
-#ifdef HAS_BACNET_STACK
+#if HAS_BACNET_STACK
     // 실제 BACnet 값 변환
     if (std::holds_alternative<bool>(data_value)) {
         bacnet_value.tag = BACNET_APPLICATION_TAG_BOOLEAN;
@@ -702,13 +698,10 @@ bool BACnetServiceManager::DataValueToBACnetValue(const DataValue& data_value,
         bacnet_value.tag = BACNET_APPLICATION_TAG_CHARACTER_STRING;
         const std::string& str = std::get<std::string>(data_value);
         
-        // 문자열 복사 (메모리 관리 주의)
-        static char string_buffer[256];
-        strncpy(string_buffer, str.c_str(), sizeof(string_buffer) - 1);
-        string_buffer[sizeof(string_buffer) - 1] = '\0';
-        
-        bacnet_value.type.Character_String.value = string_buffer;
-        bacnet_value.type.Character_String.length = strlen(string_buffer);
+        // 문자열 복사 (시스템 라이브러리의 Character_String.value는 char[] 배열임)
+        strncpy(bacnet_value.type.Character_String.value, str.c_str(), sizeof(bacnet_value.type.Character_String.value) - 1);
+        bacnet_value.type.Character_String.value[sizeof(bacnet_value.type.Character_String.value) - 1] = '\0';
+        bacnet_value.type.Character_String.length = strlen(bacnet_value.type.Character_String.value);
         bacnet_value.type.Character_String.encoding = CHARACTER_UTF8;
     } else {
         LogServiceError("DataValueConversion", "Unsupported DataValue type");
@@ -729,7 +722,7 @@ bool BACnetServiceManager::DataValueToBACnetValue(const DataValue& data_value,
 // BACnet 프로토콜 헬퍼 함수들 (Linux에서만 컴파일)
 // =============================================================================
 
-#ifdef HAS_BACNET_STACK
+#if HAS_BACNET_STACK
 
 bool BACnetServiceManager::SendRPMRequest(uint32_t device_id,
                                          const std::vector<DataPoint>& objects,

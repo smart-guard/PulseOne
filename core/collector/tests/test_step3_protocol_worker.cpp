@@ -27,6 +27,8 @@
 #include <map>
 #include <thread>
 #include <iomanip>
+#include <fstream>
+#include <sstream>
 
 // 기존 프로젝트 헤더들
 #include "Utils/LogManager.h"
@@ -689,6 +691,37 @@ protected:
         } catch (const std::exception& e) {
             std::cout << "❌ WorkerFactory 초기화 실패: " << e.what() << std::endl;
         }
+
+        // 🔥🔥🔥 [FIX] DB 스키마 및 데이터 강제 초기화
+        std::cout << "🔄 테스트용 DB 스키마 및 데이터 초기화 중..." << std::endl;
+        std::ifstream schema_file("db/test_schema_complete.sql");
+        if (schema_file.is_open()) {
+            std::stringstream buffer;
+            buffer << schema_file.rdbuf();
+            std::string sql_script = buffer.str();
+            
+            if (db_manager_->executeNonQuery(sql_script)) {
+                std::cout << "✅ DB 스키마 및 데이터 초기화 성공" << std::endl;
+            } else {
+                std::cout << "❌ DB 스키마 및 데이터 초기화 실패 (쿼리 실행 오류)" << std::endl;
+                // 실패해도 계속 진행 (디버깅용)
+            }
+        } else {
+             // 경로 문제일 수 있으므로 상위 경로도 시도
+            std::ifstream schema_file_up("../db/test_schema_complete.sql");
+            if (schema_file_up.is_open()) {
+                std::stringstream buffer;
+                buffer << schema_file_up.rdbuf();
+                std::string sql_script = buffer.str();
+                if (db_manager_->executeNonQuery(sql_script)) {
+                    std::cout << "✅ DB 스키마 및 데이터 초기화 성공 (상위 경로)" << std::endl;
+                } else {
+                    std::cout << "❌ DB 스키마 및 데이터 초기화 실패" << std::endl;
+                }
+            } else {
+                std::cout << "⚠️ 스키마 파일을 찾을 수 없음: db/test_schema_complete.sql" << std::endl;
+            }
+        }
         
         std::cout << "✅ Step 3 올바른 테스트 환경 준비 완료" << std::endl;
     }
@@ -930,7 +963,7 @@ TEST_F(Step3ProtocolWorkerCorrectedTest, Test_Corrected_Serial_Worker_Property_V
     for (const auto& device : devices) {
         if (protocol_repo_) {
             auto protocol = protocol_repo_->findById(device.getProtocolId());
-            if (protocol.has_value() && protocol->getProtocolType() == "MODBUS_RTU") {
+            if (protocol.has_value() && protocol->getProtocolType() == "serial") {
                 rtu_devices.push_back(device);
             }
         }
@@ -1010,7 +1043,7 @@ TEST_F(Step3ProtocolWorkerCorrectedTest, Test_Corrected_TCP_Worker_Property_Vali
     for (const auto& device : devices) {
         if (protocol_repo_) {
             auto protocol = protocol_repo_->findById(device.getProtocolId());
-            if (protocol.has_value() && protocol->getProtocolType() == "MODBUS_TCP") {
+            if (protocol.has_value() && protocol->getProtocolType() == "tcp") {
                 tcp_devices.push_back(device);
             }
         }

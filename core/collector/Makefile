@@ -148,6 +148,7 @@ HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_QUICKJS := $(shell pkg-config --exists quickjs && echo "1" || echo "0")
+HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
 
 # 프로토콜 라이브러리 감지
 HAS_MODBUS := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1 && echo "1" || echo "0")
@@ -226,6 +227,11 @@ QUICKJS_LIBS := $(shell pkg-config --libs quickjs 2>/dev/null || echo "-lquickjs
 UTILITY_LIBS += $(QUICKJS_LIBS)
 endif
 CXXFLAGS += -DHAVE_QUICKJS=1
+endif
+
+ifeq ($(HAS_CURL),1)
+UTILITY_LIBS += $(shell pkg-config --libs libcurl)
+CXXFLAGS += -DHAVE_CURL=1
 endif
 
 # 최종 라이브러리 링킹 순서
@@ -392,6 +398,7 @@ check-env:
 	@echo -e "  MQTT++: $(if $(HAS_MQTT_CPP),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  BACnet: $(if $(HAS_BACNET),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 	@echo -e "  QuickJS: $(if $(HAS_QUICKJS),$(GREEN)✅$(NC),$(RED)❌$(NC))"
+	@echo -e "  Curl: $(if $(HAS_CURL),$(GREEN)✅$(NC),$(RED)❌$(NC))"
 
 status:
 	@echo -e "$(BLUE)📊 Build Status$(NC)"

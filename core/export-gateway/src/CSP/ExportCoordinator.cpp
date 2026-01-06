@@ -615,7 +615,21 @@ void ExportCoordinator::logExportResults(const std::vector<ExportResult>& result
 
 ExportCoordinatorStats ExportCoordinator::getStats() const {
     std::lock_guard<std::mutex> lock(stats_mutex_);
-    return stats_;
+    
+    ExportCoordinatorStats current_stats = stats_;
+    
+    // EventSubscriber의 통계 합산 (v3.0 통합)
+    if (event_subscriber_) {
+        auto sub_stats = event_subscriber_->getStats();
+        current_stats.total_exports += sub_stats.total_processed;
+        current_stats.alarm_events += sub_stats.total_processed;
+        
+        // 성공/실패 합산 (EventSubscriber는 현재 성공만 카운트하거나 실패는 따로 관리)
+        current_stats.successful_exports += sub_stats.total_processed;
+        current_stats.failed_exports += sub_stats.total_failed;
+    }
+    
+    return current_stats;
 }
 
 void ExportCoordinator::resetStats() {

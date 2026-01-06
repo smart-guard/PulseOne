@@ -5,8 +5,7 @@
 #include "Workers/WorkerFactory.h"
 
 // Worker 구현체들
-#include "Workers/Protocol/ModbusTcpWorker.h"
-#include "Workers/Protocol/ModbusRtuWorker.h"
+#include "Workers/Protocol/ModbusWorker.h"
 #include "Workers/Protocol/MqttWorker.h"
 #include "Workers/Protocol/BACnetWorker.h"
 
@@ -53,7 +52,12 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::En
             return nullptr;
         }
         
-        device_info.protocol_type = protocol_type;
+        // 🔥 DeviceSettings를 DriverConfig properties로 동기화
+        device_info.SyncToDriverConfig();
+        
+        LogManager::getInstance().Info("[WorkerFactory] After SyncToDriverConfig:");
+        LogManager::getInstance().Info("  read_timeout_ms (opt): " + (device_info.read_timeout_ms.has_value() ? std::to_string(device_info.read_timeout_ms.value()) : "null"));
+        LogManager::getInstance().Info("  Properties size: " + std::to_string(device_info.driver_config.properties.size()));
         
         // Worker 생성 (모든 디버깅 로그 제거)
         std::unique_ptr<BaseDeviceWorker> worker;
@@ -119,10 +123,10 @@ std::vector<std::string> WorkerFactory::GetSupportedProtocols() const {
         
         // 지원하는 프로토콜들 등록
         creators["MODBUS_TCP"] = [](const PulseOne::Structs::DeviceInfo& info) {
-            return std::make_unique<ModbusTcpWorker>(info);
+            return std::make_unique<ModbusWorker>(info);
         };
         creators["MODBUS_RTU"] = [](const PulseOne::Structs::DeviceInfo& info) {
-            return std::make_unique<ModbusRtuWorker>(info);
+            return std::make_unique<ModbusWorker>(info);
         };
         creators["MQTT"] = [](const PulseOne::Structs::DeviceInfo& info) {
             return std::make_unique<MQTTWorker>(info);
@@ -337,24 +341,45 @@ bool WorkerFactory::LoadDeviceSettingsSafe(PulseOne::Structs::DeviceInfo& info, 
         
         const auto& settings = settings_opt.value();
         
-        // 값 범위 검증
+        // =========================================================================
+        // 🔥 DeviceSettings의 모든 필드를 DeviceInfo로 복사 (누락된 필드 추가)
+        // =========================================================================
+        
+        // 1. 기본 타이밍 설정
         int polling = settings.getPollingIntervalMs();
-        if (polling < 100 || polling > 300000) {
-            polling = 1000;
-        }
+        if (polling < 100 || polling > 300000) polling = 1000;
         info.polling_interval_ms = polling;
         
-        int timeout = settings.getReadTimeoutMs();
-        if (timeout < 1000 || timeout > 60000) {
-            timeout = 5000;
-        }
+        int timeout = settings.getReadTimeoutMs(); // 기본 타임아웃으로 사용
+        if (timeout < 1000 || timeout > 60000) timeout = 5000;
         info.timeout_ms = timeout;
         
         int retry = settings.getMaxRetryCount();
-        if (retry < 0 || retry > 10) {
-            retry = 3;
-        }
+        if (retry < 0 || retry > 10) retry = 3;
         info.retry_count = retry;
+        
+        // 2. 추가 타이밍 설정
+        info.connection_timeout_ms = settings.getConnectionTimeoutMs(); // optional
+        info.read_timeout_ms = settings.getReadTimeoutMs();             // int
+        info.write_timeout_ms = settings.getWriteTimeoutMs();           // int
+        info.scan_rate_override = settings.getScanRateOverride();       // optional
+        
+        // 3. 재시도 정책
+        info.max_retry_count = settings.getMaxRetryCount();
+        info.retry_interval_ms = settings.getRetryIntervalMs();
+        info.backoff_multiplier = settings.getBackoffMultiplier();
+        info.backoff_time_ms = settings.getBackoffTimeMs();
+        info.max_backoff_time_ms = settings.getMaxBackoffTimeMs();
+        
+        // 4. Keep-alive 설정
+        info.keep_alive_enabled = settings.isKeepAliveEnabled();
+        info.keep_alive_interval_s = settings.getKeepAliveIntervalS();
+        info.keep_alive_timeout_s = settings.getKeepAliveTimeoutS();
+        
+        // 5. 모니터링 및 진단
+        info.data_validation_enabled = settings.isDataValidationEnabled();
+        info.diagnostic_mode_enabled = settings.isDiagnosticModeEnabled();
+        info.updated_by = 0; // updated_by not available in entity
         
         return true;
         
@@ -463,11 +488,11 @@ std::map<std::string, WorkerCreator> WorkerFactory::LoadProtocolCreators() {
     try {
         // 지원하는 프로토콜들 등록
         creators["MODBUS_TCP"] = [](const PulseOne::Structs::DeviceInfo& info) -> std::unique_ptr<BaseDeviceWorker> {
-            return std::make_unique<ModbusTcpWorker>(info);
+            return std::make_unique<ModbusWorker>(info);
         };
         
         creators["MODBUS_RTU"] = [](const PulseOne::Structs::DeviceInfo& info) -> std::unique_ptr<BaseDeviceWorker> {
-            return std::make_unique<ModbusRtuWorker>(info);
+            return std::make_unique<ModbusWorker>(info);
         };
         
         creators["MQTT"] = [](const PulseOne::Structs::DeviceInfo& info) -> std::unique_ptr<BaseDeviceWorker> {

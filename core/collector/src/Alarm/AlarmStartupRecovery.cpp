@@ -4,6 +4,7 @@
 // =============================================================================
 
 #include "Alarm/AlarmStartupRecovery.h"
+#include "Alarm/AlarmEngine.h"
 #include "Storage/BackendFormat.h"
 #include "Storage/RedisDataWriter.h"
 #include "Database/RepositoryFactory.h"
@@ -12,6 +13,8 @@
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
 #include "Alarm/AlarmTypes.h"
+#include "Database/Repositories/CurrentValueRepository.h"
+#include "Database/Repositories/DataPointRepository.h"
 
 #include <chrono>
 #include <thread>
@@ -734,6 +737,97 @@ void AlarmStartupRecovery::UpdatePerformanceMetrics(std::chrono::milliseconds du
  * AlarmStateToString() - 제거됨 (stateToString() 사용)
  * ConvertTimestampToMillis() - 제거됨 (chrono 직접 사용)
  */
+
+size_t AlarmStartupRecovery::RecoverLatestPointValues() {
+    LogManager::getInstance().log("startup_recovery", LogLevel::INFO, "RDB 최신 포인트 값 Redis 복구 시작");
+    
+    try {
+        if (!InitializeComponents() || !redis_data_writer_) {
+            LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR, "컴포넌트 초기화 실패로 복구 중단");
+            return 0;
+        }
+        
+        auto& factory = PulseOne::Database::RepositoryFactory::getInstance();
+        auto current_value_repo = factory.getCurrentValueRepository();
+        auto data_point_repo = factory.getDataPointRepository();
+        
+        if (!current_value_repo || !data_point_repo) {
+            LogManager::getInstance().log("startup_recovery", LogLevel::LOG_ERROR, "Repository 획득 실패");
+            return 0;
+        }
+        
+        // 1. RDB에서 모든 최신값 조회
+        auto current_values = current_value_repo->findAll();
+        if (current_values.empty()) {
+            LogManager::getInstance().log("startup_recovery", LogLevel::INFO, "복구할 포인트 값이 RDB에 없습니다.");
+            return 0;
+        }
+        
+        size_t success_count = 0;
+        
+        // 2. Redis로 데이터 마이그레이션
+        for (const auto& entity : current_values) {
+            try {
+                int point_id = entity.getPointId();
+                
+                // 포인트 설정 정보 조회 (device_id 확인용)
+                auto point_config = data_point_repo->findById(point_id);
+                if (!point_config.has_value()) {
+                    continue;
+                }
+                
+                // TimestampedValue 구조체 생성
+                PulseOne::Structs::TimestampedValue point_val;
+                point_val.point_id = point_id;
+                point_val.timestamp = entity.getValueTimestamp();
+                point_val.quality = entity.getQualityCode();
+                point_val.value_changed = false; // 복구 시에는 변화 없음으로 간주
+                
+                // JSON 문자열로부터 DataValue 복원
+                std::string cv_json_str = entity.getCurrentValue();
+                if (!cv_json_str.empty()) {
+                    try {
+                        auto j = nlohmann::json::parse(cv_json_str);
+                        if (j.contains("value")) {
+                            auto v = j["value"];
+                            if (v.is_boolean()) point_val.value = v.get<bool>();
+                            else if (v.is_number_integer()) point_val.value = v.get<int32_t>();
+                            else if (v.is_number_float()) point_val.value = v.get<double>();
+                            else if (v.is_string()) point_val.value = v.get<std::string>();
+                        }
+                    } catch (...) {
+                        LogManager::getInstance().log("startup_recovery", LogLevel::WARN, 
+                            "Point " + std::to_string(point_id) + " 값 파싱 실패");
+                        continue;
+                    }
+                }
+                
+                // Redis에 저장 (SaveSinglePoint는 device:id:name 및 point:id:latest 둘 다 처리)
+                std::string device_id_str = "device_" + std::to_string(point_config->getDeviceId());
+                if (redis_data_writer_->SaveSinglePoint(point_val, device_id_str)) {
+                    success_count++;
+                    
+                    // 🎯 AlarmEngine RAM 캐시도 함께 시딩 (Warm Startup 핵심)
+                    AlarmEngine::getInstance().SeedPointValue(point_id, point_val.value);
+                }
+                
+            } catch (const std::exception& e) {
+                LogManager::getInstance().log("startup_recovery", LogLevel::WARN, 
+                    "개별 포인트 복구 실패: " + std::string(e.what()));
+            }
+        }
+        
+        LogManager::getInstance().log("startup_recovery", LogLevel::INFO, 
+            "포인트 값 복구 완료: " + std::to_string(success_count) + "/" + 
+            std::to_string(current_values.size()) + "개 성공");
+            
+        return success_count;
+        
+    } catch (const std::exception& e) {
+        HandleRecoveryError("RecoverLatestPointValues", e.what());
+        return 0;
+    }
+}
 
 } // namespace Alarm
 } // namespace PulseOne

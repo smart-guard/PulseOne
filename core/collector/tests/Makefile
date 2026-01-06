@@ -29,9 +29,10 @@ HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ -
 HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_BACNET_STACK := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
-HAS_QUICKJS := $(shell pkg-config --exists quickjs && echo "1" || echo "0")
+HAS_QUICKJS := $(shell [ -f "/usr/local/include/quickjs/quickjs.h" ] && echo "1" || echo "0")
 HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
+HAS_LIBMODBUS := $(shell pkg-config --exists libmodbus && echo "1" || echo "0")
 
 # 컴파일러 설정 (플랫폼별)
 CXX = g++
@@ -51,6 +52,22 @@ else
     PLATFORM_LIBS = 
 endif
 
+# Modbus 라이브러리 설정
+# Modbus 라이브러리 설정
+ifeq ($(HAS_LIBMODBUS),1)
+    CXXFLAGS += -DHAVE_MODBUS $(shell pkg-config --cflags libmodbus)
+    MODBUS_LIBS = $(shell pkg-config --libs libmodbus)
+    LIBS += $(MODBUS_LIBS)
+else
+    # Fallback check
+    CHECK_MODBUS := $(shell [ -f "/usr/include/modbus/modbus.h" ] || [ -f "/usr/local/include/modbus/modbus.h" ] || [ -f "/opt/homebrew/include/modbus/modbus.h" ] && echo "1" || echo "0")
+    ifeq ($(CHECK_MODBUS),1)
+        CXXFLAGS += -DHAVE_MODBUS -I/usr/include/modbus -I/usr/local/include/modbus -I/opt/homebrew/include/modbus
+        MODBUS_LIBS = -lmodbus
+        LIBS += $(MODBUS_LIBS)
+    endif
+endif
+
 # 디렉토리 설정
 OBJ_DIR = ./obj
 BIN_DIR = ./bin
@@ -61,9 +78,14 @@ LOG_DIR = ./logs
 PARENT_DIR = ..
 INCLUDE_DIR = $(PARENT_DIR)/include
 SRC_DIR = $(PARENT_DIR)/src
+SHARED_DIR = $(PARENT_DIR)/../shared
+SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
+SHARED_SRC_DIR = $(SHARED_DIR)/src
 
 # Include 경로
-INCLUDES = -I$(INCLUDE_DIR) \
+INCLUDES = -I$(SHARED_INCLUDE_DIR) \
+           -I$(SHARED_INCLUDE_DIR)/Client \
+           -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Platform \
            -I$(INCLUDE_DIR)/Api \
            -I$(INCLUDE_DIR)/Alarm \
@@ -83,12 +105,12 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Drivers/Common \
            -I$(INCLUDE_DIR)/Pipeline \
            -I$(INCLUDE_DIR)/Storage \
-           -I$(INCLUDE_DIR)/Client
+           -I$(INCLUDE_DIR)/Client \
+           -I./googletest/googletest/include
 
 # Modbus 라이브러리 설정
 ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1; echo $$?),0)
     MODBUS_LIBS = 
-    MODBUS_INCLUDES = 
 else
     MODBUS_LIBS = -lmodbus
     MODBUS_INCLUDES = $(shell pkg-config --cflags libmodbus 2>/dev/null || echo "")
@@ -106,18 +128,19 @@ else
     CXXFLAGS += -DDISABLE_MYSQL_FEATURES
 endif
 
-# MQTT 라이브러리 설정
-ifeq ($(HAS_MQTT_C),1)
-    MQTT_C_LIBS = -lpaho-mqtt3c
-else
-    MQTT_C_LIBS = 
-endif
-
 ifeq ($(HAS_MQTT_CPP),1)
     MQTT_CPP_LIBS = -lpaho-mqttpp3
+    CXXFLAGS += -DHAVE_MQTT_CPP
     INCLUDES += -I/usr/local/include
 else
     MQTT_CPP_LIBS = 
+endif
+
+ifeq ($(HAS_MQTT_C),1)
+    MQTT_C_LIBS = -lpaho-mqtt3c
+    CXXFLAGS += -DHAVE_MQTT
+else
+    MQTT_C_LIBS = 
 endif
 
 # PostgreSQL 라이브러리 설정
@@ -140,8 +163,8 @@ endif
 
 # Redis 라이브러리 설정
 ifeq ($(HAS_HIREDIS),1)
-    REDIS_LIBS = -lhiredis -lhiredis_ssl
-    CXXFLAGS += -DHAS_HIREDIS
+    REDIS_LIBS = /usr/local/lib/libhiredis.so.1.1.0 -lssl -lcrypto
+    CXXFLAGS += -DHAVE_REDIS
 else
     REDIS_LIBS = 
 endif
@@ -153,8 +176,9 @@ endif
 
 # QuickJS 라이브러리 설정
 ifeq ($(HAS_QUICKJS),1)
-    QUICKJS_LIBS = $(shell pkg-config --libs quickjs 2>/dev/null || echo "-lquickjs")
-    QUICKJS_INCLUDES = $(shell pkg-config --cflags quickjs 2>/dev/null || echo "-I/usr/local/include")
+    # pkg-config might return -L/usr/local/lib which is incorrect for this environment
+    QUICKJS_LIBS = -L/usr/local/lib/quickjs -lquickjs
+    QUICKJS_INCLUDES = $(shell pkg-config --cflags quickjs 2>/dev/null || echo "-I/usr/local/include/quickjs -I/usr/local/include")
     INCLUDES += $(QUICKJS_INCLUDES)
     CXXFLAGS += -DHAS_QUICKJS=1
 else
@@ -191,16 +215,38 @@ endif
 BASIC_LIBS = -lpthread -lsqlite3 $(QUICKJS_LIBS) $(HTTP_LIBS) $(CURL_LIBS) -lm -ldl $(PLATFORM_LIBS)
 OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
-TEST_LIBS = -lgtest -lgtest_main -pthread
+TEST_LIBS = -L./googletest/build-linux/lib -lgtest -lgtest_main -pthread
 
 # 소스 파일 수집
+# Shared Sources
+SHARED_UTILS_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Utils/*.cpp)
+SHARED_SECURITY_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Security/*.cpp)
+SHARED_DATABASE_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Database/*.cpp) \
+                          $(wildcard $(SHARED_SRC_DIR)/Database/Entities/*.cpp) \
+                          $(wildcard $(SHARED_SRC_DIR)/Database/Repositories/*.cpp)
+SHARED_PLATFORM_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Platform/*.cpp)
+SHARED_SECURITY_SOURCES := $(SHARED_SRC_DIR)/Security/SecretManager.cpp
+
+# Collector 전용 소스 파일 수집
 CORE_SOURCES := $(wildcard $(SRC_DIR)/Core/*.cpp)
 UTILS_SOURCES := $(wildcard $(SRC_DIR)/Utils/*.cpp)
+# 중복 제거: shared에 있는 파일들은 collector/src에서 제외하거나 shared 버전을 우선함
+UTILS_SOURCES := $(filter-out $(SHARED_UTILS_SOURCES),$(UTILS_SOURCES))
+
 CONFIG_SOURCES := $(wildcard $(SRC_DIR)/Config/*.cpp)
+
 DATABASE_SOURCES := $(wildcard $(SRC_DIR)/Database/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Entities/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Repositories/*.cpp)
-CLIENT_SOURCES := $(wildcard $(SRC_DIR)/Client/*.cpp)
+# shared와 겹치지 않는 collector 전용 DB 소스
+COLLECTOR_ONLY_DB_SOURCES := $(SRC_DIR)/Database/RepositoryFactory.cpp
+# SQLQueries.cpp 등은 shared에 존재하지 않으므로 collector에도 없으면 제거
+# ls 결과 collector/src/Database 에는 아무 .cpp 가 없음
+COLLECTOR_ONLY_DB_SOURCES := 
+
+CLIENT_SOURCES := $(SHARED_SRC_DIR)/Client/RedisClientImpl.cpp \
+                  $(SHARED_SRC_DIR)/Client/HttpClient.cpp \
+                  $(SHARED_SRC_DIR)/Client/InfluxClientImpl.cpp
 WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/Components/*.cpp) \
@@ -233,13 +279,37 @@ VIRTUALPOINT_SOURCES := $(wildcard $(SRC_DIR)/VirtualPoint/*.cpp)
 PLATFORM_SOURCES := $(wildcard $(SRC_DIR)/Platform/*.cpp)
 PLUGIN_SOURCES := $(wildcard $(SRC_DIR)/Plugin/*.cpp)
 
-ALL_SOURCES = $(CORE_SOURCES) $(UTILS_SOURCES) $(CONFIG_SOURCES) \
-              $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(WORKERS_SOURCES) \
+ALL_SOURCES = $(CORE_SOURCES) $(SHARED_UTILS_SOURCES) $(CONFIG_SOURCES) \
+              $(SHARED_DATABASE_SOURCES) $(COLLECTOR_ONLY_DB_SOURCES) \
+              $(SHARED_SECURITY_SOURCES) \
+              $(CLIENT_SOURCES) $(WORKERS_SOURCES) \
               $(DRIVERS_SOURCES) $(PIPELINE_SOURCES) $(ALARM_SOURCES) \
               $(VIRTUALPOINT_SOURCES) $(NETWORK_SOURCES) $(API_SOURCES) \
-              $(PLATFORM_SOURCES) $(PLUGIN_SOURCES) $(STORAGE_SOURCES) 
+              $(SHARED_PLATFORM_SOURCES) $(PLUGIN_SOURCES) $(STORAGE_SOURCES) 
 
-ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
+# 플러그인용 드라이버 소스 (메인 바이너리에서 제외)
+PLUGIN_DRIVERS_SOURCES := $(SRC_DIR)/Drivers/Mqtt/MqttDriver.cpp \
+                          $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
+                          $(SRC_DIR)/Drivers/OPCUA/OPCUADriver.cpp
+
+# 메인 코어 소스 (플러그인 드라이버 제외)
+CORE_SOURCES_ONLY := $(filter-out $(PLUGIN_DRIVERS_SOURCES),$(ALL_SOURCES))
+
+# 헤더만 존재하는 소스들 제외 (컴파일 대상 아님)
+HEADER_ONLY_SOURCES := $(SHARED_SRC_DIR)/Platform/PlatformCompat.cpp # 만약 존재한다면
+CORE_SOURCES_FINAL := $(filter-out $(HEADER_ONLY_SOURCES),$(CORE_SOURCES_ONLY))
+
+COLLECTOR_OBJECTS = $(patsubst $(PARENT_DIR)/src/%.cpp,$(OBJ_DIR)/%.o,$(filter $(PARENT_DIR)/src/%,$(CORE_SOURCES_FINAL)))
+SHARED_OBJECTS = $(patsubst $(SHARED_DIR)/src/%.cpp,$(OBJ_DIR)/shared/%.o,$(filter $(SHARED_DIR)/src/%,$(CORE_SOURCES_FINAL)))
+
+CORE_OBJECTS = $(COLLECTOR_OBJECTS) $(SHARED_OBJECTS)
+
+# Plugin 테스트용 객체 (Worker, API, Network, Application 관련 객체 모두 제외 - 순수 로더 테스트용)
+PLUGIN_TEST_CORE_OBJECTS = $(filter-out $(OBJ_DIR)/Workers/Protocol/% $(OBJ_DIR)/Workers/WorkerFactory.o $(OBJ_DIR)/Workers/WorkerManager.o $(OBJ_DIR)/Api/% $(OBJ_DIR)/Network/% $(OBJ_DIR)/Core/Application.o,$(CORE_OBJECTS))
+
+# 기존 ALL_OBJECTS는 하위 호환성을 위해 유지하되, 드라이버 포함 버전으로 정의 (필요시)
+# 하지만 이제 대부분의 테스트가 CORE_OBJECTS를 사용해야 함
+ALL_OBJECTS = $(CORE_OBJECTS)
 
 TEST_OBJECTS = $(OBJ_DIR)/test_step1_config_connection.o \
                $(OBJ_DIR)/test_step2_database_entity.o \
@@ -249,6 +319,12 @@ TEST_OBJECTS = $(OBJ_DIR)/test_step1_config_connection.o \
                $(OBJ_DIR)/test_step6_rest_api_worker_reload.o \
                $(OBJ_DIR)/test_step6_enhanced_pipeline.o \
                $(OBJ_DIR)/test_step7_rest_api_backend_complete.o \
+               $(OBJ_DIR)/test_step8_driver_reconnection_data_flow.o \
+               $(OBJ_DIR)/test_step9_scale_and_multi_protocol.o \
+               $(OBJ_DIR)/test_step10_e2e_integration_recovery.o \
+               $(OBJ_DIR)/test_step11_advanced_scenarios.o \
+               $(OBJ_DIR)/test_step12_state_recovery_storage.o \
+               $(OBJ_DIR)/test_plugin_loading.o \
                $(OBJ_DIR)/test_network_api.o \
                $(OBJ_DIR)/test_platform_compat.o \
                $(OBJ_DIR)/test_workermanager.o
@@ -323,6 +399,7 @@ create-dirs: create-log-dir
 	@mkdir -p $(OBJ_DIR)/Drivers $(OBJ_DIR)/Drivers/Common $(OBJ_DIR)/Drivers/Modbus $(OBJ_DIR)/Drivers/Mqtt $(OBJ_DIR)/Drivers/Bacnet
 	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint $(OBJ_DIR)/Plugin
 	@mkdir -p $(OBJ_DIR)/Network $(OBJ_DIR)/Api $(OBJ_DIR)/Platform $(OBJ_DIR)/Storage
+	@mkdir -p $(OBJ_DIR)/shared $(OBJ_DIR)/shared/Client
 	@echo -e "$(GREEN)✅ All directories created (including logs)$(NC)"
 
 # =============================================================================
@@ -334,6 +411,14 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@echo -e "$(YELLOW)🔨 Generating dependencies for $<$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
 	@echo -e "$(YELLOW)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# 공유 소스 컴파일 규칙
+$(OBJ_DIR)/shared/%.o: $(SHARED_SRC_DIR)/%.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(YELLOW)🔨 Generating dependencies for SHARED $<$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
+	@echo -e "$(YELLOW)⚙️ Compiling SHARED $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # 테스트 파일 컴파일 규칙
@@ -395,6 +480,36 @@ $(OBJ_DIR)/test_platform_compat.o: test_platform_compat.cpp
 $(OBJ_DIR)/test_workermanager.o: test_workermanager.cpp
 	@mkdir -p $(OBJ_DIR)
 	@echo -e "$(CYAN)👷 Compiling WorkerManager Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_step8_driver_reconnection_data_flow.o: test_step8_driver_reconnection_data_flow.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🔌 Compiling Step 8 Driver Reconnection Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_step9_scale_and_multi_protocol.o: test_step9_scale_and_multi_protocol.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)📈 Compiling Step 9 Scale and Multi-Protocol Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_step10_e2e_integration_recovery.o: test_step10_e2e_integration_recovery.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)📈 Compiling Step 10 End-to-End Integration Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_step11_advanced_scenarios.o: test_step11_advanced_scenarios.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)📈 Compiling Step 11 Advanced Scenarios Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_step12_state_recovery_storage.o: test_step12_state_recovery_storage.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)📈 Compiling Step 12 State Recovery & Storage Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_plugin_loading.o: test_plugin_loading.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🔌 Compiling Plugin Loading Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
@@ -475,9 +590,114 @@ $(BIN_DIR)/test_workermanager: $(ALL_OBJECTS) $(OBJ_DIR)/test_workermanager.o
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_workermanager.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ WorkerManager Test build completed!$(NC)"
 
+$(BIN_DIR)/test_step8: $(ALL_OBJECTS) $(OBJ_DIR)/test_step8_driver_reconnection_data_flow.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 8 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step8_driver_reconnection_data_flow.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 8 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step9: $(ALL_OBJECTS) $(OBJ_DIR)/test_step9_scale_and_multi_protocol.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 9 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step9_scale_and_multi_protocol.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 9 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step10: $(ALL_OBJECTS) $(OBJ_DIR)/test_step10_e2e_integration_recovery.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 10 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step10_e2e_integration_recovery.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 10 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step11: $(ALL_OBJECTS) $(OBJ_DIR)/test_step11_advanced_scenarios.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 11 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step11_advanced_scenarios.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 11 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_step12: $(ALL_OBJECTS) $(OBJ_DIR)/test_step12_state_recovery_storage.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 12 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step12_state_recovery_storage.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 12 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_plugin_loading: $(OBJ_DIR)/test_plugin_loading.o $(PLUGIN_TEST_CORE_OBJECTS)
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Plugin Loading Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) -rdynamic $^ $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Plugin Loading Test build completed!$(NC)"
+
+# =============================================================================
+# 플러그인 빌드 규칙 (Shared Library .so 생성)
+# =============================================================================
+
+PLUGIN_DIR := $(BIN_DIR)/plugins
+
+# 플러그인 공통 컴파일 플래그
+# -shared: 공유 라이브러리 생성
+# -fPIC: Position Independent Code (공유 라이브러리 필수)
+PLUGIN_CXXFLAGS := $(CXXFLAGS) -DBUILD_PLUGIN -shared -fPIC
+
+# MQTT 플러그인
+mqtt-plugin: create-dirs
+	@echo -e "$(CYAN)📦 Building MQTT plugin (.so)...$(NC)"
+	@mkdir -p $(PLUGIN_DIR)
+	@$(CXX) $(PLUGIN_CXXFLAGS) $(INCLUDES) \
+		$(SRC_DIR)/Drivers/Mqtt/MqttDriver.cpp \
+		$(SHARED_UTILS_SOURCES) \
+		$(SHARED_SECURITY_SOURCES) \
+		$(LIBS) -o $(PLUGIN_DIR)/MqttDriver.so
+
+# BACnet 플러그인
+bacnet-plugin: create-dirs
+	@echo -e "$(CYAN)📦 Building BACnet plugin (.so)...$(NC)"
+	@mkdir -p $(PLUGIN_DIR)
+	@$(CXX) $(PLUGIN_CXXFLAGS) $(INCLUDES) \
+		$(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
+		$(SHARED_UTILS_SOURCES) \
+		$(SHARED_SECURITY_SOURCES) \
+		$(LIBS) -o $(PLUGIN_DIR)/BacnetDriver.so
+
+# OPC-UA 플러그인
+opcua-plugin: create-dirs
+	@echo -e "$(CYAN)📦 Building OPC-UA plugin (.so)...$(NC)"
+	@mkdir -p $(PLUGIN_DIR)
+	@$(CXX) $(PLUGIN_CXXFLAGS) $(INCLUDES) \
+		$(SRC_DIR)/Drivers/OPCUA/OPCUADriver.cpp \
+		$(SHARED_UTILS_SOURCES) \
+		$(SHARED_SECURITY_SOURCES) \
+		$(LIBS) -o $(PLUGIN_DIR)/OpcuaDriver.so
+
+# Modbus 플러그인
+modbus-plugin: create-dirs
+	@echo -e "$(CYAN)📦 Building Modbus plugin (.so)...$(NC)"
+	@mkdir -p $(PLUGIN_DIR)
+	@$(CXX) $(PLUGIN_CXXFLAGS) -DHAVE_MODBUS $(INCLUDES) \
+		$(SRC_DIR)/Drivers/Modbus/ModbusDriver.cpp \
+		$(SRC_DIR)/Drivers/Modbus/ModbusDiagnostics.cpp \
+		$(SRC_DIR)/Drivers/Modbus/ModbusConnectionPool.cpp \
+		$(SRC_DIR)/Drivers/Modbus/ModbusFailover.cpp \
+		$(SRC_DIR)/Drivers/Modbus/ModbusPerformance.cpp \
+		$(SHARED_UTILS_SOURCES) \
+		$(SHARED_SECURITY_SOURCES) \
+		$(LIBS) -lmodbus -o $(PLUGIN_DIR)/ModbusDriver.so
+
+plugins: mqtt-plugin bacnet-plugin opcua-plugin modbus-plugin
+	@echo -e "$(GREEN)✅ All plugins built successfully in $(PLUGIN_DIR)$(NC)"
+
 # =============================================================================
 # 향상된 단계별 테스트 실행 (로그 포함)
 # =============================================================================
+
+# Plugin Loading 테스트 빌드
+plugin-test-build: create-dirs plugins $(BIN_DIR)/test_plugin_loading
+
+# Plugin Loading 테스트 실행
+plugin-test: plugin-test-build
+	$(eval LOG_FILE := $(call get_log_filename,plugin_loading))
+	@echo -e "$(MAGENTA)🚀 Running Plugin Loading Test [$(PLATFORM)]...$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Plugin Loading)
+	@./$(BIN_DIR)/test_plugin_loading 2>&1 | tee $(LOG_FILE)
+	$(call analyze_log,$(LOG_FILE),Plugin Loading)
 
 # Step 1 테스트
 step1-build: create-dirs $(BIN_DIR)/test_step1
@@ -556,7 +776,7 @@ step5-test: step5-build create-log-dir
 	@echo -e "$(BLUE)This test requires Redis server running$(NC)"
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call create_log_summary,$(LOG_FILE),Step 5)
-	@./$(BIN_DIR)/test_step5 2>&1 | tee $(LOG_FILE)
+	@PULSEONE_CONFIG_DIR=./config ./$(BIN_DIR)/test_step5 2>&1 | tee $(LOG_FILE)
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Step 5)
 	@echo -e "$(GREEN)Step 5 Test completed. Log saved: $(LOG_FILE)$(NC)"
@@ -621,6 +841,87 @@ else
 	@echo "Step 7 skipped - libcurl not available" > $(LOG_FILE)
 	@echo -e "$(YELLOW)Step 7 Complete Integration Test skipped. Log saved: $(LOG_FILE)$(NC)"
 endif
+
+# Step 8 테스트 (드라이버 연결 및 데이터 플로우)
+step8-build: create-dirs $(BIN_DIR)/test_step8
+
+step8-test: step8-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step8))
+	@echo -e "$(MAGENTA)🚀 Running Step 8 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Driver Reconnection and Data Pipeline Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing driver connection유실/복구 및 Redis 파이프라인$(NC)"
+	@echo -e "$(BLUE)This test requires Redis server running$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 8)
+	@./$(BIN_DIR)/test_step8 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 8)
+	@echo -e "$(GREEN)Step 8 Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 9 테스트
+step9-build: create-dirs $(BIN_DIR)/test_step9
+
+step9-test: step9-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step9))
+	@echo -e "$(MAGENTA)🚀 Running Step 9 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Scale and Multi-Protocol Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing system with multiple concurrent devices (TCP/RTU)$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 9)
+	@./$(BIN_DIR)/test_step9 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 9)
+	@echo -e "$(GREEN)Step 9 Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 10 테스트
+step10-build: create-dirs $(BIN_DIR)/test_step10
+
+step10-test: step10-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step10))
+	@echo -e "$(MAGENTA)🚀 Running Step 10 End-to-End Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)E2E Integration and Recovery Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing: Modbus -> Pipeline -> VP -> Alarm -> Recovery$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 10)
+	@./$(BIN_DIR)/test_step10 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 10)
+	@echo -e "$(GREEN)Step 10 Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 11 테스트
+step11-build: create-dirs $(BIN_DIR)/test_step11
+
+step11-test: step11-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step11))
+	@echo -e "$(MAGENTA)🚀 Running Step 11 Advanced Scenarios [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Advanced Alarm & Virtual Point Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing: Low Limit, Complex Script, VP Write$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 11)
+	@./$(BIN_DIR)/test_step11 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 11)
+	@echo -e "$(GREEN)Step 11 Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 12 테스트
+step12-build: create-dirs $(BIN_DIR)/test_step12
+
+step12-test: step12-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step12))
+	@echo -e "$(MAGENTA)🚀 Running Step 12 State Recovery & Storage [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Tiered State Recovery & Storage Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing: RDB Storage Differentiation, Warm Startup Recovery$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 12)
+	@./$(BIN_DIR)/test_step12 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 12)
+	@echo -e "$(GREEN)Step 12 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 # Network 테스트
 network-build: create-dirs $(BIN_DIR)/test_network
@@ -785,6 +1086,7 @@ status:
 	@echo "Network: $(if $(wildcard $(BIN_DIR)/test_network),✅ exists,❌ missing)"
 	@echo "Platform: $(if $(wildcard $(BIN_DIR)/test_platform),✅ exists,❌ missing)"
 	@echo "WorkerManager: $(if $(wildcard $(BIN_DIR)/test_workermanager),✅ exists,❌ missing)"
+	@echo "Step 8: $(if $(wildcard $(BIN_DIR)/test_step8),✅ exists,❌ missing)"
 
 help:
 	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System with Complete Step 7 Integration$(NC)"
@@ -809,6 +1111,7 @@ help:
 	@echo "  make network-test - Network: REST API server test"
 	@echo "  make platform-test - Platform: Cross-platform compatibility test"
 	@echo "  make workermanager-test - WorkerManager: Singleton and lifecycle test"
+	@echo "  make step8-test   - Step 8: Driver reconnection and data pipeline test"
 	@echo ""
 	@echo -e "$(GREEN)Quick Build Commands:$(NC)"
 	@echo "  make step1-build, step2-build, ..., step7-build"
@@ -850,7 +1153,8 @@ help:
 	@echo "  sudo apt install libcurl4-openssl-dev libgtest-dev nlohmann-json3-dev"
 
 .PHONY: create-log-dir logs-summary check-logs clean-old-logs clean-all-logs \
-        step1-test step2-test step3-test step4-test step5-test step6-test step6-pipeline-test step7-test \
+        step1-test step2-test step3-test step4-test step5-test step6-test step6-pipeline-test step7-test step8-test step9-test \
+        step10-test step11-test step12-test \
         network-test platform-test workermanager-test quick-test all-tests-run restapi-test \
         clean clean-all help status
 
