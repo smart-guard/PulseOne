@@ -17,7 +17,7 @@
 // C++17 filesystem 지원 확인
 #if __cplusplus >= 201703L && __has_include(<filesystem>)
     #include <filesystem>
-#include <algorithm>
+    #include <algorithm>
     #define HAS_FILESYSTEM 1
 #else
     #define HAS_FILESYSTEM 0
@@ -539,7 +539,7 @@ public:
 #if PULSEONE_WINDOWS
         return ::GetCurrentThreadId();
 #else
-        return static_cast<uint32_t>(pthread_self());
+        return (uint32_t)(uintptr_t)pthread_self();
 #endif
     }
 };

@@ -50,6 +50,18 @@ public:
      */
     virtual bool isConnected() const = 0;
     
+    /**
+     * @brief 구독 모드 설정 (Watchdog 간섭 방지용)
+     * @param enabled 활성화 여부
+     */
+    virtual void setSubscriberMode(bool /*enabled*/) {};  // 기본 구현 (옵션)
+    
+    /**
+     * @brief 구독 모드 여부 확인
+     * @return 구독 모드이면 true
+     */
+    virtual bool isSubscriberMode() const { return false; }; // 기본 구현 (옵션)
+    
     // =============================================================================
     // 기본 Key-Value 조작
     // =============================================================================

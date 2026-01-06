@@ -351,78 +351,26 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
         }
         
         // 🔥 엔지니어링 단위 및 스케일링
-        it = row.find("unit");
-        if (it != row.end()) {
-            entity.setUnit(it->second);
-        }
-        
-        it = row.find("scaling_factor");
-        if (it != row.end()) {
-            entity.setScalingFactor(std::stod(it->second));
-        }
-        
-        it = row.find("scaling_offset");
-        if (it != row.end()) {
-            entity.setScalingOffset(std::stod(it->second));
-        }
-        
-        it = row.find("min_value");
-        if (it != row.end()) {
-            entity.setMinValue(std::stod(it->second));
-        }
-        
-        it = row.find("max_value");
-        if (it != row.end()) {
-            entity.setMaxValue(std::stod(it->second));
-        }
+        entity.setUnit(RepositoryHelpers::getRowValue(row, "unit"));
+        entity.setScalingFactor(RepositoryHelpers::getRowValueAsDouble(row, "scaling_factor", 1.0));
+        entity.setScalingOffset(RepositoryHelpers::getRowValueAsDouble(row, "scaling_offset", 0.0));
+        entity.setMinValue(RepositoryHelpers::getRowValueAsDouble(row, "min_value", std::numeric_limits<double>::lowest()));
+        entity.setMaxValue(RepositoryHelpers::getRowValueAsDouble(row, "max_value", std::numeric_limits<double>::max()));
         
         // 🔥 로깅 설정
-        it = row.find("log_enabled");
-        if (it != row.end()) {
-            entity.setLogEnabled(db_layer.parseBoolean(it->second));
-        }
-        
-        it = row.find("log_interval_ms");
-        if (it != row.end()) {
-            entity.setLogInterval(std::stoi(it->second));
-        }
-        
-        it = row.find("log_deadband");
-        if (it != row.end()) {
-            entity.setLogDeadband(std::stod(it->second));
-        }
-        
-        it = row.find("polling_interval_ms");
-        if (it != row.end()) {
-            entity.setPollingInterval(std::stoi(it->second));
-        }
+        entity.setLogEnabled(db_layer.parseBoolean(RepositoryHelpers::getRowValue(row, "log_enabled", "1")));
+        entity.setLogInterval(RepositoryHelpers::getRowValueAsInt(row, "log_interval_ms", 0));
+        entity.setLogDeadband(RepositoryHelpers::getRowValueAsDouble(row, "log_deadband", 0.0));
+        entity.setPollingInterval(RepositoryHelpers::getRowValueAsInt(row, "polling_interval_ms", 1000));
         
         // 🔥 품질 관리 필드들 (선택적)
-        it = row.find("quality_check_enabled");
-        if (it != row.end()) {
-            entity.setQualityCheckEnabled(db_layer.parseBoolean(it->second));
-        }
-        
-        it = row.find("range_check_enabled");
-        if (it != row.end()) {
-            entity.setRangeCheckEnabled(db_layer.parseBoolean(it->second));
-        }
-        
-        it = row.find("rate_of_change_limit");
-        if (it != row.end()) {
-            entity.setRateOfChangeLimit(std::stod(it->second));
-        }
+        entity.setQualityCheckEnabled(db_layer.parseBoolean(RepositoryHelpers::getRowValue(row, "quality_check_enabled", "1")));
+        entity.setRangeCheckEnabled(db_layer.parseBoolean(RepositoryHelpers::getRowValue(row, "range_check_enabled", "1")));
+        entity.setRateOfChangeLimit(RepositoryHelpers::getRowValueAsDouble(row, "rate_of_change_limit", 0.0));
         
         // 🔥 알람 관련 필드들 (선택적)
-        it = row.find("alarm_enabled");
-        if (it != row.end()) {
-            entity.setAlarmEnabled(db_layer.parseBoolean(it->second));
-        }
-        
-        it = row.find("alarm_priority");
-        if (it != row.end()) {
-            entity.setAlarmPriority(it->second);
-        }
+        entity.setAlarmEnabled(db_layer.parseBoolean(RepositoryHelpers::getRowValue(row, "alarm_enabled", "0")));
+        entity.setAlarmPriority(RepositoryHelpers::getRowValue(row, "alarm_priority", "medium"));
         
         // 🔥 메타데이터
         it = row.find("group_name");

@@ -477,6 +477,13 @@ namespace DataPoint {
             log_deadband REAL DEFAULT 0.0,
             polling_interval_ms INTEGER DEFAULT 0,
             
+            -- 🔥🔥🔥 품질 및 알람 설정 (추가됨)
+            quality_check_enabled INTEGER DEFAULT 1,
+            range_check_enabled INTEGER DEFAULT 1,
+            rate_of_change_limit REAL DEFAULT 0.0,
+            alarm_enabled INTEGER DEFAULT 0,
+            alarm_priority VARCHAR(20) DEFAULT 'medium',
+            
             -- 🔥🔥🔥 메타데이터
             group_name VARCHAR(50),
             tags TEXT,

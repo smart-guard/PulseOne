@@ -39,7 +39,7 @@
 #include "Utils/LogManager.h"
 
 // BACnet 스택 조건부 포함
-#ifdef HAS_BACNET_STACK
+#if HAS_BACNET_STACK
 extern "C" {
     // 핵심 BACnet 헤더들
     #include <bacnet/bacdef.h>

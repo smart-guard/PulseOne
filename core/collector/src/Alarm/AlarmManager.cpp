@@ -8,7 +8,9 @@
 #include "Alarm/AlarmEngine.h"
 #include "Utils/ConfigManager.h"
 #include <nlohmann/json.hpp>
-#include <quickjs.h> 
+#if HAS_QUICKJS
+#include <quickjs/quickjs.h>
+#endif
 #include <algorithm>
 #include <sstream>
 #include <regex>
@@ -91,6 +93,7 @@ void AlarmManager::initializeData() {
 }
 
 bool AlarmManager::initScriptEngine() {
+#if HAS_QUICKJS
     try {
         if (js_context_) {
             return true;
@@ -119,9 +122,13 @@ bool AlarmManager::initScriptEngine() {
         logger.log("alarm", LogLevel::LOG_ERROR, "❌ JavaScript 엔진 초기화 실패: " + std::string(e.what()));
         return false;
     }
+#else
+    return false;
+#endif
 }
 
 void AlarmManager::cleanupScriptEngine() {
+#if HAS_QUICKJS
     if (js_context_) {
         JS_FreeContext((JSContext*)js_context_);
         js_context_ = nullptr;
@@ -130,6 +137,7 @@ void AlarmManager::cleanupScriptEngine() {
         JS_FreeRuntime((JSRuntime*)js_runtime_);
         js_runtime_ = nullptr;
     }
+#endif
 }
 
 void AlarmManager::shutdown() {

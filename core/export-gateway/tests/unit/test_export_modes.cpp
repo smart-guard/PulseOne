@@ -974,7 +974,25 @@ void test_file_handler_with_modes() {
     ASSERT(file_writes == sim.getSendCount(), "전송 횟수 불일치");
     ASSERT(file_writes > 0, "파일 쓰기 없음");
     
-    std::string filepath = TEST_BASE_DIR + "/1001/2025/12/17/export_log.json";
+    // 검증 - FileTargetHandler는 현재 시간을 기준으로 디렉토리를 생성함
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm = *std::gmtime(&time_t);
+    
+    char date_buf[64];
+    std::strftime(date_buf, sizeof(date_buf), "%Y/%m/%d", &tm);
+    std::string date_path = date_buf;
+    
+    std::string filepath = TEST_BASE_DIR + "/1001/" + date_path + "/export_log.json";
+    
+    if (!std::filesystem::exists(filepath)) {
+        std::cout << "❌ 파일 없음: " << filepath << std::endl;
+        // 디버깅: 실제 생성된 디렉토리 확인
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(TEST_BASE_DIR)) {
+            std::cout << "   발견됨: " << entry.path() << std::endl;
+        }
+    }
+    
     ASSERT(std::filesystem::exists(filepath), "파일 생성 안 됨");
     
     cleanupTestDir();

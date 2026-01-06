@@ -261,6 +261,7 @@ private:
     void applyRepositoryConfigurations();
     bool injectDependencies();
     void connectRepositoryDependencies();
+    void clearAllCachesInternal();
     
     // =============================================================================
     // 데이터 멤버들

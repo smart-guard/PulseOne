@@ -7,6 +7,8 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <fstream>
+#include <sstream>
 
 // PulseOne 시스템
 #include "Utils/ConfigManager.h"
@@ -29,7 +31,25 @@ class CompleteAlarmE2ETest : public ::testing::Test {
 protected:
     void SetUp() override {
         std::cout << "\n🚀 === 완전한 End-to-End 알람 테스트 시작 ===" << std::endl;
+        
+        // 1. 먼저 시스템(DB 연결 등) 초기화
         InitializeSystem();
+
+        // 2. 그 다음 데이터베이스 스키마 및 데이터 초기화 (test_schema_complete.sql 로드)
+        std::ifstream sql_file("db/test_schema_complete.sql");
+        if (sql_file.is_open()) {
+            std::stringstream buffer;
+            buffer << sql_file.rdbuf();
+            std::string sql = buffer.str();
+            
+            if (DatabaseManager::getInstance().executeNonQuery(sql)) {
+                std::cout << "✅ DB Schema & Test Data 초기화 완료" << std::endl;
+            } else {
+                std::cerr << "❌ DB Schema & Test Data 초기화 실패" << std::endl;
+            }
+        } else {
+            std::cerr << "⚠️ db/test_schema_complete.sql 파일을 열 수 없습니다. 기존 DB를 사용합니다." << std::endl;
+        }
     }
     
     void TearDown() override {
@@ -119,7 +139,7 @@ TEST_F(CompleteAlarmE2ETest, Complete_DB_To_Redis_Backend_Flow) {
     auto active_alarms = alarm_occurrence_repo_->findActive();
     std::cout << "DB에서 조회된 활성 알람: " << active_alarms.size() << "개" << std::endl;
     
-    ASSERT_GT(active_alarms.size(), 0) << "활성 알람이 없어서 테스트 불가능";
+    ASSERT_GT(active_alarms.size(), 0u) << "활성 알람이 없어서 테스트 불가능";
     
     // 첫 번째 알람 상세 정보 출력
     const auto& test_alarm = active_alarms[0];
@@ -175,7 +195,7 @@ TEST_F(CompleteAlarmE2ETest, Complete_DB_To_Redis_Backend_Flow) {
         }
     }
     
-    ASSERT_GT(found_redis_data.size(), 0) << "Redis에 저장된 알람 데이터가 없음";
+    ASSERT_GT(found_redis_data.size(), 0u) << "Redis에 저장된 알람 데이터가 없음";
     std::cout << "\n✅ 총 " << found_redis_data.size() << "개의 Redis 키에서 데이터 발견" << std::endl;
     
     // ==========================================================================

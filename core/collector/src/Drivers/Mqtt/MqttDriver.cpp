@@ -15,15 +15,32 @@
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
+#if HAVE_MQTT_CPP
 // Eclipse Paho MQTT C++ 헤더들
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
 #include <mqtt/iaction_listener.h>
 #include <mqtt/connect_options.h>
 #include <mqtt/ssl_options.h>
+#endif
 
 namespace PulseOne {
 namespace Drivers {
+
+// =============================================================================
+// 🔥 플러그인 등록용 C 인터페이스 (PluginLoader가 호출)
+// =============================================================================
+extern "C" {
+#ifdef _WIN32
+    __declspec(dllexport) void RegisterPlugin() {
+#else
+    void RegisterPlugin() {
+#endif
+        DriverFactory::GetInstance().RegisterDriver("MQTT", []() {
+            return std::make_unique<MqttDriver>();
+        });
+    }
+}
 
 using namespace std::chrono;
 
@@ -33,6 +50,8 @@ using ErrorInfo = PulseOne::Structs::ErrorInfo;
 using ProtocolType = PulseOne::Enums::ProtocolType;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
 using DataQuality = PulseOne::Enums::DataQuality;  // ✅ 추가
+
+#if HAVE_MQTT_CPP
 
 // =============================================================================
 // MQTT 콜백 클래스 구현
@@ -273,10 +292,75 @@ bool MqttDriver::WriteValue(const DataPoint& point, const DataValue& value) {
             payload = std::get<bool>(value) ? "true" : "false";
         }
         
-        return Publish(std::to_string(point.address), payload, default_qos_, false);  // ✅ address를 string으로 변환
+        // ✅ address_string이 있으면 그것을 토픽으로 사용 (MQTT 표준)
+        std::string topic;
+        if (!point.address_string.empty()) {
+            topic = point.address_string;
+        } else {
+            topic = std::to_string(point.address);
+        }
+        
+        // ✅ QoS 동적 설정 (protocol_params에서)
+        int qos = default_qos_;
+        if (point.protocol_params.count("qos")) {
+            try {
+                qos = std::stoi(point.protocol_params.at("qos"));
+            } catch (...) {}
+        }
+        
+        // ✅ Retained 동적 설정
+        bool retained = false;
+        if (point.protocol_params.count("retained")) {
+             std::string ret_str = point.protocol_params.at("retained");
+             retained = (ret_str == "true" || ret_str == "1");
+        }
+        
+        return Publish(topic, payload, qos, retained);
         
     } catch (const std::exception& e) {
         SetError("Exception during write: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MqttDriver::Subscribe(const std::string& topic, int qos) {
+    if (!IsConnected()) {
+        SetError("MQTT client not connected");
+        return false;
+    }
+    
+    try {
+        if (!mqtt_client_) return false;
+        
+        auto token = mqtt_client_->subscribe(topic, qos);
+        token->wait();
+        
+        LogMessage("INFO", "Subscribed to topic: " + topic, "MQTT");
+        return true;
+        
+    } catch (const std::exception& e) {
+        SetError("Exception during subscribe: " + std::string(e.what()));
+        return false;
+    }
+}
+
+bool MqttDriver::Unsubscribe(const std::string& topic) {
+    if (!IsConnected()) {
+        SetError("MQTT client not connected");
+        return false;
+    }
+    
+    try {
+        if (!mqtt_client_) return false;
+        
+        auto token = mqtt_client_->unsubscribe(topic);
+        token->wait();
+        
+        LogMessage("INFO", "Unsubscribed from topic: " + topic, "MQTT");
+        return true;
+        
+    } catch (const std::exception& e) {
+        SetError("Exception during unsubscribe: " + std::string(e.what()));
         return false;
     }
 }
@@ -1603,6 +1687,50 @@ bool MqttDriver::CreateMqttClientForBroker(const std::string& broker_url) {
         return false;
     }
 }
+
+#else
+    // STUB IMPLEMENTATION (When MQTT C++ library is not available)
+    MqttDriver::MqttDriver() 
+        : driver_statistics_("MQTT"), status_(Structs::DriverStatus::UNINITIALIZED), is_connected_(false), load_balancer_(nullptr) {
+        std::cout << "[DEBUG][MQTT] MqttDriver stub instance created (HAVE_MQTT_CPP not defined)" << std::endl;
+    }
+    MqttDriver::~MqttDriver() {}
+    bool MqttDriver::Initialize(const DriverConfig& config) { 
+        config_ = config;
+        std::cerr << "[ERROR][MQTT] MqttDriver::Initialize failed: STUB implementation is being used. Please check if HAVE_MQTT_CPP is defined and libmqtt-paho is linked." << std::endl;
+        return false; 
+    }
+    bool MqttDriver::Connect() { return false; }
+    bool MqttDriver::Disconnect() { return true; }
+    bool MqttDriver::IsConnected() const { return false; }
+    bool MqttDriver::ReadValues(const std::vector<DataPoint>&, std::vector<TimestampedValue>&) { return false; }
+    bool MqttDriver::WriteValue(const DataPoint&, const DataValue&) { return false; }
+    const DriverStatistics& MqttDriver::GetStatistics() const { static DriverStatistics s("MQTT"); return s; }
+    void MqttDriver::ResetStatistics() {}
+    ProtocolType MqttDriver::GetProtocolType() const { return ProtocolType::MQTT; }
+    Structs::DriverStatus MqttDriver::GetStatus() const { return Structs::DriverStatus::STOPPED; }
+    ErrorInfo MqttDriver::GetLastError() const { return ErrorInfo(); }
+    
+    bool MqttDriver::Start() { return false; }
+    bool MqttDriver::Stop() { return true; }
+    bool MqttDriver::Subscribe(const std::string&, int) { return false; }
+    bool MqttDriver::Unsubscribe(const std::string&) { return false; }
+    bool MqttDriver::Publish(const std::string&, const std::string&, int, bool) { return false; }
+    
+    // Advanced features stubs
+    std::string MqttDriver::GetLoadBalancingStatusJSON() const { return "{}"; }
+    void MqttDriver::DisableLoadBalancing() {}
+    bool MqttDriver::EnableLoadBalancing(const std::vector<std::string>&, LoadBalanceAlgorithm) { return false; }
+    bool MqttDriver::IsLoadBalancingEnabled() const { return false; }
+    std::string MqttDriver::SelectOptimalBroker(const std::string&, size_t) { return ""; }
+    bool MqttDriver::SwitchBroker(const std::string&) { return false; }
+    bool MqttDriver::CreateMqttClientForBroker(const std::string&) { return false; }
+    void MqttDriver::NotifyAdvancedFeatures(const std::string&, const std::string&) {}
+    void MqttDriver::RecordDiagnosticEvent(const std::string&, bool, double, const std::string&) {}
+    void MqttDriver::NotifyConnectionChange(bool, const std::string&, const std::string&) {}
+    void MqttDriver::NotifyMessageProcessing(const std::string&, const std::string&, bool, double) {}
+#endif
+
 
 } // namespace Drivers
 } // namespace PulseOne

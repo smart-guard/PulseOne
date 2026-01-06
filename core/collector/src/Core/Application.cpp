@@ -92,79 +92,44 @@ bool CollectorApplication::Initialize() {
         }
         LogManager::getInstance().Info("✓ RepositoryFactory initialized successfully");
         
-        // 4. REST API 서버 초기화 (워커 시작 전에 API 서버 준비)
-        LogManager::getInstance().Info("Step 4/5: Initializing REST API Server...");
+        // 4. REST API 서버 초기화
+        LogManager::getInstance().Info("Step 4/7: Initializing REST API Server...");
         if (!InitializeRestApiServer()) {
-            LogManager::getInstance().Error("✗ RestApiServer initialization failed");
-            // API 서버 실패는 치명적이지 않음 - 계속 진행
             LogManager::getInstance().Warn("Continuing without REST API server...");
         } else {
             LogManager::getInstance().Info("✓ REST API Server initialized successfully");
         }
         
-        // 5. WorkerManager를 통한 활성 워커들 시작
-        LogManager::getInstance().Info("Step 5/6: Starting active workers...");
+        // ✅ 5. 포인트 값 복구 (Warm Startup 핵심 로직)
+        LogManager::getInstance().Info("Step 5/7: Recovering latest point values (RDB -> Redis -> RAM)...");
+        try {
+            auto& alarm_recovery = Alarm::AlarmStartupRecovery::getInstance();
+            size_t point_count = alarm_recovery.RecoverLatestPointValues();
+            LogManager::getInstance().Info("✓ Successfully recovered " + std::to_string(point_count) + " point values");
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("✗ Point value recovery failed: " + std::string(e.what()));
+        }
+
+        // ✅ 6. 활성 알람 복구
+        LogManager::getInstance().Info("Step 6/7: Recovering active alarms...");
+        try {
+            auto& alarm_recovery = Alarm::AlarmStartupRecovery::getInstance();
+            if (alarm_recovery.IsRecoveryEnabled()) {
+                size_t recovered_count = alarm_recovery.RecoverActiveAlarms();
+                LogManager::getInstance().Info("✓ Successfully recovered " + std::to_string(recovered_count) + " active alarms");
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("✗ Alarm recovery failed: " + std::string(e.what()));
+        }
+
+        // 7. WorkerManager를 통한 활성 워커들 시작
+        LogManager::getInstance().Info("Step 7/7: Starting active workers...");
         try {
             auto& worker_manager = Workers::WorkerManager::getInstance();
             int started_count = worker_manager.StartAllActiveWorkers();
-            
-            if (started_count > 0) {
-                LogManager::getInstance().Info("✓ Started " + std::to_string(started_count) + " active workers");
-            } else {
-                LogManager::getInstance().Warn("! No active workers started - check device configuration in database");
-            }
-            
+            LogManager::getInstance().Info("✓ Started " + std::to_string(started_count) + " active workers");
         } catch (const std::exception& e) {
             LogManager::getInstance().Error("✗ Worker startup failed: " + std::string(e.what()));
-            LogManager::getInstance().Warn("System will continue running without workers");
-        }
-
-        // ✅ 6. 활성 알람 복구 (새로 추가!)
-        LogManager::getInstance().Info("Step 6/6: Recovering active alarms...");
-        try {
-            auto& alarm_recovery = Alarm::AlarmStartupRecovery::getInstance();
-            
-            // 복구 기능이 활성화되어 있는지 확인
-            if (alarm_recovery.IsRecoveryEnabled()) {
-                LogManager::getInstance().Info("Starting alarm recovery process...");
-                
-                // 활성 알람 복구 실행
-                size_t recovered_count = alarm_recovery.RecoverActiveAlarms();
-                
-                if (recovered_count > 0) {
-                    LogManager::getInstance().Info("✓ Successfully recovered " + 
-                                                 std::to_string(recovered_count) + 
-                                                 " active alarms to Redis");
-                    LogManager::getInstance().Info("→ Frontend users will see active alarms immediately");
-                } else {
-                    LogManager::getInstance().Info("→ No active alarms to recover");
-                }
-                
-                // 복구 통계 로그
-                auto stats = alarm_recovery.GetRecoveryStats();
-                if (stats.total_active_alarms > 0) {
-                    LogManager::getInstance().Info("Alarm Recovery Statistics:");
-                    LogManager::getInstance().Info("  - Total active alarms in DB: " + 
-                                                 std::to_string(stats.total_active_alarms));
-                    LogManager::getInstance().Info("  - Successfully published: " + 
-                                                 std::to_string(stats.successfully_published));
-                    LogManager::getInstance().Info("  - Failed to publish: " + 
-                                                 std::to_string(stats.failed_to_publish));
-                    LogManager::getInstance().Info("  - Recovery time: " + 
-                                                 std::to_string(stats.recovery_duration.count()) + "ms");
-                    
-                    if (!stats.last_error.empty()) {
-                        LogManager::getInstance().Warn("  - Last error: " + stats.last_error);
-                    }
-                }
-                
-            } else {
-                LogManager::getInstance().Info("→ Alarm recovery is disabled in configuration");
-            }
-            
-        } catch (const std::exception& e) {
-            LogManager::getInstance().Error("✗ Alarm recovery failed: " + std::string(e.what()));
-            LogManager::getInstance().Warn("System will continue running - alarms can be recovered manually");
         }
 
         LogManager::getInstance().Info("=== SYSTEM INITIALIZATION COMPLETED ===");

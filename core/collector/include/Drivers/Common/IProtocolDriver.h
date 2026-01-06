@@ -94,6 +94,18 @@ public:
     virtual bool WriteValue(const DataPoint& point, 
                            const DataValue& value) = 0;
     
+    // ✅ Pub/Sub 프로토콜 지원을 위한 구독 인터페이스 (기본 구현은 지원 안 함)
+    virtual bool Subscribe(const std::string& topic, int qos = 0) {
+        (void)topic;
+        (void)qos;
+        return false;
+    }
+    
+    virtual bool Unsubscribe(const std::string& topic) {
+        (void)topic;
+        return false;
+    }
+    
     virtual ProtocolType GetProtocolType() const = 0;
     virtual DriverStatus GetStatus() const = 0;
     virtual ErrorInfo GetLastError() const = 0;  // ✅ const 참조 제거

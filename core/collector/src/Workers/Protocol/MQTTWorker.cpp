@@ -30,6 +30,7 @@ devices 테이블:
 
 #include "Workers/Protocol/MQTTWorker.h"
 #include "Utils/LogManager.h"
+#include "Drivers/Common/DriverFactory.h" // Plugin System Factory
 #include "Common/Enums.h"
 #include <climits>
 #include <sstream>
@@ -591,8 +592,8 @@ bool MQTTWorker::AddSubscription(const MQTTSubscription& subscription) {
     
     // 실제 MQTT 구독 (Driver 위임)
     if (mqtt_driver_ && mqtt_driver_->IsConnected()) {
-        // bool success = mqtt_driver_->Subscribe(new_subscription.topic, QosToInt(new_subscription.qos));
-        bool success = true; // 현재는 임시로 true (실제 구현에서는 MqttDriver API 사용)
+        bool success = mqtt_driver_->Subscribe(new_subscription.topic, QosToInt(new_subscription.qos));
+        // bool success = true; // 현재는 임시로 true (실제 구현에서는 MqttDriver API 사용)
         
         if (!success) {
             LogMessage(LogLevel::LOG_ERROR, "Failed to subscribe to topic: " + new_subscription.topic);
@@ -1152,11 +1153,11 @@ bool MQTTWorker::InitializeMQTTDriver() {
     try {
         LogMessage(LogLevel::INFO, "🔧 Initializing MQTT Driver...");
         
-        // MqttDriver 생성
-        mqtt_driver_ = std::make_unique<PulseOne::Drivers::MqttDriver>();
+        // MqttDriver 생성 (Plugin System via Factory)
+        mqtt_driver_ = PulseOne::Drivers::DriverFactory::GetInstance().CreateDriver("MQTT");
         
         if (!mqtt_driver_) {
-            LogMessage(LogLevel::LOG_ERROR, "❌ Failed to create MqttDriver instance");
+            LogMessage(LogLevel::LOG_ERROR, "❌ Failed to create MqttDriver instance via Factory");
             return false;
         }
         
@@ -1378,8 +1379,15 @@ void MQTTWorker::PublishProcessorThreadFunction() {
             
             // 실제 메시지 발행 (Driver 위임)
             if (mqtt_driver_ && mqtt_driver_->IsConnected()) {
-                // 🔥 실제 Driver 호출로 수정 (현재는 임시로 true였음)
-                bool success = mqtt_driver_->Publish(task.topic, task.payload, QosToInt(task.qos), task.retained);
+                // 🔥 실제 Driver 호출로 수정 (IProtocolDriver 인터페이스 활용)
+                PulseOne::Structs::DataPoint dp;
+                dp.address_string = task.topic;
+                dp.protocol_params["qos"] = std::to_string(QosToInt(task.qos));
+                dp.protocol_params["retained"] = task.retained ? "true" : "false";
+                
+                PulseOne::Structs::DataValue val = task.payload;
+                
+                bool success = mqtt_driver_->WriteValue(dp, val);
                 
                 if (success) {
                     worker_stats_.messages_published++;

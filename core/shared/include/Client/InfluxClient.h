@@ -1,8 +1,10 @@
-// collector/include/InfluxClient.h
 #ifndef INFLUX_CLIENT_H
 #define INFLUX_CLIENT_H
 
 #include <string>
+
+namespace PulseOne {
+namespace Client {
 
 class InfluxClient {
 public:
@@ -12,5 +14,8 @@ public:
     virtual void disconnect() = 0;
     virtual ~InfluxClient() {}
 };
+
+} // namespace Client
+} // namespace PulseOne
 
 #endif // INFLUX_CLIENT_H

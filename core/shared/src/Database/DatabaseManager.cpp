@@ -79,6 +79,10 @@ bool DatabaseManager::doInitialize() {
     if (enabled_databases_[DatabaseType::REDIS]) {
         connectRedis();
     }
+    
+    if (enabled_databases_[DatabaseType::INFLUXDB]) {
+        connectInflux();
+    }
 
     return true;
 }
@@ -122,6 +126,10 @@ void DatabaseManager::loadDatabaseConfig() {
     
     // Redis는 항상 활성화
     enabled_databases_[DatabaseType::REDIS] = true;
+    
+    // InfluxDB 설정 확인
+    std::string use_influx = config.getOrDefault("USE_INFLUXDB", "false");
+    enabled_databases_[DatabaseType::INFLUXDB] = (use_influx == "true");
 }
 
 // ========================================================================
@@ -453,6 +461,37 @@ void DatabaseManager::disconnectRedis() {
         redis_client_->disconnect();
         redis_client_.reset();
     }
+}
+
+bool DatabaseManager::connectInflux() {
+#ifdef HAS_INFLUX
+    try {
+        influx_client_ = std::make_unique<PulseOne::Client::InfluxClientImpl>();
+        auto& config = ConfigManager::getInstance();
+        
+        std::string url = config.getOrDefault("INFLUX_URL", "http://localhost:8086");
+        std::string token = config.getOrDefault("INFLUX_TOKEN", "");
+        std::string org = config.getOrDefault("INFLUX_ORG", "pulseone");
+        std::string bucket = config.getOrDefault("INFLUX_BUCKET", "history");
+        
+        return influx_client_->connect(url, token, org, bucket);
+    } catch (const std::exception& e) {
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
+            "Exception during InfluxDB connection: " + std::string(e.what()));
+        return false;
+    }
+#else
+    return false;
+#endif
+}
+
+void DatabaseManager::disconnectInflux() {
+#ifdef HAS_INFLUX
+    if (influx_client_) {
+        influx_client_->disconnect();
+        influx_client_.reset();
+    }
+#endif
 }
 
 bool DatabaseManager::isInfluxConnected() {

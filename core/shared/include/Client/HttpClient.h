@@ -15,11 +15,11 @@
 #include <memory>
 
 // HTTP 라이브러리 감지
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
     #include <httplib.h>
 #endif
 
-#ifdef HAS_CURL
+#if HAS_CURL
     #include <curl/curl.h>
 #endif
 
@@ -221,7 +221,7 @@ private:
                                const std::string& content_type,
                                const std::unordered_map<std::string, std::string>& headers);
 
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
     /**
      * @brief httplib을 사용한 요청 실행
      */
@@ -232,7 +232,7 @@ private:
                                    const std::unordered_map<std::string, std::string>& headers);
 #endif
 
-#ifdef HAS_CURL
+#if HAS_CURL
     /**
      * @brief curl을 사용한 요청 실행
      */
@@ -269,11 +269,11 @@ private:
     std::unordered_map<std::string, std::string> default_headers_; ///< 기본 헤더들
     
     // HTTP 라이브러리별 핸들들
-#ifdef HAVE_HTTPLIB
+#if HAVE_HTTPLIB
     std::unique_ptr<httplib::Client> httplib_client_;
 #endif
 
-#ifdef HAS_CURL
+#if HAS_CURL
     CURL* curl_handle_;
     static bool curl_global_initialized_;
 #endif

@@ -48,6 +48,10 @@ public:
     void disconnect() override;
     bool isConnected() const override;
     
+    // 구독 모드 설정 (Watchdog 간섭 방지용)
+    void setSubscriberMode(bool enabled) override;
+    bool isSubscriberMode() const override;
+    
     // =============================================================================
     // Key-Value 조작 (RedisClient 인터페이스 구현)
     // =============================================================================
@@ -182,6 +186,7 @@ private:
     
     template<typename T>
     T executeWithRetry(std::function<T()> operation, T default_value) {
+        std::lock_guard<std::recursive_mutex> lock(connection_mutex_);
         total_commands_++;
         
         try {
@@ -230,6 +235,7 @@ private:
     std::atomic<bool> connected_{false};
     std::atomic<bool> auto_reconnect_enabled_{true};
     std::atomic<bool> shutdown_requested_{false};
+    std::atomic<bool> is_subscriber_mode_{false}; // 구독 모드 플래그
     
     // 재연결 관리
     std::atomic<int> reconnect_attempts_{0};

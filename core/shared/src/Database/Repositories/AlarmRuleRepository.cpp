@@ -901,7 +901,13 @@ bool AlarmRuleRepository::ensureTableExists() {
     try {
         DatabaseAbstractionLayer db_layer;
         // 🔥 ExtendedSQLQueries.h 사용
-        return true; // 테이블 이미 존재함
+        bool success = db_layer.executeCreateTable(SQL::AlarmRule::CREATE_TABLE);
+        if (success) {
+            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::DEBUG, "ensureTableExists - Table creation/check completed");
+        } else {
+            LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR, "ensureTableExists - Table creation failed");
+        }
+        return success;
     } catch (const std::exception& e) {
         LogManager::getInstance().log("AlarmRuleRepository", LogLevel::LOG_ERROR,
                                     "ensureTableExists failed: " + std::string(e.what()));

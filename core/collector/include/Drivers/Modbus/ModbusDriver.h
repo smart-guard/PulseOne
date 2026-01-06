@@ -92,7 +92,12 @@ public:
     ErrorInfo GetLastError() const override;
     
     // =======================================================================
-    // 기본 Modbus 통신 (Core 기능 - 변경 없음)
+    /**
+     * @brief MQTT 메시지 발행 (여기서는 Modbus용으로 사용되지 않지만 인터페이스 충족)
+     */
+    
+    Structs::DataValue ExtractValueFromBuffer(const std::vector<uint16_t>& buffer, size_t offset, const Structs::DataPoint& point);
+    
     // =======================================================================
     
     bool ReadHoldingRegisters(int slave_id, uint16_t start_addr, uint16_t count, 
@@ -110,6 +115,9 @@ public:
     bool WriteCoil(int slave_id, uint16_t address, bool value);
     bool WriteCoils(int slave_id, uint16_t start_addr, 
                     const std::vector<uint8_t>& values);
+    
+    // Mask Write (for bit-level manipulation in registers)
+    bool MaskWriteRegister(int slave_id, uint16_t address, uint16_t and_mask, uint16_t or_mask);
     
     // Slave ID 관리
     void SetSlaveId(int slave_id);
@@ -178,7 +186,7 @@ private:
     int current_slave_id_;
  
     std::atomic<bool> is_started_{false};
-    std::mutex driver_mutex_;
+    std::recursive_mutex driver_mutex_;
     LogManager* logger_;
     PulseOne::Enums::ConnectionStatus status_ = PulseOne::Enums::ConnectionStatus::DISCONNECTED;    // =======================================================================
     // 고급 기능 멤버 (선택적 생성 - std::unique_ptr 사용)

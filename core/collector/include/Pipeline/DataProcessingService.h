@@ -8,10 +8,11 @@
 #include "Common/Structs.h"
 #include "Common/Utils.h"
 #include "Client/InfluxClient.h"
+#include "Database/Entities/CurrentValueEntity.h"
+#include "Utils/ThreadSafeQueue.h"
 #include "Utils/LogManager.h"
 #include "Alarm/AlarmTypes.h"
 #include "VirtualPoint/VirtualPointBatchWriter.h"
-#include "Database/Entities/CurrentValueEntity.h"
 #include <vector>
 #include <memory>
 #include <atomic>
@@ -19,6 +20,7 @@
 #include <chrono>
 #include <thread>
 #include <mutex>
+#include <unordered_map>
 #include <nlohmann/json.hpp>
 
 // 전방 선언
@@ -42,6 +44,16 @@ namespace PulseOne {
 namespace Pipeline {
 
 using DataValue = PulseOne::Structs::DataValue;
+
+/**
+ * @brief Persistence Task for background processing
+ */
+struct PersistenceTask {
+    enum class Type { RDB_SAVE, INFLUX_SAVE };
+    Type type;
+    Structs::DeviceDataMessage message;
+    std::vector<Structs::TimestampedValue> points;
+};
 
 class DataProcessingService {
 public:
@@ -193,6 +205,7 @@ public:
 private:
     // 스레드 처리
     void ProcessingThreadLoop(size_t thread_index);
+    void PersistenceThreadLoop();
     std::vector<Structs::DeviceDataMessage> CollectBatchFromPipelineManager();
     void HandleError(const std::string& error_message, const std::string& context = "");
 
@@ -202,7 +215,7 @@ private:
 
     // 클라이언트들
     std::unique_ptr<Storage::RedisDataWriter> redis_data_writer_;
-    std::shared_ptr<InfluxClient> influx_client_;
+    std::shared_ptr<PulseOne::Client::InfluxClient> influx_client_;
     std::unique_ptr<VirtualPoint::VirtualPointBatchWriter> vp_batch_writer_;
 
     // 서비스 상태
@@ -213,6 +226,8 @@ private:
     size_t thread_count_;
     size_t batch_size_;
     std::vector<std::thread> processing_threads_;
+    std::thread persistence_thread_;
+    Utils::ThreadSafeQueue<PersistenceTask> persistence_queue_;
     
     // 기능 플래그들
     std::atomic<bool> alarm_evaluation_enabled_{true};
@@ -236,6 +251,8 @@ private:
     std::atomic<size_t> high_alarms_count_{0};
     
     mutable std::mutex processing_mutex_;
+    mutable std::mutex rdb_save_mutex_;
+    std::unordered_map<int, std::chrono::steady_clock::time_point> last_rdb_save_times_;
     std::chrono::steady_clock::time_point start_time_;
 };
 

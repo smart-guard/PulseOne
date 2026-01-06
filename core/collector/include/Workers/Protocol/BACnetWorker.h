@@ -30,7 +30,8 @@
 #include "Workers/Base/UdpBasedWorker.h"                    
 #include "Common/Structs.h"
 #include "Drivers/Bacnet/BACnetTypes.h"                                 
-#include "Drivers/Bacnet/BACnetDriver.h"  // 독립객체 헤더
+#include "Drivers/Common/IProtocolDriver.h"  // 인터페이스 사용
+#include "Drivers/Common/DriverFactory.h"    // 팩토리 사용
 #include "Drivers/Bacnet/BACnetServiceManager.h"                  
 #include "Common/DriverStatistics.h"
 
@@ -170,7 +171,10 @@ public:
     /**
      * @brief BACnet Driver 직접 접근 (독립객체)
      */
-    PulseOne::Drivers::BACnetDriver* GetBACnetDriver() const {
+    /**
+     * @brief BACnet Driver 인터페이스 접근
+     */
+    PulseOne::Drivers::IProtocolDriver* GetProtocolDriver() const {
         return bacnet_driver_.get();
     }
     
@@ -327,8 +331,8 @@ private:
     // 멤버 변수들
     // =============================================================================
     
-    // 독립 BACnetDriver 객체 (싱글톤 아님!)
-    std::unique_ptr<PulseOne::Drivers::BACnetDriver> bacnet_driver_;
+    // 독립 BACnetDriver 객체 (인터페이스 사용)
+    std::unique_ptr<PulseOne::Drivers::IProtocolDriver> bacnet_driver_;
     
     // BACnet 서비스 매니저
     std::shared_ptr<PulseOne::Drivers::BACnetServiceManager> bacnet_service_manager_;

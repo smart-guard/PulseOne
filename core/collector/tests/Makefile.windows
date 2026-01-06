@@ -87,6 +87,11 @@ else
     SRC_DIR := $(PARENT_DIR)/src
 endif
 
+# Shared 디렉토리 설정
+SHARED_DIR := ../../shared
+SHARED_INCLUDE_DIR := $(SHARED_DIR)/include
+SHARED_SRC_DIR := $(SHARED_DIR)/src
+
 # Include 경로 설정 (크로스 컴파일 고려)
 INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Platform \
@@ -108,7 +113,10 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Drivers/Common \
            -I$(INCLUDE_DIR)/Pipeline \
            -I$(INCLUDE_DIR)/Storage \
-           -I$(INCLUDE_DIR)/Client
+           -I$(INCLUDE_DIR)/Client \
+           -I$(SHARED_INCLUDE_DIR) \
+           -I$(SHARED_INCLUDE_DIR)/Client \
+           -I./googletest/googletest/include
 
 # 크로스 컴파일용 추가 include 경로
 ifeq ($(IS_MINGW_CROSS),1)
@@ -255,7 +263,7 @@ LIBS = $(PROTOCOL_LIBS) $(OPTIONAL_LIBS) $(SQLITE_LIBS) $(WIN_SYSTEM_LIBS) $(BAS
 
 # 테스트 라이브러리 (Windows용 Google Test)
 ifeq ($(IS_MINGW_CROSS),1)
-    TEST_LIBS = -lgtest -lgtest_main -pthread
+    TEST_LIBS = -L./googletest/build-win64/lib -lgtest -lgtest_main -pthread
 else
     # 네이티브 Windows에서는 gtest 설치 확인
     HAS_GTEST := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lgtest >/dev/null 2>&1 && echo "1" || echo "0")
@@ -278,6 +286,14 @@ CONFIG_SOURCES := $(wildcard $(SRC_DIR)/Config/*.cpp)
 DATABASE_SOURCES := $(wildcard $(SRC_DIR)/Database/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Entities/*.cpp) \
                    $(wildcard $(SRC_DIR)/Database/Repositories/*.cpp)
+
+SHARED_UTILS_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Utils/*.cpp)
+SHARED_DATABASE_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Database/*.cpp) \
+                           $(wildcard $(SHARED_SRC_DIR)/Database/Entities/*.cpp) \
+                           $(wildcard $(SHARED_SRC_DIR)/Database/Repositories/*.cpp)
+SHARED_PLATFORM_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Platform/*.cpp)
+SHARED_SECURITY_SOURCES := $(SHARED_SRC_DIR)/Security/SecretManager.cpp
+SHARED_CLIENT_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Client/*.cpp)
 CLIENT_SOURCES := $(wildcard $(SRC_DIR)/Client/*.cpp)
 WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp) \
@@ -286,22 +302,13 @@ WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/WorkerManager.cpp)
 STORAGE_SOURCES := $(wildcard $(SRC_DIR)/Storage/*.cpp)
 
-# 조건부 소스 파일 포함
-ifeq ($(HAS_HTTPLIB),1)
-    NETWORK_SOURCES := $(wildcard $(SRC_DIR)/Network/*.cpp)
-    API_SOURCES := $(wildcard $(SRC_DIR)/Api/*.cpp)
-else
-    NETWORK_SOURCES :=
-    API_SOURCES :=
-endif
+NETWORK_SOURCES := $(wildcard $(SRC_DIR)/Network/*.cpp)
+API_SOURCES := $(wildcard $(SRC_DIR)/Api/*.cpp)
 
-DRIVERS_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
-ifeq ($(HAS_MODBUS),1)
-    DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp)
-endif
-ifeq ($(HAS_MQTT_CPP),1)
-    DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp)
-endif
+DRIVERS_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp) \
+                  $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp) \
+                  $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp) \
+                  $(wildcard $(SRC_DIR)/Drivers/BACnet/*.cpp)
 
 PIPELINE_SOURCES := $(wildcard $(SRC_DIR)/Pipeline/*.cpp)
 ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
@@ -309,13 +316,22 @@ VIRTUALPOINT_SOURCES := $(wildcard $(SRC_DIR)/VirtualPoint/*.cpp)
 PLATFORM_SOURCES := $(wildcard $(SRC_DIR)/Platform/*.cpp)
 PLUGIN_SOURCES := $(wildcard $(SRC_DIR)/Plugin/*.cpp)
 
-ALL_SOURCES = $(CORE_SOURCES) $(UTILS_SOURCES) $(CONFIG_SOURCES) \
-              $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(WORKERS_SOURCES) \
-              $(DRIVERS_SOURCES) $(PIPELINE_SOURCES) $(ALARM_SOURCES) \
-              $(VIRTUALPOINT_SOURCES) $(NETWORK_SOURCES) $(API_SOURCES) \
-              $(PLATFORM_SOURCES) $(PLUGIN_SOURCES) $(STORAGE_SOURCES)
+LOCAL_SOURCES = $(CORE_SOURCES) $(UTILS_SOURCES) $(CONFIG_SOURCES) \
+                $(DATABASE_SOURCES) $(CLIENT_SOURCES) $(WORKERS_SOURCES) \
+                $(DRIVERS_SOURCES) $(PIPELINE_SOURCES) $(ALARM_SOURCES) \
+                $(VIRTUALPOINT_SOURCES) $(NETWORK_SOURCES) $(API_SOURCES) \
+                $(PLATFORM_SOURCES) $(PLUGIN_SOURCES) $(STORAGE_SOURCES)
 
-ALL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(ALL_SOURCES))
+SHARED_SOURCES = $(SHARED_UTILS_SOURCES) $(SHARED_DATABASE_SOURCES) \
+                 $(SHARED_SECURITY_SOURCES) $(SHARED_PLATFORM_SOURCES) \
+                 $(SHARED_CLIENT_SOURCES)
+
+ALL_SOURCES = $(LOCAL_SOURCES) $(SHARED_SOURCES)
+
+LOCAL_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(LOCAL_SOURCES))
+SHARED_OBJECTS = $(patsubst $(SHARED_SRC_DIR)/%.cpp,$(OBJ_DIR)/Shared/%.o,$(SHARED_SOURCES))
+
+ALL_OBJECTS = $(LOCAL_OBJECTS) $(SHARED_OBJECTS)
 
 # 테스트 오브젝트 파일들
 TEST_OBJECTS = $(OBJ_DIR)/test_step1_config_connection_win.o \
@@ -422,6 +438,53 @@ endif
 	@echo "All directories created for $(PLATFORM)"
 
 # =============================================================================
+# 플러그인 빌드 규칙 (DLL 생성)
+# =============================================================================
+
+PLUGIN_DIR := $(BIN_DIR)/plugins
+ifeq ($(IS_WINDOWS_NATIVE),1)
+    MKDIR_PLUGIN := if not exist "$(PLUGIN_DIR)" mkdir "$(PLUGIN_DIR)"
+else
+    MKDIR_PLUGIN := mkdir -p $(PLUGIN_DIR)
+endif
+
+# 플러그인 공통 컴파일 플래그
+PLUGIN_CXXFLAGS := $(CXXFLAGS) -DBUILD_PLUGIN -shared -fPIC
+
+# MQTT 플러그인
+mqtt-plugin: create-dirs
+	@echo "Building MQTT plugin DLL..."
+	@$(MKDIR_PLUGIN)
+	@$(CXX) $(PLUGIN_CXXFLAGS) $(INCLUDES) \
+		$(SRC_DIR)/Drivers/Mqtt/MqttDriver.cpp \
+		$(SRC_DIR)/Drivers/Common/DriverFactory.cpp \
+		$(UTILS_SOURCES) \
+		$(LIBS) -o $(PLUGIN_DIR)/MqttDriver.dll
+
+# BACnet 플러그인
+bacnet-plugin: create-dirs
+	@echo "Building BACnet plugin DLL..."
+	@$(MKDIR_PLUGIN)
+	@$(CXX) $(PLUGIN_CXXFLAGS) $(INCLUDES) \
+		$(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
+		$(SRC_DIR)/Drivers/Common/DriverFactory.cpp \
+		$(UTILS_SOURCES) \
+		$(LIBS) -o $(PLUGIN_DIR)/BacnetDriver.dll
+
+# OPC-UA 플러그인
+opcua-plugin: create-dirs
+	@echo "Building OPC-UA plugin DLL..."
+	@$(MKDIR_PLUGIN)
+	@$(CXX) $(PLUGIN_CXXFLAGS) $(INCLUDES) \
+		$(SRC_DIR)/Drivers/OPCUA/OPCUADriver.cpp \
+		$(SRC_DIR)/Drivers/Common/DriverFactory.cpp \
+		$(UTILS_SOURCES) \
+		$(LIBS) -o $(PLUGIN_DIR)/OpcuaDriver.dll
+
+plugins: mqtt-plugin bacnet-plugin opcua-plugin
+	@echo "All plugins built successfully in $(PLUGIN_DIR)"
+
+# =============================================================================
 # 컴파일 규칙 (Windows 호환)
 # =============================================================================
 
@@ -434,58 +497,64 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 else
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $(dir $@)
-	@echo $(YELLOW)Compiling $< [$(PLATFORM)]...$(NC)
+	@echo -e "$(YELLOW)Compiling $< [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# Shared 소스 파일 컴파일
+$(OBJ_DIR)/Shared/%.o: $(SHARED_SRC_DIR)/%.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(YELLOW)Compiling Shared $< [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 endif
 
 # 테스트 파일 컴파일 규칙들
 $(OBJ_DIR)/test_step1_config_connection_win.o: test_step1_config_connection_win.cpp
-	@echo $(CYAN)Compiling Step 1 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Step 1 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step2_database_entity.o: test_step2_database_entity.cpp
-	@echo $(CYAN)Compiling Step 2 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Step 2 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step3_protocol_worker.o: test_step3_protocol_worker.cpp
-	@echo $(CYAN)Compiling Step 3 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Step 3 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step4_driver_data_validation.o: test_step4_driver_data_validation.cpp
-	@echo $(CYAN)Compiling Step 4 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Step 4 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step5_complete_db_integration_validation.o: test_step5_complete_db_integration_validation.cpp
-	@echo $(CYAN)Compiling Step 5 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Step 5 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step6_rest_api_worker_reload.o: test_step6_rest_api_worker_reload.cpp
-	@echo $(CYAN)Compiling Step 6 RestAPI Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Step 6 RestAPI Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step6_enhanced_pipeline.o: test_step6_enhanced_pipeline.cpp
-	@echo $(CYAN)Compiling Step 6 Pipeline Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Step 6 Pipeline Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_step7_rest_api_backend_complete.o: test_step7_rest_api_backend_complete.cpp
-	@echo $(CYAN)Compiling Step 7 Complete Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Step 7 Complete Test [$(PLATFORM)]...$(NC)"
 ifeq ($(HAS_CURL),1)
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 else
-	@echo $(RED)Skipping Step 7 - libcurl not available$(NC)
+	@echo -e "$(RED)Skipping Step 7 - libcurl not available$(NC)"
 	@echo > $@  # 빈 파일 생성
 endif
 
 $(OBJ_DIR)/test_network_api.o: test_network_api.cpp
-	@echo $(CYAN)Compiling Network Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Network Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_platform_compat.o: test_platform_compat.cpp
-	@echo $(CYAN)Compiling Platform Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling Platform Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OBJ_DIR)/test_workermanager.o: test_workermanager.cpp
-	@echo $(CYAN)Compiling WorkerManager Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(CYAN)Compiling WorkerManager Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
@@ -493,64 +562,64 @@ $(OBJ_DIR)/test_workermanager.o: test_workermanager.cpp
 # =============================================================================
 
 $(BIN_DIR)/test_step1$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_step1_config_connection_win.o
-	@echo $(PURPLE)Linking Step 1 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Step 1 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_step1_config_connection_win.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Step 1 Test build completed!$(NC)
+	@echo -e "$(GREEN)Step 1 Test build completed!$(NC)"
 
 $(BIN_DIR)/test_step2$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_step2_database_entity.o
-	@echo $(PURPLE)Linking Step 2 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Step 2 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_step2_database_entity.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Step 2 Test build completed!$(NC)
+	@echo -e "$(GREEN)Step 2 Test build completed!$(NC)"
 
 $(BIN_DIR)/test_step3$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_protocol_worker.o
-	@echo $(PURPLE)Linking Step 3 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Step 3 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_protocol_worker.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Step 3 Test build completed!$(NC)
+	@echo -e "$(GREEN)Step 3 Test build completed!$(NC)"
 
 $(BIN_DIR)/test_step4$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o
-	@echo $(PURPLE)Linking Step 4 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Step 4 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Step 4 Test build completed!$(NC)
+	@echo -e "$(GREEN)Step 4 Test build completed!$(NC)"
 
 $(BIN_DIR)/test_step5$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o
-	@echo $(PURPLE)Linking Step 5 Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Step 5 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Step 5 Test build completed!$(NC)
+	@echo -e "$(GREEN)Step 5 Test build completed!$(NC)"
 
 $(BIN_DIR)/test_step6$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_rest_api_worker_reload.o
-	@echo $(PURPLE)Linking Step 6 RestAPI Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Step 6 RestAPI Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_rest_api_worker_reload.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Step 6 RestAPI Test build completed!$(NC)
+	@echo -e "$(GREEN)Step 6 RestAPI Test build completed!$(NC)"
 
 $(BIN_DIR)/test_step6_pipeline$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o
-	@echo $(PURPLE)Linking Step 6 Pipeline Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Step 6 Pipeline Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Step 6 Pipeline Test build completed!$(NC)
+	@echo -e "$(GREEN)Step 6 Pipeline Test build completed!$(NC)"
 
 $(BIN_DIR)/test_step7$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_step7_rest_api_backend_complete.o
 ifeq ($(HAS_CURL),1)
-	@echo $(PURPLE)Linking Step 7 Complete Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Step 7 Complete Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_step7_rest_api_backend_complete.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Step 7 Complete Test build completed!$(NC)
+	@echo -e "$(GREEN)Step 7 Complete Test build completed!$(NC)"
 else
-	@echo $(YELLOW)Step 7 Test skipped - libcurl not available$(NC)
-	@echo @echo Step 7 test requires libcurl > $@
+	@echo -e "$(YELLOW)Step 7 Test skipped - libcurl not available$(NC)"
+	@echo "@echo Step 7 test requires libcurl" > $@
 endif
 
 $(BIN_DIR)/test_network$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o
-	@echo $(PURPLE)Linking Network Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Network Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_network_api.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Network Test build completed!$(NC)
+	@echo -e "$(GREEN)Network Test build completed!$(NC)"
 
 $(BIN_DIR)/test_platform$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_platform_compat.o
-	@echo $(PURPLE)Linking Platform Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking Platform Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_platform_compat.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)Platform Test build completed!$(NC)
+	@echo -e "$(GREEN)Platform Test build completed!$(NC)"
 
 $(BIN_DIR)/test_workermanager$(EXE_SUFFIX): $(ALL_OBJECTS) $(OBJ_DIR)/test_workermanager.o
-	@echo $(PURPLE)Linking WorkerManager Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(PURPLE)Linking WorkerManager Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(LDFLAGS) $(ALL_OBJECTS) $(OBJ_DIR)/test_workermanager.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo $(GREEN)WorkerManager Test build completed!$(NC)
+	@echo -e "$(GREEN)WorkerManager Test build completed!$(NC)"
 
 # =============================================================================
 # 테스트 실행 (Windows 호환)
@@ -560,95 +629,95 @@ step1-build: create-dirs $(BIN_DIR)/test_step1$(EXE_SUFFIX)
 
 step1-test: step1-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step1))
-	@echo $(MAGENTA)Running Step 1 Test [$(PLATFORM)]...$(NC)
-	@echo $(CYAN)Configuration and Connection Test$(NC)
+	@echo -e "$(MAGENTA)Running Step 1 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Configuration and Connection Test$(NC)"
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_step1$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_step1$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)Step 1 Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)Step 1 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 step2-build: create-dirs $(BIN_DIR)/test_step2$(EXE_SUFFIX)
 
 step2-test: step2-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step2))
-	@echo $(MAGENTA)Running Step 2 Test [$(PLATFORM)]...$(NC)
-	@echo $(CYAN)Database Entity Validation Test$(NC)
+	@echo -e "$(MAGENTA)Running Step 2 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Database Entity Validation Test$(NC)"
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_step2$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_step2$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)Step 2 Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)Step 2 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 step3-build: create-dirs $(BIN_DIR)/test_step3$(EXE_SUFFIX)
 
 step3-test: step3-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step3))
-	@echo $(MAGENTA)Running Step 3 Test [$(PLATFORM)]...$(NC)
-	@echo $(CYAN)Protocol Worker Property Validation Test$(NC)
+	@echo -e "$(MAGENTA)Running Step 3 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Protocol Worker Property Validation Test$(NC)"
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_step3$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_step3$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)Step 3 Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)Step 3 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 step4-build: create-dirs $(BIN_DIR)/test_step4$(EXE_SUFFIX)
 
 step4-test: step4-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step4))
-	@echo $(MAGENTA)Running Step 4 Test [$(PLATFORM)]...$(NC)
-	@echo $(CYAN)Driver Data Validation Test$(NC)
+	@echo -e "$(MAGENTA)Running Step 4 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Driver Data Validation Test$(NC)"
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_step4$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_step4$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)Step 4 Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)Step 4 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 step5-build: create-dirs $(BIN_DIR)/test_step5$(EXE_SUFFIX)
 
 step5-test: step5-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step5))
-	@echo $(MAGENTA)Running Step 5 Test [$(PLATFORM)]...$(NC)
-	@echo $(CYAN)Complete DB Integration Validation Test$(NC)
+	@echo -e "$(MAGENTA)Running Step 5 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Complete DB Integration Validation Test$(NC)"
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_step5$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_step5$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)Step 5 Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)Step 5 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 step6-build: create-dirs $(BIN_DIR)/test_step6$(EXE_SUFFIX)
 
 step6-test: step6-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step6))
-	@echo $(MAGENTA)Running Step 6 Test [$(PLATFORM)]...$(NC)
-	@echo $(CYAN)RestAPI Worker Manager Integration Test$(NC)
+	@echo -e "$(MAGENTA)Running Step 6 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)RestAPI Worker Manager Integration Test$(NC)"
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_step6$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_step6$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)Step 6 Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)Step 6 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 step7-build: create-dirs $(BIN_DIR)/test_step7$(EXE_SUFFIX)
 
 step7-test: step7-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step7))
-	@echo $(MAGENTA)Running Step 7 Test [$(PLATFORM)]...$(NC)
-	@echo $(CYAN)Complete REST API Backend Integration Test$(NC)
+	@echo -e "$(MAGENTA)Running Step 7 Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)Complete REST API Backend Integration Test$(NC)"
 ifeq ($(HAS_CURL),1)
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_step7$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_step7$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)Step 7 Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)Step 7 Test completed. Log saved: $(LOG_FILE)$(NC)"
 else
-	@echo $(YELLOW)Step 7 requires libcurl - install curl development libraries$(NC)
+	@echo -e "$(YELLOW)Step 7 requires libcurl - install curl development libraries$(NC)"
 endif
 
 # 추가 테스트들
@@ -656,55 +725,54 @@ network-build: create-dirs $(BIN_DIR)/test_network$(EXE_SUFFIX)
 
 network-test: network-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,network))
-	@echo $(MAGENTA)Running Network Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(MAGENTA)Running Network Test [$(PLATFORM)]...$(NC)"
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_network$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_network$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)Network Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)Network Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 platform-build: create-dirs $(BIN_DIR)/test_platform$(EXE_SUFFIX)
 
 platform-test: platform-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,platform))
-	@echo $(MAGENTA)Running Platform Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(MAGENTA)Running Platform Test [$(PLATFORM)]...$(NC)"
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_platform$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_platform$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)Platform Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)Platform Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 workermanager-build: create-dirs $(BIN_DIR)/test_workermanager$(EXE_SUFFIX)
 
 workermanager-test: workermanager-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,workermanager))
-	@echo $(MAGENTA)Running WorkerManager Test [$(PLATFORM)]...$(NC)
+	@echo -e "$(MAGENTA)Running WorkerManager Test [$(PLATFORM)]...$(NC)"
 ifeq ($(IS_WINDOWS_NATIVE),1)
 	@$(BIN_DIR)\test_workermanager$(EXE_SUFFIX) > $(LOG_FILE) 2>&1 && type $(LOG_FILE) || type $(LOG_FILE)
 else
 	@./$(BIN_DIR)/test_workermanager$(EXE_SUFFIX) 2>&1 | tee $(LOG_FILE)
 endif
-	@echo $(GREEN)WorkerManager Test completed. Log saved: $(LOG_FILE)$(NC)
+	@echo -e "$(GREEN)WorkerManager Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 # =============================================================================
 # 통합 실행 (Windows 호환)
 # =============================================================================
 
 all-tests-build: create-dirs $(BIN_DIR)/test_step1$(EXE_SUFFIX) $(BIN_DIR)/test_step2$(EXE_SUFFIX) $(BIN_DIR)/test_step3$(EXE_SUFFIX) $(BIN_DIR)/test_step4$(EXE_SUFFIX) $(BIN_DIR)/test_step5$(EXE_SUFFIX) $(BIN_DIR)/test_step6$(EXE_SUFFIX) $(BIN_DIR)/test_step7$(EXE_SUFFIX) $(BIN_DIR)/test_network$(EXE_SUFFIX) $(BIN_DIR)/test_platform$(EXE_SUFFIX) $(BIN_DIR)/test_workermanager$(EXE_SUFFIX)
-	@echo $(GREEN)All tests build completed for $(PLATFORM)!$(NC)
+	@echo -e "$(GREEN)All tests build completed for $(PLATFORM)!$(NC)"
 
 all-tests-run: all-tests-build create-log-dir
-	@echo $(BLUE)Running all tests for $(PLATFORM)...$(NC)
+	@echo -e "$(BLUE)Running all tests for $(PLATFORM)...$(NC)"
 	@$(MAKE) step1-test step2-test step3-test step4-test step5-test step6-test step7-test network-test platform-test workermanager-test
-	@echo $(GREEN)All tests completed for $(PLATFORM)!$(NC)
+	@echo -e "$(GREEN)All tests completed for $(PLATFORM)!$(NC)"
 
 quick-test: workermanager-test platform-test step7-test
-	@echo $(GREEN)Quick test completed for $(PLATFORM)$(NC)
-
+	@echo -e "$(GREEN)Quick test completed for $(PLATFORM)$(NC)"
 restapi-test: step6-test step7-test network-test
-	@echo $(GREEN)RestAPI integration tests completed for $(PLATFORM)$(NC)
+	@echo -e "$(GREEN)RestAPI integration tests completed for $(PLATFORM)$(NC)"
 
 # =============================================================================
 # 유틸리티 (Windows 호환)

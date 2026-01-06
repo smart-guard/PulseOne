@@ -188,53 +188,40 @@ std::vector<std::string> EventSubscriber::getRegisteredHandlers() const {
 // =============================================================================
 
 void EventSubscriber::routeMessage(const std::string& channel, const std::string& message) {
-    // 1. 알람 채널 (기존 로직)
-    if (channel.find("alarms:") == 0 || channel.find("alarm:") == 0) {
-        handleAlarmEvent(channel, message);
-        return;
-    }
-    
-    // 2. 스케줄 채널
-    if (channel.find("schedule:") == 0) {
-        handleScheduleEvent(channel, message);
-        return;
-    }
-    
-    // 3. 시스템 채널
-    if (channel.find("system:") == 0) {
-        handleSystemEvent(channel, message);
-        return;
-    }
-    
-    // 4. 커스텀 핸들러 검색
-    std::lock_guard<std::mutex> lock(handler_mutex_);
-    
-    for (const auto& pair : event_handlers_) {
-        if (matchChannelPattern(pair.first, channel)) {
-            try {
-                bool success = pair.second->handleEvent(channel, message);
-                if (success) {
-                    LogManager::getInstance().Debug(
-                        "커스텀 핸들러 처리 성공: " + pair.second->getName()
-                    );
-                } else {
-                    LogManager::getInstance().Warn(
-                        "커스텀 핸들러 처리 실패: " + pair.second->getName()
+    // 1. 커스텀 핸들러 검색 (우선순위 부여)
+    {
+        std::lock_guard<std::mutex> lock(handler_mutex_);
+        for (const auto& pair : event_handlers_) {
+            if (matchChannelPattern(pair.first, channel)) {
+                try {
+                    if (pair.second->handleEvent(channel, message)) {
+                        LogManager::getInstance().Debug(
+                            "커스텀 핸들러 처리 성공: " + pair.second->getName()
+                        );
+                        return; // 처리 완료 시 반환
+                    }
+                } catch (const std::exception& e) {
+                    LogManager::getInstance().Error(
+                        "커스텀 핸들러 예외: " + std::string(e.what())
                     );
                 }
-            } catch (const std::exception& e) {
-                LogManager::getInstance().Error(
-                    "커스텀 핸들러 예외: " + std::string(e.what())
-                );
             }
-            return;
         }
     }
-    
-    // 5. 처리되지 않은 채널
-    LogManager::getInstance().Debug(
-        "처리되지 않은 채널: " + channel
-    );
+
+    // 2. 기본 내장 핸들러 (커스텀 핸들러가 없거나 실패한 경우)
+    if (channel.find("alarms:") == 0 || channel.find("alarm:") == 0) {
+        handleAlarmEvent(channel, message);
+    }
+    else if (channel.find("schedule:") == 0) {
+        handleScheduleEvent(channel, message);
+    }
+    else if (channel.find("system:") == 0) {
+        handleSystemEvent(channel, message);
+    }
+    else {
+        LogManager::getInstance().Debug("처리되지 않은 채널: " + channel);
+    }
 }
 
 bool EventSubscriber::matchChannelPattern(const std::string& pattern, 
@@ -259,15 +246,19 @@ bool EventSubscriber::matchChannelPattern(const std::string& pattern,
 // 기본 핸들러들
 // =============================================================================
 
-void EventSubscriber::handleAlarmEvent(const std::string& channel, const std::string& message) {
+void EventSubscriber::handleAlarmEvent(const std::string& /*channel*/, const std::string& message) {
     // 기존 알람 처리 로직 호출
     try {
+        std::cout << "[DEBUG] handleAlarmEvent called with message len: " << message.length() << std::endl;
         auto alarm = parseAlarmMessage(message);
         
         // 큐에 추가 (기존 방식)
         if (!enqueueAlarm(alarm)) {
             LogManager::getInstance().Warn("알람 큐 가득참 - 메시지 드롭");
+            std::cout << "[DEBUG] Alarm queue full!" << std::endl;
             total_failed_.fetch_add(1);
+        } else {
+            std::cout << "[DEBUG] Enqueued alarm: " << alarm.nm << std::endl;
         }
         
     } catch (const std::exception& e) {
@@ -278,7 +269,7 @@ void EventSubscriber::handleAlarmEvent(const std::string& channel, const std::st
     }
 }
 
-void EventSubscriber::handleScheduleEvent(const std::string& channel, const std::string& message) {
+void EventSubscriber::handleScheduleEvent(const std::string& channel, const std::string& /*message*/) {
     LogManager::getInstance().Info("🔄 스케줄 이벤트 수신: " + channel);
     
     try {
@@ -328,16 +319,14 @@ void EventSubscriber::handleSystemEvent(const std::string& channel, const std::s
     
     try {
         if (channel == "system:shutdown") {
-            LogManager::getInstance().Info("🛑 시스템 종료 이벤트");
-            // TODO: 시스템 종료 로직
-            
+            LogManager::getInstance().Info("🛑 시스템 종료 이벤트 수신");
+            // 실제 종료는 main의 g_shutdown_requested 등을 통해 처리해야 하므로 로그만 남김
         } else if (channel == "system:restart") {
-            LogManager::getInstance().Info("🔄 시스템 재시작 이벤트");
-            // TODO: 시스템 재시작 로직
-            
+            LogManager::getInstance().Info("🔄 시스템 재시작 이벤트 수신");
         } else if (channel == "system:reload_config") {
-            LogManager::getInstance().Info("⚙️ 설정 리로드 이벤트");
-            // TODO: 설정 리로드 로직
+            LogManager::getInstance().Info("⚙️ 설정 리로드 이벤트 수신");
+        } else {
+            LogManager::getInstance().Info("❓ 정의되지 않은 시스템 이벤트: " + channel + " (Payload: " + message + ")");
         }
         
     } catch (const std::exception& e) {
@@ -378,6 +367,9 @@ void EventSubscriber::subscribeLoop() {
                 this->routeMessage(channel, message);
             };
             
+            // 구독 모드 활성화 (Watchdog 간섭 방지)
+            redis_client_->setSubscriberMode(true);
+            
             redis_client_->setMessageCallback(message_callback);
             
             LogManager::getInstance().Info("Redis Pub/Sub 구독 시작됨");
@@ -395,6 +387,7 @@ void EventSubscriber::subscribeLoop() {
             }
             
         } catch (const std::exception& e) {
+            if (redis_client_) redis_client_->setSubscriberMode(false);
             is_connected_ = false;
             LogManager::getInstance().Error("구독 루프 에러: " + std::string(e.what()));
             std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -410,6 +403,7 @@ void EventSubscriber::workerLoop(int thread_index) {
     while (!should_stop_.load()) {
         PulseOne::CSP::AlarmMessage alarm;
         
+        // 큐에서 가져오기
         if (!dequeueAlarm(alarm)) {
             std::unique_lock<std::mutex> lock(queue_mutex_);
             queue_cv_.wait_for(lock, std::chrono::milliseconds(100), [this]() {
@@ -421,13 +415,11 @@ void EventSubscriber::workerLoop(int thread_index) {
         try {
             auto process_start = std::chrono::steady_clock::now();
             
+            // 알람 처리 및 타겟 전송
             processAlarm(alarm);
             
-            auto process_end = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                process_end - process_start).count();
-            
             total_processed_.fetch_add(1);
+            
             last_processed_timestamp_ = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()
             ).count();

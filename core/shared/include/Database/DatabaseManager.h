@@ -55,16 +55,9 @@
 #endif
 
 // InfluxDB 클라이언트 (옵션)
-#if __has_include("Client/InfluxClient.h")
-    #define HAS_INFLUX 1
-    #include "Client/InfluxClient.h"
-#else
-    class InfluxClient {
-    public:
-        bool connect() { return false; }
-        void disconnect() {}
-    };
-#endif
+#include "Client/InfluxClient.h"
+#include "Client/InfluxClientImpl.h"
+#define HAS_INFLUX 1
 
 #include "Utils/LogManager.h"
 
@@ -140,7 +133,7 @@ public:
     
     // InfluxDB 관련 (옵션)
 #ifdef HAS_INFLUX
-    InfluxClient* getInfluxClient() { return influx_client_.get(); }
+    PulseOne::Client::InfluxClient* getInfluxClient() { return influx_client_.get(); }
     bool connectInflux();
     void disconnectInflux();
 #endif
@@ -200,7 +193,7 @@ private:
     std::unique_ptr<RedisClientImpl> redis_client_;
 
 #ifdef HAS_INFLUX
-    std::unique_ptr<InfluxClient> influx_client_;
+    std::unique_ptr<PulseOne::Client::InfluxClient> influx_client_;
 #endif
     
     std::map<DatabaseType, bool> enabled_databases_;

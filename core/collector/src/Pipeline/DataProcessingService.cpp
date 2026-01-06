@@ -12,6 +12,7 @@
 #include "Pipeline/PipelineManager.h"
 #include "Alarm/AlarmManager.h"
 #include "VirtualPoint/VirtualPointEngine.h"
+#include "VirtualPoint/VirtualPointBatchWriter.h"
 #include "Utils/LogManager.h"
 #include "Common/Enums.h"
 #include "Storage/RedisDataWriter.h"
@@ -20,6 +21,7 @@
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
+#include "Database/DatabaseManager.h"
 #include <chrono>
 #include <thread>
 #include <algorithm>
@@ -106,9 +108,11 @@ bool DataProcessingService::Start() {
             &DataProcessingService::ProcessingThreadLoop, this, i);
     }
     
-    LogManager::getInstance().log("processing", LogLevel::INFO,
-        "DataProcessingService 시작 완료 (스레드 " +
-        std::to_string(thread_count_) + "개)");
+    // Persistence 스레드 시작
+    persistence_thread_ = std::thread(&DataProcessingService::PersistenceThreadLoop, this);
+    
+    LogManager::getInstance().log("processing", LogLevel::INFO, 
+        "DataProcessingService 시작 완료 (Threads: " + std::to_string(thread_count_) + ")");
     return true;
 }
 
@@ -139,10 +143,13 @@ void DataProcessingService::Stop() {
     }
     processing_threads_.clear();
     
-    is_running_ = false;
+    // Persistence 스레드 종료
+    if (persistence_thread_.joinable()) {
+        persistence_thread_.join();
+    }
     
-    LogManager::getInstance().log("processing", LogLevel::INFO,
-        "DataProcessingService 중지 완료");
+    is_running_.store(false);
+    LogManager::getInstance().log("processing", LogLevel::INFO, "DataProcessingService 중지 완료");
 }
 
 void DataProcessingService::SetThreadCount(size_t thread_count) {
@@ -190,6 +197,13 @@ void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
                 
                 UpdateStatistics(batch.size(), static_cast<double>(duration.count()));
             } else {
+                // Log periodic heartbeat for debugging
+                static int empty_count = 0;
+                if (++empty_count >= 100) { // Every ~1 second
+                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                                                 "Thread " + std::to_string(thread_index) + " waiting for data...");
+                    empty_count = 0;
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
             
@@ -202,6 +216,89 @@ void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
     
     LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
                                  "처리 스레드 " + std::to_string(thread_index) + " 종료");
+}
+
+void DataProcessingService::PersistenceThreadLoop() {
+    LogManager::getInstance().log("processing", LogLevel::INFO, "Persistence 스레드 시작");
+    
+    while (!should_stop_.load() || !persistence_queue_.empty()) {
+        try {
+            // 배치로 태스크 수집 (최대 100개씩 혹은 100ms 대기)
+            auto tasks = persistence_queue_.pop_batch(100);
+            if (tasks.empty()) {
+                if (should_stop_.load()) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
+
+            // RDB와 InfluxDB 태스크 분리
+            std::vector<PersistenceTask> rdb_tasks;
+            std::vector<PersistenceTask> influx_tasks;
+            
+            for (auto& task : tasks) {
+                if (task.type == PersistenceTask::Type::RDB_SAVE) {
+                    rdb_tasks.push_back(std::move(task));
+                } else if (task.type == PersistenceTask::Type::INFLUX_SAVE) {
+                    influx_tasks.push_back(std::move(task));
+                }
+            }
+
+            // RDB 배치 처리
+            if (!rdb_tasks.empty()) {
+                auto& factory = PulseOne::Database::RepositoryFactory::getInstance();
+                auto current_value_repo = factory.getCurrentValueRepository();
+                
+                if (current_value_repo) {
+                    size_t success = 0;
+                    auto& db_manager = ::DatabaseManager::getInstance();
+                    
+                    bool in_transaction = db_manager.executeNonQuery("BEGIN TRANSACTION");
+                    
+                    for (const auto& task : rdb_tasks) {
+                        for (const auto& point : task.points) {
+                            try {
+                                auto entity = ConvertToCurrentValueEntity(point, task.message);
+                                if (current_value_repo->save(entity)) {
+                                    success++;
+                                }
+                            } catch (...) {}
+                        }
+                    }
+                    
+                    if (in_transaction) {
+                        db_manager.executeNonQuery("COMMIT");
+                    }
+                    if (success > 0) {
+                        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+                            "RDB 비동기 저장 완료: " + std::to_string(success) + "개 포인트");
+                    }
+                }
+            }
+
+            if (!influx_tasks.empty()) {
+                auto influx_client = ::DatabaseManager::getInstance().getInfluxClient();
+                if (influx_client) {
+                    for (const auto& task : influx_tasks) {
+                        for (const auto& point : task.points) {
+                            std::visit([&](const auto& val) {
+                                using T = std::decay_t<decltype(val)>;
+                                if constexpr (std::is_arithmetic_v<T>) {
+                                    influx_client->writePoint("device_data", "field_" + std::to_string(point.point_id), 
+                                        static_cast<double>(val));
+                                }
+                            }, point.value);
+                        }
+                    }
+                }
+            }
+
+        } catch (const std::exception& e) {
+            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
+                "PersistenceThreadLoop 에러: " + std::string(e.what()));
+        }
+    }
+    
+    LogManager::getInstance().log("processing", LogLevel::INFO, "Persistence 스레드 종료");
 }
 
 std::vector<Structs::DeviceDataMessage> DataProcessingService::CollectBatchFromPipelineManager() {
@@ -222,7 +319,7 @@ void DataProcessingService::ProcessBatch(
     auto start_time = std::chrono::high_resolution_clock::now();
     
     try {
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
+        LogManager::getInstance().log("processing", LogLevel::INFO, 
             "ProcessBatch 시작: " + std::to_string(batch.size()) + 
             "개 메시지 (Thread " + std::to_string(thread_index) + ")");
         
@@ -298,8 +395,23 @@ Structs::DeviceDataMessage DataProcessingService::CalculateVirtualPointsAndEnric
             return original_message;
         }
         
-        vp_engine.calculateForMessage(original_message);
-        return original_message;
+        auto vp_results = vp_engine.calculateForMessage(original_message);
+        
+        if (vp_results.empty()) {
+            return original_message;
+        }
+
+        // 메시지 확장
+        auto enriched_data = original_message;
+        for (const auto& vp : vp_results) {
+            enriched_data.points.push_back(vp);
+        }
+        
+        LogManager::getInstance().log("processing", LogLevel::INFO,
+            "메시지 확장 완료: " + std::to_string(enriched_data.points.size()) + 
+            "개 포인트 (가상포인트 " + std::to_string(vp_results.size()) + "개 추가됨)");
+            
+        return enriched_data;
         
     } catch (const std::exception& e) {
         LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
@@ -616,10 +728,6 @@ void DataProcessingService::NotifyWebClients(const PulseOne::Alarm::AlarmEvent& 
     }
 }
 
-// =============================================================================
-// RDB 저장 메서드들
-// =============================================================================
-
 void DataProcessingService::SaveChangedPointsToRDB(
     const Structs::DeviceDataMessage& message, 
     const std::vector<Structs::TimestampedValue>& changed_points) {
@@ -629,68 +737,55 @@ void DataProcessingService::SaveChangedPointsToRDB(
     }
     
     try {
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-            "RDB 저장 시작: " + std::to_string(changed_points.size()) + "개 변화된 포인트");
-        
-        // RepositoryFactory로 CurrentValueRepository 가져오기
-        auto& factory = PulseOne::Database::RepositoryFactory::getInstance();
-        auto current_value_repo = factory.getCurrentValueRepository();
-        
-        if (!current_value_repo) {
-            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-                "CurrentValueRepository 획득 실패");
+        auto now_steady = std::chrono::steady_clock::now();
+        std::vector<Structs::TimestampedValue> points_to_save;
+
+        {
+            // 🎯 저장 간격 필터링 (Digital: 상시, Analog: 5분 주기)
+            std::lock_guard<std::mutex> lock(rdb_save_mutex_);
+            for (const auto& point : changed_points) {
+                bool is_digital = std::holds_alternative<bool>(point.value);
+                
+                if (is_digital) {
+                    points_to_save.push_back(point);
+                } else {
+                    auto it = last_rdb_save_times_.find(point.point_id);
+                    if (it == last_rdb_save_times_.end() || 
+                        std::chrono::duration_cast<std::chrono::minutes>(now_steady - it->second).count() >= 5) {
+                        
+                        points_to_save.push_back(point);
+                        last_rdb_save_times_[point.point_id] = now_steady;
+                    }
+                }
+            }
+        }
+
+        if (points_to_save.empty()) {
             return;
         }
         
-        size_t success_count = 0;
-        size_t error_count = 0;
-        
-        // 각 변화된 포인트를 CurrentValueEntity로 변환하여 저장
-        for (const auto& point : changed_points) {
-            try {
-                // TimestampedValue → CurrentValueEntity 변환
-                auto current_value_entity = ConvertToCurrentValueEntity(point, message);
-                
-                // UPSERT 방식으로 저장 (존재하면 업데이트, 없으면 삽입)
-                bool save_result = current_value_repo->save(current_value_entity);
-                
-                if (save_result) {
-                    success_count++;
-                    
-                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-                        "Point " + std::to_string(point.point_id) + " RDB 저장 성공");
-                } else {
-                    error_count++;
-                    LogManager::getInstance().log("processing", LogLevel::WARN,
-                        "Point " + std::to_string(point.point_id) + " RDB 저장 실패");
+        // 🎯 비동기 큐에 태스크 추가 (서비스가 실행 중일 때만)
+        if (is_running_.load()) {
+            PersistenceTask task;
+            task.type = PersistenceTask::Type::RDB_SAVE;
+            task.message = message;
+            task.points = std::move(points_to_save);
+            persistence_queue_.push(std::move(task));
+        } else {
+            // 서비스가 실행 중이 아니면 동기식으로 저장 (테스트용)
+            auto current_value_repo = Database::RepositoryFactory::getInstance().getCurrentValueRepository();
+            if (current_value_repo) {
+                for (const auto& point : points_to_save) {
+                    try {
+                        auto entity = ConvertToCurrentValueEntity(point, message);
+                        current_value_repo->save(entity);
+                    } catch (...) {}
                 }
-                
-            } catch (const std::exception& e) {
-                error_count++;
-                LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-                    "Point " + std::to_string(point.point_id) + " 저장 중 예외: " + 
-                    std::string(e.what()));
             }
         }
-        
-        // 배치 저장 통계 로그
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "RDB 저장 완료: " + std::to_string(success_count) + "개 성공, " + 
-            std::to_string(error_count) + "개 실패");
-        
-        // 에러율이 높으면 경고
-        if (error_count > 0) {
-            double error_rate = static_cast<double>(error_count) / changed_points.size() * 100.0;
-            if (error_rate > 10.0) {  // 10% 이상 실패 시 경고
-                LogManager::getInstance().log("processing", LogLevel::WARN,
-                    "RDB 저장 에러율 높음: " + std::to_string(error_rate) + "%");
-            }
-        }
-        
     } catch (const std::exception& e) {
         LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "RDB 저장 전체 실패: " + std::string(e.what()));
-        HandleError("RDB 저장 실패", e.what());
+            "RDB 저장 예약 실패: " + std::string(e.what()));
     }
 }
 
@@ -699,33 +794,46 @@ void DataProcessingService::SaveChangedPointsToRDB(
 // =============================================================================
 
 void DataProcessingService::SaveToInfluxDB(const std::vector<Structs::TimestampedValue>& batch) {
-    if (!influx_client_) {
+    if (batch.empty()) {
         return;
     }
-    
-    try {
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "InfluxDB 저장: " + std::to_string(batch.size()) + "개");
-        
-        // TODO: InfluxDB 실제 저장 로직 구현
-        
-        influx_writes_.fetch_add(batch.size());
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "InfluxDB 저장 완료: " + std::to_string(batch.size()) + "개");
-        
-    } catch (const std::exception& e) {
-        HandleError("InfluxDB 저장 실패", e.what());
+    // 🎯 비동기 큐에 태스크 추가 (서비스가 실행 중일 때만)
+    if (is_running_.load()) {
+        PersistenceTask task;
+        task.type = PersistenceTask::Type::INFLUX_SAVE;
+        // 'message' is not available in this scope, assuming it's not needed for this specific task type or should be derived.
+        // task.message = message; 
+        task.points = batch; // Use 'batch' as 'changed_points' from the instruction
+        persistence_queue_.push(std::move(task));
+    } else {
+        // 서비스가 실행 중이 아니면 동기식으로 저장 (테스트용)
+        auto influx_client = ::DatabaseManager::getInstance().getInfluxClient();
+        if (influx_client) {
+            for (const auto& point : batch) { // Use 'batch' as 'changed_points' from the instruction
+                std::visit([&](const auto& val) {
+                    using T = std::decay_t<decltype(val)>;
+                    if constexpr (std::is_arithmetic_v<T>) {
+                        influx_client->writePoint("device_data", "field_" + std::to_string(point.point_id), 
+                            static_cast<double>(val));
+                    }
+                }, point.value);
+            }
+        }
     }
 }
 
 void DataProcessingService::BufferForInfluxDB(const Structs::DeviceDataMessage& message) {
     try {
-        auto converted_data = ConvertToTimestampedValues(message);
-        SaveToInfluxDB(converted_data);
+        PersistenceTask task;
+        task.type = PersistenceTask::Type::INFLUX_SAVE;
+        task.message = message;
+        task.points = ConvertToTimestampedValues(message);
+        
+        persistence_queue_.push(std::move(task));
         
     } catch (const std::exception& e) {
-        HandleError("InfluxDB 버퍼링 실패", e.what());
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+            "InfluxDB 저장 예약 실패: " + std::string(e.what()));
     }
 }
 

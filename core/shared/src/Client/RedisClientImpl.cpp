@@ -85,7 +85,7 @@ RedisClientImpl::~RedisClientImpl() {
 // 기본 연결 관리
 // =============================================================================
 
-bool RedisClientImpl::connect(const std::string& host, int port, const std::string& password) {
+bool RedisClientImpl::connect(const std::string& /*host*/, int /*port*/, const std::string& /*password*/) {
     // 이미 자동 연결이 활성화되어 있으므로 현재 상태 반환
     logInfo("수동 연결 요청 - 자동 연결이 이미 활성화됨");
     return connected_.load();
@@ -119,6 +119,19 @@ bool RedisClientImpl::isConnected() const {
     return connected_.load();
 }
 
+void RedisClientImpl::setSubscriberMode(bool enabled) {
+    is_subscriber_mode_ = enabled;
+    if (enabled) {
+        logInfo("구독 모드 활성화 - Watchdog PING 비활성화");
+    } else {
+        logInfo("구독 모드 비활성화 - Watchdog PING 활성화");
+    }
+}
+
+bool RedisClientImpl::isSubscriberMode() const {
+    return is_subscriber_mode_.load();
+}
+
 // =============================================================================
 // Key-Value 조작
 // =============================================================================
@@ -137,11 +150,28 @@ bool RedisClientImpl::set(const std::string& key, const std::string& value) {
     }, false);
 }
 
+
 bool RedisClientImpl::setex(const std::string& key, const std::string& value, int expire_seconds) {
-    return executeWithRetry<bool>([this, &key, &value, expire_seconds]() {
+    return executeWithRetry<bool>([this, key, value, expire_seconds]() {
 #ifdef HAVE_REDIS
         redisReply* reply = executeCommandSafe("SETEX %s %d %s", key.c_str(), expire_seconds, value.c_str());
         bool result = isReplyOK(reply);
+        if (!result) {
+            if (reply) {
+                std::string reply_str = "N/A";
+                if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_STRING || reply->type == REDIS_REPLY_ERROR) {
+                    if (reply->str) {
+                        reply_str = std::string(reply->str, reply->len);
+                    } else {
+                        reply_str = "(null)";
+                    }
+                }
+                logWarning("Redis SETEX 실패: key=" + key + ", reply_type=" + std::to_string(reply->type) + 
+                           ", len=" + std::to_string(reply->len) + ", str='" + reply_str + "'");
+            } else {
+                logWarning("Redis SETEX 실패: key=" + key + ", reply is null");
+            }
+        }
         if (reply) freeReplyObject(reply);
         return result;
 #else
@@ -1177,10 +1207,17 @@ void RedisClientImpl::connectionWatchdog() {
         
         if (shutdown_requested_) break;
         
-        if (connected_ && !ping()) {
-            logWarning("연결 감시: PING 실패, 재연결 시도");
-            connected_ = false;
-            ensureConnected();
+        if (connected_) {
+            // 구독 모드일 경우 PING 건너뛰기 (hiredis 스레드 안전성 문제 및 프로토콜 제한)
+            if (is_subscriber_mode_) {
+                continue;
+            }
+
+            if (!ping()) {
+                logWarning("연결 감시: PING 실패, 재연결 시도");
+                connected_ = false;
+                ensureConnected();
+            }
         }
     }
 }
@@ -1224,7 +1261,7 @@ redisReply* RedisClientImpl::executeCommandSafe(const char* format, ...) {
     
     if (!reply && isConnectionError()) {
         connected_ = false;
-        logWarning("명령 실행 중 연결 오류 감지");
+        logWarning("Redis 명령 실행 중 연결 오류 감지");
     }
     
     return reply;
@@ -1236,6 +1273,7 @@ std::string RedisClientImpl::replyToString(redisReply* reply) const {
     switch (reply->type) {
         case REDIS_REPLY_STRING:
         case REDIS_REPLY_STATUS:
+            if (reply->str == nullptr) return "";
             return std::string(reply->str, reply->len);
         case REDIS_REPLY_INTEGER:
             return std::to_string(reply->integer);

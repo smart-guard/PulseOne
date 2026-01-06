@@ -97,7 +97,7 @@ TEST_F(Step1ConfigConnectionTest, Test_DatabaseManager) {
         std::cout << "SQLite: 연결 안됨" << std::endl;
     }
     
-    if (db.isPostgresConnected()) {
+    if (db.isConnected(DatabaseManager::DatabaseType::POSTGRESQL)) {
         std::cout << "PostgreSQL: 연결됨" << std::endl;
     } else {
         std::cout << "PostgreSQL: 연결 안됨" << std::endl;
@@ -154,7 +154,7 @@ TEST_F(Step1ConfigConnectionTest, Test_Summary) {
         if (db_ok) {
             int connected_count = 0;
             if (db.isSQLiteConnected()) connected_count++;
-            if (db.isPostgresConnected()) connected_count++;
+            if (db.isConnected(DatabaseManager::DatabaseType::POSTGRESQL)) connected_count++;
             if (db.isRedisConnected()) connected_count++;
             if (db.isInfluxConnected()) connected_count++;
             
