@@ -9,7 +9,7 @@
 #include "Drivers/Common/IProtocolDriver.h"
 #include "Common/DriverStatistics.h"
 #include "Common/Structs.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <modbus/modbus.h>
 #include <memory>
 #include <atomic>

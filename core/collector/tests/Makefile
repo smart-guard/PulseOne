@@ -28,15 +28,16 @@ HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
+# Docker 환경에서 파일이 있어도 shell 권한 문제 등으로 실패할 수 있으므로 명시적 확인 추가 또는 강제 설정 고려
 HAS_BACNET_STACK := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
-HAS_QUICKJS := $(shell [ -f "/usr/local/include/quickjs/quickjs.h" ] && echo "1" || echo "0")
+HAS_QUICKJS := 1
 HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
 HAS_LIBMODBUS := $(shell pkg-config --exists libmodbus && echo "1" || echo "0")
 
 # 컴파일러 설정 (플랫폼별)
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE \
+CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -DTEST_BUILD \
            -O1 -fno-omit-frame-pointer \
            -Wno-unused-but-set-variable -Wno-unused-variable \
            -Wno-unused-parameter \
@@ -49,7 +50,13 @@ ifeq ($(IS_WINDOWS),1)
     PLATFORM_LIBS = -lws2_32 -liphlpapi -lkernel32 -luser32
 else
     CXXFLAGS += -DPULSEONE_WINDOWS=0 -DPULSEONE_LINUX=1
-    PLATFORM_LIBS = 
+    PLATFORM_LIBS = -lbluetooth
+    
+    # macOS Specifics
+    ifeq ($(UNAME),Darwin)
+        INCLUDES += -I/opt/homebrew/opt/openssl@3/include
+        PLATFORM_LIBS += -L/opt/homebrew/opt/openssl@3/lib
+    endif
 endif
 
 # Modbus 라이브러리 설정
@@ -84,12 +91,15 @@ SHARED_SRC_DIR = $(SHARED_DIR)/src
 
 # Include 경로
 INCLUDES = -I$(SHARED_INCLUDE_DIR) \
+           -I$(SHARED_DIR)/modules/LogLib/include \
+           -I$(SHARED_DIR)/modules/DbLib/include \
            -I$(SHARED_INCLUDE_DIR)/Client \
            -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Platform \
            -I$(INCLUDE_DIR)/Api \
            -I$(INCLUDE_DIR)/Alarm \
            -I$(INCLUDE_DIR)/VirtualPoint \
+           -I$(INCLUDE_DIR)/Scripting \
            -I$(INCLUDE_DIR)/Network \
            -I$(INCLUDE_DIR)/Workers \
            -I$(INCLUDE_DIR)/Workers/Base \
@@ -103,10 +113,12 @@ INCLUDES = -I$(SHARED_INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Config \
            -I$(INCLUDE_DIR)/Drivers \
            -I$(INCLUDE_DIR)/Drivers/Common \
+           -I$(INCLUDE_DIR)/Drivers/OPCUA \
            -I$(INCLUDE_DIR)/Pipeline \
            -I$(INCLUDE_DIR)/Storage \
            -I$(INCLUDE_DIR)/Client \
-           -I./googletest/googletest/include
+           -I./googletest/googletest/include \
+           -I./googletest/googlemock/include
 
 # Modbus 라이브러리 설정
 ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1; echo $$?),0)
@@ -215,7 +227,7 @@ endif
 BASIC_LIBS = -lpthread -lsqlite3 $(QUICKJS_LIBS) $(HTTP_LIBS) $(CURL_LIBS) -lm -ldl $(PLATFORM_LIBS)
 OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
-TEST_LIBS = -L./googletest/build-linux/lib -lgtest -lgtest_main -pthread
+TEST_LIBS = ./googletest/build-linux/lib/libgtest_main.a ./googletest/build-linux/lib/libgmock.a ./googletest/build-linux/lib/libgtest.a -lpthread
 
 # 소스 파일 수집
 # Shared Sources
@@ -224,6 +236,9 @@ SHARED_SECURITY_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Security/*.cpp)
 SHARED_DATABASE_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Database/*.cpp) \
                           $(wildcard $(SHARED_SRC_DIR)/Database/Entities/*.cpp) \
                           $(wildcard $(SHARED_SRC_DIR)/Database/Repositories/*.cpp)
+SHARED_LOGGING_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Logging/*.cpp)
+LOGLIB_SOURCES := $(wildcard $(SHARED_DIR)/modules/LogLib/src/*.cpp)
+DBLIB_SOURCES := $(wildcard $(SHARED_DIR)/modules/DbLib/src/*.cpp)
 SHARED_PLATFORM_SOURCES := $(wildcard $(SHARED_SRC_DIR)/Platform/*.cpp)
 SHARED_SECURITY_SOURCES := $(SHARED_SRC_DIR)/Security/SecretManager.cpp
 
@@ -250,8 +265,7 @@ CLIENT_SOURCES := $(SHARED_SRC_DIR)/Client/RedisClientImpl.cpp \
 WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp) \
                   $(wildcard $(SRC_DIR)/Workers/Components/*.cpp) \
-                  $(wildcard $(SRC_DIR)/Workers/WorkerFactory.cpp) \
-                  $(wildcard $(SRC_DIR)/Workers/WorkerManager.cpp)
+                  $(wildcard $(SRC_DIR)/Workers/*.cpp)
 STORAGE_SOURCES := $(wildcard $(SRC_DIR)/Storage/*.cpp)
 
 ifeq ($(HAS_HTTPLIB),1)
@@ -272,10 +286,22 @@ endif
 ifeq ($(HAS_BACNET_STACK),1)
     DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
 endif
+ifneq ($(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp),)
+    DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
+endif
+ifneq ($(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp),)
+    DRIVERS_SOURCES += $(SRC_DIR)/Drivers/OPCUA/OPCUADriver.cpp
+endif
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp)
+DRIVERS_SOURCES += $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp
 
-PIPELINE_SOURCES := $(wildcard $(SRC_DIR)/Pipeline/*.cpp)
+# Duplicate rule removed, handled in step17-opcua-build section
+
+PIPELINE_SOURCES = $(wildcard $(SRC_DIR)/Pipeline/*.cpp) $(wildcard $(SRC_DIR)/Pipeline/Stages/*.cpp)
 ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 VIRTUALPOINT_SOURCES := $(wildcard $(SRC_DIR)/VirtualPoint/*.cpp)
+SCRIPTING_SOURCES := $(wildcard $(SRC_DIR)/Scripting/*.cpp)
 PLATFORM_SOURCES := $(wildcard $(SRC_DIR)/Platform/*.cpp)
 PLUGIN_SOURCES := $(wildcard $(SRC_DIR)/Plugin/*.cpp)
 
@@ -284,13 +310,17 @@ ALL_SOURCES = $(CORE_SOURCES) $(SHARED_UTILS_SOURCES) $(CONFIG_SOURCES) \
               $(SHARED_SECURITY_SOURCES) \
               $(CLIENT_SOURCES) $(WORKERS_SOURCES) \
               $(DRIVERS_SOURCES) $(PIPELINE_SOURCES) $(ALARM_SOURCES) \
-              $(VIRTUALPOINT_SOURCES) $(NETWORK_SOURCES) $(API_SOURCES) \
-              $(SHARED_PLATFORM_SOURCES) $(PLUGIN_SOURCES) $(STORAGE_SOURCES) 
+              $(VIRTUALPOINT_SOURCES) $(SCRIPTING_SOURCES) $(NETWORK_SOURCES) $(API_SOURCES) \
+              $(SHARED_PLATFORM_SOURCES) $(PLUGIN_SOURCES) $(STORAGE_SOURCES) \
+              $(SHARED_LOGGING_SOURCES) $(LOGLIB_SOURCES) $(DBLIB_SOURCES) 
 
 # 플러그인용 드라이버 소스 (메인 바이너리에서 제외)
 PLUGIN_DRIVERS_SOURCES := $(SRC_DIR)/Drivers/Mqtt/MqttDriver.cpp \
                           $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
                           $(SRC_DIR)/Drivers/OPCUA/OPCUADriver.cpp
+
+# OPC UA C Source
+OPCUA_C_SOURCE := $(SRC_DIR)/Drivers/OPCUA/open62541.c
 
 # 메인 코어 소스 (플러그인 드라이버 제외)
 CORE_SOURCES_ONLY := $(filter-out $(PLUGIN_DRIVERS_SOURCES),$(ALL_SOURCES))
@@ -301,8 +331,13 @@ CORE_SOURCES_FINAL := $(filter-out $(HEADER_ONLY_SOURCES),$(CORE_SOURCES_ONLY))
 
 COLLECTOR_OBJECTS = $(patsubst $(PARENT_DIR)/src/%.cpp,$(OBJ_DIR)/%.o,$(filter $(PARENT_DIR)/src/%,$(CORE_SOURCES_FINAL)))
 SHARED_OBJECTS = $(patsubst $(SHARED_DIR)/src/%.cpp,$(OBJ_DIR)/shared/%.o,$(filter $(SHARED_DIR)/src/%,$(CORE_SOURCES_FINAL)))
+MODULE_OBJECTS = $(patsubst $(SHARED_DIR)/modules/%.cpp,$(OBJ_DIR)/shared/modules/%.o,$(filter $(SHARED_DIR)/modules/%,$(CORE_SOURCES_FINAL)))
 
-CORE_OBJECTS = $(COLLECTOR_OBJECTS) $(SHARED_OBJECTS)
+CORE_OBJECTS = $(COLLECTOR_OBJECTS) $(SHARED_OBJECTS) $(MODULE_OBJECTS)
+
+# Plugin Driver Objects (for tests that need them linked statically)
+PLUGIN_DRIVER_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(PLUGIN_DRIVERS_SOURCES)) \
+                        $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(OPCUA_C_SOURCE))
 
 # Plugin 테스트용 객체 (Worker, API, Network, Application 관련 객체 모두 제외 - 순수 로더 테스트용)
 PLUGIN_TEST_CORE_OBJECTS = $(filter-out $(OBJ_DIR)/Workers/Protocol/% $(OBJ_DIR)/Workers/WorkerFactory.o $(OBJ_DIR)/Workers/WorkerManager.o $(OBJ_DIR)/Api/% $(OBJ_DIR)/Network/% $(OBJ_DIR)/Core/Application.o,$(CORE_OBJECTS))
@@ -327,7 +362,8 @@ TEST_OBJECTS = $(OBJ_DIR)/test_step1_config_connection.o \
                $(OBJ_DIR)/test_plugin_loading.o \
                $(OBJ_DIR)/test_network_api.o \
                $(OBJ_DIR)/test_platform_compat.o \
-               $(OBJ_DIR)/test_workermanager.o
+               $(OBJ_DIR)/test_workermanager.o \
+               $(OBJ_DIR)/test_vp_concurrency.o
 
 # 색상 정의
 GREEN = \033[0;32m
@@ -397,7 +433,7 @@ create-dirs: create-log-dir
 	@mkdir -p $(OBJ_DIR)/Database $(OBJ_DIR)/Database/Entities $(OBJ_DIR)/Database/Repositories
 	@mkdir -p $(OBJ_DIR)/Client $(OBJ_DIR)/Workers $(OBJ_DIR)/Workers/Base $(OBJ_DIR)/Workers/Protocol $(OBJ_DIR)/Workers/Components
 	@mkdir -p $(OBJ_DIR)/Drivers $(OBJ_DIR)/Drivers/Common $(OBJ_DIR)/Drivers/Modbus $(OBJ_DIR)/Drivers/Mqtt $(OBJ_DIR)/Drivers/Bacnet
-	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint $(OBJ_DIR)/Plugin
+	@mkdir -p $(OBJ_DIR)/Pipeline $(OBJ_DIR)/Alarm $(OBJ_DIR)/VirtualPoint $(OBJ_DIR)/Scripting $(OBJ_DIR)/Plugin
 	@mkdir -p $(OBJ_DIR)/Network $(OBJ_DIR)/Api $(OBJ_DIR)/Platform $(OBJ_DIR)/Storage
 	@mkdir -p $(OBJ_DIR)/shared $(OBJ_DIR)/shared/Client
 	@echo -e "$(GREEN)✅ All directories created (including logs)$(NC)"
@@ -420,6 +456,20 @@ $(OBJ_DIR)/shared/%.o: $(SHARED_SRC_DIR)/%.cpp
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
 	@echo -e "$(YELLOW)⚙️ Compiling SHARED $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# 모듈 소스 컴파일 규칙 (LogLib, DbLib 등)
+$(OBJ_DIR)/shared/modules/%.o: $(SHARED_DIR)/modules/%.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(YELLOW)🔨 Generating dependencies for MODULE $<$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -MM -MT $@ $< > $(patsubst %.o,%.d,$@)
+	@echo -e "$(YELLOW)⚙️ Compiling MODULE $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# C 소스 컴파일 규칙 (open62541 등)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@echo -e "$(YELLOW)⚙️ Compiling C source $< [$(PLATFORM)]$(NC)"
+	@gcc -c $< -o $@ -std=c99 -I$(SRC_DIR)/Drivers/OPCUA $(INCLUDES)
 
 # 테스트 파일 컴파일 규칙
 $(OBJ_DIR)/test_step1_config_connection.o: test_step1_config_connection.cpp
@@ -507,9 +557,29 @@ $(OBJ_DIR)/test_step12_state_recovery_storage.o: test_step12_state_recovery_stor
 	@echo -e "$(CYAN)📈 Compiling Step 12 State Recovery & Storage Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
+$(OBJ_DIR)/test_step13_bacnet_read_write.o: test_step13_bacnet_read_write.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)📡 Compiling Step 13 RW Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
 $(OBJ_DIR)/test_plugin_loading.o: test_plugin_loading.cpp
 	@mkdir -p $(OBJ_DIR)
 	@echo -e "$(CYAN)🔌 Compiling Plugin Loading Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_vp_concurrency.o: test_vp_concurrency.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🔥 Compiling VP Concurrency Stress Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_enrichment_stage.o: test_enrichment_stage.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🧪 Compiling Enrichment Stage Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_alarm_stage.o: test_alarm_stage.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🔔 Compiling Alarm Stage Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # =============================================================================
@@ -528,41 +598,37 @@ $(BIN_DIR)/test_step2: $(ALL_OBJECTS) $(OBJ_DIR)/test_step2_database_entity.o
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step2_database_entity.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 2 Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step3: $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_protocol_worker.o
+$(BIN_DIR)/test_step3: $(ALL_OBJECTS) $(PLUGIN_DRIVER_OBJECTS) $(OBJ_DIR)/test_step3_protocol_worker.o
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 3 Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step3_protocol_worker.o $(TEST_LIBS) $(LIBS) -o $@
+	@$(CXX) $(ALL_OBJECTS) $(PLUGIN_DRIVER_OBJECTS) $(OBJ_DIR)/test_step3_protocol_worker.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 3 Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step4: $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o
+$(BIN_DIR)/test_step4: $(ALL_OBJECTS) $(PLUGIN_DRIVER_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 4 Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o $(TEST_LIBS) $(LIBS) -o $@
+	@$(CXX) $(ALL_OBJECTS) $(PLUGIN_DRIVER_OBJECTS) $(OBJ_DIR)/test_step4_driver_data_validation.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 4 Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step5: $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o
+$(BIN_DIR)/test_step5: $(ALL_OBJECTS) $(PLUGIN_DRIVER_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 5 Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o $(TEST_LIBS) $(LIBS) -o $@
+	@$(CXX) $(ALL_OBJECTS) $(PLUGIN_DRIVER_OBJECTS) $(OBJ_DIR)/test_step5_complete_db_integration_validation.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 5 Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_rest_api_worker_reload.o
+$(BIN_DIR)/test_step6: $(ALL_OBJECTS) $(PLUGIN_DRIVER_OBJECTS) $(OBJ_DIR)/test_step6_rest_api_worker_reload.o
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 6 RestAPI-WorkerManager Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_rest_api_worker_reload.o $(TEST_LIBS) $(LIBS) -o $@
+	@$(CXX) $(ALL_OBJECTS) $(PLUGIN_DRIVER_OBJECTS) $(OBJ_DIR)/test_step6_rest_api_worker_reload.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 6 RestAPI-WorkerManager Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step6_pipeline: $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking Step 6 Enhanced Pipeline Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step6_enhanced_pipeline.o $(TEST_LIBS) $(LIBS) -o $@
-	@echo -e "$(GREEN)✅ Step 6 Enhanced Pipeline Test build completed!$(NC)"
+# Legacy rule removed to avoid conflict with new test_step6_pipeline definition
 
-$(BIN_DIR)/test_step7: $(ALL_OBJECTS) $(OBJ_DIR)/test_step7_rest_api_backend_complete.o
+$(BIN_DIR)/test_step7: $(filter-out $(OBJ_DIR)/Main.o, $(ALL_OBJECTS)) $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(OBJ_DIR)/test_step7_rest_api_backend_complete.o
 	@mkdir -p $(BIN_DIR)
 ifeq ($(HAS_CURL),1)
 	@echo -e "$(PURPLE)🔗 Linking Step 7 Complete REST API Backend Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step7_rest_api_backend_complete.o $(TEST_LIBS) $(LIBS) -o $@
+	@$(CXX) $(filter-out $(OBJ_DIR)/Main.o, $(ALL_OBJECTS)) $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(OBJ_DIR)/test_step7_rest_api_backend_complete.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 7 Complete REST API Backend Test build completed!$(NC)"
 else
 	@echo -e "$(YELLOW)⚠️ Step 7 Test skipped - libcurl not available$(NC)"
@@ -596,35 +662,282 @@ $(BIN_DIR)/test_step8: $(ALL_OBJECTS) $(OBJ_DIR)/test_step8_driver_reconnection_
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step8_driver_reconnection_data_flow.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 8 Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step9: $(ALL_OBJECTS) $(OBJ_DIR)/test_step9_scale_and_multi_protocol.o
+$(BIN_DIR)/test_step9: $(ALL_OBJECTS) $(OBJ_DIR)/test_step9_scale_and_multi_protocol.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 9 Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step9_scale_and_multi_protocol.o $(TEST_LIBS) $(LIBS) -o $@
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step9_scale_and_multi_protocol.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 9 Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step10: $(ALL_OBJECTS) $(OBJ_DIR)/test_step10_e2e_integration_recovery.o
+$(BIN_DIR)/test_step10: $(ALL_OBJECTS) $(OBJ_DIR)/test_step10_e2e_integration_recovery.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 10 Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step10_e2e_integration_recovery.o $(TEST_LIBS) $(LIBS) -o $@
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step10_e2e_integration_recovery.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 10 Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step11: $(ALL_OBJECTS) $(OBJ_DIR)/test_step11_advanced_scenarios.o
+$(BIN_DIR)/test_step11: $(filter-out $(OBJ_DIR)/Main.o, $(ALL_OBJECTS)) $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(OBJ_DIR)/test_step11_advanced_scenarios.o
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 11 Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step11_advanced_scenarios.o $(TEST_LIBS) $(LIBS) -o $@
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS) $(PLATFORM_LIBS) $(TEST_LIBS)
 	@echo -e "$(GREEN)✅ Step 11 Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step12: $(ALL_OBJECTS) $(OBJ_DIR)/test_step12_state_recovery_storage.o
+$(BIN_DIR)/test_step12: $(filter-out $(OBJ_DIR)/Main.o, $(ALL_OBJECTS)) $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(OBJ_DIR)/test_step12_performance_stress.o
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 12 Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step12_state_recovery_storage.o $(TEST_LIBS) $(LIBS) -o $@
+	@$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS) $(PLATFORM_LIBS) $(TEST_LIBS)
 	@echo -e "$(GREEN)✅ Step 12 Test build completed!$(NC)"
+
+$(BIN_DIR)/test_vp_concurrency: $(filter-out $(OBJ_DIR)/Main.o, $(ALL_OBJECTS)) $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(OBJ_DIR)/test_vp_concurrency.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking VP Concurrency Test [$(PLATFORM)]...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS) $(PLATFORM_LIBS) $(TEST_LIBS)
+	@echo -e "$(GREEN)✅ VP Concurrency Test build completed!$(NC)"
+
+vp-concurrency-test: create-dirs $(BIN_DIR)/test_vp_concurrency
+	@echo -e "$(MAGENTA)🚀 Running VP Concurrency Stress Test...$(NC)"
+	@./$(BIN_DIR)/test_vp_concurrency
+
+$(BIN_DIR)/test_enrichment_stage: $(filter-out $(OBJ_DIR)/Main.o, $(ALL_OBJECTS)) $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(OBJ_DIR)/test_enrichment_stage.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Enrichment Stage Test [$(PLATFORM)]...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS) $(PLATFORM_LIBS) $(TEST_LIBS)
+	@echo -e "$(GREEN)✅ Enrichment Stage Test build completed!$(NC)"
+
+enrichment-stage-test: create-dirs $(BIN_DIR)/test_enrichment_stage
+	@echo -e "$(MAGENTA)🚀 Running Enrichment Stage Test...$(NC)"
+	@./$(BIN_DIR)/test_enrichment_stage
+
+$(BIN_DIR)/test_alarm_stage: $(filter-out $(OBJ_DIR)/Main.o, $(ALL_OBJECTS)) $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(OBJ_DIR)/test_alarm_stage.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Alarm Stage Test [$(PLATFORM)]...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS) $(PLATFORM_LIBS) $(TEST_LIBS)
+	@echo -e "$(GREEN)✅ Alarm Stage Test build completed!$(NC)"
+
+alarm-stage-test: create-dirs $(BIN_DIR)/test_alarm_stage
+	@echo -e "$(MAGENTA)🚀 Running Alarm Stage Test...$(NC)"
+	@./$(BIN_DIR)/test_alarm_stage
+
+# Persistence Stage Test
+$(OBJ_DIR)/test_persistence_stage.o: test_persistence_stage.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "⚙️ Compiling $<..."
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BIN_DIR)/test_persistence_stage: $(filter-out $(OBJ_DIR)/Main.o, $(ALL_OBJECTS)) $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(OBJ_DIR)/test_persistence_stage.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Persistence Stage Test [$(PLATFORM)]...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS) $(PLATFORM_LIBS) $(TEST_LIBS)
+	@echo -e "$(GREEN)✅ Persistence Stage Test build completed!$(NC)"
+
+persistence-stage-test: create-dirs $(BIN_DIR)/test_persistence_stage
+	@echo -e "$(MAGENTA)🚀 Running Persistence Stage Test...$(NC)"
+	@./$(BIN_DIR)/test_persistence_stage
+
+
+# Step 13 Read/Write 테스트
+step13-rw-build: create-dirs $(BIN_DIR)/test_step13_rw
+
+$(BIN_DIR)/test_step13_rw: $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_read_write.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 13 RW Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_read_write.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 13 RW Test build completed!$(NC)"
+
+step13-rw-test: step13-rw-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step13_rw))
+	@echo -e "$(MAGENTA)🚀 Running Step 13 Read/Write Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)BACnet Read/Write Flow Verification$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 13 RW)
+	@./$(BIN_DIR)/test_step13_rw 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 13 RW)
+	@echo -e "$(GREEN)Step 13 RW Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 14 Object Compilation Rules
+$(OBJ_DIR)/test_step14_mqtt_jsonpath.o: test_step14_mqtt_jsonpath.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "⚙️ Compiling $<..."
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_DIR)/test_step14_bacnet_schedule.o: test_step14_bacnet_schedule.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "⚙️ Compiling $<..."
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# Step 14 Advanced Driver Features 테스트
+step14-advanced-build: create-dirs $(BIN_DIR)/test_step14_mqtt_jsonpath $(BIN_DIR)/test_step14_bacnet_schedule
+
+$(BIN_DIR)/test_step14_mqtt_jsonpath: $(ALL_OBJECTS) $(OBJ_DIR)/test_step14_mqtt_jsonpath.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 14 MQTT JSONPath Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step14_mqtt_jsonpath.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(TEST_LIBS) $(LIBS) -o $@
+
+$(BIN_DIR)/test_step14_bacnet_schedule: $(ALL_OBJECTS) $(OBJ_DIR)/test_step14_bacnet_schedule.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 14 BACnet Schedule Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step14_bacnet_schedule.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 14 Advanced Features Test build completed!$(NC)"
+
+step14-advanced-test: step14-advanced-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step14_advanced))
+	@echo -e "$(MAGENTA)🚀 Running Step 14 Advanced Features Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)MQTT JSONPath Verification$(NC)"
+	@./$(BIN_DIR)/test_step14_mqtt_jsonpath 2>&1 | tee -a $(LOG_FILE)
+	@echo -e "$(CYAN)BACnet Schedule Verification$(NC)"
+	@./$(BIN_DIR)/test_step14_bacnet_schedule 2>&1 | tee -a $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 14 Advanced)
+	@echo -e "$(GREEN)Step 14 Advanced Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 15 Schedule Sync 테스트
+step15-sync-build: create-dirs $(BIN_DIR)/test_step15_sync
+
+$(BIN_DIR)/test_step15_sync: $(ALL_OBJECTS) $(OBJ_DIR)/test_step15_schedule_sync.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 15 Schedule Sync Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step15_schedule_sync.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 15 Schedule Sync Test build completed!$(NC)"
+
+step15-sync-test: step15-sync-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step15_sync))
+	@echo -e "$(MAGENTA)🚀 Running Step 15 Schedule Sync Test [$(PLATFORM)]...$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 15 Sync)
+	@./$(BIN_DIR)/test_step15_sync 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 15 Sync)
+	@echo -e "$(GREEN)Step 15 Sync Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+$(OBJ_DIR)/test_step15_schedule_sync.o: test_step15_schedule_sync.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# Step 16 BLE Beacon Test
+step16-ble-build: create-dirs $(BIN_DIR)/test_step16_ble
+
+$(BIN_DIR)/test_step16_ble: $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_beacon.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 16 BLE Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_beacon.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(TEST_LIBS) $(LIBS) -lbluetooth -o $@
+	@echo -e "$(GREEN)✅ Step 16 BLE Test build completed!$(NC)"
+
+step16-ble-test: step16-ble-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step16_ble))
+	@echo -e "$(MAGENTA)🚀 Running Step 16 BLE Test [$(PLATFORM)]...$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 16 BLE)
+	@./$(BIN_DIR)/test_step16_ble 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 16 BLE)
+	@echo -e "$(GREEN)Step 16 BLE Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+$(OBJ_DIR)/test_step16_ble_beacon.o: test_step16_ble_beacon.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# Step 17 OPC UA Test
+step17-opcua-build: create-dirs $(BIN_DIR)/test_step17_opcua
+
+# Rule for open62541 C library (Amalgamation)
+$(OBJ_DIR)/Drivers/OPCUA/open62541.o: $(SRC_DIR)/Drivers/OPCUA/open62541.c
+	@mkdir -p $(dir $@)
+	@echo -e "$(CYAN)⚙️ Compiling open62541 (C) [$(PLATFORM)]...$(NC)"
+	@gcc -std=c99 -I$(INCLUDE_DIR)/Drivers/OPCUA -c $< -o $@
+
+$(BIN_DIR)/test_step17_opcua: $(ALL_OBJECTS) $(OBJ_DIR)/test_step17_opcua.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 17 OPC UA Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step17_opcua.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -lbluetooth -o $@
+	@echo -e "$(GREEN)✅ Step 17 OPC UA Test build completed!$(NC)"
+
+step17-opcua-test: step17-opcua-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step17_opcua))
+	@echo -e "$(MAGENTA)🚀 Running Step 17 OPC UA Test [$(PLATFORM)]...$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 17 OPC UA)
+	@./$(BIN_DIR)/test_step17_opcua 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 17 OPC UA)
+	@echo -e "$(GREEN)Step 17 OPC UA Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+$(OBJ_DIR)/test_step17_opcua.o: test_step17_opcua.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BIN_DIR)/test_plugin_loading: $(OBJ_DIR)/test_plugin_loading.o $(PLUGIN_TEST_CORE_OBJECTS)
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Plugin Loading Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) -rdynamic $^ $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Plugin Loading Test build completed!$(NC)"
+
+# Step 16.5 BLE Worker Test
+step16-worker-build: create-dirs $(BIN_DIR)/test_step16_ble_worker
+
+$(OBJ_DIR)/test_step16_ble_worker.o: test_step16_ble_worker.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BIN_DIR)/test_step16_ble_worker: $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_worker.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 16.5 BLE Worker Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_worker.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -lbluetooth -o $@
+	@echo -e "$(GREEN)✅ Step 16.5 BLE Worker Test build completed!$(NC)"
+
+step16-worker-test: step16-worker-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step16_ble_worker))
+	@echo -e "$(MAGENTA)🚀 Running Step 16.5 BLE Worker Test [$(PLATFORM)]...$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 16.5 BLE Worker)
+	@./$(BIN_DIR)/test_step16_ble_worker 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 16.5 BLE Worker)
+	@echo -e "$(GREEN)Step 16.5 BLE Worker Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 16.5 BLE E2E Verification
+step16-e2e-build: create-dirs $(BIN_DIR)/test_step16_ble_e2e
+
+$(OBJ_DIR)/test_step16_ble_e2e.o: test_step16_ble_e2e.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BIN_DIR)/test_step16_ble_e2e: $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_e2e.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking BLE E2E Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_e2e.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -lbluetooth -o $@
+	@echo -e "$(GREEN)✅ BLE E2E Test build completed!$(NC)"
+
+step16-e2e-test: step16-e2e-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step16_ble_e2e))
+	@echo -e "$(MAGENTA)🚀 Running BLE E2E Test [$(PLATFORM)]...$(NC)"
+	$(call create_log_summary,$(LOG_FILE),BLE E2E)
+	@./$(BIN_DIR)/test_step16_ble_e2e 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),BLE E2E)
+	@echo -e "$(GREEN)BLE E2E Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 17 OPC UA E2E Test
+step17-e2e-build: create-dirs $(BIN_DIR)/test_step17_opcua_e2e
+
+$(OBJ_DIR)/test_step17_opcua_e2e.o: test_step17_opcua_e2e.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BIN_DIR)/test_step17_opcua_e2e: $(ALL_OBJECTS) $(OBJ_DIR)/test_step17_opcua_e2e.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 17.5 E2E Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step17_opcua_e2e.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -lbluetooth -o $@
+	@echo -e "$(GREEN)✅ Step 17.5 E2E Test build completed!$(NC)"
+
+step17-e2e-test: step17-e2e-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step17_e2e))
+	@echo -e "$(MAGENTA)🚀 Running Step 17.5 OPC UA E2E Test [$(PLATFORM)]...$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 17.5 OPC UA E2E)
+	@./$(BIN_DIR)/test_step17_opcua_e2e 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 17.5 OPC UA E2E)
+	@echo -e "$(GREEN)Step 17.5 OPC UA E2E Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 # =============================================================================
 # 플러그인 빌드 규칙 (Shared Library .so 생성)
@@ -678,8 +991,17 @@ modbus-plugin: create-dirs
 		$(SRC_DIR)/Drivers/Modbus/ModbusFailover.cpp \
 		$(SRC_DIR)/Drivers/Modbus/ModbusPerformance.cpp \
 		$(SHARED_UTILS_SOURCES) \
-		$(SHARED_SECURITY_SOURCES) \
 		$(LIBS) -lmodbus -o $(PLUGIN_DIR)/ModbusDriver.so
+
+# BLE 플러그인
+ble-plugin: create-dirs
+	@echo -e "$(CYAN)📦 Building BLE Beacon plugin (.so)...$(NC)"
+	@mkdir -p $(PLUGIN_DIR)
+	@$(CXX) $(PLUGIN_CXXFLAGS) $(INCLUDES) \
+		$(SRC_DIR)/Drivers/Ble/BleBeaconDriver.cpp \
+		$(SHARED_UTILS_SOURCES) \
+		$(SHARED_SECURITY_SOURCES) \
+		$(LIBS) -o $(PLUGIN_DIR)/BleBeaconDriver.so
 
 plugins: mqtt-plugin bacnet-plugin opcua-plugin modbus-plugin
 	@echo -e "$(GREEN)✅ All plugins built successfully in $(PLUGIN_DIR)$(NC)"
@@ -800,7 +1122,19 @@ step6-test: step6-build create-log-dir
 	@echo -e "$(GREEN)Step 6 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 # Step 6 Enhanced Pipeline 테스트 (기존)
+# Step 6 Enhanced Pipeline 테스트 (기존)
 step6-pipeline-build: create-dirs $(BIN_DIR)/test_step6_pipeline
+
+$(OBJ_DIR)/test_step6_pipeline.o: test_step6_pipeline.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "⚙️ Compiling $<..."
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BIN_DIR)/test_step6_pipeline: $(OBJ_DIR)/test_step6_pipeline.o $(filter-out $(OBJ_DIR)/Main.o, $(ALL_OBJECTS)) $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 6 Pipeline Test [$(PLATFORM)]...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS) $(PLATFORM_LIBS) $(TEST_LIBS)
+	@echo -e "$(GREEN)✅ Step 6 Pipeline Test build completed!$(NC)"
 
 step6-pipeline-test: step6-pipeline-build create-log-dir
 	$(eval LOG_FILE := $(call get_log_filename,step6_pipeline))
@@ -1088,6 +1422,11 @@ status:
 	@echo "WorkerManager: $(if $(wildcard $(BIN_DIR)/test_workermanager),✅ exists,❌ missing)"
 	@echo "Step 8: $(if $(wildcard $(BIN_DIR)/test_step8),✅ exists,❌ missing)"
 
+debug-vars:
+	@echo "SHARED_SRC_DIR: $(SHARED_SRC_DIR)"
+	@echo "SHARED_LOGGING_SOURCES: $(SHARED_LOGGING_SOURCES)"
+	@echo "SHARED_DATABASE_SOURCES: $(SHARED_DATABASE_SOURCES)"
+
 help:
 	@echo -e "$(BLUE)🚀 PulseOne Enhanced Build System with Complete Step 7 Integration$(NC)"
 	@echo -e "$(YELLOW)====================================================================$(NC)"
@@ -1160,3 +1499,150 @@ help:
 
 # 자동 종속성 생성
 -include $(ALL_OBJECTS:.o=.d) $(TEST_OBJECTS:.o=.d)
+
+# Step 13 테스트
+step13-build: create-dirs $(BIN_DIR)/test_step13
+
+step13-test: step13-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step13))
+	@echo -e "$(MAGENTA)🚀 Running Step 13 BACnet Discovery Verification [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)BACnet Discovery Persistence Test$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing: Discovery Callback -> RDB Persistence$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 13)
+	@./$(BIN_DIR)/test_step13 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 13)
+	@echo -e "$(GREEN)Step 13 Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+$(BIN_DIR)/test_step13: $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_discovery.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 13 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_discovery.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 13 Test build completed!$(NC)"
+
+$(OBJ_DIR)/test_step13_bacnet_discovery.o: test_step13_bacnet_discovery.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🔍 Compiling Step 13 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+# Step 19: ROS Integration E2E Test
+step19-e2e-build: create-dirs $(BIN_DIR)/test_step19_ros_e2e
+
+$(OBJ_DIR)/test_step19_ros_e2e.o: test_step19_ros_e2e.cpp $(HEADERS)
+	@echo -e "-e $(PURPLE)🔨 Compiling Step 19 E2E Test...$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c test_step19_ros_e2e.cpp -o $@
+
+$(BIN_DIR)/test_step19_ros_e2e: $(OBJ_DIR)/test_step19_ros_e2e.o $(CORE_OBJECTS) $(OPCUA_C_OBJ) $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@echo -e "-e $(BLUE)🔗 Linking Step 19 E2E Test [$(PLATFORM)]...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(PLATFORM_LIBS) $(MODBUS_LIBS) $(MYSQL_LIBS) $(MQTT_CPP_LIBS) $(MQTT_C_LIBS) $(PGSQL_LIBS) $(BACNET_LIBS) $(REDIS_LIBS) $(QUICKJS_LIBS) $(CURL_LIBS) $(TEST_LIBS) -lsqlite3 -lbluetooth
+	@echo -e "-e $(GREEN)✅ Step 19 E2E Test build completed!$(NC)"
+
+step19-e2e-test: step19-e2e-build create-log-dir
+	@echo -e "-e $(CYAN)🚀 Running Step 19 E2E Test (ROS Integration)...$(NC)"
+	@$(BIN_DIR)/test_step19_ros_e2e > $(LOG_DIR)/step19_ros_e2e.log 2>&1 || (echo -e "-e $(RED)❌ Step 19 Test Failed! Check logs at $(LOG_DIR)/step19_ros_e2e.log$(NC)"; cat $(LOG_DIR)/step19_ros_e2e.log; exit 1)
+	@echo -e "-e $(GREEN)✅ Step 19 Test Passed!$(NC)"
+
+# =============================================================================
+# Step 20: Dynamic ROS Mapping
+# =============================================================================
+
+step20-build: create-dirs $(BIN_DIR)/test_step20_ros_dynamic
+
+$(OBJ_DIR)/test_step20_ros_dynamic.o: test_step20_ros_dynamic.cpp $(HEADERS)
+	@echo -e "-e $(PURPLE)🔨 Compiling Step 20 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c test_step20_ros_dynamic.cpp -o $@
+
+$(BIN_DIR)/test_step20_ros_dynamic: $(OBJ_DIR)/test_step20_ros_dynamic.o $(CORE_OBJECTS) $(OPCUA_C_OBJ) $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@echo -e "-e $(BLUE)🔗 Linking Step 20 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(PLATFORM_LIBS) $(MODBUS_LIBS) $(MYSQL_LIBS) $(MQTT_CPP_LIBS) $(MQTT_C_LIBS) $(PGSQL_LIBS) $(BACNET_LIBS) $(REDIS_LIBS) $(QUICKJS_LIBS) $(CURL_LIBS) $(TEST_LIBS) -lsqlite3 -lbluetooth
+	@echo -e "-e $(GREEN)✅ Step 20 Test build completed!$(NC)"
+
+step20-test: step20-build create-log-dir
+	@echo -e "-e $(CYAN)🚀 Running Step 20 Test (Dynamic ROS Topics)...$(NC)"
+	@$(BIN_DIR)/test_step20_ros_dynamic > $(LOG_DIR)/step20_ros_dynamic.log 2>&1 || (echo -e "-e $(RED)❌ Step 20 Test Failed! Check logs at $(LOG_DIR)/step20_ros_dynamic.log$(NC)"; cat $(LOG_DIR)/step20_ros_dynamic.log; exit 1)
+	@echo -e "-e $(GREEN)✅ Step 20 Test Passed!$(NC)"
+
+# =============================================================================
+# Step 21: ROS Recovery
+# =============================================================================
+
+step21-build: create-dirs $(BIN_DIR)/test_step21_ros_recovery
+
+$(OBJ_DIR)/test_step21_ros_recovery.o: test_step21_ros_recovery.cpp $(HEADERS)
+	@echo -e "-e $(PURPLE)🔨 Compiling Step 21 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c test_step21_ros_recovery.cpp -o $@
+
+$(BIN_DIR)/test_step21_ros_recovery: $(OBJ_DIR)/test_step21_ros_recovery.o $(CORE_OBJECTS) $(OPCUA_C_OBJ) $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@echo -e "-e $(BLUE)🔗 Linking Step 21 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(PLATFORM_LIBS) $(MODBUS_LIBS) $(MYSQL_LIBS) $(MQTT_CPP_LIBS) $(MQTT_C_LIBS) $(PGSQL_LIBS) $(BACNET_LIBS) $(REDIS_LIBS) $(QUICKJS_LIBS) $(CURL_LIBS) $(TEST_LIBS) -lsqlite3 -lbluetooth
+	@echo -e "-e $(GREEN)✅ Step 21 Test build completed!$(NC)"
+
+step21-recovery: step21-build create-log-dir
+	@echo -e "-e $(CYAN)🚀 Running Step 21 Test (ROS Recovery)...$(NC)"
+	@$(BIN_DIR)/test_step21_ros_recovery > $(LOG_DIR)/step21_ros_recovery.log 2>&1 || (echo -e "-e $(RED)❌ Step 21 Test Failed! Check logs at $(LOG_DIR)/step21_ros_recovery.log$(NC)"; cat $(LOG_DIR)/step21_ros_recovery.log; exit 1)
+	@echo -e "-e $(GREEN)✅ Step 21 Test Passed!$(NC)"
+
+# =============================================================================
+# Step 22: Modbus String Address
+# =============================================================================
+
+step22-build: create-dirs $(BIN_DIR)/test_step22_modbus_string
+
+$(OBJ_DIR)/test_step22_modbus_string.o: test_step22_modbus_string.cpp $(HEADERS)
+	@echo -e "-e $(PURPLE)🔨 Compiling Step 22 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c test_step22_modbus_string.cpp -o $@
+
+$(BIN_DIR)/test_step22_modbus_string: $(OBJ_DIR)/test_step22_modbus_string.o $(CORE_OBJECTS) $(OPCUA_C_OBJ) $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@echo -e "-e $(BLUE)🔗 Linking Step 22 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(PLATFORM_LIBS) $(MODBUS_LIBS) $(MYSQL_LIBS) $(MQTT_CPP_LIBS) $(MQTT_C_LIBS) $(PGSQL_LIBS) $(BACNET_LIBS) $(REDIS_LIBS) $(QUICKJS_LIBS) $(CURL_LIBS) $(TEST_LIBS) -lsqlite3 -lbluetooth
+	@echo -e "-e $(GREEN)✅ Step 22 Test build completed!$(NC)"
+
+step22-modbus-string: step22-build create-log-dir
+	@echo -e "-e $(CYAN)🚀 Running Step 22 Test (Modbus String Addresses)...$(NC)"
+	@$(BIN_DIR)/test_step22_modbus_string > $(LOG_DIR)/step22_modbus_string.log 2>&1 || (echo -e "-e $(RED)❌ Step 22 Test Failed! Check logs at $(LOG_DIR)/step22_modbus_string.log$(NC)"; cat $(LOG_DIR)/step22_modbus_string.log; exit 1)
+	@echo -e "-e $(GREEN)✅ Step 22 Test Passed!$(NC)"
+
+# =============================================================================
+# Step 23: Settings Reload & Redis Sync
+# =============================================================================
+
+step23-build: create-dirs $(BIN_DIR)/test_step23_settings_reload
+
+$(OBJ_DIR)/test_step23_settings_reload.o: test_step23_settings_reload.cpp $(HEADERS)
+	@echo -e "-e $(PURPLE)🔨 Compiling Step 23 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c test_step23_settings_reload.cpp -o $@
+
+$(BIN_DIR)/test_step23_settings_reload: $(OBJ_DIR)/test_step23_settings_reload.o $(CORE_OBJECTS) $(OPCUA_C_OBJ) $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
+	@echo -e "-e $(BLUE)🔗 Linking Step 23 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(PLATFORM_LIBS) $(MODBUS_LIBS) $(MYSQL_LIBS) $(MQTT_CPP_LIBS) $(MQTT_C_LIBS) $(PGSQL_LIBS) $(BACNET_LIBS) $(REDIS_LIBS) $(QUICKJS_LIBS) $(CURL_LIBS) $(TEST_LIBS) -lsqlite3 -lbluetooth
+	@echo -e "-e $(GREEN)✅ Step 23 Test build completed!$(NC)"
+
+step23-test: step23-build create-log-dir
+	@echo -e "-e $(CYAN)🚀 Running Step 23 Test (Settings Reload & Redis Sync)...$(NC)"
+	@$(BIN_DIR)/test_step23_settings_reload > $(LOG_DIR)/step23_settings_reload.log 2>&1 || (echo -e "-e $(RED)❌ Step 23 Test Failed! Check logs at $(LOG_DIR)/step23_settings_reload.log$(NC)"; cat $(LOG_DIR)/step23_settings_reload.log; exit 1)
+	@echo -e "-e $(GREEN)✅ Step 23 Test Passed!$(NC)"
+
+# Step 24 Enhanced OPC UA Test
+step24-opcua-build: create-dirs $(BIN_DIR)/test_step24_opcua_enhanced
+
+$(OBJ_DIR)/test_step24_opcua_enhanced.o: test_step24_opcua_enhanced.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BIN_DIR)/test_step24_opcua_enhanced: $(ALL_OBJECTS) $(OBJ_DIR)/test_step24_opcua_enhanced.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 24 Enhanced OPC UA Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step24_opcua_enhanced.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -lbluetooth -o $@
+	@echo -e "$(GREEN)✅ Step 24 Enhanced OPC UA Test build completed!$(NC)"
+
+step24-test: step24-opcua-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step24_opcua))
+	@echo -e "$(MAGENTA)🚀 Running Step 24 Enhanced OPC UA Test [$(PLATFORM)]...$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 24 Enhanced OPC UA)
+	@./$(BIN_DIR)/test_step24_opcua_enhanced 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 24 Enhanced OPC UA)
+	@echo -e "$(GREEN)Step 24 Enhanced OPC UA Test completed. Log saved: $(LOG_FILE)$(NC)"
+# =============================================================================

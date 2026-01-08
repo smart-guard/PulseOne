@@ -107,7 +107,7 @@ class SqliteAdapter extends BaseAdapter {
     }
 
     get timestamp() {
-        return "DATETIME DEFAULT (datetime('now'))";
+        return 'DATETIME DEFAULT (datetime(\'now\'))';
     }
 
     get boolean() {
@@ -135,8 +135,8 @@ class SqliteAdapter extends BaseAdapter {
         let adaptedQuery = query;
         
         // PostgreSQL → SQLite 함수 변환
-        adaptedQuery = adaptedQuery.replace(/NOW\(\)/gi, "datetime('now')");
-        adaptedQuery = adaptedQuery.replace(/CURRENT_TIMESTAMP/gi, "datetime('now')");
+        adaptedQuery = adaptedQuery.replace(/NOW\(\)/gi, 'datetime(\'now\')');
+        adaptedQuery = adaptedQuery.replace(/CURRENT_TIMESTAMP/gi, 'datetime(\'now\')');
         
         // LIMIT/OFFSET 변환 (MariaDB → SQLite)
         adaptedQuery = adaptedQuery.replace(/LIMIT\s+(\d+)\s*,\s*(\d+)/gi, 'LIMIT $2 OFFSET $1');
@@ -212,7 +212,7 @@ class PostgresAdapter extends BaseAdapter {
         adaptedQuery = adaptedQuery.replace(/\?/g, () => `${paramCounter++}`);
         
         // 대소문자 구분 문자열 비교
-        adaptedQuery = adaptedQuery.replace(/LIKE\s+'([^']+)'/gi, "ILIKE '$1'");
+        adaptedQuery = adaptedQuery.replace(/LIKE\s+'([^']+)'/gi, 'ILIKE \'$1\'');
         
         return adaptedQuery;
     }
@@ -368,11 +368,11 @@ class MssqlAdapter extends BaseAdapter {
         
         // LIMIT + OFFSET → OFFSET/FETCH 사용 (SQL Server 2012+)
         const limitOffsetRegex = /LIMIT\s+(\d+)\s+OFFSET\s+(\d+)/gi;
-        adaptedQuery = adaptedQuery.replace(limitOffsetRegex, `OFFSET $2 ROWS FETCH NEXT $1 ROWS ONLY`);
+        adaptedQuery = adaptedQuery.replace(limitOffsetRegex, 'OFFSET $2 ROWS FETCH NEXT $1 ROWS ONLY');
         
         // MariaDB 스타일 LIMIT → OFFSET/FETCH
         const mariaLimitRegex = /LIMIT\s+(\d+)\s*,\s*(\d+)/gi;
-        adaptedQuery = adaptedQuery.replace(mariaLimitRegex, `OFFSET $1 ROWS FETCH NEXT $2 ROWS ONLY`);
+        adaptedQuery = adaptedQuery.replace(mariaLimitRegex, 'OFFSET $1 ROWS FETCH NEXT $2 ROWS ONLY');
         
         return adaptedQuery;
     }

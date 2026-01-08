@@ -519,7 +519,7 @@ async function getCurrentValuesFromRedis(options) {
         }
         
         console.log(`✅ Redis에서 총 ${currentValues.length}개 데이터 조회 완료`);
-        console.log(`📋 품질별 통계:`, {
+        console.log('📋 품질별 통계:', {
             good: currentValues.filter(v => v.quality === 'good').length,
             bad: currentValues.filter(v => v.quality === 'bad').length,
             uncertain: currentValues.filter(v => v.quality === 'uncertain').length,

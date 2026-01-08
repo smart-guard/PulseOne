@@ -1,72 +1,19 @@
-// ============================================================================
-// backend/routes/protocols.js - 페이징 정보 포함한 개선된 라우트
-// 프로토콜 전용 CRUD API 라우트 - Repository 패턴 완벽 적용
-// ============================================================================
-
 const express = require('express');
 const router = express.Router();
-
-// Repository 및 미들웨어 설정
-const ProtocolRepository = require('../lib/database/repositories/ProtocolRepository');
-const { 
-    authenticateToken, 
-    tenantIsolation, 
-    requirePermission 
+const ProtocolService = require('../lib/services/ProtocolService');
+const {
+    authenticateToken,
+    tenantIsolation,
+    validateTenantStatus
 } = require('../middleware/tenantIsolation');
 
-// Repository 인스턴스 생성
-let protocolRepo = null;
-
-function getProtocolRepo() {
-    if (!protocolRepo) {
-        protocolRepo = new ProtocolRepository();
-        console.log("✅ ProtocolRepository 인스턴스 생성 완료");
-    }
-    return protocolRepo;
-}
-
-// 응답 생성 함수 - 페이징 정보 지원
-function createResponse(success, data, message, error_code, meta = null) {
-    const response = {
-        success,
-        data,
-        message: message || (success ? 'Operation successful' : 'Operation failed'),
-        error_code: error_code || null,
-        timestamp: new Date().toISOString()
-    };
-    
-    if (meta) {
-        response.meta = meta;
-        if (meta.pagination) {
-            response.pagination = meta.pagination;
-        }
-    }
-    
-    return response;
-}
-
-// 개발용 미들웨어
-const devAuthMiddleware = (req, res, next) => {
-    req.user = {
-        id: 1,
-        username: 'admin',
-        tenant_id: 1,
-        role: 'admin'
-    };
-    next();
-};
-
-const devTenantMiddleware = (req, res, next) => {
-    req.tenantId = req.user.tenant_id;
-    next();
-};
-
 // 글로벌 미들웨어 적용
-router.use(devAuthMiddleware);
-router.use(devTenantMiddleware);
+router.use(authenticateToken);
+router.use(tenantIsolation);
+router.use(validateTenantStatus);
 
 // ============================================================================
-// 정적 라우트를 동적 라우트보다 먼저 배치
+// 정적 라우트
 // ============================================================================
 
 /**
@@ -76,29 +23,10 @@ router.use(devTenantMiddleware);
 router.get('/statistics', async (req, res) => {
     try {
         const { tenantId } = req;
-
-        console.log('📊 프로토콜 통계 조회...');
-
-        // Repository에서 통계 데이터 조회
-        const [counts, categoryStats, usageStats] = await Promise.all([
-            getProtocolRepo().getCounts(),
-            getProtocolRepo().getStatsByCategory(),
-            getProtocolRepo().getUsageStats(tenantId)
-        ]);
-
-        const stats = {
-            ...counts,
-            categories: categoryStats,
-            usage_stats: usageStats
-        };
-
-        console.log('✅ 프로토콜 통계 조회 완료:', stats);
-
-        res.json(createResponse(true, stats, 'Protocol statistics retrieved successfully'));
-
+        const result = await ProtocolService.getProtocolStatistics(tenantId);
+        res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        console.error('❌ 프로토콜 통계 조회 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_STATS_ERROR'));
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
@@ -109,23 +37,15 @@ router.get('/statistics', async (req, res) => {
 router.get('/category/:category', async (req, res) => {
     try {
         const { category } = req.params;
-
-        console.log(`🏷️ 카테고리 ${category} 프로토콜 조회...`);
-
-        const protocols = await getProtocolRepo().findByCategory(category);
-
-        console.log(`✅ 카테고리 ${category} 프로토콜 ${protocols.length}개 조회 완료`);
-
-        res.json(createResponse(true, protocols, 'Category protocols retrieved successfully'));
-
+        const result = await ProtocolService.getProtocolsByCategory(category);
+        res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        console.error(`❌ 카테고리 ${req.params.category} 프로토콜 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'CATEGORY_PROTOCOLS_ERROR'));
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // ============================================================================
-// 📋 프로토콜 목록 조회 API - 페이징 정보 포함
+// 📋 프로토콜 목록 조회 API
 // ============================================================================
 
 /**
@@ -135,64 +55,37 @@ router.get('/category/:category', async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const { tenantId } = req;
-        
-        // page 파라미터를 받아서 offset 계산 (다른 API와 동일한 패턴)
-        const page = req.query.page ? parseInt(req.query.page) : 1;
-        const limit = req.query.limit ? parseInt(req.query.limit) : null;
-        const offset = limit ? (page - 1) * limit : null;
-        
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 25;
+        const offset = (page - 1) * limit;
+
         const filters = {
+            ...req.query,
             tenantId,
-            category: req.query.category,
-            enabled: req.query.enabled,
-            deprecated: req.query.deprecated,
-            uses_serial: req.query.uses_serial,
-            requires_broker: req.query.requires_broker,
-            search: req.query.search,
-            sortBy: req.query.sortBy || 'display_name',
-            sortOrder: req.query.sortOrder || 'ASC',
             limit,
-            offset  // 계산된 offset 사용
+            offset
         };
 
-        console.log('📋 프로토콜 목록 조회 요청:', filters);
+        const result = await ProtocolService.getProtocols(filters);
 
-        const [protocols, totalCount] = await Promise.all([
-            getProtocolRepo().findAll(filters),
-            getProtocolRepo().getTotalCount(filters)
-        ]);
+        // 페이징 정보 추가 (Service 결과에 meta 추가 가능하지만 일단 그대로 반환)
+        if (result.success && result.data) {
+            const totalCount = result.data.total_count;
+            result.pagination = {
+                total_count: totalCount,
+                current_page: page,
+                page_size: limit,
+                total_pages: Math.ceil(totalCount / limit),
+                has_next: (page * limit) < totalCount,
+                has_prev: page > 1
+            };
+        }
 
-        console.log(`✅ 프로토콜 ${protocols.length}개 조회 완료 (전체: ${totalCount}개)`);
-
-        // 페이징 정보 계산 (page 기반으로 수정)
-        const pagination = {
-            total_count: totalCount,
-            current_page: page,  // 직접 page 사용
-            page_size: limit || totalCount,
-            total_pages: limit ? Math.ceil(totalCount / limit) : 1,
-            has_next: limit ? (page * limit) < totalCount : false,  // page 기반 계산
-            has_prev: page > 1,  // 간단하게 page > 1
-            offset: offset || 0,
-            limit: limit || totalCount
-        };
-
-        res.json(createResponse(
-            true, 
-            protocols, 
-            'Protocols retrieved successfully', 
-            null, 
-            { pagination }
-        ));
-
+        res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        console.error('❌ 프로토콜 목록 조회 실패:', error.message);
-        console.error('❌ 에러 스택:', error.stack);
-        res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_LIST_ERROR'));
+        res.status(500).json({ success: false, message: error.message });
     }
 });
-// ============================================================================
-// ➕ 프로토콜 생성 API - Repository 사용
-// ============================================================================
 
 /**
  * POST /api/protocols
@@ -200,41 +93,16 @@ router.get('/', async (req, res) => {
  */
 router.post('/', async (req, res) => {
     try {
-        const { user } = req;
-        const protocolData = req.body;
-
-        console.log('➕ 새 프로토콜 등록 요청:', protocolData.protocol_type);
-
-        // 필수 필드 검증
-        if (!protocolData.protocol_type || !protocolData.display_name) {
-            return res.status(400).json(
-                createResponse(false, null, 'Protocol type and display name are required', 'VALIDATION_ERROR')
-            );
-        }
-
-        // 중복 프로토콜 타입 검사
-        const exists = await getProtocolRepo().checkProtocolTypeExists(protocolData.protocol_type);
-        if (exists) {
-            return res.status(409).json(
-                createResponse(false, null, 'Protocol type already exists', 'PROTOCOL_EXISTS')
-            );
-        }
-
-        // 프로토콜 생성
-        const newProtocol = await getProtocolRepo().create(protocolData, user.id);
-
-        console.log(`✅ 프로토콜 ${protocolData.protocol_type} 등록 완료 (ID: ${newProtocol.id})`);
-
-        res.status(201).json(createResponse(true, newProtocol, 'Protocol created successfully'));
-
+        const userId = req.user ? req.user.id : null;
+        const result = await ProtocolService.createProtocol(req.body, userId);
+        res.status(result.success ? 201 : 500).json(result);
     } catch (error) {
-        console.error('❌ 프로토콜 생성 실패:', error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_CREATE_ERROR'));
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // ============================================================================
-// 동적 라우트들 (/:id 포함)을 정적 라우트 뒤에 배치
+// 동적 라우트 (/:id)
 // ============================================================================
 
 /**
@@ -245,24 +113,10 @@ router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { tenantId } = req;
-
-        console.log(`🔍 프로토콜 ID ${id} 상세 조회...`);
-
-        const protocol = await getProtocolRepo().findById(id, tenantId);
-
-        if (!protocol) {
-            return res.status(404).json(
-                createResponse(false, null, 'Protocol not found', 'PROTOCOL_NOT_FOUND')
-            );
-        }
-
-        console.log(`✅ 프로토콜 ID ${id} 조회 완료: ${protocol.display_name}`);
-
-        res.json(createResponse(true, protocol, 'Protocol retrieved successfully'));
-
+        const result = await ProtocolService.getProtocolById(parseInt(id), tenantId);
+        res.status(result.success ? 200 : (result.message === 'Protocol not found' ? 404 : 500)).json(result);
     } catch (error) {
-        console.error(`❌ 프로토콜 ID ${req.params.id} 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_DETAIL_ERROR'));
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
@@ -273,60 +127,30 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const updateData = req.body;
-
-        console.log(`📝 프로토콜 ID ${id} 수정 요청:`, updateData);
-
-        // 프로토콜 수정
-        const updatedProtocol = await getProtocolRepo().update(id, updateData);
-
-        console.log(`✅ 프로토콜 ID ${id} 수정 완료`);
-
-        res.json(createResponse(true, updatedProtocol, 'Protocol updated successfully'));
-
+        const result = await ProtocolService.updateProtocol(parseInt(id), req.body);
+        res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        console.error(`❌ 프로토콜 ID ${req.params.id} 수정 실패:`, error.message);
-        
-        if (error.message.includes('not found')) {
-            res.status(404).json(createResponse(false, null, error.message, 'PROTOCOL_NOT_FOUND'));
-        } else {
-            res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_UPDATE_ERROR'));
-        }
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
 /**
  * DELETE /api/protocols/:id
- * 프로토콜 삭제 (연결된 디바이스가 없는 경우만)
+ * 프로토콜 삭제
  */
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { force } = req.query;
-
-        console.log(`🗑️ 프로토콜 ID ${id} 삭제 요청 (강제: ${!!force})`);
-
-        await getProtocolRepo().delete(id, force === 'true');
-
-        console.log(`✅ 프로토콜 ID ${id} 삭제 완료`);
-
-        res.json(createResponse(true, { deleted: true }, 'Protocol deleted successfully'));
-
+        const force = req.query.force === 'true';
+        const result = await ProtocolService.deleteProtocol(parseInt(id), force);
+        res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        console.error(`❌ 프로토콜 ID ${req.params.id} 삭제 실패:`, error.message);
-
-        if (error.message.includes('not found')) {
-            res.status(404).json(createResponse(false, null, error.message, 'PROTOCOL_NOT_FOUND'));
-        } else if (error.message.includes('devices are using this protocol')) {
-            res.status(409).json(createResponse(false, null, error.message, 'PROTOCOL_IN_USE'));
-        } else {
-            res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_DELETE_ERROR'));
-        }
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
 // ============================================================================
-// 🔄 프로토콜 제어 API들
+// 🔄 프로토콜 제어
 // ============================================================================
 
 /**
@@ -336,23 +160,10 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/enable', async (req, res) => {
     try {
         const { id } = req.params;
-
-        console.log(`🟢 프로토콜 ID ${id} 활성화...`);
-
-        const updatedProtocol = await getProtocolRepo().enable(id);
-
-        console.log(`✅ 프로토콜 ID ${id} 활성화 완료`);
-
-        res.json(createResponse(true, updatedProtocol, 'Protocol enabled successfully'));
-
+        const result = await ProtocolService.setProtocolStatus(parseInt(id), true);
+        res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        console.error(`❌ 프로토콜 ID ${req.params.id} 활성화 실패:`, error.message);
-
-        if (error.message.includes('not found')) {
-            res.status(404).json(createResponse(false, null, 'Protocol not found', 'PROTOCOL_NOT_FOUND'));
-        } else {
-            res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_ENABLE_ERROR'));
-        }
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
@@ -363,23 +174,10 @@ router.post('/:id/enable', async (req, res) => {
 router.post('/:id/disable', async (req, res) => {
     try {
         const { id } = req.params;
-
-        console.log(`🔴 프로토콜 ID ${id} 비활성화...`);
-
-        const updatedProtocol = await getProtocolRepo().disable(id);
-
-        console.log(`✅ 프로토콜 ID ${id} 비활성화 완료`);
-
-        res.json(createResponse(true, updatedProtocol, 'Protocol disabled successfully'));
-
+        const result = await ProtocolService.setProtocolStatus(parseInt(id), false);
+        res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        console.error(`❌ 프로토콜 ID ${req.params.id} 비활성화 실패:`, error.message);
-
-        if (error.message.includes('not found')) {
-            res.status(404).json(createResponse(false, null, 'Protocol not found', 'PROTOCOL_NOT_FOUND'));
-        } else {
-            res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_DISABLE_ERROR'));
-        }
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
@@ -391,74 +189,10 @@ router.post('/:id/test', async (req, res) => {
     try {
         const { id } = req.params;
         const { tenantId } = req;
-        const testParams = req.body;
-
-        console.log(`🔗 프로토콜 ID ${id} 연결 테스트...`);
-
-        // 프로토콜 정보 조회
-        const protocol = await getProtocolRepo().findById(id, tenantId);
-        
-        if (!protocol) {
-            return res.status(404).json(
-                createResponse(false, null, 'Protocol not found', 'PROTOCOL_NOT_FOUND')
-            );
-        }
-
-        // 실제 연결 테스트 시뮬레이션
-        const startTime = Date.now();
-        
-        let testResult = {
-            protocol_id: parseInt(id),
-            protocol_type: protocol.protocol_type,
-            test_successful: false,
-            response_time_ms: 0,
-            test_timestamp: new Date().toISOString(),
-            error_message: null
-        };
-
-        try {
-            // 프로토콜별 기본 검증 로직
-            if (protocol.protocol_type === 'MODBUS_TCP') {
-                if (!testParams.host || !testParams.port) {
-                    throw new Error('Host and port are required for Modbus TCP');
-                }
-                await new Promise(resolve => setTimeout(resolve, Math.random() * 150 + 50));
-                testResult.test_successful = Math.random() > 0.1; // 90% 성공률
-            } else if (protocol.protocol_type === 'MQTT') {
-                if (!testParams.broker_url) {
-                    throw new Error('Broker URL is required for MQTT');
-                }
-                await new Promise(resolve => setTimeout(resolve, Math.random() * 100 + 30));
-                testResult.test_successful = Math.random() > 0.05; // 95% 성공률
-            } else if (protocol.protocol_type === 'BACNET') {
-                if (!testParams.device_instance) {
-                    throw new Error('Device instance is required for BACnet');
-                }
-                await new Promise(resolve => setTimeout(resolve, Math.random() * 300 + 100));
-                testResult.test_successful = Math.random() > 0.15; // 85% 성공률
-            } else {
-                await new Promise(resolve => setTimeout(resolve, Math.random() * 200 + 50));
-                testResult.test_successful = Math.random() > 0.2; // 80% 성공률
-            }
-
-            if (!testResult.test_successful) {
-                testResult.error_message = 'Connection timeout or device not responding';
-            }
-
-        } catch (error) {
-            testResult.test_successful = false;
-            testResult.error_message = error.message;
-        }
-
-        testResult.response_time_ms = Date.now() - startTime;
-
-        console.log(`${testResult.test_successful ? '✅' : '❌'} 프로토콜 ID ${id} 테스트 완료 (${testResult.response_time_ms}ms)`);
-
-        res.json(createResponse(true, testResult, 'Protocol test completed'));
-
+        const result = await ProtocolService.testConnection(parseInt(id), req.body, tenantId);
+        res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        console.error(`❌ 프로토콜 ID ${req.params.id} 테스트 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_TEST_ERROR'));
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 
@@ -469,20 +203,12 @@ router.post('/:id/test', async (req, res) => {
 router.get('/:id/devices', async (req, res) => {
     try {
         const { id } = req.params;
-        const limit = req.query.limit ? parseInt(req.query.limit) : 50;
-        const offset = req.query.offset ? parseInt(req.query.offset) : 0;
-
-        console.log(`📱 프로토콜 ID ${id}의 디바이스 목록 조회 (limit: ${limit}, offset: ${offset})`);
-
-        const devices = await getProtocolRepo().getDevicesByProtocol(id, limit, offset);
-
-        console.log(`✅ 프로토콜 ID ${id}의 디바이스 ${devices.length}개 조회 완료`);
-
-        res.json(createResponse(true, devices, 'Protocol devices retrieved successfully'));
-
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = parseInt(req.query.offset) || 0;
+        const result = await ProtocolService.getDevicesByProtocol(parseInt(id), limit, offset);
+        res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        console.error(`❌ 프로토콜 ID ${req.params.id} 디바이스 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'PROTOCOL_DEVICES_ERROR'));
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 

@@ -39,7 +39,7 @@
  */
 
 #include "CSP/FileTargetHandler.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Export/ExportTypes.h"
 #include <iostream>
 #include <fstream>

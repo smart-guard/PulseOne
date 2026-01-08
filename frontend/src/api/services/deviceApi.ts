@@ -74,13 +74,13 @@ export interface Device {
     max_retry_count?: number;
     retry_interval_ms?: number;
     backoff_time_ms?: number;
-    keep_alive_enabled?: boolean;
+    is_keep_alive_enabled?: boolean;
     keep_alive_interval_s?: number;
-    data_validation_enabled?: boolean;
-    performance_monitoring_enabled?: boolean;
-    detailed_logging_enabled?: boolean;
-    diagnostic_mode_enabled?: boolean;
-    communication_logging_enabled?: boolean;
+    is_data_validation_enabled?: boolean;
+    is_performance_monitoring_enabled?: boolean;
+    is_detailed_logging_enabled?: boolean;
+    is_diagnostic_mode_enabled?: boolean;
+    is_communication_logging_enabled?: boolean;
     [key: string]: any;
   };
   
@@ -252,13 +252,13 @@ export interface DeviceUpdateData {
     max_retry_count?: number;
     retry_interval_ms?: number;
     backoff_time_ms?: number;
-    keep_alive_enabled?: boolean;
+    is_keep_alive_enabled?: boolean;
     keep_alive_interval_s?: number;
-    data_validation_enabled?: boolean;
-    performance_monitoring_enabled?: boolean;
-    detailed_logging_enabled?: boolean;
-    diagnostic_mode_enabled?: boolean;
-    communication_logging_enabled?: boolean;
+    is_data_validation_enabled?: boolean;
+    is_performance_monitoring_enabled?: boolean;
+    is_detailed_logging_enabled?: boolean;
+    is_diagnostic_mode_enabled?: boolean;
+    is_communication_logging_enabled?: boolean;
     [key: string]: any; // 추가 설정 필드를 위한 인덱스 시그니처
   };
 }

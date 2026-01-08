@@ -15,7 +15,7 @@
 
 #include "CSP/S3TargetHandler.h"
 #include "Client/S3Client.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/ClientCacheManager.h"
 #include <regex>

@@ -5,7 +5,7 @@
  * @date 2025-07-31
  * 
  * 🎯 DeviceRepository 패턴 완전 적용:
- * - DatabaseAbstractionLayer 사용
+ * - DbLib::DatabaseAbstractionLayer 사용
  * - executeQuery/executeNonQuery/executeUpsert 패턴
  * - 컴파일 에러 완전 해결
  * - formatTimestamp, ensureTableExists 문제 해결
@@ -13,7 +13,7 @@
 
 #include "Database/Repositories/SiteRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -43,7 +43,7 @@ std::vector<SiteEntity> SiteRepository::findAll() {
             ORDER BY hierarchy_level, name
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<SiteEntity> entities;
@@ -90,7 +90,7 @@ std::optional<SiteEntity> SiteRepository::findById(int id) {
             FROM sites 
             WHERE id = )" + std::to_string(id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -125,7 +125,7 @@ bool SiteRepository::save(SiteEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // entityToParams 메서드 사용하여 맵 생성
         std::map<std::string, std::string> data = entityToParams(entity);
@@ -181,7 +181,7 @@ bool SiteRepository::deleteById(int id) {
         
         const std::string query = "DELETE FROM sites WHERE id = " + std::to_string(id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -210,7 +210,7 @@ bool SiteRepository::exists(int id) {
         
         const std::string query = "SELECT COUNT(*) as count FROM sites WHERE id = " + std::to_string(id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -252,7 +252,7 @@ std::vector<SiteEntity> SiteRepository::findByIds(const std::vector<int>& ids) {
             FROM sites 
             WHERE id IN ()" + ids_ss.str() + ")";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<SiteEntity> entities;
@@ -298,7 +298,7 @@ std::vector<SiteEntity> SiteRepository::findByConditions(
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<SiteEntity> entities;
@@ -330,7 +330,7 @@ int SiteRepository::countByConditions(const std::vector<QueryCondition>& conditi
         std::string query = "SELECT COUNT(*) as count FROM sites";
         query += RepositoryHelpers::buildWhereClause(conditions);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -366,7 +366,7 @@ std::vector<SiteEntity> SiteRepository::findByTenant(int tenant_id) {
             ORDER BY hierarchy_level, name
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<SiteEntity> entities = mapResultToEntities(results);
@@ -397,7 +397,7 @@ std::vector<SiteEntity> SiteRepository::findByParentSite(int parent_site_id) {
             ORDER BY name
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<SiteEntity> entities = mapResultToEntities(results);
@@ -428,7 +428,7 @@ std::vector<SiteEntity> SiteRepository::findBySiteType(SiteEntity::SiteType site
             ORDER BY name
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<SiteEntity> entities;
@@ -472,7 +472,7 @@ std::vector<SiteEntity> SiteRepository::findActiveSites(int tenant_id) {
         }
         query += " ORDER BY hierarchy_level, name";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<SiteEntity> entities = mapResultToEntities(results);
@@ -504,7 +504,7 @@ std::vector<SiteEntity> SiteRepository::findRootSites(int tenant_id) {
             ORDER BY name
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<SiteEntity> entities = mapResultToEntities(results);
@@ -533,7 +533,7 @@ std::optional<SiteEntity> SiteRepository::findByCode(const std::string& code, in
             FROM sites 
             WHERE code = ')" + RepositoryHelpers::escapeString(code) + R"(' AND tenant_id = )" + std::to_string(tenant_id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -623,7 +623,7 @@ bool SiteRepository::updateSiteStatus(int site_id, bool is_active) {
                 updated_at = ')" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(site_id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -670,7 +670,7 @@ bool SiteRepository::updateHierarchyPath(SiteEntity& entity) {
                 updated_at = ')" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(entity.getId());
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -696,7 +696,7 @@ bool SiteRepository::hasChildSites(int site_id) {
         
         const std::string query = "SELECT COUNT(*) as count FROM sites WHERE parent_site_id = " + std::to_string(site_id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -736,7 +736,7 @@ std::map<std::string, int> SiteRepository::getSiteTypeDistribution() const {
             ORDER BY count DESC
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
@@ -766,7 +766,7 @@ SiteEntity SiteRepository::mapRowToEntity(const std::map<std::string, std::strin
     SiteEntity entity;
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         auto it = row.find("id");
         if (it != row.end()) {
@@ -857,7 +857,7 @@ std::vector<SiteEntity> SiteRepository::mapResultToEntities(
 }
 
 std::map<std::string, std::string> SiteRepository::entityToParams(const SiteEntity& entity) {
-    DatabaseAbstractionLayer db_layer;
+    DbLib::DatabaseAbstractionLayer db_layer;
     
     std::map<std::string, std::string> params;
     
@@ -947,7 +947,7 @@ bool SiteRepository::ensureTableExists() {
             )
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeCreateTable(base_create_query);
         
         if (success) {

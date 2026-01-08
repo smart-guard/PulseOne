@@ -4,7 +4,7 @@
 
 #include "Drivers/Modbus/ModbusPerformance.h"
 #include "Drivers/Modbus/ModbusDriver.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 namespace PulseOne {
 namespace Drivers {

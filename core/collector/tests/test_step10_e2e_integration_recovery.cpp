@@ -15,10 +15,10 @@
 
 // Core Utilities
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 // Database & Repositories
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/DataPointRepository.h"
@@ -26,14 +26,28 @@
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 
 // Pipeline & Workers
-#include "Pipeline/PipelineManager.h"
 #include "Pipeline/DataProcessingService.h"
+#include "Drivers/Common/DriverFactory.h"
+#include "Drivers/Modbus/ModbusDriver.h"
 #include "Workers/Protocol/ModbusWorker.h"
 
 // Engines
 #include "VirtualPoint/VirtualPointEngine.h"
 #include "Alarm/AlarmManager.h"
 #include "Alarm/AlarmEngine.h"
+
+// Helper for executeScalar since DatabaseManager lacks it
+int executeScalar(const std::string& sql) {
+    std::vector<std::vector<std::string>> results;
+    if (DbLib::DatabaseManager::getInstance().executeQuery(sql, results) && !results.empty() && !results[0].empty()) {
+        try {
+            return std::stoi(results[0][0]);
+        } catch (...) {
+            return 0;
+        }
+    }
+    return 0;
+}
 #include "Alarm/AlarmStartupRecovery.h"
 
 // Storage
@@ -46,10 +60,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-// Forward declaration of the plugin registration function from ModbusDriver.cpp
-extern "C" void RegisterPlugin();
-
 using namespace PulseOne;
+using namespace PulseOne::Drivers;
 using namespace PulseOne::Workers;
 using namespace PulseOne::Pipeline;
 using namespace PulseOne::VirtualPoint;
@@ -123,45 +135,45 @@ private:
 class E2EIntegrationTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        std::cout << "🚀 End-to-End Integration Test Setup" << std::endl;
+        std::cout << "🚀 End-to-End Integration Test Setup START" << std::endl;
         
-        // Register Modbus Driver (since we are statically linking but it uses plugin factory)
-        RegisterPlugin();
+        // Manual Driver Registration for tests (bypassing extern "C" collision)
+        DriverFactory::GetInstance().RegisterDriver("MODBUS", []() {
+            return std::make_unique<ModbusDriver>();
+        });
+        DriverFactory::GetInstance().RegisterDriver("MODBUS_TCP", []() {
+            return std::make_unique<ModbusDriver>();
+        });
+        DriverFactory::GetInstance().RegisterDriver("MODBUS_RTU", []() {
+            return std::make_unique<ModbusDriver>();
+        });
 
         // 1. Initialize DB
         ConfigManager::getInstance().initialize();
-        DatabaseManager::getInstance().initialize();
+        DbLib::DatabaseConfig dbConfig;
+        dbConfig.type = "SQLITE";
+        dbConfig.sqlite_path = "test_pulseone.db";
+        std::cout << "📦 Database Manager initializing..." << std::endl;
+        DbLib::DatabaseManager::getInstance().initialize(dbConfig);
+        std::cout << "🚀 End-to-End Integration Test Setup END" << std::endl;
         
+        std::cout << "📄 Loading schema..." << std::endl;
         // Reset DB with complete schema
         std::ifstream sql_file("db/test_schema_complete.sql");
         if (sql_file.is_open()) {
             std::stringstream buffer;
             buffer << sql_file.rdbuf();
-            DatabaseManager::getInstance().executeNonQuery(buffer.str());
+            DbLib::DatabaseManager::getInstance().executeNonQuery(buffer.str());
+            std::cout << "✅ Schema loaded" << std::endl;
+        } else {
+            std::cout << "⚠️ Failed to open schema file: db/test_schema_complete.sql" << std::endl;
         }
 
-        // 2. Clear and Setup specific data for this test
-        auto db = &DatabaseManager::getInstance();
-        db->executeNonQuery("DELETE FROM alarm_rules;");
-        db->executeNonQuery("DELETE FROM virtual_points;");
+        // 2. Clear and Setup data is handled by schema file above
+        // If schema file failed to load, the test will likely fail at insertion steps.
+        // We verify schema loading by checking if tables exist implicitly via usage.
         
-        // Create virtual_points table if not exists
-        db->executeNonQuery(
-            "CREATE TABLE IF NOT EXISTS virtual_points ("
-            "id INTEGER PRIMARY KEY, "
-            "tenant_id INTEGER, "
-            "name TEXT, "
-            "description TEXT, "
-            "formula TEXT, "
-            "data_type TEXT, "
-            "calculation_interval INTEGER DEFAULT 1000, "
-            "calculation_trigger TEXT DEFAULT 'change', "
-            "is_enabled INTEGER DEFAULT 1, "
-            "execution_type TEXT DEFAULT 'javascript', "
-            "dependencies TEXT DEFAULT '[]', "
-            "error_handling TEXT DEFAULT 'return_null'"
-            ");"
-        );
+        auto db = &DbLib::DatabaseManager::getInstance();
 
         // Explicitly Insert Alarm Rule and Virtual Point for Tenant 1
         db->executeNonQuery(
@@ -174,31 +186,45 @@ protected:
             "VALUES (100, 1, 'VP_Double', 'Production_Count * 2', '{\"inputs\": [{\"point_id\": 1, \"variable\": \"Production_Count\"}]}', 'float', 1, 'javascript');"
         );
 
-        // 3. Initialize Repositories
-        RepositoryFactory::getInstance().initialize();
-        
-        // 4. Start Pipeline Components
-        PipelineManager::GetInstance().Start();
+        std::cout << "🏭 Initializing VirtualPoint Engine..." << std::endl;
+        VirtualPointEngine::getInstance().initialize();
 
+        std::cout << "🔔 Initializing Alarm Manager..." << std::endl;
+        AlarmManager::getInstance().initialize();
+        
+        std::cout << "🚀 Pipeline Manager starting..." << std::endl;
+        // 4. Start Pipeline Components
+        PipelineManager::getInstance().initialize();
+
+        std::cout << "🔄 Data Processing Service starting..." << std::endl;
         data_processing_service_ = std::make_unique<DataProcessingService>();
         data_processing_service_->Start();
         
+        std::cout << "📻 Virtual Modbus Server starting..." << std::endl;
         // 5. Start Virtual Modbus Server
         modbus_server_ = std::make_unique<VirtualModbusTcpServer>(1502);
         modbus_server_->Start();
 
+        std::cout << "🔴 Redis Client connecting..." << std::endl;
         // 6. Redis Client
         redis_client_ = std::make_shared<RedisClientImpl>();
         redis_client_->connect("pulseone-redis", 6379);
+        std::cout << "✅ Redis connected" << std::endl;
         redis_client_->select(0);
     }
     
     void TearDown() override {
-        std::cout << "🏁 End-to-End Integration Test Teardown" << std::endl;
-        if (modbus_worker_) modbus_worker_->Stop().get();
-        if (modbus_server_) modbus_server_->Stop();
-        if (data_processing_service_) data_processing_service_->Stop();
-        PipelineManager::GetInstance().Shutdown();
+        if (modbus_worker_) {
+            modbus_worker_->Stop().get();
+        }
+        if (modbus_server_) {
+            modbus_server_->Stop();
+        }
+        if (data_processing_service_) {
+            data_processing_service_->Stop();
+        }
+        
+        PipelineManager::getInstance().Shutdown();
         VirtualPointEngine::getInstance().shutdown();
         AlarmManager::getInstance().shutdown();
     }
@@ -284,21 +310,21 @@ TEST_F(E2EIntegrationTest, Full_Pipeline_Flow_Modbus_to_Alarm) {
     }
 
     // 8. Verify Alarms
-    nlohmann::json stats = am.getStatistics();
-    uint64_t evaluations = stats.value("total_evaluations", 0ULL);
-    uint64_t raised = stats.value("alarms_raised", 0ULL);
+    // Case-sensitive check fix: SQL file uses 'active', test used 'ACTIVE'
+    auto raised = executeScalar("SELECT COUNT(*) FROM alarm_occurrences WHERE UPPER(state)='ACTIVE'");
+    auto alarm_stats = data_processing_service_->GetAlarmStatistics();
+    std::cout << "📊 Alarms evaluated: " << alarm_stats.total_evaluated << std::endl;
+    std::cout << "📊 Alarms triggered: " << alarm_stats.total_triggered << std::endl;
+    std::cout << "📊 Alarms active in DB: " << raised << std::endl;
     
-    std::cout << "📊 Alarms evaluated: " << evaluations << std::endl;
-    std::cout << "📊 Alarms raised: " << raised << std::endl;
-    
-    EXPECT_GT(static_cast<int64_t>(evaluations), 0);
+    EXPECT_GT(static_cast<int64_t>(alarm_stats.total_evaluated), 0);
     EXPECT_GT(static_cast<int64_t>(raised), 0);
 }
 
 TEST_F(E2EIntegrationTest, Alarm_Startup_Recovery_Flow) {
     std::cout << "🎯 Scenario: Alarm Startup Recovery" << std::endl;
 
-    auto db = &DatabaseManager::getInstance();
+    auto db = &DbLib::DatabaseManager::getInstance();
     db->executeNonQuery("DELETE FROM alarm_occurrences;");
     db->executeNonQuery(
         "INSERT INTO alarm_occurrences (rule_id, tenant_id, occurrence_time, trigger_value, severity, state) "

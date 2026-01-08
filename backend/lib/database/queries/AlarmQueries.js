@@ -505,7 +505,7 @@ class AlarmQueries {
             WHERE id = ? AND tenant_id = ?
         `,
         
-        DELETE: `DELETE FROM alarm_occurrences WHERE id = ?`,
+        DELETE: 'DELETE FROM alarm_occurrences WHERE id = ?',
         
         // 활성 알람 조회 - acknowledged 필터링 지원
         FIND_ACTIVE: `
@@ -990,17 +990,17 @@ class AlarmQueries {
         }
         
         if (filters.state) {
-            query += ` AND ao.state = ?`;
+            query += ' AND ao.state = ?';
             params.push(filters.state);
         }
         
         if (filters.severity) {
-            query += ` AND ao.severity = ?`;
+            query += ' AND ao.severity = ?';
             params.push(filters.severity);
         }
         
         if (filters.rule_id) {
-            query += ` AND ao.rule_id = ?`;
+            query += ' AND ao.rule_id = ?';
             params.push(parseInt(filters.rule_id));
         }
         
@@ -1008,46 +1008,46 @@ class AlarmQueries {
         if (filters.device_id) {
             const deviceId = parseInt(filters.device_id);
             if (!isNaN(deviceId)) {
-                query += ` AND ao.device_id = ?`;
+                query += ' AND ao.device_id = ?';
                 params.push(deviceId);
             }
         }
         
         if (filters.date_from) {
-            query += ` AND ao.occurrence_time >= ?`;
+            query += ' AND ao.occurrence_time >= ?';
             params.push(filters.date_from);
         }
         
         if (filters.date_to) {
-            query += ` AND ao.occurrence_time <= ?`;
+            query += ' AND ao.occurrence_time <= ?';
             params.push(filters.date_to);
         }
         
         // ✅ 개선: acknowledged 필터링 로직
         if (filters.acknowledged === true || filters.acknowledged === 'true') {
-            query += ` AND ao.acknowledged_time IS NOT NULL`;
+            query += ' AND ao.acknowledged_time IS NOT NULL';
         } else if (filters.acknowledged === false || filters.acknowledged === 'false') {
-            query += ` AND ao.acknowledged_time IS NULL`;
+            query += ' AND ao.acknowledged_time IS NULL';
         }
         
         if (filters.category) {
-            query += ` AND ao.category = ?`;
+            query += ' AND ao.category = ?';
             params.push(filters.category);
         }
         
         if (filters.tag) {
-            query += ` AND ao.tags LIKE ?`;
+            query += ' AND ao.tags LIKE ?';
             params.push(`%${filters.tag}%`);
         }
         
         // ✅ 추가: 사용자 필터
         if (filters.acknowledged_by) {
-            query += ` AND ao.acknowledged_by = ?`;
+            query += ' AND ao.acknowledged_by = ?';
             params.push(parseInt(filters.acknowledged_by));
         }
         
         if (filters.cleared_by) {
-            query += ` AND ao.cleared_by = ?`;
+            query += ' AND ao.cleared_by = ?';
             params.push(parseInt(filters.cleared_by));
         }
         
@@ -1136,57 +1136,57 @@ class AlarmQueries {
         }
         
         if (filters.alarm_type && filters.alarm_type !== 'all') {
-            query += ` AND ar.alarm_type = ?`;
+            query += ' AND ar.alarm_type = ?';
             params.push(filters.alarm_type);
         }
         
         if (filters.severity && filters.severity !== 'all') {
-            query += ` AND ar.severity = ?`;
+            query += ' AND ar.severity = ?';
             params.push(filters.severity);
         }
         
         if (filters.is_enabled !== undefined) {
-            query += ` AND ar.is_enabled = ?`;
+            query += ' AND ar.is_enabled = ?';
             params.push(filters.is_enabled ? 1 : 0);
         }
         
         if (filters.target_type && filters.target_type !== 'all') {
-            query += ` AND ar.target_type = ?`;
+            query += ' AND ar.target_type = ?';
             params.push(filters.target_type);
         }
         
         if (filters.target_id || filters.device_id || filters.data_point_id || filters.virtual_point_id) {
-            query += ` AND ar.target_id = ?`;
+            query += ' AND ar.target_id = ?';
             params.push(filters.target_id || filters.device_id || filters.data_point_id || filters.virtual_point_id);
         }
         
         if (filters.template_id) {
-            query += ` AND ar.template_id = ?`;
+            query += ' AND ar.template_id = ?';
             params.push(filters.template_id);
         }
         
         if (filters.rule_group) {
-            query += ` AND ar.rule_group = ?`;
+            query += ' AND ar.rule_group = ?';
             params.push(filters.rule_group);
         }
         
         if (filters.category && filters.category !== 'all') {
-            query += ` AND ar.category = ?`;
+            query += ' AND ar.category = ?';
             params.push(filters.category);
         }
         
         if (filters.tag && filters.tag.trim()) {
-            query += ` AND ar.tags LIKE ?`;
+            query += ' AND ar.tags LIKE ?';
             params.push(`%${filters.tag}%`);
         }
         
         if (filters.protocol_type) {
-            query += ` AND p.protocol_type = ?`;
+            query += ' AND p.protocol_type = ?';
             params.push(filters.protocol_type);
         }
         
         if (filters.search) {
-            query += ` AND (ar.name LIKE ? OR ar.description LIKE ? OR ar.category LIKE ? OR ar.tags LIKE ? OR p.protocol_type LIKE ?)`;
+            query += ' AND (ar.name LIKE ? OR ar.description LIKE ? OR ar.category LIKE ? OR ar.tags LIKE ? OR p.protocol_type LIKE ?)';
             params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
         }
         
@@ -1217,7 +1217,7 @@ class AlarmQueries {
             return query + ` ORDER BY ${sortBy} ${order.toUpperCase()}`;
         }
         
-        return query + ` ORDER BY created_at DESC`;
+        return query + ' ORDER BY created_at DESC';
     }
 
     /**
@@ -1498,21 +1498,21 @@ class AlarmQueries {
      */
     static validateConditionTypeSpecificFields(data) {
         switch (data.alarm_type) {
-            case 'analog':
-                if (!data.high_limit && !data.low_limit && !data.high_high_limit && !data.low_low_limit) {
-                    throw new Error('아날로그 알람은 임계값 중 하나는 필수입니다');
-                }
-                break;
-            case 'digital':
-                if (!data.trigger_condition) {
-                    throw new Error('디지털 알람은 trigger_condition이 필수입니다');
-                }
-                break;
-            case 'script':
-                if (!data.condition_script) {
-                    throw new Error('스크립트 알람은 condition_script가 필수입니다');
-                }
-                break;
+        case 'analog':
+            if (!data.high_limit && !data.low_limit && !data.high_high_limit && !data.low_low_limit) {
+                throw new Error('아날로그 알람은 임계값 중 하나는 필수입니다');
+            }
+            break;
+        case 'digital':
+            if (!data.trigger_condition) {
+                throw new Error('디지털 알람은 trigger_condition이 필수입니다');
+            }
+            break;
+        case 'script':
+            if (!data.condition_script) {
+                throw new Error('스크립트 알람은 condition_script가 필수입니다');
+            }
+            break;
         }
         return true;
     }

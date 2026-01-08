@@ -954,7 +954,7 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 function gracefulShutdown(signal) {
-    logger.system('INFO', `Graceful shutdown 시작`, { signal });
+    logger.system('INFO', 'Graceful shutdown 시작', { signal });
     
     const shutdownTimeout = config.getNumber('SHUTDOWN_TIMEOUT_MS', 10000);
     
@@ -1035,9 +1035,9 @@ server.listen(PORT, '0.0.0.0', async () => {
 🧪 Test Alarm:    POST http://localhost:${PORT}/api/test/alarm
 
 ${serverConfig.env === 'development' ? 
-`🎨 Frontend:      http://localhost:5173 (Vite Dev Server)
+        `🎨 Frontend:      http://localhost:5173 (Vite Dev Server)
 ⚠️  Note:          개발 환경 - Frontend는 별도 컨테이너에서 실행됨` :
-`📊 Dashboard:     http://localhost:${PORT}
+        `📊 Dashboard:     http://localhost:${PORT}
 ✅ Note:          프로덕션 환경 - Backend가 정적 파일 서빙`}
 
 🌐 Environment: ${serverConfig.env}

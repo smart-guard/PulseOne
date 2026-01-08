@@ -16,7 +16,7 @@
     #include "Database/Entities/AlarmRuleEntity.h"
     #include "Database/Entities/DataPointEntity.h"
     #include "Database/Entities/DeviceEntity.h"
-    #include "Utils/LogManager.h"  // LogManager 직접 사용
+    #include "Logging/LogManager.h"  // LogManager 직접 사용
 #endif
 
 namespace PulseOne {

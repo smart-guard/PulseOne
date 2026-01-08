@@ -3,8 +3,8 @@
 // =============================================================================
 
 #include "Alarm/AlarmManager.h"
-#include "Utils/LogManager.h"
-#include "Database/DatabaseManager.h"
+#include "Logging/LogManager.h"
+#include "DatabaseManager.hpp"
 #include "Alarm/AlarmEngine.h"
 #include "Utils/ConfigManager.h"
 #include <nlohmann/json.hpp>
@@ -39,6 +39,13 @@ AlarmManager::AlarmManager()
     , js_runtime_(nullptr)
     , js_context_(nullptr)
 {
+}
+
+bool AlarmManager::initialize() {
+    if (initialized_.load()) {
+        return true;
+    }
+
     try {
         auto& logger = LogManager::getInstance();
         logger.log("alarm", LogLevel::DEBUG, "🎯 AlarmManager 초기화 시작 (순수 알람 모드)");
@@ -54,11 +61,13 @@ AlarmManager::AlarmManager()
         initialized_ = true;
         
         logger.log("alarm", LogLevel::INFO, "✅ AlarmManager 초기화 완료 (외부 의존성 없음)");
+        return true;
         
     } catch (const std::exception& e) {
         auto& logger = LogManager::getInstance();
         logger.log("alarm", LogLevel::LOG_ERROR, "❌ AlarmManager 초기화 실패: " + std::string(e.what()));
         initialized_ = false;
+        return false;
     }
 }
 

@@ -739,6 +739,7 @@ private:
     // MQTT 설정 구조체
     struct {
         std::string broker_url = "mqtt://localhost:1883";
+        std::string topic = "";
         std::string client_id = "";
         std::string username = "";
         std::string password = "";

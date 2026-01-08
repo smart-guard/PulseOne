@@ -16,9 +16,9 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/DataPointEntity.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <memory>
 #include <map>
 #include <string>

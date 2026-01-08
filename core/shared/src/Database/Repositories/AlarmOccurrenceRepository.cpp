@@ -17,10 +17,10 @@
 
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include "Database/SQLQueries.h"
 #include "Database/ExtendedSQLQueries.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Alarm/AlarmTypes.h"
 #include <sstream>
 #include <iomanip>
@@ -42,7 +42,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::AlarmOccurrence::FIND_ALL);
         
         std::vector<AlarmOccurrenceEntity> entities;
@@ -83,7 +83,7 @@ std::optional<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findById(int id)
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::FIND_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
@@ -186,7 +186,7 @@ bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity& entity) {
         logger.log("AlarmOccurrenceRepository", LogLevel::INFO, 
                    "실행할 INSERT 쿼리: " + insert_query);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(insert_query);
         
         if (success) {
@@ -219,7 +219,7 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🔧 수정: device_id 정수형 처리
         std::map<std::string, std::string> params;
@@ -290,7 +290,7 @@ bool AlarmOccurrenceRepository::deleteById(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::DELETE_BY_ID, std::to_string(id));
         bool success = db_layer.executeNonQuery(query);
         
@@ -326,7 +326,7 @@ bool AlarmOccurrenceRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmOccurrence::EXISTS_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
@@ -367,7 +367,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByIds(const st
             query.insert(order_pos, "WHERE id IN (" + ids_ss.str() + ") ");
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto query_results = db_layer.executeQuery(query);
         
         results.reserve(query_results.size());
@@ -409,7 +409,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByConditions(
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto query_results = db_layer.executeQuery(query);
         
         results.reserve(query_results.size());
@@ -443,7 +443,7 @@ int AlarmOccurrenceRepository::countByConditions(const std::vector<QueryConditio
         std::string query = SQL::AlarmOccurrence::COUNT_ALL;
         query += RepositoryHelpers::buildWhereClause(conditions);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -510,7 +510,7 @@ int AlarmOccurrenceRepository::deleteByIds(const std::vector<int>& ids) {
         
         std::string query = "DELETE FROM alarm_occurrences WHERE id IN (" + ids_ss.str() + ")";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -555,7 +555,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActive(std::op
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<AlarmOccurrenceEntity> entities;
@@ -599,7 +599,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByRuleId(int r
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<AlarmOccurrenceEntity> entities;
@@ -646,7 +646,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTenant(int t
             query.insert(order_pos, where_clause);
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<AlarmOccurrenceEntity> entities;
@@ -700,7 +700,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findByTimeRange(
             query.insert(order_pos, where_clause);
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<AlarmOccurrenceEntity> entities;
@@ -736,7 +736,7 @@ bool AlarmOccurrenceRepository::acknowledge(int64_t occurrence_id, int acknowled
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = SQL::AlarmOccurrence::ACKNOWLEDGE;
         query = RepositoryHelpers::replaceParameter(query, std::to_string(acknowledged_by));
@@ -769,7 +769,7 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, int cleared_by, con
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // SQL::AlarmOccurrence::CLEAR 쿼리 사용
         // UPDATE alarm_occurrences SET state = 'cleared', cleared_time = CURRENT_TIMESTAMP, 
@@ -807,7 +807,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findClearedByUser(
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = R"(
             SELECT 
@@ -855,7 +855,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findAcknowledgedBy
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = R"(
             SELECT 
@@ -909,7 +909,7 @@ std::map<std::string, int> AlarmOccurrenceRepository::getAlarmStatistics(int ten
             return stats;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = R"(
             SELECT 
@@ -947,7 +947,7 @@ std::vector<AlarmOccurrenceEntity> AlarmOccurrenceRepository::findActiveByRuleId
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = R"(
             SELECT 
@@ -995,7 +995,7 @@ int AlarmOccurrenceRepository::findMaxId() {
             return 0;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         auto results = db_layer.executeQuery(SQL::AlarmOccurrence::FIND_MAX_ID);
         
@@ -1254,7 +1254,7 @@ std::map<std::string, std::string> AlarmOccurrenceRepository::entityToParams(con
 
 bool AlarmOccurrenceRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
 
         std::string check_query = "SELECT name FROM sqlite_master WHERE type='table' AND name='alarm_occurrences'";
         auto results = db_layer.executeQuery(check_query);

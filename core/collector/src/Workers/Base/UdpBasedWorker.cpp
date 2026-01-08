@@ -27,7 +27,7 @@
     #undef UniqueId
 #endif
 
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Common/Enums.h"
 #include <sstream>
 #include <iomanip>

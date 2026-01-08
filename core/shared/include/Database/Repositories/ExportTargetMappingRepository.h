@@ -12,8 +12,8 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/ExportTargetMappingEntity.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/LogManager.h"
+#include "DatabaseManager.hpp"
+#include "Logging/LogManager.h"
 #include <memory>
 #include <map>
 #include <string>

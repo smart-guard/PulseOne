@@ -1,5 +1,5 @@
 // =============================================================================
-// collector/include/Workers/WorkerManager.h - 간단한 싱글톤 Worker 관리자
+// collector/include/Workers/WorkerManager.h - Facade for Worker Components
 // =============================================================================
 #pragma once
 
@@ -7,201 +7,89 @@
 #define WORKER_MANAGER_H
 
 #include <memory>
-#include <unordered_map>
 #include <string>
-#include <mutex>
-#include <atomic>
+#include <vector>
 #include <nlohmann/json.hpp>
-#include "Common/Structs.h"
-#include "Storage/RedisDataWriter.h"
-#include "Database/Repositories/CurrentValueRepository.h"
-#include "Workers/Base/BaseDeviceWorker.h"
+
+// Forward declarations for Facade components
+namespace PulseOne::Workers {
+    class WorkerRegistry;
+    class WorkerScheduler;
+    class WorkerMonitor;
+    class BaseDeviceWorker; // For completeness if needed in public API return types
+}
+
+namespace PulseOne::Storage {
+    class RedisDataWriter;
+}
+
+namespace PulseOne::Structs {
+    struct DataPoint;
+}
 
 namespace PulseOne::Workers {
     
-class BaseDeviceWorker;
-class WorkerFactory;
-
-/**
- * @brief 간단한 Worker 관리자 (싱글톤)
- * 
- * 핵심 기능:
- * - 활성 Worker들의 생명주기 관리
- * - REST API에서 호출되는 메서드들
- * - Worker 상태 조회 및 제어
- */
-using DataValue = PulseOne::Structs::DataValue;
- class WorkerManager {
+class WorkerManager {
 public:
     // ==========================================================================
-    // 싱글톤 패턴
+    // Singleton Access
     // ==========================================================================
     static WorkerManager& getInstance();
     
+    // Prevent copying
     WorkerManager(const WorkerManager&) = delete;
     WorkerManager& operator=(const WorkerManager&) = delete;
 
     // ==========================================================================
-    // Worker 생명주기 관리 (REST API에서 호출)
+    // Worker Lifecycle (Delegated to Scheduler)
     // ==========================================================================
-    
-    /**
-     * @brief Worker 시작
-     */
     bool StartWorker(const std::string& device_id);
-    
-    /**
-     * @brief Worker 중지
-     */
     bool StopWorker(const std::string& device_id);
-    
-    /**
-     * @brief Worker 재시작
-     */
     bool RestartWorker(const std::string& device_id);
-    
-    /**
-     * @brief Worker 일시정지
-     */
     bool PauseWorker(const std::string& device_id);
-    
-    /**
-     * @brief Worker 재개
-     */
     bool ResumeWorker(const std::string& device_id);
-    
-    /**
-     * @brief Worker 설정 리로드
-     */
+    bool ReloadWorkerSettings(const std::string& device_id);
     bool ReloadWorker(const std::string& device_id);
     
     // ==========================================================================
-    // 대량 작업
+    // Bulk Operations (Delegated to Scheduler)
     // ==========================================================================
-    
-    /**
-     * @brief 활성화된 모든 Worker 시작
-     */
     int StartAllActiveWorkers();
-    
-    /**
-     * @brief 모든 Worker 중지
-     */
     void StopAllWorkers();
     
     // ==========================================================================
-    // 디바이스 제어 (REST API에서 호출)
+    // Device Control (Delegated to Scheduler/Worker)
     // ==========================================================================
-    
-    /**
-     * @brief 데이터 포인트 쓰기
-     */
     bool WriteDataPoint(const std::string& device_id, const std::string& point_id, const std::string& value);
-    
-    /**
-     * @brief 출력 제어 (펌프/밸브)
-     */
+    bool ControlDigitalOutput(const std::string& device_id, const std::string& output_id, bool enable);
+    bool ControlAnalogOutput(const std::string& device_id, const std::string& output_id, double value);
     bool ControlOutput(const std::string& device_id, const std::string& output_id, bool enable);
     bool ControlDigitalDevice(const std::string& device_id, const std::string& device_id_target, bool enable);
-    // ==========================================================================
-    // 상태 조회 (REST API에서 호출)
-    // ==========================================================================
     
-    /**
-     * @brief 특정 Worker 상태 조회
-     */
+    // ==========================================================================
+    // Discovery (Delegated to Registry -> Worker)
+    // ==========================================================================
+    std::vector<PulseOne::Structs::DataPoint> DiscoverDevicePoints(const std::string& device_id);
+
+    // ==========================================================================
+    // Status & Statistics (Delegated to Monitor)
+    // ==========================================================================
     nlohmann::json GetWorkerStatus(const std::string& device_id) const;
-    
-    /**
-     * @brief 모든 Worker 목록 조회
-     */
     nlohmann::json GetWorkerList() const;
-    
-    /**
-     * @brief 매니저 통계 조회
-     */
-    nlohmann::json GetManagerStats() const;
-    
-    /**
-     * @brief 활성 Worker 개수
-     */
+    nlohmann::json GetManagerStats() const; // Maps to GetDetailedStatistics
     size_t GetActiveWorkerCount() const;
-    
-    /**
-     * @brief Worker 존재 여부 확인
-     */
     bool HasWorker(const std::string& device_id) const;
-    
-    /**
-     * @brief Worker 실행 상태 확인
-     */
     bool IsWorkerRunning(const std::string& device_id) const;
 
 private:
-    // ==========================================================================
-    // 생성자/소멸자 (싱글톤)
-    // ==========================================================================
     WorkerManager();
     ~WorkerManager();
 
-    // ==========================================================================
-    // 내부 헬퍼 메서드들
-    // ==========================================================================
-    
-    /**
-     * @brief Worker 찾기
-     */
-    std::shared_ptr<BaseDeviceWorker> FindWorker(const std::string& device_id) const;
-    
-    /**
-     * @brief 새 Worker 생성 및 등록
-     */
-    std::shared_ptr<BaseDeviceWorker> CreateAndRegisterWorker(const std::string& device_id);
-    
-    /**
-     * @brief Worker 등록
-     */
-    void RegisterWorker(const std::string& device_id, std::shared_ptr<BaseDeviceWorker> worker);
-    
-    /**
-     * @brief Worker 등록 해제
-     */
-    void UnregisterWorker(const std::string& device_id);
-
-    /**
-     * @brief 모든 워커 상태를 JSON으로 반환 (새로 추가)
-     */
-    nlohmann::json GetAllWorkersStatus() const;
-
-    /**
-     * @brief Worker 통계 정보 반환 (새로 추가)
-     */
-    nlohmann::json GetDetailedStatistics() const;
-    std::string WorkerStateToString(WorkerState state) const;
-    std::string GetWorkerStateDescription(WorkerState state, bool connected) const;
-private:
-    // ==========================================================================
-    // 멤버 변수들
-    // ==========================================================================
-    
-    // Worker 관리 (핵심)
-    mutable std::mutex workers_mutex_;
-    std::unordered_map<std::string, std::shared_ptr<BaseDeviceWorker>> workers_;
-    
-    // WorkerFactory (Worker 생성용)
-    std::unique_ptr<WorkerFactory> worker_factory_;
-    
-    // 통계
-    std::atomic<int> total_started_{0};
-    std::atomic<int> total_stopped_{0};
-    std::atomic<int> total_errors_{0};
-
-    std::unique_ptr<Storage::RedisDataWriter> redis_data_writer_;
-
-    bool ConvertStringToDataValue(const std::string& str, DataValue& value);
-    void InitializeWorkerRedisData(const std::string& device_id);
-    int BatchInitializeRedisData(const std::vector<std::string>& device_ids);
-    std::vector<Structs::TimestampedValue> LoadCurrentValuesFromDB(const std::string& device_id);
+    // Components
+    std::shared_ptr<Storage::RedisDataWriter> redis_writer_;
+    std::shared_ptr<WorkerRegistry> registry_;
+    std::shared_ptr<WorkerScheduler> scheduler_;
+    std::shared_ptr<WorkerMonitor> monitor_;
 };
 
 } // namespace PulseOne::Workers

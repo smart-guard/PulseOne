@@ -27,18 +27,29 @@
 #include <sstream>      // std::ostringstream용
 
 // ✅ 필수 타입만 include
-#include "Database/DatabaseTypes.h"
+#include "DatabaseAbstractionLayer.hpp"
+#include "CoreRepository.hpp"
+#include "DatabaseTypes.hpp"
 
 // 🔥 실제 헤더 include (전방 선언 대신)
-#include "Database/DatabaseManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
+#include "DatabaseManager.hpp" // Ensure full definition
 
 namespace PulseOne {
 namespace Database {
 
+    // Type Aliases for Backward Compatibility
+    using ValueType = DbLib::ValueType;
+    using QueryCondition = DbLib::QueryCondition;
+    using OrderBy = DbLib::OrderBy;
+    using Pagination = DbLib::Pagination;
+
 template<typename EntityType>
-class IRepository {
+class IRepository : public DbLib::CoreRepository<EntityType> {
+public:
+    using Base = DbLib::CoreRepository<EntityType>;
+
 private:
     // ✅ CacheEntry 구조체
     struct CacheEntry {
@@ -66,14 +77,14 @@ private:
 
 protected:
     // ✅ 생성자
-    explicit IRepository(const std::string& repository_name = "Repository")
-        : cache_enabled_(true)
+    explicit IRepository(const std::string& repository_name = "Repository", const std::string& table_name = "")
+        : Base(dal_instance_, repository_name, table_name)
+        , cache_enabled_(true)
         , cache_ttl_(std::chrono::seconds(300))
         , max_cache_size_(1000)
         , cache_hits_(0)
         , cache_misses_(0)
         , cache_evictions_(0)
-        , repository_name_(repository_name)
         , enable_bulk_optimization_(true)
         , db_manager_(nullptr)
         , config_manager_(nullptr)
@@ -85,14 +96,13 @@ public:
 
     void initializeDependencies() {
         try {
-            // ✅ 모든 매니저를 전역 네임스페이스로 접근
-            db_manager_ = &DatabaseManager::getInstance();      // ✅ 전역
-            config_manager_ = &ConfigManager::getInstance();    // ✅ 전역
-            logger_ = &LogManager::getInstance();               // ✅ 전역
+            db_manager_ = &DbLib::DatabaseManager::getInstance();
+            config_manager_ = &ConfigManager::getInstance();
+            logger_ = &LogManager::getInstance();
             
             loadCacheConfiguration();
             if (logger_) {
-                logger_->Info("🗄️ " + repository_name_ + " initialized with caching enabled");
+                logger_->Info("🗄️ " + this->repository_name_ + " initialized");
             }
         } catch (const std::exception& e) {
             if (logger_) {
@@ -101,42 +111,48 @@ public:
         }
     }
 
+    // Use base class methods
+    using Base::buildWhereClause;
+    using Base::buildOrderByClause;
+    using Base::buildLimitClause;
+    using Base::escapeString;
+
     // =======================================================================
     // 🔥 기본 가상 함수들 (unused parameter 경고 제거)
     // =======================================================================
     
     virtual std::vector<EntityType> findAll() {
-        if (logger_) logger_->Error(repository_name_ + "::findAll() - Not implemented");
+        if (logger_) logger_->Error(Base::repository_name_ + "::findAll() - Not implemented");
         return {};
     }
     
     // 🔥 수정: unused parameter 경고 제거
     virtual std::optional<EntityType> findById([[maybe_unused]] int id) {
-        if (logger_) logger_->Error(repository_name_ + "::findById() - Not implemented");
+        if (logger_) logger_->Error(Base::repository_name_ + "::findById() - Not implemented");
         return std::nullopt;
     }
     
     // 🔥 수정: unused parameter 경고 제거
     virtual bool save([[maybe_unused]] EntityType& entity) {
-        if (logger_) logger_->Error(repository_name_ + "::save() - Not implemented");
+        if (logger_) logger_->Error(this->repository_name_ + "::save() - Not implemented");
         return false;
     }
     
     // 🔥 수정: unused parameter 경고 제거
     virtual bool update([[maybe_unused]] const EntityType& entity) {
-        if (logger_) logger_->Error(repository_name_ + "::update() - Not implemented");
+        if (logger_) logger_->Error(this->repository_name_ + "::update() - Not implemented");
         return false;
     }
     
     // 🔥 수정: unused parameter 경고 제거
     virtual bool deleteById([[maybe_unused]] int id) {
-        if (logger_) logger_->Error(repository_name_ + "::deleteById() - Not implemented");
+        if (logger_) logger_->Error(this->repository_name_ + "::deleteById() - Not implemented");
         return false;
     }
     
     // 🔥 수정: unused parameter 경고 제거
     virtual bool exists([[maybe_unused]] int id) {
-        if (logger_) logger_->Error(repository_name_ + "::exists() - Not implemented");
+        if (logger_) logger_->Error(this->repository_name_ + "::exists() - Not implemented");
         return false;
     }
 
@@ -166,7 +182,7 @@ public:
             return count;
         }
         
-        if (logger_) logger_->Error(repository_name_ + "::saveBulk() - Not implemented");
+        if (logger_) logger_->Error(this->repository_name_ + "::saveBulk() - Not implemented");
         return 0;
     }
 
@@ -179,7 +195,7 @@ public:
             return count;
         }
         
-        if (logger_) logger_->Error(repository_name_ + "::updateBulk() - Not implemented");
+        if (logger_) logger_->Error(this->repository_name_ + "::updateBulk() - Not implemented");
         return 0;
     }
 
@@ -192,7 +208,7 @@ public:
             return count;
         }
         
-        if (logger_) logger_->Error(repository_name_ + "::deleteByIds() - Not implemented");
+        if (logger_) logger_->Error(this->repository_name_ + "::deleteByIds() - Not implemented");
         return 0;
     }
 
@@ -205,13 +221,13 @@ public:
         [[maybe_unused]] const std::optional<OrderBy>& order_by = std::nullopt,
         [[maybe_unused]] const std::optional<Pagination>& pagination = std::nullopt) {
         
-        if (logger_) logger_->Error(repository_name_ + "::findByConditions() - Not implemented");
+        if (logger_) logger_->Error(this->repository_name_ + "::findByConditions() - Not implemented");
         return {};
     }
     
     // 🔥 수정: unused parameter 경고 제거
     virtual int countByConditions([[maybe_unused]] const std::vector<QueryCondition>& conditions) {
-        if (logger_) logger_->Error(repository_name_ + "::countByConditions() - Not implemented");
+        if (logger_) logger_->Error(this->repository_name_ + "::countByConditions() - Not implemented");
         return 0;
     }
 
@@ -227,7 +243,7 @@ public:
         std::lock_guard<std::mutex> lock(cache_mutex_);
         cache_enabled_ = enabled;
         if (logger_) {
-            logger_->Info(repository_name_ + " cache " + (enabled ? "enabled" : "disabled"));
+            logger_->Info(this->repository_name_ + " cache " + (enabled ? "enabled" : "disabled"));
         }
     }
     
@@ -243,7 +259,7 @@ public:
         cache_misses_ = 0;
         cache_evictions_ = 0;
         if (logger_) {
-            logger_->Info(repository_name_ + " cache cleared");
+            logger_->Info(this->repository_name_ + " cache cleared");
         }
     }
     
@@ -253,7 +269,7 @@ public:
         if (it != entity_cache_.end()) {
             entity_cache_.erase(it);
             if (logger_) {
-                logger_->Debug(repository_name_ + " cache cleared for ID: " + std::to_string(id));
+                logger_->Debug(this->repository_name_ + " cache cleared for ID: " + std::to_string(id));
             }
         }
     }
@@ -276,9 +292,9 @@ public:
     // =======================================================================
     
     virtual std::string getRepositoryName() const {
-        return repository_name_;
+        return this->repository_name_;
     }
-
+    
     bool isInitialized() const {
         return (db_manager_ != nullptr && config_manager_ != nullptr && logger_ != nullptr);
     }
@@ -337,11 +353,11 @@ protected:
             
         } catch (const std::exception& e) {
             if (logger_) {
-                logger_->Warn(repository_name_ + " - Failed to cache entity: " + std::string(e.what()));
+                logger_->Warn(this->repository_name_ + " - Failed to cache entity: " + std::string(e.what()));
             }
         } catch (...) {
             if (logger_) {
-                logger_->Warn(repository_name_ + " - Failed to cache entity (unknown error)");
+                logger_->Warn(this->repository_name_ + " - Failed to cache entity (unknown error)");
             }
         }
     }
@@ -362,7 +378,7 @@ protected:
                       
         } catch (const std::exception& e) {
             if (logger_) {
-                logger_->Warn(repository_name_ + " failed to load cache config, using defaults: " + std::string(e.what()));
+                logger_->Warn(this->repository_name_ + " failed to load cache config, using defaults: " + std::string(e.what()));
             }
             cache_enabled_ = true;
             cache_ttl_ = std::chrono::seconds(300);
@@ -371,141 +387,24 @@ protected:
         }
     }
 
-    /**
-     * @brief WHERE 절 빌드 (기본 테이블용)
-     * @param conditions 쿼리 조건들
-     * @return WHERE 절 문자열 ("WHERE ..." 형태)
-     */
-    virtual std::string buildWhereClause(const std::vector<QueryCondition>& conditions) {
-        if (conditions.empty()) {
-            return "";
-        }
-        
-        std::ostringstream where_clause;
-        where_clause << " WHERE ";
-        
-        for (size_t i = 0; i < conditions.size(); ++i) {
-            if (i > 0) {
-                where_clause << " AND ";
-            }
-            
-            const auto& condition = conditions[i];
-            // ✅ 정확한 필드명 사용: field, operation, value
-            where_clause << condition.field << " "
-                        << condition.operation << " '"
-                        << escapeString(condition.value) << "'";
-        }
-        
-        return where_clause.str();
-    }
-
-    /**
-     * @brief WHERE 절 빌드 (테이블 별칭 포함 - JOIN용)
-     * @param conditions 쿼리 조건들
-     * @param table_alias 테이블 별칭 (예: "d", "dp")
-     * @return WHERE 절 문자열
-     */
-    virtual std::string buildWhereClauseWithAlias(
-        const std::vector<QueryCondition>& conditions,
-        const std::string& table_alias = "") {
-        
-        if (conditions.empty()) {
-            return "";
-        }
-        
-        std::ostringstream where_clause;
-        where_clause << " WHERE ";
-        
-        for (size_t i = 0; i < conditions.size(); ++i) {
-            if (i > 0) {
-                where_clause << " AND ";
-            }
-            
-            const auto& condition = conditions[i];
-            
-            if (!table_alias.empty()) {
-                // ✅ 정확한 필드명 사용
-                where_clause << table_alias << "." << condition.field << " "
-                            << condition.operation << " '"
-                            << escapeString(condition.value) << "'";
-            } else {
-                where_clause << condition.field << " "
-                            << condition.operation << " '"
-                            << escapeString(condition.value) << "'";
-            }
-        }
-        
-        return where_clause.str();
-    }
-
-    /**
-     * @brief ORDER BY 절 빌드
-     * @param order_by 정렬 조건
-     * @return ORDER BY 절 문자열
-     */
-    virtual std::string buildOrderByClause(const std::optional<OrderBy>& order_by) {
-        if (!order_by.has_value()) {
-            return "";
-        }
-        
-        return " ORDER BY " + order_by->field + 
-               (order_by->ascending ? " ASC" : " DESC");
-    }
-    
-    /**
-     * @brief LIMIT/OFFSET 절 빌드
-     * @param pagination 페이징 조건
-     * @return LIMIT 절 문자열
-     */
-    virtual std::string buildLimitClause(const std::optional<Pagination>& pagination) {
-        if (!pagination.has_value()) {
-            return "";
-        }
-        
-        std::ostringstream limit_clause;
-        limit_clause << " LIMIT " << pagination->limit;
-        
-        if (pagination->offset > 0) {
-            limit_clause << " OFFSET " << pagination->offset;
-        }
-        
-        return limit_clause.str();
-    }
-    
-    /**
-     * @brief 문자열 이스케이프 처리 (SQL Injection 방지)
-     * @param str 이스케이프할 문자열
-     * @return 이스케이프된 문자열
-     */
-    virtual std::string escapeString(const std::string& str) const {
-        std::string escaped = str;
-        
-        // 기본적인 SQL Injection 방지
-        std::string search = "'";
-        std::string replace = "''";
-        
-        size_t pos = 0;
-        while ((pos = escaped.find(search, pos)) != std::string::npos) {
-            escaped.replace(pos, search.length(), replace);
-            pos += replace.length();
-        }
-        
-        return escaped;
-    }
 
 protected:
     // =======================================================================
     // ✅ 멤버 변수들 (모두 전역 네임스페이스)
     // =======================================================================
     
-    std::string repository_name_;
     bool enable_bulk_optimization_;
     
     // ✅ 모든 매니저가 전역 네임스페이스에 있음
-    DatabaseManager* db_manager_;           // ✅ 전역
+    DbLib::DatabaseManager* db_manager_;           // ✅ 전역
     ConfigManager* config_manager_;         // ✅ 전역
     LogManager* logger_;                    // ✅ 전역
+
+    static DbLib::DatabaseAbstractionLayer dal_instance_;
 };
+
+template<typename EntityType>
+DbLib::DatabaseAbstractionLayer IRepository<EntityType>::dal_instance_;
 
 } // namespace Database
 } // namespace PulseOne

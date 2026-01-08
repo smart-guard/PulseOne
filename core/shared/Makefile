@@ -53,8 +53,11 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Database/Repositories \
            -I$(INCLUDE_DIR)/Client \
            -I$(INCLUDE_DIR)/Data \
-           -I$(INCLUDE_DIR)/Export \
-           -I$(INCLUDE_DIR)/Alarm
+           -I$(INCLUDE_DIR)/Alarm \
+           -I$(INCLUDE_DIR)/Logging \
+           -Imodules/LogLib/include \
+           -Imodules/DbLib/include \
+           -I../collector/include
 
 # =============================================================================
 # 라이브러리 감지 (OpenSSL 추가!)
@@ -112,7 +115,12 @@ endif
 
 COMMON_SOURCES = $(wildcard $(SRC_DIR)/Common/*.cpp) \
                 $(wildcard $(SRC_DIR)/Utils/*.cpp) \
-                $(wildcard $(SRC_DIR)/Platform/*.cpp)
+                $(wildcard $(SRC_DIR)/Platform/*.cpp) \
+                $(wildcard $(SRC_DIR)/Logging/*.cpp) \
+                $(wildcard modules/LogLib/src/*.cpp)
+
+# 🆕 DbLib 소스
+DBLIB_SOURCES = $(wildcard modules/DbLib/src/*.cpp)
 
 SECURITY_SOURCES = $(wildcard $(SRC_DIR)/Security/*.cpp)
 
@@ -129,14 +137,16 @@ EXPORT_SOURCES = $(wildcard $(SRC_DIR)/Export/*.cpp)
 
 ALARM_SOURCES = $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 
-# 오브젝트 파일
-COMMON_OBJECTS = $(COMMON_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+# 오브젝트 파일 (src/ 아래 소스들)
+COMMON_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(filter $(SRC_DIR)/%,$(COMMON_SOURCES))) \
+                 $(patsubst modules/%.cpp,$(BUILD_DIR)/%.o,$(filter modules/%,$(COMMON_SOURCES)))
 SECURITY_OBJECTS = $(SECURITY_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 DATABASE_OBJECTS = $(DATABASE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 CLIENT_OBJECTS = $(CLIENT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 DATA_OBJECTS = $(DATA_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 EXPORT_OBJECTS = $(EXPORT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 ALARM_OBJECTS = $(ALARM_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+DBLIB_OBJECTS = $(patsubst modules/DbLib/src/%.cpp,$(BUILD_DIR)/DbLib/src/%.o,$(DBLIB_SOURCES))
 
 # 라이브러리 파일들 (Data 추가!)
 COMMON_LIB = $(LIB_DIR)/libpulseone-common$(LIB_SUFFIX)
@@ -146,6 +156,7 @@ CLIENT_LIB = $(LIB_DIR)/libpulseone-client$(LIB_SUFFIX)
 DATA_LIB = $(LIB_DIR)/libpulseone-data$(LIB_SUFFIX)
 EXPORT_LIB = $(LIB_DIR)/libpulseone-export$(LIB_SUFFIX)
 ALARM_LIB = $(LIB_DIR)/libpulseone-alarm$(LIB_SUFFIX)
+DBLIB_LIB = $(LIB_DIR)/libpulseone-dblib$(LIB_SUFFIX)
 
 # 색상 정의
 GREEN = \033[0;32m
@@ -158,9 +169,9 @@ NC = \033[0m
 # 메인 타겟들
 # =============================================================================
 
-.PHONY: all clean common security database client data export alarm test-headers help info openssl-check
+.PHONY: all clean common security database client data export alarm dblib test-dblib test-headers help info openssl-check
 
-all: $(BUILD_DIR) $(LIB_DIR) common security database client data export alarm
+all: $(BUILD_DIR) $(LIB_DIR) common security database client data export alarm dblib
 	@echo -e "$(GREEN)✅ 모든 공유 라이브러리 빌드 완료 [$(PLATFORM)]$(NC)"
 
 # 디렉토리 생성 (Data 추가!)
@@ -173,6 +184,9 @@ $(BUILD_DIR) $(LIB_DIR):
 	@mkdir -p $(BUILD_DIR)/Data
 	@mkdir -p $(BUILD_DIR)/Export
 	@mkdir -p $(BUILD_DIR)/Alarm
+	@mkdir -p $(BUILD_DIR)/LogLib
+	@mkdir -p $(BUILD_DIR)/DbLib/src
+	@mkdir -p $(BUILD_DIR)/Logging
 
 # =============================================================================
 # 라이브러리 빌드 (Data 추가!)
@@ -257,6 +271,18 @@ else
 	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
 endif
 
+# 🆕 DbLib 라이브러리 빌드
+dblib: $(DBLIB_LIB)
+$(DBLIB_LIB): $(DBLIB_OBJECTS) | $(LIB_DIR)
+	@echo -e "$(BLUE)🔧 Building libpulseone-dblib [$(PLATFORM)]$(NC)"
+ifneq ($(DBLIB_OBJECTS),)
+	@ar rcs $@ $(DBLIB_OBJECTS)
+	@ranlib $@ 2>/dev/null || true
+else
+	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
+	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+endif
+
 # =============================================================================
 # 오브젝트 파일 컴파일
 # =============================================================================
@@ -265,6 +291,28 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@mkdir -p $(dir $@)
 	@echo -e "$(YELLOW)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# LogLib 소스 컴파일용 별도 규칙
+$(BUILD_DIR)/LogLib/src/%.o: modules/LogLib/src/%.cpp | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	@echo -e "$(YELLOW)⚙️ Compiling LogLib $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# DbLib 소스 컴파일용 별도 규칙
+$(BUILD_DIR)/DbLib/src/%.o: modules/DbLib/src/%.cpp | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	@echo -e "$(YELLOW)⚙️ Compiling DbLib $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# DbLib 테스트 빌드 및 실행
+test-dblib: dblib common client security
+	@echo -e "$(BLUE)🧪 Building DbLib Standalone Test...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) modules/DbLib/tests/test_dblib_core.cpp \
+		$(DBLIB_LIB) $(CLIENT_LIB) $(COMMON_LIB) $(SECURITY_LIB) \
+		-lsqlite3 -lpqxx -lpq -lmysqlclient -lhiredis $(LDFLAGS) \
+		-o $(BUILD_DIR)/test_dblib_core
+	@echo -e "$(GREEN)🚀 Running DbLib Standalone Test...$(NC)"
+	@./$(BUILD_DIR)/test_dblib_core
 
 # =============================================================================
 # OpenSSL 확인 타겟 (디버깅용)

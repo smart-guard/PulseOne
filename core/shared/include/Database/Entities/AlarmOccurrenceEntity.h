@@ -16,7 +16,7 @@
 
 #include "Database/Entities/BaseEntity.h"
 #include "Alarm/AlarmTypes.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <chrono>
 #include <string>
 #include <optional>

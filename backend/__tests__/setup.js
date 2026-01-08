@@ -61,7 +61,7 @@ afterAll(async () => {
     
     // 테스트 결과 요약
     const testResults = global.testResults || {};
-    console.log(`📊 테스트 통계:`);
+    console.log('📊 테스트 통계:');
     console.log(`   - 총 테스트 수: ${testResults.numTotalTests || 'N/A'}`);
     console.log(`   - 성공: ${testResults.numPassedTests || 'N/A'}`);
     console.log(`   - 실패: ${testResults.numFailedTests || 'N/A'}`);

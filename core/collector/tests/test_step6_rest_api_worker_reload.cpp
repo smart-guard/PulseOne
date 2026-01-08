@@ -14,8 +14,8 @@
 
 // PulseOne 시스템 헤더들
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
-#include "Database/DatabaseManager.h"
+#include "Logging/LogManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 #include "Workers/WorkerManager.h"
 
@@ -33,7 +33,7 @@
 
 // Worker들
 #include "Workers/Base/BaseDeviceWorker.h"
-#include "Workers/Protocol/ModbusTcpWorker.h"
+#include "Workers/Protocol/ModbusWorker.h"
 
 // Redis 클라이언트 직접 접근
 #include "Client/RedisClient.h"
@@ -78,7 +78,7 @@ protected:
     // 멤버 변수들
     ConfigManager* config_manager_;
     LogManager* logger_;
-    DatabaseManager* db_manager_;
+    DbLib::DatabaseManager* db_manager_;
     RepositoryFactory* repo_factory_;
     
     // Repository들
@@ -125,7 +125,7 @@ protected:
     void SetupSystemComponents() {
         config_manager_ = &ConfigManager::getInstance();
         logger_ = &LogManager::getInstance();
-        db_manager_ = &DatabaseManager::getInstance();
+        db_manager_ = &DbLib::DatabaseManager::getInstance();
         repo_factory_ = &RepositoryFactory::getInstance();
         
         logger_->setLogLevel(LogLevel::INFO);

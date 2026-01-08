@@ -279,7 +279,7 @@ router.get('/service-health', async (req, res) => {
             const healthyCount = Object.values(services).filter(status => status === 'healthy').length;
             const totalCount = Object.keys(services).length;
             const overall = healthyCount === totalCount ? 'healthy' : 
-                           healthyCount > totalCount / 2 ? 'degraded' : 'critical';
+                healthyCount > totalCount / 2 ? 'degraded' : 'critical';
 
             console.log('✅ 서비스 헬스체크 완료 (CrossPlatformManager):');
             console.log('   서비스 상태:', services);
@@ -368,15 +368,15 @@ router.get('/database-stats', async (req, res) => {
                 
                 const queries = [
                     // 테이블 목록 조회
-                    "SELECT COUNT(*) as table_count FROM sqlite_master WHERE type='table'",
+                    'SELECT COUNT(*) as table_count FROM sqlite_master WHERE type=\'table\'',
                     // 디바이스 수
-                    "SELECT COUNT(*) as device_count FROM devices",
+                    'SELECT COUNT(*) as device_count FROM devices',
                     // 데이터 포인트 수  
-                    "SELECT COUNT(*) as data_point_count FROM data_points",
+                    'SELECT COUNT(*) as data_point_count FROM data_points',
                     // 활성 알람 수
-                    "SELECT COUNT(*) as active_alarm_count FROM alarm_occurrences WHERE state='active'",
+                    'SELECT COUNT(*) as active_alarm_count FROM alarm_occurrences WHERE state=\'active\'',
                     // 사용자 수
-                    "SELECT COUNT(*) as user_count FROM users"
+                    'SELECT COUNT(*) as user_count FROM users'
                 ];
                 
                 let results = {};

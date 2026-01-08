@@ -6,7 +6,7 @@
 #include "Database/Entities/ExportTargetMappingEntity.h"
 #include "Database/Repositories/ExportTargetMappingRepository.h"
 #include "Database/RepositoryFactory.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;

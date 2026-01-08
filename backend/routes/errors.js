@@ -131,7 +131,7 @@ router.get('/codes/:code', async (req, res) => {
     } catch (error) {
         res.status(400).json({
             success: false,
-            error: "Invalid error code",
+            error: 'Invalid error code',
             timestamp: new Date().toISOString()
         });
     }
@@ -171,7 +171,7 @@ router.post('/report', async (req, res) => {
         
         res.json({
             success: true,
-            message: "Error recorded successfully",
+            message: 'Error recorded successfully',
             error_id: errorRecord.id
         });
         

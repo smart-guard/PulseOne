@@ -10,9 +10,11 @@
 #include "Client/InfluxClient.h"
 #include "Database/Entities/CurrentValueEntity.h"
 #include "Utils/ThreadSafeQueue.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Alarm/AlarmTypes.h"
 #include "VirtualPoint/VirtualPointBatchWriter.h"
+#include "Pipeline/IPersistenceQueue.h"
+#include "Pipeline/IPipelineStage.h"
 #include <vector>
 #include <memory>
 #include <atomic>
@@ -45,18 +47,17 @@ namespace Pipeline {
 
 using DataValue = PulseOne::Structs::DataValue;
 
-/**
- * @brief Persistence Task for background processing
- */
 struct PersistenceTask {
-    enum class Type { RDB_SAVE, INFLUX_SAVE };
+    enum class Type { RDB_SAVE, INFLUX_SAVE, COMM_STATS_SAVE };
     Type type;
     Structs::DeviceDataMessage message;
     std::vector<Structs::TimestampedValue> points;
 };
 
-class DataProcessingService {
+class DataProcessingService : public IPersistenceQueue {
 public:
+    // Pipeline Helpers
+    void InitializePipeline();
     // 기본 구조체들
     struct ProcessingStats {
         std::atomic<size_t> total_batches_processed{0};
@@ -119,7 +120,7 @@ public:
 
     // 생성자 - 매개변수 제거
     DataProcessingService();
-    ~DataProcessingService();
+    virtual ~DataProcessingService();
 
     // 서비스 제어
     bool Start();
@@ -153,6 +154,7 @@ public:
     // InfluxDB 저장
     void SaveToInfluxDB(const std::vector<Structs::TimestampedValue>& batch);
     void BufferForInfluxDB(const Structs::DeviceDataMessage& message);
+    void BufferCommStatsForInfluxDB(const Structs::DeviceDataMessage& message);
 
     // 헬퍼 메서드들 (구현부에 있는 함수들)
     std::vector<Structs::TimestampedValue> ConvertToTimestampedValues(const Structs::DeviceDataMessage& device_msg);
@@ -202,6 +204,20 @@ public:
     void EnableVirtualPointCalculation(bool enable) { virtual_point_calculation_enabled_.store(enable); }
     void EnableExternalNotifications(bool enable) { external_notification_enabled_.store(enable); }
 
+    // IPersistenceQueue Implementation
+    void QueueRDBTask(const Structs::DeviceDataMessage& message, 
+                     const std::vector<Structs::TimestampedValue>& points) override;
+    void QueueInfluxTask(const Structs::DeviceDataMessage& message, 
+                        const std::vector<Structs::TimestampedValue>& points) override;
+    void QueueCommStatsTask(const Structs::DeviceDataMessage& message) override;
+
+    // Helper functions
+    std::string getPointName(int point_id) const;
+    std::string getUnit(int point_id) const;
+
+    // Pipeline Helpers
+    // InitializePipeline is declared above (line 60)
+
 private:
     // 스레드 처리
     void ProcessingThreadLoop(size_t thread_index);
@@ -209,14 +225,13 @@ private:
     std::vector<Structs::DeviceDataMessage> CollectBatchFromPipelineManager();
     void HandleError(const std::string& error_message, const std::string& context = "");
 
-    // ✅ 헬퍼 함수 선언 추가 - 컴파일 에러 수정
-    std::string getPointName(int point_id) const;
-    std::string getUnit(int point_id) const;
-
     // 클라이언트들
     std::unique_ptr<Storage::RedisDataWriter> redis_data_writer_;
     std::shared_ptr<PulseOne::Client::InfluxClient> influx_client_;
     std::unique_ptr<VirtualPoint::VirtualPointBatchWriter> vp_batch_writer_;
+    
+    // Pipeline
+    std::vector<std::unique_ptr<IPipelineStage>> pipeline_stages_;
 
     // 서비스 상태
     std::atomic<bool> should_stop_{false};

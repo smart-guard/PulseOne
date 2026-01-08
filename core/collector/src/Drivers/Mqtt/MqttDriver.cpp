@@ -30,6 +30,7 @@ namespace Drivers {
 // =============================================================================
 // 🔥 플러그인 등록용 C 인터페이스 (PluginLoader가 호출)
 // =============================================================================
+#ifndef TEST_BUILD
 extern "C" {
 #ifdef _WIN32
     __declspec(dllexport) void RegisterPlugin() {
@@ -41,6 +42,7 @@ extern "C" {
         });
     }
 }
+#endif
 
 using namespace std::chrono;
 
@@ -323,47 +325,6 @@ bool MqttDriver::WriteValue(const DataPoint& point, const DataValue& value) {
     }
 }
 
-bool MqttDriver::Subscribe(const std::string& topic, int qos) {
-    if (!IsConnected()) {
-        SetError("MQTT client not connected");
-        return false;
-    }
-    
-    try {
-        if (!mqtt_client_) return false;
-        
-        auto token = mqtt_client_->subscribe(topic, qos);
-        token->wait();
-        
-        LogMessage("INFO", "Subscribed to topic: " + topic, "MQTT");
-        return true;
-        
-    } catch (const std::exception& e) {
-        SetError("Exception during subscribe: " + std::string(e.what()));
-        return false;
-    }
-}
-
-bool MqttDriver::Unsubscribe(const std::string& topic) {
-    if (!IsConnected()) {
-        SetError("MQTT client not connected");
-        return false;
-    }
-    
-    try {
-        if (!mqtt_client_) return false;
-        
-        auto token = mqtt_client_->unsubscribe(topic);
-        token->wait();
-        
-        LogMessage("INFO", "Unsubscribed from topic: " + topic, "MQTT");
-        return true;
-        
-    } catch (const std::exception& e) {
-        SetError("Exception during unsubscribe: " + std::string(e.what()));
-        return false;
-    }
-}
 
 const DriverStatistics& MqttDriver::GetStatistics() const {
     return driver_statistics_;
@@ -884,6 +845,13 @@ bool MqttDriver::EstablishConnection() {
         connOpts.set_clean_session(clean_session_);
         connOpts.set_automatic_reconnect(auto_reconnect_);
         
+        if (!username_.empty()) {
+            connOpts.set_user_name(username_);
+        }
+        if (!password_.empty()) {
+            connOpts.set_password(password_);
+        }
+        
         auto token = mqtt_client_->connect(connOpts);
         bool success = token->wait_for(std::chrono::milliseconds(timeout_ms_));
         
@@ -999,9 +967,18 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
         // 기본 타이밍 설정
         timeout_ms_ = config.timeout_ms;
         auto_reconnect_ = config.auto_reconnect;
+
+        // 🔥 config.properties에서 직접 인증 정보 추출 추가 (ModbusDriver 패턴)
+        if (config.properties.count("username")) {
+            username_ = config.properties.at("username");
+        }
+        if (config.properties.count("password")) {
+            password_ = config.properties.at("password");
+        }
         
         LogMessage("INFO", "Basic MQTT config set: client_id=" + client_id_ + 
-                  ", timeout=" + std::to_string(timeout_ms_) + "ms", "MQTT");
+                  ", timeout=" + std::to_string(timeout_ms_) + "ms, user=" + 
+                  (username_.empty() ? "none" : username_), "MQTT");
         
         // =================================================================
         // 2. JSON 설정 파싱 (endpoint를 JSON으로 처리)
@@ -1131,9 +1108,11 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
                     use_ssl = json_config["use_ssl"];
                 }
                 
-                std::string username = "";
                 if (json_config.contains("username") && json_config["username"].is_string()) {
-                    username = json_config["username"];
+                    username_ = json_config["username"];
+                }
+                if (json_config.contains("password") && json_config["password"].is_string()) {
+                    password_ = json_config["password"];
                 }
                 
                 LogMessage("INFO", "MQTT JSON configuration parsed successfully", "MQTT");
@@ -1142,8 +1121,8 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig& config) {
                 if (use_ssl) {
                     LogMessage("INFO", "  SSL requested (not implemented in current driver)", "MQTT");
                 }
-                if (!username.empty()) {
-                    LogMessage("INFO", "  Authentication requested (not implemented in current driver)", "MQTT");
+                if (!username_.empty()) {
+                    LogMessage("INFO", "  Authentication requested", "MQTT");
                 }
                 
             } catch (const json::exception& e) {

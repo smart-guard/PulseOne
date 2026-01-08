@@ -23,7 +23,7 @@
 #include <optional>
 
 // PulseOne 기본 시스템
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 
 // Common 구조체 및 타입들

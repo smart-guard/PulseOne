@@ -16,7 +16,7 @@
 
 #include "CSP/HttpTargetHandler.h"
 #include "Client/HttpClient.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/ClientCacheManager.h"
 #include <regex>

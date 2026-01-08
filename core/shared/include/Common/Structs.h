@@ -1,21 +1,20 @@
-#include <nlohmann/json.hpp>
-namespace json_impl = nlohmann;
-// collector/include/Common/Structs.h
 #ifndef PULSEONE_COMMON_STRUCTS_H
 #define PULSEONE_COMMON_STRUCTS_H
 
 /**
  * @file Structs.h
- * @brief PulseOne 핵심 구조체 정의 (에러 완전 해결)
+ * @brief PulseOne 핵심 구조체 정의
  * @author PulseOne Development Team
  * @date 2025-08-05
- * 
- * 🔥 주요 수정사항:
- * - ErrorCode 중복 정의 해결
- * - Database::Entities 의존성 완전 제거
- * - 타입 충돌 해결
- * - Utils include 제거 (순환 의존성 방지)
  */
+
+#include <nlohmann/json.hpp>
+#include <vector>
+#include <optional>
+#include <mutex>
+#include <chrono>
+#include <string>
+#include <map>
 
 #include "BasicTypes.h"
 #include "Enums.h"
@@ -24,16 +23,7 @@ namespace json_impl = nlohmann;
 #include "DriverError.h"
 #include "IProtocolConfig.h"
 #include "ProtocolConfigs.h"
-#include <vector>
-#include <optional>
-#include <mutex>
-#include <chrono>
-#include <string>
-#include <map>
 #include "Alarm/AlarmTypes.h"
-
-#include <nlohmann/json.hpp>
-using JsonType = nlohmann::json;
 
 
 // 🔥 전방 선언으로 순환 의존성 방지
@@ -355,6 +345,7 @@ namespace Structs {
         // =======================================================================
         uint32_t address = 0;                     // 숫자 주소 (Modbus 레지스터, BACnet 인스턴스 등)
         std::string address_string = "";          // 문자열 주소 (MQTT 토픽, OPC UA NodeId 등)
+        std::string mapping_key = "";             // JSONPath 또는 매핑 키 (예: sensors[0].temp) - Step 14 추가
         
         // =======================================================================
         // 🔥 데이터 타입 및 접근성 (설정)
@@ -376,7 +367,7 @@ namespace Structs {
         // =======================================================================
         // 🔥 로깅 및 수집 설정 (설정)
         // =======================================================================
-        bool log_enabled = true;                  // 로깅 활성화
+        bool is_log_enabled = true;                // 로깅 활성화
         uint32_t log_interval_ms = 0;             // 로깅 간격
         double log_deadband = 0.0;                // 로깅 데드밴드
         uint32_t polling_interval_ms = 0;         // 개별 폴링 간격
@@ -481,6 +472,7 @@ namespace Structs {
             , description(other.description)
             , address(other.address)
             , address_string(other.address_string)
+            , mapping_key(other.mapping_key)
             , data_type(other.data_type)
             , access_mode(other.access_mode)
             , is_enabled(other.is_enabled)
@@ -490,7 +482,7 @@ namespace Structs {
             , scaling_offset(other.scaling_offset)
             , min_value(other.min_value)
             , max_value(other.max_value)
-            , log_enabled(other.log_enabled)
+            , is_log_enabled(other.is_log_enabled)
             , log_interval_ms(other.log_interval_ms)
             , log_deadband(other.log_deadband)
             , polling_interval_ms(other.polling_interval_ms)
@@ -521,6 +513,7 @@ namespace Structs {
             , description(std::move(other.description))
             , address(other.address)
             , address_string(std::move(other.address_string))
+            , mapping_key(std::move(other.mapping_key))
             , data_type(std::move(other.data_type))
             , access_mode(std::move(other.access_mode))
             , is_enabled(other.is_enabled)
@@ -530,7 +523,7 @@ namespace Structs {
             , scaling_offset(other.scaling_offset)
             , min_value(other.min_value)
             , max_value(other.max_value)
-            , log_enabled(other.log_enabled)
+            , is_log_enabled(other.is_log_enabled)
             , log_interval_ms(other.log_interval_ms)
             , log_deadband(other.log_deadband)
             , polling_interval_ms(other.polling_interval_ms)
@@ -562,6 +555,7 @@ namespace Structs {
                 description = other.description;
                 address = other.address;
                 address_string = other.address_string;
+                mapping_key = other.mapping_key;
                 data_type = other.data_type;
                 access_mode = other.access_mode;
                 is_enabled = other.is_enabled;
@@ -571,7 +565,7 @@ namespace Structs {
                 scaling_offset = other.scaling_offset;
                 min_value = other.min_value;
                 max_value = other.max_value;
-                log_enabled = other.log_enabled;
+                is_log_enabled = other.is_log_enabled;
                 log_interval_ms = other.log_interval_ms;
                 log_deadband = other.log_deadband;
                 polling_interval_ms = other.polling_interval_ms;
@@ -605,6 +599,7 @@ namespace Structs {
                 description = std::move(other.description);
                 address = other.address;
                 address_string = std::move(other.address_string);
+                mapping_key = std::move(other.mapping_key);
                 data_type = std::move(other.data_type);
                 access_mode = std::move(other.access_mode);
                 is_enabled = other.is_enabled;
@@ -614,7 +609,7 @@ namespace Structs {
                 scaling_offset = other.scaling_offset;
                 min_value = other.min_value;
                 max_value = other.max_value;
-                log_enabled = other.log_enabled;
+                is_log_enabled = other.is_log_enabled;
                 log_interval_ms = other.log_interval_ms;
                 log_deadband = other.log_deadband;
                 polling_interval_ms = other.polling_interval_ms;
@@ -1115,10 +1110,10 @@ namespace Structs {
         int created_by = 0;                           // 생성자 ID
         
         // 성능 및 모니터링 (DeviceSettings 호환)
-        bool monitoring_enabled = true;               // 모니터링 활성화
+        bool is_monitoring_enabled = true;            // 모니터링 활성화
         std::string log_level = "INFO";               // 로그 레벨
-        bool diagnostics_enabled = false;            // 진단 모드
-        bool performance_monitoring = true;          // 성능 모니터링
+        bool is_diagnostics_enabled = false;         // 진단 모드
+        bool is_performance_monitoring_enabled = true; // 성능 모니터링
         
         // 보안 설정 (DeviceSettings 확장)
         std::string security_level = "NORMAL";        // 보안 레벨
@@ -1145,19 +1140,20 @@ namespace Structs {
         int max_backoff_time_ms = 300000;               // max_backoff_time_ms
         
         // 🔥 Keep-alive 설정 (device_settings 테이블)
-        bool keep_alive_enabled = true;                 // keep_alive_enabled
+        bool is_keep_alive_enabled = true;                 // keep_alive_enabled
         int keep_alive_interval_s = 30;                 // keep_alive_interval_s
         int keep_alive_timeout_s = 10;                  // keep_alive_timeout_s
         
         // 🔥 데이터 품질 관리 (device_settings 테이블)
-        bool data_validation_enabled = true;            // data_validation_enabled
-        bool outlier_detection_enabled = false;         // outlier_detection_enabled
-        bool deadband_enabled = true;                   // deadband_enabled
+        bool is_data_validation_enabled = true;            // data_validation_enabled
+        bool is_outlier_detection_enabled = false;         // outlier_detection_enabled
+        bool is_deadband_enabled = true;                   // deadband_enabled
         
         // 🔥 로깅 및 진단 (device_settings 테이블)
-        bool detailed_logging_enabled = false;          // detailed_logging_enabled
-        bool performance_monitoring_enabled = true;     // performance_monitoring_enabled
-        bool diagnostic_mode_enabled = false;           // diagnostic_mode_enabled
+        bool is_detailed_logging_enabled = false;          // detailed_logging_enabled
+        // performance_monitoring_enabled 필드는 상위와 중복되어 하나로 통합 (is_performance_monitoring_enabled)
+        bool is_diagnostic_mode_enabled = false;           // diagnostic_mode_enabled
+        bool is_auto_registration_enabled = false;         // 자동 등록 활성화 여부 (discovery)
         
         // 🔥 메타데이터 (device_settings 테이블)
         int updated_by = 0;                             // updated_by
@@ -1236,8 +1232,7 @@ namespace Structs {
                     break;
             }
             
-            // 🔥 TODO Phase 2: 나중에 ProtocolConfigRegistry로 교체
-            // PulseOne::Config::ApplyProtocolDefaults(protocol, properties);
+            // Protocol Defaults application logic (Implemented via switch above)
         }
         
         // =======================================================================
@@ -1341,7 +1336,7 @@ namespace Structs {
         const std::string& getProtocolType() const { return protocol_type; }
         void setProtocolType(const std::string& protocol) { 
             protocol_type = protocol;
-            // TODO: driver_config.protocol 동기화 로직 필요
+            driver_config.protocol = StringToProtocolType(protocol);
         }
         
         const std::string& getEndpoint() const { return endpoint; }
@@ -1359,6 +1354,21 @@ namespace Structs {
         
         int getPort() const { return port; }
         void setPort(int port_num) { port = port_num; }
+        
+        /**
+         * @brief 프로토콜 문자열을 ProtocolType 열거형으로 변환
+         */
+        static ProtocolType StringToProtocolType(const std::string& type_str) {
+            if (type_str == "MODBUS_TCP") return ProtocolType::MODBUS_TCP;
+            if (type_str == "MODBUS_RTU") return ProtocolType::MODBUS_RTU;
+            if (type_str == "MQTT") return ProtocolType::MQTT;
+            if (type_str == "OPC_UA") return ProtocolType::OPC_UA;
+            if (type_str == "BACNET_IP" || type_str == "BACNET") return ProtocolType::BACNET_IP;
+            if (type_str == "HTTP_REST") return ProtocolType::HTTP_REST;
+            if (type_str == "BLE_BEACON") return ProtocolType::BLE_BEACON;
+            if (type_str == "ROS_BRIDGE") return ProtocolType::ROS_BRIDGE;
+            return ProtocolType::UNKNOWN;
+        }
         
         // 상태 정보
         bool isEnabled() const { return is_enabled; }
@@ -1441,8 +1451,8 @@ namespace Structs {
         void setMaxBackoffTimeMs(int time) { max_backoff_time_ms = time; }
         
         // Keep-alive 설정
-        bool isKeepAliveEnabled() const { return keep_alive_enabled; }
-        void setKeepAliveEnabled(bool enabled) { keep_alive_enabled = enabled; }
+        bool isKeepAliveEnabled() const { return is_keep_alive_enabled; }
+        void setKeepAliveEnabled(bool enabled) { is_keep_alive_enabled = enabled; }
         
         int getKeepAliveIntervalS() const { return keep_alive_interval_s; }
         void setKeepAliveIntervalS(int interval) { keep_alive_interval_s = interval; }
@@ -1451,24 +1461,24 @@ namespace Structs {
         void setKeepAliveTimeoutS(int timeout) { keep_alive_timeout_s = timeout; }
         
         // 데이터 품질 관리
-        bool isDataValidationEnabled() const { return data_validation_enabled; }
-        void setDataValidationEnabled(bool enabled) { data_validation_enabled = enabled; }
+        bool isDataValidationEnabled() const { return is_data_validation_enabled; }
+        void setDataValidationEnabled(bool enabled) { is_data_validation_enabled = enabled; }
         
-        bool isOutlierDetectionEnabled() const { return outlier_detection_enabled; }
-        void setOutlierDetectionEnabled(bool enabled) { outlier_detection_enabled = enabled; }
+        bool isOutlierDetectionEnabled() const { return is_outlier_detection_enabled; }
+        void setOutlierDetectionEnabled(bool enabled) { is_outlier_detection_enabled = enabled; }
         
-        bool isDeadbandEnabled() const { return deadband_enabled; }
-        void setDeadbandEnabled(bool enabled) { deadband_enabled = enabled; }
+        bool isDeadbandEnabled() const { return is_deadband_enabled; }
+        void setDeadbandEnabled(bool enabled) { is_deadband_enabled = enabled; }
         
         // 로깅 및 진단
-        bool isDetailedLoggingEnabled() const { return detailed_logging_enabled; }
-        void setDetailedLoggingEnabled(bool enabled) { detailed_logging_enabled = enabled; }
+        bool isDetailedLoggingEnabled() const { return is_detailed_logging_enabled; }
+        void setDetailedLoggingEnabled(bool enabled) { is_detailed_logging_enabled = enabled; }
         
-        bool isPerformanceMonitoringEnabled() const { return performance_monitoring_enabled; }
-        void setPerformanceMonitoringEnabled(bool enabled) { performance_monitoring_enabled = enabled; }
+        bool isPerformanceMonitoringEnabled() const { return is_performance_monitoring_enabled; }
+        void setPerformanceMonitoringEnabled(bool enabled) { is_performance_monitoring_enabled = enabled; }
         
-        bool isDiagnosticModeEnabled() const { return diagnostic_mode_enabled; }
-        void setDiagnosticModeEnabled(bool enabled) { diagnostic_mode_enabled = enabled; }
+        bool isDiagnosticModeEnabled() const { return is_diagnostic_mode_enabled; }
+        void setDiagnosticModeEnabled(bool enabled) { is_diagnostic_mode_enabled = enabled; }
         
         // 메타데이터
         int getUpdatedBy() const { return updated_by; }
@@ -1577,7 +1587,7 @@ namespace Structs {
             // =======================================================================
             // 🔥 Keep-alive 설정 (int 타입들 - .has_value() 제거)
             // =======================================================================
-            driver_config.properties["keep_alive_enabled"] = keep_alive_enabled ? "true" : "false";
+            driver_config.properties["keep_alive_enabled"] = is_keep_alive_enabled ? "true" : "false";
             driver_config.properties["keep_alive_interval_s"] = std::to_string(keep_alive_interval_s);
             
             // 🔥 수정: int 타입이므로 직접 변환 (optional이 아님)
@@ -1586,9 +1596,9 @@ namespace Structs {
             // =======================================================================
             // 모니터링 설정
             // =======================================================================
-            driver_config.properties["data_validation_enabled"] = data_validation_enabled ? "true" : "false";
-            driver_config.properties["performance_monitoring_enabled"] = performance_monitoring_enabled ? "true" : "false";
-            driver_config.properties["diagnostic_mode_enabled"] = diagnostic_mode_enabled ? "true" : "false";
+            driver_config.properties["data_validation_enabled"] = is_data_validation_enabled ? "true" : "false";
+            driver_config.properties["performance_monitoring_enabled"] = is_performance_monitoring_enabled ? "true" : "false";
+            driver_config.properties["diagnostic_mode_enabled"] = is_diagnostic_mode_enabled ? "true" : "false";
             
             // =======================================================================
             // 🔥 마지막에 JSON config의 properties 복사 (오버라이드 가능)
@@ -1707,11 +1717,11 @@ namespace Structs {
             j["max_retry_count"] = max_retry_count;
             j["retry_interval_ms"] = retry_interval_ms;
             j["backoff_multiplier"] = backoff_multiplier;
-            j["keep_alive_enabled"] = keep_alive_enabled;
+            j["keep_alive_enabled"] = is_keep_alive_enabled;
             j["keep_alive_interval_s"] = keep_alive_interval_s;
-            j["data_validation_enabled"] = data_validation_enabled;
-            j["performance_monitoring_enabled"] = performance_monitoring_enabled;
-            j["diagnostic_mode_enabled"] = diagnostic_mode_enabled;
+            j["data_validation_enabled"] = is_data_validation_enabled;
+            j["performance_monitoring_enabled"] = is_performance_monitoring_enabled;
+            j["diagnostic_mode_enabled"] = is_diagnostic_mode_enabled;
             
             // 🔥 properties 포함
             j["properties"] = properties;

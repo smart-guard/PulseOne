@@ -4,7 +4,7 @@
  * @version 1.1.0
  * 
  * 🔧 주요 수정사항:
- * 1. DatabaseAbstractionLayer API 올바른 사용 (RepositoryHelpers 활용)
+ * 1. DbLib::DatabaseAbstractionLayer API 올바른 사용 (RepositoryHelpers 활용)
  * 2. 벌크 연산 메소드명 수정: bulkSave->saveBulk, bulkUpdate->updateBulk, bulkDelete->deleteByIds
  * 3. 벌크 연산 반환 타입: bool -> int
  * 4. getLastInsertId() 대신 SQL::Common::GET_LAST_INSERT_ID 쿼리 사용
@@ -13,8 +13,8 @@
 #include "Database/Repositories/PayloadTemplateRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/ExtendedSQLQueries.h"
-#include "Database/DatabaseAbstractionLayer.h"
-#include "Utils/LogManager.h"
+#include "DatabaseAbstractionLayer.hpp"
+#include "Logging/LogManager.h"
 #include <stdexcept>
 
 namespace PulseOne {
@@ -91,7 +91,7 @@ std::vector<PayloadTemplateEntity> PayloadTemplateRepository::findAll() {
             return result;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(FIND_ALL);
         
         for (const auto& row : results) {
@@ -126,7 +126,7 @@ std::optional<PayloadTemplateEntity> PayloadTemplateRepository::findById(int id)
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ RepositoryHelpers 사용하여 파라미터 치환
         std::string query = RepositoryHelpers::replaceParameter(FIND_BY_ID, std::to_string(id));
@@ -159,7 +159,7 @@ bool PayloadTemplateRepository::save(PayloadTemplateEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto params = entityToParams(entity);
         
         // ✅ RepositoryHelpers::replaceParametersInOrder 사용
@@ -195,7 +195,7 @@ bool PayloadTemplateRepository::update(const PayloadTemplateEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto params = entityToParams(entity);
         params["id"] = std::to_string(entity.getId());
         
@@ -231,7 +231,7 @@ bool PayloadTemplateRepository::deleteById(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ RepositoryHelpers 사용하여 파라미터 치환
         std::string query = RepositoryHelpers::replaceParameter(DELETE_BY_ID, std::to_string(id));
@@ -274,7 +274,7 @@ bool PayloadTemplateRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ RepositoryHelpers 사용
         std::string query = RepositoryHelpers::replaceParameter(EXISTS_BY_ID, std::to_string(id));
@@ -395,7 +395,7 @@ std::optional<PayloadTemplateEntity> PayloadTemplateRepository::findByName(const
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ RepositoryHelpers 사용 (문자열은 따옴표 필요)
         std::string query = RepositoryHelpers::replaceParameterWithQuotes(FIND_BY_NAME, name);
@@ -425,7 +425,7 @@ std::vector<PayloadTemplateEntity> PayloadTemplateRepository::findBySystemType(
             return result;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ RepositoryHelpers 사용
         std::string query = RepositoryHelpers::replaceParameterWithQuotes(
@@ -459,7 +459,7 @@ std::vector<PayloadTemplateEntity> PayloadTemplateRepository::findActive() {
             return result;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(FIND_ACTIVE);
         
         for (const auto& row : results) {
@@ -493,7 +493,7 @@ bool PayloadTemplateRepository::ensureTableExists() {
     }
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         if (!db_layer.executeCreateTable(CREATE_TABLE)) {
             if (logger_) {

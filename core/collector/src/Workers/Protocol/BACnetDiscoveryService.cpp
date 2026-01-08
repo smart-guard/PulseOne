@@ -8,14 +8,14 @@
 
 #include "Workers/Protocol/BACnetDiscoveryService.h"
 #include "Workers/Protocol/BACnetWorker.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Common/Enums.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Entities/CurrentValueEntity.h"
 #include "Database/Entities/DeviceSettingsEntity.h"
-#include "Database/DatabaseTypes.h"
+#include "DatabaseTypes.hpp"
 #include "Database/RepositoryFactory.h"          // 추가: ProtocolRepository 접근용
 #include "Database/Repositories/ProtocolRepository.h"  // 추가
 #include <nlohmann/json.hpp>
@@ -103,6 +103,11 @@ void BACnetDiscoveryService::ConvertDeviceInfoToEntity(const DeviceInfo& device_
         entity.setId(device_id);
         entity.setName(device_info.name.empty() ? "Unknown Device" : device_info.name);
         entity.setDescription(device_info.description);
+        entity.setDeviceType("BACnet Device");
+        
+        // Tenant/Site ID initialization (Default to 1 for discovered devices)
+        entity.setTenantId(1);
+        entity.setSiteId(1);
         
         // 수정됨: setProtocolType → setProtocolId + ProtocolRepository 조회
         int protocol_id = ResolveProtocolTypeToId(device_info.protocol_type);
@@ -1049,32 +1054,13 @@ bool BACnetDiscoveryService::SaveDiscoveredDeviceToDatabase(const DeviceInfo& de
         }
         
         DeviceEntity entity;
-        entity.setId(std::stoi(device.id));
-        entity.setName(device.name);
-        entity.setDescription(device.description);
-        
-        // 수정됨: setProtocolType → setProtocolId + ProtocolRepository 조회
-        int protocol_id = ResolveProtocolTypeToId(device.protocol_type);
-        if (protocol_id > 0) {
-            entity.setProtocolId(protocol_id);
-        } else {
-            auto& logger = LogManager::getInstance();
-            logger.Error("Failed to resolve protocol for device " + device.id + 
-                        ", protocol_type: " + device.protocol_type);
-            return false;  // 프로토콜 해결 실패 시 저장 실패
+        try {
+            ConvertDeviceInfoToEntity(device, entity);
+        } catch (const std::exception& e) {
+             auto& logger = LogManager::getInstance();
+             logger.Error("Failed to convert device info to entity: " + std::string(e.what()));
+             return false;
         }
-        
-        entity.setEndpoint(device.endpoint);
-        entity.setEnabled(device.is_enabled);
-        
-        // properties를 JSON으로 변환
-        json properties_json;
-        for (const auto& [key, value] : device.properties) {
-            if (!key.empty()) {
-                properties_json[key] = value;
-            }
-        }
-        entity.setConfig(properties_json.dump());
         
         return device_repository_->save(entity);
         

@@ -5,7 +5,7 @@
  * @date 2025-07-31
  * 
  * 🎯 DeviceRepository 패턴 완전 적용:
- * - DatabaseAbstractionLayer 사용
+ * - DbLib::DatabaseAbstractionLayer 사용
  * - executeQuery/executeNonQuery/executeUpsert 패턴
  * - 컴파일 에러 완전 해결
  * - vtable 에러 해결 (모든 순수 가상 함수 구현)
@@ -13,7 +13,7 @@
 
 #include "Database/Repositories/UserRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -42,7 +42,7 @@ std::vector<UserEntity> UserRepository::findAll() {
             ORDER BY username
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<UserEntity> entities;
@@ -88,7 +88,7 @@ std::optional<UserEntity> UserRepository::findById(int id) {
             FROM users 
             WHERE id = )" + std::to_string(id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -123,7 +123,7 @@ bool UserRepository::save(UserEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::map<std::string, std::string> data = entityToParams(entity);
         
@@ -172,7 +172,7 @@ bool UserRepository::deleteById(int id) {
         
         const std::string query = "DELETE FROM users WHERE id = " + std::to_string(id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -201,7 +201,7 @@ bool UserRepository::exists(int id) {
         
         const std::string query = "SELECT COUNT(*) as count FROM users WHERE id = " + std::to_string(id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -242,7 +242,7 @@ std::vector<UserEntity> UserRepository::findByIds(const std::vector<int>& ids) {
             FROM users 
             WHERE id IN ()" + ids_ss.str() + ")";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<UserEntity> entities;
@@ -287,7 +287,7 @@ std::vector<UserEntity> UserRepository::findByConditions(
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<UserEntity> entities;
@@ -319,7 +319,7 @@ int UserRepository::countByConditions(const std::vector<QueryCondition>& conditi
         std::string query = "SELECT COUNT(*) as count FROM users";
         query += RepositoryHelpers::buildWhereClause(conditions);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -352,7 +352,7 @@ std::optional<UserEntity> UserRepository::findByUsername(const std::string& user
             FROM users 
             WHERE username = ')" + RepositoryHelpers::escapeString(username) + "'";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -381,7 +381,7 @@ std::optional<UserEntity> UserRepository::findByEmail(const std::string& email) 
             FROM users 
             WHERE email = ')" + RepositoryHelpers::escapeString(email) + "'";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -532,7 +532,7 @@ UserEntity UserRepository::mapRowToEntity(const std::map<std::string, std::strin
     UserEntity entity;
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         auto it = row.find("id");
         if (it != row.end()) {
@@ -579,7 +579,7 @@ UserEntity UserRepository::mapRowToEntity(const std::map<std::string, std::strin
 }
 
 std::map<std::string, std::string> UserRepository::entityToParams(const UserEntity& entity) {
-    DatabaseAbstractionLayer db_layer;
+    DbLib::DatabaseAbstractionLayer db_layer;
     
     std::map<std::string, std::string> params;
     
@@ -634,7 +634,7 @@ bool UserRepository::ensureTableExists() {
             )
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeCreateTable(create_query);
         
         if (success) {

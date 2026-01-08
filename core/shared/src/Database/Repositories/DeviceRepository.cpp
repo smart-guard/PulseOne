@@ -14,7 +14,7 @@
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/SQLQueries.h" 
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -34,7 +34,7 @@ std::vector<DeviceEntity> DeviceRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Device::FIND_ALL);
         
         std::vector<DeviceEntity> entities;
@@ -71,7 +71,7 @@ std::optional<DeviceEntity> DeviceRepository::findById(int id) {
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::Device::FIND_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
@@ -107,7 +107,7 @@ bool DeviceRepository::save(DeviceEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::map<std::string, std::string> data = entityToParams(entity);
         std::vector<std::string> primary_keys = {"id"};
         
@@ -154,7 +154,7 @@ bool DeviceRepository::deleteById(int id) {
         
         std::string query = RepositoryHelpers::replaceParameter(SQL::Device::DELETE_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -182,7 +182,7 @@ bool DeviceRepository::exists(int id) {
         
         std::string query = RepositoryHelpers::replaceParameter(SQL::Device::EXISTS_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -222,7 +222,7 @@ std::vector<DeviceEntity> DeviceRepository::findByIds(const std::vector<int>& id
             query.insert(order_pos, "WHERE id IN (" + ids_ss.str() + ") ");
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<DeviceEntity> entities;
@@ -268,7 +268,7 @@ std::vector<DeviceEntity> DeviceRepository::findByConditions(
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<DeviceEntity> entities;
@@ -300,7 +300,7 @@ int DeviceRepository::countByConditions(const std::vector<QueryCondition>& condi
         std::string query = SQL::Device::COUNT_ALL;
         query += RepositoryHelpers::buildWhereClause(conditions);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -325,7 +325,7 @@ std::vector<DeviceEntity> DeviceRepository::findByProtocol(int protocol_id) {  /
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // FIND_BY_PROTOCOL_ID 사용 (정수 파라미터)
         std::string query = RepositoryHelpers::replaceParameter(
@@ -352,7 +352,7 @@ std::vector<DeviceEntity> DeviceRepository::findByTenant(int tenant_id) {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::Device::FIND_BY_TENANT, std::to_string(tenant_id));
         auto results = db_layer.executeQuery(query);
         std::vector<DeviceEntity> entities = mapResultToEntities(results);
@@ -373,7 +373,7 @@ std::vector<DeviceEntity> DeviceRepository::findBySite(int site_id) {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::Device::FIND_BY_SITE, std::to_string(site_id));
         auto results = db_layer.executeQuery(query);
         std::vector<DeviceEntity> entities = mapResultToEntities(results);
@@ -394,7 +394,7 @@ std::vector<DeviceEntity> DeviceRepository::findEnabledDevices() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Device::FIND_ENABLED);
         std::vector<DeviceEntity> entities = mapResultToEntities(results);
         
@@ -473,7 +473,7 @@ bool DeviceRepository::disableDevice(int device_id) {
 
 bool DeviceRepository::updateDeviceStatus(int device_id, bool is_enabled) {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = SQL::Device::UPDATE_STATUS;
         
@@ -514,7 +514,7 @@ bool DeviceRepository::updateDeviceStatus(int device_id, bool is_enabled) {
 
 bool DeviceRepository::updateEndpoint(int device_id, const std::string& endpoint) {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = SQL::Device::UPDATE_ENDPOINT;
         
@@ -553,7 +553,7 @@ bool DeviceRepository::updateEndpoint(int device_id, const std::string& endpoint
 
 bool DeviceRepository::updateConfig(int device_id, const std::string& config) {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = SQL::Device::UPDATE_CONFIG;
         
@@ -596,7 +596,7 @@ bool DeviceRepository::updateConfig(int device_id, const std::string& config) {
 
 std::string DeviceRepository::getDeviceStatistics() const {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         auto total_result = db_layer.executeQuery(SQL::Device::COUNT_ALL);
         int total_count = 0;
@@ -625,7 +625,7 @@ std::string DeviceRepository::getDeviceStatistics() const {
 
 std::vector<DeviceEntity> DeviceRepository::findInactiveDevices() const {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Device::FIND_DISABLED);
         
         std::vector<DeviceEntity> entities;
@@ -666,7 +666,7 @@ std::map<int, int> DeviceRepository::getProtocolDistribution() const {  // 반�
     std::map<int, int> distribution;
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Device::GET_PROTOCOL_DISTRIBUTION);
         
         for (const auto& row : results) {
@@ -696,7 +696,7 @@ DeviceEntity DeviceRepository::mapRowToEntity(const std::map<std::string, std::s
     DeviceEntity entity;
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 기본 ID 및 관계 정보
         auto it = row.find("id");
@@ -798,9 +798,14 @@ std::vector<DeviceEntity> DeviceRepository::mapResultToEntities(
 }
 
 std::map<std::string, std::string> DeviceRepository::entityToParams(const DeviceEntity& entity) {
-    DatabaseAbstractionLayer db_layer;
+    DbLib::DatabaseAbstractionLayer db_layer;
     
     std::map<std::string, std::string> params;
+
+    // ID가 유효한 경우 포함 (Upsert 시 필수)
+    if (entity.getId() > 0) {
+        params["id"] = std::to_string(entity.getId());
+    }
     
     // 기본 정보
     params["tenant_id"] = std::to_string(entity.getTenantId());
@@ -866,7 +871,7 @@ std::map<std::string, std::string> DeviceRepository::entityToParams(const Device
 
 bool DeviceRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeCreateTable(SQL::Device::CREATE_TABLE);
         
         if (success) {

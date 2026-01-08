@@ -20,7 +20,7 @@ namespace Api {
 /**
  * @brief 설정 관리 관련 REST API 콜백 설정 클래스
  * 
- * ConfigManager, LogManager, WorkerManager, DatabaseManager 등의 
+ * ConfigManager, LogManager, WorkerManager, DbLib::DatabaseManager 등의 
  * 싱글톤들과 직접 연동하여 실제 시스템 재구성을 수행합니다.
  * 
  * 주요 기능:
@@ -76,7 +76,7 @@ private:
      * 
      * 동작:
      * 1. 새 DB 연결 정보 확인
-     * 2. DatabaseManager 재연결
+     * 2. DbLib::DatabaseManager 재연결
      * 3. RepositoryFactory 재초기화
      * 4. Redis 연결도 업데이트 (필요시)
      */

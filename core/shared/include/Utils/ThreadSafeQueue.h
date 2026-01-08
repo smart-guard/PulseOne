@@ -47,10 +47,14 @@ public:
         return value;
     }
 
-    // Pop multiple items up to max_items (blocking if empty)
-    std::vector<T> pop_batch(size_t max_items) {
+    // Pop multiple items up to max_items (blocking if empty, with optional timeout)
+    std::vector<T> pop_batch(size_t max_items, uint32_t timeout_ms = 0) {
         std::unique_lock<std::mutex> lock(mutex_);
-        cond_.wait(lock, [this] { return !queue_.empty(); });
+        if (timeout_ms > 0) {
+            cond_.wait_for(lock, std::chrono::milliseconds(timeout_ms), [this] { return !queue_.empty(); });
+        } else {
+            cond_.wait(lock, [this] { return !queue_.empty(); });
+        }
         
         std::vector<T> batch;
         while (!queue_.empty() && batch.size() < max_items) {

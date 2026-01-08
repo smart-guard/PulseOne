@@ -472,6 +472,8 @@ public:
     // 연결 설정
     std::string broker_url_;
     std::string client_id_;
+    std::string username_;
+    std::string password_;
     int default_qos_;
     int keep_alive_seconds_;
     int timeout_ms_;

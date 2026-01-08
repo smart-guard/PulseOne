@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "CSP/FailureProtector.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 // =============================================================================
 // 네임스페이스 및 타입 별칭

@@ -5,7 +5,7 @@
  * @date 2025-07-31
  * 
  * 🎯 DeviceRepository 패턴 완전 적용:
- * - DatabaseAbstractionLayer 사용
+ * - DbLib::DatabaseAbstractionLayer 사용
  * - executeQuery/executeNonQuery/executeUpsert 패턴
  * - 컴파일 에러 완전 해결
  * - formatTimestamp, ensureTableExists 문제 해결
@@ -13,7 +13,7 @@
 
 #include "Database/Repositories/TenantRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -43,7 +43,7 @@ std::vector<TenantEntity> TenantRepository::findAll() {
             ORDER BY name
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<TenantEntity> entities;
@@ -90,7 +90,7 @@ std::optional<TenantEntity> TenantRepository::findById(int id) {
             FROM tenants 
             WHERE id = )" + std::to_string(id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -131,7 +131,7 @@ bool TenantRepository::save(TenantEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // entityToParams 메서드 사용하여 맵 생성
         std::map<std::string, std::string> data = entityToParams(entity);
@@ -181,7 +181,7 @@ bool TenantRepository::deleteById(int id) {
         
         const std::string query = "DELETE FROM tenants WHERE id = " + std::to_string(id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -210,7 +210,7 @@ bool TenantRepository::exists(int id) {
         
         const std::string query = "SELECT COUNT(*) as count FROM tenants WHERE id = " + std::to_string(id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -252,7 +252,7 @@ std::vector<TenantEntity> TenantRepository::findByIds(const std::vector<int>& id
             FROM tenants 
             WHERE id IN ()" + ids_ss.str() + ")";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<TenantEntity> entities;
@@ -298,7 +298,7 @@ std::vector<TenantEntity> TenantRepository::findByConditions(
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<TenantEntity> entities;
@@ -330,7 +330,7 @@ int TenantRepository::countByConditions(const std::vector<QueryCondition>& condi
         std::string query = "SELECT COUNT(*) as count FROM tenants";
         query += RepositoryHelpers::buildWhereClause(conditions);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -364,7 +364,7 @@ std::optional<TenantEntity> TenantRepository::findByDomain(const std::string& do
             FROM tenants 
             WHERE domain = ')" + RepositoryHelpers::escapeString(domain) + "'";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -399,7 +399,7 @@ std::vector<TenantEntity> TenantRepository::findByStatus(TenantEntity::Status st
             ORDER BY name
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<TenantEntity> entities;
@@ -443,7 +443,7 @@ std::vector<TenantEntity> TenantRepository::findExpiredTenants() {
             ORDER BY subscription_end DESC
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<TenantEntity> entities = mapResultToEntities(results);
@@ -476,7 +476,7 @@ std::optional<TenantEntity> TenantRepository::findByName(const std::string& name
             FROM tenants 
             WHERE name = ')" + RepositoryHelpers::escapeString(name) + "'";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -558,7 +558,7 @@ bool TenantRepository::updateStatus(int tenant_id, TenantEntity::Status status) 
                 updated_at = ')" + RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now()) + R"('
             WHERE id = )" + std::to_string(tenant_id);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -604,7 +604,7 @@ bool TenantRepository::isDomainTaken(const std::string& domain, int exclude_id) 
             query += " AND id != " + std::to_string(exclude_id);
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -631,7 +631,7 @@ bool TenantRepository::isNameTaken(const std::string& name, int exclude_id) {
             query += " AND id != " + std::to_string(exclude_id);
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -698,7 +698,7 @@ std::map<std::string, int> TenantRepository::getStatusDistribution() const {
             ORDER BY count DESC
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
@@ -728,7 +728,7 @@ TenantEntity TenantRepository::mapRowToEntity(const std::map<std::string, std::s
     TenantEntity entity;
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         auto it = row.find("id");
         if (it != row.end()) {
@@ -797,7 +797,7 @@ std::vector<TenantEntity> TenantRepository::mapResultToEntities(
 }
 
 std::map<std::string, std::string> TenantRepository::entityToParams(const TenantEntity& entity) {
-    DatabaseAbstractionLayer db_layer;
+    DbLib::DatabaseAbstractionLayer db_layer;
     
     std::map<std::string, std::string> params;
     
@@ -864,7 +864,7 @@ bool TenantRepository::ensureTableExists() {
             )
         )";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeCreateTable(base_create_query);
         
         if (success) {

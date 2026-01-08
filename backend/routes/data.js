@@ -44,7 +44,7 @@ let siteRepo = null;
 function getDataPointRepo() {
     if (!deviceRepo) {
         deviceRepo = new DeviceRepository();
-        console.log("✅ DeviceRepository 인스턴스 생성 완료 (DataPoint 포함)");
+        console.log('✅ DeviceRepository 인스턴스 생성 완료 (DataPoint 포함)');
     }
     return deviceRepo;
 }
@@ -52,7 +52,7 @@ function getDataPointRepo() {
 function getCurrentValueRepo() {
     if (!deviceRepo) {
         deviceRepo = new DeviceRepository();
-        console.log("✅ DeviceRepository 인스턴스 생성 완료 (CurrentValue 포함)");
+        console.log('✅ DeviceRepository 인스턴스 생성 완료 (CurrentValue 포함)');
     }
     return deviceRepo;
 }
@@ -60,7 +60,7 @@ function getCurrentValueRepo() {
 function getDeviceRepo() {
     if (!deviceRepo) {
         deviceRepo = new DeviceRepository();
-        console.log("✅ DeviceRepository 인스턴스 생성 완료");
+        console.log('✅ DeviceRepository 인스턴스 생성 완료');
     }
     return deviceRepo;
 }
@@ -68,7 +68,7 @@ function getDeviceRepo() {
 function getSiteRepo() {
     if (!siteRepo) {
         siteRepo = new SiteRepository();
-        console.log("✅ SiteRepository 인스턴스 생성 완료");
+        console.log('✅ SiteRepository 인스턴스 생성 완료');
     }
     return siteRepo;
 }
@@ -680,20 +680,20 @@ router.post('/query', async (req, res) => {
         let result;
 
         switch (query_type) {
-            case 'data_points_search':
-                result = await executeDataPointsQuery(filters, tenantId);
-                break;
-            case 'current_values_aggregate':
-                result = await executeCurrentValuesAggregation(filters, aggregations, tenantId);
-                break;
-            case 'historical_analysis':
-                result = await executeHistoricalAnalysis(filters, time_range, aggregations, tenantId);
-                break;
-            case 'device_summary':
-                result = await executeDeviceSummaryQuery(filters, tenantId);
-                break;
-            default:
-                return res.status(400).json(createResponse(false, null, `Unknown query type: ${query_type}`, 'INVALID_QUERY_TYPE'));
+        case 'data_points_search':
+            result = await executeDataPointsQuery(filters, tenantId);
+            break;
+        case 'current_values_aggregate':
+            result = await executeCurrentValuesAggregation(filters, aggregations, tenantId);
+            break;
+        case 'historical_analysis':
+            result = await executeHistoricalAnalysis(filters, time_range, aggregations, tenantId);
+            break;
+        case 'device_summary':
+            result = await executeDeviceSummaryQuery(filters, tenantId);
+            break;
+        default:
+            return res.status(400).json(createResponse(false, null, `Unknown query type: ${query_type}`, 'INVALID_QUERY_TYPE'));
         }
 
         console.log(`✅ 고급 쿼리 실행 완료: ${result.total_results || 0}개 결과`);
@@ -816,21 +816,21 @@ router.post('/export', async (req, res) => {
         let filename;
 
         switch (export_type) {
-            case 'current':
-                exportData = await exportCurrentValues(point_ids, device_ids, tenantId, include_metadata);
-                filename = `current_values_${new Date().toISOString().split('T')[0]}.${format}`;
-                break;
-            case 'historical':
-                if (!start_time || !end_time) {
-                    return res.status(400).json(createResponse(false, null, 'start_time and end_time required for historical export', 'VALIDATION_ERROR'));
-                }
-                exportData = await exportHistoricalData(point_ids, start_time, end_time, tenantId, include_metadata);
-                filename = `historical_data_${start_time}_${end_time}.${format}`;
-                break;
-            case 'configuration':
-                exportData = await exportConfiguration(point_ids, device_ids, tenantId);
-                filename = `configuration_${new Date().toISOString().split('T')[0]}.${format}`;
-                break;
+        case 'current':
+            exportData = await exportCurrentValues(point_ids, device_ids, tenantId, include_metadata);
+            filename = `current_values_${new Date().toISOString().split('T')[0]}.${format}`;
+            break;
+        case 'historical':
+            if (!start_time || !end_time) {
+                return res.status(400).json(createResponse(false, null, 'start_time and end_time required for historical export', 'VALIDATION_ERROR'));
+            }
+            exportData = await exportHistoricalData(point_ids, start_time, end_time, tenantId, include_metadata);
+            filename = `historical_data_${start_time}_${end_time}.${format}`;
+            break;
+        case 'configuration':
+            exportData = await exportConfiguration(point_ids, device_ids, tenantId);
+            filename = `configuration_${new Date().toISOString().split('T')[0]}.${format}`;
+            break;
         }
 
         const exportResult = {
@@ -888,11 +888,11 @@ function parseInterval(interval) {
     const value = parseInt(interval.slice(0, -1));
     
     switch (unit) {
-        case 's': return value * 1000;
-        case 'm': return value * 60 * 1000;
-        case 'h': return value * 60 * 60 * 1000;
-        case 'd': return value * 24 * 60 * 60 * 1000;
-        default: return 60 * 1000; // 기본 1분
+    case 's': return value * 1000;
+    case 'm': return value * 60 * 1000;
+    case 'h': return value * 60 * 60 * 1000;
+    case 'd': return value * 24 * 60 * 60 * 1000;
+    default: return 60 * 1000; // 기본 1분
     }
 }
 
@@ -1147,14 +1147,14 @@ async function exportConfiguration(pointIds, deviceIds, tenantId) {
  */
 function convertToFormat(data, format) {
     switch (format) {
-        case 'csv':
-            return convertToCSV(data);
-        case 'json':
-            return data;
-        case 'xml':
-            return convertToXML(data);
-        default:
-            return data;
+    case 'csv':
+        return convertToCSV(data);
+    case 'json':
+        return data;
+    case 'xml':
+        return convertToXML(data);
+    default:
+        return data;
     }
 }
 

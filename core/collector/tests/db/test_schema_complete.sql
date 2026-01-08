@@ -77,6 +77,7 @@ CREATE TABLE device_settings (
     detailed_logging_enabled INTEGER,
     performance_monitoring_enabled INTEGER,
     diagnostic_mode_enabled INTEGER,
+    auto_registration_enabled INTEGER DEFAULT 0,
     
     -- Added based on error logs
     updated_by INTEGER DEFAULT 1,
@@ -124,6 +125,7 @@ CREATE TABLE data_points (
     description TEXT,
     address INTEGER NOT NULL,
     address_string VARCHAR(255),
+    mapping_key VARCHAR(255),
     data_type VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',
     access_mode VARCHAR(10) DEFAULT 'read',
     is_enabled INTEGER DEFAULT 1,

@@ -1,0 +1,95 @@
+// =============================================================================
+// backend/routes/sites.js
+// Site Management API Routes
+// =============================================================================
+
+const express = require('express');
+const router = express.Router();
+const SiteService = require('../lib/services/SiteService');
+const { authenticateToken, tenantIsolation, requireRole } = require('../middleware/tenantIsolation');
+
+// 모든 라우트에 대해 인증 및 테넌트 격리 기본 적용
+router.use(authenticateToken);
+router.use(tenantIsolation);
+
+/**
+ * @route   GET /api/sites
+ * @desc    Get all sites for the current tenant
+ * @access  Private
+ */
+router.get('/', async (req, res) => {
+    const response = await SiteService.getAllSites(req.tenantId);
+    res.status(response.success ? 200 : 400).json(response);
+});
+
+/**
+ * @route   GET /api/sites/tree
+ * @desc    Get site hierarchy tree
+ * @access  Private
+ */
+router.get('/tree', async (req, res) => {
+    const response = await SiteService.getHierarchyTree(req.tenantId);
+    res.status(response.success ? 200 : 400).json(response);
+});
+
+/**
+ * @route   GET /api/sites/:id
+ * @desc    Get specific site by ID
+ * @access  Private
+ */
+router.get('/:id', async (req, res) => {
+    const response = await SiteService.getSiteById(req.params.id, req.tenantId);
+    res.status(response.success ? 200 : 404).json(response);
+});
+
+/**
+ * @route   GET /api/sites/:id/children
+ * @desc    Get child sites for a parent site
+ * @access  Private
+ */
+router.get('/:id/children', async (req, res) => {
+    const response = await SiteService.getSitesByParentId(req.params.id, req.tenantId);
+    res.status(response.success ? 200 : 400).json(response);
+});
+
+/**
+ * @route   POST /api/sites
+ * @desc    Create a new site
+ * @access  Private (Admin/Manager)
+ */
+router.post('/', requireRole('system_admin', 'company_admin', 'site_manager'), async (req, res) => {
+    const response = await SiteService.createSite(req.body, req.tenantId);
+    res.status(response.success ? 201 : 400).json(response);
+});
+
+/**
+ * @route   PUT /api/sites/:id
+ * @desc    Update an existing site
+ * @access  Private (Admin/Manager)
+ */
+router.put('/:id', requireRole('system_admin', 'company_admin', 'site_manager'), async (req, res) => {
+    const response = await SiteService.updateSite(req.params.id, req.body, req.tenantId);
+    res.status(response.success ? 200 : 400).json(response);
+});
+
+/**
+ * @route   PATCH /api/sites/:id
+ * @desc    Partially update a site
+ * @access  Private (Admin/Manager)
+ */
+router.patch('/:id', requireRole('system_admin', 'company_admin', 'site_manager'), async (req, res) => {
+    const response = await SiteService.patchSite(req.params.id, req.body, req.tenantId);
+    res.status(response.success ? 200 : 400).json(response);
+});
+
+/**
+ * @route   DELETE /api/sites/:id
+ * @desc    Delete a site
+ * @access  Private (Admin)
+ */
+router.delete('/:id', requireRole('system_admin', 'company_admin'), async (req, res) => {
+    const response = await SiteService.deleteSite(req.params.id, req.tenantId);
+    res.status(response.success ? 200 : 400).json(response);
+});
+
+module.exports = router;

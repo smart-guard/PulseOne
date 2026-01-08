@@ -21,7 +21,7 @@
 #include "Database/Entities/ExportTargetEntity.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/RepositoryFactory.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <nlohmann/json.hpp>
 #include <sstream>
 

@@ -40,7 +40,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
     scaling_offset: 0,
     min_value: 0,
     max_value: 65535,
-    log_enabled: true,
+    is_log_enabled: true,
     log_interval_ms: 5000,
     log_deadband: 0,
     polling_interval_ms: 1000,
@@ -76,7 +76,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
           scaling_offset: 0,
           min_value: 0,
           max_value: 65535,
-          log_enabled: true,
+          is_log_enabled: true,
           log_interval_ms: 5000,
           log_deadband: 0,
           polling_interval_ms: 1000,
@@ -100,7 +100,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
           scaling_offset: dataPoint.scaling_offset || 0,
           min_value: dataPoint.min_value || 0,
           max_value: dataPoint.max_value || 65535,
-          log_enabled: dataPoint.log_enabled !== false,
+          is_log_enabled: dataPoint.is_log_enabled !== false,
           log_interval_ms: dataPoint.log_interval_ms || 5000,
           log_deadband: dataPoint.log_deadband || 0,
           polling_interval_ms: dataPoint.polling_interval_ms || 1000,
@@ -573,16 +573,16 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
                 <label>로깅 활성화</label>
                 {mode === 'view' ? (
                   <div className="form-value">
-                    <span className={`status-badge ${dataPoint?.log_enabled ? 'enabled' : 'disabled'}`}>
-                      {dataPoint?.log_enabled ? '활성화' : '비활성화'}
+                    <span className={`status-badge ${dataPoint?.is_log_enabled ? 'enabled' : 'disabled'}`}>
+                      {dataPoint?.is_log_enabled ? '활성화' : '비활성화'}
                     </span>
                   </div>
                 ) : (
                   <label className="switch">
                     <input
                       type="checkbox"
-                      checked={formData.log_enabled !== false}
-                      onChange={(e) => updateField('log_enabled', e.target.checked)}
+                      checked={formData.is_log_enabled !== false}
+                      onChange={(e) => updateField('is_log_enabled', e.target.checked)}
                     />
                     <span className="slider"></span>
                   </label>

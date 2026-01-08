@@ -20,9 +20,9 @@
 #include <filesystem>
 
 // PulseOne 헤더
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/ExportScheduleRepository.h"

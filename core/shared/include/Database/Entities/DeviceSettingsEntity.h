@@ -74,6 +74,7 @@ public:
             j["data_validation_enabled"] = data_validation_enabled_;
             j["performance_monitoring_enabled"] = performance_monitoring_enabled_;
             j["diagnostic_mode_enabled"] = diagnostic_mode_enabled_;
+            j["auto_registration_enabled"] = auto_registration_enabled_;
         } catch (const std::exception&) {
             // JSON 생성 실패 시 기본 객체 반환
         }
@@ -105,6 +106,7 @@ public:
             if (data.contains("data_validation_enabled")) setDataValidationEnabled(data["data_validation_enabled"].get<bool>());
             if (data.contains("performance_monitoring_enabled")) setPerformanceMonitoringEnabled(data["performance_monitoring_enabled"].get<bool>());
             if (data.contains("diagnostic_mode_enabled")) setDiagnosticModeEnabled(data["diagnostic_mode_enabled"].get<bool>());
+            if (data.contains("auto_registration_enabled")) setAutoRegistrationEnabled(data["auto_registration_enabled"].get<bool>());
             return true;
         } catch (const std::exception&) {
             return false;
@@ -251,6 +253,12 @@ public:
         markModified();
     }
     
+    bool isAutoRegistrationEnabled() const { return auto_registration_enabled_; }
+    void setAutoRegistrationEnabled(bool enabled) { 
+        auto_registration_enabled_ = enabled; 
+        markModified();
+    }
+    
     std::chrono::system_clock::time_point getUpdatedAt() const { return updated_at_; }
 
     // =======================================================================
@@ -294,6 +302,7 @@ public:
         data_validation_enabled_ = true;
         performance_monitoring_enabled_ = true;
         diagnostic_mode_enabled_ = false;
+        auto_registration_enabled_ = false;
         markModified();
     }
     /**
@@ -344,6 +353,7 @@ private:
     bool data_validation_enabled_;
     bool performance_monitoring_enabled_;
     bool diagnostic_mode_enabled_;
+    bool auto_registration_enabled_;
     std::chrono::system_clock::time_point updated_at_;
 };
 

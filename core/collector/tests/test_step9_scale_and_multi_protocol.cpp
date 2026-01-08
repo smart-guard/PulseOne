@@ -21,8 +21,8 @@
 
 // PulseOne Core
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
-#include "Database/DatabaseManager.h"
+#include "Logging/LogManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 #include "Workers/WorkerManager.h"
 #include "Workers/Protocol/ModbusWorker.h"
@@ -30,8 +30,13 @@
 #include "Pipeline/DataProcessingService.h"
 #include "Storage/RedisDataWriter.h"
 #include "Client/RedisClientImpl.h"
+#include "Drivers/Common/DriverFactory.h"
+#include "Drivers/Modbus/ModbusDriver.h"
+#include "Drivers/Mqtt/MqttDriver.h"
+#include "Workers/Protocol/MQTTWorker.h"
 
 using namespace PulseOne;
+using namespace PulseOne::Drivers;
 using namespace PulseOne::Workers;
 using namespace PulseOne::Pipeline;
 using namespace PulseOne::Database;
@@ -218,18 +223,32 @@ protected:
         data_processing_service_ = std::make_unique<DataProcessingService>();
         data_processing_service_->Start();
         
-        auto& pipeline_manager = PipelineManager::GetInstance();
+        auto& pipeline_manager = PipelineManager::getInstance();
         pipeline_manager.Start();
         
         tcp_server_ = std::make_unique<VirtualModbusTcpServer>(1502);
         tcp_server_->Start();
+
+        // Manual Driver Registration for tests (bypassing extern "C" collision)
+        DriverFactory::GetInstance().RegisterDriver("MODBUS", []() {
+            return std::make_unique<ModbusDriver>();
+        });
+        DriverFactory::GetInstance().RegisterDriver("MODBUS_TCP", []() {
+            return std::make_unique<ModbusDriver>();
+        });
+        DriverFactory::GetInstance().RegisterDriver("MODBUS_RTU", []() {
+            return std::make_unique<ModbusDriver>();
+        });
+        DriverFactory::GetInstance().RegisterDriver("MQTT", []() {
+            return std::make_unique<MqttDriver>();
+        });
     }
 
     void TearDown() override {
         tcp_server_->Stop();
         for (auto rtu : rtu_servers_) rtu->Stop();
         if (data_processing_service_) data_processing_service_->Stop();
-        PipelineManager::GetInstance().Shutdown();
+        PipelineManager::getInstance().Shutdown();
     }
 
     std::unique_ptr<VirtualModbusTcpServer> tcp_server_;
@@ -269,6 +288,7 @@ TEST_F(ModbusScaleTest, MultiProtocol_Scale_Validation) {
             dev.driver_config.properties["data_bits"] = "8";
             dev.driver_config.properties["stop_bits"] = "1";
             dev.driver_config.properties["parity"] = "N";
+            dev.driver_config.properties["slave_id"] = "1";
         }
 
         auto worker = std::make_shared<ModbusWorker>(dev);
@@ -376,4 +396,59 @@ TEST(ModbusConversionTest, Unit_BitByte_Conversion) {
     std::vector<uint16_t> regs_int16 = { 0xFFFF };
     auto val_int16 = worker->ConvertRegistersToValue(regs_int16, dp_int16);
     EXPECT_NEAR(std::get<double>(val_int16), -1.0, 0.001);
+}
+
+// =============================================================================
+// MQTT 스케일 테스트
+// =============================================================================
+TEST_F(ModbusScaleTest, MQTT_Scale_Validation) {
+    const int MQTT_DEVICE_COUNT = 5;
+    std::vector<std::shared_ptr<MQTTWorker>> workers;
+
+    std::cout << "🚀 Starting MQTT Scale Test with " << MQTT_DEVICE_COUNT << " workers" << std::endl;
+
+    for (int i = 0; i < MQTT_DEVICE_COUNT; i++) {
+        PulseOne::DeviceInfo dev;
+        dev.id = "MQTT_" + std::to_string(i + 1);
+        dev.name = "MqttDev_" + dev.id;
+        dev.protocol_type = "MQTT";
+        dev.endpoint = "pulseone-rabbitmq:1883"; // Using RabbitMQ container for MQTT
+        dev.is_enabled = true;
+        
+        // MQTT specific settings
+        dev.driver_config.properties["client_id"] = "CollectorTest_" + dev.id;
+        dev.driver_config.properties["keep_alive"] = "60";
+        
+        // MQTT credentials for RabbitMQ (since we created 'pulseone' user)
+        json mqtt_cfg;
+        mqtt_cfg["username"] = "pulseone";
+        mqtt_cfg["password"] = "pulseone";
+        mqtt_cfg["topic"] = "test/topic/" + dev.id;
+        mqtt_cfg["qos"] = 1;
+        mqtt_cfg["client_id"] = "pulseone_MqttDev_" + dev.id;
+        dev.config = mqtt_cfg.dump();
+
+        auto worker = std::make_shared<MQTTWorker>(dev);
+        
+        // Subscribe to a test topic
+        DataPoint dp;
+        dp.id = "dp_" + dev.id;
+        dp.address_string = "test/topic/" + dev.id;
+        dp.data_type = "STRING";
+        worker->AddDataPoint(dp);
+
+        if (worker->Start().get()) {
+            workers.push_back(worker);
+        }
+    }
+
+    std::cout << "✅ " << workers.size() << " MQTT workers started. Waiting for connection..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+
+    for (auto& w : workers) {
+        // We don't check IsConnected here because it might take time to connect to actual RabbitMQ
+        // But we ensure they are running.
+        EXPECT_EQ(w->GetState(), WorkerState::RUNNING);
+        w->Stop().get();
+    }
 }

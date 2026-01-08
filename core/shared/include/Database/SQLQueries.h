@@ -317,7 +317,7 @@ namespace DataPoint {
             id, device_id, name, description, 
             
             -- 주소 정보  
-            address, address_string,
+            address, address_string, mapping_key,
             
             -- 데이터 타입 및 접근성
             data_type, access_mode, is_enabled, is_writable,
@@ -341,7 +341,7 @@ namespace DataPoint {
     const std::string FIND_BY_ID = R"(
         SELECT 
             id, device_id, name, description, 
-            address, address_string,
+            address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
@@ -354,7 +354,7 @@ namespace DataPoint {
     const std::string FIND_BY_DEVICE_ID = R"(
         SELECT 
             id, device_id, name, description, 
-            address, address_string,
+            address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
@@ -368,7 +368,7 @@ namespace DataPoint {
     const std::string FIND_BY_DEVICE_ID_ENABLED = R"(
         SELECT 
             id, device_id, name, description, 
-            address, address_string,
+            address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
@@ -382,7 +382,7 @@ namespace DataPoint {
     const std::string FIND_BY_DEVICE_AND_ADDRESS = R"(
         SELECT 
             id, device_id, name, description, 
-            address, address_string,
+            address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
@@ -398,20 +398,20 @@ namespace DataPoint {
     const std::string INSERT = R"(
         INSERT INTO data_points (
             device_id, name, description, 
-            address, address_string,
+            address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
             group_name, tags, metadata, protocol_params,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     // 🔥🔥🔥 UPDATE - 현재 스키마의 모든 필드
     const std::string UPDATE = R"(
         UPDATE data_points SET 
             device_id = ?, name = ?, description = ?, 
-            address = ?, address_string = ?,
+            address = ?, address_string = ?, mapping_key = ?,
             data_type = ?, access_mode = ?, is_enabled = ?, is_writable = ?,
             unit = ?, scaling_factor = ?, scaling_offset = ?, min_value = ?, max_value = ?,
             log_enabled = ?, log_interval_ms = ?, log_deadband = ?, polling_interval_ms = ?,
@@ -457,6 +457,7 @@ namespace DataPoint {
             -- 🔥 주소 정보
             address INTEGER NOT NULL,
             address_string VARCHAR(255),
+            mapping_key VARCHAR(255),
             
             -- 🔥 데이터 타입 및 접근성
             data_type VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',
@@ -504,7 +505,7 @@ namespace DataPoint {
         SELECT 
             -- data_points 모든 필드
             dp.id, dp.device_id, dp.name, dp.description, 
-            dp.address, dp.address_string,
+            dp.address, dp.address_string, dp.mapping_key,
             dp.data_type, dp.access_mode, dp.is_enabled, dp.is_writable,
             dp.unit, dp.scaling_factor, dp.scaling_offset, dp.min_value, dp.max_value,
             dp.log_enabled, dp.log_interval_ms, dp.log_deadband, dp.polling_interval_ms,
@@ -570,7 +571,7 @@ namespace DataPoint {
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
             group_name, tags, metadata, protocol_params,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE_BASIC_INFO = R"(
@@ -679,7 +680,7 @@ namespace DataPoint {
     
     const std::string EXPORT_FOR_BACKUP = R"(
         SELECT 
-            device_id, name, description, address, address_string,
+            device_id, name, description, address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
@@ -691,7 +692,7 @@ namespace DataPoint {
     
     const std::string COPY_TO_DEVICE = R"(
         INSERT INTO data_points (
-            device_id, name, description, address, address_string,
+            device_id, name, description, address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
@@ -699,7 +700,7 @@ namespace DataPoint {
             created_at, updated_at
         )
         SELECT 
-            ? as device_id, name, description, address, address_string,
+            ? as device_id, name, description, address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
@@ -756,7 +757,7 @@ namespace DeviceSettings {
             backoff_time_ms, max_backoff_time_ms,
             keep_alive_enabled, keep_alive_interval_s, keep_alive_timeout_s,
             data_validation_enabled, outlier_detection_enabled, deadband_enabled,
-            detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled,
+            detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled, auto_registration_enabled,
             created_at, updated_at, updated_by
         FROM device_settings 
         ORDER BY device_id
@@ -770,7 +771,7 @@ namespace DeviceSettings {
             backoff_time_ms, max_backoff_time_ms,
             keep_alive_enabled, keep_alive_interval_s, keep_alive_timeout_s,
             data_validation_enabled, outlier_detection_enabled, deadband_enabled,
-            detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled,
+            detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled, auto_registration_enabled,
             created_at, updated_at, updated_by
         FROM device_settings 
         WHERE device_id = ?
@@ -784,7 +785,7 @@ namespace DeviceSettings {
             ds.backoff_time_ms, ds.max_backoff_time_ms,
             ds.keep_alive_enabled, ds.keep_alive_interval_s, ds.keep_alive_timeout_s,
             ds.data_validation_enabled, ds.outlier_detection_enabled, ds.deadband_enabled,
-            ds.detailed_logging_enabled, ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled,
+            ds.detailed_logging_enabled, ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled, ds.auto_registration_enabled,
             ds.created_at, ds.updated_at, ds.updated_by
         FROM device_settings ds
         INNER JOIN devices d ON ds.device_id = d.id
@@ -801,7 +802,7 @@ namespace DeviceSettings {
             ds.backoff_time_ms, ds.max_backoff_time_ms,
             ds.keep_alive_enabled, ds.keep_alive_interval_s, ds.keep_alive_timeout_s,
             ds.data_validation_enabled, ds.outlier_detection_enabled, ds.deadband_enabled,
-            ds.detailed_logging_enabled, ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled,
+            ds.detailed_logging_enabled, ds.performance_monitoring_enabled, ds.diagnostic_mode_enabled, ds.auto_registration_enabled,
             ds.created_at, ds.updated_at, ds.updated_by
         FROM device_settings ds
         INNER JOIN devices d ON ds.device_id = d.id
@@ -818,9 +819,9 @@ namespace DeviceSettings {
             backoff_time_ms, max_backoff_time_ms,
             keep_alive_enabled, keep_alive_interval_s, keep_alive_timeout_s,
             data_validation_enabled, outlier_detection_enabled, deadband_enabled,
-            detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled,
+            detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled, auto_registration_enabled,
             created_at, updated_at, updated_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
     
     const std::string UPDATE_POLLING_INTERVAL = R"(
@@ -838,6 +839,12 @@ namespace DeviceSettings {
     const std::string UPDATE_RETRY_SETTINGS = R"(
         UPDATE device_settings 
         SET max_retry_count = ?, retry_interval_ms = ?, updated_at = ?
+        WHERE device_id = ?
+    )";
+    
+    const std::string UPDATE_AUTO_REGISTRATION_ENABLED = R"(
+        UPDATE device_settings 
+        SET auto_registration_enabled = ?, updated_at = ?
         WHERE device_id = ?
     )";
     
@@ -882,13 +889,14 @@ namespace DeviceSettings {
             
             -- 데이터 품질 관리
             data_validation_enabled INTEGER DEFAULT 1,
+            performance_monitoring_enabled INTEGER DEFAULT 1,
             outlier_detection_enabled INTEGER DEFAULT 0,
             deadband_enabled INTEGER DEFAULT 1,
             
             -- 로깅 및 진단
             detailed_logging_enabled INTEGER DEFAULT 0,
-            performance_monitoring_enabled INTEGER DEFAULT 1,
             diagnostic_mode_enabled INTEGER DEFAULT 0,
+            auto_registration_enabled INTEGER DEFAULT 0,
             
             -- 메타데이터
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

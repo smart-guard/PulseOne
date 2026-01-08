@@ -25,28 +25,28 @@ async function checkConfiguredDatabases() {
 
     // 1. 메인 데이터베이스 체크 (DATABASE_TYPE에 따라)
     switch (databaseType) {
-        case 'SQLITE':
-        case 'SQLITE3':
-            results.sqlite = await checkSQLiteStatus();
-            break;
+    case 'SQLITE':
+    case 'SQLITE3':
+        results.sqlite = await checkSQLiteStatus();
+        break;
             
-        case 'POSTGRESQL':
-        case 'POSTGRES':
-            results.postgresql = await checkPostgreSQLStatus();
-            break;
+    case 'POSTGRESQL':
+    case 'POSTGRES':
+        results.postgresql = await checkPostgreSQLStatus();
+        break;
             
-        case 'MYSQL':
-        case 'MARIADB':
-            results.mysql = await checkMySQLStatus();
-            break;
+    case 'MYSQL':
+    case 'MARIADB':
+        results.mysql = await checkMySQLStatus();
+        break;
             
-        case 'MSSQL':
-            results.mssql = await checkMSSQLStatus();
-            break;
+    case 'MSSQL':
+        results.mssql = await checkMSSQLStatus();
+        break;
             
-        default:
-            console.warn(`⚠️ 알 수 없는 DATABASE_TYPE: ${databaseType}, SQLite로 기본 설정`);
-            results.sqlite = await checkSQLiteStatus();
+    default:
+        console.warn(`⚠️ 알 수 없는 DATABASE_TYPE: ${databaseType}, SQLite로 기본 설정`);
+        results.sqlite = await checkSQLiteStatus();
     }
 
     // 2. 보조 서비스들 체크 (설정에 따라)

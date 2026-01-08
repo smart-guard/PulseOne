@@ -7,7 +7,7 @@
 #include "Database/Entities/ExportScheduleEntity.h"
 #include "Database/Repositories/ExportScheduleRepository.h"
 #include "Database/RepositoryFactory.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <iomanip>
 

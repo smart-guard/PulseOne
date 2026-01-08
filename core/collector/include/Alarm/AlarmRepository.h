@@ -10,8 +10,10 @@
 #include <unordered_map>
 #include <shared_mutex>
 
-namespace PulseOne {
-namespace Database { class DatabaseManager; }
+namespace PulseOne { // Forward declarations
+class LogManager;
+}
+#include "DatabaseManager.hpp" // Include from DbLib
 
 namespace Alarm {
 
@@ -21,7 +23,7 @@ public:
     ~AlarmRepository();
     
     // 초기화
-    bool initialize(std::shared_ptr<Database::DatabaseManager> db_manager);
+    bool initialize(std::shared_ptr<DbLib::DatabaseManager> db_manager);
     
     // 규칙 관리
     AlarmErrorCode loadRules(int tenant_id);
@@ -60,7 +62,7 @@ private:
     std::unordered_map<int64_t, AlarmOccurrence> active_occurrences_;
     
     // 데이터베이스
-    std::shared_ptr<Database::DatabaseManager> db_manager_;
+    std::shared_ptr<DbLib::DatabaseManager> db_manager_;
     
     // ID 생성
     std::atomic<int64_t> next_occurrence_id_{1};

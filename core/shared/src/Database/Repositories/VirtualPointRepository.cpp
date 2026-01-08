@@ -5,10 +5,10 @@
 
 #include "Database/Repositories/VirtualPointRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include "Database/ExtendedSQLQueries.h"
 #include "Database/SQLQueries.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <algorithm>
 
@@ -332,7 +332,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::VirtualPoint::FIND_ALL);
         
         std::vector<VirtualPointEntity> entities;
@@ -370,7 +370,7 @@ std::optional<VirtualPointEntity> VirtualPointRepository::findById(int id) {
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
@@ -404,7 +404,7 @@ bool VirtualPointRepository::save(VirtualPointEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto params = entityToParams(entity);
         std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::VirtualPoint::INSERT, params);
         
@@ -439,7 +439,7 @@ bool VirtualPointRepository::update(const VirtualPointEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto params = entityToParams(entity);
         params["id"] = std::to_string(entity.getId());
         std::string query = RepositoryHelpers::replaceParametersInOrder(SQL::VirtualPoint::UPDATE_BY_ID, params);
@@ -469,7 +469,7 @@ bool VirtualPointRepository::deleteById(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::DELETE_BY_IDS, std::to_string(id));
         bool success = db_layer.executeNonQuery(query);
         
@@ -496,7 +496,7 @@ bool VirtualPointRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::EXISTS_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
@@ -518,7 +518,7 @@ int VirtualPointRepository::getTotalCount() {
             return 0;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::VirtualPoint::COUNT_ALL);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -543,7 +543,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByTenant(int tenant_
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_TENANT, std::to_string(tenant_id));
         auto results = db_layer.executeQuery(query);
         
@@ -573,7 +573,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findBySite(int site_id) 
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_SITE, std::to_string(site_id));
         auto results = db_layer.executeQuery(query);
         
@@ -603,7 +603,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByDevice(int device_
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_DEVICE, std::to_string(device_id));
         auto results = db_layer.executeQuery(query);
         
@@ -633,7 +633,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findEnabled() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::VirtualPoint::FIND_ENABLED);
         
         std::vector<VirtualPointEntity> entities;
@@ -662,7 +662,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByCategory(const std
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_CATEGORY, category);
         auto results = db_layer.executeQuery(query);
         
@@ -692,7 +692,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByExecutionType(cons
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::VirtualPoint::FIND_BY_EXECUTION_TYPE, execution_type);
         auto results = db_layer.executeQuery(query);
         
@@ -722,7 +722,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByTag(const std::str
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // JSON 배열에서 태그 검색하는 쿼리
         std::string query = "SELECT * FROM virtual_points WHERE tags LIKE '%" + tag + "%' ORDER BY name";
@@ -758,7 +758,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findDependents(int point
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 수식에서 특정 포인트 ID를 참조하는 가상포인트들 찾기
         std::string search_pattern = "%" + std::to_string(point_id) + "%";
@@ -791,7 +791,7 @@ bool VirtualPointRepository::updateExecutionStats(int id, double last_value, dou
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::map<std::string, std::string> params;
         params["execution_time_ms"] = std::to_string(execution_time_ms);
@@ -829,7 +829,7 @@ bool VirtualPointRepository::updateLastError(int id, const std::string& error_me
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // SQL injection 방지를 위한 간단한 이스케이핑
         std::string escaped_error = error_message;
@@ -867,7 +867,7 @@ bool VirtualPointRepository::updateLastValue(int id, double last_value) {
         LogManager::getInstance().Warn("VirtualPointRepository::updateLastValue - This method should update virtual_point_values table instead");
         
         // 임시로 execution_count만 업데이트
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = "UPDATE virtual_points SET execution_count = execution_count + 1, last_execution_time = CURRENT_TIMESTAMP WHERE id = " + std::to_string(id);
         
         bool success = db_layer.executeNonQuery(query);
@@ -893,7 +893,7 @@ bool VirtualPointRepository::setEnabled(int id, bool enabled) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = "UPDATE virtual_points SET is_enabled = " + std::string(enabled ? "1" : "0") + " WHERE id = " + std::to_string(id);
         
         bool success = db_layer.executeNonQuery(query);
@@ -921,7 +921,7 @@ bool VirtualPointRepository::resetExecutionStats(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = "UPDATE virtual_points SET "
                            "execution_count = 0, "
                            "avg_execution_time_ms = 0.0, "
@@ -961,7 +961,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByIds(const std::vec
     try {
         LogManager::getInstance().Debug("VirtualPointRepository::findByIds - Bulk query for " + std::to_string(ids.size()) + " IDs");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = SQL::VirtualPoint::FIND_BY_IDS;
         std::string in_clause = RepositoryHelpers::buildInClause(ids);
@@ -1001,7 +1001,7 @@ std::vector<VirtualPointEntity> VirtualPointRepository::findByConditions(
         
         LogManager::getInstance().Debug("VirtualPointRepository::findByConditions - Search with " + std::to_string(conditions.size()) + " conditions");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = SQL::VirtualPoint::FIND_ALL;
         
         if (!conditions.empty()) {
@@ -1079,7 +1079,7 @@ int VirtualPointRepository::countByConditions(const std::vector<QueryCondition>&
         
         LogManager::getInstance().Debug("VirtualPointRepository::countByConditions - Count with " + std::to_string(conditions.size()) + " conditions");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = SQL::VirtualPoint::COUNT_ALL;
         
         if (!conditions.empty()) {
@@ -1134,7 +1134,7 @@ int VirtualPointRepository::saveBulk(std::vector<VirtualPointEntity>& entities) 
     try {
         LogManager::getInstance().Info("VirtualPointRepository::saveBulk - Bulk save for " + std::to_string(entities.size()) + " entities");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         if (!db_layer.executeNonQuery("BEGIN TRANSACTION")) {
             LogManager::getInstance().Error("VirtualPointRepository::saveBulk - Failed to start transaction");
@@ -1189,7 +1189,7 @@ int VirtualPointRepository::updateBulk(const std::vector<VirtualPointEntity>& en
     try {
         LogManager::getInstance().Info("VirtualPointRepository::updateBulk - Bulk update for " + std::to_string(entities.size()) + " entities");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         if (!db_layer.executeNonQuery("BEGIN TRANSACTION")) {
             LogManager::getInstance().Error("VirtualPointRepository::updateBulk - Failed to start transaction");
@@ -1243,7 +1243,7 @@ int VirtualPointRepository::deleteByIds(const std::vector<int>& ids) {
     try {
         LogManager::getInstance().Info("VirtualPointRepository::deleteByIds - Bulk delete for " + std::to_string(ids.size()) + " IDs");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = SQL::VirtualPoint::DELETE_BY_IDS;
         std::string in_clause = RepositoryHelpers::buildInClause(ids);
@@ -1273,7 +1273,7 @@ int VirtualPointRepository::deleteByIds(const std::vector<int>& ids) {
 
 bool VirtualPointRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         return db_layer.executeNonQuery(SQL::VirtualPoint::CREATE_TABLE);
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("VirtualPointRepository::ensureTableExists failed: " + std::string(e.what()));

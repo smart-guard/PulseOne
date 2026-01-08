@@ -11,7 +11,7 @@
  * 
  * 🎯 ScriptLibraryRepository 패턴 100% 적용:
  * - ExtendedSQLQueries.h 사용 (분리된 쿼리 파일)
- * - DatabaseAbstractionLayer 패턴
+ * - DbLib::DatabaseAbstractionLayer 패턴
  * - 표준 LogManager 사용법
  * - 벌크 연산 SQL 최적화
  * - 캐시 관리 완전 구현
@@ -20,10 +20,10 @@
 
 #include "Database/Repositories/AlarmRuleRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include "Database/ExtendedSQLQueries.h"  // 🔥 분리된 쿼리 파일 사용
 #include "Database/SQLQueries.h"          // 🔥 SQL::Common 네임스페이스용
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Alarm/AlarmTypes.h"
 #include <sstream>
 #include <algorithm>
@@ -44,7 +44,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findAll() {
             return {};
         }
         LogManager::getInstance().setLogLevel(LogLevel::DEBUG);
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 사용
         auto results = db_layer.executeQuery(SQL::AlarmRule::FIND_ALL);
@@ -88,7 +88,7 @@ std::optional<AlarmRuleEntity> AlarmRuleRepository::findById(int id) {
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
         std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmRule::FIND_BY_ID, std::to_string(id));
@@ -130,7 +130,7 @@ bool AlarmRuleRepository::save(AlarmRuleEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
         auto params = entityToParams(entity);
@@ -170,7 +170,7 @@ bool AlarmRuleRepository::update(const AlarmRuleEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🔥 수정: UPDATE -> UPDATE_BY_ID (ExtendedSQLQueries.h 기준)
         auto params = entityToParams(entity);
@@ -208,7 +208,7 @@ bool AlarmRuleRepository::deleteById(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
         std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmRule::DELETE_BY_ID, std::to_string(id));
@@ -248,7 +248,7 @@ bool AlarmRuleRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
         std::string query = RepositoryHelpers::replaceParameter(SQL::AlarmRule::EXISTS_BY_ID, std::to_string(id));
@@ -294,7 +294,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findByIds(const std::vector<in
             query.insert(order_pos, "WHERE id IN (" + ids_ss.str() + ") ");
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto query_results = db_layer.executeQuery(query);
         
         results.reserve(query_results.size());
@@ -333,11 +333,20 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findByConditions(
         
         // 🎯 RepositoryHelpers를 사용한 동적 쿼리 구성
         std::string query = SQL::AlarmRule::FIND_ALL;
-        query += RepositoryHelpers::buildWhereClause(conditions);
+        std::string where_clause = RepositoryHelpers::buildWhereClause(conditions);
+        
+        // ORDER BY 앞에 WHERE 절 삽입
+        size_t order_pos = query.find("ORDER BY");
+        if (order_pos != std::string::npos) {
+            query.insert(order_pos, where_clause + " ");
+        } else {
+            query += where_clause;
+        }
+        
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto query_results = db_layer.executeQuery(query);
         
         results.reserve(query_results.size());
@@ -372,7 +381,7 @@ int AlarmRuleRepository::countByConditions(const std::vector<QueryCondition>& co
         std::string query = SQL::AlarmRule::COUNT_ALL;
         query += RepositoryHelpers::buildWhereClause(conditions);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -443,7 +452,7 @@ int AlarmRuleRepository::deleteByIds(const std::vector<int>& ids) {
         
         std::string query = "DELETE FROM alarm_rules WHERE id IN (" + ids_ss.str() + ")";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -492,7 +501,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findByTarget(const std::string
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<AlarmRuleEntity> entities;
@@ -560,7 +569,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findBySeverity(const std::stri
 std::vector<AlarmRuleEntity> AlarmRuleRepository::findByAlarmType(const std::string& alarm_type, bool enabled_only) {
     try {
         std::vector<QueryCondition> conditions = {
-            {"condition_type", "=", alarm_type}
+            {"alarm_type", "=", alarm_type}
         };
         
         if (enabled_only) {
@@ -582,7 +591,7 @@ std::vector<AlarmRuleEntity> AlarmRuleRepository::findAllEnabled() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 사용
         auto results = db_layer.executeQuery(SQL::AlarmRule::FIND_ENABLED);
@@ -899,7 +908,7 @@ PulseOne::Database::Repositories::AlarmRuleRepository::entityToParams(
 
 bool AlarmRuleRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         // 🔥 ExtendedSQLQueries.h 사용
         bool success = db_layer.executeCreateTable(SQL::AlarmRule::CREATE_TABLE);
         if (success) {

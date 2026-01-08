@@ -14,9 +14,9 @@
 
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include "Database/ExportSQLQueries.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <iomanip>
 #include <ctime>
@@ -36,7 +36,7 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::ExportTarget::FIND_ALL);
         
         std::vector<ExportTargetEntity> entities;
@@ -84,7 +84,7 @@ std::optional<ExportTargetEntity> ExportTargetRepository::findById(int id) {
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTarget::FIND_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -146,7 +146,7 @@ bool ExportTargetRepository::save(ExportTargetEntity& entity) {
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -209,7 +209,7 @@ bool ExportTargetRepository::update(const ExportTargetEntity& entity) {
             query.replace(pos, 1, std::to_string(entity.getId()));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -235,7 +235,7 @@ bool ExportTargetRepository::deleteById(int id) {
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTarget::DELETE_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -261,7 +261,7 @@ bool ExportTargetRepository::exists(int id) {
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTarget::EXISTS_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -299,7 +299,7 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByIds(
         std::string query = "SELECT * FROM export_targets WHERE id IN (" + 
                            ids_ss.str() + ")";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
@@ -341,7 +341,7 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByConditions(
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
@@ -379,7 +379,7 @@ int ExportTargetRepository::countByConditions(
         std::string query = "SELECT COUNT(*) as count FROM export_targets";
         query += RepositoryHelpers::buildWhereClause(conditions);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -411,7 +411,7 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByEnabled(bool enabl
             enabled ? "1" : "0"
         );
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
@@ -449,7 +449,7 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByTargetType(
         std::string query = RepositoryHelpers::replaceParameterWithQuotes(
             SQL::ExportTarget::FIND_BY_TARGET_TYPE, target_type);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
@@ -485,7 +485,7 @@ std::vector<ExportTargetEntity> ExportTargetRepository::findByProfileId(int prof
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTarget::FIND_BY_PROFILE_ID, std::to_string(profile_id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetEntity> entities;
@@ -523,7 +523,7 @@ std::optional<ExportTargetEntity> ExportTargetRepository::findByName(
         std::string query = RepositoryHelpers::replaceParameterWithQuotes(
             SQL::ExportTarget::FIND_BY_NAME, name);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -550,7 +550,7 @@ int ExportTargetRepository::getTotalCount() {
             return 0;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::ExportTarget::COUNT_ALL);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -573,7 +573,7 @@ int ExportTargetRepository::getActiveCount() {
             return 0;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::ExportTarget::COUNT_ACTIVE);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -598,7 +598,7 @@ std::map<std::string, int> ExportTargetRepository::getCountByType() {
             return counts;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::ExportTarget::COUNT_BY_TYPE);
         
         for (const auto& row : results) {
@@ -932,7 +932,7 @@ std::map<std::string, std::string> ExportTargetRepository::entityToParams(
 
 bool ExportTargetRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeCreateTable(SQL::ExportTarget::CREATE_TABLE);
         
         if (success) {

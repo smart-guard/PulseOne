@@ -17,7 +17,7 @@
 #include "Client/RedisClientImpl.h"
 #include "Export/ExportTypes.h"
 #include "CSP/DynamicTargetManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>

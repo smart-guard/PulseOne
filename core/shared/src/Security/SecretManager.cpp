@@ -17,7 +17,7 @@
 
 // LogManager 조건부 포함
 #ifdef HAS_SHARED_LIBS
-    #include "Utils/LogManager.h"
+    #include "Logging/LogManager.h"
     #define LOG_SECRET(level, msg) LogManager::getInstance().log("secret", level, msg)
 #else
     #define LOG_SECRET(level, msg) std::cout << "[SECRET:" << #level << "] " << msg << std::endl

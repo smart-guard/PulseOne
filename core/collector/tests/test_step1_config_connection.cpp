@@ -1,6 +1,6 @@
 /**
  * @file test_step1_config_connection.cpp
- * @brief Step 1: ConfigManager와 DatabaseManager 기본 테스트
+ * @brief Step 1: ConfigManager와 DbLib::DatabaseManager 기본 테스트
  * @date 2025-08-29
  */
 
@@ -10,9 +10,9 @@
 #include <vector>
 #include <map>
 
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 
 // =============================================================================
 // Step 1 테스트 클래스
@@ -72,23 +72,23 @@ TEST_F(Step1ConfigConnectionTest, Test_ConfigManager) {
 }
 
 // =============================================================================
-// Test 2: DatabaseManager 테스트
+// Test 2: DbLib::DatabaseManager 테스트
 // =============================================================================
 
-TEST_F(Step1ConfigConnectionTest, Test_DatabaseManager) {
-    std::cout << "\n[TEST 2] DatabaseManager 테스트" << std::endl;
+TEST_F(Step1ConfigConnectionTest, Test_DbLib::DatabaseManager) {
+    std::cout << "\n[TEST 2] DbLib::DatabaseManager 테스트" << std::endl;
     std::cout << "-------------------------------" << std::endl;
     
     // ConfigManager 먼저 초기화
     ConfigManager::getInstance().initialize();
     
-    // DatabaseManager 인스턴스 획득
-    auto& db = DatabaseManager::getInstance();
-    std::cout << "DatabaseManager 인스턴스 획득: OK" << std::endl;
+    // DbLib::DatabaseManager 인스턴스 획득
+    auto& db = DbLib::DatabaseManager::getInstance();
+    std::cout << "DbLib::DatabaseManager 인스턴스 획득: OK" << std::endl;
     
     // 초기화
     bool init_result = db.initialize();
-    std::cout << "DatabaseManager 초기화: " << (init_result ? "OK" : "FAILED") << std::endl;
+    std::cout << "DbLib::DatabaseManager 초기화: " << (init_result ? "OK" : "FAILED") << std::endl;
     
     // 연결 상태 확인
     if (db.isSQLiteConnected()) {
@@ -97,7 +97,7 @@ TEST_F(Step1ConfigConnectionTest, Test_DatabaseManager) {
         std::cout << "SQLite: 연결 안됨" << std::endl;
     }
     
-    if (db.isConnected(DatabaseManager::DatabaseType::POSTGRESQL)) {
+    if (db.isConnected(DbLib::DatabaseManager::DatabaseType::POSTGRESQL)) {
         std::cout << "PostgreSQL: 연결됨" << std::endl;
     } else {
         std::cout << "PostgreSQL: 연결 안됨" << std::endl;
@@ -146,24 +146,24 @@ TEST_F(Step1ConfigConnectionTest, Test_Summary) {
         std::cout << "ConfigManager: FAILED" << std::endl;
     }
     
-    // DatabaseManager 확인
+    // DbLib::DatabaseManager 확인
     try {
-        auto& db = DatabaseManager::getInstance();
+        auto& db = DbLib::DatabaseManager::getInstance();
         db_ok = db.initialize();
         
         if (db_ok) {
             int connected_count = 0;
             if (db.isSQLiteConnected()) connected_count++;
-            if (db.isConnected(DatabaseManager::DatabaseType::POSTGRESQL)) connected_count++;
+            if (db.isConnected(DbLib::DatabaseManager::DatabaseType::POSTGRESQL)) connected_count++;
             if (db.isRedisConnected()) connected_count++;
             if (db.isInfluxConnected()) connected_count++;
             
-            std::cout << "DatabaseManager: OK (" << connected_count << "개 DB 연결됨)" << std::endl;
+            std::cout << "DbLib::DatabaseManager: OK (" << connected_count << "개 DB 연결됨)" << std::endl;
         } else {
-            std::cout << "DatabaseManager: 초기화 실패" << std::endl;
+            std::cout << "DbLib::DatabaseManager: 초기화 실패" << std::endl;
         }
     } catch (...) {
-        std::cout << "DatabaseManager: FAILED" << std::endl;
+        std::cout << "DbLib::DatabaseManager: FAILED" << std::endl;
     }
     
     // 최종 결과
@@ -171,7 +171,7 @@ TEST_F(Step1ConfigConnectionTest, Test_Summary) {
     std::cout << "Step 1 최종 결과" << std::endl;
     std::cout << "-------------------------------------------" << std::endl;
     std::cout << "ConfigManager:   " << (config_ok ? "PASS" : "FAIL") << std::endl;
-    std::cout << "DatabaseManager: " << (db_ok ? "PASS" : "FAIL") << std::endl;
+    std::cout << "DbLib::DatabaseManager: " << (db_ok ? "PASS" : "FAIL") << std::endl;
     std::cout << "-------------------------------------------" << std::endl;
     
     bool overall = config_ok && db_ok;

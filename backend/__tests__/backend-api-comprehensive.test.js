@@ -251,10 +251,10 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
                     
                     let statusDescription = '';
                     switch (response.status) {
-                        case 200: statusDescription = '정상 동작'; break;
-                        case 401: statusDescription = '인증 필요 (정상)'; break;
-                        case 404: statusDescription = '엔드포인트 미구현'; break;
-                        case 500: statusDescription = 'DB 연결 필요'; break;
+                    case 200: statusDescription = '정상 동작'; break;
+                    case 401: statusDescription = '인증 필요 (정상)'; break;
+                    case 404: statusDescription = '엔드포인트 미구현'; break;
+                    case 500: statusDescription = 'DB 연결 필요'; break;
                     }
                     
                     console.log(`   ${endpoint.name}: ${response.status} - ${statusDescription}`);

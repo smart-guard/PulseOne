@@ -67,6 +67,8 @@ public:
     using DevicePauseCallback = std::function<bool(const std::string&)>;
     using DeviceResumeCallback = std::function<bool(const std::string&)>;
     using DeviceRestartCallback = std::function<bool(const std::string&)>;
+    using DeviceReloadSettingsCallback = std::function<bool(const std::string&)>;
+    using DiscoveryStartCallback = std::function<bool(const std::string&, bool)>;
     
     // 범용 하드웨어 제어 콜백들 (펌프, 밸브, 모터, 릴레이 등 모두 포괄)
     using DigitalOutputCallback = std::function<bool(const std::string&, const std::string&, bool)>;
@@ -86,6 +88,8 @@ public:
     using UserManagementCallback = std::function<nlohmann::json(const std::string&, const nlohmann::json&)>;
     using SystemBackupCallback = std::function<bool(const std::string&)>;
     using LogDownloadCallback = std::function<std::string(const std::string&, const std::string&)>;
+    using LogListCallback = std::function<nlohmann::json(const std::string&)>;
+    using LogReadCallback = std::function<std::string(const std::string&, int, int)>;
 
 public:
     explicit RestApiServer(int port = 8080);
@@ -109,6 +113,8 @@ public:
     void SetDevicePauseCallback(DevicePauseCallback callback);
     void SetDeviceResumeCallback(DeviceResumeCallback callback);
     void SetDeviceRestartCallback(DeviceRestartCallback callback);
+    void SetDeviceReloadSettingsCallback(DeviceReloadSettingsCallback callback);
+    void SetDiscoveryStartCallback(DiscoveryStartCallback callback);
     
     // 범용 하드웨어 제어 콜백 설정 
     void SetDigitalOutputCallback(DigitalOutputCallback callback);
@@ -128,6 +134,8 @@ public:
     void SetUserManagementCallback(UserManagementCallback callback);
     void SetSystemBackupCallback(SystemBackupCallback callback);
     void SetLogDownloadCallback(LogDownloadCallback callback);
+    void SetLogListCallback(LogListCallback callback);
+    void SetLogReadCallback(LogReadCallback callback);
 
 private:
     void SetupRoutes();
@@ -147,6 +155,8 @@ private:
     void HandlePostDevicePause(const httplib::Request& req, httplib::Response& res);
     void HandlePostDeviceResume(const httplib::Request& req, httplib::Response& res);
     void HandlePostDeviceRestart(const httplib::Request& req, httplib::Response& res);
+    void HandlePostDeviceReloadSettings(const httplib::Request& req, httplib::Response& res);
+    void HandlePostDiscoveryStart(const httplib::Request& req, httplib::Response& res);
     
     // 일반 제어 핸들러들
     void HandlePostDeviceControl(const httplib::Request& req, httplib::Response& res);
@@ -259,6 +269,8 @@ private:
     DevicePauseCallback device_pause_callback_;
     DeviceResumeCallback device_resume_callback_;
     DeviceRestartCallback device_restart_callback_;
+    DeviceReloadSettingsCallback device_reload_settings_callback_;
+    DiscoveryStartCallback discovery_start_callback_;
     
     // 범용 하드웨어 제어 콜백들
     DigitalOutputCallback digital_output_callback_;
@@ -278,6 +290,8 @@ private:
     UserManagementCallback user_management_callback_;
     SystemBackupCallback system_backup_callback_;
     LogDownloadCallback log_download_callback_;
+    LogListCallback log_list_callback_;
+    LogReadCallback log_read_callback_;
 };
 
 } // namespace Network

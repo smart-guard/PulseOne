@@ -20,7 +20,7 @@ class LogManager {
             ERROR: 3,
             FATAL: 4
         };
-        
+
         // .env 설정 완전 활용
         this.currentLevel = this.parseLogLevel(config.get('LOG_LEVEL', 'info'));
         this.logToConsole = config.getBoolean('LOG_TO_CONSOLE', true);
@@ -28,23 +28,23 @@ class LogManager {
         this.logBaseDir = this.resolveLogPath(config.get('LOG_FILE_PATH', './logs/'));
         this.maxFileSizeMB = config.getNumber('LOG_MAX_SIZE_MB', 100);
         this.maxFiles = config.getNumber('LOG_MAX_FILES', 30);
-        
+
         // 추가 로그 구조화 설정 (.env에 추가 가능)
         this.useDateFolders = config.getBoolean('LOG_USE_DATE_FOLDERS', true);
         this.useHourlyFiles = config.getBoolean('LOG_USE_HOURLY_FILES', false);
         this.retentionDays = config.getNumber('LOG_RETENTION_DAYS', 30);
-        
+
         // 로그 카테고리별 파일 설정
         this.logCategories = {
             application: 'application',
-            error: 'error', 
+            error: 'error',
             crossplatform: 'crossplatform',
             database: 'database',
             services: 'services',
             api: 'api',
             system: 'system'
         };
-        
+
         this.initialize();
     }
 
@@ -64,18 +64,18 @@ class LogManager {
         try {
             // 기본 디렉토리 생성
             this.ensureLogDirectory();
-            
+
             // 현재 날짜/시간 설정
             this.updateCurrentDate();
-            
+
             // 로그 스트림 초기화
             if (this.logToFile) {
                 this.initializeLogStreams();
             }
-            
+
             // 정리 작업 스케줄링
             this.scheduleCleanupTasks();
-            
+
             this.initialized = true;
             this.log('system', 'INFO', 'LogManager 초기화 완료', {
                 logLevel: this.getCurrentLevelName(),
@@ -87,7 +87,7 @@ class LogManager {
                 useDateFolders: this.useDateFolders,
                 retentionDays: this.retentionDays
             });
-            
+
         } catch (error) {
             console.error('LogManager 초기화 실패:', error);
             this.logToFile = false;
@@ -103,7 +103,7 @@ class LogManager {
         if (!fs.existsSync(this.logBaseDir)) {
             fs.mkdirSync(this.logBaseDir, { recursive: true });
         }
-        
+
         // 날짜별 폴더 생성
         if (this.useDateFolders) {
             const dateFolder = this.getDateFolder();
@@ -119,11 +119,11 @@ class LogManager {
     updateCurrentDate() {
         const now = new Date();
         const newDate = this.formatDateString(now);
-        
+
         if (this.currentDate !== newDate) {
             const oldDate = this.currentDate;
             this.currentDate = newDate;
-            
+
             // 날짜가 변경되면 새 폴더 생성 및 스트림 재설정
             if (oldDate && this.logToFile) {
                 this.log('system', 'INFO', `날짜 변경: ${oldDate} -> ${newDate}, 로그 파일 재구성`);
@@ -168,7 +168,7 @@ class LogManager {
     getLogFilePath(category) {
         const dateFolder = this.getDateFolder();
         const now = new Date();
-        
+
         let filename;
         if (this.useHourlyFiles) {
             // 시간별 파일: api_2024-01-15_14.log
@@ -178,7 +178,7 @@ class LogManager {
             // 일별 파일: api_2024-01-15.log
             filename = `${category}_${this.currentDate}.log`;
         }
-        
+
         return path.join(dateFolder, filename);
     }
 
@@ -189,28 +189,28 @@ class LogManager {
         Object.entries(this.logCategories).forEach(([category, filename]) => {
             try {
                 const filePath = this.getLogFilePath(filename);
-                
+
                 // 디렉토리가 없으면 생성
                 const dir = path.dirname(filePath);
                 if (!fs.existsSync(dir)) {
                     fs.mkdirSync(dir, { recursive: true });
                 }
-                
-                const stream = fs.createWriteStream(filePath, { 
+
+                const stream = fs.createWriteStream(filePath, {
                     flags: 'a',
-                    encoding: 'utf8' 
+                    encoding: 'utf8'
                 });
-                
+
                 stream.on('error', (error) => {
                     console.error(`로그 스트림 오류 (${category}):`, error);
                 });
-                
+
                 this.logStreams.set(category, {
                     stream: stream,
                     filePath: filePath,
                     category: category
                 });
-                
+
             } catch (error) {
                 console.error(`로그 스트림 생성 실패 (${category}):`, error);
             }
@@ -238,7 +238,12 @@ class LogManager {
         if (path.isAbsolute(logPath)) {
             return logPath;
         }
-        return path.resolve(process.cwd(), logPath);
+
+        // binary 실행 환경인지 확인 (pkg 등)
+        const isBinary = process.pkg !== undefined || path.basename(process.execPath).includes('node') === false;
+        const baseDir = isBinary ? path.dirname(process.execPath) : process.cwd();
+
+        return path.resolve(baseDir, logPath);
     }
 
     /**
@@ -246,9 +251,9 @@ class LogManager {
      */
     parseLogLevel(level) {
         const upperLevel = level.toString().toUpperCase();
-        return this.logLevels[upperLevel] !== undefined ? 
-               this.logLevels[upperLevel] : 
-               this.logLevels.INFO;
+        return this.logLevels[upperLevel] !== undefined ?
+            this.logLevels[upperLevel] :
+            this.logLevels.INFO;
     }
 
     /**
@@ -265,21 +270,21 @@ class LogManager {
     log(category, level, message, metadata = null) {
         // 날짜 변경 확인 (매 로그마다 체크 - 성능보다 정확성 우선)
         this.updateCurrentDate();
-        
+
         const levelNum = this.parseLogLevel(level);
-        
+
         // 현재 설정된 레벨보다 낮으면 무시
         if (levelNum < this.currentLevel) {
             return;
         }
 
         const logEntry = this.formatLogEntry(category, level, message, metadata);
-        
+
         // 콘솔 출력
         if (this.logToConsole) {
             this.outputToConsole(level, logEntry);
         }
-        
+
         // 파일 출력
         if (this.logToFile && this.initialized) {
             this.outputToFile(category, level, logEntry);
@@ -292,9 +297,9 @@ class LogManager {
     formatLogEntry(category, level, message, metadata) {
         const timestamp = new Date().toISOString();
         const pid = process.pid;
-        
+
         let logLine = `${timestamp} [${pid}] [${level.toUpperCase()}] [${category.toUpperCase()}] ${message}`;
-        
+
         if (metadata) {
             if (typeof metadata === 'object') {
                 logLine += ` | ${JSON.stringify(metadata)}`;
@@ -302,7 +307,7 @@ class LogManager {
                 logLine += ` | ${metadata}`;
             }
         }
-        
+
         return logLine;
     }
 
@@ -317,10 +322,10 @@ class LogManager {
             ERROR: '\x1b[31m',   // red
             FATAL: '\x1b[35m'    // magenta
         };
-        
+
         const resetColor = '\x1b[0m';
         const color = colors[level.toUpperCase()] || colors.INFO;
-        
+
         console.log(`${color}${logEntry}${resetColor}`);
     }
 
@@ -333,7 +338,7 @@ class LogManager {
         if (streamInfo && streamInfo.stream) {
             streamInfo.stream.write(logEntry + '\n');
         }
-        
+
         // ERROR/FATAL은 error 카테고리에도 출력
         if ((level.toUpperCase() === 'ERROR' || level.toUpperCase() === 'FATAL') && category !== 'error') {
             const errorStreamInfo = this.logStreams.get('error');
@@ -341,7 +346,7 @@ class LogManager {
                 errorStreamInfo.stream.write(logEntry + '\n');
             }
         }
-        
+
         // 파일 크기 체크 및 로테이션
         this.checkFileRotation(category);
     }
@@ -352,11 +357,11 @@ class LogManager {
     checkFileRotation(category) {
         const streamInfo = this.logStreams.get(category);
         if (!streamInfo) return;
-        
+
         try {
             const stats = fs.statSync(streamInfo.filePath);
             const fileSizeMB = stats.size / (1024 * 1024);
-            
+
             if (fileSizeMB > this.maxFileSizeMB) {
                 this.rotateLogFile(category, streamInfo);
             }
@@ -372,35 +377,35 @@ class LogManager {
         try {
             // 현재 스트림 종료
             streamInfo.stream.end();
-            
+
             // 백업 파일명 생성 (timestamp 추가)
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const dir = path.dirname(streamInfo.filePath);
             const ext = path.extname(streamInfo.filePath);
             const basename = path.basename(streamInfo.filePath, ext);
             const backupPath = path.join(dir, `${basename}_${timestamp}${ext}`);
-            
+
             // 현재 파일을 백업으로 이동
             fs.renameSync(streamInfo.filePath, backupPath);
-            
+
             // 새 스트림 생성
-            const newStream = fs.createWriteStream(streamInfo.filePath, { 
-                flags: 'a', 
-                encoding: 'utf8' 
+            const newStream = fs.createWriteStream(streamInfo.filePath, {
+                flags: 'a',
+                encoding: 'utf8'
             });
-            
+
             newStream.on('error', (error) => {
                 console.error(`로그 스트림 오류 (${category}):`, error);
             });
-            
+
             this.logStreams.set(category, {
                 stream: newStream,
                 filePath: streamInfo.filePath,
                 category: category
             });
-            
+
             this.log('system', 'INFO', `로그 파일 로테이션 완료: ${category}`);
-            
+
         } catch (error) {
             console.error(`로그 파일 로테이션 실패 (${category}):`, error);
         }
@@ -415,17 +420,17 @@ class LogManager {
         const tomorrow = new Date(now);
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(0, 0, 0, 0);
-        
+
         const timeUntilMidnight = tomorrow.getTime() - now.getTime();
-        
+
         setTimeout(() => {
             this.cleanupOldLogs();
-            
+
             // 이후 24시간마다 실행
             setInterval(() => {
                 this.cleanupOldLogs();
             }, 24 * 60 * 60 * 1000);
-            
+
         }, timeUntilMidnight);
     }
 
@@ -434,27 +439,27 @@ class LogManager {
      */
     async cleanupOldLogs() {
         if (!this.useDateFolders) return;
-        
+
         try {
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - this.retentionDays);
-            
+
             const logDirs = fs.readdirSync(this.logBaseDir, { withFileTypes: true });
-            
+
             for (const dir of logDirs) {
                 if (dir.isDirectory()) {
                     const dirDate = new Date(dir.name);
-                    
+
                     if (dirDate < cutoffDate) {
                         const fullPath = path.join(this.logBaseDir, dir.name);
-                        
+
                         // 디렉토리 삭제
                         fs.rmSync(fullPath, { recursive: true, force: true });
                         this.log('system', 'INFO', `오래된 로그 디렉토리 삭제: ${dir.name}`);
                     }
                 }
             }
-            
+
         } catch (error) {
             this.log('system', 'ERROR', '로그 정리 중 오류', { error: error.message });
         }
@@ -563,7 +568,7 @@ class LogManager {
             totalStreams: this.logStreams.size,
             currentDate: this.currentDate
         };
-        
+
         // 현재 활성 로그 파일들
         this.logStreams.forEach((streamInfo, category) => {
             try {
@@ -614,17 +619,17 @@ class LogManager {
         if (settings.logToConsole !== undefined) {
             this.logToConsole = settings.logToConsole;
         }
-        
+
         if (settings.logToFile !== undefined) {
             this.logToFile = settings.logToFile;
         }
-        
+
         if (settings.logLevel !== undefined) {
             this.currentLevel = this.parseLogLevel(settings.logLevel);
         }
 
-        this.system('INFO', '로그 설정 변경됨', { 
-            before: oldSettings, 
+        this.system('INFO', '로그 설정 변경됨', {
+            before: oldSettings,
             after: {
                 logToConsole: this.logToConsole,
                 logToFile: this.logToFile,
@@ -638,7 +643,7 @@ class LogManager {
      */
     shutdown() {
         this.system('INFO', 'LogManager 종료 중...');
-        
+
         this.logStreams.forEach((streamInfo, category) => {
             try {
                 streamInfo.stream.end();
@@ -647,7 +652,7 @@ class LogManager {
                 console.error(`로그 스트림 종료 실패 (${category}):`, error);
             }
         });
-        
+
         this.logStreams.clear();
         this.initialized = false;
     }
@@ -660,12 +665,12 @@ const logManager = LogManager.getInstance();
 function createRequestLogger() {
     return (req, res, next) => {
         const start = Date.now();
-        
+
         res.on('finish', () => {
             const responseTime = Date.now() - start;
             logManager.logRequest(req, res, responseTime);
         });
-        
+
         next();
     };
 }
@@ -681,7 +686,7 @@ function createErrorLogger() {
 // Export
 module.exports = {
     getInstance: () => logManager,
-    
+
     // 편의 함수들
     log: (category, level, message, metadata) => logManager.log(category, level, message, metadata),
     debug: (category, message, metadata) => logManager.debug(category, message, metadata),
@@ -689,7 +694,7 @@ module.exports = {
     warn: (category, message, metadata) => logManager.warn(category, message, metadata),
     error: (category, message, metadata) => logManager.error(category, message, metadata),
     fatal: (category, message, metadata) => logManager.fatal(category, message, metadata),
-    
+
     // 특화 로거들
     app: (level, message, metadata) => logManager.app(level, message, metadata),
     crossplatform: (level, message, metadata) => logManager.crossplatform(level, message, metadata),
@@ -697,11 +702,11 @@ module.exports = {
     api: (level, message, metadata) => logManager.api(level, message, metadata),
     services: (level, message, metadata) => logManager.services(level, message, metadata),
     system: (level, message, metadata) => logManager.system(level, message, metadata),
-    
+
     // Express 미들웨어들
     requestLogger: createRequestLogger,
     errorLogger: createErrorLogger,
-    
+
     // 유틸리티들
     getStats: () => logManager.getLogStats(),
     setLevel: (level) => logManager.setLogLevel(level),

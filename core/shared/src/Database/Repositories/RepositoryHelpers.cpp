@@ -4,8 +4,8 @@
 // =============================================================================
 
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseTypes.h"
-#include "Utils/LogManager.h"
+#include "DatabaseTypes.hpp"
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>

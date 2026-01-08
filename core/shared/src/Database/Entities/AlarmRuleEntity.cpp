@@ -19,7 +19,7 @@
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/AlarmRuleRepository.h"
 #include "Alarm/AlarmTypes.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 namespace PulseOne {
 namespace Database {

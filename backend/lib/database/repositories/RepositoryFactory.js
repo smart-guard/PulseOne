@@ -11,6 +11,8 @@ const VirtualPointRepository = require('./VirtualPointRepository');
 const AlarmOccurrenceRepository = require('./AlarmOccurrenceRepository');
 const AlarmRuleRepository = require('./AlarmRuleRepository');
 const UserRepository = require('./UserRepository');
+const ProtocolRepository = require('./ProtocolRepository');
+const AlarmTemplateRepository = require('./AlarmTemplateRepository');
 
 // 기존 DatabaseFactory 사용
 const DatabaseFactory = require('../DatabaseFactory');
@@ -84,11 +86,11 @@ class RepositoryFactory {
             }
 
             this.initialized = true;
-            
+
             this.logger.info('🏭 RepositoryFactory initialized');
             this.logger.info(`Cache: ${this.cacheConfig.enabled ? 'ENABLED' : 'DISABLED'}`);
-            this.logger.info(`📦 Available Repositories: Site, Tenant, Device, VirtualPoint, AlarmOccurrence, AlarmRule, User`);
-            
+            this.logger.info('📦 Available Repositories: Site, Tenant, Device, VirtualPoint, AlarmOccurrence, AlarmRule, User, Protocol');
+
             return true;
         } catch (error) {
             console.error('❌ RepositoryFactory initialization failed:', error.message);
@@ -165,6 +167,22 @@ class RepositoryFactory {
         return this.getRepository('UserRepository');
     }
 
+    /**
+     * ProtocolRepository 반환
+     * @returns {ProtocolRepository} Protocol Repository 인스턴스
+     */
+    getProtocolRepository() {
+        return this.getRepository('ProtocolRepository');
+    }
+
+    /**
+     * AlarmTemplateRepository 반환
+     * @returns {AlarmTemplateRepository} AlarmTemplate Repository 인스턴스
+     */
+    getAlarmTemplateRepository() {
+        return this.getRepository('AlarmTemplateRepository');
+    }
+
     // =========================================================================
     // 내부 구현 메서드들
     // =========================================================================
@@ -186,47 +204,55 @@ class RepositoryFactory {
 
         // 새 인스턴스 생성
         let repository;
-        
+
         try {
             switch (repositoryType) {
                 case 'SiteRepository':
                     repository = new SiteRepository();
                     break;
-                    
+
                 case 'TenantRepository':
                     repository = new TenantRepository();
                     break;
-                    
+
                 case 'DeviceRepository':
                     repository = new DeviceRepository();
                     break;
-                    
+
                 case 'VirtualPointRepository':
                     repository = new VirtualPointRepository();
                     break;
-                    
+
                 case 'AlarmOccurrenceRepository':
                     repository = new AlarmOccurrenceRepository();
                     break;
-                    
+
                 case 'AlarmRuleRepository':
                     repository = new AlarmRuleRepository();
                     break;
-                    
+
                 case 'UserRepository':
                     repository = new UserRepository();
                     break;
-                    
+
+                case 'ProtocolRepository':
+                    repository = new ProtocolRepository();
+                    break;
+
+                case 'AlarmTemplateRepository':
+                    repository = new AlarmTemplateRepository();
+                    break;
+
                 default:
                     throw new Error(`Unknown repository type: ${repositoryType}`);
             }
 
             // 캐시에 저장
             this.repositories.set(repositoryType, repository);
-            
+
             this.logger?.info(`✅ ${repositoryType} created and cached`);
             return repository;
-            
+
         } catch (error) {
             this.logger?.error(`❌ Failed to create ${repositoryType}: ${error.message}`);
             throw error;
@@ -240,15 +266,15 @@ class RepositoryFactory {
     async clearAllCaches() {
         try {
             const clearPromises = [];
-            
+
             for (const [type, repo] of this.repositories) {
                 if (repo.clearCache && typeof repo.clearCache === 'function') {
                     clearPromises.push(repo.clearCache());
                 }
             }
-            
+
             await Promise.all(clearPromises);
-            
+
             this.logger?.info('🧹 All repository caches cleared');
             return true;
         } catch (error) {
@@ -263,7 +289,7 @@ class RepositoryFactory {
      */
     getAllStats() {
         const stats = {};
-        
+
         for (const [type, repo] of this.repositories) {
             if (repo.getStats && typeof repo.getStats === 'function') {
                 stats[type] = repo.getStats();
@@ -276,7 +302,7 @@ class RepositoryFactory {
                 };
             }
         }
-        
+
         return {
             factory: {
                 initialized: this.initialized,
@@ -284,12 +310,13 @@ class RepositoryFactory {
                 cacheEnabled: this.cacheConfig.enabled,
                 availableRepositories: [
                     'SiteRepository',
-                    'TenantRepository', 
+                    'TenantRepository',
                     'DeviceRepository',
                     'VirtualPointRepository',
                     'AlarmOccurrenceRepository',
                     'AlarmRuleRepository',
-                    'UserRepository'
+                    'UserRepository',
+                    'ProtocolRepository'
                 ]
             },
             repositories: stats
@@ -302,7 +329,7 @@ class RepositoryFactory {
      */
     async healthCheckAll() {
         const results = {};
-        
+
         for (const [type, repo] of this.repositories) {
             try {
                 if (repo.healthCheck && typeof repo.healthCheck === 'function') {
@@ -324,7 +351,7 @@ class RepositoryFactory {
                 };
             }
         }
-        
+
         return {
             factory: {
                 status: 'healthy',
@@ -348,14 +375,14 @@ class RepositoryFactory {
                     await repo.cleanup();
                 }
             }
-            
+
             this.repositories.clear();
-            
+
             // 데이터베이스 연결 해제
             if (this.dbManager && this.dbManager.closeAllConnections) {
                 await this.dbManager.closeAllConnections();
             }
-            
+
             this.initialized = false;
             this.logger?.info('🧹 RepositoryFactory cleanup completed');
         } catch (error) {
@@ -379,7 +406,7 @@ class RepositoryFactory {
         if (this.dbManager && this.dbManager.getConnectionStatus) {
             return this.dbManager.getConnectionStatus();
         }
-        
+
         return {
             status: this.initialized ? 'initialized' : 'not_initialized',
             timestamp: new Date().toISOString()

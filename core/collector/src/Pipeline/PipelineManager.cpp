@@ -3,7 +3,7 @@
 // =============================================================================
 
 #include "Pipeline/PipelineManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <chrono>
 
 namespace PulseOne {

@@ -6,7 +6,7 @@
 
 #include "Network/RestApiServer.h"
 #include "Network/HttpErrorMapper.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Common/Enums.h"
 #include "Common/Utils.h"
 #include <iostream>
@@ -181,6 +181,14 @@ void RestApiServer::SetupRoutes() {
     httplib_server->Post(R"(/api/devices/([^/]+)/worker/restart)", [this](const httplib::Request& req, httplib::Response& res) {
         HandlePostDeviceRestart(req, res);
     });
+
+    httplib_server->Post(R"(/api/devices/([^/]+)/settings/reload)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDeviceReloadSettings(req, res);
+    });
+
+    httplib_server->Post(R"(/api/devices/([^/]+)/discovery/start)", [this](const httplib::Request& req, httplib::Response& res) {
+        HandlePostDiscoveryStart(req, res);
+    });
     
     // 일반 제어
     httplib_server->Post(R"(/api/devices/([^/]+)/control)", [this](const httplib::Request& req, httplib::Response& res) {
@@ -242,6 +250,16 @@ void RestApiServer::SetupRoutes() {
     httplib_server->Get(R"(/api/errors/([^/]+)/info)", [this](const httplib::Request& req, httplib::Response& res) {
         HandleGetErrorCodeInfo(req, res);
     });
+
+    // 로그 관리 API (Catch-all for deep paths)
+    httplib_server->Get(R"(/api/logs/+(.*))", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetSystemLogs(req, res);
+    });
+
+    httplib_server->Get("/api/logs", [this](const httplib::Request& req, httplib::Response& res) {
+        HandleGetSystemLogs(req, res);
+    });
+
     
     std::cout << "REST API 라우트 설정 완료" << std::endl;
 #endif
@@ -590,6 +608,65 @@ void RestApiServer::HandlePostDeviceRestart(const httplib::Request& req, httplib
     }
 }
 
+void RestApiServer::HandlePostDeviceReloadSettings(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        if (device_reload_settings_callback_) {
+            bool success = device_reload_settings_callback_(device_id);
+            if (success) {
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["message"] = "Device settings reloaded successfully";
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                res.status = 500;
+                res.set_content(CreateErrorResponse("Failed to reload device settings", "SETTINGS_RELOAD_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            res.status = 503;
+            res.set_content(CreateErrorResponse("Settings reload callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content(CreateErrorResponse(e.what(), "INTERNAL_ERROR", "").dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandlePostDiscoveryStart(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string device_id = ExtractDeviceId(req);
+        
+        bool force = false;
+        try {
+            json body = json::parse(req.body);
+            force = body.value("force", false);
+        } catch (...) {}
+
+        if (discovery_start_callback_) {
+            bool success = discovery_start_callback_(device_id, force);
+            if (success) {
+                json data = json::object();
+                data["device_id"] = device_id;
+                data["status"] = "discovery_started";
+                data["message"] = "Device discovery scan initiated";
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                res.status = 500;
+                res.set_content(CreateErrorResponse("Failed to initiate discovery scan", "DISCOVERY_FAILED", "").dump(), "application/json");
+            }
+        } else {
+            res.status = 503;
+            res.set_content(CreateErrorResponse("Discovery callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+        }
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content(CreateErrorResponse(e.what(), "INTERNAL_ERROR", "").dump(), "application/json");
+    }
+}
+
 // 일반 제어 핸들러들
 void RestApiServer::HandlePostDeviceControl(const httplib::Request& req, httplib::Response& res) {
     try {
@@ -891,6 +968,93 @@ void RestApiServer::HandleGetSystemStats(const httplib::Request& req, httplib::R
     }
 }
 
+void RestApiServer::HandleGetSystemLogs(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        
+        std::string path = "";
+        if (req.matches.size() > 1) {
+            path = req.matches[1];
+        }
+        
+        bool is_read_request = req.has_param("lines") || req.has_param("offset");
+        bool has_extension = path.find('.') != std::string::npos;
+        
+        if (is_read_request || has_extension) {
+            if (log_read_callback_) {
+                int lines = 100;
+                int offset = 0;
+                
+                if (req.has_param("lines")) lines = std::stoi(req.get_param_value("lines"));
+                if (req.has_param("offset")) offset = std::stoi(req.get_param_value("offset"));
+                
+                std::string content = log_read_callback_(path, lines, offset);
+                
+                json data = json::object();
+                data["path"] = path;
+                data["content"] = content;
+                
+                res.set_content(CreateSuccessResponse(data).dump(), "application/json");
+            } else {
+                res.status = 503;
+                res.set_content(CreateErrorResponse("Log read callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+            }
+        } else {
+            if (log_list_callback_) {
+                json logs = log_list_callback_(path);
+                res.set_content(CreateSuccessResponse(logs).dump(), "application/json");
+            } else {
+                res.status = 503;
+                res.set_content(CreateErrorResponse("Log list callback not set", "SERVICE_UNAVAILABLE", "").dump(), "application/json");
+            }
+        }
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content(CreateErrorResponse(e.what(), "INTERNAL_SERVER_ERROR", "").dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandleGetErrorStatistics(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        
+        json stats = json::object();
+        auto& log_mgr = LogManager::getInstance();
+        auto log_stats = log_mgr.getStatistics();
+        
+        stats["total_logs"] = log_stats.total_logs.load();
+        stats["error_count"] = log_stats.error_count.load();
+        stats["warn_count"] = log_stats.warn_count.load();
+        stats["fatal_count"] = log_stats.fatal_count.load();
+        
+        res.set_content(CreateSuccessResponse(stats).dump(), "application/json");
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content(CreateErrorResponse(e.what(), "INTERNAL_SERVER_ERROR", "").dump(), "application/json");
+    }
+}
+
+void RestApiServer::HandleGetErrorCodeInfo(const httplib::Request& req, httplib::Response& res) {
+    try {
+        SetCorsHeaders(res);
+        std::string error_code_str = req.matches.size() > 1 ? req.matches[1].str() : "";
+        
+        json info = json::object();
+        info["code"] = error_code_str;
+        
+        auto& mapper = HttpErrorMapper::getInstance();
+        PulseOne::Enums::ErrorCode code = mapper.ParseErrorString(error_code_str);
+        
+        info["http_status"] = mapper.MapErrorToHttpStatus(code);
+        info["description"] = error_code_str + " error occurred."; 
+        
+        res.set_content(CreateSuccessResponse(info).dump(), "application/json");
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content(CreateErrorResponse(e.what(), "INTERNAL_SERVER_ERROR", "").dump(), "application/json");
+    }
+}
+
 void RestApiServer::HandleGetDeviceGroups(const httplib::Request& req, httplib::Response& res) {
     try {
         SetCorsHeaders(res);
@@ -1042,62 +1206,7 @@ void RestApiServer::HandlePostDeviceGroupStop(const httplib::Request& req, httpl
     }
 }
 
-void RestApiServer::HandleGetErrorStatistics(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        
-        json stats = json::object();
-        stats["total_errors"] = 0;
-        stats["error_types"] = json::object();
-        stats["device_errors"] = json::object();
-        stats["last_24_hours"] = json::array();
-        
-        res.set_content(CreateSuccessResponse(stats).dump(), "application/json");
-    } catch (const std::exception& e) {
-        auto [error_code_str, error_details] = ClassifyHardwareError("", e);
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        
-        json error_response = CreateErrorResponse(error_details, error_code_str, "Failed to get error statistics");
-        res.status = http_status;
-        res.set_content(error_response.dump(), "application/json");
-    }
-}
 
-void RestApiServer::HandleGetErrorCodeInfo(const httplib::Request& req, httplib::Response& res) {
-    try {
-        SetCorsHeaders(res);
-        std::string error_code = ExtractDeviceId(req, 1);  // Reusing method for path parameter
-        
-        auto& mapper = HttpErrorMapper::getInstance();
-        PulseOne::Enums::ErrorCode enum_code = mapper.ParseErrorString(error_code);
-        
-        // GetErrorDetail 메서드를 사용하여 ErrorDetail 구조체 가져오기
-        auto error_detail = mapper.GetErrorDetail(enum_code);
-        
-        json info = json::object();
-        info["error_code"] = error_code;
-        info["http_status"] = error_detail.http_status;
-        info["severity"] = error_detail.severity;
-        info["category"] = error_detail.category;
-        info["error_type"] = error_detail.error_type;
-        info["recoverable"] = error_detail.recoverable;
-        info["user_actionable"] = error_detail.user_actionable;
-        info["action_hint"] = error_detail.action_hint;
-        info["tech_details"] = error_detail.tech_details;
-        info["user_message"] = mapper.GetUserFriendlyMessage(enum_code);
-        
-        res.set_content(CreateSuccessResponse(info).dump(), "application/json");
-    } catch (const std::exception& e) {
-        auto [error_code_str, error_details] = ClassifyHardwareError("", e);
-        auto& mapper = HttpErrorMapper::getInstance();
-        int http_status = mapper.MapErrorToHttpStatus(PulseOne::Enums::ErrorCode::INTERNAL_ERROR);
-        
-        json error_response = CreateErrorResponse(error_details, error_code_str, "Failed to get error code information");
-        res.status = http_status;
-        res.set_content(error_response.dump(), "application/json");
-    }
-}
 
 // =============================================================================
 // 콜백 설정 메서드들 - 모든 콜백 타입 지원
@@ -1145,6 +1254,14 @@ void RestApiServer::SetDeviceResumeCallback(DeviceResumeCallback callback) {
 
 void RestApiServer::SetDeviceRestartCallback(DeviceRestartCallback callback) {
     device_restart_callback_ = callback;
+}
+
+void RestApiServer::SetDeviceReloadSettingsCallback(DeviceReloadSettingsCallback callback) {
+    device_reload_settings_callback_ = callback;
+}
+
+void RestApiServer::SetDiscoveryStartCallback(DiscoveryStartCallback callback) {
+    discovery_start_callback_ = callback;
 }
 
 void RestApiServer::SetDigitalOutputCallback(DigitalOutputCallback callback) {
@@ -1197,6 +1314,14 @@ void RestApiServer::SetSystemBackupCallback(SystemBackupCallback callback) {
 
 void RestApiServer::SetLogDownloadCallback(LogDownloadCallback callback) {
     log_download_callback_ = callback;
+}
+
+void RestApiServer::SetLogListCallback(LogListCallback callback) {
+    log_list_callback_ = callback;
+}
+
+void RestApiServer::SetLogReadCallback(LogReadCallback callback) {
+    log_read_callback_ = callback;
 }
 
 // =============================================================================

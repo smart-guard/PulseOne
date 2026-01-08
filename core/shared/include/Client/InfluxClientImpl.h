@@ -30,6 +30,10 @@ public:
     
     bool writePoint(const std::string& measurement, const std::string& field, double value) override;
     
+    bool writeRecord(const std::string& measurement, 
+                     const std::map<std::string, std::string>& tags,
+                     const std::map<std::string, double>& fields) override;
+    
     std::string query(const std::string& fluxQuery) override;
     
     void disconnect() override;
@@ -46,6 +50,9 @@ private:
 
     // Helper to format Line Protocol
     std::string formatLineProtocol(const std::string& measurement, const std::string& field, double value);
+    std::string formatLineProtocol(const std::string& measurement, 
+                                 const std::map<std::string, std::string>& tags,
+                                 const std::map<std::string, double>& fields);
 };
 
 } // namespace Client

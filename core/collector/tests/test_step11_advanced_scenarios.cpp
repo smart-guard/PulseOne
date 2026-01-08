@@ -8,11 +8,11 @@
 
 #include "Pipeline/DataProcessingService.h"
 #include "Pipeline/PipelineManager.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h" // Added
 #include "Common/Structs.h"
 #include "Client/RedisClientImpl.h" 
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 // Helper for Mocking Redis if needed (or use Real Redis like Step 10)
 // We will use Real Redis as this is E2E
@@ -24,7 +24,6 @@ using namespace PulseOne::Utils;
 class AdvancedScenarioTest : public ::testing::Test {
 protected:
     std::shared_ptr<DataProcessingService> data_processing_service_;
-    DatabaseManager* db_manager_;
     std::shared_ptr<RedisClientImpl> redis_client_; // Direct access for verification
 
     void SetUp() override {
@@ -33,19 +32,21 @@ protected:
 
         // Initialize Redis Client
         redis_client_ = std::make_shared<RedisClientImpl>();
-        // Use 'pulseone-redis' as we are in Docker network
-        bool connected = redis_client_->connect("pulseone-redis", 6379);
-        if (!connected) {
-             // Fallback to localhost if outside docker (but here we are inside)
-             connected = redis_client_->connect("pulseone-redis", 6379);
-        }
-        ASSERT_TRUE(connected) << "Redis connection failed";
-        redis_client_->del("alarm:history"); // Clear history for clean test
-        // redis_client_->flushall(); // Not available publicly, rely on unique keys
+        const char* redis_host = std::getenv("REDIS_HOST");
+        if (!redis_host) redis_host = "pulseone-redis";
+        bool connected = redis_client_->connect(redis_host, 6379);
+        ASSERT_TRUE(connected) << "Redis connection failed on " << redis_host;
+        redis_client_->del("alarm:history");
+        redis_client_->del("alarm:active:1");
+        redis_client_->del("alarm:active:2");
+        redis_client_->del("point:200:latest");
 
-        // Initialize Database (SQLite Memory)
-        db_manager_ = &DatabaseManager::getInstance();
-        db_manager_->initialize();
+        // Initialize Database (SQLite Memory or File)
+        auto& db_manager = DbLib::DatabaseManager::getInstance();
+        DbLib::DatabaseConfig db_config;
+        db_config.type = "SQLITE";
+        db_config.sqlite_path = "test_pulseone_step11.db";
+        db_manager.initialize(db_config);
         
         InitializeSchema();
         // Initialize RepositoryFactory
@@ -56,29 +57,36 @@ protected:
         data_processing_service_ = std::make_shared<DataProcessingService>();
 
         // Start Services
-        PipelineManager::GetInstance().Start();
+        PipelineManager::getInstance().initialize();
         data_processing_service_->Start();
     }
 
     void TearDown() override {
-        if (data_processing_service_) data_processing_service_->Stop();
-        PipelineManager::GetInstance().Shutdown();
+        if (data_processing_service_) {
+            data_processing_service_->Stop();
+            data_processing_service_.reset();
+        }
+        PipelineManager::getInstance().Shutdown();
+        
+        // Ensure loggers are flushed
+        std::cout.flush();
     }
 
     void InitializeSchema() {
+         auto& db_manager = DbLib::DatabaseManager::getInstance();
          // Clean up existing tables (since we use file DB)
-         db_manager_->executeNonQuery("DROP TABLE IF EXISTS alarm_occurrences;");
-         db_manager_->executeNonQuery("DROP TABLE IF EXISTS alarm_rules;");
-         db_manager_->executeNonQuery("DROP TABLE IF EXISTS virtual_point_inputs;");
-         db_manager_->executeNonQuery("DROP TABLE IF EXISTS virtual_points;");
-         db_manager_->executeNonQuery("DROP TABLE IF EXISTS data_points;");
-         db_manager_->executeNonQuery("DROP TABLE IF EXISTS devices;");
-         db_manager_->executeNonQuery("DROP TABLE IF EXISTS protocols;");
+         db_manager.executeNonQuery("DROP TABLE IF EXISTS alarm_occurrences;");
+         db_manager.executeNonQuery("DROP TABLE IF EXISTS alarm_rules;");
+         db_manager.executeNonQuery("DROP TABLE IF EXISTS virtual_point_inputs;");
+         db_manager.executeNonQuery("DROP TABLE IF EXISTS virtual_points;");
+         db_manager.executeNonQuery("DROP TABLE IF EXISTS data_points;");
+         db_manager.executeNonQuery("DROP TABLE IF EXISTS devices;");
+         db_manager.executeNonQuery("DROP TABLE IF EXISTS protocols;");
 
          // Create Tables matching ExtendedSQLQueries.h
          
          // 1. Devices (Integer ID, tenant/site)
-         db_manager_->executeNonQuery(
+         db_manager.executeNonQuery(
             "CREATE TABLE IF NOT EXISTS devices ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "tenant_id INTEGER DEFAULT 1, "
@@ -89,7 +97,7 @@ protected:
             ");");
 
         // 2. Protocols
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "CREATE TABLE IF NOT EXISTS protocols ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, type TEXT, "
             "default_port INTEGER, description TEXT, "
@@ -98,7 +106,7 @@ protected:
             ");");
 
         // 3. Data Points
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "CREATE TABLE IF NOT EXISTS data_points ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, device_id INTEGER, name TEXT, "
             "description TEXT, "
@@ -110,22 +118,22 @@ protected:
             ");");
 
         // 4. Alarm Rules (Matched with ExtendedSQLQueries.h)
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "CREATE TABLE IF NOT EXISTS alarm_rules ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "tenant_id INTEGER DEFAULT 1, "
             "name TEXT NOT NULL, "
-            "description TEXT, " // Added
+            "description TEXT, " 
             "target_type TEXT NOT NULL, "
             "target_id INTEGER, "
-            "target_group TEXT, " // Added
+            "target_group TEXT, " 
             "alarm_type TEXT NOT NULL, "
             "high_high_limit REAL, "
             "high_limit REAL, "
             "low_limit REAL, "
             "low_low_limit REAL, "
             "deadband REAL DEFAULT 0, "
-            "rate_of_change REAL DEFAULT 0, " // Added
+            "rate_of_change REAL DEFAULT 0, " 
             "trigger_condition TEXT, "
             "condition_script TEXT, "
             "message_script TEXT, "
@@ -134,55 +142,55 @@ protected:
             "severity TEXT DEFAULT 'medium', "
             "priority INTEGER DEFAULT 100, "
             "auto_acknowledge INTEGER DEFAULT 0, "
-            "acknowledge_timeout_min INTEGER DEFAULT 0, " // Added
+            "acknowledge_timeout_min INTEGER DEFAULT 0, " 
             "auto_clear INTEGER DEFAULT 1, "
-            "suppression_rules TEXT, " // Added
+            "suppression_rules TEXT, " 
             "notification_enabled INTEGER DEFAULT 1, "
-            "notification_delay_sec INTEGER DEFAULT 0, " // Added
-            "notification_repeat_interval_min INTEGER DEFAULT 0, " // Added
-            "notification_channels TEXT, " // Added
-            "notification_recipients TEXT, " // Added
+            "notification_delay_sec INTEGER DEFAULT 0, " 
+            "notification_repeat_interval_min INTEGER DEFAULT 0, " 
+            "notification_channels TEXT, " 
+            "notification_recipients TEXT, " 
             "is_enabled INTEGER DEFAULT 1, "
-            "is_latched INTEGER DEFAULT 0, " // Added
-            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " // Added
-            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, " // Added
+            "is_latched INTEGER DEFAULT 0, " 
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " 
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, " 
             "created_by INTEGER, "
-            "template_id INTEGER, " // Added
-            "rule_group TEXT, " // Added
-            "created_by_template INTEGER DEFAULT 0, " // Added
-            "last_template_update DATETIME, " // Added
-            "escalation_enabled INTEGER DEFAULT 0, " // Added
-            "escalation_max_level INTEGER DEFAULT 3, " // Added
-            "escalation_rules TEXT, " // Added
-            "category TEXT, " // Added
-            "tags TEXT " // Added
+            "template_id INTEGER, " 
+            "rule_group TEXT, " 
+            "created_by_template INTEGER DEFAULT 0, " 
+            "last_template_update DATETIME, " 
+            "escalation_enabled INTEGER DEFAULT 0, " 
+            "escalation_max_level INTEGER DEFAULT 3, " 
+            "escalation_rules TEXT, " 
+            "category TEXT, " 
+            "tags TEXT " 
             ");");
 
         // 5. Alarm Occurrences
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "CREATE TABLE IF NOT EXISTS alarm_occurrences ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, rule_id INTEGER, "
             "tenant_id INTEGER, occurrence_time DATETIME, "
             "trigger_value TEXT, trigger_condition TEXT, alarm_message TEXT, "
             "severity TEXT, state TEXT DEFAULT 'active', "
             "acknowledged_time DATETIME, acknowledged_by INTEGER, "
-            "acknowledge_comment TEXT, " // Added
+            "acknowledge_comment TEXT, " 
             "cleared_time DATETIME, cleared_value TEXT, " 
-            "clear_comment TEXT, " // Added
+            "clear_comment TEXT, " 
             "cleared_by INTEGER, "
-            "notification_sent INTEGER DEFAULT 0, " // Added
-            "notification_time DATETIME, " // Added
-            "notification_count INTEGER DEFAULT 0, " // Added
-            "notification_result TEXT, " // Added
+            "notification_sent INTEGER DEFAULT 0, " 
+            "notification_time DATETIME, " 
+            "notification_count INTEGER DEFAULT 0, " 
+            "notification_result TEXT, " 
             "context_data TEXT, source_name TEXT, location TEXT, "
             "device_id INTEGER, point_id INTEGER, category TEXT, "
-            "tags TEXT DEFAULT NULL, " // Added
-            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " // Added
-            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP " // Added
+            "tags TEXT DEFAULT NULL, " 
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, " 
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP " 
             ");");
 
         // 6. Virtual Points (Matched with ExtendedSQLQueries.h)
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "CREATE TABLE IF NOT EXISTS virtual_points ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "tenant_id INTEGER DEFAULT 1, "
@@ -208,11 +216,11 @@ protected:
             "last_execution_time DATETIME, "
             "created_by INTEGER, "
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
-            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP " 
             ");");
             
         // 7. Virtual Point Inputs (Dependencies)
-         db_manager_->executeNonQuery(
+         db_manager.executeNonQuery(
             "CREATE TABLE IF NOT EXISTS virtual_point_inputs ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "virtual_point_id INTEGER, "
@@ -223,41 +231,42 @@ protected:
     }
 
     void InsertTestData() {
+        auto& db_manager = DbLib::DatabaseManager::getInstance();
         // Insert Protocol
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "INSERT INTO protocols (id, name, type) VALUES (1, 'MODBUS_TCP', 'TCP');"
         );
 
         // Insert Device (Integer ID)
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "INSERT INTO devices (id, name, protocol_id, enabled, tenant_id) VALUES (1, 'TestDevice', 1, 1, 1);");
 
         // Insert Data Points
         // ID 101: Low Limit
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "INSERT INTO data_points (id, device_id, name, address, data_type, is_virtual) "
             "VALUES (101, 1, 'LowLimitPoint', '40001', 'FLOAT', 0);"
         );
         // ID 102: Temperature
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "INSERT INTO data_points (id, device_id, name, address, data_type, is_virtual) "
             "VALUES (102, 1, 'Temperature', '40002', 'FLOAT', 0);"
         );
         // ID 103: Pressure
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "INSERT INTO data_points (id, device_id, name, address, data_type, is_virtual) "
             "VALUES (103, 1, 'Pressure', '40003', 'FLOAT', 0);"
         );
 
         // Insert Alarm Rules
         // Rule 1: Low Limit (Point 101 < 50)
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "INSERT INTO alarm_rules (id, tenant_id, name, target_type, target_id, alarm_type, severity, low_limit, message_template, is_enabled) "
             "VALUES (1, 1, 'Low Limit Rule', 'DATA_POINT', 101, 'ANALOG', 'CRITICAL', 50.0, 'Value is too low', 1);");
 
         // Rule 2: Complex Script (Temp 102 dependent on 103)
         // target_type='data_point', target_id=102, alarm_type='SCRIPT'
-        db_manager_->executeNonQuery(
+        db_manager.executeNonQuery(
             "INSERT INTO alarm_rules (id, tenant_id, name, target_type, target_id, alarm_type, severity, condition_script, message_template, is_enabled) "
             "VALUES (2, 1, 'Complex Script Rule', 'DATA_POINT', 102, 'SCRIPT', 'CRITICAL', 'value > 80 && point_values[103] > 10', 'Complex Script Alarm', 1);");
 
@@ -265,20 +274,22 @@ protected:
         // formula instead of script
         std::string deps = R"({"inputs":[{"point_id":102,"variable":"Temperature"}]})";
         std::string sql = "INSERT INTO virtual_points (id, tenant_id, name, formula, dependencies, is_enabled) VALUES (200, 1, 'VP_Temp_Double', 'Temperature * 2', '" + deps + "', 1);";
-        db_manager_->executeNonQuery(sql);
+        db_manager.executeNonQuery(sql);
 
         // Standardize to lowercase as repositories often use lowercase comparison or specific casing
-        db_manager_->executeNonQuery("UPDATE alarm_rules SET target_type = 'data_point', alarm_type = 'analog', severity = 'critical';");
+        db_manager.executeNonQuery("UPDATE alarm_rules SET target_type = 'data_point', alarm_type = 'analog', severity = 'critical';");
     }
 };
 
 TEST_F(AdvancedScenarioTest, LowLimitAlarmTest) {
+    std::cout << "[ TEST ] Starting LowLimitAlarmTest..." << std::endl;
     // Simulate sending data from device
     PulseOne::Structs::DeviceDataMessage message;
     message.device_id = "1"; // Matched with Device ID 1
     message.timestamp = std::chrono::system_clock::now();
     message.trigger_alarms = true;
     message.trigger_virtual_points = true;
+    message.tenant_id = 1;
 
     // Normal Value (60) - No Alarm
     PulseOne::Structs::TimestampedValue point1;
@@ -287,7 +298,7 @@ TEST_F(AdvancedScenarioTest, LowLimitAlarmTest) {
     point1.quality = PulseOne::Enums::DataQuality::GOOD;
     message.points.push_back(point1);
 
-    data_processing_service_->ProcessBatch({message}, 0);
+    data_processing_service_->ProcessBatch({message}, 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // Check Redis - No Alarm
@@ -299,7 +310,7 @@ TEST_F(AdvancedScenarioTest, LowLimitAlarmTest) {
     point1.value = 30.0;
     message.points.push_back(point1);
     
-    data_processing_service_->ProcessBatch({message}, 0);
+    data_processing_service_->ProcessBatch({message}, 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
         // Check history via Redis Client
@@ -314,6 +325,7 @@ TEST_F(AdvancedScenarioTest, LowLimitAlarmTest) {
 }
 
 TEST_F(AdvancedScenarioTest, ComplexScriptAlarmTest) {
+    std::cout << "[ TEST ] Starting ComplexScriptAlarmTest..." << std::endl;
     // Simulate Multi-point data package
     PulseOne::Structs::DeviceDataMessage message;
     message.device_id = "1"; // Matched with Device ID 1
@@ -335,7 +347,7 @@ TEST_F(AdvancedScenarioTest, ComplexScriptAlarmTest) {
     message.points.push_back(pTemp);
     message.points.push_back(pPress);
 
-    data_processing_service_->ProcessBatch({message}, 0);
+    data_processing_service_->ProcessBatch({message}, 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // Check Active Alarms List (Redis Set)
@@ -357,12 +369,14 @@ TEST_F(AdvancedScenarioTest, ComplexScriptAlarmTest) {
 }
 
 TEST_F(AdvancedScenarioTest, VirtualPointWriteTest) {
+    std::cout << "[ TEST ] Starting VirtualPointWriteTest..." << std::endl;
     // Test VP calculation and writing to Redis
     PulseOne::Structs::DeviceDataMessage message;
     message.device_id = "1"; // Matched with Device ID 1
     message.timestamp = std::chrono::system_clock::now();
     message.trigger_alarms = true;
     message.trigger_virtual_points = true;
+    message.tenant_id = 1;
 
     // Temperature = 50.0
     // VP = Temp * 2 = 100.0
@@ -373,7 +387,7 @@ TEST_F(AdvancedScenarioTest, VirtualPointWriteTest) {
 
     message.points.push_back(pTemp);
 
-    data_processing_service_->ProcessBatch({message}, 0);
+    data_processing_service_->ProcessBatch({message}, 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // Check Redis for Virtual Point (ID 200)

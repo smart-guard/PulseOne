@@ -16,7 +16,8 @@
 // Forward declarations
 class ConfigManager;
 class LogManager;
-class DatabaseManager;
+class LogManager;
+namespace DbLib { class DatabaseManager; }
 
 namespace PulseOne {
 namespace Database {
@@ -41,6 +42,7 @@ namespace Repositories {
     class ExportLogRepository;
     class ExportScheduleRepository;
     class PayloadTemplateRepository;
+    class DeviceScheduleRepository;
 }
 
 /**
@@ -229,6 +231,15 @@ public:
         return payload_template_repository_;
     }
 
+    std::shared_ptr<Repositories::DeviceScheduleRepository> getDeviceScheduleRepository() {
+        std::lock_guard<std::mutex> lock(factory_mutex_);
+        if (!initialized_.load()) {
+            throw std::runtime_error("RepositoryFactory not initialized");
+        }
+        creation_count_.fetch_add(1);
+        return device_schedule_repository_;
+    }
+
     // =============================================================================
     // 통계 및 디버깅
     // =============================================================================
@@ -268,7 +279,7 @@ private:
     // =============================================================================
     
     // 외부 의존성들 (포인터)
-    DatabaseManager* db_manager_;
+    DbLib::DatabaseManager* db_manager_;
     ConfigManager* config_manager_;
     LogManager* logger_;
     
@@ -292,6 +303,7 @@ private:
     std::shared_ptr<Repositories::ExportLogRepository> export_log_repository_;
     std::shared_ptr<Repositories::ExportScheduleRepository> export_schedule_repository_;
     std::shared_ptr<Repositories::PayloadTemplateRepository> payload_template_repository_;
+    std::shared_ptr<Repositories::DeviceScheduleRepository> device_schedule_repository_;
     
     // 상태 관리
     std::atomic<bool> initialized_{false};

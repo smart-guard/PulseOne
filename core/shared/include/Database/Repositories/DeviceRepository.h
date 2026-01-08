@@ -16,8 +16,8 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/DeviceEntity.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/LogManager.h"
+#include "DatabaseManager.hpp"
+#include "Logging/LogManager.h"
 #include <memory>
 #include <map>
 #include <string>
@@ -144,9 +144,6 @@ public:
     
     void setCacheEnabled(bool enabled) override {
         IRepository<DeviceEntity>::setCacheEnabled(enabled);
-        if (logger_) {
-            logger_->Info("DeviceRepository cache " + std::string(enabled ? "enabled" : "disabled"));
-        }
     }
     
     bool isCacheEnabled() const override {
@@ -155,9 +152,6 @@ public:
     
     void clearCache() override {
         IRepository<DeviceEntity>::clearCache();
-        if (logger_) {
-            logger_->Info("DeviceRepository cache cleared");
-        }
     }
 
     // =======================================================================
@@ -166,89 +160,7 @@ public:
     
     int getTotalCount();
 
-    // =======================================================================
-    // 이전 버전 호환성을 위한 메서드들 (deprecated 경고 포함)
-    // =======================================================================
-    
-    /**
-     * @deprecated Use findByProtocol(int protocol_id) instead
-     * @brief 이전 버전 호환성을 위한 메서드 (문자열 파라미터)
-     */
-    [[deprecated("Use findByProtocol(int protocol_id) instead")]]
-    std::vector<DeviceEntity> findByProtocol(const std::string& protocol_type) {
-        // 임시 구현: protocol_type을 protocol_id로 변환 후 호출
-        // 실제로는 protocols 테이블에서 조회해야 함
-        int protocol_id = 1; // 기본값
-        if (protocol_type.find("MQTT") != std::string::npos) protocol_id = 2;
-        else if (protocol_type.find("BACNET") != std::string::npos) protocol_id = 3;
-        else if (protocol_type.find("OPCUA") != std::string::npos) protocol_id = 4;
-        
-        return findByProtocol(protocol_id);
-    }
-    
-    /**
-     * @deprecated Use groupByProtocolId() instead
-     * @brief 이전 버전 호환성을 위한 메서드 (문자열 키)
-     */
-    [[deprecated("Use groupByProtocolId() instead")]]
-    std::map<std::string, std::vector<DeviceEntity>> groupByProtocol() {
-        auto protocol_id_groups = groupByProtocolId();
-        std::map<std::string, std::vector<DeviceEntity>> string_groups;
-        
-        // protocol_id를 문자열로 변환
-        for (const auto& pair : protocol_id_groups) {
-            std::string protocol_name;
-            switch (pair.first) {
-                case 1: protocol_name = "MODBUS_TCP"; break;
-                case 2: protocol_name = "MQTT"; break;
-                case 3: protocol_name = "BACNET"; break;
-                case 4: protocol_name = "OPCUA"; break;
-                default: protocol_name = "UNKNOWN_" + std::to_string(pair.first); break;
-            }
-            string_groups[protocol_name] = pair.second;
-        }
-        
-        return string_groups;
-    }
-    
-    /**
-     * @deprecated Use getProtocolDistribution() that returns std::map<int, int> instead
-     * @brief 이전 버전 호환성을 위한 메서드 (문자열 키)
-     */
-    [[deprecated("Use getProtocolDistribution() that returns std::map<int, int> instead")]]
-    std::map<std::string, int> getProtocolDistributionByName() const {
-        auto id_distribution = getProtocolDistribution();
-        std::map<std::string, int> string_distribution;
-        
-        // protocol_id를 문자열로 변환
-        for (const auto& pair : id_distribution) {
-            std::string protocol_name;
-            switch (pair.first) {
-                case 1: protocol_name = "MODBUS_TCP"; break;
-                case 2: protocol_name = "MQTT"; break;
-                case 3: protocol_name = "BACNET"; break;
-                case 4: protocol_name = "OPCUA"; break;
-                default: protocol_name = "UNKNOWN_" + std::to_string(pair.first); break;
-            }
-            string_distribution[protocol_name] = pair.second;
-        }
-        
-        return string_distribution;
-    }
-
 private:
-    // =======================================================================
-    // 의존성 관리
-    // =======================================================================
-    
-    DatabaseManager* db_manager_;
-    LogManager* logger_;
-    
-    void initializeDependencies() {
-        db_manager_ = &DatabaseManager::getInstance();
-        logger_ = &LogManager::getInstance();
-    }
-
     // =======================================================================
     // 내부 헬퍼 메서드들 (DeviceSettingsRepository 패턴)
     // =======================================================================

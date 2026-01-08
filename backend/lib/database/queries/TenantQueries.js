@@ -255,7 +255,7 @@ class TenantQueries {
      * 테넌트 삭제
      */
     static delete() {
-        return `DELETE FROM tenants WHERE id = ?`;
+        return 'DELETE FROM tenants WHERE id = ?';
     }
 
     /**

@@ -1,0 +1,64 @@
+# =============================================================================
+# backend/Dockerfile.dev - PulseOne 개발 환경 최적화 (수정됨)
+# =============================================================================
+FROM node:20-slim
+
+# 개발에 필요한 시스템 패키지 설치
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    netcat-openbsd \
+    sqlite3 \
+    procps \
+    vim \
+    redis-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# 전역 개발 도구 설치
+RUN npm install -g \
+    nodemon@3.1.10 \
+    @anthropic-ai/claude-code \
+    npm-check-updates
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# package.json 먼저 복사 (Docker 캐시 최적화)
+COPY backend/package*.json ./backend/
+
+# backend 디렉토리로 이동 후 의존성 설치
+WORKDIR /app/backend
+RUN npm ci --include=dev
+
+# 프로젝트 소스 복사
+WORKDIR /app
+COPY backend ./backend
+COPY config ./config
+
+# 데이터 디렉토리 생성 (SQLite용)
+RUN mkdir -p ./data/db ./data/logs ./data/backup
+
+# 권한 설정 (node 사용자용)
+RUN chown -R node:node /app
+
+# node 사용자로 전환
+USER node
+
+# 포트 노출
+EXPOSE 3000 9229
+
+# 작업 디렉토리를 backend로 설정
+WORKDIR /app/backend
+
+# 헬스체크 수정 (실제 작동하는 엔드포인트로)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3000/ || exit 1
+
+# 환경변수 설정
+ENV NODE_ENV=development
+ENV REDIS_PRIMARY_ENABLED=true
+ENV REDIS_PRIMARY_HOST=redis
+ENV REDIS_PRIMARY_PORT=6379
+
+# 개발 모드로 실행 (디버깅 포트 포함)
+CMD ["nodemon", "--inspect=0.0.0.0:9229", "app.js"]

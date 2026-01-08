@@ -18,7 +18,7 @@
  */
 
 #include "Export/ExportTypes.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include <filesystem>
 #include <fstream>

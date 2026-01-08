@@ -5,7 +5,7 @@ const os = require('os');
 
 class ConfigManager {
     static instance = null;
-    
+
     constructor() {
         this.env = new Map();
         this.loaded = false;
@@ -13,10 +13,10 @@ class ConfigManager {
         this.lastLoad = new Map();
         this.logger = console;
         this.lastInitialized = null;
-        
+
         // 플랫폼 감지
         this.platform = this.detectPlatform();
-        
+
         // 즉시 초기화
         this.initialize();
     }
@@ -34,19 +34,19 @@ class ConfigManager {
     detectPlatform() {
         const platform = os.platform();
         const cwd = process.cwd();
-        
+
         // Docker 환경 감지
-        const isDocker = fs.existsSync('/.dockerenv') || 
-                        process.env.DOCKER_CONTAINER === 'true' ||
-                        cwd.startsWith('/app') ||
-                        cwd.includes('/app/');
-        
+        const isDocker = fs.existsSync('/.dockerenv') ||
+            process.env.DOCKER_CONTAINER === 'true' ||
+            cwd.startsWith('/app') ||
+            cwd.includes('/app/');
+
         // Windows 감지
         const isWindows = platform === 'win32';
-        
+
         // Linux (non-Docker) 감지
         const isLinux = platform === 'linux' && !isDocker;
-        
+
         const platformInfo = {
             type: platform,
             isWindows,
@@ -55,14 +55,14 @@ class ConfigManager {
             isDevelopment: process.env.NODE_ENV === 'development',
             cwd: cwd
         };
-        
+
         this.logger.log('🖥️ 플랫폼 감지:', {
             type: platformInfo.type,
             isDocker: platformInfo.isDocker,
             isWindows: platformInfo.isWindows,
             cwd: platformInfo.cwd
         });
-        
+
         return platformInfo;
     }
 
@@ -73,15 +73,15 @@ class ConfigManager {
         if (this.loaded) return this;
 
         this.logger.log('🔧 ConfigManager 환경변수 로딩 시작...');
-        
+
         try {
             // 현재 작업 디렉토리 확인
             const cwd = process.cwd();
             this.logger.log(`📁 현재 작업 디렉토리: ${cwd}`);
-            
+
             // NODE_ENV 확인 및 설정
             let nodeEnv = process.env.NODE_ENV;
-            
+
             // Windows에서 NODE_ENV가 없으면 production으로 가정
             if (!nodeEnv && this.platform.isWindows) {
                 nodeEnv = 'production';
@@ -91,9 +91,9 @@ class ConfigManager {
                 nodeEnv = 'development';
                 process.env.NODE_ENV = 'development';
             }
-            
+
             this.logger.log(`🎯 NODE_ENV: ${nodeEnv}`);
-            
+
             // Windows에서 강제로 .env.production 우선 검색
             let envFiles = [];
             if (this.platform.isWindows && nodeEnv === 'production') {
@@ -111,15 +111,15 @@ class ConfigManager {
                     '.env'                  // 기본 파일
                 ];
             }
-            
+
             // 메인 .env 파일 로드 시도
             let envLoaded = false;
             let loadedFile = null;
-            
+
             for (const envFile of envFiles) {
                 const envPath = path.join(cwd, envFile);
                 this.logger.log(`🔍 환경 파일 탐색: ${envPath}`);
-                
+
                 // Windows에서 파일 존재 확인 강화
                 if (this.platform.isWindows) {
                     try {
@@ -132,7 +132,7 @@ class ConfigManager {
                         continue;
                     }
                 }
-                
+
                 if (this.loadEnvFile(envPath, false)) {
                     envLoaded = true;
                     loadedFile = envFile;
@@ -140,7 +140,7 @@ class ConfigManager {
                     break; // 첫 번째로 찾은 파일만 로드 (우선순위)
                 }
             }
-            
+
             // Windows 특화 fallback 경로들
             if (!envLoaded && this.platform.isWindows) {
                 const windowsFallbackPaths = [
@@ -162,7 +162,7 @@ class ConfigManager {
                     'C:\\PulseOne\\config\\.env.production',
                     'C:\\PulseOne\\.env.production'
                 ];
-                
+
                 this.logger.log('🪟 Windows fallback 경로 검색 시작...');
                 for (const envPath of windowsFallbackPaths) {
                     this.logger.log(`🔍 Windows fallback: ${envPath}`);
@@ -174,7 +174,7 @@ class ConfigManager {
                     }
                 }
             }
-            
+
             // 일반 fallback 경로들 (모든 플랫폼)
             if (!envLoaded) {
                 const fallbackPaths = [
@@ -184,7 +184,7 @@ class ConfigManager {
                     path.join(__dirname, '../../.env'),
                     path.join(__dirname, '../config/.env')
                 ];
-                
+
                 this.logger.log('🔍 일반 fallback 경로 검색 시작...');
                 for (const envPath of fallbackPaths) {
                     this.logger.log(`🔍 fallback .env 파일 탐색: ${envPath}`);
@@ -196,7 +196,7 @@ class ConfigManager {
                     }
                 }
             }
-            
+
             if (!envLoaded) {
                 this.logger.warn('⚠️ .env 파일을 찾을 수 없습니다.');
                 this.logger.warn(`⚠️ 탐색한 파일들: ${envFiles.join(', ')}`);
@@ -213,10 +213,10 @@ class ConfigManager {
                 path.join(__dirname, '../../../config'),
                 path.join(__dirname, '../../config')
             ];
-            
+
             if (configFiles) {
                 const files = configFiles.split(',').map(f => f.trim());
-                
+
                 files.forEach(file => {
                     let fileLoaded = false;
                     for (const configDir of configDirs) {
@@ -243,10 +243,10 @@ class ConfigManager {
             this.lastInitialized = new Date().toISOString();
             this.logger.log(`✅ 환경변수 로딩 완료 (${this.loadedFiles.length}개 파일)`);
             this.logger.log(`🎯 최종 환경: ${this.get('NODE_ENV')}`);
-            
+
             // 디버깅 정보 출력
             this.printDebugInfo();
-            
+
         } catch (error) {
             this.logger.error('❌ ConfigManager 초기화 실패:', error.message);
         }
@@ -260,7 +260,7 @@ class ConfigManager {
     loadEnvFile(filePath, required = false) {
         try {
             const absolutePath = path.resolve(filePath);
-            
+
             if (!fs.existsSync(absolutePath)) {
                 if (required) {
                     throw new Error(`필수 환경변수 파일 없음: ${filePath}`);
@@ -284,19 +284,19 @@ class ConfigManager {
 
             lines.forEach((line, index) => {
                 line = line.trim();
-                
+
                 // 빈 줄이나 주석 무시
                 if (!line || line.startsWith('#')) return;
-                
+
                 const equalIndex = line.indexOf('=');
                 if (equalIndex === -1) return;
-                
+
                 const key = line.substring(0, equalIndex).trim();
                 const value = line.substring(equalIndex + 1).trim();
-                
+
                 // 따옴표 제거
                 const cleanValue = value.replace(/^["']|["']$/g, '');
-                
+
                 // 환경변수 설정 (.env 파일이 우선)
                 this.env.set(key, cleanValue);
                 process.env[key] = cleanValue;
@@ -305,10 +305,10 @@ class ConfigManager {
 
             this.loadedFiles.push(path.basename(filePath));
             this.lastLoad.set(filePath, new Date());
-            
+
             this.logger.log(`✅ 로드 성공: ${path.basename(filePath)} (${loadedCount}개 변수)`);
             return true;
-            
+
         } catch (error) {
             if (required) {
                 throw error;
@@ -325,7 +325,7 @@ class ConfigManager {
      */
     getSmartPath(configKey, defaultPath) {
         const rawPath = this.get(configKey, defaultPath);
-        
+
         // Docker 환경
         if (this.platform.isDocker) {
             // 상대 경로를 Docker 절대 경로로 변환
@@ -343,24 +343,24 @@ class ConfigManager {
             // 나머지는 /app 기준으로 처리
             return path.join('/app', rawPath);
         }
-        
+
         // Windows/Linux (non-Docker)
         // 상대 경로 그대로 사용
         if (rawPath.startsWith('./') || rawPath.startsWith('../')) {
             return path.resolve(process.cwd(), rawPath);
         }
-        
+
         // Unix 스타일 절대 경로를 상대 경로로 변환 (Windows용)
         if (this.platform.isWindows && rawPath.startsWith('/')) {
             const relativePath = rawPath.replace(/^\/app\//, './');
             return path.resolve(process.cwd(), relativePath);
         }
-        
+
         // 절대 경로는 그대로 사용
         if (path.isAbsolute(rawPath)) {
             return rawPath;
         }
-        
+
         // 나머지는 현재 디렉토리 기준
         return path.resolve(process.cwd(), rawPath);
     }
@@ -372,11 +372,11 @@ class ConfigManager {
         if (this.env.has(key)) {
             return this.env.get(key);
         }
-        
+
         if (process.env[key] !== undefined) {
             return process.env[key];
         }
-        
+
         return defaultValue;
     }
 
@@ -408,14 +408,14 @@ class ConfigManager {
      */
     getDatabaseConfig() {
         // SQLite 경로를 플랫폼별로 자동 처리
-        const sqlitePath = this.getSmartPath('SQLITE_PATH', './data/db/pulseone.db');
+        const sqlitePath = this.getSmartPath('SQLITE_PATH', this.get('SQLITE_DB_PATH', './data/db/pulseone.db'));
         const backupPath = this.getSmartPath('SQLITE_BACKUP_PATH', './data/backup');
         const logsPath = this.getSmartPath('SQLITE_LOGS_PATH', './data/logs');
         const tempPath = this.getSmartPath('SQLITE_TEMP_PATH', './data/temp');
-        
+
         return {
             type: this.get('DATABASE_TYPE', 'SQLITE'),
-            
+
             // SQLite 설정
             sqlite: {
                 enabled: this.getBoolean('SQLITE_ENABLED', true),
@@ -478,22 +478,22 @@ class ConfigManager {
      */
     getActiveDatabase() {
         const dbType = this.get('DATABASE_TYPE', 'SQLITE').toUpperCase();
-        
+
         // 타입별 확인
-        switch(dbType) {
-            case 'POSTGRESQL':
-            case 'POSTGRES':
-            case 'PG':
-                return 'postgresql';
-            case 'MARIADB':
-            case 'MYSQL':
-                return 'mariadb';
-            case 'MSSQL':
-            case 'SQLSERVER':
-                return 'mssql';
-            case 'SQLITE':
-            default:
-                return 'sqlite';
+        switch (dbType) {
+        case 'POSTGRESQL':
+        case 'POSTGRES':
+        case 'PG':
+            return 'postgresql';
+        case 'MARIADB':
+        case 'MYSQL':
+            return 'mariadb';
+        case 'MSSQL':
+        case 'SQLSERVER':
+            return 'mssql';
+        case 'SQLITE':
+        default:
+            return 'sqlite';
         }
     }
 
@@ -502,7 +502,7 @@ class ConfigManager {
      */
     getCollectorConfig() {
         let collectorPath = this.get('COLLECTOR_EXECUTABLE_PATH', '');
-        
+
         // 경로가 없으면 플랫폼별 기본값 사용
         if (!collectorPath) {
             if (this.platform.isWindows) {
@@ -513,7 +513,7 @@ class ConfigManager {
                     path.resolve(process.cwd(), '..', 'collector.exe'),
                     'C:\\PulseOne\\collector.exe'
                 ];
-                
+
                 for (const p of windowsPaths) {
                     if (fs.existsSync(p)) {
                         collectorPath = p;
@@ -530,7 +530,7 @@ class ConfigManager {
                     '/opt/pulseone/collector',
                     '/usr/local/bin/pulseone-collector'
                 ];
-                
+
                 for (const p of unixPaths) {
                     if (fs.existsSync(p)) {
                         collectorPath = p;
@@ -539,7 +539,7 @@ class ConfigManager {
                 }
             }
         }
-        
+
         return {
             executable: collectorPath,
             workingDir: collectorPath ? path.dirname(collectorPath) : process.cwd(),
@@ -611,7 +611,7 @@ class ConfigManager {
         this.logger.log(`   SQLITE_PATH (원본): ${this.get('SQLITE_PATH')}`);
         this.logger.log(`   SQLITE_PATH (변환): ${this.getSmartPath('SQLITE_PATH', './data/db/pulseone.db')}`);
         this.logger.log(`   COLLECTOR_PATH: ${this.getCollectorConfig().executable}`);
-        
+
         // Windows 특화 디버깅
         if (this.platform.isWindows) {
             this.logger.log('\n🪟 Windows 특화 정보:');
@@ -631,20 +631,20 @@ class ConfigManager {
             this.logger.log('❌ Windows 환경이 아닙니다.');
             return;
         }
-        
+
         this.logger.log('🪟 Windows .env 파일 디버깅 시작...');
-        
+
         const cwd = process.cwd();
         const nodeEnv = process.env.NODE_ENV || 'development';
-        
+
         // 체크할 파일들
         const envFiles = [
             '.env.production',
-            '.env.development', 
+            '.env.development',
             '.env.local',
             '.env'
         ];
-        
+
         // 체크할 경로들
         const searchPaths = [
             cwd,
@@ -656,24 +656,24 @@ class ConfigManager {
             'C:\\PulseOne',
             'C:\\PulseOne\\config'
         ];
-        
+
         this.logger.log(`📍 NODE_ENV: ${nodeEnv}`);
         this.logger.log(`📁 현재 디렉토리: ${cwd}`);
         this.logger.log('');
-        
+
         // 각 경로에서 각 파일 확인
         for (const searchPath of searchPaths) {
             this.logger.log(`📂 경로 확인: ${searchPath}`);
-            
+
             try {
                 if (!fs.existsSync(searchPath)) {
-                    this.logger.log(`   ❌ 경로 존재하지 않음`);
+                    this.logger.log('   ❌ 경로 존재하지 않음');
                     continue;
                 }
-                
+
                 for (const envFile of envFiles) {
                     const fullPath = path.join(searchPath, envFile);
-                    
+
                     if (fs.existsSync(fullPath)) {
                         const stats = fs.statSync(fullPath);
                         this.logger.log(`   ✅ ${envFile} (${stats.size} bytes)`);
@@ -681,11 +681,11 @@ class ConfigManager {
                         this.logger.log(`   ❌ ${envFile}`);
                     }
                 }
-                
+
             } catch (error) {
                 this.logger.log(`   ⚠️ 오류: ${error.message}`);
             }
-            
+
             this.logger.log('');
         }
     }
@@ -716,13 +716,13 @@ class ConfigManager {
     getByPattern(pattern) {
         const result = {};
         const regex = new RegExp(pattern, 'i');
-        
+
         this.env.forEach((value, key) => {
             if (regex.test(key)) {
                 result[key] = value;
             }
         });
-        
+
         return result;
     }
 
@@ -770,26 +770,26 @@ class ConfigManager {
     exportSafeConfig() {
         const sensitiveKeys = ['PASSWORD', 'SECRET', 'TOKEN', 'KEY', 'PRIVATE'];
         const result = {};
-        
+
         this.env.forEach((value, key) => {
-            const isSensitive = sensitiveKeys.some(sensitive => 
+            const isSensitive = sensitiveKeys.some(sensitive =>
                 key.toUpperCase().includes(sensitive)
             );
-            
+
             if (!isSensitive) {
                 result[key] = value;
             } else {
                 result[key] = '***HIDDEN***';
             }
         });
-        
+
         result._platform = this.platform;
         return result;
     }
 
     validate() {
         const issues = [];
-        
+
         // 필수 환경변수 검증
         const required = ['NODE_ENV', 'DATABASE_TYPE'];
         required.forEach(key => {
@@ -797,19 +797,19 @@ class ConfigManager {
                 issues.push(`필수 환경변수 누락: ${key}`);
             }
         });
-        
+
         // 포트 번호 유효성 검증
         const port = this.getNumber('BACKEND_PORT');
         if (port < 1 || port > 65535) {
             issues.push(`잘못된 포트 번호: ${port}`);
         }
-        
+
         // 데이터베이스 타입 검증
         const dbType = this.get('DATABASE_TYPE');
         if (!['SQLITE', 'POSTGRESQL', 'MARIADB', 'MSSQL'].includes(dbType)) {
             issues.push(`지원하지 않는 데이터베이스 타입: ${dbType}`);
         }
-        
+
         // SQLite 경로 확인
         if (dbType === 'SQLITE') {
             const dbConfig = this.getDatabaseConfig();
@@ -818,13 +818,13 @@ class ConfigManager {
                 issues.push(`SQLite 데이터베이스 디렉토리가 없음: ${dbDir}`);
             }
         }
-        
+
         // Collector 경로 확인
         const collectorConfig = this.getCollectorConfig();
         if (collectorConfig.executable && !fs.existsSync(collectorConfig.executable)) {
             issues.push(`Collector 실행 파일이 없음: ${collectorConfig.executable}`);
         }
-        
+
         return {
             isValid: issues.length === 0,
             issues: issues,
@@ -857,14 +857,14 @@ module.exports = {
     getBoolean: (key, defaultValue) => configManager.getBoolean(key, defaultValue),
     getNumber: (key, defaultValue) => configManager.getNumber(key, defaultValue),
     require: (key) => configManager.require(key),
-    
+
     // 설정 그룹들
     getDatabaseConfig: () => configManager.getDatabaseConfig(),
     getRedisConfig: () => configManager.getRedisConfig(),
     getServerConfig: () => configManager.getServerConfig(),
     getCollectorConfig: () => configManager.getCollectorConfig(),
     getPlatformInfo: () => configManager.getPlatformInfo(),
-    
+
     // 추가 메서드들
     getLoadedFiles: () => configManager.getLoadedFiles(),
     getConfigStatus: () => configManager.getConfigStatus(),
@@ -877,7 +877,7 @@ module.exports = {
     reload: () => configManager.reload(),
     exportSafeConfig: () => configManager.exportSafeConfig(),
     validate: () => configManager.validate(),
-    
+
     // Windows 디버깅 전용
     debugWindowsEnvFiles: () => configManager.debugWindowsEnvFiles()
 };

@@ -4,6 +4,7 @@
 // ============================================================================
 
 const DatabaseFactory = require('../DatabaseFactory');
+const KnexManager = require('../KnexManager');
 
 /**
  * 기본 Repository 클래스 (C++ IRepository<T> 역할)
@@ -13,18 +14,34 @@ class BaseRepository {
     constructor(tableName) {
         this.tableName = tableName;
         this.logger = console; // TODO: 실제 LogManager로 교체 예정
-        
+
         // DatabaseFactory 인스턴스 생성
         this.dbFactory = new DatabaseFactory();
         this.dbType = this.dbFactory.config.database.type;
         this.queryAdapter = this.dbFactory.getQueryAdapter();
-        
+
         // 캐시 설정 (C++ Repository 패턴과 동일)
         this.cacheEnabled = process.env.REPOSITORY_CACHE === 'true';
         this.cache = new Map();
         this.cacheTimeout = 5 * 60 * 1000; // 5분
-        
+
+        // Knex 인스턴스 초기화
+        this.knexManager = KnexManager.getInstance();
+        this.knex = this.knexManager.getKnex(this.dbType);
+
         this.logger.log(`✅ ${tableName}Repository initialized - DB: ${this.dbType.toUpperCase()}, Cache: ${this.cacheEnabled ? 'ON' : 'OFF'}`);
+    }
+
+    /**
+     * Knex 쿼리 빌더 반환
+     * @param {string} alias 테이블 별칭 (optional)
+     * @returns {import('knex').Knex.QueryBuilder}
+     */
+    query(alias = null) {
+        if (alias) {
+            return this.knex(`${this.tableName} as ${alias}`);
+        }
+        return this.knex(this.tableName);
     }
 
     // ========================================================================
@@ -34,13 +51,15 @@ class BaseRepository {
     /**
      * 쿼리 실행 (단일 결과) - DatabaseFactory를 통한 자동 DB 타입 처리
      */
-    async executeQuerySingle(query, params = []) {
+    async executeQuerySingle(query, params = [], trx = null) {
         try {
             // DB별 쿼리 변환
             const adaptedQuery = this.adaptQuery(query);
-            
-            const results = await this.dbFactory.executeQuery(adaptedQuery, params);
-            
+
+            const results = trx
+                ? await trx.raw(adaptedQuery, params)
+                : await this.dbFactory.executeQuery(adaptedQuery, params);
+
             // DB별 결과 처리 - SQLite는 rows 배열에서 추출
             switch (this.dbType) {
                 case 'sqlite':
@@ -48,19 +67,19 @@ class BaseRepository {
                 case 'SQLITE':
                 case 'SQLITE3':
                     return results.rows && results.rows.length > 0 ? results.rows[0] : null;
-                
+
                 case 'postgresql':
                 case 'postgres':
                     return results.rows && results.rows.length > 0 ? results.rows[0] : null;
-                
+
                 case 'mariadb':
                 case 'mysql':
                     return Array.isArray(results) && results.length > 0 ? results[0] : null;
-                
+
                 case 'mssql':
                 case 'sqlserver':
                     return results.recordset && results.recordset.length > 0 ? results.recordset[0] : null;
-                
+
                 default:
                     return results.length > 0 ? results[0] : null;
             }
@@ -73,13 +92,15 @@ class BaseRepository {
     /**
      * 쿼리 실행 (다중 결과) - DatabaseFactory를 통한 자동 DB 타입 처리
      */
-    async executeQuery(query, params = []) {
+    async executeQuery(query, params = [], trx = null) {
         try {
             // DB별 쿼리 변환
             const adaptedQuery = this.adaptQuery(query);
-            
-            const results = await this.dbFactory.executeQuery(adaptedQuery, params);
-            
+
+            const results = trx
+                ? await trx.raw(adaptedQuery, params)
+                : await this.dbFactory.executeQuery(adaptedQuery, params);
+
             // DB별 결과 처리 - SQLite는 rows 배열 반환
             switch (this.dbType) {
                 case 'sqlite':
@@ -87,19 +108,19 @@ class BaseRepository {
                 case 'SQLITE':
                 case 'SQLITE3':
                     return results.rows || [];
-                
+
                 case 'postgresql':
                 case 'postgres':
                     return results.rows || [];
-                
+
                 case 'mariadb':
                 case 'mysql':
                     return Array.isArray(results) ? results : [];
-                
+
                 case 'mssql':
                 case 'sqlserver':
                     return results.recordset || [];
-                
+
                 default:
                     return results || [];
             }
@@ -116,9 +137,9 @@ class BaseRepository {
         try {
             // DB별 쿼리 변환
             const adaptedQuery = this.adaptQuery(query);
-            
+
             const result = await this.dbFactory.executeQuery(adaptedQuery, params);
-            
+
             // DB별 결과 처리
             switch (this.dbType) {
                 case 'sqlite':
@@ -129,28 +150,28 @@ class BaseRepository {
                         lastInsertRowid: result.lastInsertRowid || result.insertId,
                         changes: result.changes || result.affectedRows || 0
                     };
-                
+
                 case 'postgresql':
                 case 'postgres':
                     return {
                         lastInsertRowid: result.insertId || (result.rows && result.rows[0] ? result.rows[0].id : null),
                         changes: result.rowCount || 0
                     };
-                
+
                 case 'mariadb':
                 case 'mysql':
                     return {
                         lastInsertRowid: result.insertId,
                         changes: result.affectedRows || 0
                     };
-                
+
                 case 'mssql':
                 case 'sqlserver':
                     return {
                         lastInsertRowid: result.recordset && result.recordset[0] ? result.recordset[0].id : null,
                         changes: result.rowsAffected ? result.rowsAffected[0] : 0
                     };
-                
+
                 default:
                     return {
                         lastInsertRowid: null,
@@ -185,19 +206,19 @@ class BaseRepository {
             case 'SQLITE':
             case 'SQLITE3':
                 return this.getSqliteDataType(fieldType);
-            
+
             case 'postgresql':
             case 'postgres':
                 return this.getPostgresDataType(fieldType);
-            
+
             case 'mariadb':
             case 'mysql':
                 return this.getMysqlDataType(fieldType);
-            
+
             case 'mssql':
             case 'sqlserver':
                 return this.getMssqlDataType(fieldType);
-            
+
             default:
                 return fieldType;
         }
@@ -264,16 +285,16 @@ class BaseRepository {
      */
     getFromCache(key) {
         if (!this.cacheEnabled) return null;
-        
+
         const cached = this.cache.get(key);
         if (!cached) return null;
-        
+
         // 캐시 만료 확인
         if (Date.now() - cached.timestamp > this.cacheTimeout) {
             this.cache.delete(key);
             return null;
         }
-        
+
         return cached.data;
     }
 
@@ -282,7 +303,7 @@ class BaseRepository {
      */
     setCache(key, data) {
         if (!this.cacheEnabled) return;
-        
+
         this.cache.set(key, {
             data: data,
             timestamp: Date.now()
@@ -294,7 +315,7 @@ class BaseRepository {
      */
     invalidateCache(pattern = null) {
         if (!this.cacheEnabled) return;
-        
+
         if (pattern) {
             // 패턴에 맞는 키만 삭제
             for (const key of this.cache.keys()) {
@@ -344,11 +365,11 @@ class BaseRepository {
             case 'postgresql':
             case 'postgres':
                 return `$${index}`;
-            
+
             case 'mssql':
             case 'sqlserver':
                 return `@param${index}`;
-            
+
             case 'sqlite':
             case 'sqlite3':
             case 'SQLITE':
@@ -366,12 +387,12 @@ class BaseRepository {
     buildOrderClause(sortBy = 'id', sortOrder = 'ASC') {
         const validOrders = ['ASC', 'DESC'];
         const order = validOrders.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'ASC';
-        
+
         // DB별 키워드 이스케이프
         let escapedSortBy = sortBy;
         const lowerSortBy = sortBy.toLowerCase();
         const reservedWords = ['order', 'user', 'group'];
-        
+
         if (reservedWords.includes(lowerSortBy)) {
             switch (this.dbType) {
                 case 'postgresql':
@@ -388,7 +409,7 @@ class BaseRepository {
                     break;
             }
         }
-        
+
         return ` ORDER BY ${escapedSortBy} ${order}`;
     }
 
@@ -397,7 +418,7 @@ class BaseRepository {
      */
     buildLimitClause(page = 1, limit = 20) {
         const offset = (page - 1) * limit;
-        
+
         switch (this.dbType) {
             case 'postgresql':
             case 'postgres':
@@ -406,16 +427,16 @@ class BaseRepository {
             case 'SQLITE':
             case 'SQLITE3':
                 return ` LIMIT ${limit} OFFSET ${offset}`;
-            
+
             case 'mariadb':
             case 'mysql':
                 return ` LIMIT ${offset}, ${limit}`;
-            
+
             case 'mssql':
             case 'sqlserver':
                 // SQL Server 2012+ OFFSET/FETCH 문법
                 return ` OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY`;
-            
+
             default:
                 return ` LIMIT ${limit} OFFSET ${offset}`;
         }
@@ -429,21 +450,21 @@ class BaseRepository {
             case 'postgresql':
             case 'postgres':
                 return 'NOW()';
-            
+
             case 'sqlite':
             case 'sqlite3':
             case 'SQLITE':
             case 'SQLITE3':
-                return "datetime('now')";
-            
+                return 'datetime(\'now\')';
+
             case 'mariadb':
             case 'mysql':
                 return 'NOW()';
-            
+
             case 'mssql':
             case 'sqlserver':
                 return 'GETDATE()';
-            
+
             default:
                 return 'NOW()';
         }
@@ -524,7 +545,7 @@ class BaseRepository {
                 query: this.adaptQuery(op.query),
                 params: op.params
             }));
-            
+
             return await this.dbFactory.executeTransaction(adaptedOperations);
         } catch (error) {
             this.logger.error(`Transaction error in ${this.tableName}:`, error);
@@ -543,7 +564,7 @@ class BaseRepository {
         try {
             const testQuery = 'SELECT 1 as test';
             const result = await this.executeQuerySingle(testQuery);
-            
+
             return {
                 status: 'healthy',
                 tableName: this.tableName,

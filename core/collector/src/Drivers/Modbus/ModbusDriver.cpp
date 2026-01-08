@@ -9,9 +9,10 @@
 #include "Drivers/Modbus/ModbusConnectionPool.h"
 #include "Drivers/Modbus/ModbusFailover.h"
 #include "Drivers/Modbus/ModbusPerformance.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <chrono>
 #include <thread>
+#include <iostream>
 #include <algorithm>
 #include <sstream>
 
@@ -71,10 +72,28 @@ bool ModbusDriver::Initialize(const DriverConfig& config) {
     logger_->Info("  - Retry Count: " + std::to_string(config_.retry_count));
     logger_->Info("  - Polling Interval: " + std::to_string(config_.polling_interval_ms) + "ms");
     
+    // 🔥 기본 Slave ID 설정 (properties에서)
+    if (config_.properties.count("slave_id")) {
+        current_slave_id_ = std::stoi(config_.properties.at("slave_id"));
+        logger_->Info("  - Default Slave ID: " + std::to_string(current_slave_id_));
+    }
+    
+    // 🔥 디버그 모드 설정 (properties에서)
+    if (config_.properties.count("debug_enabled") && 
+        config_.properties.at("debug_enabled") == "true") {
+        logger_->Info("  - Debug mode requested");
+    }
+
     // Modbus 컨텍스트 설정
     if (!SetupModbusConnection()) {
         SetError(Structs::ErrorCode::CONFIGURATION_ERROR, "Failed to setup Modbus connection");
         return false;
+    }
+
+    if (config_.properties.count("debug_enabled") && 
+        config_.properties.at("debug_enabled") == "true") {
+        modbus_set_debug(modbus_ctx_, TRUE);
+        logger_->Info("  - Debug mode enabled on context");
     }
     
     // 🔥 DriverConfig의 timeout_ms 직접 사용
@@ -91,19 +110,6 @@ bool ModbusDriver::Initialize(const DriverConfig& config) {
     }
     uint32_t byte_timeout_usec = (byte_timeout_ms % 1000) * 1000;
     modbus_set_byte_timeout(modbus_ctx_, 0, byte_timeout_usec);
-    
-    // 🔥 디버그 모드 설정 (properties에서)
-    if (config_.properties.count("debug_enabled") && 
-        config_.properties.at("debug_enabled") == "true") {
-        modbus_set_debug(modbus_ctx_, TRUE);
-        logger_->Info("  - Debug mode enabled");
-    }
-    
-    // 🔥 기본 Slave ID 설정 (properties에서)
-    if (config_.properties.count("slave_id")) {
-        current_slave_id_ = std::stoi(config_.properties.at("slave_id"));
-        logger_->Info("  - Default Slave ID: " + std::to_string(current_slave_id_));
-    }
     
     logger_->Info("✅ ModbusDriver initialization completed");
     return true;
@@ -844,6 +850,10 @@ bool ModbusDriver::SetupModbusConnection() {
     }
     
     bool success = modbus_ctx_ != nullptr;
+    if (success && current_slave_id_ != -1) {
+        modbus_set_slave(modbus_ctx_, current_slave_id_);
+    }
+    
     logger_->Info("SetupModbusConnection result: " + std::string(success ? "SUCCESS" : "FAILED"));
     return success;
 }
@@ -1402,6 +1412,7 @@ Structs::DataValue ModbusDriver::ExtractValueFromBuffer(const std::vector<uint16
 // =============================================================================
 // 🔥 플러그인 등록용 C 인터페이스 (PluginLoader가 호출)
 // =============================================================================
+#ifndef TEST_BUILD
 extern "C" {
 #ifdef _WIN32
     __declspec(dllexport) void RegisterPlugin() {
@@ -1425,3 +1436,4 @@ extern "C" {
         std::cout << "[ModbusDriver] Plugin Registered Successfully" << std::endl;
     }
 }
+#endif

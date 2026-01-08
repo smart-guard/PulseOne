@@ -19,121 +19,109 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
     async findAll(filters = {}) {
         try {
-            console.log('AlarmOccurrenceRepository.findAll 호출:', filters);
-            
-            // FIND_ALL 쿼리에서 ORDER BY 부분 제거
-            let baseQuery = AlarmQueries.AlarmOccurrence.FIND_ALL;
-            // ORDER BY가 이미 포함되어 있다면 제거
-            const orderByIndex = baseQuery.toUpperCase().indexOf('ORDER BY');
-            if (orderByIndex > -1) {
-                baseQuery = baseQuery.substring(0, orderByIndex).trim();
-            }
-            
-            let query = baseQuery;
-            const params = [];
-            const conditions = [];
+            this.logger?.info('AlarmOccurrenceRepository.findAll called with:', filters);
 
-            // 테넌트 ID 필수
-            params.push(filters.tenantId || 1);
+            const query = this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('virtual_points as vp', 'ao.point_id', 'vp.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'ar.severity as rule_severity',
+                    'ar.target_type',
+                    'ar.target_id',
+                    'd.name as device_name',
+                    'd.device_type',
+                    'd.manufacturer',
+                    'd.model',
+                    'p.protocol_type',
+                    'p.display_name as protocol_name',
+                    'dp.name as data_point_name',
+                    'dp.description as data_point_description',
+                    'dp.unit',
+                    'dp.data_type',
+                    's.name as site_name',
+                    's.location as site_location',
+                    'vp.name as virtual_point_name',
+                    'vp.description as virtual_point_description'
+                );
+
+            // 테넌트 격리
+            query.where('ao.tenant_id', filters.tenantId || 1);
 
             // 필터 조건 추가
             if (filters.state && filters.state !== 'all') {
-                conditions.push('ao.state = ?');
-                params.push(filters.state);
+                query.where('ao.state', filters.state);
             }
 
             if (filters.severity && filters.severity !== 'all') {
-                conditions.push('ao.severity = ?');
-                params.push(filters.severity);
+                query.where('ao.severity', filters.severity);
             }
 
             if (filters.ruleId) {
-                conditions.push('ao.rule_id = ?');
-                params.push(parseInt(filters.ruleId));
+                query.where('ao.rule_id', parseInt(filters.ruleId));
             }
 
-            // device_id INTEGER 처리
             if (filters.deviceId) {
                 const deviceId = parseInt(filters.deviceId);
                 if (!isNaN(deviceId)) {
-                    conditions.push('ao.device_id = ?');
-                    params.push(deviceId);
+                    query.where('ao.device_id', deviceId);
                 }
             }
 
             if (filters.acknowledged === true || filters.acknowledged === 'true') {
-                conditions.push('ao.acknowledged_time IS NOT NULL');
+                query.whereNotNull('ao.acknowledged_time');
             } else if (filters.acknowledged === false || filters.acknowledged === 'false') {
-                conditions.push('ao.acknowledged_time IS NULL');
+                query.whereNull('ao.acknowledged_time');
             }
 
             if (filters.category && filters.category !== 'all') {
-                conditions.push('ao.category = ?');
-                params.push(filters.category);
+                query.where('ao.category', filters.category);
             }
 
             if (filters.tag) {
-                conditions.push('ao.tags LIKE ?');
-                params.push(`%${filters.tag}%`);
+                query.where('ao.tags', 'like', `%${filters.tag}%`);
             }
 
             if (filters.dateFrom) {
-                conditions.push('ao.occurrence_time >= ?');
-                params.push(filters.dateFrom);
+                query.where('ao.occurrence_time', '>=', filters.dateFrom);
             }
 
             if (filters.dateTo) {
-                conditions.push('ao.occurrence_time <= ?');
-                params.push(filters.dateTo);
+                query.where('ao.occurrence_time', '<=', filters.dateTo);
             }
 
             if (filters.search) {
-                conditions.push('(ao.alarm_message LIKE ? OR ao.source_name LIKE ? OR ao.location LIKE ?)');
-                const searchParam = `%${filters.search}%`;
-                params.push(searchParam, searchParam, searchParam);
+                query.where(builder => {
+                    builder.where('ao.alarm_message', 'like', `%${filters.search}%`)
+                        .orWhere('ao.source_name', 'like', `%${filters.search}%`)
+                        .orWhere('ao.location', 'like', `%${filters.search}%`);
+                });
             }
 
-            // 조건들을 쿼리에 추가
-            if (conditions.length > 0) {
-                query += ' AND ' + conditions.join(' AND ');
-            }
-
-            // 정렬 추가 (한 번만!)
+            // 페이징 및 정렬 정보
             const sortBy = filters.sortBy || 'occurrence_time';
             const sortOrder = filters.sortOrder || 'DESC';
-            query += ` ORDER BY ao.${sortBy} ${sortOrder}`;
-
-            // 페이징 처리를 위한 변수
-            const page = filters.page || 1;
-            const limit = filters.limit || 50;
+            const page = parseInt(filters.page) || 1;
+            const limit = parseInt(filters.limit) || 50;
             const offset = (page - 1) * limit;
 
-            // 전체 개수 먼저 조회 (페이징 정보를 위해)
-            let countQuery = 'SELECT COUNT(*) as total FROM alarm_occurrences ao WHERE ao.tenant_id = ?';
-            const countParams = [filters.tenantId || 1];
-            
-            if (conditions.length > 0) {
-                countQuery += ' AND ' + conditions.join(' AND ');
-                // ORDER BY 전의 파라미터만 사용
-                const conditionParamCount = params.length - 1; // tenant_id 제외
-                countParams.push(...params.slice(1, conditionParamCount + 1));
-            }
-            
-            const countResult = await this.executeQuery(countQuery, countParams);
-            const total = countResult.length > 0 ? countResult[0].total : 0;
+            // 전체 개수와 데이터 동시 조회
+            const [items, countResult] = await Promise.all([
+                query.clone().orderBy(`ao.${sortBy}`, sortOrder).limit(limit).offset(offset),
+                query.clone().clearSelect().clearOrder().count('* as total').first()
+            ]);
 
-            // 페이징 적용한 실제 데이터 조회
-            query += ' LIMIT ? OFFSET ?';
-            params.push(limit, offset);
+            const total = countResult ? countResult.total : 0;
 
-            const occurrences = await this.executeQuery(query, params);
+            this.logger?.info(`✅ Found ${items.length} occurrences (Total: ${total})`);
 
-            console.log(`✅ 알람 발생 ${occurrences.length}개 조회 완료 (전체: ${total}개)`);
-
-            // 페이징 정보와 함께 반환
             return {
-                items: Array.isArray(occurrences) ? 
-                    occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence)) : [],
+                items: (items || []).map(occurrence => this.parseAlarmOccurrence(occurrence)),
                 pagination: {
                     page: page,
                     limit: limit,
@@ -143,12 +131,9 @@ class AlarmOccurrenceRepository extends BaseRepository {
                     hasPrev: page > 1
                 }
             };
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findAll 실패:', error.message);
-            console.error('쿼리 에러 상세:', error);
-            
-            // 에러 발생 시에도 빈 결과 반환
+            this.logger?.error('AlarmOccurrenceRepository.findAll failed:', error.message);
             return {
                 items: [],
                 pagination: {
@@ -165,186 +150,316 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
     async findById(id, tenantId = null) {
         try {
-            console.log(`AlarmOccurrenceRepository.findById 호출: id=${id}, tenantId=${tenantId}`);
-            
-            const query = AlarmQueries.AlarmOccurrence.FIND_BY_ID;
-            const params = [id, tenantId || 1];
+            this.logger?.info(`AlarmOccurrenceRepository.findById called: id=${id}, tenantId=${tenantId}`);
 
-            const occurrences = await this.executeQuery(query, params);
-            
-            if (occurrences.length === 0) {
-                console.log(`알람 발생 ID ${id} 찾을 수 없음`);
+            const item = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('virtual_points as vp', 'ao.point_id', 'vp.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'ar.severity as rule_severity',
+                    'ar.target_type',
+                    'ar.target_id',
+                    'd.name as device_name',
+                    'd.device_type',
+                    'p.protocol_type',
+                    'p.display_name as protocol_name',
+                    'dp.name as data_point_name',
+                    'dp.description as data_point_description',
+                    's.name as site_name',
+                    's.location as site_location',
+                    'vp.name as virtual_point_name'
+                )
+                .where('ao.id', id)
+                .where('ao.tenant_id', tenantId || 1)
+                .first();
+
+            if (!item) {
+                this.logger?.info(`Occurrence ID ${id} not found`);
                 return null;
             }
-            
-            console.log(`✅ 알람 발생 ID ${id} 조회 성공`);
-            
-            return this.parseAlarmOccurrence(occurrences[0]);
-            
+
+            return this.parseAlarmOccurrence(item);
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findById 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findById failed:', error.message);
             throw error;
         }
     }
 
     async findActive(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.FIND_ACTIVE;
-            const params = [tenantId || 1];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .leftJoin('virtual_points as vp', 'ao.point_id', 'vp.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'ar.severity as rule_severity',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name',
+                    's.location as site_location',
+                    'vp.name as virtual_point_name'
+                )
+                .where('ao.tenant_id', tenantId || 1)
+                .where('ao.state', 'active')
+                .orderBy('ao.occurrence_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findActive 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findActive failed:', error.message);
             throw error;
         }
     }
 
     async findUnacknowledged(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.FIND_UNACKNOWLEDGED;
-            const params = [tenantId || 1];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name',
+                    's.location as site_location'
+                )
+                .where('ao.tenant_id', tenantId || 1)
+                .whereNull('ao.acknowledged_time')
+                .orderBy('ao.occurrence_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findUnacknowledged 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findUnacknowledged failed:', error.message);
             throw error;
         }
     }
 
     async findByDevice(deviceId, tenantId = null) {
         try {
-            // device_id INTEGER 검증
             const validDeviceId = parseInt(deviceId);
             if (isNaN(validDeviceId)) {
                 throw new Error('Invalid device_id');
             }
 
-            const query = AlarmQueries.AlarmOccurrence.FIND_BY_DEVICE;
-            const params = [tenantId || 1, validDeviceId];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name',
+                    's.location as site_location'
+                )
+                .where('ao.tenant_id', tenantId || 1)
+                .where('ao.device_id', validDeviceId)
+                .orderBy('ao.occurrence_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findByDevice 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findByDevice failed:', error.message);
             throw error;
         }
     }
 
     async findActiveByDevice(deviceId, tenantId = null) {
         try {
-            // device_id INTEGER 검증
             const validDeviceId = parseInt(deviceId);
             if (isNaN(validDeviceId)) {
                 throw new Error('Invalid device_id');
             }
 
-            const query = AlarmQueries.AlarmOccurrence.FIND_ACTIVE_BY_DEVICE;
-            const params = [tenantId || 1, validDeviceId];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'ar.description as rule_description'
+                )
+                .where('ao.tenant_id', tenantId || 1)
+                .where('ao.device_id', validDeviceId)
+                .where('ao.state', 'active')
+                .orderBy('ao.occurrence_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findActiveByDevice 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findActiveByDevice failed:', error.message);
             throw error;
         }
     }
 
     async findByRule(ruleId, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.FIND_BY_RULE;
-            const params = [ruleId, tenantId || 1];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query()
+                .where('rule_id', ruleId)
+                .where('tenant_id', tenantId || 1)
+                .orderBy('occurrence_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findByRule 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findByRule failed:', error.message);
             throw error;
         }
     }
 
     async findByCategory(category, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.FIND_BY_CATEGORY;
-            const params = [tenantId || 1, category];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'ar.severity as rule_severity',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name'
+                )
+                .where('ao.tenant_id', tenantId || 1)
+                .where('ao.category', category)
+                .orderBy('ao.occurrence_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findByCategory 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findByCategory failed:', error.message);
             throw error;
         }
     }
 
     async findByTag(tag, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.FIND_BY_TAG;
-            const params = [tenantId || 1, `%${tag}%`];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'ar.severity as rule_severity',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name'
+                )
+                .where('ao.tenant_id', tenantId || 1)
+                .where('ao.tags', 'like', `%${tag}%`)
+                .orderBy('ao.occurrence_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findByTag 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findByTag failed:', error.message);
             throw error;
         }
     }
 
     async findRecentOccurrences(limit = 50, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.RECENT_OCCURRENCES;
-            const params = [tenantId || 1, limit];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name',
+                    's.location as site_location'
+                )
+                .where('ao.tenant_id', tenantId || 1)
+                .orderBy('ao.occurrence_time', 'desc')
+                .limit(limit);
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findRecentOccurrences 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findRecentOccurrences failed:', error.message);
             throw error;
         }
     }
 
     async findClearedByUser(userId, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.FIND_CLEARED_BY_USER;
-            const params = [parseInt(userId), tenantId || 1];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name',
+                    's.location as site_location'
+                )
+                .where('ao.cleared_by', parseInt(userId))
+                .where('ao.tenant_id', tenantId || 1)
+                .orderBy('ao.cleared_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findClearedByUser 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findClearedByUser failed:', error.message);
             throw error;
         }
     }
 
     async findAcknowledgedByUser(userId, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.FIND_ACKNOWLEDGED_BY_USER;
-            const params = [parseInt(userId), tenantId || 1];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name',
+                    's.location as site_location'
+                )
+                .where('ao.acknowledged_by', parseInt(userId))
+                .where('ao.tenant_id', tenantId || 1)
+                .orderBy('ao.acknowledged_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findAcknowledgedByUser 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findAcknowledgedByUser failed:', error.message);
             throw error;
         }
     }
@@ -352,30 +467,59 @@ class AlarmOccurrenceRepository extends BaseRepository {
     async findTodayAlarms(tenantId = null) {
         try {
             const { startDate, endDate } = AlarmQueries.getTodayDateRange();
-            const query = AlarmQueries.AlarmOccurrence.FIND_TODAY_ALARMS;
-            const params = [tenantId || 1, startDate, endDate];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name',
+                    's.location as site_location'
+                )
+                .where('ao.tenant_id', tenantId || 1)
+                .where('ao.occurrence_time', '>=', startDate)
+                .where('ao.occurrence_time', '<', endDate)
+                .orderBy('ao.occurrence_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findTodayAlarms 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findTodayAlarms failed:', error.message);
             throw error;
         }
     }
 
     async findByDateRange(startDate, endDate, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.FIND_BY_DATE_RANGE_WITH_FILTERS;
-            const params = [tenantId || 1, startDate, endDate];
-            
-            const occurrences = await this.executeQuery(query, params);
-            
-            return occurrences.map(occurrence => this.parseAlarmOccurrence(occurrence));
-            
+            const items = await this.query('ao')
+                .leftJoin('alarm_rules as ar', 'ao.rule_id', 'ar.id')
+                .leftJoin('devices as d', 'ao.device_id', 'd.id')
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .select(
+                    'ao.*',
+                    'ar.name as rule_name',
+                    'ar.severity as rule_severity',
+                    'd.name as device_name',
+                    'p.protocol_type',
+                    'dp.name as data_point_name',
+                    's.location as site_location'
+                )
+                .where('ao.tenant_id', tenantId || 1)
+                .where('ao.occurrence_time', '>=', startDate)
+                .where('ao.occurrence_time', '<=', endDate)
+                .orderBy('ao.occurrence_time', 'desc');
+
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.findByDateRange 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.findByDateRange failed:', error.message);
             throw error;
         }
     }
@@ -386,124 +530,138 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
     async create(occurrenceData, userId = null) {
         try {
-            console.log('AlarmOccurrenceRepository.create 호출:', occurrenceData);
-            
-            // 필수 필드 검증
+            this.logger?.info('AlarmOccurrenceRepository.create called:', occurrenceData);
+
+            // 필수 필드 검증 (유지)
             AlarmQueries.validateAlarmOccurrence(occurrenceData);
-            
-            const query = AlarmQueries.AlarmOccurrence.CREATE;
-            const params = AlarmQueries.buildCreateOccurrenceParams({
+
+            const data = {
                 ...occurrenceData,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
-            });
+            };
 
-            const result = await this.executeNonQuery(query, params);
-            const insertId = result.lastInsertRowid || result.insertId || result.lastID;
+            // JSON 필드 처리
+            if (data.trigger_value && typeof data.trigger_value !== 'string') data.trigger_value = JSON.stringify(data.trigger_value);
+            if (data.cleared_value && typeof data.cleared_value !== 'string') data.cleared_value = JSON.stringify(data.cleared_value);
+            if (data.context_data && typeof data.context_data !== 'string') data.context_data = JSON.stringify(data.context_data);
+            if (data.notification_result && typeof data.notification_result !== 'string') data.notification_result = JSON.stringify(data.notification_result);
+            if (data.tags && typeof data.tags !== 'string') data.tags = JSON.stringify(data.tags);
 
-            if (insertId) {
-                console.log(`✅ 알람 발생 생성 완료 (ID: ${insertId})`);
-                return await this.findById(insertId, occurrenceData.tenant_id);
+            const [id] = await this.knex(this.tableName).insert(data);
+
+            if (id) {
+                this.logger?.info(`✅ Occurrence created (ID: ${id})`);
+                return await this.findById(id, occurrenceData.tenant_id);
             } else {
                 throw new Error('Alarm occurrence creation failed - no ID returned');
             }
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.create 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.create failed:', error.message);
             throw error;
         }
     }
 
     async updateState(id, state, tenantId = null) {
         try {
-            console.log(`AlarmOccurrenceRepository.updateState 호출: ID ${id}, state=${state}`);
+            this.logger?.info(`AlarmOccurrenceRepository.updateState called: ID ${id}, state=${state}`);
 
-            const query = AlarmQueries.AlarmOccurrence.UPDATE_STATE;
-            const params = [state, id, tenantId || 1];
-            
-            const result = await this.executeNonQuery(query, params);
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .update({
+                    state,
+                    updated_at: this.knex.fn.now()
+                });
 
-            if (result.changes && result.changes > 0) {
-                console.log(`✅ 알람 발생 ID ${id} 상태 업데이트 완료`);
+            if (result > 0) {
+                this.logger?.info(`✅ Occurrence ID ${id} state updated`);
                 return await this.findById(id, tenantId);
             } else {
                 throw new Error(`Alarm occurrence with ID ${id} not found or update failed`);
             }
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.updateState 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.updateState failed:', error.message);
             throw error;
         }
     }
 
     async acknowledge(id, userId, comment = '', tenantId = null) {
         try {
-            console.log(`AlarmOccurrenceRepository.acknowledge 호출: ID ${id}, userId=${userId}`);
+            this.logger?.info(`AlarmOccurrenceRepository.acknowledge called: ID ${id}, userId=${userId}`);
 
-            const query = AlarmQueries.AlarmOccurrence.ACKNOWLEDGE;
-            const params = [userId, comment, id, tenantId || 1];
-            
-            const result = await this.executeNonQuery(query, params);
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .update({
+                    acknowledged_time: this.knex.fn.now(),
+                    acknowledged_by: userId,
+                    acknowledge_comment: comment,
+                    state: 'acknowledged',
+                    updated_at: this.knex.fn.now()
+                });
 
-            if (result.changes && result.changes > 0) {
-                console.log(`✅ 알람 ID ${id} 확인 처리 완료`);
+            if (result > 0) {
+                this.logger?.info(`✅ Alarm ID ${id} acknowledged`);
                 return await this.findById(id, tenantId);
             } else {
                 throw new Error(`Alarm occurrence with ID ${id} not found`);
             }
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.acknowledge 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.acknowledge failed:', error.message);
             throw error;
         }
     }
 
     async clear(id, userId, clearedValue, comment = '', tenantId = null) {
         try {
-            console.log(`AlarmOccurrenceRepository.clear 호출: ID ${id}, userId=${userId}`);
+            this.logger?.info(`AlarmOccurrenceRepository.clear called: ID ${id}, userId=${userId}`);
 
-            const query = AlarmQueries.AlarmOccurrence.CLEAR;
-            const params = [
-                clearedValue ? JSON.stringify(clearedValue) : null,
-                comment,
-                userId,  // cleared_by
-                id,
-                tenantId || 1
-            ];
-            
-            const result = await this.executeNonQuery(query, params);
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .update({
+                    cleared_time: this.knex.fn.now(),
+                    cleared_value: clearedValue ? JSON.stringify(clearedValue) : null,
+                    clear_comment: comment,
+                    cleared_by: userId,
+                    state: 'cleared',
+                    updated_at: this.knex.fn.now()
+                });
 
-            if (result.changes && result.changes > 0) {
-                console.log(`✅ 알람 ID ${id} 해제 처리 완료`);
+            if (result > 0) {
+                this.logger?.info(`✅ Alarm ID ${id} cleared`);
                 return await this.findById(id, tenantId);
             } else {
                 throw new Error(`Alarm occurrence with ID ${id} not found`);
             }
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.clear 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.clear failed:', error.message);
             throw error;
         }
     }
 
     async delete(id) {
         try {
-            console.log(`AlarmOccurrenceRepository.delete 호출: ID ${id}`);
+            this.logger?.info(`AlarmOccurrenceRepository.delete called: ID ${id}`);
 
-            const query = AlarmQueries.AlarmOccurrence.DELETE;
-            const params = [id];
-            
-            const result = await this.executeNonQuery(query, params);
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .del();
 
-            if (result.changes && result.changes > 0) {
-                console.log(`✅ 알람 발생 ID ${id} 삭제 완료`);
+            if (result > 0) {
+                this.logger?.info(`✅ Occurrence ID ${id} deleted`);
                 return true;
             } else {
                 return false;
             }
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.delete 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.delete failed:', error.message);
             throw error;
         }
     }
@@ -514,63 +672,95 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
     async getStatsSummary(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.STATS_SUMMARY;
-            const stats = await this.executeQuery(query, [tenantId || 1]);
-            
-            return stats.length > 0 ? stats[0] : {
+            const result = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .select([
+                    this.knex.raw('COUNT(*) as total_occurrences'),
+                    this.knex.raw("SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as active_alarms"),
+                    this.knex.raw('SUM(CASE WHEN acknowledged_time IS NULL THEN 1 ELSE 0 END) as unacknowledged_alarms'),
+                    this.knex.raw('SUM(CASE WHEN acknowledged_time IS NOT NULL THEN 1 ELSE 0 END) as acknowledged_alarms'),
+                    this.knex.raw('SUM(CASE WHEN cleared_time IS NOT NULL THEN 1 ELSE 0 END) as cleared_alarms')
+                ])
+                .first();
+
+            return result || {
                 total_occurrences: 0,
                 active_alarms: 0,
                 unacknowledged_alarms: 0,
                 acknowledged_alarms: 0,
                 cleared_alarms: 0
             };
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.getStatsSummary 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.getStatsSummary failed:', error.message);
             throw error;
         }
     }
 
     async getStatsBySeverity(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.STATS_BY_SEVERITY;
-            const stats = await this.executeQuery(query, [tenantId || 1]);
-            
+            const stats = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .select('severity')
+                .count('* as count')
+                .select(this.knex.raw("SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as active_count"))
+                .groupBy('severity')
+                .orderByRaw(`
+                    CASE severity 
+                        WHEN 'critical' THEN 1 
+                        WHEN 'high' THEN 2 
+                        WHEN 'medium' THEN 3 
+                        WHEN 'low' THEN 4 
+                        ELSE 5 
+                    END
+                `);
+
             return stats;
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.getStatsBySeverity 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.getStatsBySeverity failed:', error.message);
             throw error;
         }
     }
 
     async getStatsByCategory(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.STATS_BY_CATEGORY;
-            const stats = await this.executeQuery(query, [tenantId || 1]);
-            
+            const stats = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .whereNotNull('category')
+                .select('category')
+                .count('* as count')
+                .groupBy('category')
+                .orderBy('count', 'desc');
+
             return stats;
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.getStatsByCategory 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.getStatsByCategory failed:', error.message);
             throw error;
         }
     }
 
     async getStatsByDevice(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.STATS_BY_DEVICE;
-            const stats = await this.executeQuery(query, [tenantId || 1]);
-            
-            return stats.map(stat => ({
+            const stats = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .whereNotNull('device_id')
+                .select('device_id')
+                .count('* as total_alarms')
+                .select(this.knex.raw("SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as active_alarms"))
+                .groupBy('device_id')
+                .orderBy('total_alarms', 'desc');
+
+            return (stats || []).map(stat => ({
                 ...stat,
                 device_id: parseInt(stat.device_id),
                 total_alarms: parseInt(stat.total_alarms),
                 active_alarms: parseInt(stat.active_alarms)
             }));
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.getStatsByDevice 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.getStatsByDevice failed:', error.message);
             throw error;
         }
     }
@@ -578,10 +768,22 @@ class AlarmOccurrenceRepository extends BaseRepository {
     async getStatsToday(tenantId = null) {
         try {
             const { startDate, endDate } = AlarmQueries.getTodayDateRange();
-            const query = AlarmQueries.AlarmOccurrence.STATS_TODAY;
-            const stats = await this.executeQuery(query, [tenantId || 1, startDate, endDate]);
-            
-            return stats.length > 0 ? stats[0] : {
+            const result = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .where('occurrence_time', '>=', startDate)
+                .where('occurrence_time', '<', endDate)
+                .select([
+                    this.knex.raw('COUNT(*) as today_total'),
+                    this.knex.raw("SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as today_active"),
+                    this.knex.raw('SUM(CASE WHEN acknowledged_time IS NULL THEN 1 ELSE 0 END) as today_unacknowledged'),
+                    this.knex.raw("SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as today_critical"),
+                    this.knex.raw("SUM(CASE WHEN severity IN ('major', 'high') THEN 1 ELSE 0 END) as today_major"),
+                    this.knex.raw("SUM(CASE WHEN severity IN ('minor', 'low') THEN 1 ELSE 0 END) as today_minor"),
+                    this.knex.raw("SUM(CASE WHEN severity IN ('medium', 'warning') THEN 1 ELSE 0 END) as today_warning")
+                ])
+                .first();
+
+            return result || {
                 today_total: 0,
                 today_active: 0,
                 today_unacknowledged: 0,
@@ -590,61 +792,66 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 today_minor: 0,
                 today_warning: 0
             };
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.getStatsToday 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.getStatsToday failed:', error.message);
             throw error;
         }
     }
 
     async getUserActionStats(userId, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.USER_ACTION_STATS;
-            const params = [
-                parseInt(userId), 
-                parseInt(userId), 
-                parseInt(userId), 
-                parseInt(userId), 
-                tenantId || 1
-            ];
-            
-            const stats = await this.executeQuery(query, params);
-            
-            return stats.length > 0 ? stats[0] : {
+            const uId = parseInt(userId);
+            const result = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .select([
+                    this.knex.raw('COUNT(CASE WHEN acknowledged_by = ? THEN 1 END) as acknowledged_count', [uId]),
+                    this.knex.raw('COUNT(CASE WHEN cleared_by = ? THEN 1 END) as cleared_count', [uId]),
+                    this.knex.raw("COUNT(CASE WHEN acknowledged_by = ? AND acknowledged_time >= datetime('now', '-7 days') THEN 1 END) as acknowledged_last_week", [uId]),
+                    this.knex.raw("COUNT(CASE WHEN cleared_by = ? AND cleared_time >= datetime('now', '-7 days') THEN 1 END) as cleared_last_week", [uId])
+                ])
+                .first();
+
+            return result || {
                 acknowledged_count: 0,
                 cleared_count: 0,
                 acknowledged_last_week: 0,
                 cleared_last_week: 0
             };
-            
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.getUserActionStats 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.getUserActionStats failed:', error.message);
             throw error;
         }
     }
 
     async countAll(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.COUNT_ALL;
-            const result = await this.executeQuery(query, [tenantId || 1]);
-            
-            return result.length > 0 ? result[0].count : 0;
-            
+            const result = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .count('* as count')
+                .first();
+
+            return result ? result.count : 0;
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.countAll 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.countAll failed:', error.message);
             throw error;
         }
     }
 
     async countActive(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmOccurrence.COUNT_ACTIVE;
-            const result = await this.executeQuery(query, [tenantId || 1]);
-            
-            return result.length > 0 ? result[0].count : 0;
-            
+            const result = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .where('state', 'active')
+                .count('* as count')
+                .first();
+
+            return result ? result.count : 0;
+
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.countActive 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.countActive failed:', error.message);
             throw error;
         }
     }
@@ -655,51 +862,48 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
     async exists(id, tenantId = null) {
         try {
-            const query = 'SELECT 1 FROM alarm_occurrences WHERE id = ? AND tenant_id = ? LIMIT 1';
-            const params = [id, tenantId || 1];
-
-            const result = await this.executeQuery(query, params);
-            return result.length > 0;
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .select(1)
+                .first();
+            return !!result;
 
         } catch (error) {
-            console.error(`AlarmOccurrenceRepository.exists(${id}) 실패:`, error.message);
+            this.logger?.error(`AlarmOccurrenceRepository.exists(${id}) failed:`, error.message);
             return false;
         }
     }
 
     async countByConditions(conditions = {}) {
         try {
-            let query = 'SELECT COUNT(*) as count FROM alarm_occurrences WHERE tenant_id = ?';
-            const params = [conditions.tenantId || 1];
+            const query = this.knex(this.tableName)
+                .where('tenant_id', conditions.tenantId || 1);
 
             if (conditions.state) {
-                query += ' AND state = ?';
-                params.push(conditions.state);
+                query.where('state', conditions.state);
             }
 
             if (conditions.severity) {
-                query += ' AND severity = ?';
-                params.push(conditions.severity);
+                query.where('severity', conditions.severity);
             }
 
             if (conditions.ruleId) {
-                query += ' AND rule_id = ?';
-                params.push(parseInt(conditions.ruleId));
+                query.where('rule_id', parseInt(conditions.ruleId));
             }
 
             if (conditions.deviceId) {
                 const deviceId = parseInt(conditions.deviceId);
                 if (!isNaN(deviceId)) {
-                    query += ' AND device_id = ?';
-                    params.push(deviceId);
+                    query.where('device_id', deviceId);
                 }
             }
 
-            const result = await this.executeQuery(query, params);
-            return result.length > 0 ? result[0].count : 0;
+            const result = await query.count('* as count').first();
+            return result ? result.count : 0;
 
         } catch (error) {
-            console.error('AlarmOccurrenceRepository.countByConditions 실패:', error.message);
+            this.logger?.error('AlarmOccurrenceRepository.countByConditions failed:', error.message);
             return 0;
         }
     }
@@ -743,12 +947,12 @@ class AlarmOccurrenceRepository extends BaseRepository {
             cleared_by: occurrence.cleared_by ? parseInt(occurrence.cleared_by) : null,
             notification_sent: parseInt(occurrence.notification_sent) || 0,
             notification_count: parseInt(occurrence.notification_count) || 0,
-            
+
             // Boolean 필드 변환
             is_acknowledged: Boolean(occurrence.acknowledged_time),
             is_cleared: Boolean(occurrence.cleared_time),
             is_active: occurrence.state === 'active',
-            
+
             // JSON 필드 파싱
             trigger_value: this.parseJsonField(occurrence.trigger_value),
             cleared_value: this.parseJsonField(occurrence.cleared_value),

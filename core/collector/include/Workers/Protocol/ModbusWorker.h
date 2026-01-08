@@ -77,6 +77,9 @@ public:
     // Write Interface
     bool WriteDataPoint(const std::string& point_id, const DataValue& value) override;
 
+    // Test Helper
+    const PulseOne::Structs::DriverConfig& GetDriverConfig() const { return modbus_config_; }
+
 protected:
     // Internal methods
     bool ParseModbusConfig();
