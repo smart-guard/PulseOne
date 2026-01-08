@@ -18,8 +18,8 @@
 
 // 핵심 PulseOne 헤더들
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
-#include "Database/DatabaseManager.h"
+#include "Logging/LogManager.h"
+#include "DatabaseManager.hpp"
 
 // Windows 특화 테스트 설정
 #ifdef PULSEONE_WINDOWS
@@ -42,7 +42,7 @@ class WindowsStep1Test : public ::testing::Test {
 protected:
     ConfigManager* configManager = nullptr;
     LogManager* logManager = nullptr;
-    DatabaseManager* dbManager = nullptr;
+    DbLib::DatabaseManager* dbManager = nullptr;
     
     void SetUp() override {
         std::cout << "\n🚀 Windows Step 1 테스트 시작 - 설정 및 연결 검증\n";
@@ -133,10 +133,10 @@ private:
             logManager->reloadSettings();
             std::cout << "  ✅ LogManager 초기화 완료\n";
             
-            // DatabaseManager 초기화
-            dbManager = &DatabaseManager::getInstance();
+            // DbLib::DatabaseManager 초기화
+            dbManager = &DbLib::DatabaseManagerDbLib::DatabaseManager::getInstance();
             dbManager->initialize();
-            std::cout << "  ✅ DatabaseManager 초기화 완료\n";
+            std::cout << "  ✅ DbLib::DatabaseManager 초기화 완료\n";
             
         } catch (const std::exception& e) {
             std::cout << "  ❌ 컴포넌트 초기화 실패: " << e.what() << "\n";
@@ -374,14 +374,14 @@ TEST_F(WindowsStep1Test, LogManagerWindowsOperations) {
 }
 
 /**
- * @test DatabaseManagerWindowsConnection
- * @brief DatabaseManager Windows 연결 테스트
+ * @test DbLib::DatabaseManagerWindowsConnection
+ * @brief DbLib::DatabaseManager Windows 연결 테스트
  */
-TEST_F(WindowsStep1Test, DatabaseManagerWindowsConnection) {
-    std::cout << "🗄️ DatabaseManager Windows 연결 테스트\n";
+TEST_F(WindowsStep1Test, DbLib::DatabaseManagerWindowsConnection) {
+    std::cout << "🗄️ DbLib::DatabaseManager Windows 연결 테스트\n";
     std::cout << "---------------------------------------\n";
     
-    ASSERT_NE(dbManager, nullptr) << "DatabaseManager가 초기화되지 않음";
+    ASSERT_NE(dbManager, nullptr) << "DbLib::DatabaseManager가 초기화되지 않음";
     
     // 1. Windows SQLite 연결 테스트
     std::cout << "1️⃣ Windows SQLite 연결 검증:\n";
@@ -491,7 +491,7 @@ TEST_F(WindowsStep1Test, DatabaseManagerWindowsConnection) {
         std::cout << "  ❌ 파일 권한 확인 실패: " << e.what() << "\n";
     }
     
-    std::cout << "✅ DatabaseManager Windows 연결 검증 완료\n\n";
+    std::cout << "✅ DbLib::DatabaseManager Windows 연결 검증 완료\n\n";
 }
 
 /**

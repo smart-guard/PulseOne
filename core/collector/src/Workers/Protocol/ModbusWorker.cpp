@@ -4,7 +4,7 @@
  */
 
 #include "Workers/Protocol/ModbusWorker.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Drivers/Common/DriverFactory.h" // Plugin System Factory
 #include <nlohmann/json.hpp>
 #include <sstream>
@@ -174,7 +174,10 @@ bool ModbusWorker::ParseModbusConfig() {
     modbus_config_.properties = device_info_.driver_config.properties;
     
     // Add protocol specific endpoint info if not present
-    if (device_info_.protocol_type == "MODBUS_TCP") {
+    std::string p_type = device_info_.protocol_type;
+    std::transform(p_type.begin(), p_type.end(), p_type.begin(), ::tolower);
+    
+    if (device_info_.protocol_type == "MODBUS_TCP" || p_type == "tcp" || p_type == "modbus_tcp") {
         modbus_config_.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
         modbus_config_.properties["protocol_type"] = "MODBUS_TCP";
     } else {
@@ -266,6 +269,40 @@ bool ModbusWorker::ParseModbusAddress(const DataPoint& data_point, uint8_t& slav
     slave_id = static_cast<uint8_t>(std::stoi(GetPropertyValue(data_point.protocol_params, "slave_id", 
                modbus_config_.properties.count("slave_id") ? modbus_config_.properties.at("slave_id") : "1")));
     
+    // 1. Try address_string first (e.g., "HR:100", "IR:5", "DI:10", "CO:1")
+    if (!data_point.address_string.empty()) {
+        std::string s = data_point.address_string;
+        size_t colon_pos = s.find(':');
+        if (colon_pos != std::string::npos) {
+            std::string type = s.substr(0, colon_pos);
+            std::string addr_str = s.substr(colon_pos + 1);
+            
+            try {
+                uint16_t addr = static_cast<uint16_t>(std::stoi(addr_str));
+                if (type == "HR") {
+                    register_type = ModbusRegisterType::HOLDING_REGISTER;
+                    address = addr;
+                    return true;
+                } else if (type == "IR") {
+                    register_type = ModbusRegisterType::INPUT_REGISTER;
+                    address = addr;
+                    return true;
+                } else if (type == "DI") {
+                    register_type = ModbusRegisterType::DISCRETE_INPUT;
+                    address = addr;
+                    return true;
+                } else if (type == "CO") {
+                    register_type = ModbusRegisterType::COIL;
+                    address = addr;
+                    return true;
+                }
+            } catch (...) {
+                // Fall through to legacy if parsing fails
+            }
+        }
+    }
+
+    // 2. Legacy numeric address fallback (40001, 30001, etc.)
     uint32_t raw_address = data_point.address;
     if (raw_address >= 40001) {
         register_type = ModbusRegisterType::HOLDING_REGISTER;

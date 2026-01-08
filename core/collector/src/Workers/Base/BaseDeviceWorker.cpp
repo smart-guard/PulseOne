@@ -8,11 +8,14 @@
 
 #include "Workers/Base/BaseDeviceWorker.h"
 #include "Pipeline/PipelineManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Common/Enums.h"
 #include <sstream>
 #include <iomanip>
 #include <thread>
+#include "Database/RepositoryFactory.h"
+#include "Database/Repositories/DataPointRepository.h"
+#include "Database/Entities/DataPointEntity.h"
 
 using namespace std::chrono;
 using LogLevel = PulseOne::Enums::LogLevel;
@@ -213,6 +216,21 @@ bool BaseDeviceWorker::AddDataPoint(const PulseOne::Structs::DataPoint& point) {
     return true;
 }
 
+void BaseDeviceWorker::ReloadSettings(const PulseOne::Structs::DeviceInfo& new_info) {
+    std::lock_guard<std::mutex> lock(data_points_mutex_);
+    device_info_ = new_info;
+    LogMessage(LogLevel::INFO, "설정 동기화 완료: (auto_reg=" + 
+               std::string(device_info_.is_auto_registration_enabled ? "true" : "false") + ")");
+}
+
+void BaseDeviceWorker::ReloadDataPoints(const std::vector<PulseOne::Structs::DataPoint>& new_points) {
+    std::lock_guard<std::mutex> lock(data_points_mutex_);
+    size_t old_size = data_points_.size();
+    data_points_ = new_points;
+    LogMessage(LogLevel::INFO, "데이터 포인트 리로드 완료: " + std::to_string(old_size) + 
+               " -> " + std::to_string(data_points_.size()) + "개");
+}
+
 std::vector<PulseOne::Structs::DataPoint> BaseDeviceWorker::GetDataPoints() const {
     std::lock_guard<std::mutex> lock(data_points_mutex_);
     return data_points_;
@@ -312,9 +330,15 @@ std::string BaseDeviceWorker::GetStatusJson() const {
     ss << "  \"endpoint\": \"" << device_info_.endpoint << "\",\n";
     ss << "  \"state\": \"" << WorkerStateToString(current_state_.load()) << "\",\n";
     ss << "  \"connected\": " << (is_connected_.load() ? "true" : "false") << ",\n";
+    ss << "  \"consecutive_failures\": " << consecutive_failures_ << ",\n";
+    ss << "  \"total_failures\": " << total_failures_ << ",\n";
+    ss << "  \"total_attempts\": " << total_attempts_ << ",\n";
+    ss << "  \"latency_ms\": " << last_response_time_.count() << ",\n";
     ss << "  \"data_points_count\": " << data_points_.size() << ",\n";
-    ss << "  \"write_supported\": " << (GetProtocolType() == "MODBUS_TCP" || GetProtocolType() == "MODBUS_RTU" || 
-                                      GetProtocolType() == "BACNET" || GetProtocolType() == "MQTT" ? "true" : "false") << "\n";
+    
+    double success_rate = (total_attempts_ > 0) ? 
+        ((double)(total_attempts_ - total_failures_) / total_attempts_ * 100.0) : 0.0;
+    ss << "  \"success_rate\": " << success_rate << "\n";
     ss << "}";
     return ss.str();
 }
@@ -528,7 +552,7 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
     }
 
     try {
-        auto& pipeline_manager = Pipeline::PipelineManager::GetInstance();
+        auto& pipeline_manager = Pipeline::PipelineManager::getInstance();
         
         if (!pipeline_manager.IsRunning()) {
             LogMessage(LogLevel::WARN, "파이프라인이 실행되지 않음");
@@ -707,6 +731,81 @@ bool BaseDeviceWorker::SendValuesToPipelineWithLogging(
                   "파이프라인 전송 예외 (" + data_type + "): " + std::string(e.what()));
         return false;
     }
+}
+
+uint32_t BaseDeviceWorker::RegisterNewDataPoint(const std::string& name, 
+                                               const std::string& address_string, 
+                                               const std::string& mapping_key) {
+    if (!device_info_.is_auto_registration_enabled) {
+        return 0;
+    }
+    
+    try {
+        LogMessage(LogLevel::INFO, "새로운 데이터포인트 자동 등록 시도: " + name + " (" + address_string + ")");
+        
+        auto& factory = PulseOne::Database::RepositoryFactory::getInstance();
+        if (!factory.isInitialized()) {
+            factory.initialize();
+        }
+        
+        auto repo = factory.getDataPointRepository();
+        if (!repo) {
+            LogMessage(LogLevel::LOG_ERROR, "DataPointRepository를 가져올 수 없습니다.");
+            return 0;
+        }
+
+        // 1. Entity 생성
+        PulseOne::Database::Entities::DataPointEntity entity;
+        try {
+            entity.setDeviceId(std::stoi(device_info_.id));
+        } catch (...) {
+             LogMessage(LogLevel::LOG_ERROR, "부적절한 Device ID: " + device_info_.id);
+             return 0;
+        }
+        
+        entity.setName(name);
+        entity.setAddressString(address_string);
+        entity.setMappingKey(mapping_key);
+        entity.setEnabled(true);
+        entity.setDataType("number"); // 기본값
+        entity.setPollingInterval(1000); // 기본값 1초
+        
+        // 2. DB 저장
+        if (repo->save(entity)) {
+            uint32_t new_id = static_cast<uint32_t>(entity.getId());
+            LogMessage(LogLevel::INFO, "새로운 데이터포인트 등록 성공: ID=" + std::to_string(new_id));
+            
+            // 3. 내부 목록 업데이트
+            PulseOne::Structs::DataPoint dp;
+            dp.id = std::to_string(new_id);
+            dp.name = name;
+            dp.address_string = address_string;
+            dp.mapping_key = mapping_key;
+            dp.data_type = "number";
+            
+            {
+                std::lock_guard<std::mutex> lock(data_points_mutex_);
+                data_points_.push_back(dp);
+            }
+            
+            return new_id;
+        } else {
+            LogMessage(LogLevel::LOG_ERROR, "데이터포인트 DB 저장 실패");
+            return 0;
+        }
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::LOG_ERROR, "RegisterNewDataPoint 예외: " + std::string(e.what()));
+        return 0;
+    }
+}
+
+
+// =============================================================================
+// Node Browsing (Default)
+// =============================================================================
+std::vector<PulseOne::Structs::DataPoint> BaseDeviceWorker::DiscoverDataPoints() {
+    LogMessage(LogLevel::DEBUG_LEVEL, "DiscoverDataPoints not implemented for this protocol type: " + GetProtocolType());
+    return {};
 }
 
 // =============================================================================

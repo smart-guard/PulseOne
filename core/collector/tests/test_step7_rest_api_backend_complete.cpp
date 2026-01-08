@@ -18,9 +18,9 @@
 #include "Core/Application.h"
 #include "Network/RestApiServer.h"
 #include "Workers/WorkerManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 
 // API Callbacks
@@ -294,7 +294,11 @@ protected:
         // 시스템 초기화
         LogManager::getInstance().Info("=== Step 7: Data Flow Validation Test ===");
         ConfigManager::getInstance().initialize();
-        DatabaseManager::getInstance().initialize();
+        
+        DbLib::DatabaseConfig dbConfig;
+        dbConfig.type = "SQLITE";
+        DbLib::DatabaseManager::getInstance().initialize(dbConfig);
+        
         Database::RepositoryFactory::getInstance().initialize();
         
         // Mock WorkerManager 초기화

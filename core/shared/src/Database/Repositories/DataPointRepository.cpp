@@ -14,7 +14,7 @@
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/SQLQueries.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Common/Structs.h"
 #include "Common/Utils.h"
@@ -36,7 +36,7 @@ std::vector<DataPointEntity> DataPointRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         auto results = db_layer.executeQuery(SQL::DataPoint::FIND_ALL);
@@ -76,7 +76,7 @@ std::optional<DataPointEntity> DataPointRepository::findById(int id) {
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 + 동적 파라미터 처리
         std::string query = RepositoryHelpers::replaceParameter(SQL::DataPoint::FIND_BY_ID, std::to_string(id));
@@ -115,7 +115,7 @@ bool DataPointRepository::save(DataPointEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::map<std::string, std::string> data = entityToParams(entity);
         std::vector<std::string> primary_keys = {"id"};
@@ -163,7 +163,7 @@ bool DataPointRepository::deleteById(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameter(SQL::DataPoint::DELETE_BY_ID, std::to_string(id));
@@ -194,7 +194,7 @@ bool DataPointRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameter(SQL::DataPoint::EXISTS_BY_ID, std::to_string(id));
@@ -224,7 +224,7 @@ std::vector<DataPointEntity> DataPointRepository::findByDeviceId(int device_id, 
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 - enabled_only에 따라 다른 상수 선택
         std::string query;
@@ -262,7 +262,7 @@ std::vector<DataPointEntity> DataPointRepository::findWritablePoints() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         auto results = db_layer.executeQuery(SQL::DataPoint::FIND_WRITABLE_POINTS);
@@ -294,7 +294,7 @@ std::vector<DataPointEntity> DataPointRepository::findWritablePoints() {
 DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, std::string>& row) {
     try {
         DataPointEntity entity;
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto it = row.end();
         
         // 🔥 기본 식별 정보
@@ -327,6 +327,11 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
         it = row.find("address_string");
         if (it != row.end()) {
             entity.setAddressString(it->second);
+        }
+
+        it = row.find("mapping_key");
+        if (it != row.end()) {
+            entity.setMappingKey(it->second);
         }
         
         // 🚨 핵심 수정: 데이터 타입 정규화 비활성화
@@ -413,7 +418,7 @@ DataPointEntity DataPointRepository::mapRowToEntity(const std::map<std::string, 
 }
 
 std::map<std::string, std::string> DataPointRepository::entityToParams(const DataPointEntity& entity) {
-    DatabaseAbstractionLayer db_layer;
+    DbLib::DatabaseAbstractionLayer db_layer;
     
     std::map<std::string, std::string> params;
     
@@ -430,6 +435,7 @@ std::map<std::string, std::string> DataPointRepository::entityToParams(const Dat
     // 🔥 주소 정보
     params["address"] = std::to_string(entity.getAddress());
     params["address_string"] = entity.getAddressString();
+    params["mapping_key"] = entity.getMappingKey();
     
     // 🔥 데이터 타입 및 접근성
     params["data_type"] = entity.getDataType();
@@ -490,7 +496,7 @@ std::map<std::string, std::string> DataPointRepository::entityToParams(const Dat
 
 bool DataPointRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         bool success = db_layer.executeCreateTable(SQL::DataPoint::CREATE_TABLE);
@@ -578,6 +584,7 @@ std::vector<PulseOne::Structs::DataPoint> DataPointRepository::getDataPointsWith
             data_point.description = entity.getDescription();
             data_point.address = entity.getAddress();
             data_point.address_string = entity.getAddressString();
+            data_point.mapping_key = entity.getMappingKey();
             data_point.data_type = entity.getDataType();
             data_point.access_mode = entity.getAccessMode();
             data_point.is_enabled = entity.isEnabled();
@@ -589,7 +596,7 @@ std::vector<PulseOne::Structs::DataPoint> DataPointRepository::getDataPointsWith
             data_point.max_value = entity.getMaxValue();
             
             // 🔥 로깅 설정
-            data_point.log_enabled = entity.isLogEnabled();
+            data_point.is_log_enabled = entity.isLogEnabled();
             data_point.log_interval_ms = entity.getLogInterval();
             data_point.log_deadband = entity.getLogDeadband();
             data_point.polling_interval_ms = entity.getPollingInterval();
@@ -768,7 +775,7 @@ int DataPointRepository::saveBulk(std::vector<DataPointEntity>& entities) {
         }
         
         int saved_count = 0;
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         for (auto& entity : entities) {
             if (!validateDataPoint(entity)) {
@@ -817,7 +824,7 @@ int DataPointRepository::updateBulk(const std::vector<DataPointEntity>& entities
         }
         
         int updated_count = 0;
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         for (const auto& entity : entities) {
             if (entity.getId() <= 0 || !validateDataPoint(entity)) {
@@ -858,7 +865,7 @@ int DataPointRepository::deleteByIds(const std::vector<int>& ids) {
         }
         
         int deleted_count = 0;
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         for (int id : ids) {
             std::string query = "DELETE FROM data_points WHERE id = " + std::to_string(id);
@@ -889,7 +896,7 @@ int DataPointRepository::deleteByIds(const std::vector<int>& ids) {
 
 int DataPointRepository::getTotalCount() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         auto results = db_layer.executeQuery("SELECT COUNT(*) as count FROM data_points");
         
@@ -913,7 +920,7 @@ std::vector<DataPointEntity> DataPointRepository::findQualityCheckEnabledPoints(
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery("SELECT * FROM data_points WHERE quality_check_enabled = 1 AND is_enabled = 1");
         
         std::vector<DataPointEntity> entities;
@@ -941,7 +948,7 @@ std::vector<DataPointEntity> DataPointRepository::findRangeCheckEnabledPoints() 
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery("SELECT * FROM data_points WHERE range_check_enabled = 1 AND is_enabled = 1");
         
         std::vector<DataPointEntity> entities;
@@ -969,7 +976,7 @@ std::vector<DataPointEntity> DataPointRepository::findRateOfChangeLimitedPoints(
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery("SELECT * FROM data_points WHERE rate_of_change_limit > 0 AND is_enabled = 1");
         
         std::vector<DataPointEntity> entities;
@@ -1001,7 +1008,7 @@ std::vector<DataPointEntity> DataPointRepository::findAlarmEnabledPoints() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery("SELECT * FROM data_points WHERE alarm_enabled = 1 AND is_enabled = 1");
         
         std::vector<DataPointEntity> entities;
@@ -1029,7 +1036,7 @@ std::vector<DataPointEntity> DataPointRepository::findByAlarmPriority(const std:
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = "SELECT * FROM data_points WHERE alarm_enabled = 1 AND alarm_priority = '" + priority + "' AND is_enabled = 1";
         auto results = db_layer.executeQuery(query);
         
@@ -1058,7 +1065,7 @@ std::vector<DataPointEntity> DataPointRepository::findHighPriorityAlarmPoints() 
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery("SELECT * FROM data_points WHERE alarm_enabled = 1 AND alarm_priority IN ('high', 'critical') AND is_enabled = 1");
         
         std::vector<DataPointEntity> entities;
@@ -1086,7 +1093,7 @@ std::vector<DataPointEntity> DataPointRepository::findByGroup(const std::string&
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = "SELECT * FROM data_points WHERE group_name = '" + group_name + "' AND is_enabled = 1";
         auto results = db_layer.executeQuery(query);
         
@@ -1117,7 +1124,7 @@ std::map<std::string, int> DataPointRepository::getQualityManagementStats() {
     std::map<std::string, int> stats;
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 품질 체크 활성화된 포인트 수
         auto results = db_layer.executeQuery("SELECT COUNT(*) as count FROM data_points WHERE quality_check_enabled = 1");
@@ -1148,7 +1155,7 @@ std::map<std::string, int> DataPointRepository::getAlarmStats() {
     std::map<std::string, int> stats;
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 알람 활성화된 포인트 수
         auto results = db_layer.executeQuery("SELECT COUNT(*) as count FROM data_points WHERE alarm_enabled = 1");

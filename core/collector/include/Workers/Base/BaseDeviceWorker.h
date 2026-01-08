@@ -11,7 +11,7 @@
 #include "Common/Structs.h"
 #include "Common/Enums.h"
 #include "Common/BasicTypes.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Pipeline/PipelineManager.h"
 #include <memory>
 #include <future>
@@ -157,6 +157,8 @@ public:
     virtual std::future<bool> Pause();
     virtual std::future<bool> Resume();
     virtual bool AddDataPoint(const PulseOne::Structs::DataPoint& point);
+    virtual void ReloadSettings(const PulseOne::Structs::DeviceInfo& new_info);
+    virtual void ReloadDataPoints(const std::vector<PulseOne::Structs::DataPoint>& new_points);
     virtual std::vector<PulseOne::Structs::DataPoint> GetDataPoints() const;
     
     // =============================================================================
@@ -249,6 +251,22 @@ public:
     bool SendDataToPipeline(const std::vector<PulseOne::Structs::TimestampedValue>& values,
                            uint32_t priority = 0);
     
+    /**
+     * @brief 새로운 데이터포인트를 DB에 자동으로 생성/등록
+     * @param name 데이터포인트 이름
+     * @param address_string 주소 문자열 (토픽 등)
+     * @param mapping_key JSON 매핑 키 (옵션)
+     * @return 생성된 데이터포인트의 uint32_t ID (실패 시 0)
+     */
+    uint32_t RegisterNewDataPoint(const std::string& name, 
+                                 const std::string& address_string, 
+                                 const std::string& mapping_key = "");
+
+    /**
+     * @brief Discover available data points from the device
+     */
+    virtual std::vector<PulseOne::Structs::DataPoint> DiscoverDataPoints();
+
     const std::string& GetWorkerId() const { return worker_id_; }
     
     // =============================================================================
@@ -387,13 +405,11 @@ private:
     // =============================================================================
     // 내부 데이터 멤버
     // =============================================================================
+protected:
     std::atomic<WorkerState> current_state_{WorkerState::STOPPED};
     std::atomic<bool> is_connected_{false};
     
-    // 시퀀스 카운터 (private)
-    std::atomic<uint32_t> sequence_counter_{0};
-    
-    // 통신 상태 관련 멤버들
+    // 통신 상태 관련 멤버들 (하위 클래스 접근 허용)
     uint32_t batch_sequence_counter_ = 0;
     uint32_t consecutive_failures_ = 0;
     uint32_t total_failures_ = 0;
@@ -404,6 +420,10 @@ private:
     std::string last_error_message_ = "";
     int last_error_code_ = 0;
     WorkerState previous_state_ = WorkerState::UNKNOWN;
+
+private:    
+    // 시퀀스 카운터 (private)
+    std::atomic<uint32_t> sequence_counter_{0};
     
     // =============================================================================
     // 재연결 관리

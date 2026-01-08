@@ -6,7 +6,7 @@
 // ✅ 핵심: 헤더 include 순서 중요!
 #include "Data/DataWriter.h"           // 자신의 헤더
 #include "Client/RedisClient.h"        // RedisClient 전체 정의 (필수!)
-#include "Utils/LogManager.h"          // LogManager
+#include "Logging/LogManager.h"          // LogManager
 
 #include <chrono>
 #include <sstream>

@@ -3,7 +3,7 @@
 
 #include "Platform/PlatformCompat.h"
 #include "Drivers/Common/DriverFactory.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <string>
 #include <vector>
 #include <memory>

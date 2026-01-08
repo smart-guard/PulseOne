@@ -19,7 +19,7 @@ const AlarmQueries = require('../queries/AlarmQueries');
 class AlarmTemplateRepository extends BaseRepository {
     constructor() {
         super('alarm_rule_templates');
-        
+
         // 알람 템플릿 필드 정의 (실제 테이블 스키마와 일치)
         this.fields = {
             id: 'autoIncrement',
@@ -59,46 +59,48 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async findAll(filters = {}) {
         try {
-            let query = AlarmQueries.AlarmTemplate.FIND_ALL;
-            const params = [filters.tenant_id || 1];
+            const query = this.query()
+                .where('tenant_id', filters.tenant_id || 1);
 
-            // 동적 필터 추가
             if (filters.category) {
-                query = query.replace('ORDER BY', 'AND category = ? ORDER BY');
-                params.push(filters.category);
+                query.where('category', filters.category);
             }
 
             if (filters.is_system_template !== undefined) {
-                query = query.replace('ORDER BY', 'AND is_system_template = ? ORDER BY');
-                params.push(filters.is_system_template ? 1 : 0);
+                query.where('is_system_template', filters.is_system_template ? 1 : 0);
             }
 
             if (filters.search) {
-                query = query.replace('ORDER BY', 'AND (name LIKE ? OR description LIKE ?) ORDER BY');
-                params.push(`%${filters.search}%`, `%${filters.search}%`);
+                query.where(builder => {
+                    builder.where('name', 'like', `%${filters.search}%`)
+                        .orWhere('description', 'like', `%${filters.search}%`);
+                });
             }
 
-            // 페이징 추가
-            if (filters.limit) {
-                query += ' LIMIT ? OFFSET ?';
-                params.push(parseInt(filters.limit), (parseInt(filters.page) - 1) * parseInt(filters.limit) || 0);
-            }
+            // 페이징 처리 전 클론하여 카운트
+            const page = parseInt(filters.page) || 1;
+            const limit = parseInt(filters.limit) || 50;
+            const offset = (page - 1) * limit;
 
-            const results = await this.executeQuery(query, params);
-            const items = results || [];
-            
+            const [items, countResult] = await Promise.all([
+                query.clone().orderBy('created_at', 'desc').limit(limit).offset(offset),
+                query.clone().count('* as total').first()
+            ]);
+
+            const total = countResult ? countResult.total : 0;
+
             return {
-                items: items.map(template => this.formatAlarmTemplate(template)),
+                items: (items || []).map(template => this.formatAlarmTemplate(template)),
                 pagination: {
-                    page: parseInt(filters.page) || 1,
-                    limit: parseInt(filters.limit) || 50,
-                    total: items.length,
-                    totalPages: Math.ceil(items.length / (parseInt(filters.limit) || 50))
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit)
                 }
             };
 
         } catch (error) {
-            console.error('AlarmTemplateRepository.findAll 실패:', error);
+            this.logger?.error('AlarmTemplateRepository.findAll failed:', error);
             throw error;
         }
     }
@@ -108,22 +110,14 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async findById(id, tenantId = null) {
         try {
-            const cacheKey = `alarmTemplate_${id}_${tenantId}`;
-            const cached = this.getFromCache(cacheKey);
-            if (cached) return cached;
+            const item = await this.query()
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .first();
 
-            const query = AlarmQueries.AlarmTemplate.FIND_BY_ID;
-            const results = await this.executeQuery(query, [id, tenantId || 1]);
-            
-            const template = results && results.length > 0 ? this.formatAlarmTemplate(results[0]) : null;
-            
-            if (template) {
-                this.setCache(cacheKey, template);
-            }
-
-            return template;
+            return item ? this.formatAlarmTemplate(item) : null;
         } catch (error) {
-            console.error('AlarmTemplateRepository.findById 실패:', error);
+            this.logger?.error('AlarmTemplateRepository.findById failed:', error);
             throw error;
         }
     }
@@ -135,49 +129,31 @@ class AlarmTemplateRepository extends BaseRepository {
         try {
             const data = {
                 ...templateData,
-                tenant_id: tenantId || templateData.tenant_id || 1
+                tenant_id: tenantId || templateData.tenant_id || 1,
+                created_at: this.knex.fn.now(),
+                updated_at: this.knex.fn.now()
             };
 
-            // 필수 필드 검증
+            // 필수 필드 검증 (유지)
             AlarmQueries.validateTemplateRequiredFields(data);
             AlarmQueries.validateTemplateConfig(data);
 
-            const query = AlarmQueries.AlarmTemplate.CREATE;
-            const params = AlarmQueries.buildCreateTemplateParams(data);
+            // JSON 필드 처리
+            if (data.default_config && typeof data.default_config !== 'string') data.default_config = JSON.stringify(data.default_config);
+            if (data.applicable_data_types && typeof data.applicable_data_types !== 'string') data.applicable_data_types = JSON.stringify(data.applicable_data_types);
+            if (data.applicable_device_types && typeof data.applicable_device_types !== 'string') data.applicable_device_types = JSON.stringify(data.applicable_device_types);
 
-            console.log(`INSERT 쿼리 실행 - 컬럼: 19개, 값: ${params.length}개`);
+            const [newId] = await this.knex(this.tableName).insert(data);
 
-            const result = await this.executeNonQuery(query, params);
-            
-            let newId = null;
-            if (result) {
-                newId = result.lastInsertRowid || result.insertId || result.lastID;
-            }
-            
             if (newId) {
-                console.log(`알람 템플릿 생성 성공 - ID: ${newId}`);
-                this.clearCache();
-                return await this.findById(newId);
+                this.logger?.info(`Alarm template created - ID: ${newId}`);
+                return await this.findById(newId, data.tenant_id);
             } else {
-                // 대안: 최근 생성된 템플릿 조회
-                const recentQuery = `
-                    SELECT * FROM alarm_rule_templates 
-                    WHERE tenant_id = ? AND name = ? 
-                    ORDER BY created_at DESC, id DESC 
-                    LIMIT 1
-                `;
-                const recent = await this.executeQuerySingle(recentQuery, [data.tenant_id, data.name]);
-                
-                if (recent) {
-                    console.log(`최근 생성된 템플릿 발견 - ID: ${recent.id}`);
-                    return this.formatAlarmTemplate(recent);
-                } else {
-                    throw new Error('알람 템플릿 생성 실패 - 생성된 템플릿을 찾을 수 없음');
-                }
+                throw new Error('Alarm template creation failed - no ID returned');
             }
 
         } catch (error) {
-            console.error('AlarmTemplateRepository.create 오류:', error);
+            this.logger?.error('AlarmTemplateRepository.create failed:', error);
             throw error;
         }
     }
@@ -187,24 +163,31 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async update(id, updateData, tenantId = null) {
         try {
-            // 필수 필드 검증
-            AlarmQueries.validateTemplateRequiredFields(updateData);
-            AlarmQueries.validateTemplateConfig(updateData);
+            const data = { ...updateData };
 
-            const query = AlarmQueries.AlarmTemplate.UPDATE;
-            const params = AlarmQueries.buildUpdateTemplateParams(updateData, id, tenantId);
+            // 필수 필드 검증 (유지 - 설정 누락 방지)
+            AlarmQueries.validateTemplateConfig(data);
 
-            const result = await this.executeNonQuery(query, params);
-            
-            if (result && result.changes > 0) {
-                this.clearCache();
+            // JSON 필드 처리
+            if (data.default_config && typeof data.default_config !== 'string') data.default_config = JSON.stringify(data.default_config);
+            if (data.applicable_data_types && typeof data.applicable_data_types !== 'string') data.applicable_data_types = JSON.stringify(data.applicable_data_types);
+            if (data.applicable_device_types && typeof data.applicable_device_types !== 'string') data.applicable_device_types = JSON.stringify(data.applicable_device_types);
+
+            data.updated_at = this.knex.fn.now();
+
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .update(data);
+
+            if (result > 0) {
                 return await this.findById(id, tenantId);
             } else {
                 return null;
             }
 
         } catch (error) {
-            console.error('AlarmTemplateRepository.update 실패:', error);
+            this.logger?.error('AlarmTemplateRepository.update failed:', error);
             throw error;
         }
     }
@@ -214,17 +197,18 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async delete(id, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmTemplate.DELETE;
-            const result = await this.executeNonQuery(query, [id, tenantId || 1]);
-            
-            if (result && result.changes > 0) {
-                this.clearCache();
-                return true;
-            }
-            return false;
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .update({
+                    is_active: false,
+                    updated_at: this.knex.fn.now()
+                });
+
+            return result > 0;
 
         } catch (error) {
-            console.error('AlarmTemplateRepository.delete 실패:', error);
+            this.logger?.error('AlarmTemplateRepository.delete failed:', error);
             throw error;
         }
     }
@@ -234,17 +218,15 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async hardDelete(id, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmTemplate.HARD_DELETE;
-            const result = await this.executeNonQuery(query, [id, tenantId || 1]);
-            
-            if (result && result.changes > 0) {
-                this.clearCache();
-                return true;
-            }
-            return false;
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .del();
+
+            return result > 0;
 
         } catch (error) {
-            console.error('AlarmTemplateRepository.hardDelete 실패:', error);
+            this.logger?.error('AlarmTemplateRepository.hardDelete failed:', error);
             throw error;
         }
     }
@@ -254,12 +236,15 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async exists(id, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmTemplate.EXISTS;
-            const result = await this.executeQuerySingle(query, [id, tenantId || 1]);
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .select(1)
+                .first();
             return !!result;
 
         } catch (error) {
-            console.error(`AlarmTemplateRepository.exists(${id}) 실패:`, error);
+            this.logger?.error(`AlarmTemplateRepository.exists(${id}) failed:`, error);
             return false;
         }
     }
@@ -273,21 +258,15 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async findByCategory(category, tenantId = null) {
         try {
-            const cacheKey = `templatesByCategory_${category}_${tenantId}`;
-            const cached = this.getFromCache(cacheKey);
-            if (cached) return cached;
+            const items = await this.query()
+                .where('category', category)
+                .where('tenant_id', tenantId || 1)
+                .orderBy('name', 'asc');
 
-            const query = AlarmQueries.AlarmTemplate.FIND_BY_CATEGORY;
-            const results = await this.executeQuery(query, [category, tenantId || 1]);
-            
-            const templates = results.map(template => this.formatAlarmTemplate(template));
-            this.setCache(cacheKey, templates);
-            
-            console.log(`카테고리 ${category} 템플릿 ${templates.length}개 조회 완료`);
-            return templates;
+            return (items || []).map(item => this.formatAlarmTemplate(item));
 
         } catch (error) {
-            console.error(`findByCategory(${category}) 실패:`, error);
+            this.logger?.error(`findByCategory(${category}) failed:`, error);
             throw error;
         }
     }
@@ -297,20 +276,14 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async findSystemTemplates() {
         try {
-            const cacheKey = 'systemTemplates';
-            const cached = this.getFromCache(cacheKey);
-            if (cached) return cached;
+            const items = await this.query()
+                .where('is_system_template', 1)
+                .orderBy('name', 'asc');
 
-            const query = AlarmQueries.AlarmTemplate.FIND_SYSTEM_TEMPLATES;
-            const results = await this.executeQuery(query, []);
-            
-            const templates = results.map(template => this.formatAlarmTemplate(template));
-            this.setCache(cacheKey, templates, 300000); // 5분 캐시
-            
-            return templates;
+            return (items || []).map(item => this.formatAlarmTemplate(item));
 
         } catch (error) {
-            console.error('findSystemTemplates 실패:', error);
+            this.logger?.error('findSystemTemplates failed:', error);
             throw error;
         }
     }
@@ -320,13 +293,15 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async findUserTemplates(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmTemplate.FIND_USER_TEMPLATES;
-            const results = await this.executeQuery(query, [tenantId || 1]);
-            
-            return results.map(template => this.formatAlarmTemplate(template));
+            const items = await this.query()
+                .where('tenant_id', tenantId || 1)
+                .where('is_system_template', 0)
+                .orderBy('name', 'asc');
+
+            return (items || []).map(item => this.formatAlarmTemplate(item));
 
         } catch (error) {
-            console.error('findUserTemplates 실패:', error);
+            this.logger?.error('findUserTemplates failed:', error);
             throw error;
         }
     }
@@ -336,14 +311,15 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async findByDataType(dataType, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmTemplate.FIND_BY_DATA_TYPE;
-            const searchPattern = `%"${dataType}"%`;
-            const results = await this.executeQuery(query, [tenantId || 1, searchPattern]);
-            
-            return results.map(template => this.formatAlarmTemplate(template));
+            const items = await this.query()
+                .where('tenant_id', tenantId || 1)
+                .where('applicable_data_types', 'like', `%"${dataType}"%`)
+                .orderBy('name', 'asc');
+
+            return (items || []).map(item => this.formatAlarmTemplate(item));
 
         } catch (error) {
-            console.error(`findByDataType(${dataType}) 실패:`, error);
+            this.logger?.error(`findByDataType(${dataType}) failed:`, error);
             throw error;
         }
     }
@@ -353,18 +329,14 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async incrementUsage(id, incrementBy = 1) {
         try {
-            const query = AlarmQueries.AlarmTemplate.INCREMENT_USAGE;
-            const result = await this.executeNonQuery(query, [incrementBy, id]);
-            
-            if (result && result.changes > 0) {
-                this.clearCache();
-                console.log(`템플릿 ID ${id} 사용량 +${incrementBy} 증가`);
-                return true;
-            }
-            return false;
+            const result = await this.knex(this.tableName)
+                .where('id', id)
+                .increment('usage_count', incrementBy);
+
+            return result > 0;
 
         } catch (error) {
-            console.error(`incrementUsage(${id}) 실패:`, error);
+            this.logger?.error(`incrementUsage(${id}) failed:`, error);
             throw error;
         }
     }
@@ -374,13 +346,15 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async findMostUsed(tenantId = null, limit = 10) {
         try {
-            const query = AlarmQueries.AlarmTemplate.MOST_USED;
-            const results = await this.executeQuery(query, [tenantId || 1, limit]);
-            
-            return results.map(template => this.formatAlarmTemplate(template));
+            const items = await this.query()
+                .where('tenant_id', tenantId || 1)
+                .orderBy('usage_count', 'desc')
+                .limit(limit);
+
+            return (items || []).map(item => this.formatAlarmTemplate(item));
 
         } catch (error) {
-            console.error('findMostUsed 실패:', error);
+            this.logger?.error('findMostUsed failed:', error);
             throw error;
         }
     }
@@ -390,14 +364,16 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async findAppliedRules(templateId, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmTemplate.FIND_APPLIED_RULES;
-            const results = await this.executeQuery(query, [templateId, tenantId || 1]);
-            
-            console.log(`템플릿 ID ${templateId}로 생성된 규칙 ${results.length}개 조회`);
-            return results;
+            const items = await this.knex('alarm_rules')
+                .where('template_id', templateId)
+                .where('tenant_id', tenantId || 1)
+                .orderBy('created_at', 'desc');
+
+            this.logger?.info(`Found ${items.length} rules applied from template ${templateId}`);
+            return items;
 
         } catch (error) {
-            console.error(`findAppliedRules(${templateId}) 실패:`, error);
+            this.logger?.error(`findAppliedRules(${templateId}) failed:`, error);
             throw error;
         }
     }
@@ -407,13 +383,16 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async getAppliedRulesCount(templateId, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmTemplate.APPLIED_RULES_COUNT;
-            const result = await this.executeQuerySingle(query, [templateId, tenantId || 1]);
-            
-            return result ? result.applied_count : 0;
+            const result = await this.knex('alarm_rules')
+                .where('template_id', templateId)
+                .where('tenant_id', tenantId || 1)
+                .count('* as count')
+                .first();
+
+            return result ? result.count : 0;
 
         } catch (error) {
-            console.error(`getAppliedRulesCount(${templateId}) 실패:`, error);
+            this.logger?.error(`getAppliedRulesCount(${templateId}) failed:`, error);
             return 0;
         }
     }
@@ -423,20 +402,20 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async search(searchTerm, tenantId = 1, limit = 50) {
         try {
-            const query = AlarmQueries.AlarmTemplate.SEARCH;
-            const searchPattern = `%${searchTerm}%`;
-            const params = [tenantId, searchPattern, searchPattern, searchPattern];
-            
-            if (limit) {
-                const queryWithLimit = query + ' LIMIT ?';
-                params.push(limit);
-            }
-            
-            const results = await this.executeQuery(query + (limit ? ' LIMIT ?' : ''), params);
-            return results.map(template => this.formatAlarmTemplate(template));
+            const items = await this.query()
+                .where('tenant_id', tenantId || 1)
+                .where(builder => {
+                    builder.where('name', 'like', `%${searchTerm}%`)
+                        .orWhere('description', 'like', `%${searchTerm}%`)
+                        .orWhere('category', 'like', `%${searchTerm}%`);
+                })
+                .limit(limit)
+                .orderBy('name', 'asc');
+
+            return items.map(template => this.formatAlarmTemplate(template));
 
         } catch (error) {
-            console.error(`search("${searchTerm}") 실패:`, error);
+            this.logger?.error(`search("${searchTerm}") failed:`, error);
             throw error;
         }
     }
@@ -446,14 +425,24 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     async getStatistics(tenantId = 1) {
         try {
-            const cacheKey = `templateStats_${tenantId}`;
-            const cached = this.getFromCache(cacheKey);
-            if (cached) return cached;
+            const result = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .select([
+                    this.knex.raw('COUNT(*) as total_templates'),
+                    this.knex.raw('COUNT(DISTINCT category) as categories'),
+                    this.knex.raw('SUM(usage_count) as total_usage'),
+                    this.knex.raw('AVG(usage_count) as avg_usage'),
+                    this.knex.raw('MAX(usage_count) as max_usage')
+                ])
+                .first();
 
-            const query = AlarmQueries.AlarmTemplate.STATS_SUMMARY;
-            const result = await this.executeQuerySingle(query, [tenantId]);
-            
-            const stats = result || {
+            const stats = result ? {
+                total_templates: parseInt(result.total_templates) || 0,
+                categories: parseInt(result.categories) || 0,
+                total_usage: parseInt(result.total_usage) || 0,
+                avg_usage: parseFloat(result.avg_usage) || 0,
+                max_usage: parseInt(result.max_usage) || 0
+            } : {
                 total_templates: 0,
                 categories: 0,
                 total_usage: 0,
@@ -462,22 +451,25 @@ class AlarmTemplateRepository extends BaseRepository {
             };
 
             // 카테고리별 분포 추가
-            const categoryQuery = AlarmQueries.AlarmTemplate.COUNT_BY_CATEGORY;
-            const categoryResults = await this.executeQuery(categoryQuery, [tenantId]);
+            const categoryResults = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .select('category')
+                .count('* as count')
+                .sum('usage_count as total_usage')
+                .groupBy('category');
 
-            stats.category_distribution = categoryResults.reduce((acc, row) => {
+            stats.category_distribution = (categoryResults || []).reduce((acc, row) => {
                 acc[row.category] = {
-                    count: row.count,
-                    total_usage: row.total_usage
+                    count: parseInt(row.count) || 0,
+                    total_usage: parseInt(row.total_usage) || 0
                 };
                 return acc;
             }, {});
 
-            this.setCache(cacheKey, stats, 60000); // 1분 캐시
             return stats;
 
         } catch (error) {
-            console.error('getStatistics 실패:', error);
+            this.logger?.error('getStatistics failed:', error);
             return {
                 total_templates: 0,
                 categories: 0,
@@ -526,12 +518,12 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     getFromCache(key) {
         if (!this.cacheEnabled || !this.cache) return null;
-        
+
         const cached = this.cache.get(key);
         if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
             return cached.data;
         }
-        
+
         if (cached) {
             this.cache.delete(key);
         }
@@ -543,7 +535,7 @@ class AlarmTemplateRepository extends BaseRepository {
      */
     setCache(key, data, ttl = null) {
         if (!this.cacheEnabled || !this.cache) return;
-        
+
         this.cache.set(key, {
             data: data,
             timestamp: Date.now()

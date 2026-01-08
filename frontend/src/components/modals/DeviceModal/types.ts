@@ -57,13 +57,13 @@ export interface DeviceSettings {
   max_retry_count: number;
   retry_interval_ms: number;
   backoff_time_ms: number;
-  keep_alive_enabled: boolean;
+  is_keep_alive_enabled: boolean;
   keep_alive_interval_s: number;
-  data_validation_enabled: boolean;
-  performance_monitoring_enabled: boolean;
-  detailed_logging_enabled: boolean;
-  diagnostic_mode_enabled: boolean;
-  communication_logging_enabled?: boolean;
+  is_data_validation_enabled: boolean;
+  is_performance_monitoring_enabled: boolean;
+  is_detailed_logging_enabled: boolean;
+  is_diagnostic_mode_enabled: boolean;
+  is_communication_logging_enabled?: boolean;
   scan_rate_override?: number;
   scan_group?: number;
   inter_frame_delay_ms?: number;
@@ -199,12 +199,12 @@ export interface DeviceSettingsFormData {
   max_retry_count: number;
   retry_interval_ms: number;
   backoff_time_ms: number;
-  keep_alive_enabled: boolean;
+  is_keep_alive_enabled: boolean;
   keep_alive_interval_s: number;
-  data_validation_enabled: boolean;
-  performance_monitoring_enabled: boolean;
-  detailed_logging_enabled: boolean;
-  diagnostic_mode_enabled: boolean;
+  is_data_validation_enabled: boolean;
+  is_performance_monitoring_enabled: boolean;
+  is_detailed_logging_enabled: boolean;
+  is_diagnostic_mode_enabled: boolean;
 }
 
 // ============================================================================

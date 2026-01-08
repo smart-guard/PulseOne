@@ -5,9 +5,9 @@
 
 #include "Database/Repositories/ExportTargetMappingRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include "Database/ExportSQLQueries.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 namespace PulseOne {
 namespace Database {
@@ -19,7 +19,7 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findAll() 
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::ExportTargetMapping::FIND_ALL);
         
         std::vector<ExportTargetMappingEntity> entities;
@@ -62,7 +62,7 @@ std::optional<ExportTargetMappingEntity> ExportTargetMappingRepository::findById
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTargetMapping::FIND_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -112,7 +112,7 @@ bool ExportTargetMappingRepository::save(ExportTargetMappingEntity& entity) {
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -172,7 +172,7 @@ bool ExportTargetMappingRepository::update(const ExportTargetMappingEntity& enti
             query.replace(pos, 1, std::to_string(entity.getId()));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -197,7 +197,7 @@ bool ExportTargetMappingRepository::deleteById(int id) {
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTargetMapping::DELETE_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -219,7 +219,7 @@ bool ExportTargetMappingRepository::exists(int id) {
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTargetMapping::EXISTS_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -249,7 +249,7 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByIds(
         std::string query = "SELECT * FROM export_target_mappings WHERE id IN (" + 
                           ids_ss.str() + ")";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetMappingEntity> entities;
@@ -280,7 +280,7 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByCond
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetMappingEntity> entities;
@@ -307,7 +307,7 @@ int ExportTargetMappingRepository::countByConditions(
         std::string query = "SELECT COUNT(*) as count FROM export_target_mappings";
         query += RepositoryHelpers::buildWhereClause(conditions);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -331,7 +331,7 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByTarg
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTargetMapping::FIND_BY_TARGET_ID, std::to_string(target_id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetMappingEntity> entities;
@@ -372,7 +372,7 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findByPoin
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportTargetMapping::FIND_BY_POINT_ID, std::to_string(point_id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetMappingEntity> entities;
@@ -401,7 +401,7 @@ std::optional<ExportTargetMappingEntity> ExportTargetMappingRepository::findByTa
             std::to_string(target_id), 
             std::to_string(point_id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (results.empty()) {
@@ -426,7 +426,7 @@ std::vector<ExportTargetMappingEntity> ExportTargetMappingRepository::findEnable
             SQL::ExportTargetMapping::FIND_ENABLED_BY_TARGET_ID, 
             std::to_string(target_id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ExportTargetMappingEntity> entities;
@@ -452,7 +452,7 @@ int ExportTargetMappingRepository::deleteByTargetId(int target_id) {
             SQL::ExportTargetMapping::DELETE_BY_TARGET_ID, 
             std::to_string(target_id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -475,7 +475,7 @@ int ExportTargetMappingRepository::deleteByPointId(int point_id) {
             SQL::ExportTargetMapping::DELETE_BY_POINT_ID, 
             std::to_string(point_id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -498,7 +498,7 @@ int ExportTargetMappingRepository::countByTargetId(int target_id) {
             SQL::ExportTargetMapping::COUNT_BY_TARGET_ID, 
             std::to_string(target_id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -521,7 +521,7 @@ int ExportTargetMappingRepository::countByPointId(int point_id) {
             SQL::ExportTargetMapping::COUNT_BY_POINT_ID, 
             std::to_string(point_id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -624,7 +624,7 @@ bool ExportTargetMappingRepository::validateMapping(
 
 bool ExportTargetMappingRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         return db_layer.executeNonQuery(SQL::ExportTargetMapping::CREATE_TABLE);
     } catch (const std::exception& e) {
         if (logger_) {

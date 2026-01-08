@@ -5,7 +5,8 @@
 
 #include "Drivers/Modbus/ModbusDiagnostics.h"
 #include "Drivers/Modbus/ModbusDriver.h"
-#include "Utils/LogManager.h"
+#include <iostream>
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <algorithm>
 #include <iomanip>

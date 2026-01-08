@@ -8,9 +8,9 @@
 #include "Database/RepositoryFactory.h"
 
 // ✅ 완전한 타입 정의를 위한 실제 헤더들 include
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp" // DbLib header
 
 // ✅ Repository 구현 클래스들 include (전방 선언 해결)
 #include "Database/Repositories/DeviceRepository.h"
@@ -32,6 +32,7 @@
 #include "Database/Repositories/ExportLogRepository.h"
 #include "Database/Repositories/ExportScheduleRepository.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
+#include "Database/Repositories/DeviceScheduleRepository.h"
 
 
 // ✅ 필수 STL 헤더들
@@ -45,6 +46,22 @@
 
 namespace PulseOne {
 namespace Database {
+
+// Adapter for DbLib Logger
+class PulseOneDbLogger : public DbLib::IDbLogger {
+public:
+    void log([[maybe_unused]] const std::string& category, int level, const std::string& message) override {
+        // Simple mapping: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
+        auto& logger = LogManager::getInstance();
+        switch(level) {
+            case 0: logger.Debug(message); break;
+            case 1: logger.Info(message); break;
+            case 2: logger.Warn(message); break;
+            case 3: logger.Error(message); break;
+            default: logger.Info(message); break;
+        }
+    }
+};
 
 // =============================================================================
 // 싱글톤 구현
@@ -60,9 +77,9 @@ RepositoryFactory& RepositoryFactory::getInstance() {
 // =============================================================================
 
 RepositoryFactory::RepositoryFactory()
-    : db_manager_(&::DatabaseManager::getInstance())          // ✅ 전역 네임스페이스
-    , config_manager_(&::ConfigManager::getInstance())        // ✅ 전역 네임스페이스
-    , logger_(&::LogManager::getInstance())                   // ✅ 전역 네임스페이스
+    : db_manager_(&DbLib::DatabaseManager::getInstance())     // ✅ DbLib 네임스페이스
+    , config_manager_(&::ConfigManager::getInstance())
+    , logger_(&::LogManager::getInstance())
     , global_cache_enabled_(true)
     , cache_ttl_seconds_(300)
     , max_cache_size_(1000) {
@@ -90,23 +107,44 @@ bool RepositoryFactory::initialize() {
         logger_->Info("🔧 RepositoryFactory initializing...");
         
         // 1. DatabaseManager 초기화 확인
-        bool any_db_connected = db_manager_->isSQLiteConnected();
+        bool any_db_connected = db_manager_->isConnected(DbLib::DatabaseManager::DatabaseType::SQLITE);
 
-        #ifdef HAS_POSTGRESQL
-        if (db_manager_->isPostgresConnected()) {
-            any_db_connected = true;
-        }
-        #endif
-
-        #ifdef HAS_MYSQL
-        if (db_manager_->isMySQLConnected()) {
-            any_db_connected = true;
-        }
-        #endif
+        if (db_manager_->isConnected(DbLib::DatabaseManager::DatabaseType::POSTGRESQL)) any_db_connected = true;
+        if (db_manager_->isConnected(DbLib::DatabaseManager::DatabaseType::MYSQL)) any_db_connected = true;
+        if (db_manager_->isConnected(DbLib::DatabaseManager::DatabaseType::MSSQL)) any_db_connected = true;
 
         if (!any_db_connected) {
             logger_->Error("DatabaseManager not connected - attempting initialization");
-            if (!db_manager_->initialize()) {
+            
+            // Configure DbLib
+            DbLib::DatabaseConfig db_config;
+            db_config.type = config_manager_->getOrDefault("DATABASE_TYPE", "SQLITE");
+            db_config.sqlite_path = config_manager_->getOrDefault("SQLITE_DB_PATH", "pulseone.db");
+            
+            db_config.pg_host = config_manager_->getOrDefault("POSTGRES_HOST", "localhost");
+            db_config.pg_port = config_manager_->getInt("POSTGRES_PORT", 5432);
+            db_config.pg_db = config_manager_->getOrDefault("POSTGRES_DB", "pulseone");
+            
+            db_config.mysql_host = config_manager_->getOrDefault("MYSQL_HOST", "localhost");
+            db_config.mysql_user = config_manager_->getOrDefault("MYSQL_USER", "root");
+            db_config.mysql_pass = config_manager_->getOrDefault("MYSQL_PASSWORD", "");
+            db_config.mysql_db = config_manager_->getOrDefault("MYSQL_DATABASE", "pulseone");
+            db_config.mysql_port = config_manager_->getInt("MYSQL_PORT", 3306);
+            
+            db_config.use_redis = true; // Always enable Redis support if available
+            db_config.redis_host = config_manager_->getOrDefault("REDIS_HOST", "localhost");
+            db_config.redis_port = config_manager_->getInt("REDIS_PORT", 6379);
+            db_config.redis_pass = config_manager_->getOrDefault("REDIS_PASSWORD", "");
+            
+            db_config.use_influx = (config_manager_->getOrDefault("USE_INFLUXDB", "false") == "true");
+            db_config.influx_url = config_manager_->getOrDefault("INFLUX_URL", "http://localhost:8086");
+            db_config.influx_token = config_manager_->getOrDefault("INFLUX_TOKEN", "");
+            db_config.influx_org = config_manager_->getOrDefault("INFLUX_ORG", "pulseone");
+            db_config.influx_bucket = config_manager_->getOrDefault("INFLUX_BUCKET", "history");
+
+            static PulseOneDbLogger db_logger_adapter; // Keep alive
+            
+            if (!db_manager_->initialize(db_config, &db_logger_adapter)) {
                 logger_->Error("Failed to initialize DatabaseManager");
                 error_count_.fetch_add(1);
                 return false;
@@ -205,6 +243,7 @@ void RepositoryFactory::clearAllCachesInternal() {
     if (export_log_repository_) export_log_repository_->clearCache();
     if (export_schedule_repository_) export_schedule_repository_->clearCache();
     if (payload_template_repository_) payload_template_repository_->clearCache();
+    if (device_schedule_repository_) device_schedule_repository_->clearCache();
     
     logger_->Info("All repository caches cleared");
 }
@@ -335,6 +374,13 @@ bool RepositoryFactory::createRepositoryInstances() {
             return false;
         }
         logger_->Info("✅ PayloadTemplateRepository created");
+
+        device_schedule_repository_ = std::make_shared<Repositories::DeviceScheduleRepository>();
+        if (!device_schedule_repository_) {
+            logger_->Error("Failed to create DeviceScheduleRepository");
+            return false;
+        }
+        logger_->Info("✅ DeviceScheduleRepository created");
         
         logger_->Info("All repository instances created successfully");
         return true;

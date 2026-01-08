@@ -15,7 +15,7 @@
 #include "Schedule/ScheduledExporter.h"
 #include "Client/RedisClientImpl.h"
 #include "CSP/DynamicTargetManager.h"  // ✅ 추가
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <algorithm>
 #include <sstream>
 #include <iomanip>

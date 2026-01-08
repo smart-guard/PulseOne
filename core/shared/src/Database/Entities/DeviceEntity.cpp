@@ -208,94 +208,7 @@ bool DeviceEntity::updateToDatabase() {
     }
 }
 
-// =============================================================================
-// 🔥 ProtocolRepository를 사용한 동적 프로토콜 조회 (핵심 기능!)
-// =============================================================================
 
-std::string DeviceEntity::getProtocolType() const {
-    try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto protocol_repo = factory.getProtocolRepository();
-        
-        if (protocol_repo && protocol_id_ > 0) {
-            auto protocol_opt = protocol_repo->findById(protocol_id_);
-            if (protocol_opt.has_value()) {
-                return protocol_opt->getProtocolType();
-            }
-        }
-        
-        // 기본값 또는 에러 시 반환
-        if (logger_) {
-            logger_->Warn("DeviceEntity::getProtocolType - Could not find protocol for ID: " + 
-                        std::to_string(protocol_id_));
-        }
-        return "UNKNOWN";
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("DeviceEntity::getProtocolType failed: " + std::string(e.what()));
-        }
-        return "UNKNOWN";
-    }
-}
-
-void DeviceEntity::setProtocolType(const std::string& protocol_type) {
-    try {
-        auto& factory = RepositoryFactory::getInstance();
-        auto protocol_repo = factory.getProtocolRepository();
-        
-        if (protocol_repo) {
-            auto protocol_opt = protocol_repo->findByType(protocol_type);
-            if (protocol_opt.has_value()) {
-                protocol_id_ = protocol_opt->getId();
-                markModified();
-                
-                if (logger_) {
-                    logger_->Info("DeviceEntity - Set protocol: " + protocol_type + 
-                                " -> protocol_id: " + std::to_string(protocol_id_));
-                }
-                return;
-            }
-        }
-        
-        // 프로토콜을 찾지 못한 경우 로그 및 폴백
-        if (logger_) {
-            logger_->Warn("DeviceEntity - Protocol type not found: " + protocol_type + 
-                        ", falling back to hardcoded mapping");
-        }
-        
-        // 🔥 폴백: 하드코딩된 매핑 (프로토콜 테이블에 데이터가 없을 경우)
-        std::string type_upper = protocol_type;
-        std::transform(type_upper.begin(), type_upper.end(), type_upper.begin(), ::toupper);
-        
-        if (type_upper.find("MODBUS") != std::string::npos) {
-            protocol_id_ = 1;
-        } else if (type_upper.find("MQTT") != std::string::npos) {
-            protocol_id_ = 2;
-        } else if (type_upper.find("BACNET") != std::string::npos) {
-            protocol_id_ = 3;
-        } else if (type_upper.find("OPCUA") != std::string::npos || type_upper.find("OPC") != std::string::npos) {
-            protocol_id_ = 4;
-        } else {
-            protocol_id_ = 1; // 기본값: Modbus
-        }
-        
-        markModified();
-        
-        if (logger_) {
-            logger_->Info("DeviceEntity - Set protocol (fallback): " + protocol_type + 
-                        " -> protocol_id: " + std::to_string(protocol_id_));
-        }
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("DeviceEntity::setProtocolType failed: " + std::string(e.what()));
-        }
-        // 에러 시에도 폴백 적용
-        protocol_id_ = 1; // 기본값
-        markModified();
-    }
-}
 
 // =============================================================================
 // 🔥 추가 프로토콜 관련 헬퍼 메서드들 (ProtocolRepository 활용)
@@ -311,12 +224,6 @@ std::string DeviceEntity::getProtocolDisplayName() const {
             if (protocol_opt.has_value()) {
                 return protocol_opt->getDisplayName();
             }
-        }
-        
-        // 폴백: 기본 이름 제공
-        std::string protocol_type = getProtocolType();
-        if (protocol_type != "UNKNOWN") {
-            return protocol_type;
         }
         
         return "Unknown Protocol";
@@ -370,10 +277,7 @@ bool DeviceEntity::isProtocolSerial() const {
             }
         }
         
-        // 폴백: 프로토콜 타입으로 판단
-        std::string protocol_type = getProtocolType();
-        return protocol_type.find("RTU") != std::string::npos || 
-               protocol_type.find("SERIAL") != std::string::npos;
+        return false;
         
     } catch (const std::exception& e) {
         if (logger_) {
@@ -395,9 +299,7 @@ bool DeviceEntity::requiresBroker() const {
             }
         }
         
-        // 폴백: 프로토콜 타입으로 판단
-        std::string protocol_type = getProtocolType();
-        return protocol_type.find("MQTT") != std::string::npos;
+        return false;
         
     } catch (const std::exception& e) {
         if (logger_) {

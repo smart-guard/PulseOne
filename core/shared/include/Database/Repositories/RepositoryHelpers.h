@@ -13,10 +13,18 @@
 #include <ctime>
 #include <map>
 #include <algorithm>
-#include "Database/DatabaseTypes.h"
+#include <algorithm>
+#include "DatabaseTypes.hpp"
 
 namespace PulseOne {
 namespace Database {
+
+    // Type Aliases for Backward Compatibility
+    using ValueType = DbLib::ValueType;
+    using QueryCondition = DbLib::QueryCondition;
+    using OrderBy = DbLib::OrderBy;
+    using Pagination = DbLib::Pagination;
+
 namespace Repositories {
 
 /**

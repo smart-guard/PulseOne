@@ -374,6 +374,86 @@ size_t RedisDataWriter::SaveWorkerInitialData(
     }
 }
 
+size_t RedisDataWriter::SyncWorkerDataPoints(
+    const std::string& device_id,
+    const std::vector<Structs::DataPoint>& points) {
+    
+    if (!IsConnected() || points.empty()) {
+        return 0;
+    }
+
+    try {
+        std::lock_guard<std::mutex> lock(redis_mutex_);
+        std::string device_num = ExtractDeviceNumber(device_id);
+        size_t synced_count = 0;
+
+        LogManager::getInstance().log("redis_writer", LogLevel::INFO,
+                   "Worker 데이터 포인트 동기화: " + device_id + " (" + 
+                   std::to_string(points.size()) + "개 포인트)");
+
+        for (const auto& point : points) {
+            std::string point_name = point.name;
+            if (point_name.empty()) point_name = "point_" + point.id; // 안전장치
+
+            std::string device_key = "device:" + device_num + ":" + point_name;
+            std::string point_key = "point:" + point.id + ":latest";
+
+            // 1. 키 존재 여부 확인
+            bool device_key_exists = redis_client_->exists(device_key);
+
+            if (!device_key_exists) {
+                // 키가 없으면 새로 생성 (초기값으로)
+                // DevicePointData 구조체 활용
+                BackendFormat::DevicePointData data;
+                try {
+                    data.point_id = std::stoi(point.id);
+                } catch (...) {
+                    data.point_id = 0;
+                }
+                data.device_id = device_num;
+                data.device_name = "Device " + device_num; // 적절히 수정 가능
+                data.point_name = point_name;
+                data.value = "0"; // 초기값
+                data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                data.quality = "uncertain"; // 초기 상태
+                data.data_type = point.data_type;
+                data.unit = point.unit;
+
+                redis_client_->setex(device_key, data.toJson().dump(), 7200);
+                
+                // PointLatestData도 생성
+                BackendFormat::PointLatestData latest_data;
+                latest_data.device_id = device_num;
+                latest_data.point_id = data.point_id; // 위에서 변환된 값 사용
+                latest_data.value = "0";
+                latest_data.timestamp = data.timestamp;
+                latest_data.quality = 2; // UNCERTAIN
+                latest_data.changed = false;
+
+                redis_client_->setex(point_key, latest_data.toJson().dump(), 7200);
+
+                LogManager::getInstance().log("redis_writer", LogLevel::DEBUG_LEVEL,
+                           "새 포인트 Redis 키 생성: " + device_key);
+            } else {
+                // 이미 존재하면 구조(메타데이터)만 업데이트하고 값은 유지할 수도 있음.
+                // 하지만 현재 구조상 JSON 전체를 덮어쓰지 않고 일부만 수정하기는 어려울 수 있음.
+                // 값은 유지하되, 이름이나 단위 등이 바뀌었을 수 있으므로 읽어서 업데이트하는 것이 이상적.
+                // 성능상 여기서는 '존재하면 건너뛰기' 전략을 사용하거나,
+                // 필요하다면 GET -> Update -> SET 과정을 거쳐야 함.
+                // 여기서는 안전하게 '존재하면 유지' 전략을 기본으로 함.
+            }
+            synced_count++;
+        }
+        
+        return synced_count;
+
+    } catch (const std::exception& e) {
+        HandleError("SyncWorkerDataPoints", e.what());
+        return 0;
+    }
+}
+
 bool RedisDataWriter::SaveWorkerStatus(
     const std::string& device_id,
     const std::string& status,

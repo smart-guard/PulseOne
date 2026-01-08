@@ -6,7 +6,7 @@
 #include "Api/HardwareApiCallbacks.h"
 #include "Network/RestApiServer.h"
 #include "Workers/WorkerManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 using namespace PulseOne::Api;
 using namespace PulseOne::Network;

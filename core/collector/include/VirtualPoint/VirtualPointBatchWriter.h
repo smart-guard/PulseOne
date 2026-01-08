@@ -7,8 +7,8 @@
 #define PULSEONE_VIRTUAL_POINT_BATCH_WRITER_H
 
 #include "Common/Structs.h"
-#include "Database/DatabaseManager.h"  // 🔥 수정: 전체 include
-#include "Utils/LogManager.h"
+#include "DatabaseManager.hpp"  // 🔥 수정: 전체 include
+#include "Logging/LogManager.h"
 #include <queue>
 #include <mutex>
 #include <thread>
@@ -132,8 +132,8 @@ private:
     mutable std::mutex stats_mutex_;                    // 통계 보호 뮤텍스
     BatchWriterStatistics statistics_;                  // 성능 통계
     
-    // 🔥 수정: DatabaseManager 포인터 타입 수정
-    DatabaseManager* db_manager_;                       // DB 매니저 (non-owning)
+    // 🔥 수정: DbLib::DatabaseManager 포인터 타입 수정
+    DbLib::DatabaseManager* db_manager_;                       // DB 매니저 (non-owning)
 
 public:
     // ==========================================================================

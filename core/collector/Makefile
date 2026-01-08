@@ -111,6 +111,7 @@ INCLUDES += -I$(INCLUDE_DIR)/Drivers/Common
 INCLUDES += -I$(INCLUDE_DIR)/Pipeline
 INCLUDES += -I$(INCLUDE_DIR)/Storage
 INCLUDES += -I$(INCLUDE_DIR)/VirtualPoint
+INCLUDES += -I$(INCLUDE_DIR)/Scripting
 INCLUDES += -I$(INCLUDE_DIR)/Network
 INCLUDES += -I$(INCLUDE_DIR)/Api
 
@@ -128,6 +129,8 @@ INCLUDES += -I$(SHARED_INCLUDE_DIR)/Alarm
 INCLUDES += -I$(SHARED_INCLUDE_DIR)/Export
 INCLUDES += -I$(SHARED_INCLUDE_DIR)/Security
 INCLUDES += -I$(SHARED_INCLUDE_DIR)/Client
+INCLUDES += -I$(SHARED_BASE_DIR)/modules/DbLib/include
+INCLUDES += -I$(SHARED_BASE_DIR)/modules/LogLib/include
 endif
 
 # 외부 라이브러리 Include
@@ -147,7 +150,7 @@ endif
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_QUICKJS := $(shell pkg-config --exists quickjs && echo "1" || echo "0")
+HAS_QUICKJS := 1
 HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
 
 # 프로토콜 라이브러리 감지
@@ -254,15 +257,17 @@ ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Components/*.cpp)
-WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/WorkerFactory.cpp)
-WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/WorkerManager.cpp)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/*.cpp)
 
 # Pipeline 및 Storage
-PIPELINE_SOURCES := $(wildcard $(SRC_DIR)/Pipeline/*.cpp)
+PIPELINE_SOURCES = $(wildcard $(SRC_DIR)/Pipeline/*.cpp) $(wildcard $(SRC_DIR)/Pipeline/Stages/*.cpp)
 STORAGE_SOURCES := $(wildcard $(SRC_DIR)/Storage/*.cpp)
 
 # VirtualPoint
 VIRTUALPOINT_SOURCES := $(wildcard $(SRC_DIR)/VirtualPoint/*.cpp)
+
+# Scripting
+SCRIPTING_SOURCES := $(wildcard $(SRC_DIR)/Scripting/*.cpp)
 
 # 드라이버 소스
 DRIVERS_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
@@ -291,7 +296,7 @@ endif
 # 전체 소스 파일 목록
 ALL_SOURCES := $(CORE_SOURCES) $(CONFIG_SOURCES) $(ALARM_SOURCES)
 ALL_SOURCES += $(WORKERS_SOURCES) $(DRIVERS_SOURCES) $(PIPELINE_SOURCES)
-ALL_SOURCES += $(STORAGE_SOURCES) $(VIRTUALPOINT_SOURCES)
+ALL_SOURCES += $(STORAGE_SOURCES) $(VIRTUALPOINT_SOURCES) $(SCRIPTING_SOURCES)
 ALL_SOURCES += $(NETWORK_SOURCES) $(API_SOURCES)
 
 # 오브젝트 파일
@@ -308,7 +313,7 @@ BUILD_SUBDIRS += $(BUILD_DIR)/Workers/Protocol $(BUILD_DIR)/Workers/Components
 BUILD_SUBDIRS += $(BUILD_DIR)/Drivers $(BUILD_DIR)/Drivers/Common
 BUILD_SUBDIRS += $(BUILD_DIR)/Drivers/Modbus $(BUILD_DIR)/Drivers/Mqtt $(BUILD_DIR)/Drivers/Bacnet
 BUILD_SUBDIRS += $(BUILD_DIR)/Pipeline $(BUILD_DIR)/Storage
-BUILD_SUBDIRS += $(BUILD_DIR)/VirtualPoint $(BUILD_DIR)/Network $(BUILD_DIR)/Api
+BUILD_SUBDIRS += $(BUILD_DIR)/VirtualPoint $(BUILD_DIR)/Scripting $(BUILD_DIR)/Network $(BUILD_DIR)/Api
 
 # =============================================================================
 # 색상 정의

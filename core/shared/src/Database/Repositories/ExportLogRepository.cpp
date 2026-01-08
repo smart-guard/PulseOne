@@ -8,10 +8,10 @@
 
 #include "Database/Repositories/ExportLogRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
-#include "Database/ExportSQLQueries.h"
+#include "DatabaseAbstractionLayer.hpp"
+#include "Database/ExtendedSQLQueries.h"
 #include "Database/SQLQueries.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <algorithm>
 #include <ctime>
@@ -50,7 +50,7 @@ std::vector<TimeBasedStats> ExportLogRepository::getHourlyStatistics(
             );
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
@@ -96,7 +96,7 @@ std::vector<TimeBasedStats> ExportLogRepository::getDailyStatistics(
             );
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
@@ -166,7 +166,7 @@ std::vector<ErrorTypeStats> ExportLogRepository::getErrorTypeStatistics(
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
@@ -250,7 +250,7 @@ std::vector<PointPerformanceStats> ExportLogRepository::getPointPerformanceStats
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
@@ -339,7 +339,7 @@ TargetHealthCheck ExportLogRepository::getTargetHealthCheck(int target_id) {
             query.replace(pos, 1, std::to_string(target_id));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty()) {
@@ -371,7 +371,7 @@ std::vector<TargetHealthCheck> ExportLogRepository::getAllTargetsHealthCheck() {
         }
         
         // ✅ 정의된 쿼리 사용
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::ExportLog::GET_DISTINCT_TARGET_IDS);
         
         for (const auto& row : results) {
@@ -403,7 +403,7 @@ int ExportLogRepository::getConsecutiveFailures(int target_id) {
             std::to_string(target_id)
         );
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         int consecutive = 0;
@@ -624,7 +624,7 @@ std::vector<ExportLogEntity> ExportLogRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::ExportLog::FIND_ALL);
         
         std::vector<ExportLogEntity> entities;
@@ -666,7 +666,7 @@ std::optional<ExportLogEntity> ExportLogRepository::findById(int id) {
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportLog::FIND_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
@@ -744,7 +744,7 @@ bool ExportLogRepository::save(ExportLogEntity& entity) {
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -784,7 +784,7 @@ bool ExportLogRepository::update(const ExportLogEntity& entity) {
             query.replace(pos, 1, std::to_string(entity.getId()));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -809,7 +809,7 @@ bool ExportLogRepository::deleteById(int id) {
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportLog::DELETE_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -834,7 +834,7 @@ bool ExportLogRepository::exists(int id) {
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportLog::EXISTS_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -869,7 +869,7 @@ std::vector<ExportLogEntity> ExportLogRepository::findByIds(const std::vector<in
         
         std::string query = "SELECT * FROM export_logs WHERE id IN (" + id_list.str() + ")";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         entities.reserve(results.size());
@@ -925,7 +925,7 @@ std::vector<ExportLogEntity> ExportLogRepository::findByConditions(
                   << " OFFSET " << pagination->offset;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query.str());
         
         entities.reserve(results.size());
@@ -964,7 +964,7 @@ int ExportLogRepository::countByConditions(const std::vector<QueryCondition>& co
             }
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query.str());
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -1000,7 +1000,7 @@ std::vector<ExportLogEntity> ExportLogRepository::findByTargetId(int target_id, 
             query.replace(pos, 1, std::to_string(limit));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         entities.reserve(results.size());
@@ -1043,7 +1043,7 @@ std::vector<ExportLogEntity> ExportLogRepository::findByStatus(
             query.replace(pos, 1, std::to_string(limit));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         entities.reserve(results.size());
@@ -1084,7 +1084,7 @@ std::vector<ExportLogEntity> ExportLogRepository::findByTimeRange(
         query << "SELECT * FROM export_logs WHERE timestamp BETWEEN '"
               << start_buf << "' AND '" << end_buf << "' ORDER BY timestamp DESC";
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query.str());
         
         entities.reserve(results.size());
@@ -1123,7 +1123,7 @@ std::vector<ExportLogEntity> ExportLogRepository::findRecent(int hours, int limi
             query.replace(pos, 1, std::to_string(limit));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         entities.reserve(results.size());
@@ -1162,7 +1162,7 @@ std::vector<ExportLogEntity> ExportLogRepository::findRecentFailures(int hours, 
             query.replace(pos, 1, std::to_string(limit));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         entities.reserve(results.size());
@@ -1201,7 +1201,7 @@ std::vector<ExportLogEntity> ExportLogRepository::findByPointId(int point_id, in
             query.replace(pos, 1, std::to_string(limit));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         entities.reserve(results.size());
@@ -1240,7 +1240,7 @@ std::map<std::string, int> ExportLogRepository::getTargetStatistics(int target_i
             query.replace(pos, 1, std::to_string(hours));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         for (const auto& row : results) {
@@ -1278,7 +1278,7 @@ std::map<std::string, int> ExportLogRepository::getOverallStatistics(int hours) 
             query.replace(pos, 1, std::to_string(hours));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty()) {
@@ -1327,7 +1327,7 @@ double ExportLogRepository::getAverageProcessingTime(int target_id, int hours) {
             query.replace(pos, 1, std::to_string(hours));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("avg_time") != results[0].end()) {
@@ -1357,7 +1357,7 @@ int ExportLogRepository::deleteOlderThan(int days) {
             query.replace(pos, 1, std::to_string(days));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -1385,7 +1385,7 @@ int ExportLogRepository::deleteSuccessLogsOlderThan(int days) {
             query.replace(pos, 1, std::to_string(days));
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success && isCacheEnabled()) {
@@ -1740,7 +1740,7 @@ std::map<std::string, std::string> ExportLogRepository::entityToParams(
 
 bool ExportLogRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool table_created = db_layer.executeNonQuery(SQL::ExportLog::CREATE_TABLE);
         bool indexes_created = db_layer.executeNonQuery(SQL::ExportLog::CREATE_INDEXES);
         return table_created && indexes_created;

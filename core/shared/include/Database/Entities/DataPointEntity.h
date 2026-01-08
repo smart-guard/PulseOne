@@ -108,6 +108,7 @@ public:
             j["description"] = description_;
             j["address"] = address_;
             j["address_string"] = address_string_;
+            j["mapping_key"] = mapping_key_;
             j["data_type"] = data_type_;
             j["access_mode"] = access_mode_;
             j["is_enabled"] = is_enabled_;
@@ -117,18 +118,18 @@ public:
             j["scaling_offset"] = scaling_offset_;
             j["min_value"] = min_value_;
             j["max_value"] = max_value_;
-            j["log_enabled"] = log_enabled_;
+            j["log_enabled"] = is_log_enabled_;
             j["log_interval_ms"] = log_interval_ms_;
             j["log_deadband"] = log_deadband_;
             j["polling_interval_ms"] = polling_interval_ms_;
             
-            // 품질 관리 필드들 (새로 추가)
-            j["quality_check_enabled"] = quality_check_enabled_;
-            j["range_check_enabled"] = range_check_enabled_;
+            // 품질 관리 필드들
+            j["quality_check_enabled"] = is_quality_check_enabled_;
+            j["range_check_enabled"] = is_range_check_enabled_;
             j["rate_of_change_limit"] = rate_of_change_limit_;
             
-            // 알람 관련 필드들 (새로 추가)
-            j["alarm_enabled"] = alarm_enabled_;
+            // 알람 관련 필드들
+            j["alarm_enabled"] = is_alarm_enabled_;
             j["alarm_priority"] = alarm_priority_;
             
             j["group_name"] = group_name_;
@@ -159,6 +160,7 @@ public:
             if (json_data.contains("description")) description_ = json_data["description"];
             if (json_data.contains("address")) address_ = json_data["address"];
             if (json_data.contains("address_string")) address_string_ = json_data["address_string"];
+            if (json_data.contains("mapping_key")) mapping_key_ = json_data["mapping_key"];
             if (json_data.contains("data_type")) data_type_ = json_data["data_type"];
             if (json_data.contains("access_mode")) access_mode_ = json_data["access_mode"];
             if (json_data.contains("is_enabled")) is_enabled_ = json_data["is_enabled"];
@@ -168,18 +170,18 @@ public:
             if (json_data.contains("scaling_offset")) scaling_offset_ = json_data["scaling_offset"];
             if (json_data.contains("min_value")) min_value_ = json_data["min_value"];
             if (json_data.contains("max_value")) max_value_ = json_data["max_value"];
-            if (json_data.contains("log_enabled")) log_enabled_ = json_data["log_enabled"];
+            if (json_data.contains("log_enabled")) is_log_enabled_ = json_data["log_enabled"];
             if (json_data.contains("log_interval_ms")) log_interval_ms_ = json_data["log_interval_ms"];
             if (json_data.contains("log_deadband")) log_deadband_ = json_data["log_deadband"];
             if (json_data.contains("polling_interval_ms")) polling_interval_ms_ = json_data["polling_interval_ms"];
             
-            // 품질 관리 필드들 (새로 추가)
-            if (json_data.contains("quality_check_enabled")) quality_check_enabled_ = json_data["quality_check_enabled"];
-            if (json_data.contains("range_check_enabled")) range_check_enabled_ = json_data["range_check_enabled"];
+            // 품질 관리 필드들
+            if (json_data.contains("quality_check_enabled")) is_quality_check_enabled_ = json_data["quality_check_enabled"];
+            if (json_data.contains("range_check_enabled")) is_range_check_enabled_ = json_data["range_check_enabled"];
             if (json_data.contains("rate_of_change_limit")) rate_of_change_limit_ = json_data["rate_of_change_limit"];
             
-            // 알람 관련 필드들 (새로 추가)
-            if (json_data.contains("alarm_enabled")) alarm_enabled_ = json_data["alarm_enabled"];
+            // 알람 관련 필드들
+            if (json_data.contains("alarm_enabled")) is_alarm_enabled_ = json_data["alarm_enabled"];
             if (json_data.contains("alarm_priority")) alarm_priority_ = json_data["alarm_priority"];
             
             if (json_data.contains("group_name")) group_name_ = json_data["group_name"];
@@ -204,6 +206,7 @@ public:
     const std::string& getDescription() const { return description_; }
     int getAddress() const { return address_; }
     const std::string& getAddressString() const { return address_string_; }
+    const std::string& getMappingKey() const { return mapping_key_; }
     const std::string& getDataType() const { return data_type_; }
     const std::string& getAccessMode() const { return access_mode_; }
     bool isEnabled() const { return is_enabled_; }
@@ -213,18 +216,18 @@ public:
     double getScalingOffset() const { return scaling_offset_; }
     double getMinValue() const { return min_value_; }
     double getMaxValue() const { return max_value_; }
-    bool isLogEnabled() const { return log_enabled_; }
-    int getLogInterval() const { return log_interval_ms_; }
+    bool isLogEnabled() const { return is_log_enabled_; }
+    uint32_t getLogInterval() const { return log_interval_ms_; }
     double getLogDeadband() const { return log_deadband_; }
     uint32_t getPollingInterval() const { return polling_interval_ms_; }
     
-    // 품질 관리 관련 (새로 추가)
-    bool isQualityCheckEnabled() const { return quality_check_enabled_; }
-    bool isRangeCheckEnabled() const { return range_check_enabled_; }
+    // 품질 관리 관련
+    bool isQualityCheckEnabled() const { return is_quality_check_enabled_; }
+    bool isRangeCheckEnabled() const { return is_range_check_enabled_; }
     double getRateOfChangeLimit() const { return rate_of_change_limit_; }
     
-    // 알람 관련 (새로 추가)
-    bool isAlarmEnabled() const { return alarm_enabled_; }
+    // 알람 관련
+    bool isAlarmEnabled() const { return is_alarm_enabled_; }
     const std::string& getAlarmPriority() const { return alarm_priority_; }
     
     const std::string& getGroup() const { return group_name_; }
@@ -252,6 +255,7 @@ public:
     void setDescription(const std::string& description) { description_ = description; markModified(); }
     void setAddress(int address) { address_ = address; markModified(); }
     void setAddressString(const std::string& address_string) { address_string_ = address_string; markModified(); }
+    void setMappingKey(const std::string& mapping_key) { mapping_key_ = mapping_key; markModified(); }
     void setAccessMode(const std::string& access_mode) { access_mode_ = access_mode; markModified(); }
     void setEnabled(bool enabled) { is_enabled_ = enabled; markModified(); }
     void setWritable(bool writable) { is_writable_ = writable; markModified(); }
@@ -260,18 +264,18 @@ public:
     void setScalingOffset(double offset) { scaling_offset_ = offset; markModified(); }
     void setMinValue(double min_val) { min_value_ = min_val; markModified(); }
     void setMaxValue(double max_val) { max_value_ = max_val; markModified(); }
-    void setLogEnabled(bool enabled) { log_enabled_ = enabled; markModified(); }
-    void setLogInterval(int interval_ms) { log_interval_ms_ = interval_ms; markModified(); }
+    void setLogEnabled(bool enabled) { is_log_enabled_ = enabled; markModified(); }
+    void setLogInterval(uint32_t interval_ms) { log_interval_ms_ = interval_ms; markModified(); }
     void setLogDeadband(double deadband) { log_deadband_ = deadband; markModified(); }
     void setPollingInterval(uint32_t interval_ms) { polling_interval_ms_ = interval_ms; markModified(); }
     
-    // 품질 관리 관련 (새로 추가)
-    void setQualityCheckEnabled(bool enabled) { quality_check_enabled_ = enabled; markModified(); }
-    void setRangeCheckEnabled(bool enabled) { range_check_enabled_ = enabled; markModified(); }
+    // 품질 관리 관련
+    void setQualityCheckEnabled(bool enabled) { is_quality_check_enabled_ = enabled; markModified(); }
+    void setRangeCheckEnabled(bool enabled) { is_range_check_enabled_ = enabled; markModified(); }
     void setRateOfChangeLimit(double limit) { rate_of_change_limit_ = limit; markModified(); }
     
-    // 알람 관련 (새로 추가)
-    void setAlarmEnabled(bool enabled) { alarm_enabled_ = enabled; markModified(); }
+    // 알람 관련
+    void setAlarmEnabled(bool enabled) { is_alarm_enabled_ = enabled; markModified(); }
     void setAlarmPriority(const std::string& priority) { alarm_priority_ = priority; markModified(); }
     
     void setGroup(const std::string& group_name) { group_name_ = group_name; markModified(); }
@@ -334,18 +338,18 @@ public:
         scaling_offset_ = 0.0;
         min_value_ = std::numeric_limits<double>::lowest();
         max_value_ = std::numeric_limits<double>::max();
-        log_enabled_ = true;
+        is_log_enabled_ = true;
         log_interval_ms_ = 0;
         log_deadband_ = 0.0;
         polling_interval_ms_ = 1000;
         
         // 품질 관리 기본값
-        quality_check_enabled_ = true;
-        range_check_enabled_ = true;
+        is_quality_check_enabled_ = true;
+        is_range_check_enabled_ = true;
         rate_of_change_limit_ = 0.0;
         
         // 알람 기본값
-        alarm_enabled_ = false;
+        is_alarm_enabled_ = false;
         alarm_priority_ = "medium";
         
         group_name_.clear();
@@ -372,6 +376,10 @@ public:
             oss << ", address_string='" << address_string_ << "'";
         }
         
+        if (!mapping_key_.empty()) {
+            oss << ", mapping_key='" << mapping_key_ << "'";
+        }
+        
         oss << ", data_type='" << data_type_ << "'"
             << ", enabled=" << (is_enabled_ ? "true" : "false")
             << ", writable=" << (is_writable_ ? "true" : "false");
@@ -380,7 +388,7 @@ public:
             oss << ", group='" << group_name_ << "'";
         }
         
-        if (alarm_enabled_) {
+        if (is_alarm_enabled_) {
             oss << ", alarm_priority='" << alarm_priority_ << "'";
         }
         
@@ -434,6 +442,7 @@ public:
         context["name"] = name_;
         context["address"] = address_;
         context["address_string"] = address_string_;
+        context["mapping_key"] = mapping_key_;
         context["data_type"] = data_type_;
         context["access_mode"] = access_mode_;
         context["is_enabled"] = is_enabled_;
@@ -445,12 +454,12 @@ public:
         context["unit"] = unit_;
         
         // 품질 관리 정보 추가
-        context["quality_check_enabled"] = quality_check_enabled_;
-        context["range_check_enabled"] = range_check_enabled_;
+        context["quality_check_enabled"] = is_quality_check_enabled_;
+        context["range_check_enabled"] = is_range_check_enabled_;
         context["rate_of_change_limit"] = rate_of_change_limit_;
         
         // 알람 정보 추가
-        context["alarm_enabled"] = alarm_enabled_;
+        context["alarm_enabled"] = is_alarm_enabled_;
         context["alarm_priority"] = alarm_priority_;
         
         return context;
@@ -525,6 +534,7 @@ private:
     std::string description_;
     int address_ = 0;
     std::string address_string_;
+    std::string mapping_key_;
     std::string data_type_ = "UNKNOWN";
     std::string access_mode_ = "read";
     bool is_enabled_ = true;
@@ -538,18 +548,18 @@ private:
     double max_value_ = std::numeric_limits<double>::max();
     
     // 로깅 및 수집 설정
-    bool log_enabled_ = true;
-    int log_interval_ms_ = 0;
+    bool is_log_enabled_ = true;
+    uint32_t log_interval_ms_ = 0;
     double log_deadband_ = 0.0;
     uint32_t polling_interval_ms_ = 1000;
     
-    // 품질 관리 설정 (새로 추가)
-    bool quality_check_enabled_ = true;
-    bool range_check_enabled_ = true;
+    // 품질 관리 설정
+    bool is_quality_check_enabled_ = true;
+    bool is_range_check_enabled_ = true;
     double rate_of_change_limit_ = 0.0;
     
-    // 알람 관련 설정 (새로 추가)
-    bool alarm_enabled_ = false;
+    // 알람 관련 설정
+    bool is_alarm_enabled_ = false;
     std::string alarm_priority_ = "medium";
     
     // 메타데이터

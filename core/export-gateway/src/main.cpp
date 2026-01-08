@@ -27,7 +27,7 @@
 #include "CSP/ExportCoordinator.h"
 #include "CSP/DynamicTargetManager.h"
 #include "CSP/AlarmMessage.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 
 using namespace PulseOne;

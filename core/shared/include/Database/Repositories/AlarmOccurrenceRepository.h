@@ -20,7 +20,6 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
-#include "Database/DatabaseTypes.h"
 #include "Alarm/AlarmTypes.h"
 #include <memory>
 #include <map>

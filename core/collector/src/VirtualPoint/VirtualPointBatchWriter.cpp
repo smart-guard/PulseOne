@@ -4,8 +4,8 @@
 // =============================================================================
 
 #include "VirtualPoint/VirtualPointBatchWriter.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/LogManager.h"
+#include "DatabaseManager.hpp"
+#include "Logging/LogManager.h"
 #include "Common/Utils.h"
 #include <algorithm>
 #include <nlohmann/json.hpp>
@@ -23,7 +23,7 @@ VirtualPointBatchWriter::VirtualPointBatchWriter(size_t batch_size, int flush_in
     : batch_size_(std::clamp(batch_size, static_cast<size_t>(1), MAX_BATCH_SIZE))
     , flush_interval_(std::chrono::seconds(std::clamp(flush_interval_sec, 1, 
                                           static_cast<int>(MAX_FLUSH_INTERVAL.count() / 1000))))
-    , db_manager_(&DatabaseManager::getInstance()) {
+    , db_manager_(&DbLib::DatabaseManager::getInstance()) {
     
     LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::INFO,
         "🔥 VirtualPointBatchWriter 생성 - 배치크기: " + std::to_string(batch_size_) +
@@ -55,7 +55,7 @@ bool VirtualPointBatchWriter::Start() {
     // DB 연결 확인
     if (!db_manager_) {
         LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::LOG_ERROR,
-            "❌ DatabaseManager가 null임");
+            "❌ DbLib::DatabaseManager가 null임");
         return false;
     }
     

@@ -8,13 +8,19 @@
 #include "Workers/Protocol/ModbusWorker.h"
 #include "Workers/Protocol/MqttWorker.h"
 #include "Workers/Protocol/BACnetWorker.h"
+#include "Workers/Protocol/OPCUAWorker.h"
+#include "Workers/Protocol/BleBeaconWorker.h"
+#include "Workers/Protocol/HttpRestWorker.h"
+
 
 // Database
 #include "Database/RepositoryFactory.h"
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/DeviceSettingsRepository.h"
-#include "Utils/LogManager.h"
+#include "Database/Repositories/DataPointRepository.h" // 추가
+#include "Database/Repositories/ProtocolRepository.h"
+#include "Logging/LogManager.h"
 
 // JSON 파싱
 #include <nlohmann/json.hpp>
@@ -59,7 +65,7 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorker(const Database::En
         LogManager::getInstance().Info("  read_timeout_ms (opt): " + (device_info.read_timeout_ms.has_value() ? std::to_string(device_info.read_timeout_ms.value()) : "null"));
         LogManager::getInstance().Info("  Properties size: " + std::to_string(device_info.driver_config.properties.size()));
         
-        // Worker 생성 (모든 디버깅 로그 제거)
+        // Worker 생성
         std::unique_ptr<BaseDeviceWorker> worker;
         try {
             worker = it->second(device_info);
@@ -109,31 +115,51 @@ std::unique_ptr<BaseDeviceWorker> WorkerFactory::CreateWorkerById(int device_id)
     }
 }
 
+bool WorkerFactory::GetDeviceInfoById(int device_id, PulseOne::Structs::DeviceInfo& info) {
+    if (device_id <= 0) return false;
+    
+    try {
+        auto& repo_factory = Database::RepositoryFactory::getInstance();
+        auto device_repo = repo_factory.getDeviceRepository();
+        
+        if (!device_repo) return false;
+        
+        auto device_opt = device_repo->findById(device_id);
+        if (!device_opt.has_value()) return false;
+        
+        return ConvertToDeviceInfoSafe(device_opt.value(), info);
+    } catch (...) {
+        return false;
+    }
+}
+
+std::vector<PulseOne::Structs::DataPoint> WorkerFactory::LoadDeviceDataPoints(int device_id) {
+    std::vector<PulseOne::Structs::DataPoint> points;
+    if (device_id <= 0) return points;
+    
+    try {
+        auto& repo_factory = Database::RepositoryFactory::getInstance();
+        auto datapoint_repo = repo_factory.getDataPointRepository();
+        
+        if (!datapoint_repo) return points;
+        
+        // DataPointRepository::getDataPointsWithCurrentValues 사용
+        points = datapoint_repo->getDataPointsWithCurrentValues(device_id, true); // enabled_only=true
+        
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("LoadDeviceDataPoints 예외: " + std::string(e.what()));
+    }
+    
+    return points;
+}
+
 // =============================================================================
 // 프로토콜 관리
 // =============================================================================
 
 std::vector<std::string> WorkerFactory::GetSupportedProtocols() const {
     try {
-        // const_cast 제거하고 직접 LoadProtocolCreators 호출
-        static std::mutex static_mutex;
-        std::lock_guard<std::mutex> lock(static_mutex);
-        
-        std::map<std::string, WorkerCreator> creators;
-        
-        // 지원하는 프로토콜들 등록
-        creators["MODBUS_TCP"] = [](const PulseOne::Structs::DeviceInfo& info) {
-            return std::make_unique<ModbusWorker>(info);
-        };
-        creators["MODBUS_RTU"] = [](const PulseOne::Structs::DeviceInfo& info) {
-            return std::make_unique<ModbusWorker>(info);
-        };
-        creators["MQTT"] = [](const PulseOne::Structs::DeviceInfo& info) {
-            return std::make_unique<MQTTWorker>(info);
-        };
-        creators["BACNET"] = [](const PulseOne::Structs::DeviceInfo& info) {
-            return std::make_unique<BACnetWorker>(info);
-        };
+        auto creators = LoadProtocolCreators();
         
         std::vector<std::string> protocols;
         protocols.reserve(creators.size());
@@ -169,12 +195,27 @@ std::string WorkerFactory::GetProtocolTypeById(int protocol_id) {
         throw std::invalid_argument("Invalid protocol_id: " + std::to_string(protocol_id));
     }
     
-    // 하드코딩된 매핑 사용
+    try {
+        auto& repo_factory = Database::RepositoryFactory::getInstance();
+        auto protocol_repo = repo_factory.getProtocolRepository();
+        
+        if (protocol_repo) {
+            auto protocol_opt = protocol_repo->findById(protocol_id);
+            if (protocol_opt.has_value()) {
+                return protocol_opt.value().getProtocolType();
+            }
+        }
+    } catch (const std::exception& e) {
+        LogManager::getInstance().Error("GetProtocolTypeById DB 조회 실패: " + std::string(e.what()));
+    }
+
+    // 폴백 (기존 하드코딩된 매핑 유지 - DB 조회가 실패하거나 없을 경우를 대비)
     switch (protocol_id) {
         case 1: return "MODBUS_TCP";
         case 2: return "MODBUS_RTU"; 
         case 3: return "MQTT";
         case 4: return "BACNET";
+        case 5: return "OPC_UA";
         case 8: return "HTTP_REST";
         default: 
             throw std::runtime_error("Unsupported protocol_id: " + std::to_string(protocol_id));
@@ -372,13 +413,14 @@ bool WorkerFactory::LoadDeviceSettingsSafe(PulseOne::Structs::DeviceInfo& info, 
         info.max_backoff_time_ms = settings.getMaxBackoffTimeMs();
         
         // 4. Keep-alive 설정
-        info.keep_alive_enabled = settings.isKeepAliveEnabled();
+        info.is_keep_alive_enabled = settings.isKeepAliveEnabled();
         info.keep_alive_interval_s = settings.getKeepAliveIntervalS();
         info.keep_alive_timeout_s = settings.getKeepAliveTimeoutS();
         
         // 5. 모니터링 및 진단
-        info.data_validation_enabled = settings.isDataValidationEnabled();
-        info.diagnostic_mode_enabled = settings.isDiagnosticModeEnabled();
+        info.is_data_validation_enabled = settings.isDataValidationEnabled();
+        info.is_diagnostic_mode_enabled = settings.isDiagnosticModeEnabled();
+        info.is_auto_registration_enabled = settings.isAutoRegistrationEnabled();
         info.updated_by = 0; // updated_by not available in entity
         
         return true;
@@ -482,7 +524,7 @@ int WorkerFactory::GetDefaultPort(const std::string& protocol_type) {
     }
 }
 
-std::map<std::string, WorkerCreator> WorkerFactory::LoadProtocolCreators() {
+std::map<std::string, WorkerCreator> WorkerFactory::LoadProtocolCreators() const {
     std::map<std::string, WorkerCreator> creators;
     
     try {
@@ -502,12 +544,29 @@ std::map<std::string, WorkerCreator> WorkerFactory::LoadProtocolCreators() {
         creators["BACNET"] = [](const PulseOne::Structs::DeviceInfo& info) -> std::unique_ptr<BaseDeviceWorker> {
             return std::make_unique<BACnetWorker>(info);
         };
+
+        creators["OPC_UA"] = [](const PulseOne::Structs::DeviceInfo& info) -> std::unique_ptr<BaseDeviceWorker> {
+            return std::make_unique<OPCUAWorker>(info);
+        };
+
+        creators["BLE_BEACON"] = [](const PulseOne::Structs::DeviceInfo& info) -> std::unique_ptr<BaseDeviceWorker> {
+            return std::make_unique<BleBeaconWorker>(info);
+        };
+
+        creators["HTTP_REST"] = [](const PulseOne::Structs::DeviceInfo& info) -> std::unique_ptr<BaseDeviceWorker> {
+            return std::make_unique<HttpRestWorker>(info);
+        };
         
-        // 별칭들
+        // 별칭들 (Aliases)
         creators["modbus_tcp"] = creators["MODBUS_TCP"];
         creators["modbus_rtu"] = creators["MODBUS_RTU"];
         creators["mqtt"] = creators["MQTT"];
         creators["bacnet"] = creators["BACNET"];
+        creators["opc_ua"] = creators["OPC_UA"];
+        
+        // Database protocol_type mappings
+        creators["tcp"] = creators["MODBUS_TCP"];
+        creators["serial"] = creators["MODBUS_RTU"];
         
     } catch (const std::exception& e) {
         LogManager::getInstance().Error("LoadProtocolCreators 예외: " + std::string(e.what()));

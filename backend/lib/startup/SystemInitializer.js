@@ -16,30 +16,30 @@ class SystemInitializer {
 
     async initialize() {
         console.log('PulseOne 시스템 초기화 시작...');
-        
+
         try {
             // ConfigManager 설정 확인
             console.log('설정 정보 로드 중...');
             this.printConfigInfo();
-            
+
             // 1. Infrastructure 초기화 (순서 중요)
             console.log('Infrastructure 초기화 중...');
             await this.initializeInfrastructure();
-            
+
             // 2. 시스템 헬스 체크
             console.log('시스템 헬스 체크...');
             await this.performHealthCheck();
-            
+
             // 3. Collector 상태 확인 및 시작
             console.log('Collector 초기화 중...');
             await this.initializeCollector();
-            
+
             // 4. 최종 검증
             console.log('시스템 최종 검증 중...');
             await this.finalValidation();
-            
+
             console.log('시스템 초기화 완료!');
-            
+
         } catch (error) {
             console.error('시스템 초기화 실패:', error.message);
             throw error;
@@ -49,7 +49,7 @@ class SystemInitializer {
     printConfigInfo() {
         const dbConfig = this.config.getDatabaseConfig();
         const redisConfig = this.config.getRedisConfig();
-        
+
         console.log('  - Database Type:', dbConfig.type);
         console.log('  - Redis Enabled:', redisConfig.enabled);
         console.log('  - Backend Port:', this.config.get('BACKEND_PORT', 3000));
@@ -61,11 +61,11 @@ class SystemInitializer {
         // RabbitMQ 설정
         console.log('  - RabbitMQ 연결 및 설정...');
         await this.setupRabbitMQ();
-        
+
         // Redis 설정  
         console.log('  - Redis 연결 및 설정...');
         await this.setupRedis();
-        
+
         // Database 검증
         console.log('  - Database 스키마 검증...');
         await this.verifyDatabase();
@@ -86,7 +86,7 @@ class SystemInitializer {
     async setupRedis() {
         try {
             const redisConfig = this.config.getRedisConfig();
-            
+
             if (!redisConfig.enabled) {
                 console.log('    ⚠️ Redis 비활성화됨 (REDIS_PRIMARY_ENABLED=false)');
                 return;
@@ -95,13 +95,13 @@ class SystemInitializer {
             // Redis 연결 모듈 동적 import
             const RedisClient = require('../connection/redis');
             this.redis = RedisClient;
-            
+
             // Redis 연결 테스트
             await this.redis.ping();
-            
+
             // 시스템 키 초기화
             await this.initializeRedisKeys();
-            
+
             console.log('    ✅ Redis 설정 완료');
         } catch (error) {
             console.error('    ❌ Redis 설정 실패:', error.message);
@@ -134,21 +134,20 @@ class SystemInitializer {
     async verifyDatabase() {
         try {
             const dbConfig = this.config.getDatabaseConfig();
-            
+
             // DatabaseFactory를 사용하여 DB 연결 및 검증
             this.dbFactory = new DatabaseFactory();
-            
+
             // 메인 연결 테스트
             const connection = await this.dbFactory.getMainConnection();
-            
-            // 필수 테이블 확인
+
+            // 필수 테이블 확인 (Knex 사용)
             const requiredTables = ['alarm_rules', 'alarm_occurrences', 'devices', 'data_points'];
+            const knex = connection.knex || connection; // Connection 객체 또는 직접 Knex
+
             for (const tableName of requiredTables) {
-                const result = await this.dbFactory.executeQuery(
-                    this.getTableExistsQuery(dbConfig.type, tableName)
-                );
-                
-                if (!this.checkTableExists(result, dbConfig.type)) {
+                const exists = await knex.schema.hasTable(tableName);
+                if (!exists) {
                     throw new Error(`필수 테이블 '${tableName}'이 존재하지 않습니다`);
                 }
             }
@@ -161,24 +160,24 @@ class SystemInitializer {
     }
 
     getTableExistsQuery(dbType, tableName) {
-        switch(dbType.toUpperCase()) {
-            case 'SQLITE':
-                return "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
-            case 'POSTGRESQL':
-                return "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)";
-            default:
-                throw new Error(`지원하지 않는 DB 타입: ${dbType}`);
+        switch (dbType.toUpperCase()) {
+        case 'SQLITE':
+            return 'SELECT name FROM sqlite_master WHERE type=\'table\' AND name=?';
+        case 'POSTGRESQL':
+            return 'SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)';
+        default:
+            throw new Error(`지원하지 않는 DB 타입: ${dbType}`);
         }
     }
 
     checkTableExists(result, dbType) {
-        switch(dbType.toUpperCase()) {
-            case 'SQLITE':
-                return result && result.length > 0;
-            case 'POSTGRESQL':
-                return result && result.rows && result.rows[0] && result.rows[0].exists;
-            default:
-                return false;
+        switch (dbType.toUpperCase()) {
+        case 'SQLITE':
+            return result && result.length > 0;
+        case 'POSTGRESQL':
+            return result && result.rows && result.rows[0] && result.rows[0].exists;
+        default:
+            return false;
         }
     }
 
@@ -192,7 +191,7 @@ class SystemInitializer {
         try {
             // RabbitMQ 연결 확인
             healthStatus.rabbitMQ = await this.rabbitMQ.isHealthy();
-            
+
             // Redis 연결 확인 (Redis가 설정된 경우에만)
             if (this.redis) {
                 const redisPing = await this.redis.ping();
@@ -200,7 +199,7 @@ class SystemInitializer {
             } else {
                 healthStatus.redis = true; // Redis 비활성화 시 정상으로 간주
             }
-            
+
             // Database 연결 확인
             if (this.dbFactory) {
                 const connection = await this.dbFactory.getMainConnection();
@@ -216,7 +215,7 @@ class SystemInitializer {
             }
 
             console.log('    ✅ 모든 인프라 서비스 정상');
-            
+
         } catch (error) {
             console.error('    ❌ 헬스 체크 실패:', error.message);
             throw error;
@@ -228,7 +227,7 @@ class SystemInitializer {
             // Collector 상태 확인 (CrossPlatformManager 사용)
             console.log('  - Collector 상태 확인 중...');
             const isRunning = await this.checkCollectorStatus();
-            
+
             if (isRunning) {
                 console.log('    ✅ Collector가 이미 실행 중입니다.');
                 return;
@@ -237,16 +236,16 @@ class SystemInitializer {
             // Collector 시작 (CrossPlatformManager 사용)
             console.log('  - Collector 시작 중...');
             await this.startCollector();
-            
+
             // 시작 대기 (최대 30초)
             console.log('  - Collector 시작 대기 중...');
             await this.waitForCollectorReady(30000);
-            
+
             console.log('    ✅ Collector 시작 완료');
-            
+
         } catch (error) {
             console.error('    ❌ Collector 초기화 실패:', error.message);
-            
+
             // Collector 실패는 시스템 전체 실패로 처리하지 않음
             console.log('    ⚠️ Collector 없이 Backend 서비스 시작');
         }
@@ -264,11 +263,11 @@ class SystemInitializer {
 
     async startCollector() {
         const result = await this.crossPlatformManager.startCollector();
-        
+
         if (!result.success) {
             throw new Error(`Collector 시작 실패: ${result.error}`);
         }
-        
+
         // Redis에 Collector 시작 상태 기록 (Redis가 활성화된 경우에만)
         if (this.redis) {
             await this.redis.hset('system:collectors:status', 'main_collector', JSON.stringify({
@@ -279,7 +278,7 @@ class SystemInitializer {
                 platform: result.platform
             }));
         }
-        
+
         return result;
     }
 
@@ -315,7 +314,7 @@ class SystemInitializer {
         try {
             const processes = await this.crossPlatformManager.getRunningProcesses();
             const collectorProcess = processes.collector[0];
-            
+
             if (!collectorProcess) {
                 return false;
             }
@@ -324,7 +323,7 @@ class SystemInitializer {
             const now = Date.now();
             const startTime = collectorProcess.startTime ? new Date(collectorProcess.startTime).getTime() : now;
             const uptime = now - startTime;
-            
+
             return uptime > 5000; // 5초 이상 실행됨
         } catch (error) {
             return false;
@@ -342,10 +341,10 @@ class SystemInitializer {
         try {
             // Infrastructure 재검증
             validationResults.infrastructure = await this.validateInfrastructure();
-            
+
             // Collector 검증 (선택적)
             validationResults.collector = await this.validateCollector();
-            
+
             // API 엔드포인트 검증
             validationResults.apiEndpoints = await this.validateApiEndpoints();
 
@@ -372,18 +371,18 @@ class SystemInitializer {
     async validateInfrastructure() {
         try {
             const rabbitOk = await this.rabbitMQ.isHealthy();
-            
+
             let redisOk = true;
             if (this.redis) {
                 redisOk = await this.redis.ping() === 'PONG';
             }
-            
+
             let dbOk = true;
             if (this.dbFactory) {
                 const connection = await this.dbFactory.getMainConnection();
                 dbOk = await this.dbFactory.isConnectionValid(connection);
             }
-            
+
             return rabbitOk && redisOk && dbOk;
         } catch {
             return false;
@@ -404,10 +403,10 @@ class SystemInitializer {
             // CrossPlatformManager 기본 기능 테스트
             const systemInfo = await this.crossPlatformManager.getSystemInfo();
             const processes = await this.crossPlatformManager.getRunningProcesses();
-            
-            return systemInfo && processes && 
-                   systemInfo.platform && 
-                   typeof processes === 'object';
+
+            return systemInfo && processes &&
+                systemInfo.platform &&
+                typeof processes === 'object';
         } catch {
             return false;
         }
@@ -422,24 +421,24 @@ class SystemInitializer {
     // Cleanup 메서드 (시스템 종료 시 사용)
     async cleanup() {
         console.log('시스템 정리 중...');
-        
+
         try {
             // Collector 정상 종료 시도
             if (await this.checkCollectorStatus()) {
                 console.log('  - Collector 종료 중...');
                 await this.crossPlatformManager.stopCollector();
             }
-            
+
             if (this.rabbitMQ) {
                 await this.rabbitMQ.disconnect();
             }
-            
+
             if (this.dbFactory) {
                 await this.dbFactory.closeAllConnections();
             }
-            
+
             // Redis는 연결 풀을 사용하므로 명시적 종료 안함
-            
+
             console.log('✅ 시스템 정리 완료');
         } catch (error) {
             console.error('❌ 시스템 정리 중 오류:', error.message);
@@ -451,7 +450,7 @@ class SystemInitializer {
         try {
             const health = await this.crossPlatformManager.performHealthCheck();
             const processes = await this.crossPlatformManager.getRunningProcesses();
-            
+
             return {
                 platform: this.crossPlatformManager.platform,
                 architecture: this.crossPlatformManager.architecture,

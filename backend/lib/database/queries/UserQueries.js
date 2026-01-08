@@ -215,7 +215,7 @@ class UserQueries {
      * 사용자 삭제
      */
     static delete() {
-        return `DELETE FROM users WHERE id = ?`;
+        return 'DELETE FROM users WHERE id = ?';
     }
 
     /**

@@ -16,20 +16,20 @@ class SQLiteConnection {
             this.config = customConfig;
         } else {
             this.config = {
-                path: config.get('SQLITE_PATH', './data/db/pulseone.db'),
+                path: config.getDatabaseConfig().sqlite.path, // ConfigManager의 통합 경로 사용
                 timeout: config.getNumber('SQLITE_BUSY_TIMEOUT', 5000),
                 journalMode: config.get('SQLITE_JOURNAL_MODE', 'WAL'),
                 foreignKeys: config.getBoolean('SQLITE_FOREIGN_KEYS', true),
                 cacheSize: config.getNumber('SQLITE_CACHE_SIZE', 2000)
             };
         }
-        
+
         this.connection = null;
         this.isConnected = false;
-        
-        // 🔥 핵심 수정: 상대 경로를 올바르게 처리
-        this.resolvedPath = this._resolvePath(this.config.path);
-        
+
+        // 🔥 핵심 수정: ConfigManager를 통한 경로 처리 (Docker/Windows 대응)
+        this.resolvedPath = this.config.path;
+
         console.log(`📋 SQLite 연결 설정:
    설정 경로: ${this.config.path}
    작업 디렉토리: ${process.cwd()}
@@ -46,15 +46,15 @@ class SQLiteConnection {
         if (path.isAbsolute(configPath)) {
             return configPath;
         }
-        
+
         // 상대 경로인 경우 process.cwd() 기준으로 해석
         const resolved = path.resolve(process.cwd(), configPath);
-        
+
         console.log(`🔍 경로 해석:
    원본: ${configPath}
    기준: ${process.cwd()}
    결과: ${resolved}`);
-        
+
         return resolved;
     }
 
@@ -64,13 +64,13 @@ class SQLiteConnection {
     async _ensureDirectory() {
         try {
             const dbDir = path.dirname(this.resolvedPath);
-            
+
             // 디렉토리가 존재하지 않으면 생성
             if (!fs.existsSync(dbDir)) {
                 fs.mkdirSync(dbDir, { recursive: true });
                 console.log(`✅ SQLite 디렉토리 생성: ${dbDir}`);
             }
-            
+
             // 쓰기 권한 확인
             try {
                 fs.accessSync(dbDir, fs.constants.W_OK);
@@ -79,7 +79,7 @@ class SQLiteConnection {
                 console.warn(`⚠️ 디렉토리 쓰기 권한 없음: ${dbDir}`);
                 throw new Error(`SQLite 디렉토리 쓰기 권한이 없습니다: ${dbDir}`);
             }
-            
+
             return true;
         } catch (error) {
             console.error(`❌ 디렉토리 생성/권한 확인 실패: ${error.message}`);
@@ -91,13 +91,13 @@ class SQLiteConnection {
         try {
             // 디렉토리 생성 및 권한 확인
             await this._ensureDirectory();
-            
+
             return new Promise((resolve, reject) => {
                 console.log(`🔧 SQLite 연결 시도: ${this.resolvedPath}`);
-                
+
                 this.connection = new sqlite3.Database(
-                    this.resolvedPath, 
-                    sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, 
+                    this.resolvedPath,
+                    sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
                     (err) => {
                         if (err) {
                             console.error('❌ SQLite 연결 실패:', err.message);
@@ -107,7 +107,7 @@ class SQLiteConnection {
                         } else {
                             console.log('✅ SQLite 연결 성공');
                             console.log(`   파일 위치: ${this.resolvedPath}`);
-                            
+
                             this.isConnected = true;
                             this._applyPragmas();
                             resolve(this.connection);
@@ -128,16 +128,16 @@ class SQLiteConnection {
             // PRAGMA 설정 적용
             this.connection.run(`PRAGMA journal_mode = ${this.config.journalMode}`);
             this.connection.run(`PRAGMA busy_timeout = ${this.config.timeout}`);
-            
+
             if (this.config.foreignKeys) {
-                this.connection.run(`PRAGMA foreign_keys = ON`);
+                this.connection.run('PRAGMA foreign_keys = ON');
             }
-            
+
             // 성능 최적화
             this.connection.run(`PRAGMA cache_size = ${this.config.cacheSize}`);
-            this.connection.run(`PRAGMA temp_store = memory`);
-            this.connection.run(`PRAGMA mmap_size = 268435456`); // 256MB
-            
+            this.connection.run('PRAGMA temp_store = memory');
+            this.connection.run('PRAGMA mmap_size = 268435456'); // 256MB
+
             console.log('✅ SQLite PRAGMA 설정 적용 완료');
         } catch (error) {
             console.warn('⚠️ SQLite PRAGMA 설정 실패:', error.message);
@@ -148,7 +148,7 @@ class SQLiteConnection {
         if (!this.isConnected) {
             await this.connect();
         }
-        
+
         return new Promise((resolve, reject) => {
             // SELECT 쿼리
             if (sql.trim().toUpperCase().startsWith('SELECT')) {
@@ -165,10 +165,10 @@ class SQLiteConnection {
                         });
                     }
                 });
-            } 
+            }
             // INSERT, UPDATE, DELETE 쿼리
             else {
-                this.connection.run(sql, params, function(err) {
+                this.connection.run(sql, params, function (err) {
                     if (err) {
                         console.error('❌ SQLite 실행 오류:', err.message);
                         console.error('   쿼리:', sql);
@@ -191,7 +191,7 @@ class SQLiteConnection {
         if (!this.isConnected) {
             await this.connect();
         }
-        
+
         return new Promise((resolve, reject) => {
             this.connection.all(sql, params, (err, rows) => {
                 if (err) {
@@ -210,9 +210,9 @@ class SQLiteConnection {
         if (!this.isConnected) {
             await this.connect();
         }
-        
+
         return new Promise((resolve, reject) => {
-            this.connection.run(sql, params, function(err) {
+            this.connection.run(sql, params, function (err) {
                 if (err) {
                     console.error('❌ SQLite run() 오류:', err.message);
                     console.error('   쿼리:', sql);
@@ -232,7 +232,7 @@ class SQLiteConnection {
         if (!this.isConnected) {
             await this.connect();
         }
-        
+
         return new Promise((resolve, reject) => {
             this.connection.get(sql, params, (err, row) => {
                 if (err) {
@@ -264,7 +264,7 @@ class SQLiteConnection {
         return new Promise(async (resolve, reject) => {
             this.connection.serialize(async () => {
                 this.connection.run('BEGIN TRANSACTION');
-                
+
                 try {
                     const result = await callback(this);
                     this.connection.run('COMMIT', (err) => {
@@ -321,7 +321,7 @@ class SQLiteConnection {
             if (!this.isConnected) {
                 await this.connect();
             }
-            
+
             const result = await this.get('SELECT 1 as ping');
             return result && result.ping === 1;
         } catch (error) {

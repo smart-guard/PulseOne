@@ -8,7 +8,7 @@
 #include "Database/Entities/PayloadTemplateEntity.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
 #include "Database/RepositoryFactory.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <sstream>
 
 namespace PulseOne {

@@ -14,13 +14,13 @@
 #include "Alarm/AlarmStartupRecovery.h"
 #include "Alarm/AlarmEngine.h"
 #include "Database/RepositoryFactory.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/DeviceRepository.h"
 #include "Storage/RedisDataWriter.h"
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 using namespace PulseOne;
 using json = nlohmann::json;
@@ -32,7 +32,7 @@ protected:
         LogManager::getInstance().log("test", Enums::LogLevel::INFO, "Setup 시작");
         
         // RDB 초기화
-        auto& db = DatabaseManager::getInstance();
+        auto& db = DbLib::DatabaseManager::getInstance();
         db.initialize();
         
         Database::RepositoryFactory::getInstance().initialize();
@@ -152,7 +152,7 @@ TEST_F(StateRecoveryStorageTest, RdbStorageDifferentiationTest) {
  * 🎯 테스트 2: Warm Startup 복구 로직 검증 (RDB -> Redis -> RAM)
  */
 TEST_F(StateRecoveryStorageTest, WarmStartupRecoveryTest) {
-    auto& db = DatabaseManager::getInstance();
+    auto& db = DbLib::DatabaseManager::getInstance();
     
     // 1. RDB에 가상 데이터 주입 (Repository 사용)
     auto& factory = Database::RepositoryFactory::getInstance();

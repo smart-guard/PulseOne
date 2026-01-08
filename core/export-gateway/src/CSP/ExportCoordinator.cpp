@@ -12,7 +12,7 @@
  */
 
 #include "CSP/ExportCoordinator.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include <algorithm>
 #include <numeric>
 

@@ -2,7 +2,7 @@
 #define PULSEONE_PLATFORM_SERVICE_MANAGER_H
 
 #include "Platform/PlatformCompat.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <string>
 #include <functional>
 

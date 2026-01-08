@@ -458,6 +458,28 @@ json CurrentValueEntity::getFullStatus() const {
     return status;
 }
 
+// =============================================================================
+// 🔥 타입 불일치 수정 및 편의 메서드 구현
+// =============================================================================
+
+double CurrentValueEntity::getValue() const {
+    return getNumericValue();
+}
+
+void CurrentValueEntity::setValue(double value) {
+    updateValue(value, quality_code_);
+}
+
+void CurrentValueEntity::setTimestamp(const std::chrono::system_clock::time_point& timestamp) {
+    value_timestamp_ = timestamp;
+    updated_at_ = timestamp;
+    markModified();
+}
+
+std::chrono::system_clock::time_point CurrentValueEntity::getTimestamp() const {
+    return value_timestamp_;
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

@@ -3,10 +3,15 @@
 // =============================================================================
 
 #include "Workers/Protocol/BACnetWorker.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Common/Enums.h"
+#include "Drivers/Bacnet/BACnetServiceManager.h"
+#include "Drivers/Bacnet/BACnetDriver.h"
 #include <sstream>
 #include <thread>
+#include "Database/RepositoryFactory.h"
+#include "Database/Repositories/DeviceScheduleRepository.h"
+#include "Database/Entities/DeviceScheduleEntity.h"
 
 using namespace std::chrono;
 using LogLevel = PulseOne::Enums::LogLevel;
@@ -47,16 +52,20 @@ BACnetWorker::BACnetWorker(const DeviceInfo& device_info)
         return;
     }
 
-    // BACnetServiceManager 초기화 (일단 비활성화 - 의존성 문제)
-    /*
+    // BACnetServiceManager 초기화
     if (bacnet_driver_) {
-        // cast needed if ServiceManager takes concrete type
-        // bacnet_service_manager_ = std::make_shared<PulseOne::Drivers::BACnetServiceManager>(bacnet_driver_.get());
-        LogMessage(LogLevel::INFO, "BACnetServiceManager initialized successfully");
+        // BACnetDriver로 안전하게 다운캐스팅 (DriverInterface -> BACnetDriver)
+        auto driver_ptr = dynamic_cast<PulseOne::Drivers::BACnetDriver*>(bacnet_driver_.get());
+        
+        if (driver_ptr) {
+            bacnet_service_manager_ = std::make_shared<PulseOne::Drivers::BACnetServiceManager>(driver_ptr);
+            LogMessage(LogLevel::INFO, "BACnetServiceManager initialized successfully");
+        } else {
+             LogMessage(LogLevel::LOG_ERROR, "Failed to cast DriverInterface to BACnetDriver");
+        }
     } else {
         LogMessage(LogLevel::LOG_ERROR, "Cannot initialize BACnetServiceManager: BACnet driver is null");
-    }
-    */    
+    }    
     
     LogMessage(LogLevel::INFO, "BACnetWorker initialization completed");
 }
@@ -775,6 +784,14 @@ bool BACnetWorker::PerformDataScan() {
             worker_stats_.failed_operations++;
         }
         
+        // 5. 스케줄 동기화 수행 (Step 15)
+        static auto last_sync_time = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - last_sync_time).count() >= 60) {
+            SyncSchedulesWithDevices();
+            last_sync_time = now;
+        }
+        
         return success;
         
     } catch (const std::exception& e) {
@@ -783,6 +800,66 @@ bool BACnetWorker::PerformDataScan() {
         return false;
     }
 }
+
+// =============================================================================
+// 스케줄 동기화 구현 (Step 15)
+// =============================================================================
+
+bool BACnetWorker::SyncSchedulesWithDevices() {
+    try {
+        auto& factory = PulseOne::Database::RepositoryFactory::getInstance();
+        auto repo = factory.getDeviceScheduleRepository();
+        if (!repo) return false;
+
+        // 이 디바이스의 동기화가 필요한 스케줄 조회
+        // DeviceInfo.id는 string(UniqueId)이고 DB는 INTEGER이므로 변환 시도
+        int dev_id_int = 0;
+        try {
+            dev_id_int = std::stoi(device_info_.id);
+        } catch (...) {
+            LogMessage(LogLevel::WARN, "Device ID is not an integer: " + device_info_.id);
+            return false;
+        }
+
+        auto pending = repo->findPendingSync(dev_id_int);
+        if (pending.empty()) return true;
+
+        LogMessage(LogLevel::INFO, "Syncing " + std::to_string(pending.size()) + " schedules for device: " + device_info_.name);
+
+        for (auto& schedule : pending) {
+            std::string type = schedule.getScheduleType();
+            // Prefix is typically "BACNET_WEEKLY:..." or similar. We need the part after the first colon.
+            size_t colon_pos = type.find(':'); // Changed from find_last_of to find
+            if (colon_pos == std::string::npos) {
+                LogMessage(LogLevel::WARN, "Invalid schedule type format: " + type);
+                continue;
+            }
+            
+            std::string object_id = type.substr(colon_pos + 1);
+            PulseOne::Structs::DataValue val;
+            val = schedule.getScheduleData();
+            
+            uint32_t dev_id, inst;
+            BACNET_OBJECT_TYPE obj_type;
+            if (!ParseBACnetObjectId(object_id, dev_id, obj_type, inst)) {
+                 LogMessage(LogLevel::WARN, "Failed to parse object ID: " + object_id);
+                 continue;
+            }
+
+            if (WriteProperty(dev_id, obj_type, inst, PROP_WEEKLY_SCHEDULE, val)) {
+                repo->markAsSynced(schedule.getId());
+                LogMessage(LogLevel::INFO, "Successfully synced schedule " + std::to_string(schedule.getId()) + " to device");
+            } else {
+                LogMessage(LogLevel::LOG_ERROR, "Failed to sync schedule " + std::to_string(schedule.getId()) + " to device");
+            }
+        }
+        return true;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::LOG_ERROR, "SyncSchedulesWithDevices failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
 
 // =============================================================================
 // 제어 기능들 (WriteProperty 등)

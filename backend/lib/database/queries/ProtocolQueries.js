@@ -38,35 +38,35 @@ class ProtocolQueries {
      * protocol_type으로 프로토콜 조회
      */
     static findByType() {
-        return `SELECT * FROM protocols WHERE protocol_type = ?`;
+        return 'SELECT * FROM protocols WHERE protocol_type = ?';
     }
 
     /**
      * ID로 프로토콜 조회
      */
     static findById() {
-        return `SELECT * FROM protocols WHERE id = ?`;
+        return 'SELECT * FROM protocols WHERE id = ?';
     }
 
     /**
      * 카테고리별 프로토콜 조회
      */
     static findByCategory() {
-        return `SELECT * FROM protocols WHERE category = ? ORDER BY display_name ASC`;
+        return 'SELECT * FROM protocols WHERE category = ? ORDER BY display_name ASC';
     }
 
     /**
      * 활성화된 프로토콜만 조회
      */
     static findActive() {
-        return `SELECT * FROM protocols WHERE is_enabled = 1 ORDER BY display_name ASC`;
+        return 'SELECT * FROM protocols WHERE is_enabled = 1 ORDER BY display_name ASC';
     }
 
     /**
      * 전체 프로토콜 조회 (기본)
      */
     static findAll() {
-        return `SELECT * FROM protocols ORDER BY display_name ASC`;
+        return 'SELECT * FROM protocols ORDER BY display_name ASC';
     }
 
     // =========================================================================
@@ -108,21 +108,21 @@ class ProtocolQueries {
      * 프로토콜 활성화
      */
     static enableProtocol() {
-        return `UPDATE protocols SET is_enabled = 1, updated_at = ? WHERE id = ?`;
+        return 'UPDATE protocols SET is_enabled = 1, updated_at = ? WHERE id = ?';
     }
 
     /**
      * 프로토콜 비활성화
      */
     static disableProtocol() {
-        return `UPDATE protocols SET is_enabled = 0, updated_at = ? WHERE id = ?`;
+        return 'UPDATE protocols SET is_enabled = 0, updated_at = ? WHERE id = ?';
     }
 
     /**
      * 프로토콜 삭제
      */
     static deleteProtocol() {
-        return `DELETE FROM protocols WHERE id = ?`;
+        return 'DELETE FROM protocols WHERE id = ?';
     }
 
     // =========================================================================
@@ -133,21 +133,21 @@ class ProtocolQueries {
      * 전체 프로토콜 수 조회
      */
     static countTotal() {
-        return `SELECT COUNT(*) as count FROM protocols`;
+        return 'SELECT COUNT(*) as count FROM protocols';
     }
 
     /**
      * 활성화된 프로토콜 수 조회
      */
     static countEnabled() {
-        return `SELECT COUNT(*) as count FROM protocols WHERE is_enabled = 1`;
+        return 'SELECT COUNT(*) as count FROM protocols WHERE is_enabled = 1';
     }
 
     /**
      * 사용 중단 예정 프로토콜 수 조회
      */
     static countDeprecated() {
-        return `SELECT COUNT(*) as count FROM protocols WHERE is_deprecated = 1`;
+        return 'SELECT COUNT(*) as count FROM protocols WHERE is_deprecated = 1';
     }
 
     /**
@@ -212,7 +212,7 @@ class ProtocolQueries {
      * 프로토콜을 사용하는 디바이스 수 조회
      */
     static countDevicesByProtocol() {
-        return `SELECT COUNT(*) as count FROM devices WHERE protocol_id = ?`;
+        return 'SELECT COUNT(*) as count FROM devices WHERE protocol_id = ?';
     }
 
     /**
@@ -234,7 +234,7 @@ class ProtocolQueries {
      * 프로토콜 타입 중복 확인
      */
     static checkProtocolTypeExists() {
-        return `SELECT COUNT(*) as count FROM protocols WHERE protocol_type = ? AND id != ?`;
+        return 'SELECT COUNT(*) as count FROM protocols WHERE protocol_type = ? AND id != ?';
     }
 
     // =========================================================================
@@ -257,27 +257,27 @@ class ProtocolQueries {
      * 고급 필터 조건 (동적 쿼리 구성용)
      */
     static addCategoryFilter() {
-        return ` AND p.category = ?`;
+        return ' AND p.category = ?';
     }
 
     static addEnabledFilter() {
-        return ` AND p.is_enabled = ?`;
+        return ' AND p.is_enabled = ?';
     }
 
     static addDeprecatedFilter() {
-        return ` AND p.is_deprecated = ?`;
+        return ' AND p.is_deprecated = ?';
     }
 
     static addPortFilter() {
-        return ` AND p.default_port = ?`;
+        return ' AND p.default_port = ?';
     }
 
     static addSerialFilter() {
-        return ` AND p.uses_serial = ?`;
+        return ' AND p.uses_serial = ?';
     }
 
     static addBrokerFilter() {
-        return ` AND p.requires_broker = ?`;
+        return ' AND p.requires_broker = ?';
     }
 
     /**
@@ -297,11 +297,11 @@ class ProtocolQueries {
      * 페이징 지원
      */
     static addLimit() {
-        return ` LIMIT ?`;
+        return ' LIMIT ?';
     }
 
     static addOffset() {
-        return ` OFFSET ?`;
+        return ' OFFSET ?';
     }
 
     // =========================================================================
@@ -313,20 +313,20 @@ class ProtocolQueries {
      */
     static getCurrentTimestamp(dbType = 'sqlite') {
         switch (dbType.toLowerCase()) {
-            case 'postgresql':
-            case 'postgres':
-                return 'NOW()';
-            case 'sqlite':
-            case 'sqlite3':
-                return "datetime('now')";
-            case 'mysql':
-            case 'mariadb':
-                return 'NOW()';
-            case 'mssql':
-            case 'sqlserver':
-                return 'GETDATE()';
-            default:
-                return "datetime('now')"; // SQLite 기본값
+        case 'postgresql':
+        case 'postgres':
+            return 'NOW()';
+        case 'sqlite':
+        case 'sqlite3':
+            return 'datetime(\'now\')';
+        case 'mysql':
+        case 'mariadb':
+            return 'NOW()';
+        case 'mssql':
+        case 'sqlserver':
+            return 'GETDATE()';
+        default:
+            return 'datetime(\'now\')'; // SQLite 기본값
         }
     }
 }

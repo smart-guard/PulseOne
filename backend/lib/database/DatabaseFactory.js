@@ -1,4 +1,4 @@
-const ConfigManager = require("../config/ConfigManager");
+const ConfigManager = require('../config/ConfigManager');
 // backend/lib/database/DatabaseFactory.js
 // 데이터베이스 팩토리 - 모든 DB 타입을 통합 관리
 
@@ -32,9 +32,9 @@ class DatabaseFactory {
     /**
      * 설정 로드 (환경변수 기반)
      */
-loadConfig() {
-    const configManager = ConfigManager.getInstance();
-    const dbType = configManager.get("DATABASE_TYPE") || "sqlite";
+    loadConfig() {
+        const configManager = ConfigManager.getInstance();
+        const dbType = configManager.get('DATABASE_TYPE') || 'sqlite';
         
         const config = {
             database: {
@@ -123,23 +123,23 @@ loadConfig() {
         let connectionConfig;
         
         switch (dbType.toLowerCase()) {
-            case 'postgresql':
-            case 'postgres':
-                connectionConfig = this.config.postgresql;
-                break;
-            case 'sqlite':
-            case 'sqlite3':
-                connectionConfig = this.config.sqlite;
-                break;
-            case 'mariadb':
-            case 'mysql':
-                connectionConfig = this.config.mariadb;
-                break;
-            case 'mssql':
-                connectionConfig = this.config.mssql;
-                break;
-            default:
-                throw new Error(`설정되지 않은 데이터베이스 타입: ${dbType}`);
+        case 'postgresql':
+        case 'postgres':
+            connectionConfig = this.config.postgresql;
+            break;
+        case 'sqlite':
+        case 'sqlite3':
+            connectionConfig = this.config.sqlite;
+            break;
+        case 'mariadb':
+        case 'mysql':
+            connectionConfig = this.config.mariadb;
+            break;
+        case 'mssql':
+            connectionConfig = this.config.mssql;
+            break;
+        default:
+            throw new Error(`설정되지 않은 데이터베이스 타입: ${dbType}`);
         }
 
         try {

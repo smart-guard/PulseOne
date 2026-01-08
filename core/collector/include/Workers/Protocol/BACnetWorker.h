@@ -208,6 +208,9 @@ public:
                             uint8_t priority = BACNET_NO_PRIORITY);
     
     bool WriteBACnetDataPoint(const std::string& point_id, const DataValue& value);    
+
+    // 스케줄 동기화 (Step 15 추가 - 테스트를 위해 public 개방)
+    bool SyncSchedulesWithDevices();
     
     // =============================================================================
     // BaseDeviceWorker Write 인터페이스 구현
@@ -302,6 +305,7 @@ private:
     PulseOne::Structs::DriverConfig CreateDriverConfigFromDeviceInfo();
     bool InitializeBACnetDriver();
     void ShutdownBACnetDriver();
+    
     
     // 데이터 스캔 스레드
     void DataScanThreadFunction();

@@ -3,7 +3,7 @@
 // =============================================================================
 
 #include "Client/RedisClientImpl.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include <stdarg.h>
 #include <functional>

@@ -8,7 +8,7 @@
 #include "Workers/WorkerManager.h"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/DeviceRepository.h"  // 실제 헤더 include
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 
 #include <thread>
@@ -56,8 +56,15 @@ void DeviceApiCallbacks::Setup(RestApiServer* server) {
                         // WorkerManager에서 실시간 상태 조회
                         auto& worker_mgr = Workers::WorkerManager::getInstance();
                         std::string device_id = std::to_string(device.getId());
-                        device_json["status"] = worker_mgr.IsWorkerRunning(device_id) ? "running" : "stopped";
-                        device_json["connection_status"] = worker_mgr.IsWorkerRunning(device_id) ? "connected" : "disconnected";
+                        
+                        auto status_json = worker_mgr.GetWorkerStatus(device_id);
+                        if (status_json.contains("error")) {
+                            device_json["status"] = "stopped";
+                            device_json["connection_status"] = "disconnected";
+                        } else {
+                            device_json["status"] = status_json.value("state", "unknown");
+                            device_json["connection_status"] = status_json.value("connected", false) ? "connected" : "disconnected";
+                        }
                         
                         device_list.push_back(device_json);
                     }
@@ -97,19 +104,15 @@ void DeviceApiCallbacks::Setup(RestApiServer* server) {
             
             auto& worker_mgr = Workers::WorkerManager::getInstance();
             
-            json status = json::object();
-            status["device_id"] = device_id;
-            status["running"] = worker_mgr.IsWorkerRunning(device_id);
-            status["paused"] = false;
-            status["connected"] = worker_mgr.IsWorkerRunning(device_id);
-            status["uptime"] = "0d 0h 0m 0s";
-            status["last_error"] = "";
-            status["message_count"] = 0;
-            status["scan_rate"] = 1000;
-            status["connection_attempts"] = 0;
-            status["successful_scans"] = 0;
-            status["failed_scans"] = 0;
-            status["average_response_time"] = 0.0;
+            // WorkerManager에서 직접 상세 상태 JSON 가져오기
+            json status = worker_mgr.GetWorkerStatus(device_id);
+            
+            // 추가 정보 (필요시)
+            if (!status.contains("error")) {
+                status["uptime"] = "0d 0h 0m 0s"; // TODO: Worker에서 uptime 관리 필요
+                status["last_error"] = "";
+                status["scan_rate"] = status.contains("metadata") ? status["metadata"].value("polling_interval_ms", 1000) : 1000;
+            }
             
             return status;
             
@@ -216,6 +219,34 @@ void DeviceApiCallbacks::Setup(RestApiServer* server) {
         }
     });
 
+    server->SetDeviceReloadSettingsCallback([=](const std::string& device_id) -> bool {
+        try {
+            LogManager::getInstance().Info("API: Reloading settings for device " + device_id);
+            auto& worker_mgr = Workers::WorkerManager::getInstance();
+            return worker_mgr.ReloadWorkerSettings(device_id);
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("API: Exception reloading settings for " + device_id + " - " + e.what());
+            return false;
+        }
+    });
+
+    server->SetDiscoveryStartCallback([=](const std::string& device_id, bool force) -> bool {
+        try {
+            LogManager::getInstance().Info("API: Starting discovery for device " + device_id + (force ? " (force)" : ""));
+            auto& worker_mgr = Workers::WorkerManager::getInstance();
+            
+            // 디스커버리 시작 전 설정을 먼저 리로드하여 auto_registration_enabled가 최신인지 확인
+            worker_mgr.ReloadWorkerSettings(device_id);
+            
+            // 실제 디스커버리 로직 트리거 (현재는 설정 리로드만으로도 워커가 인지하게 됨)
+            // 미래에는 워커에 직접 명시적인 Scan() 명령을 내릴 수도 있음
+            return true;
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("API: Exception starting discovery for " + device_id + " - " + e.what());
+            return false;
+        }
+    });
+
     // ==========================================================================
     // 전체 시스템 재초기화 콜백 - 실제 재구성 로직
     // ==========================================================================
@@ -254,6 +285,28 @@ void DeviceApiCallbacks::Setup(RestApiServer* server) {
             
         } catch (const std::exception& e) {
             LogManager::getInstance().Error("REINITIALIZATION FAILED: " + std::string(e.what()));
+            return false;
+        }
+    });
+
+    server->SetDigitalOutputCallback([=](const std::string& device_id, const std::string& output_id, bool enable) -> bool {
+        try {
+            LogManager::getInstance().Info("API: Controlling digital output " + output_id + " on device " + device_id);
+            auto& worker_mgr = Workers::WorkerManager::getInstance();
+            return worker_mgr.ControlDigitalOutput(device_id, output_id, enable);
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("API: Exception controlling digital output - " + std::string(e.what()));
+            return false;
+        }
+    });
+
+    server->SetAnalogOutputCallback([=](const std::string& device_id, const std::string& output_id, double value) -> bool {
+        try {
+            LogManager::getInstance().Info("API: Controlling analog output " + output_id + " on device " + device_id);
+            auto& worker_mgr = Workers::WorkerManager::getInstance();
+            return worker_mgr.ControlAnalogOutput(device_id, output_id, value);
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("API: Exception controlling analog output - " + std::string(e.what()));
             return false;
         }
     });

@@ -10,7 +10,7 @@
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Common/Enums.h"
 #include "Alarm/AlarmTypes.h"
 #include "Database/Repositories/CurrentValueRepository.h"

@@ -24,7 +24,7 @@
 // Forward declarations
 class LogManager;
 class ConfigManager;
-class DatabaseManager;
+#include "DatabaseManager.hpp"
 
 namespace PulseOne {
 namespace Database {
@@ -44,7 +44,7 @@ namespace Core {
  * 
  * 전체 시스템의 생명주기를 관리하며, 다음 구성요소들을 초기화하고 운영합니다:
  * - 설정 관리 (ConfigManager)
- * - 데이터베이스 연결 (DatabaseManager) 
+ * - 데이터베이스 연결 (DbLib::DatabaseManager) 
  * - 데이터 저장소 (RepositoryFactory)
  * - 워커 팩토리 (WorkerFactory) - 생성 전담
  * - 워커 관리자 (WorkerManager) - 관리 전담

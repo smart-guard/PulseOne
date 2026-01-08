@@ -326,7 +326,7 @@ describe('🔥 Repository → Controller → Route 통합 검증', () => {
         
         console.log('✅ 전체 시스템 상태 정상!');
     });
-// =========================================================================
+    // =========================================================================
     // 8. Lazy Loading 검증 테스트 (새로 추가)
     // =========================================================================
 
@@ -394,7 +394,7 @@ describe('🔥 Repository → Controller → Route 통합 검증', () => {
         
         // 3. 최종 상태 확인
         const finalStats = factory.getAllStats();
-        console.log(`\n📊 최종 결과:`);
+        console.log('\n📊 최종 결과:');
         console.log(`   - 성공한 Repository: ${successCount}/7개`);
         console.log(`   - 새로 생성된 Repository: ${newlyCreated}개`);
         console.log(`   - 총 Repository 개수: ${finalStats.factory.repositoryCount}개`);

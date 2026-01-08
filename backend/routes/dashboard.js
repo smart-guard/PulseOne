@@ -36,7 +36,7 @@ function initRepositories() {
         siteRepo = new SiteRepository();
         alarmOccurrenceRepo = new AlarmOccurrenceRepository();
         alarmRuleRepo = new AlarmRuleRepository();
-        console.log("Dashboard Repositories 초기화 완료 (CrossPlatformManager 사용)");
+        console.log('Dashboard Repositories 초기화 완료 (CrossPlatformManager 사용)');
     }
 }
 
@@ -163,18 +163,18 @@ router.post('/service/:serviceName/control', async (req, res) => {
         let result;
         
         switch (serviceName.toLowerCase()) {
-            case 'collector':
-                result = await handleCollectorService(action);
-                break;
-            case 'redis':
-                result = await handleRedisService(action);
-                break;
-            case 'database':
-                result = await handleDatabaseService(action);
-                break;
-            default:
-                return res.status(404).json(createResponse(false, null, 
-                    `Unknown service: ${serviceName}`, 'SERVICE_NOT_FOUND'));
+        case 'collector':
+            result = await handleCollectorService(action);
+            break;
+        case 'redis':
+            result = await handleRedisService(action);
+            break;
+        case 'database':
+            result = await handleDatabaseService(action);
+            break;
+        default:
+            return res.status(404).json(createResponse(false, null, 
+                `Unknown service: ${serviceName}`, 'SERVICE_NOT_FOUND'));
         }
 
         if (result.success) {
@@ -200,14 +200,14 @@ router.post('/service/:serviceName/control', async (req, res) => {
  */
 async function handleCollectorService(action) {
     switch (action) {
-        case 'start':
-            return await CrossPlatformManager.startCollector();
-        case 'stop':
-            return await CrossPlatformManager.stopCollector();
-        case 'restart':
-            return await CrossPlatformManager.restartCollector();
-        default:
-            return { success: false, error: `Unknown action: ${action}` };
+    case 'start':
+        return await CrossPlatformManager.startCollector();
+    case 'stop':
+        return await CrossPlatformManager.stopCollector();
+    case 'restart':
+        return await CrossPlatformManager.restartCollector();
+    default:
+        return { success: false, error: `Unknown action: ${action}` };
     }
 }
 
@@ -216,14 +216,14 @@ async function handleCollectorService(action) {
  */
 async function handleRedisService(action) {
     switch (action) {
-        case 'start':
-            return await CrossPlatformManager.startRedis();
-        case 'stop':
-            return await CrossPlatformManager.stopRedis();
-        case 'restart':
-            return await CrossPlatformManager.restartRedis();
-        default:
-            return { success: false, error: `Unknown action: ${action}` };
+    case 'start':
+        return await CrossPlatformManager.startRedis();
+    case 'stop':
+        return await CrossPlatformManager.stopRedis();
+    case 'restart':
+        return await CrossPlatformManager.restartRedis();
+    default:
+        return { success: false, error: `Unknown action: ${action}` };
     }
 }
 
@@ -233,41 +233,41 @@ async function handleRedisService(action) {
 async function handleDatabaseService(action) {
     return new Promise((resolve) => {
         switch (action) {
-            case 'start':
-                testDatabaseConnection()
-                    .then(() => {
-                        resolve({ 
-                            success: true, 
-                            message: 'SQLite 데이터베이스 연결이 정상입니다.',
-                            data: { type: 'sqlite', status: 'connected' }
-                        });
-                    })
-                    .catch((error) => {
-                        resolve({ 
-                            success: false, 
-                            error: `데이터베이스 연결 실패: ${error.message}`
-                        });
+        case 'start':
+            testDatabaseConnection()
+                .then(() => {
+                    resolve({ 
+                        success: true, 
+                        message: 'SQLite 데이터베이스 연결이 정상입니다.',
+                        data: { type: 'sqlite', status: 'connected' }
                     });
-                break;
-                
-            case 'stop':
-                resolve({ 
-                    success: true, 
-                    message: 'SQLite는 파일 기반 데이터베이스로 별도 중지가 필요하지 않습니다.',
-                    data: { type: 'sqlite', note: 'File-based database' }
+                })
+                .catch((error) => {
+                    resolve({ 
+                        success: false, 
+                        error: `데이터베이스 연결 실패: ${error.message}`
+                    });
                 });
-                break;
+            break;
                 
-            case 'restart':
-                resolve({ 
-                    success: true, 
-                    message: 'SQLite 데이터베이스 재연결을 시뮬레이션했습니다.',
-                    data: { type: 'sqlite', action: 'simulated_restart' }
-                });
-                break;
+        case 'stop':
+            resolve({ 
+                success: true, 
+                message: 'SQLite는 파일 기반 데이터베이스로 별도 중지가 필요하지 않습니다.',
+                data: { type: 'sqlite', note: 'File-based database' }
+            });
+            break;
                 
-            default:
-                resolve({ success: false, error: `Unknown action: ${action}` });
+        case 'restart':
+            resolve({ 
+                success: true, 
+                message: 'SQLite 데이터베이스 재연결을 시뮬레이션했습니다.',
+                data: { type: 'sqlite', action: 'simulated_restart' }
+            });
+            break;
+                
+        default:
+            resolve({ success: false, error: `Unknown action: ${action}` });
         }
     });
 }
@@ -284,7 +284,7 @@ function testDatabaseConnection() {
         try {
             const connections = require('../app').locals.getDB();
             if (connections && connections.db) {
-                connections.db.get("SELECT 1", (err, row) => {
+                connections.db.get('SELECT 1', (err, row) => {
                     if (err) {
                         reject(err);
                     } else {

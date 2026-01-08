@@ -6,7 +6,7 @@
  */
 
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Platform/PlatformCompat.h"
 #include "Security/SecretManager.h"
 #include <fstream>
@@ -83,12 +83,20 @@ void ConfigManager::ensureInitialized() {
         return;
     }
     
-    std::lock_guard<std::mutex> lock(init_mutex_);
+    static thread_local bool in_config_init = false;
+    if (in_config_init) {
+        return; // 현재 스레드에서 이미 초기화 중이면 재진입 방지
+    }
+    
+    std::lock_guard<std::recursive_mutex> lock(init_mutex_);
     if (initialized_.load(std::memory_order_relaxed)) {
         return;
     }
     
+    in_config_init = true;
     doInitialize();
+    in_config_init = false;
+    
     initialized_.store(true, std::memory_order_release);
 }
 

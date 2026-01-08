@@ -1,170 +1,171 @@
-// =============================================================================
-// backend/lib/database/repositories/ProtocolRepository.js
-// DeviceRepository 패턴 100% 동일한 프로토콜 전용 Repository
-// =============================================================================
-
 const BaseRepository = require('./BaseRepository');
-const ProtocolQueries = require('../queries/ProtocolQueries');
 
 class ProtocolRepository extends BaseRepository {
     constructor() {
-        // DeviceRepository와 동일한 패턴: 매개변수 없는 생성자
         super('protocols');
-        console.log('🔌 ProtocolRepository initialized with standard pattern');
     }
 
     // ==========================================================================
-    // 기본 CRUD 연산 (ProtocolQueries 사용)
+    // 기본 CRUD 연산 (Knex 사용)
     // ==========================================================================
 
     async findAll(filters = {}) {
         try {
-            console.log('ProtocolRepository.findAll 호출:', filters);
-            
-            let query = ProtocolQueries.getProtocolsWithDeviceStats();
-            const params = [];
-            const conditions = [];
+            const query = this.query('p')
+                .select('p.*')
+                .count('d.id as device_count')
+                .count({ enabled_count: this.knex.raw('CASE WHEN d.is_enabled = 1 THEN 1 END') })
+                .count({ connected_count: this.knex.raw("CASE WHEN ds.connection_status = 'connected' THEN 1 END") })
+                .leftJoin('devices as d', 'd.protocol_id', 'p.id')
+                .leftJoin('device_status as ds', 'ds.device_id', 'd.id')
+                .groupBy('p.id');
 
-            // 테넌트 ID 파라미터 추가 (디바이스 통계용)
+            // 테넌트 필터 (디바이스 통계용)
             if (filters.tenantId) {
-                params.push(filters.tenantId);
-            } else {
-                params.push(1); // 기본값
+                // 이 부분은 join된 devices에 대한 필터여야 함
+                // 하지만 protocol 목록은 다 나와야 하므로 join 조건에 넣는 것이 좋음
+                query.leftJoin('devices as d_stat', function () {
+                    this.on('d_stat.protocol_id', '=', 'p.id')
+                        .andOn('d_stat.tenant_id', '=', filters.tenantId);
+                });
+                // 위에서 이미 devices join이 있으니 이를 수정
+                // query 초기화 다시 함
             }
 
-            // 필터 조건 추가
+            // --- 다시 작성 (통계 쿼리 포함) ---
+            const subquery = this.knex('devices as d')
+                .select('d.protocol_id')
+                .count('* as device_count')
+                .count({ enabled_count: this.knex.raw('CASE WHEN d.is_enabled = 1 THEN 1 END') })
+                .count({ connected_count: this.knex.raw("CASE WHEN ds.connection_status = 'connected' THEN 1 END") })
+                .leftJoin('device_status as ds', 'ds.device_id', 'd.id');
+
+            if (filters.tenantId) {
+                subquery.where('d.tenant_id', filters.tenantId);
+            }
+            subquery.groupBy('d.protocol_id').as('stats');
+
+            const mainQuery = this.query('p')
+                .select('p.*')
+                .select({
+                    device_count: this.knex.raw('COALESCE(stats.device_count, 0)'),
+                    enabled_count: this.knex.raw('COALESCE(stats.enabled_count, 0)'),
+                    connected_count: this.knex.raw('COALESCE(stats.connected_count, 0)')
+                })
+                .leftJoin(subquery, 'stats.protocol_id', 'p.id');
+
+            // 필터 적용
             if (filters.category && filters.category !== 'all') {
-                conditions.push('p.category = ?');
-                params.push(filters.category);
+                mainQuery.where('p.category', filters.category);
             }
 
-            if (filters.enabled === 'true') {
-                conditions.push('p.is_enabled = 1');
-            } else if (filters.enabled === 'false') {
-                conditions.push('p.is_enabled = 0');
+            if (filters.enabled !== undefined) {
+                mainQuery.where('p.is_enabled', filters.enabled === 'true' ? 1 : 0);
             }
 
-            if (filters.deprecated === 'true') {
-                conditions.push('p.is_deprecated = 1');
-            } else if (filters.deprecated === 'false') {
-                conditions.push('p.is_deprecated = 0');
+            if (filters.deprecated !== undefined) {
+                mainQuery.where('p.is_deprecated', filters.deprecated === 'true' ? 1 : 0);
             }
 
-            if (filters.uses_serial === 'true') {
-                conditions.push('p.uses_serial = 1');
-            } else if (filters.uses_serial === 'false') {
-                conditions.push('p.uses_serial = 0');
+            if (filters.uses_serial !== undefined) {
+                mainQuery.where('p.uses_serial', filters.uses_serial === 'true' ? 1 : 0);
             }
 
-            if (filters.requires_broker === 'true') {
-                conditions.push('p.requires_broker = 1');
-            } else if (filters.requires_broker === 'false') {
-                conditions.push('p.requires_broker = 0');
+            if (filters.requires_broker !== undefined) {
+                mainQuery.where('p.requires_broker', filters.requires_broker === 'true' ? 1 : 0);
             }
 
             if (filters.search) {
-                conditions.push('(p.display_name LIKE ? OR p.protocol_type LIKE ? OR p.description LIKE ?)');
-                const searchParam = `%${filters.search}%`;
-                params.push(searchParam, searchParam, searchParam);
+                mainQuery.where(function () {
+                    this.where('p.display_name', 'like', `%${filters.search}%`)
+                        .orWhere('p.protocol_type', 'like', `%${filters.search}%`)
+                        .orWhere('p.description', 'like', `%${filters.search}%`);
+                });
             }
 
-            // 조건들을 쿼리에 추가
-            if (conditions.length > 0) {
-                query += ' WHERE ' + conditions.join(' AND ');
-            }
+            // 정렬 및 페이징
+            const sortBy = filters.sortBy || 'display_name';
+            const sortOrder = filters.sortOrder || 'ASC';
+            mainQuery.orderBy(`p.${sortBy}`, sortOrder);
 
-            // 정렬 추가
-            query += ProtocolQueries.addSortBy(filters.sortBy, filters.sortOrder);
-
-            // 페이징 처리
             if (filters.limit) {
-                query += ProtocolQueries.addLimit();
-                params.push(parseInt(filters.limit));
-                
+                mainQuery.limit(parseInt(filters.limit));
                 if (filters.offset) {
-                    query += ProtocolQueries.addOffset();
-                    params.push(parseInt(filters.offset));
+                    mainQuery.offset(parseInt(filters.offset));
                 }
             }
 
-            const protocols = await this.executeQuery(query, params);
+            const protocols = await mainQuery;
+            return protocols.map(p => this.parseProtocol(p));
 
-            console.log(`✅ 프로토콜 ${protocols.length}개 조회 완료`);
-
-            return protocols.map(protocol => this.parseProtocol(protocol));
-            
         } catch (error) {
-            console.error('ProtocolRepository.findAll 실패:', error.message);
+            this.logger.error('ProtocolRepository.findAll 실패:', error);
             throw error;
         }
     }
 
     async findById(id, tenantId = null) {
         try {
-            console.log(`ProtocolRepository.findById 호출: id=${id}, tenantId=${tenantId}`);
-            
-            let query = ProtocolQueries.getProtocolsWithDeviceStats();
-            const params = [tenantId || 1]; // 디바이스 통계용 테넌트 ID
+            // findAll의 로직을 재사용하여 통계 포함 조회
+            const protocols = await this.findAll({ tenantId, search: null, limit: 1, offset: 0, id });
+            // findAll은 복잡하니, 간단하게 findById용 쿼리 따로 작성
 
-            query += ' WHERE p.id = ?';
-            params.push(id);
+            const subquery = this.knex('devices as d')
+                .select('d.protocol_id')
+                .count('* as device_count')
+                .count({ enabled_count: this.knex.raw('CASE WHEN d.is_enabled = 1 THEN 1 END') })
+                .count({ connected_count: this.knex.raw("CASE WHEN ds.connection_status = 'connected' THEN 1 END") })
+                .leftJoin('device_status as ds', 'ds.device_id', 'd.id');
 
-            const protocols = await this.executeQuery(query, params);
-            
-            if (protocols.length === 0) {
-                console.log(`프로토콜 ID ${id} 찾을 수 없음`);
-                return null;
+            if (tenantId) {
+                subquery.where('d.tenant_id', tenantId);
             }
-            
-            console.log(`✅ 프로토콜 ID ${id} 조회 성공: ${protocols[0].display_name}`);
-            
-            return this.parseProtocol(protocols[0]);
-            
+            subquery.groupBy('d.protocol_id').as('stats');
+
+            const protocol = await this.query('p')
+                .select('p.*')
+                .select({
+                    device_count: this.knex.raw('COALESCE(stats.device_count, 0)'),
+                    enabled_count: this.knex.raw('COALESCE(stats.enabled_count, 0)'),
+                    connected_count: this.knex.raw('COALESCE(stats.connected_count, 0)')
+                })
+                .leftJoin(subquery, 'stats.protocol_id', 'p.id')
+                .where('p.id', id)
+                .first();
+
+            return protocol ? this.parseProtocol(protocol) : null;
         } catch (error) {
-            console.error('ProtocolRepository.findById 실패:', error.message);
+            this.logger.error('ProtocolRepository.findById 실패:', error);
             throw error;
         }
     }
 
     async findByType(protocolType) {
         try {
-            const query = ProtocolQueries.findByType();
-            const protocols = await this.executeQuery(query, [protocolType]);
-            
-            if (protocols.length === 0) {
-                return null;
-            }
-            
-            return this.parseProtocol(protocols[0]);
-            
+            const protocol = await this.query().where('protocol_type', protocolType).first();
+            return protocol ? this.parseProtocol(protocol) : null;
         } catch (error) {
-            console.error('ProtocolRepository.findByType 실패:', error.message);
+            this.logger.error('ProtocolRepository.findByType 실패:', error);
             throw error;
         }
     }
 
     async findByCategory(category) {
         try {
-            const query = ProtocolQueries.findByCategory();
-            const protocols = await this.executeQuery(query, [category]);
-            
-            return protocols.map(protocol => this.parseProtocol(protocol));
-            
+            const protocols = await this.query().where('category', category).orderBy('display_name', 'asc');
+            return protocols.map(p => this.parseProtocol(p));
         } catch (error) {
-            console.error('ProtocolRepository.findByCategory 실패:', error.message);
+            this.logger.error('ProtocolRepository.findByCategory 실패:', error);
             throw error;
         }
     }
 
     async findActive() {
         try {
-            const query = ProtocolQueries.findActive();
-            const protocols = await this.executeQuery(query);
-            
-            return protocols.map(protocol => this.parseProtocol(protocol));
-            
+            const protocols = await this.query().where('is_enabled', 1).orderBy('display_name', 'asc');
+            return protocols.map(p => this.parseProtocol(p));
         } catch (error) {
-            console.error('ProtocolRepository.findActive 실패:', error.message);
+            this.logger.error('ProtocolRepository.findActive 실패:', error);
             throw error;
         }
     }
@@ -173,140 +174,91 @@ class ProtocolRepository extends BaseRepository {
     // 생성, 수정, 삭제 연산
     // ==========================================================================
 
-    async create(protocolData, userId = null) {
+    async create(protocolData) {
         try {
-            console.log('ProtocolRepository.create 호출:', protocolData.protocol_type);
-            
-            const query = ProtocolQueries.createProtocol();
-            const currentTime = ProtocolQueries.getCurrentTimestamp(this.dbType);
-            
-            const params = [
-                protocolData.protocol_type,
-                protocolData.display_name,
-                protocolData.description || null,
-                protocolData.default_port || null,
-                protocolData.uses_serial ? 1 : 0,
-                protocolData.requires_broker ? 1 : 0,
-                JSON.stringify(protocolData.supported_operations || []),
-                JSON.stringify(protocolData.supported_data_types || []),
-                JSON.stringify(protocolData.connection_params || {}),
-                protocolData.default_polling_interval || 1000,
-                protocolData.default_timeout || 5000,
-                protocolData.max_concurrent_connections || 1,
-                protocolData.category || 'custom',
-                protocolData.vendor || protocolData.manufacturer || null,
-                protocolData.standard_reference || protocolData.specification || null,
-                protocolData.is_enabled !== false ? 1 : 0,
-                0, // is_deprecated 기본값
-                protocolData.min_firmware_version || null,
-                currentTime, // created_at
-                currentTime  // updated_at
-            ];
+            const insertData = {
+                protocol_type: protocolData.protocol_type,
+                display_name: protocolData.display_name,
+                description: protocolData.description || null,
+                default_port: protocolData.default_port || null,
+                uses_serial: protocolData.uses_serial ? 1 : 0,
+                requires_broker: protocolData.requires_broker ? 1 : 0,
+                supported_operations: JSON.stringify(protocolData.supported_operations || []),
+                supported_data_types: JSON.stringify(protocolData.supported_data_types || []),
+                connection_params: JSON.stringify(protocolData.connection_params || {}),
+                default_polling_interval: protocolData.default_polling_interval || 1000,
+                default_timeout: protocolData.default_timeout || 5000,
+                max_concurrent_connections: protocolData.max_concurrent_connections || 1,
+                category: protocolData.category || 'custom',
+                vendor: protocolData.vendor || protocolData.manufacturer || null,
+                standard_reference: protocolData.standard_reference || protocolData.specification || null,
+                is_enabled: protocolData.is_enabled !== false ? 1 : 0,
+                is_deprecated: 0,
+                min_firmware_version: protocolData.min_firmware_version || null
+            };
 
-            const result = await this.executeNonQuery(query, params);
-            const insertId = result.lastInsertRowid || result.insertId || result.lastID;
-
-            if (insertId) {
-                console.log(`✅ 프로토콜 ${protocolData.protocol_type} 생성 완료 (ID: ${insertId})`);
-                return await this.findById(insertId);
-            } else {
-                throw new Error('Protocol creation failed - no ID returned');
-            }
-            
+            const [id] = await this.query().insert(insertData);
+            return await this.findById(id);
         } catch (error) {
-            console.error('ProtocolRepository.create 실패:', error.message);
+            this.logger.error('ProtocolRepository.create 실패:', error);
             throw error;
         }
     }
 
     async update(id, updateData) {
         try {
-            console.log(`ProtocolRepository.update 호출: ID ${id}`, updateData);
-
-            // 존재 확인
-            const existing = await this.findById(id);
-            if (!existing) {
-                throw new Error(`Protocol with ID ${id} not found`);
-            }
-
-            const query = ProtocolQueries.updateProtocol();
-            const currentTime = ProtocolQueries.getCurrentTimestamp(this.dbType);
-            
-            const params = [
-                updateData.display_name !== undefined ? updateData.display_name : existing.display_name,
-                updateData.description !== undefined ? updateData.description : existing.description,
-                updateData.default_port !== undefined ? updateData.default_port : existing.default_port,
-                updateData.default_polling_interval !== undefined ? updateData.default_polling_interval : existing.default_polling_interval,
-                updateData.default_timeout !== undefined ? updateData.default_timeout : existing.default_timeout,
-                updateData.max_concurrent_connections !== undefined ? updateData.max_concurrent_connections : existing.max_concurrent_connections,
-                updateData.category !== undefined ? updateData.category : existing.category,
-                updateData.vendor !== undefined ? updateData.vendor : (updateData.manufacturer !== undefined ? updateData.manufacturer : existing.vendor),
-                updateData.standard_reference !== undefined ? updateData.standard_reference : (updateData.specification !== undefined ? updateData.specification : existing.standard_reference),
-                updateData.is_enabled !== undefined ? (updateData.is_enabled ? 1 : 0) : existing.is_enabled,
-                updateData.is_deprecated !== undefined ? (updateData.is_deprecated ? 1 : 0) : existing.is_deprecated,
-                updateData.min_firmware_version !== undefined ? updateData.min_firmware_version : existing.min_firmware_version,
-                currentTime, // updated_at
-                id
+            const allowedFields = [
+                'display_name', 'description', 'default_port', 'default_polling_interval',
+                'default_timeout', 'max_concurrent_connections', 'category', 'vendor',
+                'standard_reference', 'is_enabled', 'is_deprecated', 'min_firmware_version'
             ];
 
-            const result = await this.executeNonQuery(query, params);
+            const updateFields = {};
+            allowedFields.forEach(field => {
+                if (updateData[field] !== undefined) {
+                    if (field === 'is_enabled' || field === 'is_deprecated') {
+                        updateFields[field] = updateData[field] ? 1 : 0;
+                    } else {
+                        updateFields[field] = updateData[field];
+                    }
+                }
+            });
 
-            if (result.changes > 0) {
-                console.log(`✅ 프로토콜 ID ${id} 수정 완료`);
-                return await this.findById(id);
-            } else {
-                throw new Error('No changes made to protocol');
+            // manufacturer mapping to vendor if vendor missing
+            if (updateData.manufacturer && !updateData.vendor) {
+                updateFields.vendor = updateData.manufacturer;
             }
-            
+            if (updateData.specification && !updateData.standard_reference) {
+                updateFields.standard_reference = updateData.specification;
+            }
+
+            await this.query().update(updateFields).where('id', id);
+            return await this.findById(id);
         } catch (error) {
-            console.error('ProtocolRepository.update 실패:', error.message);
+            this.logger.error('ProtocolRepository.update 실패:', error);
             throw error;
         }
     }
 
     async delete(id, force = false) {
         try {
-            console.log(`ProtocolRepository.delete 호출: ID ${id}, force=${force}`);
-
-            // 존재 확인
-            const existing = await this.findById(id);
-            if (!existing) {
-                throw new Error(`Protocol with ID ${id} not found`);
-            }
-
-            // 연결된 디바이스 확인
-            const deviceCountQuery = ProtocolQueries.countDevicesByProtocol();
-            const deviceCountResult = await this.executeQuerySingle(deviceCountQuery, [id]);
+            const deviceCountResult = await this.knex('devices').where('protocol_id', id).count('* as count').first();
             const deviceCount = deviceCountResult ? deviceCountResult.count : 0;
 
             if (deviceCount > 0 && !force) {
-                throw new Error(`Cannot delete protocol. ${deviceCount} devices are using this protocol. Use force=true to delete anyway.`);
+                throw new Error(`Cannot delete protocol. ${deviceCount} devices are using this protocol.`);
             }
 
-            // 강제 삭제인 경우 연결된 디바이스들 처리
-            if (force && deviceCount > 0) {
-                console.log(`⚠️ 강제 삭제: ${deviceCount}개 디바이스의 프로토콜을 기본값으로 변경합니다`);
-                
-                // 연결된 디바이스들의 프로토콜을 기본값으로 변경 (예: MODBUS_TCP의 ID가 1이라고 가정)
-                await this.executeNonQuery(
-                    'UPDATE devices SET protocol_id = 1 WHERE protocol_id = ?',
-                    [id]
-                );
-            }
-
-            // 프로토콜 삭제
-            const deleteQuery = ProtocolQueries.deleteProtocol();
-            const result = await this.executeNonQuery(deleteQuery, [id]);
-
-            if (result.changes > 0) {
-                console.log(`✅ 프로토콜 ID ${id} 삭제 완료`);
-                return true;
-            } else {
-                throw new Error('Protocol deletion failed');
-            }
-            
+            return await this.knex.transaction(async trx => {
+                if (force && deviceCount > 0) {
+                    // 기본 프로토콜(가정: id=1, MODBUS_TCP)로 변경하거나, null로 설정
+                    await trx('devices').update({ protocol_id: 1 }).where('protocol_id', id);
+                }
+                const deleted = await trx('protocols').where('id', id).del();
+                return deleted > 0;
+            });
         } catch (error) {
-            console.error('ProtocolRepository.delete 실패:', error.message);
+            this.logger.error('ProtocolRepository.delete 실패:', error);
             throw error;
         }
     }
@@ -316,41 +268,11 @@ class ProtocolRepository extends BaseRepository {
     // ==========================================================================
 
     async enable(id) {
-        try {
-            const query = ProtocolQueries.enableProtocol();
-            const currentTime = ProtocolQueries.getCurrentTimestamp(this.dbType);
-            const result = await this.executeNonQuery(query, [currentTime, id]);
-
-            if (result.changes > 0) {
-                console.log(`✅ 프로토콜 ID ${id} 활성화 완료`);
-                return await this.findById(id);
-            } else {
-                throw new Error(`Protocol with ID ${id} not found`);
-            }
-            
-        } catch (error) {
-            console.error('ProtocolRepository.enable 실패:', error.message);
-            throw error;
-        }
+        return await this.update(id, { is_enabled: true });
     }
 
     async disable(id) {
-        try {
-            const query = ProtocolQueries.disableProtocol();
-            const currentTime = ProtocolQueries.getCurrentTimestamp(this.dbType);
-            const result = await this.executeNonQuery(query, [currentTime, id]);
-
-            if (result.changes > 0) {
-                console.log(`✅ 프로토콜 ID ${id} 비활성화 완료`);
-                return await this.findById(id);
-            } else {
-                throw new Error(`Protocol with ID ${id} not found`);
-            }
-            
-        } catch (error) {
-            console.error('ProtocolRepository.disable 실패:', error.message);
-            throw error;
-        }
+        return await this.update(id, { is_enabled: false });
     }
 
     // ==========================================================================
@@ -359,182 +281,158 @@ class ProtocolRepository extends BaseRepository {
 
     async getStatsByCategory() {
         try {
-            const query = ProtocolQueries.getStatsByCategory();
-            const stats = await this.executeQuery(query);
-            
-            return stats.map(stat => ({
-                category: stat.category,
-                count: parseInt(stat.count) || 0,
-                percentage: parseFloat(stat.percentage) || 0
+            const totalCountResult = await this.query().count('* as count').first();
+            const totalCount = totalCountResult ? totalCountResult.count : 1;
+
+            const stats = await this.query()
+                .select('category')
+                .count('* as count')
+                .groupBy('category');
+
+            return stats.map(s => ({
+                category: s.category,
+                count: parseInt(s.count) || 0,
+                percentage: parseFloat((s.count * 100.0 / totalCount).toFixed(2))
             }));
-            
         } catch (error) {
-            console.error('ProtocolRepository.getStatsByCategory 실패:', error.message);
+            this.logger.error('ProtocolRepository.getStatsByCategory 실패:', error);
             throw error;
         }
     }
 
     async getUsageStats(tenantId = null) {
         try {
-            const query = ProtocolQueries.getUsageStatsByTenant();
-            const stats = await this.executeQuery(query, [tenantId || 1]);
-            
-            return stats.map(stat => ({
-                protocol_id: stat.id,
-                protocol_type: stat.protocol_type,
-                display_name: stat.display_name,
-                category: stat.category,
-                device_count: parseInt(stat.device_count) || 0,
-                enabled_devices: parseInt(stat.enabled_devices) || 0,
-                connected_devices: parseInt(stat.connected_devices) || 0
+            const subquery = this.knex('devices as d')
+                .select('d.protocol_id')
+                .count('* as device_count')
+                .count({ enabled_devices: this.knex.raw('CASE WHEN d.is_enabled = 1 THEN 1 END') })
+                .count({ connected_devices: this.knex.raw("CASE WHEN ds.connection_status = 'connected' THEN 1 END") })
+                .leftJoin('device_status as ds', 'ds.device_id', 'd.id');
+
+            if (tenantId) {
+                subquery.where('d.tenant_id', tenantId);
+            }
+            subquery.groupBy('d.protocol_id').as('stats');
+
+            const protocols = await this.query('p')
+                .select('p.id', 'p.protocol_type', 'p.display_name', 'p.category')
+                .select({
+                    device_count: this.knex.raw('COALESCE(stats.device_count, 0)'),
+                    enabled_devices: this.knex.raw('COALESCE(stats.enabled_devices, 0)'),
+                    connected_devices: this.knex.raw('COALESCE(stats.connected_devices, 0)')
+                })
+                .leftJoin(subquery, 'stats.protocol_id', 'p.id')
+                .orderBy('device_count', 'desc');
+
+            return protocols.map(p => ({
+                ...p,
+                device_count: parseInt(p.device_count),
+                enabled_devices: parseInt(p.enabled_devices),
+                connected_devices: parseInt(p.connected_devices)
             }));
-            
         } catch (error) {
-            console.error('ProtocolRepository.getUsageStats 실패:', error.message);
+            this.logger.error('ProtocolRepository.getUsageStats 실패:', error);
             throw error;
         }
     }
 
     async getTopUsedProtocols(limit = 10) {
         try {
-            const query = ProtocolQueries.getTopUsedProtocols();
-            const protocols = await this.executeQuery(query, [limit]);
-            
-            return protocols.map(protocol => ({
-                protocol_type: protocol.protocol_type,
-                display_name: protocol.display_name,
-                device_count: parseInt(protocol.device_count) || 0
+            const stats = await this.query('p')
+                .select('p.protocol_type', 'p.display_name')
+                .count('d.id as device_count')
+                .join('devices as d', 'd.protocol_id', 'p.id')
+                .where('p.is_enabled', 1)
+                .groupBy('p.protocol_type', 'p.display_name')
+                .orderBy('device_count', 'desc')
+                .limit(limit);
+
+            return stats.map(s => ({
+                protocol_type: s.protocol_type,
+                display_name: s.display_name,
+                device_count: parseInt(s.device_count)
             }));
-            
         } catch (error) {
-            console.error('ProtocolRepository.getTopUsedProtocols 실패:', error.message);
+            this.logger.error('ProtocolRepository.getTopUsedProtocols 실패:', error);
             throw error;
         }
     }
 
     async getCounts() {
         try {
-            const [totalResult, enabledResult, deprecatedResult] = await Promise.all([
-                this.executeQuerySingle(ProtocolQueries.countTotal()),
-                this.executeQuerySingle(ProtocolQueries.countEnabled()),
-                this.executeQuerySingle(ProtocolQueries.countDeprecated())
-            ]);
+            const total = await this.query().count('* as count').first();
+            const enabled = await this.query().where('is_enabled', 1).count('* as count').first();
+            const deprecated = await this.query().where('is_deprecated', 1).count('* as count').first();
 
             return {
-                total_protocols: totalResult ? totalResult.count : 0,
-                enabled_protocols: enabledResult ? enabledResult.count : 0,
-                deprecated_protocols: deprecatedResult ? deprecatedResult.count : 0
+                total_protocols: total ? total.count : 0,
+                enabled_protocols: enabled ? enabled.count : 0,
+                deprecated_protocols: deprecated ? deprecated.count : 0
             };
-            
         } catch (error) {
-            console.error('ProtocolRepository.getCounts 실패:', error.message);
+            this.logger.error('ProtocolRepository.getCounts 실패:', error);
             throw error;
         }
     }
-    /**
-     * 필터 조건에 맞는 프로토콜 총 개수 조회
-     * @param {Object} filters - 필터 조건
-     * @returns {Promise<number>} 총 개수
-     */
+
     async getTotalCount(filters = {}) {
         try {
-            console.log('📊 ProtocolRepository.getTotalCount 호출:', filters);
+            const query = this.query();
 
-            let query = 'SELECT COUNT(*) as total FROM protocols WHERE 1=1';
-            const params = [];  
+            if (filters.category) query.where('category', filters.category);
+            if (filters.enabled !== undefined) query.where('is_enabled', filters.enabled === 'true' ? 1 : 0);
+            if (filters.deprecated !== undefined) query.where('is_deprecated', filters.deprecated === 'true' ? 1 : 0);
+            if (filters.uses_serial !== undefined) query.where('uses_serial', filters.uses_serial === 'true' ? 1 : 0);
+            if (filters.requires_broker !== undefined) query.where('requires_broker', filters.requires_broker === 'true' ? 1 : 0);
 
-            // 카테고리 필터
-            if (filters.category) {
-                query += ' AND category = ?';
-                params.push(filters.category);
-            }
-            
-            // 활성화 상태 필터
-            if (filters.enabled !== undefined) {
-                query += ' AND is_enabled = ?';
-                params.push(filters.enabled === 'true' ? 1 : 0);
-            }
-
-            // 지원 중단 상태 필터  
-            if (filters.deprecated !== undefined) {
-                query += ' AND is_deprecated = ?';
-                params.push(filters.deprecated === 'true' ? 1 : 0);
-            }
-
-            // 시리얼 사용 필터
-            if (filters.uses_serial !== undefined) {
-                query += ' AND uses_serial = ?';
-                params.push(filters.uses_serial === 'true' ? 1 : 0);
-            }
-
-            // 브로커 필요 필터
-            if (filters.requires_broker !== undefined) {
-                query += ' AND requires_broker = ?';
-                params.push(filters.requires_broker === 'true' ? 1 : 0);
-            }
-            
-            // 검색 필터 (프로토콜 타입, 표시명, 설명에서 검색)
             if (filters.search) {
-                query += ' AND (protocol_type LIKE ? OR display_name LIKE ? OR description LIKE ?)';
-                const searchTerm = `%${filters.search}%`;
-                params.push(searchTerm, searchTerm, searchTerm);
+                query.where(function () {
+                    this.where('protocol_type', 'like', `%${filters.search}%`)
+                        .orWhere('display_name', 'like', `%${filters.search}%`)
+                        .orWhere('description', 'like', `%${filters.search}%`);
+                });
             }
 
-            console.log('📊 실행할 COUNT 쿼리:', query);
-            console.log('📊 쿼리 파라미터:', params);
-
-            const result = await this.executeQuerySingle(query, params);
-            const totalCount = result?.total || 0;
-            
-            console.log(`✅ 총 개수 조회 완료: ${totalCount}개`);
-            
-            return totalCount;
-            
+            const result = await query.count('* as count').first();
+            return result ? result.count : 0;
         } catch (error) {
-            console.error('❌ ProtocolRepository.getTotalCount 실패:', error);
+            this.logger.error('ProtocolRepository.getTotalCount 실패:', error);
             throw error;
         }
     }
-    // ==========================================================================
-    // 검증 및 관계
-    // ==========================================================================
 
     async checkProtocolTypeExists(protocolType, excludeId = null) {
         try {
-            const query = ProtocolQueries.checkProtocolTypeExists();
-            const result = await this.executeQuerySingle(query, [protocolType, excludeId || -1]);
-            
-            return result ? result.count > 0 : false;
-            
+            const query = this.query().where('protocol_type', protocolType);
+            if (excludeId) query.whereNot('id', excludeId);
+            const count = await query.count('* as count').first();
+            return count && count.count > 0;
         } catch (error) {
-            console.error('ProtocolRepository.checkProtocolTypeExists 실패:', error.message);
+            this.logger.error('ProtocolRepository.checkProtocolTypeExists 실패:', error);
             throw error;
         }
     }
 
     async getDevicesByProtocol(protocolId, limit = 50, offset = 0) {
         try {
-            const query = ProtocolQueries.getDevicesByProtocol();
-            const devices = await this.executeQuery(query, [protocolId, limit, offset]);
-            
-            return devices.map(device => ({
-                id: device.id,
-                name: device.name,
-                device_type: device.device_type,
-                is_enabled: Boolean(device.is_enabled),
-                connection_status: device.connection_status || 'unknown',
-                last_communication: device.last_communication
+            const devices = await this.knex('devices as d')
+                .select('d.id', 'd.name', 'd.device_type', 'd.is_enabled',
+                    'ds.connection_status', 'ds.last_communication')
+                .leftJoin('device_status as ds', 'ds.device_id', 'd.id')
+                .where('d.protocol_id', protocolId)
+                .orderBy('d.name')
+                .limit(limit)
+                .offset(offset);
+
+            return devices.map(d => ({
+                ...d,
+                is_enabled: Boolean(d.is_enabled)
             }));
-            
         } catch (error) {
-            console.error('ProtocolRepository.getDevicesByProtocol 실패:', error.message);
+            this.logger.error('ProtocolRepository.getDevicesByProtocol 실패:', error);
             throw error;
         }
     }
-
-    // ==========================================================================
-    // 유틸리티 메소드들 - DeviceRepository 패턴과 동일
-    // ==========================================================================
 
     parseProtocol(protocol) {
         if (!protocol) return null;
@@ -559,7 +457,6 @@ class ProtocolRepository extends BaseRepository {
         try {
             return typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
         } catch (error) {
-            console.warn('JSON 파싱 실패:', error.message);
             return null;
         }
     }

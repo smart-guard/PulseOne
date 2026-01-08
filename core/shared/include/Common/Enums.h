@@ -62,6 +62,8 @@ namespace Enums {
         PROFINET = 10,
         HTTP_REST = 11,
         COAP = 12,
+        BLE_BEACON = 13,
+        ROS_BRIDGE = 14,
         CUSTOM = 254,
         MAX_PROTOCOLS = 255
     };

@@ -13,8 +13,8 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/ExportScheduleEntity.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/LogManager.h"
+#include "DatabaseManager.hpp"
+#include "Logging/LogManager.h"
 #include <memory>
 #include <map>
 #include <string>
@@ -157,11 +157,11 @@ private:
     // 의존성 관리
     // =======================================================================
     
-    DatabaseManager* db_manager_;
+    DbLib::DatabaseManager* db_manager_;
     LogManager* logger_;
     
     void initializeDependencies() {
-        db_manager_ = &DatabaseManager::getInstance();
+        db_manager_ = &DbLib::DatabaseManager::getInstance();
         logger_ = &LogManager::getInstance();
     }
 

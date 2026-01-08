@@ -1,0 +1,51 @@
+# =============================================================================
+# Step 25: LoRa Driver Test
+# =============================================================================
+
+step25-lora-build: create-dirs $(BIN_DIR)/test_step25_lora
+
+$(OBJ_DIR)/test_step25_lora.o: test_step25_lora.cpp
+\t@mkdir -p $(dir $@)
+\t@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+\t@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BIN_DIR)/test_step25_lora: $(ALL_OBJECTS) $(OBJ_DIR)/test_step25_lora.o $(OBJ_DIR)/Drivers/Lora/LoRaDriver.o
+\t@mkdir -p $(BIN_DIR)
+\t@echo -e "$(PURPLE)🔗 Linking Step 25 LoRa Test [$(PLATFORM)]...$(NC)"
+\t@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step25_lora.o $(OBJ_DIR)/Drivers/Lora/LoRaDriver.o $(TEST_LIBS) $(LIBS) -o $@
+\t@echo -e "$(GREEN)✅ Step 25 LoRa Test build completed!$(NC)"
+
+step25-test: step25-lora-build create-log-dir
+\t$(eval LOG_FILE := $(call get_log_filename,step25_lora))
+\t@echo -e "$(MAGENTA)🚀 Running Step 25 LoRa Test [$(PLATFORM)]...$(NC)"
+\t$(call create_log_summary,$(LOG_FILE),Step 25 LoRa)
+\t@./$(BIN_DIR)/test_step25_lora 2>&1 | tee $(LOG_FILE)
+\t@echo -e "$(YELLOW)============================================$(NC)"
+\t$(call analyze_log,$(LOG_FILE),Step 25 LoRa)
+\t@echo -e "$(GREEN)Step 25 LoRa Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# =============================================================================
+# Step 26: HTTP/REST Driver Test
+# =============================================================================
+
+step26-http-build: create-dirs $(BIN_DIR)/test_step26_http_rest
+
+$(OBJ_DIR)/test_step26_http_rest.o: test_step26_http_rest.cpp
+\t@mkdir -p $(dir $@)
+\t@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+\t@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BIN_DIR)/test_step26_http_rest: $(ALL_OBJECTS) $(OBJ_DIR)/test_step26_http_rest.o $(OBJ_DIR)/Drivers/HttpRest/HttpRestDriver.o
+\t@mkdir -p $(BIN_DIR)
+\t@echo -e "$(PURPLE)🔗 Linking Step 26 HTTP/REST Test [$(PLATFORM)]...$(NC)"
+\t@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step26_http_rest.o $(OBJ_DIR)/Drivers/HttpRest/HttpRestDriver.o $(TEST_LIBS) $(LIBS) -o $@
+\t@echo -e "$(GREEN)✅ Step 26 HTTP/REST Test build completed!$(NC)"
+
+step26-test: step26-http-build create-log-dir
+\t$(eval LOG_FILE := $(call get_log_filename,step26_http_rest))
+\t@echo -e "$(MAGENTA)🚀 Running Step 26 HTTP/REST Test [$(PLATFORM)]...$(NC)"
+\t$(call create_log_summary,$(LOG_FILE),Step 26 HTTP/REST)
+\t@./$(BIN_DIR)/test_step26_http_rest 2>&1 | tee $(LOG_FILE)
+\t@echo -e "$(YELLOW)============================================$(NC)"
+\t$(call analyze_log,$(LOG_FILE),Step 26 HTTP/REST)
+\t@echo -e "$(GREEN)Step 26 HTTP/REST Test completed. Log saved: $(LOG_FILE)$(NC)"

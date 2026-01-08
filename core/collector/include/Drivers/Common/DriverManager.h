@@ -8,7 +8,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Config/ConfigManager.h"
 
 #ifdef HAVE_DRIVER_SYSTEM

@@ -1,0 +1,74 @@
+#ifndef ALARM_ENGINE_H
+#define ALARM_ENGINE_H
+
+#include <memory>
+#include <vector>
+#include <atomic>
+#include <mutex>
+#include <shared_mutex>
+
+#include "Common/Structs.h"
+#include "Alarm/AlarmTypes.h"
+#include "Alarm/AlarmRuleRegistry.h"
+#include "Alarm/AlarmStateCache.h"
+#include "Alarm/AlarmEvaluator.h"
+
+namespace PulseOne {
+namespace Alarm {
+
+/**
+ * @brief AlarmEngine 클래스 (Facade 패턴)
+ * 알람 규칙 조회, 상태 관리, 평가 로직을 총괄합니다.
+ */
+class AlarmEngine {
+public:
+    static AlarmEngine& getInstance();
+    
+    // Lifecycle
+    bool initialize();
+    void shutdown();
+    bool isInitialized() const { return initialized_.load(); }
+
+    // Evaluation Interface
+    std::vector<PulseOne::Structs::AlarmEvent> evaluateForMessage(const PulseOne::Structs::DeviceDataMessage& message);
+    std::vector<PulseOne::Structs::AlarmEvent> evaluateForPoint(int tenant_id, int point_id, const PulseOne::Structs::DataValue& value);
+    
+    // State Query
+    bool isAlarmActive(int rule_id) const { return state_cache_.isAlarmActive(rule_id); }
+    void SeedPointValue(int point_id, const PulseOne::Structs::DataValue& value);
+    
+    // Configuration
+    bool loadRules(int tenant_id = 0) { return registry_.loadRules(tenant_id); }
+    bool reloadRule(int rule_id) { return registry_.reloadRule(rule_id); }
+    
+    // Statistics
+    nlohmann::json getStatistics() const;
+
+private:
+    AlarmEngine();
+    ~AlarmEngine();
+    AlarmEngine(const AlarmEngine&) = delete;
+    AlarmEngine& operator=(const AlarmEngine&) = delete;
+
+    void cleanupCaches();
+
+    std::atomic<bool> initialized_{false};
+    
+    // Components
+    AlarmRuleRegistry registry_;
+    AlarmStateCache state_cache_;
+    AlarmEvaluator evaluator_;
+    
+    // Stats
+    std::atomic<uint64_t> total_evaluations_{0};
+    std::atomic<uint64_t> alarms_raised_{0};
+    std::atomic<uint64_t> alarms_cleared_{0};
+    std::atomic<uint64_t> evaluations_errors_{0};
+    
+    mutable std::mutex stats_mutex_;
+};
+
+} // namespace Alarm
+} // namespace PulseOne
+
+#endif // ALARM_ENGINE_H

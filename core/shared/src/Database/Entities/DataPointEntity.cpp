@@ -43,16 +43,16 @@ DataPointEntity::DataPointEntity()
     , scaling_offset_(0.0)
     , min_value_(std::numeric_limits<double>::lowest())
     , max_value_(std::numeric_limits<double>::max())
-    , log_enabled_(true)
+    , is_log_enabled_(true)
     , log_interval_ms_(0)
     , log_deadband_(0.0)
     , polling_interval_ms_(1000)
     // 품질 관리 필드 초기화 (새로 추가)
-    , quality_check_enabled_(true)
-    , range_check_enabled_(true)
+    , is_quality_check_enabled_(true)
+    , is_range_check_enabled_(true)
     , rate_of_change_limit_(0.0)
     // 알람 관련 필드 초기화 (새로 추가)
-    , alarm_enabled_(false)
+    , is_alarm_enabled_(false)
     , alarm_priority_("medium")
     // 메타데이터
     , group_name_("")
@@ -263,12 +263,12 @@ bool DataPointEntity::updateToDatabase() {
 // =============================================================================
 
 bool DataPointEntity::validateValue(double value) const {
-    if (!quality_check_enabled_) return true;
+    if (!is_quality_check_enabled_) return true;
     
     bool valid = true;
     
     // 범위 체크
-    if (range_check_enabled_) {
+    if (is_range_check_enabled_) {
         valid = valid && (value >= min_value_) && (value <= max_value_);
     }
     
@@ -558,12 +558,12 @@ json DataPointEntity::getAlarmContext() const {
     context["address_string"] = address_string_;
     
     // 알람 관련 정보
-    context["alarm_enabled"] = alarm_enabled_;
+    context["alarm_enabled"] = is_alarm_enabled_;
     context["alarm_priority"] = alarm_priority_;
     
     // 품질 관리 정보
-    context["quality_check_enabled"] = quality_check_enabled_;
-    context["range_check_enabled"] = range_check_enabled_;
+    context["quality_check_enabled"] = is_quality_check_enabled_;
+    context["range_check_enabled"] = is_range_check_enabled_;
     context["rate_of_change_limit"] = rate_of_change_limit_;
     
     // 통계 정보
@@ -612,7 +612,7 @@ json DataPointEntity::getPerformanceMetrics() const {
     
     // 폴링 정보
     metrics["polling_interval_ms"] = polling_interval_ms_;
-    metrics["log_enabled"] = log_enabled_;
+    metrics["log_enabled"] = is_log_enabled_;
     metrics["log_interval_ms"] = log_interval_ms_;
     
     // 최근 활동 시간
@@ -626,9 +626,9 @@ json DataPointEntity::getPerformanceMetrics() const {
     metrics["is_active"] = (last_read_ago < 300000); // 5분 = 300,000ms
     
     // 품질 및 알람 상태
-    metrics["quality_enabled"] = quality_check_enabled_;
-    metrics["range_check_enabled"] = range_check_enabled_;
-    metrics["alarm_enabled"] = alarm_enabled_;
+    metrics["quality_enabled"] = is_quality_check_enabled_;
+    metrics["range_check_enabled"] = is_range_check_enabled_;
+    metrics["alarm_enabled"] = is_alarm_enabled_;
     
     return metrics;
 }

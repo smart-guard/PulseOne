@@ -5,9 +5,9 @@
 
 #include "Core/Application.h"
 
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 #include "Workers/WorkerManager.h"
 #include "Alarm/AlarmStartupRecovery.h"
@@ -17,6 +17,7 @@
 #include "Api/ConfigApiCallbacks.h"
 #include "Api/DeviceApiCallbacks.h"
 #include "Api/HardwareApiCallbacks.h"
+#include "Api/LogApiCallbacks.h"
 #endif
 
 #include <iostream>
@@ -77,12 +78,9 @@ bool CollectorApplication::Initialize() {
         }
         
         // 2. 데이터베이스 관리자 초기화
-        LogManager::getInstance().Info("Step 2/5: Initializing DatabaseManager...");
-        if (!DatabaseManager::getInstance().initialize()) {
-            LogManager::getInstance().Error("✗ DatabaseManager initialization failed");
-            return false;
-        }
-        LogManager::getInstance().Info("✓ DatabaseManager initialized successfully");
+        LogManager::getInstance().Info("Step 2/5: Database initialization deferred to RepositoryFactory");
+        // Initialization is handled by RepositoryFactory to consolidate config loading logic
+        LogManager::getInstance().Info("✓ DbLib::DatabaseManager will be initialized in Step 3");
         
         // 3. Repository 팩토리 초기화
         LogManager::getInstance().Info("Step 3/5: Initializing RepositoryFactory...");
@@ -181,11 +179,11 @@ void CollectorApplication::MainLoop() {
                     // 시스템 리소스 정보
                     LogManager::getInstance().Info("System Status:");
                     
-                    // DatabaseManager 연결 상태 확인 (enum class 사용)
+                    // DbLib::DatabaseManager 연결 상태 확인 (enum class 사용)
                     bool db_connected = false;
                     try {
-                        db_connected = DatabaseManager::getInstance().isConnected(DatabaseManager::DatabaseType::POSTGRESQL) ||
-                                     DatabaseManager::getInstance().isConnected(DatabaseManager::DatabaseType::SQLITE);
+                        db_connected = DbLib::DatabaseManager::getInstance().isConnected(DbLib::DatabaseManager::DatabaseType::POSTGRESQL) ||
+                                     DbLib::DatabaseManager::getInstance().isConnected(DbLib::DatabaseManager::DatabaseType::SQLITE);
                     } catch (...) {
                         db_connected = false;
                     }
@@ -252,7 +250,7 @@ void CollectorApplication::Cleanup() {
         // 3. 데이터베이스 연결 정리 (자동으로 소멸자에서 처리됨)
         LogManager::getInstance().Info("Step 3/3: Database cleanup...");
         try {
-            // DatabaseManager와 RepositoryFactory는 싱글톤이므로 명시적 정리 불필요
+            // DbLib::DatabaseManager와 RepositoryFactory는 싱글톤이므로 명시적 정리 불필요
             // 소멸자에서 자동으로 연결 해제됨
             LogManager::getInstance().Info("✓ Database cleanup completed");
         } catch (const std::exception& e) {
@@ -292,6 +290,9 @@ bool CollectorApplication::InitializeRestApiServer() {
         
         PulseOne::Api::HardwareApiCallbacks::Setup(api_server_.get());
         LogManager::getInstance().Info("✓ HardwareApiCallbacks registered");
+
+        PulseOne::Api::LogApiCallbacks::Setup(api_server_.get());
+        LogManager::getInstance().Info("✓ LogApiCallbacks registered");
         // API 서버 시작
         if (api_server_->Start()) {
             LogManager::getInstance().Info("✓ REST API Server started on port " + std::to_string(api_port));

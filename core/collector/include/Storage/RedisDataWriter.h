@@ -14,7 +14,7 @@
 #include "Common/Structs.h"
 #include "Common/Enums.h"
 #include "Client/RedisClient.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Storage/BackendFormat.h"  // ← 새로 추가!
 #include "nlohmann/json.hpp"
 #include <memory>
@@ -97,6 +97,16 @@ public:
     size_t SaveWorkerInitialData(
         const std::string& device_id, 
         const std::vector<Structs::TimestampedValue>& current_values);
+
+    /**
+     * @brief Worker 데이터 포인트 동기화 (기존 값 유지)
+     * @param device_id 디바이스 ID
+     * @param points 최신 데이터 포인트 목록
+     * @return 동기화된 포인트 수
+     */
+    size_t SyncWorkerDataPoints(
+        const std::string& device_id,
+        const std::vector<Structs::DataPoint>& points);
     
     /**
      * @brief Worker 상태 정보 저장

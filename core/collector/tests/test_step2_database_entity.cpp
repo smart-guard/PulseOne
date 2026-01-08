@@ -4,7 +4,7 @@
  * @date 2025-08-30
  * 
  * 검증 목표:
- * 1. 기존 DatabaseAbstractionLayer SQL 오류 우회 및 해결
+ * 1. 기존 DbLib::DatabaseAbstractionLayer SQL 오류 우회 및 해결
  * 2. Entity별 맞춤형 유효성 검증 로직 구현
  * 3. Repository CRUD 성능 및 안정성 테스트
  * 4. 관계 무결성 및 데이터 일관성 완전 검증
@@ -33,11 +33,11 @@
 
 // 기존 프로젝트 헤더들 (project_knowledge_search 결과 반영)
 #include "Common/Utils.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 
 // Entity 클래스들
 #include "Database/Entities/DeviceEntity.h"
@@ -93,13 +93,13 @@ public:
         std::cout << std::string(60, '=') << std::endl;
     }
     
-    // DatabaseAbstractionLayer 오류 우회 메서드 - 조용한 실행 버전
+    // DbLib::DatabaseAbstractionLayer 오류 우회 메서드 - 조용한 실행 버전
     static std::vector<std::map<std::string, std::string>> ExecuteQuerySafely(
         const std::string& query, bool bypass_abstraction = false, bool silent = true) {
         
         if (bypass_abstraction) {
-            // DatabaseManager 직접 호출로 DatabaseAbstractionLayer 우회
-            auto& db_manager = DatabaseManager::getInstance();
+            // DbLib::DatabaseManager 직접 호출로 DbLib::DatabaseAbstractionLayer 우회
+            auto& db_manager = DbLib::DatabaseManager::getInstance();
             std::vector<std::vector<std::string>> raw_results;
             
             if (db_manager.executeQuery(query, raw_results)) {
@@ -119,13 +119,13 @@ public:
                 return map_results;
             }
         } else {
-            // 기존 DatabaseAbstractionLayer 사용
+            // 기존 DbLib::DatabaseAbstractionLayer 사용
             try {
-                DatabaseAbstractionLayer db_layer;
+                DbLib::DatabaseAbstractionLayer db_layer;
                 return db_layer.executeQuery(query);
             } catch (const std::exception& e) {
                 if (!silent) {
-                    LogManager::getInstance().Error("DatabaseAbstractionLayer error: " + std::string(e.what()));
+                    LogManager::getInstance().Error("DbLib::DatabaseAbstractionLayer error: " + std::string(e.what()));
                 }
                 // 오류 시 직접 호출로 재시도
                 return ExecuteQuerySafely(query, true, silent);
@@ -404,7 +404,7 @@ class Step2DatabaseEntityEnhancedTest : public ::testing::Test {
 protected:
     LogManager* log_manager_;
     ConfigManager* config_manager_;
-    DatabaseManager* db_manager_;
+    DbLib::DatabaseManager* db_manager_;
     RepositoryFactory* repo_factory_;
     
     // Repository들
@@ -427,12 +427,12 @@ protected:
         log_manager_->setLogLevel(LogLevel::WARN);
         
         config_manager_ = &ConfigManager::getInstance();
-        db_manager_ = &DatabaseManager::getInstance();
+        db_manager_ = &DbLib::DatabaseManagerDbLib::DatabaseManager::getInstance();
         repo_factory_ = &RepositoryFactory::getInstance();
         
         // 의존성 초기화
         ASSERT_NO_THROW(config_manager_->initialize()) << "ConfigManager 초기화 실패";
-        ASSERT_NO_THROW(db_manager_->initialize()) << "DatabaseManager 초기화 실패";
+        ASSERT_NO_THROW(db_manager_->initialize()) << "DbLib::DatabaseManager 초기화 실패";
         ASSERT_TRUE(repo_factory_->initialize()) << "RepositoryFactory 초기화 실패";
         
         // Repository 생성

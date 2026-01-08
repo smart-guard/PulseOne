@@ -18,7 +18,7 @@
 #include "Common/Structs.h"
 #include "Alarm/AlarmTypes.h"
 #include "Database/Entities/AlarmRuleEntity.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 
 // ❌ 제거: Redis 의존성 완전 제거
@@ -50,6 +50,7 @@ public:
     // =======================================================================
     // 🎯 라이프사이클 관리
     // =======================================================================
+    bool initialize();
     void shutdown();
     bool isInitialized() const { return initialized_.load(); }
     

@@ -28,7 +28,7 @@ public:
     // 🔥 싱글톤 패턴
     // ==========================================================================
     
-    static PipelineManager& GetInstance() {
+    static PipelineManager& getInstance() {
         static PipelineManager instance;
         return instance;
     }
@@ -38,6 +38,19 @@ public:
     PipelineManager& operator=(const PipelineManager&) = delete;
     PipelineManager(PipelineManager&&) = delete;
     PipelineManager& operator=(PipelineManager&&) = delete;
+
+    // ==========================================================================
+    // 🔥 초기화 및 종료
+    // ==========================================================================
+    
+    /**
+     * @brief PipelineManager 초기화
+     * @return 성공 여부
+     */
+    bool initialize() {
+        Start(); // 기존 Start() 호출
+        return true;
+    }
 
     // ==========================================================================
     // 🔥 순수 큐 관리 인터페이스

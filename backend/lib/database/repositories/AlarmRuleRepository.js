@@ -19,162 +19,154 @@ class AlarmRuleRepository extends BaseRepository {
 
     async findAll(filters = {}) {
         try {
-            console.log('AlarmRuleRepository.findAll 호출:', filters);
-            
-            // FIND_ALL 쿼리에서 ORDER BY 부분 제거
-            let baseQuery = AlarmQueries.AlarmRule.FIND_ALL;
-            const orderByIndex = baseQuery.toUpperCase().indexOf('ORDER BY');
-            if (orderByIndex > -1) {
-                baseQuery = baseQuery.substring(0, orderByIndex).trim();
+            console.log('AlarmRuleRepository.findAll 호출 (Knex):', filters);
+
+            const query = this.query('ar')
+                .leftJoin('devices as d', (clause) => {
+                    clause.on('ar.target_id', '=', 'd.id').andOn('ar.target_type', '=', this.knex.raw("'device'"));
+                })
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .leftJoin('data_points as dp', (clause) => {
+                    clause.on('ar.target_id', '=', 'dp.id').andOn('ar.target_type', '=', this.knex.raw("'data_point'"));
+                })
+                .leftJoin('devices as d2', 'dp.device_id', 'd2.id')
+                .leftJoin('virtual_points as vp', (clause) => {
+                    clause.on('ar.target_id', '=', 'vp.id').andOn('ar.target_type', '=', this.knex.raw("'virtual_point'"));
+                })
+                .select(
+                    'ar.*',
+                    'd.name as device_name',
+                    'd.device_type',
+                    'p.protocol_type',
+                    'p.display_name as protocol_name',
+                    's.name as site_name',
+                    's.location as site_location',
+                    'dp.name as data_point_name',
+                    'dp.unit',
+                    'vp.name as virtual_point_name'
+                );
+
+            // 필터 적용
+            if (filters.tenantId) {
+                query.where('ar.tenant_id', filters.tenantId);
             }
-            
-            let query = baseQuery;
-            const params = [];
-            const conditions = [];
 
-            // 테넌트 ID 필수
-            params.push(filters.tenantId || 1);
-
-            // 필터 조건 추가
             if (filters.targetType && filters.targetType !== 'all') {
-                conditions.push('ar.target_type = ?');
-                params.push(filters.targetType);
+                query.where('ar.target_type', filters.targetType);
             }
 
             if (filters.targetId) {
-                conditions.push('ar.target_id = ?');
-                params.push(parseInt(filters.targetId));
+                query.where('ar.target_id', parseInt(filters.targetId));
             }
 
             if (filters.alarmType && filters.alarmType !== 'all') {
-                conditions.push('ar.alarm_type = ?');
-                params.push(filters.alarmType);
+                query.where('ar.alarm_type', filters.alarmType);
             }
 
             if (filters.severity && filters.severity !== 'all') {
-                conditions.push('ar.severity = ?');
-                params.push(filters.severity);
+                query.where('ar.severity', filters.severity);
             }
 
-            if (filters.isEnabled === true || filters.isEnabled === 'true') {
-                conditions.push('ar.is_enabled = 1');
-            } else if (filters.isEnabled === false || filters.isEnabled === 'false') {
-                conditions.push('ar.is_enabled = 0');
+            if (filters.isEnabled !== undefined) {
+                query.where('ar.is_enabled', filters.isEnabled === true || filters.isEnabled === 'true' ? 1 : 0);
             }
 
             if (filters.category && filters.category !== 'all') {
-                conditions.push('ar.category = ?');
-                params.push(filters.category);
-            }
-
-            if (filters.tag) {
-                conditions.push('ar.tags LIKE ?');
-                params.push(`%${filters.tag}%`);
-            }
-
-            if (filters.templateId) {
-                conditions.push('ar.template_id = ?');
-                params.push(parseInt(filters.templateId));
-            }
-
-            if (filters.ruleGroup) {
-                conditions.push('ar.rule_group = ?');
-                params.push(filters.ruleGroup);
+                query.where('ar.category', filters.category);
             }
 
             if (filters.search) {
-                conditions.push('(ar.name LIKE ? OR ar.description LIKE ? OR ar.category LIKE ? OR ar.tags LIKE ?)');
-                const searchParam = `%${filters.search}%`;
-                params.push(searchParam, searchParam, searchParam, searchParam);
+                const search = `%${filters.search}%`;
+                query.where(function () {
+                    this.where('ar.name', 'like', search)
+                        .orWhere('ar.description', 'like', search)
+                        .orWhere('ar.category', 'like', search)
+                        .orWhere('d.name', 'like', search)
+                        .orWhere('dp.name', 'like', search)
+                        .orWhere('vp.name', 'like', search);
+                });
             }
 
-            // 조건들을 쿼리에 추가
-            if (conditions.length > 0) {
-                query += ' AND ' + conditions.join(' AND ');
-            }
-
-            // 정렬 추가 (한 번만!)
+            // 정렬 및 페이징
+            const page = parseInt(filters.page) || 1;
+            const limit = parseInt(filters.limit) || 50;
+            const offset = (page - 1) * limit;
             const sortBy = filters.sortBy || 'created_at';
             const sortOrder = filters.sortOrder || 'DESC';
-            query += ` ORDER BY ar.${sortBy} ${sortOrder}`;
 
-            // 페이징 처리를 위한 변수
-            const page = filters.page || 1;
-            const limit = filters.limit || 50;
-            const offset = (page - 1) * limit;
+            const [items, countResult] = await Promise.all([
+                query.clone().orderBy(`ar.${sortBy}`, sortOrder).limit(limit).offset(offset),
+                query.clone().clearSelect().count('* as total').first()
+            ]);
 
-            // 전체 개수 먼저 조회 (페이징 정보를 위해)
-            let countQuery = 'SELECT COUNT(*) as total FROM alarm_rules ar WHERE ar.tenant_id = ?';
-            const countParams = [filters.tenantId || 1];
-            
-            if (conditions.length > 0) {
-                countQuery += ' AND ' + conditions.join(' AND ');
-                // 파라미터 복사 시 순서 주의
-                countParams.push(...params.slice(1));
-            }
-            
-            const countResult = await this.executeQuery(countQuery, countParams);
-            const total = countResult.length > 0 ? countResult[0].total : 0;
+            const total = countResult ? parseInt(countResult.total) : 0;
 
-            // 페이징 적용한 실제 데이터 조회
-            query += ' LIMIT ? OFFSET ?';
-            params.push(limit, offset);
+            console.log(`✅ 알람 규칙 ${items.length}개 조회 완료 (전체: ${total}개)`);
 
-            const rules = await this.executeQuery(query, params);
-
-            console.log(`✅ 알람 규칙 ${rules.length}개 조회 완료 (전체: ${total}개)`);
-
-            // 페이징 정보와 함께 반환
             return {
-                items: Array.isArray(rules) ? 
-                    rules.map(rule => this.parseAlarmRule(rule)) : [],
+                items: items.map(rule => this.parseAlarmRule(rule)),
                 pagination: {
-                    page: page,
-                    limit: limit,
-                    total: total,
+                    page,
+                    limit,
+                    total,
                     totalPages: Math.ceil(total / limit),
                     hasNext: page < Math.ceil(total / limit),
                     hasPrev: page > 1
                 }
             };
-            
+
         } catch (error) {
             console.error('AlarmRuleRepository.findAll 실패:', error.message);
-            console.error('쿼리 에러 상세:', error);
-            
-            // 에러 발생 시에도 빈 결과 반환
-            return {
-                items: [],
-                pagination: {
-                    page: filters.page || 1,
-                    limit: filters.limit || 50,
-                    total: 0,
-                    totalPages: 0,
-                    hasNext: false,
-                    hasPrev: false
-                }
-            };
+            throw error;
         }
     }
 
     async findById(id, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.findById 호출: id=${id}, tenantId=${tenantId}`);
-            
-            const query = AlarmQueries.AlarmRule.FIND_BY_ID;
-            const params = [id, tenantId || 1];
+            console.log(`AlarmRuleRepository.findById 호출 (Knex): id=${id}, tenantId=${tenantId}`);
 
-            const rules = await this.executeQuery(query, params);
-            
-            if (rules.length === 0) {
+            const query = this.query('ar')
+                .leftJoin('devices as d', (clause) => {
+                    clause.on('ar.target_id', '=', 'd.id').andOn('ar.target_type', '=', this.knex.raw("'device'"));
+                })
+                .leftJoin('protocols as p', 'd.protocol_id', 'p.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .leftJoin('data_points as dp', (clause) => {
+                    clause.on('ar.target_id', '=', 'dp.id').andOn('ar.target_type', '=', this.knex.raw("'data_point'"));
+                })
+                .leftJoin('devices as d2', 'dp.device_id', 'd2.id')
+                .leftJoin('virtual_points as vp', (clause) => {
+                    clause.on('ar.target_id', '=', 'vp.id').andOn('ar.target_type', '=', this.knex.raw("'virtual_point'"));
+                })
+                .select(
+                    'ar.*',
+                    'd.name as device_name',
+                    'd.device_type',
+                    'p.protocol_type',
+                    'p.display_name as protocol_name',
+                    's.name as site_name',
+                    's.location as site_location',
+                    'dp.name as data_point_name',
+                    'dp.unit',
+                    'vp.name as virtual_point_name'
+                )
+                .where('ar.id', id);
+
+            if (tenantId) {
+                query.where('ar.tenant_id', tenantId);
+            }
+
+            const rule = await query.first();
+
+            if (!rule) {
                 console.log(`알람 규칙 ID ${id} 찾을 수 없음`);
                 return null;
             }
-            
+
             console.log(`✅ 알람 규칙 ID ${id} 조회 성공`);
-            
-            return this.parseAlarmRule(rules[0]);
-            
+            return this.parseAlarmRule(rule);
+
         } catch (error) {
             console.error('AlarmRuleRepository.findById 실패:', error.message);
             throw error;
@@ -183,13 +175,12 @@ class AlarmRuleRepository extends BaseRepository {
 
     async findByCategory(category, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.FIND_BY_CATEGORY;
-            const params = [category, tenantId || 1];
-            
-            const rules = await this.executeQuery(query, params);
-            
+            const rules = await this.query('ar')
+                .where('ar.category', category)
+                .where('ar.tenant_id', tenantId || 1)
+                .orderBy('ar.created_at', 'DESC');
+
             return rules.map(rule => this.parseAlarmRule(rule));
-            
         } catch (error) {
             console.error('AlarmRuleRepository.findByCategory 실패:', error.message);
             throw error;
@@ -198,13 +189,12 @@ class AlarmRuleRepository extends BaseRepository {
 
     async findByTag(tag, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.FIND_BY_TAG;
-            const params = [`%${tag}%`, tenantId || 1];
-            
-            const rules = await this.executeQuery(query, params);
-            
+            const rules = await this.query('ar')
+                .where('ar.tags', 'like', `%${tag}%`)
+                .where('ar.tenant_id', tenantId || 1)
+                .orderBy('ar.created_at', 'DESC');
+
             return rules.map(rule => this.parseAlarmRule(rule));
-            
         } catch (error) {
             console.error('AlarmRuleRepository.findByTag 실패:', error.message);
             throw error;
@@ -213,13 +203,14 @@ class AlarmRuleRepository extends BaseRepository {
 
     async findByTarget(targetType, targetId, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.FIND_BY_TARGET;
-            const params = [targetType, targetId, tenantId || 1];
-            
-            const rules = await this.executeQuery(query, params);
-            
+            const rules = await this.query('ar')
+                .where('ar.target_type', targetType)
+                .where('ar.target_id', targetId)
+                .where('ar.tenant_id', tenantId || 1)
+                .where('ar.is_enabled', 1)
+                .orderBy('ar.created_at', 'DESC');
+
             return rules.map(rule => this.parseAlarmRule(rule));
-            
         } catch (error) {
             console.error('AlarmRuleRepository.findByTarget 실패:', error.message);
             throw error;
@@ -228,13 +219,13 @@ class AlarmRuleRepository extends BaseRepository {
 
     async findEnabled(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.FIND_ENABLED;
-            const params = [tenantId || 1];
-            
-            const rules = await this.executeQuery(query, params);
-            
+            const rules = await this.query('ar')
+                .where('ar.is_enabled', 1)
+                .where('ar.tenant_id', tenantId || 1)
+                .orderBy('ar.severity', 'DESC')
+                .orderBy('ar.created_at', 'DESC');
+
             return rules.map(rule => this.parseAlarmRule(rule));
-            
         } catch (error) {
             console.error('AlarmRuleRepository.findEnabled 실패:', error.message);
             throw error;
@@ -243,13 +234,12 @@ class AlarmRuleRepository extends BaseRepository {
 
     async findByType(alarmType, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.FIND_BY_TYPE;
-            const params = [alarmType, tenantId || 1];
-            
-            const rules = await this.executeQuery(query, params);
-            
+            const rules = await this.query('ar')
+                .where('ar.alarm_type', alarmType)
+                .where('ar.tenant_id', tenantId || 1)
+                .orderBy('ar.created_at', 'DESC');
+
             return rules.map(rule => this.parseAlarmRule(rule));
-            
         } catch (error) {
             console.error('AlarmRuleRepository.findByType 실패:', error.message);
             throw error;
@@ -258,13 +248,13 @@ class AlarmRuleRepository extends BaseRepository {
 
     async findBySeverity(severity, tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.FIND_BY_SEVERITY;
-            const params = [severity, tenantId || 1];
-            
-            const rules = await this.executeQuery(query, params);
-            
+            const rules = await this.query('ar')
+                .where('ar.severity', severity)
+                .where('ar.tenant_id', tenantId || 1)
+                .orderBy('ar.created_at', 'DESC');
+
             return rules.map(rule => this.parseAlarmRule(rule));
-            
+
         } catch (error) {
             console.error('AlarmRuleRepository.findBySeverity 실패:', error.message);
             throw error;
@@ -273,24 +263,30 @@ class AlarmRuleRepository extends BaseRepository {
 
     async search(searchTerm, tenantId = null, limit = 50) {
         try {
-            const query = AlarmQueries.AlarmRule.SEARCH;
             const searchParam = `%${searchTerm}%`;
-            const params = [
-                tenantId || 1,
-                searchParam, searchParam, searchParam, searchParam, searchParam,
-                searchParam, searchParam, searchParam, searchParam, searchParam
-            ];
-            
-            let finalQuery = query;
+            let query = this.query('ar')
+                .where('ar.tenant_id', tenantId || 1)
+                .andWhere(function () {
+                    this.where('ar.name', 'like', searchParam)
+                        .orWhere('ar.description', 'like', searchParam)
+                        .orWhere('ar.category', 'like', searchParam)
+                        .orWhere('ar.alarm_type', 'like', searchParam)
+                        .orWhere('ar.severity', 'like', searchParam)
+                        .orWhere('ar.target_type', 'like', searchParam)
+                        .orWhere('ar.target_group', 'like', searchParam)
+                        .orWhere('ar.message_template', 'like', searchParam)
+                        .orWhere('ar.tags', 'like', searchParam);
+                })
+                .orderBy('ar.created_at', 'DESC');
+
             if (limit) {
-                finalQuery += ' LIMIT ?';
-                params.push(limit);
+                query = query.limit(limit);
             }
-            
-            const rules = await this.executeQuery(finalQuery, params);
-            
+
+            const rules = await query;
+
             return rules.map(rule => this.parseAlarmRule(rule));
-            
+
         } catch (error) {
             console.error('AlarmRuleRepository.search 실패:', error.message);
             throw error;
@@ -303,27 +299,59 @@ class AlarmRuleRepository extends BaseRepository {
 
     async create(ruleData, userId = null) {
         try {
-            console.log('AlarmRuleRepository.create 호출:', ruleData.name);
-            
-            // 필수 필드 검증
-            AlarmQueries.validateAlarmRule(ruleData);
-            
-            const query = AlarmQueries.AlarmRule.CREATE;
-            const params = AlarmQueries.buildCreateRuleParams({
-                ...ruleData,
-                created_by: userId || ruleData.created_by
-            });
+            console.log('AlarmRuleRepository.create 호출 (Knex):', ruleData.name);
 
-            const result = await this.executeNonQuery(query, params);
-            const insertId = result.lastInsertRowid || result.insertId || result.lastID;
+            const dataToInsert = {
+                tenant_id: ruleData.tenant_id,
+                name: ruleData.name,
+                description: ruleData.description || null,
+                target_type: ruleData.target_type,
+                target_id: ruleData.target_id,
+                target_group: ruleData.target_group || null,
+                alarm_type: ruleData.alarm_type,
+                high_high_limit: ruleData.high_high_limit || null,
+                high_limit: ruleData.high_limit || null,
+                low_limit: ruleData.low_limit || null,
+                low_low_limit: ruleData.low_low_limit || null,
+                deadband: ruleData.deadband || 0,
+                rate_of_change: ruleData.rate_of_change || 0,
+                trigger_condition: ruleData.trigger_condition || null,
+                condition_script: ruleData.condition_script || null,
+                message_script: ruleData.message_script || null,
+                message_config: typeof ruleData.message_config === 'object' ? JSON.stringify(ruleData.message_config) : (ruleData.message_config || null),
+                message_template: ruleData.message_template || null,
+                severity: ruleData.severity || 'medium',
+                priority: ruleData.priority || 100,
+                auto_acknowledge: ruleData.auto_acknowledge ? 1 : 0,
+                acknowledge_timeout_min: ruleData.acknowledge_timeout_min || 0,
+                auto_clear: ruleData.auto_clear ? 1 : 0,
+                suppression_rules: typeof ruleData.suppression_rules === 'object' ? JSON.stringify(ruleData.suppression_rules) : (ruleData.suppression_rules || null),
+                notification_enabled: ruleData.notification_enabled ? 1 : 0,
+                notification_delay_sec: ruleData.notification_delay_sec || 0,
+                notification_repeat_interval_min: ruleData.notification_repeat_interval_min || 0,
+                notification_channels: typeof ruleData.notification_channels === 'object' ? JSON.stringify(ruleData.notification_channels) : (ruleData.notification_channels || null),
+                notification_recipients: typeof ruleData.notification_recipients === 'object' ? JSON.stringify(ruleData.notification_recipients) : (ruleData.notification_recipients || null),
+                is_enabled: ruleData.is_enabled !== false ? 1 : 0,
+                is_latched: ruleData.is_latched ? 1 : 0,
+                created_by: userId || ruleData.created_by,
+                template_id: ruleData.template_id || null,
+                rule_group: ruleData.rule_group || null,
+                created_by_template: ruleData.created_by_template ? 1 : 0,
+                escalation_enabled: ruleData.escalation_enabled ? 1 : 0,
+                escalation_max_level: ruleData.escalation_max_level || 3,
+                escalation_rules: typeof ruleData.escalation_rules === 'object' ? JSON.stringify(ruleData.escalation_rules) : (ruleData.escalation_rules || null),
+                category: ruleData.category || null,
+                tags: typeof ruleData.tags === 'object' ? JSON.stringify(ruleData.tags) : (ruleData.tags || '[]')
+            };
 
-            if (insertId) {
-                console.log(`✅ 알람 규칙 생성 완료 (ID: ${insertId})`);
-                return await this.findById(insertId, ruleData.tenant_id);
+            const [id] = await this.query().insert(dataToInsert);
+
+            if (id) {
+                console.log(`✅ 알람 규칙 생성 완료 (ID: ${id})`);
+                return await this.findById(id, ruleData.tenant_id);
             } else {
                 throw new Error('Alarm rule creation failed - no ID returned');
             }
-            
         } catch (error) {
             console.error('AlarmRuleRepository.create 실패:', error.message);
             throw error;
@@ -332,26 +360,45 @@ class AlarmRuleRepository extends BaseRepository {
 
     async update(id, updateData, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.update 호출: ID ${id}`);
+            const dataToUpdate = {
+                updated_at: this.knex.fn.now()
+            };
 
-            // 존재 확인
-            const existing = await this.findById(id, tenantId);
-            if (!existing) {
-                throw new Error(`Alarm rule with ID ${id} not found`);
-            }
+            const fields = [
+                'name', 'description', 'target_type', 'target_id', 'target_group',
+                'alarm_type', 'high_high_limit', 'high_limit', 'low_limit', 'low_low_limit',
+                'deadband', 'rate_of_change', 'trigger_condition', 'condition_script',
+                'message_script', 'message_config', 'message_template', 'severity', 'priority',
+                'auto_acknowledge', 'acknowledge_timeout_min', 'auto_clear', 'suppression_rules',
+                'notification_enabled', 'notification_delay_sec', 'notification_repeat_interval_min',
+                'notification_channels', 'notification_recipients', 'is_enabled', 'is_latched',
+                'template_id', 'rule_group', 'created_by_template',
+                'last_template_update', 'escalation_enabled', 'escalation_max_level', 'escalation_rules',
+                'category', 'tags'
+            ];
 
-            const query = AlarmQueries.AlarmRule.UPDATE;
-            const params = AlarmQueries.buildUpdateRuleParams(updateData, id, tenantId || 1);
-            
-            const result = await this.executeNonQuery(query, params);
+            fields.forEach(field => {
+                if (updateData[field] !== undefined) {
+                    if (['message_config', 'suppression_rules', 'notification_channels', 'notification_recipients', 'escalation_rules', 'tags'].includes(field) && typeof updateData[field] === 'object') {
+                        dataToUpdate[field] = JSON.stringify(updateData[field]);
+                    } else if (['is_enabled', 'is_latched', 'auto_acknowledge', 'auto_clear', 'notification_enabled', 'created_by_template', 'escalation_enabled'].includes(field)) {
+                        dataToUpdate[field] = updateData[field] ? 1 : 0;
+                    } else {
+                        dataToUpdate[field] = updateData[field];
+                    }
+                }
+            });
 
-            if (result.changes && result.changes > 0) {
+            let query = this.query().where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            const affected = await query.update(dataToUpdate);
+
+            if (affected > 0) {
                 console.log(`✅ 알람 규칙 ID ${id} 업데이트 완료`);
                 return await this.findById(id, tenantId);
-            } else {
-                throw new Error(`Alarm rule with ID ${id} update failed`);
             }
-            
+            return null;
         } catch (error) {
             console.error('AlarmRuleRepository.update 실패:', error.message);
             throw error;
@@ -360,20 +407,20 @@ class AlarmRuleRepository extends BaseRepository {
 
     async updateEnabledStatus(id, isEnabled, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.updateEnabledStatus 호출: ID ${id}, isEnabled=${isEnabled}`);
+            console.log(`AlarmRuleRepository.updateEnabledStatus 호출 (Knex): ID ${id}, isEnabled=${isEnabled}`);
+            let query = this.query().where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
 
-            const query = AlarmQueries.AlarmRule.UPDATE_ENABLED_STATUS;
-            const params = AlarmQueries.buildEnabledStatusParams(isEnabled, id, tenantId || 1);
-            
-            const result = await this.executeNonQuery(query, params);
+            const affected = await query.update({
+                is_enabled: isEnabled ? 1 : 0,
+                updated_at: this.knex.fn.now()
+            });
 
-            if (result.changes && result.changes > 0) {
+            if (affected > 0) {
                 console.log(`✅ 알람 규칙 ID ${id} 상태 업데이트 완료`);
                 return { id: parseInt(id), is_enabled: isEnabled };
-            } else {
-                throw new Error(`Alarm rule with ID ${id} not found`);
             }
-            
+            throw new Error(`Alarm rule with ID ${id} not found`);
         } catch (error) {
             console.error('AlarmRuleRepository.updateEnabledStatus 실패:', error.message);
             throw error;
@@ -382,20 +429,29 @@ class AlarmRuleRepository extends BaseRepository {
 
     async updateSettings(id, settings, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.updateSettings 호출: ID ${id}`);
+            console.log(`AlarmRuleRepository.updateSettings 호출 (Knex): ID ${id}`);
 
-            const query = AlarmQueries.AlarmRule.UPDATE_SETTINGS_ONLY;
-            const params = AlarmQueries.buildSettingsParams(settings, id, tenantId || 1);
-            
-            const result = await this.executeNonQuery(query, params);
+            const dataToUpdate = {
+                message_config: typeof settings.message_config === 'object' ? JSON.stringify(settings.message_config) : (settings.message_config || null),
+                suppression_rules: typeof settings.suppression_rules === 'object' ? JSON.stringify(settings.suppression_rules) : (settings.suppression_rules || null),
+                notification_channels: typeof settings.notification_channels === 'object' ? JSON.stringify(settings.notification_channels) : (settings.notification_channels || null),
+                notification_recipients: typeof settings.notification_recipients === 'object' ? JSON.stringify(settings.notification_recipients) : (settings.notification_recipients || null),
+                escalation_rules: typeof settings.escalation_rules === 'object' ? JSON.stringify(settings.escalation_rules) : (settings.escalation_rules || null),
+                updated_at: this.knex.fn.now()
+            };
 
-            if (result.changes && result.changes > 0) {
+            let query = this.query().where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            const affected = await query.update(dataToUpdate);
+
+            if (affected > 0) {
                 console.log(`✅ 알람 규칙 ID ${id} 설정 업데이트 완료`);
                 return { id: parseInt(id), updated_settings: settings };
             } else {
                 throw new Error(`Alarm rule with ID ${id} not found`);
             }
-            
+
         } catch (error) {
             console.error('AlarmRuleRepository.updateSettings 실패:', error.message);
             throw error;
@@ -404,20 +460,23 @@ class AlarmRuleRepository extends BaseRepository {
 
     async updateName(id, name, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.updateName 호출: ID ${id}, name=${name}`);
+            console.log(`AlarmRuleRepository.updateName 호출 (Knex): ID ${id}, name=${name}`);
 
-            const query = AlarmQueries.AlarmRule.UPDATE_NAME_ONLY;
-            const params = AlarmQueries.buildNameParams(name, id, tenantId || 1);
-            
-            const result = await this.executeNonQuery(query, params);
+            let query = this.query().where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
 
-            if (result.changes && result.changes > 0) {
+            const affected = await query.update({
+                name: name,
+                updated_at: this.knex.fn.now()
+            });
+
+            if (affected > 0) {
                 console.log(`✅ 알람 규칙 ID ${id} 이름 업데이트 완료`);
                 return { id: parseInt(id), name: name };
             } else {
                 throw new Error(`Alarm rule with ID ${id} not found`);
             }
-            
+
         } catch (error) {
             console.error('AlarmRuleRepository.updateName 실패:', error.message);
             throw error;
@@ -426,20 +485,23 @@ class AlarmRuleRepository extends BaseRepository {
 
     async updateSeverity(id, severity, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.updateSeverity 호출: ID ${id}, severity=${severity}`);
+            console.log(`AlarmRuleRepository.updateSeverity 호출 (Knex): ID ${id}, severity=${severity}`);
 
-            const query = AlarmQueries.AlarmRule.UPDATE_SEVERITY_ONLY;
-            const params = AlarmQueries.buildSeverityParams(severity, id, tenantId || 1);
-            
-            const result = await this.executeNonQuery(query, params);
+            let query = this.query().where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
 
-            if (result.changes && result.changes > 0) {
+            const affected = await query.update({
+                severity: severity,
+                updated_at: this.knex.fn.now()
+            });
+
+            if (affected > 0) {
                 console.log(`✅ 알람 규칙 ID ${id} 심각도 업데이트 완료`);
                 return { id: parseInt(id), severity: severity };
             } else {
                 throw new Error(`Alarm rule with ID ${id} not found`);
             }
-            
+
         } catch (error) {
             console.error('AlarmRuleRepository.updateSeverity 실패:', error.message);
             throw error;
@@ -448,20 +510,17 @@ class AlarmRuleRepository extends BaseRepository {
 
     async delete(id, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.delete 호출: ID ${id}`);
+            console.log(`AlarmRuleRepository.delete 호출 (Knex): ID ${id}`);
+            let query = this.query().where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
 
-            const query = AlarmQueries.AlarmRule.DELETE;
-            const params = [id, tenantId || 1];
-            
-            const result = await this.executeNonQuery(query, params);
-
-            if (result.changes && result.changes > 0) {
+            const affected = await query.del();
+            if (affected > 0) {
                 console.log(`✅ 알람 규칙 ID ${id} 삭제 완료`);
                 return true;
             } else {
                 return false;
             }
-            
         } catch (error) {
             console.error('AlarmRuleRepository.delete 실패:', error.message);
             throw error;
@@ -474,10 +533,19 @@ class AlarmRuleRepository extends BaseRepository {
 
     async getStatsSummary(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.STATS_SUMMARY;
-            const stats = await this.executeQuery(query, [tenantId || 1]);
-            
-            return stats.length > 0 ? stats[0] : {
+            const query = this.query()
+                .select(this.knex.raw('COUNT(*) as total_rules'))
+                .select(this.knex.raw('SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_rules'))
+                .select(this.knex.raw('COUNT(DISTINCT alarm_type) as alarm_types'))
+                .select(this.knex.raw('COUNT(DISTINCT severity) as severity_levels'))
+                .select(this.knex.raw('COUNT(DISTINCT target_type) as target_types'))
+                .select(this.knex.raw('COUNT(DISTINCT category) as categories'))
+                .select(this.knex.raw("COUNT(CASE WHEN tags IS NOT NULL AND tags != '[]' THEN 1 END) as rules_with_tags"));
+
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            const stats = await query.first();
+            return stats || {
                 total_rules: 0,
                 enabled_rules: 0,
                 alarm_types: 0,
@@ -486,7 +554,6 @@ class AlarmRuleRepository extends BaseRepository {
                 categories: 0,
                 rules_with_tags: 0
             };
-            
         } catch (error) {
             console.error('AlarmRuleRepository.getStatsSummary 실패:', error.message);
             throw error;
@@ -495,11 +562,15 @@ class AlarmRuleRepository extends BaseRepository {
 
     async getStatsBySeverity(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.STATS_BY_SEVERITY;
-            const stats = await this.executeQuery(query, [tenantId || 1]);
-            
-            return stats;
-            
+            const query = this.query()
+                .select('severity')
+                .count('* as count')
+                .select(this.knex.raw('SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count'))
+                .groupBy('severity');
+
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            return await query;
         } catch (error) {
             console.error('AlarmRuleRepository.getStatsBySeverity 실패:', error.message);
             throw error;
@@ -508,11 +579,15 @@ class AlarmRuleRepository extends BaseRepository {
 
     async getStatsByType(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.STATS_BY_TYPE;
-            const stats = await this.executeQuery(query, [tenantId || 1]);
-            
-            return stats;
-            
+            const query = this.query()
+                .select('alarm_type')
+                .count('* as count')
+                .select(this.knex.raw('SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count'))
+                .groupBy('alarm_type');
+
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            return await query;
         } catch (error) {
             console.error('AlarmRuleRepository.getStatsByType 실패:', error.message);
             throw error;
@@ -521,11 +596,16 @@ class AlarmRuleRepository extends BaseRepository {
 
     async getStatsByCategory(tenantId = null) {
         try {
-            const query = AlarmQueries.AlarmRule.STATS_BY_CATEGORY;
-            const stats = await this.executeQuery(query, [tenantId || 1]);
-            
-            return stats;
-            
+            const query = this.query()
+                .select('category')
+                .count('* as count')
+                .select(this.knex.raw('SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count'))
+                .whereNotNull('category')
+                .groupBy('category');
+
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            return await query;
         } catch (error) {
             console.error('AlarmRuleRepository.getStatsByCategory 실패:', error.message);
             throw error;
@@ -570,7 +650,7 @@ class AlarmRuleRepository extends BaseRepository {
             template_id: rule.template_id ? parseInt(rule.template_id) : null,
             created_by: rule.created_by ? parseInt(rule.created_by) : null,
             escalation_max_level: parseInt(rule.escalation_max_level) || 3,
-            
+
             // FLOAT/DOUBLE 필드 변환
             high_high_limit: rule.high_high_limit ? parseFloat(rule.high_high_limit) : null,
             high_limit: rule.high_limit ? parseFloat(rule.high_limit) : null,
@@ -578,7 +658,7 @@ class AlarmRuleRepository extends BaseRepository {
             low_low_limit: rule.low_low_limit ? parseFloat(rule.low_low_limit) : null,
             deadband: rule.deadband ? parseFloat(rule.deadband) : 0,
             rate_of_change: rule.rate_of_change ? parseFloat(rule.rate_of_change) : 0,
-            
+
             // Boolean 필드 변환
             is_enabled: Boolean(rule.is_enabled),
             is_latched: Boolean(rule.is_latched),
@@ -587,7 +667,7 @@ class AlarmRuleRepository extends BaseRepository {
             notification_enabled: Boolean(rule.notification_enabled),
             created_by_template: Boolean(rule.created_by_template),
             escalation_enabled: Boolean(rule.escalation_enabled),
-            
+
             // JSON 필드 파싱
             message_config: this.parseJsonField(rule.message_config),
             suppression_rules: this.parseJsonField(rule.suppression_rules),

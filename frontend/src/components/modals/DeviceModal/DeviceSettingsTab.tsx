@@ -41,13 +41,13 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
       max_retry_count: 3,
       retry_interval_ms: 1000,
       backoff_time_ms: 2000,
-      keep_alive_enabled: true,
+      is_keep_alive_enabled: true,
       keep_alive_interval_s: 30,
-      data_validation_enabled: true,
-      performance_monitoring_enabled: true,
-      detailed_logging_enabled: false,
-      diagnostic_mode_enabled: false,
-      communication_logging_enabled: false,
+      is_data_validation_enabled: true,
+      is_performance_monitoring_enabled: true,
+      is_detailed_logging_enabled: false,
+      is_diagnostic_mode_enabled: false,
+      is_communication_logging_enabled: false,
       ...settings // 실제 설정값으로 덮어쓰기
     });
   }, [displayData]);
@@ -181,13 +181,13 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
                   max_retry_count: 3,
                   retry_interval_ms: 1000,
                   backoff_time_ms: 2000,
-                  keep_alive_enabled: true,
+                  is_keep_alive_enabled: true,
                   keep_alive_interval_s: 30,
-                  data_validation_enabled: true,
-                  performance_monitoring_enabled: true,
-                  detailed_logging_enabled: false,
-                  diagnostic_mode_enabled: false,
-                  communication_logging_enabled: false
+                  is_data_validation_enabled: true,
+                  is_performance_monitoring_enabled: true,
+                  is_detailed_logging_enabled: false,
+                  is_diagnostic_mode_enabled: false,
+                  is_communication_logging_enabled: false
                 };
                 setLocalSettings(defaultSettings);
                 Object.entries(defaultSettings).forEach(([key, value]) => {
@@ -229,11 +229,11 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
 
                   {renderToggleField(
                     'Keep-Alive 활성화',
-                    'keep_alive_enabled',
+                    'is_keep_alive_enabled',
                     '연결 유지를 위한 주기적 통신 활성화'
                   )}
 
-                  {localSettings.keep_alive_enabled && (
+                  {localSettings.is_keep_alive_enabled && (
                     <div className="form-row">
                       {renderNumberField('Keep-Alive 간격', 'keep_alive_interval_s', '초', 10, 300)}
                     </div>
@@ -254,13 +254,13 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
                 <div className="section-content">
                   {renderToggleField(
                     '데이터 검증',
-                    'data_validation_enabled',
+                    'is_data_validation_enabled',
                     '수신된 데이터의 유효성 검사 수행'
                   )}
 
                   {renderToggleField(
                     '성능 모니터링',
-                    'performance_monitoring_enabled',
+                    'is_performance_monitoring_enabled',
                     '응답시간, 처리량 등 성능 지표 수집'
                   )}
                 </div>
@@ -275,19 +275,19 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
                 <div className="section-content">
                   {renderToggleField(
                     '상세 로깅',
-                    'detailed_logging_enabled',
+                    'is_detailed_logging_enabled',
                     '디버깅을 위한 상세한 로그 기록 (성능에 영향을 줄 수 있음)'
                   )}
 
                   {renderToggleField(
                     '진단 모드',
-                    'diagnostic_mode_enabled',
+                    'is_diagnostic_mode_enabled',
                     '문제 해결을 위한 진단 정보 수집'
                   )}
 
                   {renderToggleField(
                     '통신 로깅',
-                    'communication_logging_enabled',
+                    'is_communication_logging_enabled',
                     '모든 통신 내용을 로그로 기록'
                   )}
                 </div>

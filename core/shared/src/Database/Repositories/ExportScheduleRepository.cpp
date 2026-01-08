@@ -1,13 +1,13 @@
 /**
  * @file ExportScheduleRepository.cpp
- * @brief Export Schedule Repository 구현 (DatabaseAbstractionLayer API 준수)
+ * @brief Export Schedule Repository 구현 (DbLib::DatabaseAbstractionLayer API 준수)
  * @author PulseOne Development Team
  * @date 2025-10-22
  * @version 1.1.0
  */
 
 #include "Database/Repositories/ExportScheduleRepository.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include "Database/ExportSQLQueries.h"
 #include "Database/Repositories/RepositoryHelpers.h"
 #include <sstream>
@@ -28,7 +28,7 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::ExportSchedule::FIND_ALL);
         
         std::vector<ExportScheduleEntity> entities;
@@ -66,7 +66,7 @@ std::optional<ExportScheduleEntity> ExportScheduleRepository::findById(int id) {
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
         std::string query = RepositoryHelpers::replaceParameter(
@@ -106,7 +106,7 @@ bool ExportScheduleRepository::save(ExportScheduleEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto params = entityToParams(entity);
         
         // next_run_at 추가
@@ -172,7 +172,7 @@ bool ExportScheduleRepository::update(const ExportScheduleEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto params = entityToParams(entity);
         
         // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
@@ -211,7 +211,7 @@ bool ExportScheduleRepository::deleteById(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
         std::string query = RepositoryHelpers::replaceParameter(
@@ -242,7 +242,7 @@ bool ExportScheduleRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
         std::string query = RepositoryHelpers::replaceParameter(
@@ -269,7 +269,7 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findByIds(const std:
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ID 리스트를 문자열로 변환
         std::stringstream id_list;
@@ -309,7 +309,7 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findByConditions(
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // WHERE 절 구성
         std::stringstream where_clause;
@@ -372,7 +372,7 @@ int ExportScheduleRepository::countByConditions(const std::vector<QueryCondition
             return 0;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // WHERE 절 구성
         std::stringstream where_clause;
@@ -421,7 +421,7 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findEnabled() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         // ✅ ExportSQLQueries 사용
         auto results = db_layer.executeQuery(SQL::ExportSchedule::FIND_ENABLED);
         
@@ -448,7 +448,7 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findByTargetId(int t
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         // ✅ ExportSQLQueries 사용 + RepositoryHelpers로 파라미터 치환
         std::string query = RepositoryHelpers::replaceParameter(
             SQL::ExportSchedule::FIND_BY_TARGET_ID,
@@ -479,7 +479,7 @@ std::vector<ExportScheduleEntity> ExportScheduleRepository::findPending() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         // ✅ ExportSQLQueries 사용
         auto results = db_layer.executeQuery(SQL::ExportSchedule::FIND_PENDING);
         
@@ -506,7 +506,7 @@ int ExportScheduleRepository::countEnabled() {
             return 0;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         // ✅ COUNT_ENABLED 쿼리가 없으므로 직접 작성
         std::string query = "SELECT COUNT(*) as count FROM export_schedules WHERE is_enabled = 1";
         auto results = db_layer.executeQuery(query);
@@ -537,7 +537,7 @@ bool ExportScheduleRepository::updateRunStatus(
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         auto now = std::chrono::system_clock::now();
         std::string last_run_at = formatTimestamp(now);
@@ -581,7 +581,7 @@ bool ExportScheduleRepository::ensureTableExists() {
     }
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         if (!db_layer.executeCreateTable(SQL::ExportSchedule::CREATE_TABLE)) {
             logger_->Error("Failed to create export_schedules table");

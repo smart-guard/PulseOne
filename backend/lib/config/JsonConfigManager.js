@@ -359,60 +359,60 @@ class JsonConfigManager {
     getDefaultConfigData(key) {
         const defaultConfigs = {
             protocols: {
-                version: "1.0.0",
+                version: '1.0.0',
                 last_updated: new Date().toISOString(),
                 items: [
                     {
-                        value: "modbus_tcp",
-                        name: "Modbus TCP",
-                        description: "Modbus TCP/IP protocol",
+                        value: 'modbus_tcp',
+                        name: 'Modbus TCP',
+                        description: 'Modbus TCP/IP protocol',
                         port: 502,
                         config_schema: {
-                            ip_address: { type: "string", required: true },
-                            port: { type: "number", default: 502 },
-                            slave_id: { type: "number", default: 1 },
-                            timeout: { type: "number", default: 3000 }
+                            ip_address: { type: 'string', required: true },
+                            port: { type: 'number', default: 502 },
+                            slave_id: { type: 'number', default: 1 },
+                            timeout: { type: 'number', default: 3000 }
                         },
                         enabled: true
                     },
                     {
-                        value: "modbus_rtu",
-                        name: "Modbus RTU",
-                        description: "Modbus RTU serial protocol",
+                        value: 'modbus_rtu',
+                        name: 'Modbus RTU',
+                        description: 'Modbus RTU serial protocol',
                         config_schema: {
-                            serial_port: { type: "string", required: true },
-                            baud_rate: { type: "number", default: 9600 },
-                            data_bits: { type: "number", default: 8 },
-                            stop_bits: { type: "number", default: 1 },
-                            parity: { type: "string", default: "none" },
-                            slave_id: { type: "number", default: 1 }
+                            serial_port: { type: 'string', required: true },
+                            baud_rate: { type: 'number', default: 9600 },
+                            data_bits: { type: 'number', default: 8 },
+                            stop_bits: { type: 'number', default: 1 },
+                            parity: { type: 'string', default: 'none' },
+                            slave_id: { type: 'number', default: 1 }
                         },
                         enabled: true
                     },
                     {
-                        value: "mqtt",
-                        name: "MQTT",
-                        description: "Message Queuing Telemetry Transport",
+                        value: 'mqtt',
+                        name: 'MQTT',
+                        description: 'Message Queuing Telemetry Transport',
                         port: 1883,
                         config_schema: {
-                            broker_url: { type: "string", required: true },
-                            port: { type: "number", default: 1883 },
-                            username: { type: "string" },
-                            password: { type: "string" },
-                            client_id: { type: "string" },
-                            topics: { type: "array", required: true }
+                            broker_url: { type: 'string', required: true },
+                            port: { type: 'number', default: 1883 },
+                            username: { type: 'string' },
+                            password: { type: 'string' },
+                            client_id: { type: 'string' },
+                            topics: { type: 'array', required: true }
                         },
                         enabled: true
                     },
                     {
-                        value: "bacnet",
-                        name: "BACnet",
-                        description: "Building Automation and Control Networks",
+                        value: 'bacnet',
+                        name: 'BACnet',
+                        description: 'Building Automation and Control Networks',
                         port: 47808,
                         config_schema: {
-                            device_id: { type: "number", required: true },
-                            network_number: { type: "number", default: 0 },
-                            max_apdu: { type: "number", default: 1476 }
+                            device_id: { type: 'number', required: true },
+                            network_number: { type: 'number', default: 0 },
+                            max_apdu: { type: 'number', default: 1476 }
                         },
                         enabled: true
                     }
@@ -420,112 +420,112 @@ class JsonConfigManager {
             },
 
             deviceTypes: {
-                version: "1.0.0",
+                version: '1.0.0',
                 last_updated: new Date().toISOString(),
                 items: [
-                    { value: "PLC", name: "PLC (Programmable Logic Controller)", description: "산업용 제어기", icon: "fas fa-microchip", category: "control" },
-                    { value: "HMI", name: "HMI (Human Machine Interface)", description: "사람-기계 인터페이스", icon: "fas fa-desktop", category: "interface" },
-                    { value: "SENSOR", name: "Sensor", description: "각종 센서", icon: "fas fa-thermometer-half", category: "sensor" },
-                    { value: "GATEWAY", name: "Gateway", description: "프로토콜 게이트웨이", icon: "fas fa-exchange-alt", category: "network" },
-                    { value: "METER", name: "Meter", description: "계측기", icon: "fas fa-tachometer-alt", category: "measurement" },
-                    { value: "CONTROLLER", name: "Controller", description: "제어기", icon: "fas fa-cogs", category: "control" },
-                    { value: "DRIVE", name: "Drive", description: "모터 드라이브", icon: "fas fa-bolt", category: "power" },
-                    { value: "ROBOT", name: "Robot", description: "로봇", icon: "fas fa-robot", category: "automation" },
-                    { value: "CAMERA", name: "Camera", description: "비전 카메라", icon: "fas fa-camera", category: "vision" },
-                    { value: "OTHER", name: "Other", description: "기타", icon: "fas fa-question", category: "general" }
+                    { value: 'PLC', name: 'PLC (Programmable Logic Controller)', description: '산업용 제어기', icon: 'fas fa-microchip', category: 'control' },
+                    { value: 'HMI', name: 'HMI (Human Machine Interface)', description: '사람-기계 인터페이스', icon: 'fas fa-desktop', category: 'interface' },
+                    { value: 'SENSOR', name: 'Sensor', description: '각종 센서', icon: 'fas fa-thermometer-half', category: 'sensor' },
+                    { value: 'GATEWAY', name: 'Gateway', description: '프로토콜 게이트웨이', icon: 'fas fa-exchange-alt', category: 'network' },
+                    { value: 'METER', name: 'Meter', description: '계측기', icon: 'fas fa-tachometer-alt', category: 'measurement' },
+                    { value: 'CONTROLLER', name: 'Controller', description: '제어기', icon: 'fas fa-cogs', category: 'control' },
+                    { value: 'DRIVE', name: 'Drive', description: '모터 드라이브', icon: 'fas fa-bolt', category: 'power' },
+                    { value: 'ROBOT', name: 'Robot', description: '로봇', icon: 'fas fa-robot', category: 'automation' },
+                    { value: 'CAMERA', name: 'Camera', description: '비전 카메라', icon: 'fas fa-camera', category: 'vision' },
+                    { value: 'OTHER', name: 'Other', description: '기타', icon: 'fas fa-question', category: 'general' }
                 ]
             },
 
             deviceStatus: {
-                version: "1.0.0",
+                version: '1.0.0',
                 last_updated: new Date().toISOString(),
                 items: [
-                    { value: "connected", name: "Connected", description: "정상 연결됨", color: "green", icon: "fas fa-check-circle" },
-                    { value: "disconnected", name: "Disconnected", description: "연결 끊어짐", color: "red", icon: "fas fa-times-circle" },
-                    { value: "error", name: "Error", description: "오류 상태", color: "red", icon: "fas fa-exclamation-triangle" },
-                    { value: "maintenance", name: "Maintenance", description: "유지보수 모드", color: "yellow", icon: "fas fa-wrench" },
-                    { value: "offline", name: "Offline", description: "오프라인", color: "gray", icon: "fas fa-power-off" }
+                    { value: 'connected', name: 'Connected', description: '정상 연결됨', color: 'green', icon: 'fas fa-check-circle' },
+                    { value: 'disconnected', name: 'Disconnected', description: '연결 끊어짐', color: 'red', icon: 'fas fa-times-circle' },
+                    { value: 'error', name: 'Error', description: '오류 상태', color: 'red', icon: 'fas fa-exclamation-triangle' },
+                    { value: 'maintenance', name: 'Maintenance', description: '유지보수 모드', color: 'yellow', icon: 'fas fa-wrench' },
+                    { value: 'offline', name: 'Offline', description: '오프라인', color: 'gray', icon: 'fas fa-power-off' }
                 ]
             },
 
             alarmTypes: {
-                version: "1.0.0",
+                version: '1.0.0',
                 last_updated: new Date().toISOString(),
                 items: [
-                    { value: "critical", name: "Critical", description: "심각한 알람", priority: 1, color: "red", auto_notify: true },
-                    { value: "high", name: "High", description: "높은 우선순위", priority: 2, color: "orange", auto_notify: true },
-                    { value: "medium", name: "Medium", description: "중간 우선순위", priority: 3, color: "yellow", auto_notify: false },
-                    { value: "low", name: "Low", description: "낮은 우선순위", priority: 4, color: "blue", auto_notify: false },
-                    { value: "info", name: "Information", description: "정보성 알람", priority: 5, color: "gray", auto_notify: false }
+                    { value: 'critical', name: 'Critical', description: '심각한 알람', priority: 1, color: 'red', auto_notify: true },
+                    { value: 'high', name: 'High', description: '높은 우선순위', priority: 2, color: 'orange', auto_notify: true },
+                    { value: 'medium', name: 'Medium', description: '중간 우선순위', priority: 3, color: 'yellow', auto_notify: false },
+                    { value: 'low', name: 'Low', description: '낮은 우선순위', priority: 4, color: 'blue', auto_notify: false },
+                    { value: 'info', name: 'Information', description: '정보성 알람', priority: 5, color: 'gray', auto_notify: false }
                 ]
             },
 
             userRoles: {
-                version: "1.0.0",
+                version: '1.0.0',
                 last_updated: new Date().toISOString(),
                 items: [
                     { 
-                        value: "system_admin", 
-                        name: "System Administrator", 
-                        description: "시스템 최고 관리자",
-                        permissions: ["*"],
+                        value: 'system_admin', 
+                        name: 'System Administrator', 
+                        description: '시스템 최고 관리자',
+                        permissions: ['*'],
                         hierarchy_level: 0
                     },
                     { 
-                        value: "company_admin", 
-                        name: "Company Administrator", 
-                        description: "회사 관리자",
-                        permissions: ["manage_company", "manage_users", "manage_sites", "manage_devices", "view_all_data"],
+                        value: 'company_admin', 
+                        name: 'Company Administrator', 
+                        description: '회사 관리자',
+                        permissions: ['manage_company', 'manage_users', 'manage_sites', 'manage_devices', 'view_all_data'],
                         hierarchy_level: 1
                     },
                     { 
-                        value: "site_admin", 
-                        name: "Site Administrator", 
-                        description: "사이트 관리자",
-                        permissions: ["manage_site", "manage_devices", "manage_alarms", "view_site_data"],
+                        value: 'site_admin', 
+                        name: 'Site Administrator', 
+                        description: '사이트 관리자',
+                        permissions: ['manage_site', 'manage_devices', 'manage_alarms', 'view_site_data'],
                         hierarchy_level: 2
                     },
                     { 
-                        value: "engineer", 
-                        name: "Engineer", 
-                        description: "엔지니어",
-                        permissions: ["manage_devices", "manage_data_points", "view_data", "control_devices"],
+                        value: 'engineer', 
+                        name: 'Engineer', 
+                        description: '엔지니어',
+                        permissions: ['manage_devices', 'manage_data_points', 'view_data', 'control_devices'],
                         hierarchy_level: 3
                     },
                     { 
-                        value: "operator", 
-                        name: "Operator", 
-                        description: "운영자",
-                        permissions: ["view_data", "acknowledge_alarms"],
+                        value: 'operator', 
+                        name: 'Operator', 
+                        description: '운영자',
+                        permissions: ['view_data', 'acknowledge_alarms'],
                         hierarchy_level: 4
                     },
                     { 
-                        value: "viewer", 
-                        name: "Viewer", 
-                        description: "조회 전용",
-                        permissions: ["view_data"],
+                        value: 'viewer', 
+                        name: 'Viewer', 
+                        description: '조회 전용',
+                        permissions: ['view_data'],
                         hierarchy_level: 5
                     }
                 ]
             },
 
             siteTypes: {
-                version: "1.0.0",
+                version: '1.0.0',
                 last_updated: new Date().toISOString(),
                 items: [
-                    { value: "company", name: "Company", description: "회사 본부", hierarchy_level: 0, icon: "fas fa-building" },
-                    { value: "factory", name: "Factory", description: "공장", hierarchy_level: 1, icon: "fas fa-industry" },
-                    { value: "office", name: "Office", description: "사무소", hierarchy_level: 1, icon: "fas fa-building" },
-                    { value: "building", name: "Building", description: "건물", hierarchy_level: 2, icon: "fas fa-building" },
-                    { value: "floor", name: "Floor", description: "층", hierarchy_level: 3, icon: "fas fa-layer-group" },
-                    { value: "line", name: "Line", description: "생산라인", hierarchy_level: 4, icon: "fas fa-project-diagram" },
-                    { value: "area", name: "Area", description: "구역", hierarchy_level: 5, icon: "fas fa-map-marked-alt" },
-                    { value: "zone", name: "Zone", description: "영역", hierarchy_level: 6, icon: "fas fa-map-pin" }
+                    { value: 'company', name: 'Company', description: '회사 본부', hierarchy_level: 0, icon: 'fas fa-building' },
+                    { value: 'factory', name: 'Factory', description: '공장', hierarchy_level: 1, icon: 'fas fa-industry' },
+                    { value: 'office', name: 'Office', description: '사무소', hierarchy_level: 1, icon: 'fas fa-building' },
+                    { value: 'building', name: 'Building', description: '건물', hierarchy_level: 2, icon: 'fas fa-building' },
+                    { value: 'floor', name: 'Floor', description: '층', hierarchy_level: 3, icon: 'fas fa-layer-group' },
+                    { value: 'line', name: 'Line', description: '생산라인', hierarchy_level: 4, icon: 'fas fa-project-diagram' },
+                    { value: 'area', name: 'Area', description: '구역', hierarchy_level: 5, icon: 'fas fa-map-marked-alt' },
+                    { value: 'zone', name: 'Zone', description: '영역', hierarchy_level: 6, icon: 'fas fa-map-pin' }
                 ]
             }
         };
 
-        return defaultConfigs[key] || { version: "1.0.0", items: [] };
+        return defaultConfigs[key] || { version: '1.0.0', items: [] };
     }
 
     // ========================================================================

@@ -10,7 +10,7 @@
 #include "Database/Entities/ExportLogEntity.h"
 #include "Database/Repositories/ExportLogRepository.h"
 #include "Database/RepositoryFactory.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <iomanip>

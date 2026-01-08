@@ -6,7 +6,7 @@
 #include "Database/Entities/VirtualPointEntity.h"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/VirtualPointRepository.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <algorithm>
 #include <iomanip>

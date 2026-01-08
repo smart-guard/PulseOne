@@ -24,8 +24,8 @@
 
 // PulseOne Core
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
-#include "Database/DatabaseManager.h"
+#include "Logging/LogManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 #include "Workers/WorkerManager.h"
 #include "Workers/Protocol/ModbusWorker.h"
@@ -238,7 +238,7 @@ protected:
         config_manager_ = &ConfigManager::getInstance();
         config_manager_->initialize(); // 핵심: 설정을 먼저 로드해야 함
 
-        db_manager_ = &DatabaseManager::getInstance();
+        db_manager_ = &DbLib::DatabaseManagerDbLib::DatabaseManager::getInstance();
         db_manager_->initialize(); // 설정을 기반으로 DB 초기화
 
         // DB 초기화 (스키마 적용)
@@ -270,7 +270,7 @@ protected:
         );
 
         // 3. 인프라 서비스 시작
-        PipelineManager::GetInstance().Start();
+        PipelineManager::getInstance().initialize();
         data_processing_service_ = std::make_unique<DataProcessingService>();
         data_processing_service_->Start();
 
@@ -294,14 +294,14 @@ protected:
 
     void TearDown() override {
         if (data_processing_service_) data_processing_service_->Stop();
-        PipelineManager::GetInstance().Shutdown();
+        PipelineManager::getInstance().Shutdown();
         if (virtual_server_) virtual_server_->Stop();
         std::cout << "🏁 === 테스트 종료 ===" << std::endl;
     }
 
     std::unique_ptr<VirtualModbusServer> virtual_server_;
     ConfigManager* config_manager_;
-    DatabaseManager* db_manager_;
+    DbLib::DatabaseManager* db_manager_;
     std::unique_ptr<DataProcessingService> data_processing_service_;
     std::shared_ptr<RedisClientImpl> redis_client_;
 };

@@ -43,7 +43,7 @@
 #include "CSP/HttpTargetHandler.h"
 #include "CSP/FileTargetHandler.h"
 #include "CSP/AlarmMessage.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Export/ExportTypes.h"
 #include <iostream>
 #include <chrono>

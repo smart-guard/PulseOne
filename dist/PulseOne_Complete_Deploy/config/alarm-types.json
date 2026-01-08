@@ -1,0 +1,46 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-08-13T23:26:12.237Z",
+  "items": [
+    {
+      "value": "critical",
+      "name": "Critical",
+      "description": "심각한 알람",
+      "priority": 1,
+      "color": "red",
+      "auto_notify": true
+    },
+    {
+      "value": "high",
+      "name": "High",
+      "description": "높은 우선순위",
+      "priority": 2,
+      "color": "orange",
+      "auto_notify": true
+    },
+    {
+      "value": "medium",
+      "name": "Medium",
+      "description": "중간 우선순위",
+      "priority": 3,
+      "color": "yellow",
+      "auto_notify": false
+    },
+    {
+      "value": "low",
+      "name": "Low",
+      "description": "낮은 우선순위",
+      "priority": 4,
+      "color": "blue",
+      "auto_notify": false
+    },
+    {
+      "value": "info",
+      "name": "Information",
+      "description": "정보성 알람",
+      "priority": 5,
+      "color": "gray",
+      "auto_notify": false
+    }
+  ]
+}

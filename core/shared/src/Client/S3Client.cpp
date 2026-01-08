@@ -22,7 +22,7 @@
 #endif
 
 #ifdef HAS_SHARED_LIBS
-    #include "Utils/LogManager.h"
+    #include "Logging/LogManager.h"
     #define LOG_ERROR(msg) LogManager::getInstance().Error(msg)
     #define LOG_DEBUG(msg) LogManager::getInstance().Debug(msg)
 #else

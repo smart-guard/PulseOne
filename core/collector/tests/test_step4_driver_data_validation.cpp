@@ -28,8 +28,8 @@
 
 // PulseOne 시스템 헤더들
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
-#include "Database/DatabaseManager.h"
+#include "Logging/LogManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 #include "Workers/WorkerFactory.h"
 
@@ -41,8 +41,7 @@
 #include "Database/Repositories/DeviceSettingsRepository.h"
 
 // Worker들
-#include "Workers/Protocol/ModbusTcpWorker.h"
-#include "Workers/Protocol/ModbusRtuWorker.h"
+#include "Workers/Protocol/ModbusWorker.h"
 #include "Workers/Protocol/MqttWorker.h"
 #include "Workers/Protocol/BACnetWorker.h"
 
@@ -274,7 +273,7 @@ private:
     
     ConfigManager* config_manager_;
     LogManager* logger_;
-    DatabaseManager* db_manager_;
+    DbLib::DatabaseManager* db_manager_;
     RepositoryFactory* repo_factory_;
     WorkerFactory* worker_factory_;
     
@@ -298,7 +297,7 @@ void DbAwareDriverPropertiesTest::setupTestEnvironment() {
     
     config_manager_ = &ConfigManager::getInstance();
     logger_ = &LogManager::getInstance();
-    db_manager_ = &DatabaseManager::getInstance();
+    db_manager_ = &DbLib::DatabaseManagerDbLib::DatabaseManager::getInstance();
     
     repo_factory_ = &RepositoryFactory::getInstance();
     ASSERT_TRUE(repo_factory_->initialize()) << "RepositoryFactory 초기화 실패";

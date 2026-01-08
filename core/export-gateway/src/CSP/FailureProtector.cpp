@@ -7,7 +7,7 @@
  */
 
 #include "CSP/FailureProtector.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <algorithm>
 #include <cmath>
 

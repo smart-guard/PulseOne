@@ -8,14 +8,14 @@
  * - 모든 하드코딩된 쿼리를 SQL::DeviceSettings:: 상수로 교체
  * - 동적 파라미터 처리 개선
  * - DeviceSettingsRepository 패턴 100% 준수
- * - DatabaseAbstractionLayer 완전 활용
+ * - DbLib::DatabaseAbstractionLayer 완전 활용
  */
 
 #include "Database/Repositories/DeviceSettingsRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/SQLQueries.h"
-#include "Database/DatabaseAbstractionLayer.h"
-#include "Utils/LogManager.h"
+#include "DatabaseAbstractionLayer.hpp"
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <algorithm>
 
@@ -35,7 +35,7 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         auto results = db_layer.executeQuery(SQL::DeviceSettings::FIND_ALL);
@@ -75,7 +75,7 @@ std::optional<DeviceSettingsEntity> DeviceSettingsRepository::findById(int devic
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용 + 동적 파라미터 처리
         std::string query = RepositoryHelpers::replaceParameter(SQL::DeviceSettings::FIND_BY_ID, std::to_string(device_id));
@@ -114,7 +114,7 @@ bool DeviceSettingsRepository::save(DeviceSettingsEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::map<std::string, std::string> data = entityToParams(entity);
         std::vector<std::string> primary_keys = {"device_id"};
@@ -151,7 +151,7 @@ bool DeviceSettingsRepository::deleteById(int device_id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameter(SQL::DeviceSettings::DELETE_BY_ID, std::to_string(device_id));
@@ -182,7 +182,7 @@ bool DeviceSettingsRepository::exists(int device_id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameter(SQL::DeviceSettings::EXISTS_BY_ID, std::to_string(device_id));
@@ -228,7 +228,7 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findByIds(const std:
             query.insert(order_pos, "WHERE device_id IN (" + ids_ss.str() + ") ");
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<DeviceSettingsEntity> entities;
@@ -271,7 +271,7 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findByProtocol(const
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameterWithQuotes(SQL::DeviceSettings::FIND_BY_PROTOCOL, protocol_type);
@@ -304,7 +304,7 @@ std::vector<DeviceSettingsEntity> DeviceSettingsRepository::findActiveDeviceSett
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         auto results = db_layer.executeQuery(SQL::DeviceSettings::FIND_ACTIVE_DEVICES);
@@ -337,8 +337,8 @@ DeviceSettingsEntity DeviceSettingsRepository::mapRowToEntity(const std::map<std
     DeviceSettingsEntity entity;
     
     try {
-        // 🎯 내부에서 DatabaseAbstractionLayer 생성해서 사용
-        DatabaseAbstractionLayer db_layer;
+        // 🎯 내부에서 DbLib::DatabaseAbstractionLayer 생성해서 사용
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         auto it = row.find("device_id");
         if (it != row.end()) {
@@ -426,6 +426,11 @@ DeviceSettingsEntity DeviceSettingsRepository::mapRowToEntity(const std::map<std
             entity.setDiagnosticModeEnabled(db_layer.parseBoolean(it->second));
         }
         
+        it = row.find("auto_registration_enabled");
+        if (it != row.end()) {
+            entity.setAutoRegistrationEnabled(db_layer.parseBoolean(it->second));
+        }
+        
         return entity;
         
     } catch (const std::exception& e) {
@@ -435,7 +440,7 @@ DeviceSettingsEntity DeviceSettingsRepository::mapRowToEntity(const std::map<std
 }
 
 std::map<std::string, std::string> DeviceSettingsRepository::entityToParams(const DeviceSettingsEntity& entity) {
-    DatabaseAbstractionLayer db_layer;
+    DbLib::DatabaseAbstractionLayer db_layer;
     
     std::map<std::string, std::string> params;
     
@@ -462,6 +467,7 @@ std::map<std::string, std::string> DeviceSettingsRepository::entityToParams(cons
     params["data_validation_enabled"] = db_layer.formatBoolean(entity.isDataValidationEnabled());
     params["performance_monitoring_enabled"] = db_layer.formatBoolean(entity.isPerformanceMonitoringEnabled());
     params["diagnostic_mode_enabled"] = db_layer.formatBoolean(entity.isDiagnosticModeEnabled());
+    params["auto_registration_enabled"] = db_layer.formatBoolean(entity.isAutoRegistrationEnabled());
     params["updated_at"] = db_layer.getCurrentTimestamp();
     
     return params;
@@ -469,7 +475,7 @@ std::map<std::string, std::string> DeviceSettingsRepository::entityToParams(cons
 
 bool DeviceSettingsRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 SQLQueries.h 상수 사용
         bool success = db_layer.executeCreateTable(SQL::DeviceSettings::CREATE_TABLE);
@@ -639,6 +645,37 @@ bool DeviceSettingsRepository::updateRetrySettings(int device_id, int max_retry_
     }
 }
 
+bool DeviceSettingsRepository::updateAutoRegistrationEnabled(int device_id, bool enabled) {
+    try {
+        auto settings = findById(device_id);
+        if (!settings.has_value()) {
+            if (!createDefaultSettings(device_id)) {
+                return false;
+            }
+            settings = findById(device_id);
+        }
+        
+        if (settings.has_value()) {
+            auto old_settings = settings.value();
+            settings.value().setAutoRegistrationEnabled(enabled);
+            
+            bool success = save(settings.value());
+            if (success) {
+                logSettingsChange(device_id, old_settings, settings.value());
+                logger_->Info("DeviceSettingsRepository::updateAutoRegistrationEnabled - Updated auto registration for device_id " + 
+                            std::to_string(device_id) + " to " + (enabled ? "enabled" : "disabled"));
+            }
+            return success;
+        }
+        
+        return false;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("DeviceSettingsRepository::updateAutoRegistrationEnabled failed: " + std::string(e.what()));
+        return false;
+    }
+}
+
 void DeviceSettingsRepository::logSettingsChange(int device_id, 
                                                  const DeviceSettingsEntity& old_settings, 
                                                  const DeviceSettingsEntity& new_settings) {
@@ -664,6 +701,11 @@ void DeviceSettingsRepository::logSettingsChange(int device_id,
         if (old_settings.isKeepAliveEnabled() != new_settings.isKeepAliveEnabled()) {
             change_log << "keep_alive_enabled: " << (old_settings.isKeepAliveEnabled() ? "true" : "false")
                       << " -> " << (new_settings.isKeepAliveEnabled() ? "true" : "false") << "; ";
+        }
+
+        if (old_settings.isAutoRegistrationEnabled() != new_settings.isAutoRegistrationEnabled()) {
+            change_log << "auto_registration_enabled: " << (old_settings.isAutoRegistrationEnabled() ? "true" : "false")
+                      << " -> " << (new_settings.isAutoRegistrationEnabled() ? "true" : "false") << "; ";
         }
         
         logger_->Info(change_log.str());

@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "Drivers/Common/PluginLoader.h"
 #include "Drivers/Common/DriverFactory.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Platform/PlatformCompat.h"
 
 using namespace PulseOne::Drivers;

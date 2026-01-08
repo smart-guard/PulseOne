@@ -12,8 +12,8 @@
 
 // PulseOne 시스템
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
-#include "Database/DatabaseManager.h"
+#include "Logging/LogManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
 #include "Alarm/AlarmStartupRecovery.h"
@@ -42,7 +42,7 @@ protected:
             buffer << sql_file.rdbuf();
             std::string sql = buffer.str();
             
-            if (DatabaseManager::getInstance().executeNonQuery(sql)) {
+            if (DbLib::DatabaseManager::getInstance().executeNonQuery(sql)) {
                 std::cout << "✅ DB Schema & Test Data 초기화 완료" << std::endl;
             } else {
                 std::cerr << "❌ DB Schema & Test Data 초기화 실패" << std::endl;
@@ -60,7 +60,7 @@ protected:
         // 기본 시스템 초기화
         config_manager_ = &ConfigManager::getInstance();
         logger_ = &LogManager::getInstance();
-        db_manager_ = &DatabaseManager::getInstance();
+        db_manager_ = &DbLib::DatabaseManagerDbLib::DatabaseManager::getInstance();
         
         // DB Repository 초기화
         repo_factory_ = &RepositoryFactory::getInstance();
@@ -89,7 +89,7 @@ protected:
 
     ConfigManager* config_manager_;
     LogManager* logger_;
-    DatabaseManager* db_manager_;
+    DbLib::DatabaseManager* db_manager_;
     RepositoryFactory* repo_factory_;
     AlarmStartupRecovery* alarm_recovery_;
     std::shared_ptr<Repositories::AlarmOccurrenceRepository> alarm_occurrence_repo_;

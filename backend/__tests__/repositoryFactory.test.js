@@ -399,11 +399,11 @@ describe('🔥 RepositoryFactory 완전 검증 (DatabaseFactory 호환)', () => 
         
         // 6. 최종 요약
         console.log('\n📋 최종 요약:');
-        console.log(`   ✅ 싱글턴 패턴 동작`);
-        console.log(`   ✅ 7개 Repository 클래스 정의`);
-        console.log(`   ✅ 기존 DatabaseFactory 연동`);
-        console.log(`   ✅ 에러 핸들링 적절`);
-        console.log(`   ✅ 캐시 시스템 기본 동작`);
+        console.log('   ✅ 싱글턴 패턴 동작');
+        console.log('   ✅ 7개 Repository 클래스 정의');
+        console.log('   ✅ 기존 DatabaseFactory 연동');
+        console.log('   ✅ 에러 핸들링 적절');
+        console.log('   ✅ 캐시 시스템 기본 동작');
         console.log(`   ${factoryStats.factory.initialized ? '✅' : '⚠️'} Factory 초기화`);
         console.log(`   ${factoryStats.factory.repositoryCount > 0 ? '✅' : '⚠️'} Repository 생성`);
         

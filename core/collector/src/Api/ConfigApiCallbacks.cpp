@@ -6,9 +6,9 @@
 #include "Api/ConfigApiCallbacks.h"
 #include "Network/RestApiServer.h"
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Workers/WorkerManager.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/RepositoryFactory.h"
 
 #include <vector>

@@ -14,8 +14,8 @@
 
 // 싱글톤 접근용 헤더들
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
-#include "Database/DatabaseManager.h"
+#include "Logging/LogManager.h"
+#include "DatabaseManager.hpp"
 
 using namespace PulseOne;
 
@@ -76,9 +76,9 @@ TEST_F(WindowsStep1Test, SingletonManagerAccess) {
         std::cout << "  LogManager 싱글톤 접근 성공\n";
         EXPECT_TRUE(true);
         
-        // DatabaseManager 싱글톤 접근
-        auto& dbManager = DatabaseManager::getInstance();
-        std::cout << "  DatabaseManager 싱글톤 접근 성공\n";
+        // DbLib::DatabaseManager 싱글톤 접근
+        auto& dbManager = DbLib::DatabaseManager::getInstance();
+        std::cout << "  DbLib::DatabaseManager 싱글톤 접근 성공\n";
         EXPECT_TRUE(true);
         
     } catch (const std::exception& e) {

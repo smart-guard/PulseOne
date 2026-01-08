@@ -6,7 +6,7 @@
  * 
  * DeviceRepository와 동일한 패턴:
  * - SQLQueries.h 상수 사용
- * - DatabaseAbstractionLayer 패턴
+ * - DbLib::DatabaseAbstractionLayer 패턴
  * - 캐싱 및 벌크 연산 지원
  * - 검증 및 에러 핸들링
  */
@@ -14,7 +14,7 @@
 #include "Database/Repositories/ProtocolRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
 #include "Database/SQLQueries.h" 
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -34,7 +34,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Protocol::FIND_ALL);
         
         std::vector<ProtocolEntity> entities;
@@ -71,7 +71,7 @@ std::optional<ProtocolEntity> ProtocolRepository::findById(int id) {
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::Protocol::FIND_BY_ID, std::to_string(id));
         auto results = db_layer.executeQuery(query);
         
@@ -107,7 +107,7 @@ bool ProtocolRepository::save(ProtocolEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::map<std::string, std::string> data = entityToParams(entity);
         std::vector<std::string> primary_keys = {"id"};
         
@@ -154,7 +154,7 @@ bool ProtocolRepository::deleteById(int id) {
         
         std::string query = RepositoryHelpers::replaceParameter(SQL::Protocol::DELETE_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeNonQuery(query);
         
         if (success) {
@@ -182,7 +182,7 @@ bool ProtocolRepository::exists(int id) {
         
         std::string query = RepositoryHelpers::replaceParameter(SQL::Protocol::EXISTS_BY_ID, std::to_string(id));
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -222,7 +222,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findByIds(const std::vector<int>
             query.insert(order_pos, "WHERE id IN (" + ids_ss.str() + ") ");
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ProtocolEntity> entities;
@@ -268,7 +268,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findByConditions(
         query += RepositoryHelpers::buildOrderByClause(order_by);
         query += RepositoryHelpers::buildLimitClause(pagination);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<ProtocolEntity> entities;
@@ -300,7 +300,7 @@ int ProtocolRepository::countByConditions(const std::vector<QueryCondition>& con
         std::string query = SQL::Protocol::COUNT_ALL;
         query += RepositoryHelpers::buildWhereClause(conditions);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -325,7 +325,7 @@ std::optional<ProtocolEntity> ProtocolRepository::findByType(const std::string& 
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameterWithQuotes(SQL::Protocol::FIND_BY_TYPE, protocol_type);
         auto results = db_layer.executeQuery(query);
         
@@ -356,7 +356,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findByCategory(const std::string
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameterWithQuotes(SQL::Protocol::FIND_BY_CATEGORY, category);
         auto results = db_layer.executeQuery(query);
         
@@ -378,7 +378,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findEnabledProtocols() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Protocol::FIND_ENABLED);
         
         std::vector<ProtocolEntity> entities = mapResultToEntities(results);
@@ -398,7 +398,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findActiveProtocols() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Protocol::FIND_ACTIVE);
         
         std::vector<ProtocolEntity> entities = mapResultToEntities(results);
@@ -418,7 +418,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findByOperation(const std::strin
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         // JSON 필드에서 검색하는 쿼리 (SQLite JSON1 확장 사용)
         std::string query = R"(
             SELECT * FROM protocols 
@@ -446,7 +446,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findByDataType(const std::string
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         // JSON 필드에서 검색하는 쿼리
         std::string query = R"(
             SELECT * FROM protocols 
@@ -474,7 +474,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findSerialProtocols() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Protocol::FIND_SERIAL);
         
         std::vector<ProtocolEntity> entities = mapResultToEntities(results);
@@ -494,7 +494,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findBrokerProtocols() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Protocol::FIND_BROKER_REQUIRED);
         
         std::vector<ProtocolEntity> entities = mapResultToEntities(results);
@@ -514,7 +514,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findByPort(int port) {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = RepositoryHelpers::replaceParameter(SQL::Protocol::FIND_BY_PORT, std::to_string(port));
         auto results = db_layer.executeQuery(query);
         
@@ -589,7 +589,7 @@ int ProtocolRepository::deleteByIds(const std::vector<int>& ids) {
 
 std::string ProtocolRepository::getProtocolStatistics() const {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         auto total_result = db_layer.executeQuery(SQL::Protocol::COUNT_ALL);
         int total_count = 0;
@@ -620,7 +620,7 @@ std::map<std::string, int> ProtocolRepository::getCategoryDistribution() const {
     std::map<std::string, int> distribution;
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Protocol::GET_CATEGORY_DISTRIBUTION);
         
         for (const auto& row : results) {
@@ -642,7 +642,7 @@ std::map<std::string, int> ProtocolRepository::getCategoryDistribution() const {
 
 std::vector<ProtocolEntity> ProtocolRepository::findDeprecatedProtocols() const {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Protocol::FIND_DEPRECATED);
         
         std::vector<ProtocolEntity> entities;
@@ -686,7 +686,7 @@ std::vector<ProtocolEntity> ProtocolRepository::findDeprecatedProtocols() const 
 
 std::vector<std::map<std::string, std::string>> ProtocolRepository::getApiProtocolList() const {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::Protocol::GET_API_LIST);
         
         std::vector<std::map<std::string, std::string>> api_list;
@@ -722,7 +722,7 @@ ProtocolEntity ProtocolRepository::mapRowToEntity(const std::map<std::string, st
     ProtocolEntity entity;
     
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 기본 정보
         auto it = row.find("id");
@@ -819,7 +819,7 @@ std::vector<ProtocolEntity> ProtocolRepository::mapResultToEntities(
 }
 
 std::map<std::string, std::string> ProtocolRepository::entityToParams(const ProtocolEntity& entity) {
-    DatabaseAbstractionLayer db_layer;
+    DbLib::DatabaseAbstractionLayer db_layer;
     
     std::map<std::string, std::string> params;
     
@@ -866,7 +866,7 @@ std::map<std::string, std::string> ProtocolRepository::entityToParams(const Prot
 
 bool ProtocolRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         bool success = db_layer.executeCreateTable(SQL::Protocol::CREATE_TABLE);
         
         if (success) {

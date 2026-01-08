@@ -10,7 +10,7 @@
 #ifndef COMPONENTS_WORKER_THREAD_MANAGER_H
 #define COMPONENTS_WORKER_THREAD_MANAGER_H
 
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <thread>
 #include <atomic>
 #include <memory>

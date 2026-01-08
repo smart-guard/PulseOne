@@ -1,6 +1,6 @@
 #include "Drivers/Common/PluginLoader.h"
 #include "Platform/PlatformCompat.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 namespace PulseOne {
 namespace Drivers {

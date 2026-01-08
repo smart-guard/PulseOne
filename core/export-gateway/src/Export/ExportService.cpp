@@ -15,7 +15,7 @@
 #include "CSP/HttpTargetHandler.h"
 #include "CSP/S3TargetHandler.h"
 #include "CSP/FileTargetHandler.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/ExportTargetRepository.h"

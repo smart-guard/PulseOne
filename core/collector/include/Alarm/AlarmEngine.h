@@ -16,23 +16,28 @@
 #include <chrono>
 #include <optional>
 #include <variant>
+#include <memory>
 
 // 프로젝트 헤더들 (순서 중요)
 #include "Common/Structs.h"
 #include "Alarm/AlarmTypes.h"
-#include "Database/DatabaseManager.h"
+#include "DatabaseManager.hpp"
 #include "Database/Entities/AlarmRuleEntity.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
 #include "Database/Repositories/AlarmRuleRepository.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 
-// JSON include
 #include <nlohmann/json.hpp>
+#include "Scripting/ScriptExecutor.h"
 
 namespace PulseOne {
 namespace Alarm {
+
+class AlarmRuleRegistry;
+class AlarmStateCache;
+class AlarmEvaluator;
 
 // =============================================================================
 // 타입 별칭들
@@ -147,9 +152,13 @@ private:
     std::shared_ptr<AlarmRuleRepository> alarm_rule_repo_;
     std::shared_ptr<AlarmOccurrenceRepository> alarm_occurrence_repo_;
     
+    // 신규 컴포넌트들
+    std::unique_ptr<AlarmRuleRegistry> registry_;
+    std::unique_ptr<AlarmStateCache> cache_;
+    std::unique_ptr<AlarmEvaluator> evaluator_;
+    
     // JavaScript 엔진
-    void* js_runtime_{nullptr};  // JSRuntime*
-    void* js_context_{nullptr};  // JSContext*
+    PulseOne::Scripting::ScriptExecutor executor_;
     
     // 캐시 및 상태 (스레드 안전)
     mutable std::shared_mutex rules_cache_mutex_;

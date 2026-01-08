@@ -1,0 +1,4 @@
+$(OBJ_DIR)/test_step13_bacnet_read_write.o: test_step13_bacnet_read_write.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)📡 Compiling Step 13 RW Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@

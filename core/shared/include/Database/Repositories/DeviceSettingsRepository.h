@@ -10,8 +10,8 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/DeviceSettingsEntity.h"
-#include "Database/DatabaseManager.h"
-#include "Utils/LogManager.h"
+#include "DatabaseManager.hpp"
+#include "Logging/LogManager.h"
 #include <memory>
 #include <map>
 #include <string>
@@ -83,6 +83,7 @@ public:
     bool updatePollingInterval(int device_id, int polling_interval_ms);
     bool updateConnectionTimeout(int device_id, int timeout_ms);
     bool updateRetrySettings(int device_id, int max_retry_count, int retry_interval_ms);
+    bool updateAutoRegistrationEnabled(int device_id, bool enabled);
     int bulkUpdateSettings(const std::map<int, DeviceSettingsEntity>& settings_map);
 
     // =======================================================================
@@ -131,11 +132,11 @@ private:
     // 의존성 관리
     // =======================================================================
     
-    DatabaseManager* db_manager_;
+    DbLib::DatabaseManager* db_manager_;
     LogManager* logger_;
     
     void initializeDependencies() {
-        db_manager_ = &DatabaseManager::getInstance();
+        db_manager_ = &DbLib::DatabaseManager::getInstance();
         logger_ = &LogManager::getInstance();
     }
 

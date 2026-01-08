@@ -11,7 +11,7 @@
  */
 
 #include "Workers/Base/SerialBasedWorker.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Common/Enums.h"
 #include <chrono>
 #include <sstream>

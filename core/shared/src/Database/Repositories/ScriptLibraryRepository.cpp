@@ -1,24 +1,24 @@
 // =============================================================================
 // collector/src/Database/Repositories/ScriptLibraryRepository.cpp
-// PulseOne ScriptLibraryRepository 구현 - DatabaseAbstractionLayer 사용으로 수정
+// PulseOne ScriptLibraryRepository 구현 - DbLib::DatabaseAbstractionLayer 사용으로 수정
 // =============================================================================
 
 /**
  * @file ScriptLibraryRepository.cpp
- * @brief PulseOne ScriptLibraryRepository 완전 구현 - DatabaseAbstractionLayer 패턴
+ * @brief PulseOne ScriptLibraryRepository 완전 구현 - DbLib::DatabaseAbstractionLayer 패턴
  * @author PulseOne Development Team
  * @date 2025-08-12
  * 
- * 🔧 기존 완성본에서 DatabaseAbstractionLayer만 수정:
+ * 🔧 기존 완성본에서 DbLib::DatabaseAbstractionLayer만 수정:
  * - db_manager_->executeQuery() → db_layer.executeQuery() 로만 변경
  * - 나머지 모든 로직은 그대로 유지
  */
 
 #include "Database/Repositories/ScriptLibraryRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include "Database/ExtendedSQLQueries.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -65,7 +65,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         // 🎯 ExtendedSQLQueries.h 사용
         auto results = db_layer.executeQuery(SQL::ScriptLibrary::FIND_ALL);
         
@@ -108,7 +108,7 @@ std::optional<ScriptLibraryEntity> ScriptLibraryRepository::findById(int id) {
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h + RepositoryHelpers 패턴
         std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_BY_ID, std::to_string(id));
@@ -150,7 +150,7 @@ bool ScriptLibraryRepository::save(ScriptLibraryEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 매개변수 배열 생성 (ExtendedSQLQueries.h INSERT 순서와 일치)
         std::vector<std::string> params = {
@@ -221,7 +221,7 @@ bool ScriptLibraryRepository::update(const ScriptLibraryEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 UPDATE 매개변수 배열 (ExtendedSQLQueries.h UPDATE_BY_ID 순서와 일치)
         std::vector<std::string> params = {
@@ -285,7 +285,7 @@ bool ScriptLibraryRepository::deleteById(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::DELETE_BY_ID, std::to_string(id));
@@ -328,7 +328,7 @@ bool ScriptLibraryRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::EXISTS_BY_ID, std::to_string(id));
@@ -358,7 +358,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByIds(const std::v
         LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::DEBUG,
                                      "findByIds: " + std::to_string(ids.size()) + "개 ID로 벌크 조회 시작");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ ExtendedSQLQueries.h 상수 사용
         std::string query = SQL::ScriptLibrary::FIND_BY_IDS;
@@ -470,7 +470,7 @@ int ScriptLibraryRepository::deleteByIds(const std::vector<int>& ids) {
         LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::INFO,
                                      "🗑️ deleteByIds: " + std::to_string(ids.size()) + "개 ID 벌크 삭제 시작");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // ✅ ExtendedSQLQueries.h 상수 사용
         std::string query = SQL::ScriptLibrary::DELETE_BY_IDS;
@@ -514,7 +514,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByConditions(const
         LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::DEBUG,
                                      "findByConditions: " + std::to_string(conditions.size()) + "개 조건으로 검색 시작");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h의 기본 쿼리 사용
         std::string query = SQL::ScriptLibrary::FIND_ALL;
@@ -556,7 +556,7 @@ int ScriptLibraryRepository::countByConditions(const std::map<std::string, std::
         LogManager::getInstance().log("ScriptLibraryRepository", LogLevel::DEBUG,
                                      "countByConditions: " + std::to_string(conditions.size()) + "개 조건으로 카운트 시작");
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h의 COUNT 쿼리 사용
         std::string query = SQL::ScriptLibrary::COUNT_ALL;
@@ -607,7 +607,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByCategory(const s
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameterWithQuotes(SQL::ScriptLibrary::FIND_BY_CATEGORY, category);
@@ -643,7 +643,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByTenantId(int ten
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_BY_TENANT_ID, std::to_string(tenant_id));
@@ -679,7 +679,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findSystemScripts() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 상수 사용
         auto results = db_layer.executeQuery(SQL::ScriptLibrary::FIND_SYSTEM_SCRIPTS);
@@ -713,7 +713,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findTopUsed(int limit)
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::FIND_TOP_USED, std::to_string(limit));
@@ -752,7 +752,7 @@ bool ScriptLibraryRepository::incrementUsageCount(int script_id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 상수 사용
         std::string query = RepositoryHelpers::replaceParameter(SQL::ScriptLibrary::INCREMENT_USAGE_COUNT, std::to_string(script_id));
@@ -783,7 +783,7 @@ bool ScriptLibraryRepository::incrementUsageCount(int script_id) {
 
 bool ScriptLibraryRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 상수 사용
         bool success = db_layer.executeCreateTable(SQL::ScriptLibrary::CREATE_TABLE);
@@ -945,7 +945,7 @@ std::optional<ScriptLibraryEntity> ScriptLibraryRepository::findByName(int tenan
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 ExtendedSQLQueries.h 패턴 (두 개 매개변수)
         std::vector<std::string> params = {std::to_string(tenant_id), name};
@@ -983,7 +983,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::findByTags(const std::
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 태그 검색을 위한 LIKE 조건 생성
         std::string where_clause = " WHERE (";
@@ -1034,7 +1034,7 @@ std::vector<ScriptLibraryEntity> ScriptLibraryRepository::search(const std::stri
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // 🎯 키워드 검색 (이름, 설명, 태그에서 검색)
         std::string search_pattern = "%" + keyword + "%";
@@ -1141,7 +1141,7 @@ std::vector<std::map<std::string, std::string>> ScriptLibraryRepository::getTemp
             return templates;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query;
         if (category.empty()) {
@@ -1189,7 +1189,7 @@ std::optional<std::map<std::string, std::string>> ScriptLibraryRepository::getTe
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         std::string query = RepositoryHelpers::replaceParameter(
         SQL::ScriptLibrary::FIND_TEMPLATE_BY_ID, std::to_string(template_id));
@@ -1229,7 +1229,7 @@ nlohmann::json ScriptLibraryRepository::getUsageStatistics(int tenant_id) {
            return stats;
        }
        
-       DatabaseAbstractionLayer db_layer;
+       DbLib::DatabaseAbstractionLayer db_layer;
        
        // 🎯 ExtendedSQLQueries.h 사용 - 총 스크립트 수
        std::string count_query;

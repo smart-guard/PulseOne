@@ -22,7 +22,6 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/AlarmRuleEntity.h"
-#include "Database/DatabaseTypes.h"
 #include "Alarm/AlarmTypes.h"
 #include <memory>
 #include <map>

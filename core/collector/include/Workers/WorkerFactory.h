@@ -52,6 +52,16 @@ public:
      */
     std::unique_ptr<BaseDeviceWorker> CreateWorkerById(int device_id);
     
+    /**
+     * @brief 디바이스 ID로 최신 DeviceInfo 로드
+     */
+    bool GetDeviceInfoById(int device_id, PulseOne::Structs::DeviceInfo& info);
+
+    /**
+     * @brief 디바이스의 데이터 포인트 목록 로드
+     */
+    std::vector<PulseOne::Structs::DataPoint> LoadDeviceDataPoints(int device_id);
+    
     // ==========================================================================
     // 프로토콜 관리
     // ==========================================================================
@@ -120,7 +130,7 @@ private:
     /**
      * @brief 프로토콜 Creator들 로드 (스레드 안전, 캐시됨)
      */
-    std::map<std::string, WorkerCreator> LoadProtocolCreators();
+    std::map<std::string, WorkerCreator> LoadProtocolCreators() const;
 
 };
 

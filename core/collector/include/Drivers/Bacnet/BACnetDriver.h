@@ -36,7 +36,7 @@
 #include "Common/Structs.h"              // DeviceInfo, DataPoint 등
 #include "Common/DriverStatistics.h"     // DriverStatistics
 #include "Drivers/Bacnet/BACnetTypes.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 // BACnet 스택 조건부 포함
 #if HAS_BACNET_STACK
@@ -135,8 +135,8 @@ public:
     const PulseOne::Structs::DriverStatistics& GetStatistics() const override;
     void ResetStatistics() override;
     
-    // =============================================================================
-    // BACnet 특화 공개 메서드들
+    void SetConnectedForTesting(bool connected) { is_connected_.store(connected); }
+    
     // =============================================================================
     
     /**

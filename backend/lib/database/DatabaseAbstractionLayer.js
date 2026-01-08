@@ -61,7 +61,7 @@ class SQLiteDialect extends ISQLDialect {
     
     formatBooleanValue(value) { return value ? '1' : '0'; }
     parseBooleanValue(value) { return value === '1' || value === 'true'; }
-    getTableExistsQuery() { return `SELECT name FROM sqlite_master WHERE type='table' AND name = ?`; }
+    getTableExistsQuery() { return 'SELECT name FROM sqlite_master WHERE type=\'table\' AND name = ?'; }
     getParameterPlaceholder(index) { return '?'; }
 }
 
@@ -91,7 +91,7 @@ class PostgreSQLDialect extends ISQLDialect {
     
     formatBooleanValue(value) { return value ? 'true' : 'false'; }
     parseBooleanValue(value) { return value === 'true' || value === true; }
-    getTableExistsQuery() { return `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`; }
+    getTableExistsQuery() { return 'SELECT table_name FROM information_schema.tables WHERE table_schema = \'public\' AND table_name = $1'; }
     getParameterPlaceholder(index) { return `$${index + 1}`; }
 }
 
@@ -123,7 +123,7 @@ class MySQLDialect extends ISQLDialect {
     
     formatBooleanValue(value) { return value ? 'true' : 'false'; }
     parseBooleanValue(value) { return value === 'true' || value === true || value === 1; }
-    getTableExistsQuery() { return `SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?`; }
+    getTableExistsQuery() { return 'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?'; }
     getParameterPlaceholder(index) { return '?'; }
 }
 
@@ -167,7 +167,7 @@ class MSSQLDialect extends ISQLDialect {
     
     formatBooleanValue(value) { return value ? '1' : '0'; }
     parseBooleanValue(value) { return value === '1' || value === 'true' || value === true || value === 1; }
-    getTableExistsQuery() { return `SELECT table_name FROM information_schema.tables WHERE table_schema = 'dbo' AND table_name = ?`; }
+    getTableExistsQuery() { return 'SELECT table_name FROM information_schema.tables WHERE table_schema = \'dbo\' AND table_name = ?'; }
     getParameterPlaceholder(index) { return '?'; }
 }
 
@@ -197,19 +197,19 @@ class DatabaseAbstractionLayer {
      */
     createDialect(dbType) {
         switch (dbType.toUpperCase()) {
-            case 'SQLITE':
-                return new SQLiteDialect();
-            case 'POSTGRESQL':
-            case 'POSTGRES':
-                return new PostgreSQLDialect();
-            case 'MYSQL':
-            case 'MARIADB':
-                return new MySQLDialect();
-            case 'MSSQL':
-            case 'SQLSERVER':
-                return new MSSQLDialect();
-            default:
-                throw new Error(`Unsupported database type: ${dbType}`);
+        case 'SQLITE':
+            return new SQLiteDialect();
+        case 'POSTGRESQL':
+        case 'POSTGRES':
+            return new PostgreSQLDialect();
+        case 'MYSQL':
+        case 'MARIADB':
+            return new MySQLDialect();
+        case 'MSSQL':
+        case 'SQLSERVER':
+            return new MSSQLDialect();
+        default:
+            throw new Error(`Unsupported database type: ${dbType}`);
         }
     }
     
@@ -222,35 +222,35 @@ class DatabaseAbstractionLayer {
         }
 
         switch (this.currentDbType.toUpperCase()) {
-            case 'POSTGRESQL':
-            case 'POSTGRES':
-                if (!this.connections.postgres) {
-                    throw new Error('PostgreSQL connection not available');
-                }
-                return { db: this.connections.postgres, type: 'postgresql' };
+        case 'POSTGRESQL':
+        case 'POSTGRES':
+            if (!this.connections.postgres) {
+                throw new Error('PostgreSQL connection not available');
+            }
+            return { db: this.connections.postgres, type: 'postgresql' };
                 
-            case 'SQLITE':
-                if (!this.connections.sqlite) {
-                    throw new Error('SQLite connection not available');
-                }
-                return { db: this.connections.sqlite, type: 'sqlite' };
+        case 'SQLITE':
+            if (!this.connections.sqlite) {
+                throw new Error('SQLite connection not available');
+            }
+            return { db: this.connections.sqlite, type: 'sqlite' };
                 
-            case 'MYSQL':
-            case 'MARIADB':
-                if (!this.connections.mysql) {
-                    throw new Error('MySQL connection not available');
-                }
-                return { db: this.connections.mysql, type: 'mysql' };
+        case 'MYSQL':
+        case 'MARIADB':
+            if (!this.connections.mysql) {
+                throw new Error('MySQL connection not available');
+            }
+            return { db: this.connections.mysql, type: 'mysql' };
                 
-            case 'MSSQL':
-            case 'SQLSERVER':
-                if (!this.connections.mssql) {
-                    throw new Error('MSSQL connection not available');
-                }
-                return { db: this.connections.mssql, type: 'mssql' };
+        case 'MSSQL':
+        case 'SQLSERVER':
+            if (!this.connections.mssql) {
+                throw new Error('MSSQL connection not available');
+            }
+            return { db: this.connections.mssql, type: 'mssql' };
                 
-            default:
-                throw new Error(`Unsupported database type: ${this.currentDbType}`);
+        default:
+            throw new Error(`Unsupported database type: ${this.currentDbType}`);
         }
     }
     
@@ -269,38 +269,38 @@ class DatabaseAbstractionLayer {
             const adaptedQuery = this.preprocessQuery(query);
             
             switch (type) {
-                case 'postgresql':
-                    const pgResult = await db.query(adaptedQuery, params);
-                    return pgResult.rows;
+            case 'postgresql':
+                const pgResult = await db.query(adaptedQuery, params);
+                return pgResult.rows;
                     
-                case 'sqlite':
-                    // 🔥 핵심 수정: SQLite 연결 객체의 실제 메서드 사용
-                    if (typeof db.all === 'function') {
-                        // SQLite 연결 객체가 all 메서드를 지원하는 경우
-                        return await db.all(adaptedQuery, params);
-                    } else if (typeof db.query === 'function') {
-                        // SQLite 연결 객체가 query 메서드를 지원하는 경우
-                        const result = await db.query(adaptedQuery, params);
-                        return result.rows || result;
-                    } else {
-                        throw new Error('SQLite connection does not support query methods');
-                    }
+            case 'sqlite':
+                // 🔥 핵심 수정: SQLite 연결 객체의 실제 메서드 사용
+                if (typeof db.all === 'function') {
+                    // SQLite 연결 객체가 all 메서드를 지원하는 경우
+                    return await db.all(adaptedQuery, params);
+                } else if (typeof db.query === 'function') {
+                    // SQLite 연결 객체가 query 메서드를 지원하는 경우
+                    const result = await db.query(adaptedQuery, params);
+                    return result.rows || result;
+                } else {
+                    throw new Error('SQLite connection does not support query methods');
+                }
                     
-                case 'mysql':
-                    const [mysqlRows] = await db.execute(adaptedQuery, params);
-                    return mysqlRows;
+            case 'mysql':
+                const [mysqlRows] = await db.execute(adaptedQuery, params);
+                return mysqlRows;
                     
-                case 'mssql':
-                    const mssqlResult = await db.request();
-                    // MSSQL 파라미터 바인딩
-                    params.forEach((param, index) => {
-                        mssqlResult.input(`param${index}`, param);
-                    });
-                    const result = await mssqlResult.query(adaptedQuery);
-                    return result.recordset;
+            case 'mssql':
+                const mssqlResult = await db.request();
+                // MSSQL 파라미터 바인딩
+                params.forEach((param, index) => {
+                    mssqlResult.input(`param${index}`, param);
+                });
+                const result = await mssqlResult.query(adaptedQuery);
+                return result.recordset;
                     
-                default:
-                    throw new Error(`Unsupported database type: ${type}`);
+            default:
+                throw new Error(`Unsupported database type: ${type}`);
             }
             
         } catch (error) {
@@ -322,38 +322,38 @@ class DatabaseAbstractionLayer {
             const adaptedQuery = this.preprocessQuery(query);
             
             switch (type) {
-                case 'postgresql':
-                    const pgResult = await db.query(adaptedQuery, params);
-                    return pgResult.rowCount > 0;
+            case 'postgresql':
+                const pgResult = await db.query(adaptedQuery, params);
+                return pgResult.rowCount > 0;
                     
-                case 'sqlite':
-                    // 🔥 핵심 수정: SQLite 연결 객체의 실제 메서드 사용
-                    if (typeof db.run === 'function') {
-                        // SQLite 연결 객체가 run 메서드를 지원하는 경우
-                        const result = await db.run(adaptedQuery, params);
-                        return result.changes > 0;
-                    } else if (typeof db.query === 'function') {
-                        // SQLite 연결 객체가 query 메서드를 지원하는 경우
-                        const result = await db.query(adaptedQuery, params);
-                        return result.rowCount > 0 || result.changes > 0;
-                    } else {
-                        throw new Error('SQLite connection does not support non-query methods');
-                    }
+            case 'sqlite':
+                // 🔥 핵심 수정: SQLite 연결 객체의 실제 메서드 사용
+                if (typeof db.run === 'function') {
+                    // SQLite 연결 객체가 run 메서드를 지원하는 경우
+                    const result = await db.run(adaptedQuery, params);
+                    return result.changes > 0;
+                } else if (typeof db.query === 'function') {
+                    // SQLite 연결 객체가 query 메서드를 지원하는 경우
+                    const result = await db.query(adaptedQuery, params);
+                    return result.rowCount > 0 || result.changes > 0;
+                } else {
+                    throw new Error('SQLite connection does not support non-query methods');
+                }
                     
-                case 'mysql':
-                    const [mysqlResult] = await db.execute(adaptedQuery, params);
-                    return mysqlResult.affectedRows > 0;
+            case 'mysql':
+                const [mysqlResult] = await db.execute(adaptedQuery, params);
+                return mysqlResult.affectedRows > 0;
                     
-                case 'mssql':
-                    const mssqlResult = await db.request();
-                    params.forEach((param, index) => {
-                        mssqlResult.input(`param${index}`, param);
-                    });
-                    const result = await mssqlResult.query(adaptedQuery);
-                    return result.rowsAffected[0] > 0;
+            case 'mssql':
+                const mssqlResult = await db.request();
+                params.forEach((param, index) => {
+                    mssqlResult.input(`param${index}`, param);
+                });
+                const result = await mssqlResult.query(adaptedQuery);
+                return result.rowsAffected[0] > 0;
                     
-                default:
-                    throw new Error(`Unsupported database type: ${type}`);
+            default:
+                throw new Error(`Unsupported database type: ${type}`);
             }
             
         } catch (error) {

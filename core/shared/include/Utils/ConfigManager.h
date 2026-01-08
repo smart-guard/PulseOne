@@ -421,7 +421,7 @@ private:
     
     // 기존 멤버들
     std::atomic<bool> initialized_;
-    mutable std::mutex init_mutex_;
+    mutable std::recursive_mutex init_mutex_;
     std::map<std::string, std::string> configMap;
     mutable std::mutex configMutex;
     std::string envFilePath;

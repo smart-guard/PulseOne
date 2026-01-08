@@ -105,6 +105,12 @@ public:
         (void)topic;
         return false;
     }
+
+    /**
+     * @brief Discover available data points from the device (Node Browsing)
+     * @return List of discovered DataPoints
+     */
+    virtual std::vector<DataPoint> DiscoverPoints() { return {}; }
     
     virtual ProtocolType GetProtocolType() const = 0;
     virtual DriverStatus GetStatus() const = 0;

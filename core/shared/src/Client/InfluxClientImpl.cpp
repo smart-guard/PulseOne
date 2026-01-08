@@ -1,5 +1,5 @@
 #include "Client/InfluxClientImpl.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <sstream>
 
 namespace PulseOne {
@@ -59,6 +59,27 @@ bool InfluxClientImpl::writePoint(const std::string& measurement, const std::str
     }
 }
 
+bool InfluxClientImpl::writeRecord(const std::string& measurement, 
+                                 const std::map<std::string, std::string>& tags,
+                                 const std::map<std::string, double>& fields) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!connected_) return false;
+
+    // API: POST /api/v2/write?org=YOUR_ORG&bucket=YOUR_BUCKET&precision=ns
+    std::string path = "/api/v2/write?org=" + org_ + "&bucket=" + bucket_ + "&precision=s";
+    std::string body = formatLineProtocol(measurement, tags, fields);
+
+    auto response = http_client_->post(path, body, "text/plain");
+    
+    if (response.isSuccess()) {
+        return true;
+    } else {
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
+            "InfluxDB record write failed: " + response.error_message + " (Status: " + std::to_string(response.status_code) + ")");
+        return false;
+    }
+}
+
 std::string InfluxClientImpl::query(const std::string& fluxQuery) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!connected_) return "";
@@ -91,6 +112,30 @@ std::string InfluxClientImpl::formatLineProtocol(const std::string& measurement,
     // Example: mem,host=host1 used_percent=23.43234543 1556813568
     std::ostringstream oss;
     oss << measurement << " " << field << "=" << value;
+    return oss.str();
+}
+
+std::string InfluxClientImpl::formatLineProtocol(const std::string& measurement, 
+                                               const std::map<std::string, std::string>& tags,
+                                               const std::map<std::string, double>& fields) {
+    std::ostringstream oss;
+    oss << measurement;
+    
+    // Add tags
+    for (const auto& [key, value] : tags) {
+        oss << "," << key << "=" << value;
+    }
+    
+    oss << " ";
+    
+    // Add fields
+    bool first = true;
+    for (const auto& [key, value] : fields) {
+        if (!first) oss << ",";
+        oss << key << "=" << value;
+        first = false;
+    }
+    
     return oss.str();
 }
 

@@ -65,7 +65,7 @@ class WebSocketService {
         this.io = socketIo(this.server, {
             cors: {
                 origin: corsOrigins,
-                methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
                 credentials: true
             },
             
@@ -105,12 +105,12 @@ class WebSocketService {
         }
         
         return this.isDevelopment ? [
-            "http://localhost:3000", 
-            "http://localhost:5173",
-            "http://localhost:8080",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:3000"
-        ] : ["https://your-production-domain.com"];
+            'http://localhost:3000', 
+            'http://localhost:5173',
+            'http://localhost:8080',
+            'http://127.0.0.1:5173',
+            'http://127.0.0.1:3000'
+        ] : ['https://your-production-domain.com'];
     }
 
     // =========================================================================

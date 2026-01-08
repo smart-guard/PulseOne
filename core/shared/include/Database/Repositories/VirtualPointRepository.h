@@ -8,8 +8,7 @@
 
 #include "Database/Repositories/IRepository.h"
 #include "Database/Entities/VirtualPointEntity.h"
-#include "Database/DatabaseTypes.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <memory>
 #include <map>
 #include <string>

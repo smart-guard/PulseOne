@@ -6,7 +6,7 @@
 
 #include "Client/RedisClient.h"
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 
 #include <atomic>
 #include <chrono>

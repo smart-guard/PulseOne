@@ -5,9 +5,9 @@
 
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/Repositories/RepositoryHelpers.h"
-#include "Database/DatabaseAbstractionLayer.h"
+#include "DatabaseAbstractionLayer.hpp"
 #include "Database/SQLQueries.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include "Common/Utils.h"
 
 namespace PulseOne {
@@ -24,7 +24,7 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findAll() {
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::CurrentValue::FIND_ALL);
         
         std::vector<CurrentValueEntity> entities;
@@ -60,7 +60,7 @@ std::optional<CurrentValueEntity> CurrentValueRepository::findById(int id) {
             return std::nullopt;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = SQL::CurrentValue::FIND_BY_ID;
         
         // ✅ vector 초기화를 push_back으로 변경
@@ -99,7 +99,7 @@ bool CurrentValueRepository::save(CurrentValueEntity& entity) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto data = entityToParams(entity);
         
         // ✅ vector 초기화를 push_back으로 변경
@@ -131,7 +131,7 @@ bool CurrentValueRepository::deleteById(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = SQL::CurrentValue::DELETE_BY_ID;
         
         // ✅ vector 초기화를 push_back으로 변경
@@ -159,7 +159,7 @@ bool CurrentValueRepository::exists(int id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = SQL::CurrentValue::EXISTS_BY_ID;
         
         // ✅ vector 초기화를 push_back으로 변경
@@ -196,7 +196,7 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findByIds(const std::vec
         std::string query = SQL::CurrentValue::FIND_BY_IDS;
         RepositoryHelpers::replaceStringPlaceholder(query, "%s", ids_str);
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
         
         std::vector<CurrentValueEntity> entities;
@@ -228,7 +228,7 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findByDeviceId(int devic
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         
         // DataPoint와 JOIN하여 device_id로 현재값들 조회
         std::string query = R"(
@@ -276,7 +276,7 @@ std::vector<CurrentValueEntity> CurrentValueRepository::findByQuality(PulseOne::
             return {};
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         std::string query = SQL::CurrentValue::FIND_BY_QUALITY_CODE;
         
         // ✅ vector 초기화를 push_back으로 변경
@@ -311,7 +311,7 @@ bool CurrentValueRepository::incrementReadCount(int point_id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto now_str = Utils::TimestampToDBString(Utils::GetCurrentTimestamp());
         
         std::string query = SQL::CurrentValue::INCREMENT_READ_COUNT;
@@ -343,7 +343,7 @@ bool CurrentValueRepository::incrementWriteCount(int point_id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto now_str = Utils::TimestampToDBString(Utils::GetCurrentTimestamp());
         
         std::string query = SQL::CurrentValue::INCREMENT_WRITE_COUNT;
@@ -375,7 +375,7 @@ bool CurrentValueRepository::incrementErrorCount(int point_id) {
             return false;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto now_str = Utils::TimestampToDBString(Utils::GetCurrentTimestamp());
         
         std::string query = SQL::CurrentValue::INCREMENT_ERROR_COUNT;
@@ -426,7 +426,7 @@ int CurrentValueRepository::getTotalCount() {
             return 0;
         }
         
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(SQL::CurrentValue::COUNT_ALL);
         
         if (!results.empty() && results[0].find("count") != results[0].end()) {
@@ -447,7 +447,7 @@ int CurrentValueRepository::getTotalCount() {
 
 bool CurrentValueRepository::ensureTableExists() {
     try {
-        DatabaseAbstractionLayer db_layer;
+        DbLib::DatabaseAbstractionLayer db_layer;
         return db_layer.executeNonQuery(SQL::CurrentValue::CREATE_TABLE);
         
     } catch (const std::exception& e) {

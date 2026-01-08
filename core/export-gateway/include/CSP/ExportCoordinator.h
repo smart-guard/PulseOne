@@ -21,7 +21,7 @@
 #include "Database/Repositories/ExportLogRepository.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Utils/ConfigManager.h"
-#include "Utils/LogManager.h"
+#include "Logging/LogManager.h"
 #include <memory>
 #include <atomic>
 #include <mutex>

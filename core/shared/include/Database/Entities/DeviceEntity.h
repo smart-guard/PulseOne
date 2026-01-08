@@ -444,7 +444,7 @@ public:
         if (site_id_ <= 0) return false;
         if (name_.empty()) return false;
         if (device_type_.empty()) return false;
-        if (protocol_id_ <= 0) return false;  // 🔥 변경됨!
+        if (protocol_id_ <= 0) return false;
         if (endpoint_.empty()) return false;
         if (config_.empty()) return false;
         
@@ -471,12 +471,6 @@ public:
     // 🔥 프로토콜 정보 조회 및 설정 (ProtocolRepository 활용)
     // =======================================================================
     
-    // 기본 프로토콜 정보 (deprecated 선언 + 새 구현)
-    [[deprecated("Use getProtocolId() instead")]]
-    std::string getProtocolType() const;
-    
-    [[deprecated("Use setProtocolId() instead")]]
-    void setProtocolType(const std::string& protocol_type);
     
     // 추가 프로토콜 정보 헬퍼 메서드들
     std::string getProtocolDisplayName() const;

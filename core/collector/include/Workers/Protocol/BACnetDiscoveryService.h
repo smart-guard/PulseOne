@@ -20,7 +20,7 @@
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/Repositories/DeviceSettingsRepository.h"
-#include "Database/DatabaseTypes.h"    
+#include "DatabaseTypes.hpp"    
 #include "Common/Structs.h"
 #include "Common/Enums.h"
 #include "Drivers/Bacnet/BACnetTypes.h"
