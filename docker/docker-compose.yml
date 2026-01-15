@@ -1,6 +1,28 @@
 version: "3.8"
 
 services:
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+      args:
+        - VITE_API_URL=http://localhost:3000
+    restart: always
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    environment:
+      - DATABASE_TYPE=POSTGRESQL
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=pulseone
+      - POSTGRES_USER=pulseone
+      - POSTGRES_PASSWORD=yourpassword
+    volumes:
+      - ../backend:/app/backend
+      - ../config:/app/config
+      - ../core:/app/core
+      - ../data:/app/data
+
   backend:
     build:
       context: ..
@@ -22,6 +44,13 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    environment:
+      - DATABASE_TYPE=SQLITE
+    volumes:
+      - ../backend:/app/backend
+      - ../config:/app/config
+      - ../core:/app/core
+      - ../data:/app/data
 
   collector:
 
@@ -35,23 +64,19 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
     environment:
       - REDIS_HOST=redis
       - REDIS_PRIMARY_HOST=redis
       - REDIS_PRIMARY_PORT=6379
-      - DATABASE_TYPE=POSTGRESQL
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=pulseone
-      - POSTGRES_USER=pulseone
-      - POSTGRES_PASSWORD=yourpassword
-      - PGPASSWORD=yourpassword
-      - PGUSER=pulseone
+      - DATABASE_TYPE=SQLITE
+      - SQLITE_PATH=/app/data/db/pulseone.db
       - RABBITMQ_HOST=rabbitmq
       - COLLECTOR_ID=1
       - LOG_LEVEL=debug
+    volumes:
+      - ../data:/app/data
+      - ../config:/app/config
+      - ../core:/app/core
 
   rabbitmq:
     image: rabbitmq:3-management
