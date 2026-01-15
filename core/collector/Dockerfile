@@ -3,7 +3,10 @@ FROM gcc:12
 
 # 기본 패키지 설치 (httplib 헤더 포함)
 RUN apt-get update && apt-get install -y \
-    cmake make build-essential \
+    sqlite3 \
+    git \
+    build-essential \
+    cmake \
     libpqxx-dev libpq-dev libsqlite3-dev \
     sqlite3 sqlite3-doc \
     curl git nodejs npm pkg-config \
