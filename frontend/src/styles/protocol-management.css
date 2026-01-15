@@ -16,7 +16,6 @@
   border: 1px solid var(--neutral-200);
   box-shadow: var(--shadow-sm);
   transition: all 0.2s ease-in-out;
-  overflow: hidden;
 }
 
 .protocol-card:hover {
@@ -123,7 +122,8 @@
   color: var(--neutral-600);
   line-height: 1.5;
   margin-bottom: var(--space-4);
-  min-height: 3.5rem; /* 일정한 높이 유지 */
+  min-height: 3.5rem;
+  /* 일정한 높이 유지 */
 }
 
 .protocol-features {
@@ -207,6 +207,27 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.btn-icon-sm {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--neutral-200);
+  background: white;
+  color: var(--neutral-500);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+}
+
+.btn-icon-sm:hover {
+  background: var(--primary-50);
+  border-color: var(--primary-200);
+  color: var(--primary-600);
 }
 
 .protocol-action-btn {
@@ -407,183 +428,31 @@
   background-size: 16px 16px;
 }
 
-/* 프로토콜 모달 확장 스타일 */
-.protocol-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: var(--space-4);
-}
-
-.protocol-modal-content {
-  background: white;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xl);
-  max-width: 800px;
-  width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
-.protocol-modal-header {
-  padding: var(--space-6);
-  border-bottom: 1px solid var(--neutral-200);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.protocol-modal-title {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  color: var(--neutral-900);
-}
-
-.protocol-modal-close {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: none;
-  color: var(--neutral-400);
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  transition: all 0.2s ease-in-out;
-}
-
-.protocol-modal-close:hover {
-  background: var(--neutral-100);
-  color: var(--neutral-600);
-}
-
-.protocol-modal-body {
-  padding: var(--space-6);
-}
-
-.protocol-modal-footer {
-  padding: var(--space-6);
-  border-top: 1px solid var(--neutral-200);
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-3);
-}
-
-/* 프로토콜 폼 스타일 */
-.protocol-form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: var(--space-6);
-}
-
-.protocol-form-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.protocol-form-group.full-width {
-  grid-column: 1 / -1;
-}
-
-.protocol-form-label {
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--neutral-700);
-}
-
-.protocol-form-label.required::after {
-  content: ' *';
-  color: var(--error-500);
-}
-
-.protocol-form-input {
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--neutral-300);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  transition: all 0.2s ease-in-out;
-}
-
-.protocol-form-input:focus {
-  outline: none;
-  border-color: var(--primary-400);
-  box-shadow: 0 0 0 3px var(--primary-100);
-}
-
-.protocol-form-input:disabled {
-  background: var(--neutral-50);
-  color: var(--neutral-500);
-  cursor: not-allowed;
-}
-
-.protocol-form-textarea {
-  min-height: 100px;
-  resize: vertical;
-}
-
-.protocol-form-checkbox-group {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: var(--space-4);
-  padding: var(--space-4);
-  background: var(--neutral-50);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--neutral-200);
-}
-
-.protocol-form-checkbox {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.protocol-form-checkbox input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--neutral-300);
-  accent-color: var(--primary-500);
-}
-
-.protocol-form-checkbox label {
-  font-size: var(--text-sm);
-  color: var(--neutral-700);
-  cursor: pointer;
-}
-
 /* 반응형 스타일 */
 @media (max-width: 768px) {
   .protocol-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .protocol-stats-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .protocol-filters-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .protocol-form-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .protocol-card-actions {
     flex-direction: column;
     gap: var(--space-3);
     align-items: stretch;
   }
-  
+
   .protocol-actions {
     justify-content: center;
-  }
-  
-  .protocol-modal-content {
-    margin: var(--space-2);
-    max-width: none;
   }
 }

@@ -40,6 +40,9 @@ public:
     bool validate() const override;
     std::string getTableName() const override { return "javascript_functions"; }
     
+    // Repository access
+    std::shared_ptr<Repositories::DataPointRepository> getRepository() const; // Wait! JavaScriptFunction uses which repo?
+    
     // Getters
     int getTenantId() const { return tenant_id_; }
     const std::string& getName() const { return name_; }

@@ -56,6 +56,9 @@ public:
     // 🔥 validate 메서드 - override 제거 (BaseEntity에서 순수가상함수가 아님)
     bool validate() const;  // override 제거
     
+    // Repository access
+    std::shared_ptr<Repositories::ScriptLibraryRepository> getRepository() const;
+    
     std::string getTableName() const override { return "script_library"; }
     
     // =======================================================================

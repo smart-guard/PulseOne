@@ -49,15 +49,21 @@ class UnifiedHttpClient {
   // ========================================================================
 
   private preprocessRequest(endpoint: string, config: RequestConfig = {}): [string, RequestInit] {
-    const url = config.baseUrl ? 
-      `${config.baseUrl}${endpoint}` : 
+    const url = config.baseUrl ?
+      `${config.baseUrl}${endpoint}` :
       `${this.baseUrl}${endpoint}`;
 
     // 🔄 API 요청 로깅 (기존 axios 패턴과 동일)
     console.log(`🔄 API 요청: ${(config.method || 'GET').toUpperCase()} ${url}`);
 
     // 🔐 인증 토큰 자동 추가 (기존 axios 인터셉터와 동일)
-    const token = localStorage.getItem('auth_token');
+    let token = localStorage.getItem('auth_token');
+
+    // 🛠️ 개발 환경에서 토큰이 없으면 더미 토큰 추가
+    if (!token && import.meta.env.MODE === 'development') {
+      token = 'dev-dummy-token';
+    }
+
     const headers = {
       ...this.defaultHeaders,
       ...config.headers,
@@ -71,8 +77,8 @@ class UnifiedHttpClient {
       method: config.method || 'GET',
       headers,
       signal: controller.signal,
-      ...(config.body && { 
-        body: typeof config.body === 'string' ? config.body : JSON.stringify(config.body) 
+      ...(config.body && {
+        body: typeof config.body === 'string' ? config.body : JSON.stringify(config.body)
       })
     };
 
@@ -98,13 +104,18 @@ class UnifiedHttpClient {
       // 🚨 에러 상태 처리 (기존 axios 인터셉터와 동일)
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        
+
         // 기존 axios 에러 처리 로직과 동일
         switch (response.status) {
           case 401:
             console.warn('🔐 인증이 만료되었습니다. 다시 로그인해주세요.');
             localStorage.removeItem('auth_token');
-            window.location.href = '/login';
+            // 🛠️ 개발 환경에서는 404/401 에러 시 /login으로 튕기지 않도록 함
+            if (import.meta.env.MODE !== 'development') {
+              window.location.href = '/login';
+            } else {
+              console.warn('🛠️ [DEV] 401 에러 발생 - 로그인 페이지 리다이렉트 중단됨');
+            }
             break;
           case 403:
             console.warn('🚫 접근 권한이 없습니다.');
@@ -130,7 +141,7 @@ class UnifiedHttpClient {
 
       // ✅ 성공 응답 처리
       const data = await response.json();
-      
+
       // Backend 응답이 이미 ApiResponse 형식인 경우
       if ('success' in data && typeof data.success === 'boolean') {
         return data;
@@ -151,7 +162,7 @@ class UnifiedHttpClient {
       }
 
       console.error('❌ 응답 파싱 실패:', parseError);
-      
+
       return {
         success: false,
         data: null,
@@ -206,7 +217,7 @@ class UnifiedHttpClient {
           queryParams.append(key, String(value));
         }
       });
-      
+
       if (queryParams.toString()) {
         finalUrl += `?${queryParams.toString()}`;
       }
@@ -216,31 +227,36 @@ class UnifiedHttpClient {
   }
 
   async post<T>(url: string, data?: any): Promise<ApiResponse<T>> {
-    return this.request<T>({ 
-      url, 
-      method: 'POST', 
+    return this.request<T>({
+      url,
+      method: 'POST',
       body: data,
       headers: data ? { 'Content-Type': 'application/json' } : {}
     });
   }
 
   async put<T>(url: string, data?: any): Promise<ApiResponse<T>> {
-    return this.request<T>({ 
-      url, 
-      method: 'PUT', 
+    return this.request<T>({
+      url,
+      method: 'PUT',
       body: data,
       headers: data ? { 'Content-Type': 'application/json' } : {}
     });
   }
 
-  async delete<T>(url: string): Promise<ApiResponse<T>> {
-    return this.request<T>({ url, method: 'DELETE' });
+  async delete<T>(url: string, data?: any): Promise<ApiResponse<T>> {
+    return this.request<T>({
+      url,
+      method: 'DELETE',
+      body: data,
+      headers: data ? { 'Content-Type': 'application/json' } : {}
+    });
   }
 
   async patch<T>(url: string, data?: any): Promise<ApiResponse<T>> {
-    return this.request<T>({ 
-      url, 
-      method: 'PATCH', 
+    return this.request<T>({
+      url,
+      method: 'PATCH',
       body: data,
       headers: data ? { 'Content-Type': 'application/json' } : {}
     });
@@ -302,13 +318,13 @@ export const collectorClient = new UnifiedHttpClient(
  */
 export const buildQueryParams = (params: Record<string, any>): string => {
   const searchParams = new URLSearchParams();
-  
+
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       searchParams.append(key, String(value));
     }
   });
-  
+
   return searchParams.toString();
 };
 
@@ -316,7 +332,7 @@ export const buildQueryParams = (params: Record<string, any>): string => {
  * 페이지네이션 파라미터 빌더 (기존과 동일)
  */
 export const buildPaginationParams = (
-  page: number = 1, 
+  page: number = 1,
   limit: number = API_CONFIG.DEFAULT_PAGE_SIZE,
   additionalParams: Record<string, any> = {}
 ) => {
@@ -338,7 +354,7 @@ export const extractErrorMessage = (error: any): string => {
   if (error.message) {
     return error.message;
   }
-  
+
   // 기존 axios 에러 형식 호환
   if (error.response?.data?.error) {
     return error.response.data.error;
@@ -346,7 +362,7 @@ export const extractErrorMessage = (error: any): string => {
   if (error.response?.data?.message) {
     return error.response.data.message;
   }
-  
+
   return '알 수 없는 오류가 발생했습니다.';
 };
 
@@ -359,13 +375,13 @@ export const retryRequest = async <T>(
   delay: number = 1000
 ): Promise<T> => {
   let lastError: any;
-  
+
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await requestFn();
     } catch (error) {
       lastError = error;
-      
+
       // 마지막 시도가 아니라면 지연 후 재시도
       if (i < maxRetries - 1) {
         console.warn(`🔄 재시도 ${i + 1}/${maxRetries} (${delay}ms 후)`);
@@ -373,7 +389,7 @@ export const retryRequest = async <T>(
       }
     }
   }
-  
+
   throw lastError;
 };
 

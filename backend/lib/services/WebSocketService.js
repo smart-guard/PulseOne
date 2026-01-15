@@ -11,7 +11,9 @@ class WebSocketService {
         this.isInitialized = false;
         this.connectionCount = 0;
         this.isDevelopment = process.env.NODE_ENV === 'development';
-        
+
+        this.statusMonitorInterval = null;
+
         this.log('WebSocketService 초기화 시작...');
         this.initialize();
     }
@@ -21,7 +23,7 @@ class WebSocketService {
     // =========================================================================
     log(message, level = 'info') {
         if (!this.isDevelopment && level === 'debug') return;
-        
+
         const timestamp = new Date().toISOString();
         const prefix = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : '✅';
         console.log(`${prefix} [${timestamp}] ${message}`);
@@ -38,18 +40,18 @@ class WebSocketService {
         try {
             const socketIo = require('socket.io');
             this.log('Socket.IO 모듈 로드 성공');
-            
+
             // 단계별 초기화
             this.setupServer(socketIo);
             this.setupConnectionHandling();
-            
+
             if (this.isDevelopment) {
                 this.startStatusMonitoring();
             }
-            
+
             this.isInitialized = true;
             this.log('WebSocket 서비스 초기화 완료');
-            
+
         } catch (error) {
             this.log('Socket.IO 모듈이 없습니다. npm install socket.io', 'warn');
             this.isInitialized = false;
@@ -61,32 +63,32 @@ class WebSocketService {
     // =========================================================================
     setupServer(socketIo) {
         const corsOrigins = this.getCorsOrigins();
-        
+
         this.io = socketIo(this.server, {
             cors: {
                 origin: corsOrigins,
                 methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
                 credentials: true
             },
-            
+
             // 연결 설정
             transports: ['polling', 'websocket'],
             allowEIO3: true,
-            
+
             // 타임아웃 - 프로덕션 친화적
             pingTimeout: this.isDevelopment ? 60000 : 30000,
             pingInterval: 25000,
             connectTimeout: this.isDevelopment ? 45000 : 30000,
             upgradeTimeout: 20000,
-            
+
             // 성능 최적화
             maxHttpBufferSize: 1e6,
             httpCompression: true,
             perMessageDeflate: false, // CPU 사용량 감소
-            
+
             path: '/socket.io/',
             serveClient: false,
-            
+
             // 요청 검증 - 간소화
             allowRequest: (req, callback) => {
                 if (this.isDevelopment) {
@@ -103,9 +105,9 @@ class WebSocketService {
         if (process.env.CORS_ORIGINS) {
             return process.env.CORS_ORIGINS.split(',');
         }
-        
+
         return this.isDevelopment ? [
-            'http://localhost:3000', 
+            'http://localhost:3000',
             'http://localhost:5173',
             'http://localhost:8080',
             'http://127.0.0.1:5173',
@@ -158,7 +160,7 @@ class WebSocketService {
     handleNewConnection(socket) {
         const connectionTime = Date.now();
         this.connectionCount++;
-        
+
         // 개발 모드에서만 상세 로깅
         if (this.isDevelopment) {
             this.log(`Socket 연결: ${socket.id} (#${this.connectionCount})`);
@@ -202,7 +204,7 @@ class WebSocketService {
 
     sendConnectionConfirmation(socket) {
         const clientCount = this.clients.size;
-        
+
         socket.emit('connection_status', {
             status: 'connected',
             socket_id: socket.id,
@@ -297,7 +299,7 @@ class WebSocketService {
         if (!data || typeof data !== 'object') {
             throw new Error('데이터가 객체가 아닙니다');
         }
-        
+
         return {
             message: String(data.message || '').substring(0, 1000),
             timestamp: data.timestamp || new Date().toISOString(),
@@ -338,7 +340,7 @@ class WebSocketService {
     // =========================================================================
     joinRoom(socket, roomName, metadata = {}) {
         socket.join(roomName);
-        
+
         // 클라이언트 룸 추가
         const client = this.clients.get(socket.id);
         if (client) {
@@ -354,7 +356,7 @@ class WebSocketService {
         if (this.isDevelopment) {
             this.logDebug(`Socket ${socket.id} joined room: ${roomName}`);
         }
-        
+
         socket.emit('room_joined', {
             room: roomName,
             metadata,
@@ -368,12 +370,12 @@ class WebSocketService {
     // =========================================================================
     handleDisconnection(socket, reason, connectionTime) {
         const duration = Date.now() - connectionTime;
-        
+
         this.log(`Socket 해제: ${socket.id} (${Math.round(duration / 1000)}초, ${reason})`);
 
         // 클라이언트 정보 가져오기
         const client = this.clients.get(socket.id);
-        
+
         // 룸에서 제거
         if (client && client.rooms) {
             client.rooms.forEach(roomName => {
@@ -389,7 +391,7 @@ class WebSocketService {
 
         // 클라이언트 제거
         this.clients.delete(socket.id);
-        
+
         if (this.isDevelopment) {
             this.logDebug(`남은 연결: ${this.clients.size}명`);
         }
@@ -400,12 +402,12 @@ class WebSocketService {
     // =========================================================================
     handleAlarmAcknowledgment(socket, data) {
         this.log(`알람 확인: ${data.occurrence_id}`);
-        
+
         socket.emit('alarm_acknowledged', {
             ...data,
             success: true
         });
-        
+
         // 다른 클라이언트들에게 브로드캐스트
         socket.broadcast.emit('alarm:acknowledged', {
             occurrence_id: data.occurrence_id,
@@ -442,10 +444,10 @@ class WebSocketService {
     }
 
     validateAlarmData(data) {
-        return data && 
-               typeof data.id !== 'undefined' && 
-               typeof data.tenant_id === 'number' &&
-               typeof data.severity_level === 'number';
+        return data &&
+            typeof data.id !== 'undefined' &&
+            typeof data.tenant_id === 'number' &&
+            typeof data.severity_level === 'number';
     }
 
     // =========================================================================
@@ -453,7 +455,7 @@ class WebSocketService {
     // =========================================================================
     broadcastToAll(event, data) {
         if (!this.io) return false;
-        
+
         this.io.emit(event, data);
         this.logDebug(`전체 브로드캐스트 (${this.clients.size}명): ${event}`);
         return true;
@@ -461,7 +463,7 @@ class WebSocketService {
 
     broadcastToRoom(roomName, event, data) {
         if (!this.io) return false;
-        
+
         this.io.to(roomName).emit(event, data);
         const roomSize = this.rooms.get(roomName)?.size || 0;
         this.logDebug(`룸 브로드캐스트 ${roomName} (${roomSize}명): ${event}`);
@@ -503,7 +505,7 @@ class WebSocketService {
 
     getClients() {
         const clients = [];
-        
+
         this.clients.forEach((client, socketId) => {
             clients.push({
                 socket_id: socketId,
@@ -533,7 +535,7 @@ class WebSocketService {
     // 모니터링 - 개발 모드 전용
     // =========================================================================
     startStatusMonitoring() {
-        setInterval(() => {
+        this.statusMonitorInterval = setInterval(() => {
             if (!this.io) return;
 
             const engineCount = this.io.engine.clientsCount;
@@ -541,7 +543,7 @@ class WebSocketService {
 
             if (engineCount > 0 || socketCount > 0) {
                 this.logDebug(`상태: Engine(${engineCount}) Socket(${socketCount}) Rooms(${this.rooms.size})`);
-                
+
                 if (engineCount !== socketCount) {
                     this.log(`Engine/Socket 불일치: ${engineCount}/${socketCount}`, 'warn');
                 }
@@ -560,21 +562,26 @@ class WebSocketService {
             timestamp: new Date().toISOString(),
             clients: this.clients.size
         });
-        
+
         return { success: true, clients: this.clients.size };
     }
 
     // 정리 메서드
     cleanup() {
+        if (this.statusMonitorInterval) {
+            clearInterval(this.statusMonitorInterval);
+            this.statusMonitorInterval = null;
+        }
+
         if (this.io) {
             this.io.close();
             this.io = null;
         }
-        
+
         this.clients.clear();
         this.rooms.clear();
         this.isInitialized = false;
-        
+
         this.log('WebSocket 서비스 정리 완료');
     }
 }

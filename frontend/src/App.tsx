@@ -26,9 +26,24 @@ import UserManagement from './pages/UserManagement';
 import PermissionManagement from './pages/PermissionManagement';
 import BackupRestore from './pages/BackupRestore';
 import ProtocolManagement from './pages/ProtocolManagement';
-
+import DeviceTemplatesPage from './pages/DeviceTemplatesPage';
+import ManufacturerManagementPage from './pages/ManufacturerManagementPage';
+import TenantManagementPage from './pages/TenantManagementPage';
+import SiteManagementPage from './pages/SiteManagementPage';
+import AuditLogPage from './pages/AuditLogPage';
 
 const App: React.FC = () => {
+  // 🛠️ 개발 환경 초기화: 더미 토큰 설정
+  React.useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        console.log('🛠️ [DEV] 더미 인증 토큰 설정됨');
+        localStorage.setItem('auth_token', 'dev-dummy-token');
+      }
+    }
+  }, []);
+
   return (
     <ConfirmProvider>
       <AlarmProvider>
@@ -39,15 +54,20 @@ const App: React.FC = () => {
               <Route path="/" element={<MainLayout />}>
                 {/* 기본 경로는 대시보드로 리다이렉트 */}
                 <Route index element={<Navigate to="/dashboard" replace />} />
-                
+
                 {/* 대시보드 */}
                 <Route path="dashboard" element={<Dashboard />} />
-                
-                {/* 디바이스 관리 */}
-                <Route path="devices" element={<DeviceList />} />
-                
+
                 {/* 🆕 프로토콜 관리 - 새로 추가된 라우트 */}
                 <Route path="protocols" element={<ProtocolManagement />} />
+
+                {/* 🆕 디바이스 마스터 모델 & 제조사 관리 */}
+                <Route path="devices">
+                  <Route index element={<DeviceList />} />
+                  <Route path="sites" element={<SiteManagementPage />} />
+                  <Route path="templates" element={<DeviceTemplatesPage />} />
+                  <Route path="manufacturers" element={<ManufacturerManagementPage />} />
+                </Route>
 
                 {/* 데이터 관리 */}
                 <Route path="data">
@@ -59,7 +79,7 @@ const App: React.FC = () => {
                   {/* 데이터 하위 경로 기본값 */}
                   <Route index element={<Navigate to="explorer" replace />} />
                 </Route>
-                
+
                 {/* 알람 관리 - rules 경로 추가 */}
                 <Route path="alarms">
                   <Route path="active" element={<ActiveAlarms />} />
@@ -69,17 +89,18 @@ const App: React.FC = () => {
                   {/* 알람 하위 경로 기본값 */}
                   <Route index element={<Navigate to="active" replace />} />
                 </Route>
-                
+
                 {/* 시스템 관리 */}
                 <Route path="system">
                   <Route path="status" element={<SystemStatus />} />
                   <Route path="users" element={<UserManagement />} />
+                  <Route path="tenants" element={<TenantManagementPage />} />
                   <Route path="permissions" element={<PermissionManagement />} />
                   <Route path="backup" element={<BackupRestore />} />
                   {/* 시스템 하위 경로 기본값 */}
                   <Route index element={<Navigate to="status" replace />} />
                 </Route>
-                
+
                 {/* 404 페이지 */}
                 <Route path="*" element={<NotFound />} />
               </Route>
@@ -106,41 +127,41 @@ const NotFound: React.FC = () => {
     }}>
       <div className="not-found-content">
         <div style={{ marginBottom: '20px' }}>
-          <i className="fas fa-exclamation-triangle" style={{ 
-            fontSize: '4rem', 
+          <i className="fas fa-exclamation-triangle" style={{
+            fontSize: '4rem',
             color: '#ef4444',
             marginBottom: '16px'
           }}></i>
         </div>
-        <h1 style={{ 
-          fontSize: '4rem', 
-          margin: '0', 
+        <h1 style={{
+          fontSize: '4rem',
+          margin: '0',
           color: '#ef4444',
           fontWeight: 700
         }}>404</h1>
-        <h2 style={{ 
-          fontSize: '1.5rem', 
-          margin: '16px 0 8px 0', 
+        <h2 style={{
+          fontSize: '1.5rem',
+          margin: '16px 0 8px 0',
           color: '#374151',
           fontWeight: 600
         }}>페이지를 찾을 수 없습니다</h2>
-        <p style={{ 
-          color: '#6b7280', 
+        <p style={{
+          color: '#6b7280',
           margin: '10px 0',
           fontSize: '1rem',
           maxWidth: '400px'
         }}>
-          요청하신 페이지가 존재하지 않거나 이동되었습니다.<br/>
+          요청하신 페이지가 존재하지 않거나 이동되었습니다.<br />
           URL을 확인하시거나 아래 버튼을 사용해주세요.
         </p>
-        <div style={{ 
-          display: 'flex', 
-          gap: '12px', 
-          justifyContent: 'center', 
+        <div style={{
+          display: 'flex',
+          gap: '12px',
+          justifyContent: 'center',
           marginTop: '24px',
           flexWrap: 'wrap'
         }}>
-          <button 
+          <button
             onClick={() => window.history.back()}
             style={{
               display: 'inline-flex',
@@ -169,7 +190,7 @@ const NotFound: React.FC = () => {
             <i className="fas fa-arrow-left"></i>
             이전 페이지로
           </button>
-          <button 
+          <button
             onClick={() => window.location.href = '/dashboard'}
             style={{
               display: 'inline-flex',

@@ -396,6 +396,9 @@ public:
         return "current_values";
     }
 
+    // Repository access
+    std::shared_ptr<Repositories::CurrentValueRepository> getRepository() const;
+
     // =======================================================================
     // 추가 유틸리티 메서드들
     // =======================================================================

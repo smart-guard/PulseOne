@@ -321,6 +321,11 @@ std::string SiteEntity::timestampToString(const std::chrono::system_clock::time_
     return ss.str();
 }
 
+std::shared_ptr<Repositories::SiteRepository> SiteEntity::getRepository() const {
+    auto& factory = RepositoryFactory::getInstance();
+    return factory.getSiteRepository();
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

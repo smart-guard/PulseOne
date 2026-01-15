@@ -14,9 +14,12 @@
 // Forward declarations for Facade components
 namespace PulseOne::Workers {
     class WorkerRegistry;
+    class WorkerRegistry;
     class WorkerScheduler;
     class WorkerMonitor;
+    class WorkerMonitor;
     class BaseDeviceWorker; // For completeness if needed in public API return types
+    class BACnetDiscoveryService;
 }
 
 namespace PulseOne::Storage {
@@ -70,6 +73,10 @@ public:
     // Discovery (Delegated to Registry -> Worker)
     // ==========================================================================
     std::vector<PulseOne::Structs::DataPoint> DiscoverDevicePoints(const std::string& device_id);
+    
+    // Network Scan
+    bool StartNetworkScan(const std::string& protocol, const std::string& range, int timeout_ms);
+    void StopNetworkScan(const std::string& protocol);
 
     // ==========================================================================
     // Status & Statistics (Delegated to Monitor)
@@ -90,6 +97,7 @@ private:
     std::shared_ptr<WorkerRegistry> registry_;
     std::shared_ptr<WorkerScheduler> scheduler_;
     std::shared_ptr<WorkerMonitor> monitor_;
+    std::shared_ptr<BACnetDiscoveryService> bacnet_discovery_service_;
 };
 
 } // namespace PulseOne::Workers

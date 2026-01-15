@@ -156,6 +156,7 @@ CREATE TABLE IF NOT EXISTS sites (
     
     -- 🔥 상태 및 설정
     is_active INTEGER DEFAULT 1,
+    is_deleted INTEGER DEFAULT 0,                        -- ⬅️ Added for soft delete
     is_visible INTEGER DEFAULT 1,                        -- 사용자에게 표시 여부
     monitoring_enabled INTEGER DEFAULT 1,                -- 모니터링 활성화
     

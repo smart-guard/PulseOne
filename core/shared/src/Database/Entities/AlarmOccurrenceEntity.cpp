@@ -547,6 +547,10 @@ void AlarmOccurrenceEntity::updateTimestamp() {
     markModified();
 }
 
+std::shared_ptr<Repositories::AlarmOccurrenceRepository> AlarmOccurrenceEntity::getRepository() const {
+    return RepositoryFactory::getInstance().getAlarmOccurrenceRepository();
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

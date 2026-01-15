@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { DeviceApiService } from '../../api/services/deviceApi';
+import { DataPoint } from '../../api/services/dataApi';
 
 // 분할된 컴포넌트들 import
 import DeviceBasicInfoTab from './DeviceModal/DeviceBasicInfoTab';
@@ -20,21 +21,6 @@ import DeviceRtuMonitorTab from './DeviceModal/DeviceRtuMonitorTab';
 // 타입 정의
 import { Device, DeviceModalProps } from './DeviceModal/types';
 
-// DataPoint 인터페이스
-interface DataPoint {
-  id: number;
-  device_id: number;
-  device_name?: string;
-  name: string;
-  description: string;
-  data_type: string;
-  current_value: any;
-  unit?: string;
-  address: string;
-  is_enabled: boolean;
-  created_at: string;
-  updated_at: string;
-}
 
 const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   device,
@@ -42,10 +28,29 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   mode,
   onClose,
   onSave,
-  onDelete
+  onDelete,
+  onEdit,
+  initialTab,
+  onTabChange
 }) => {
   // 상태 관리
-  const [activeTab, setActiveTab] = useState('basic');
+  const [activeTab, setActiveTab] = useState(initialTab || 'basic');
+  const [wizardStep, setWizardStep] = useState(1);
+
+  // URL 변경 등으로 initialTab이 바뀌면 탭도 변경 (단, 이미 열려있는 상태에서 탭만 바뀌는 경우)
+  useEffect(() => {
+    if (initialTab && isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
+
+  // 🔥 수정 모드 진입 시 로그 탭 등 유효하지 않은 탭 처리
+  useEffect(() => {
+    if (mode === 'edit' && activeTab === 'logs') {
+      console.log('🔄 로그 탭에서 수정 모드로 전환됨 - 기본정보 탭으로 강제 이동');
+      setActiveTab('basic');
+    }
+  }, [mode, activeTab]);
   const [editData, setEditData] = useState<Device | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
@@ -70,8 +75,8 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
     message: '',
     confirmText: '확인',
     cancelText: '취소',
-    onConfirm: () => {},
-    onCancel: () => {},
+    onConfirm: () => { },
+    onCancel: () => { },
     showCancel: true
   });
 
@@ -82,17 +87,17 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
     },
     isRtuMaster: (device: Device | null): boolean => {
       const isRtu = device?.protocol_type === 'MODBUS_RTU';
-      return isRtu && 
-             (device?.config?.device_role === 'master' || 
-              device?.config?.is_master === true ||
-              !device?.config?.slave_id);
+      return isRtu &&
+        (device?.config?.device_role === 'master' ||
+          device?.config?.is_master === true ||
+          !device?.config?.slave_id);
     },
     isRtuSlave: (device: Device | null): boolean => {
       const isRtu = device?.protocol_type === 'MODBUS_RTU';
-      const isMaster = isRtu && 
-                       (device?.config?.device_role === 'master' || 
-                        device?.config?.is_master === true ||
-                        !device?.config?.slave_id);
+      const isMaster = isRtu &&
+        (device?.config?.device_role === 'master' ||
+          device?.config?.is_master === true ||
+          !device?.config?.slave_id);
       return isRtu && !isMaster;
     }
   }), []);
@@ -106,6 +111,8 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
     manufacturer: '',
     model: '',
     serial_number: '',
+    site_id: 1, // Default Site ID
+    protocol_id: 1, // Default to 1 (Modbus TCP usually)
     protocol_type: 'MODBUS_TCP' as const,
     endpoint: '',
     polling_interval: 1000,
@@ -119,7 +126,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
 
   // 예쁜 모달 표시 함수들
   // DeviceDetailModal.tsx - showCustomModal 함수만 수정
-// 기존 라인 148-163 부근의 showCustomModal 함수를 이렇게 교체
+  // 기존 라인 148-163 부근의 showCustomModal 함수를 이렇게 교체
 
   const showCustomModal = (config: {
     type: 'confirm' | 'success' | 'error';
@@ -132,7 +139,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
     showCancel?: boolean;
   }) => {
     console.log('📋 showCustomModal 호출:', config.type, config.title);
-    
+
     setCustomModal({
       isOpen: true,
       type: config.type,
@@ -142,15 +149,19 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       cancelText: config.cancelText || '취소',
       onConfirm: () => {
         console.log('✅ 모달 확인 버튼 클릭됨');
-        
+
         // 🔥 핵심 수정: 모달을 먼저 닫고, 그 다음 콜백 실행
         setCustomModal(prev => ({ ...prev, isOpen: false }));
-        
+
         // 짧은 지연 후 콜백 실행 (모달 닫기 완료 후)
-        setTimeout(() => {
+        setTimeout(async () => {
           try {
             console.log('🔥 콜백 실행 시작...');
-            config.onConfirm();
+            const result = config.onConfirm() as any;
+            // Promise 인지 확인하고 대기
+            if (result && typeof result.then === 'function') {
+              await result;
+            }
             console.log('✅ 콜백 실행 완료');
           } catch (error) {
             console.error('❌ 콜백 실행 오류:', error);
@@ -159,10 +170,10 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       },
       onCancel: () => {
         console.log('❌ 모달 취소 버튼 클릭됨');
-        
+
         // 모달 먼저 닫기
         setCustomModal(prev => ({ ...prev, isOpen: false }));
-        
+
         // 취소 콜백 실행 (있다면)
         if (config.onCancel) {
           setTimeout(() => {
@@ -215,7 +226,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   }, []);
 
   const handleUpdateDataPoint = useCallback((updatedDataPoint: DataPoint) => {
-    setDataPoints(prev => 
+    setDataPoints(prev =>
       prev.map(dp => dp.id === updatedDataPoint.id ? updatedDataPoint : dp)
     );
   }, []);
@@ -234,14 +245,34 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   // 🎨 예쁜 저장 함수 (브라우저 기본 팝업 대신 커스텀 모달)
   const handleSave = useCallback(async () => {
     console.log('🔥 handleSave 함수 진입');
-    
+
     if (!editData) {
       console.log('❌ editData가 없음');
       return;
     }
 
     const actionText = mode === 'create' ? '생성' : '수정';
-    const confirmMessage = `"${editData.name}" 디바이스를 ${actionText}하시겠습니까?\n\n프로토콜: ${editData.protocol_type}\n엔드포인트: ${editData.endpoint}\n폴링 간격: ${editData.polling_interval}ms`;
+
+    // 📋 마스터 모델 위저드와 동일한 수준의 상세 요약 메시지 구성
+    const confirmMessage = `
+아래 설정으로 디바이스를 ${actionText}하시겠습니까?
+
+■ 기본 정보
+- 디바이스 명: ${editData.name}
+- 제조사/모델: ${editData.manufacturer || '-'} / ${editData.model || '-'}
+- 디바이스 타입: ${editData.device_type}
+
+■ 통신 및 접속
+- 프로토콜: ${editData.protocol_type}
+- 엔드포인트: ${editData.endpoint}
+
+■ 운영 설정
+- 폴링 간격: ${editData.polling_interval}ms
+- 타임아웃: ${editData.timeout}ms
+- 재시도 횟수: ${editData.retry_count}회
+- 활성화 상태: ${editData.is_enabled ? '활성화' : '비활성화'}
+${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editData.tags) ? editData.tags.join(', ') : editData.tags}\n` : ''}${Object.keys(editData.metadata || {}).length > 0 ? `- 시스템 메타데이터: 포함됨\n` : ''}
+    `.trim();
 
     console.log('🎨 예쁜 커스텀 확인 모달 표시...');
 
@@ -253,7 +284,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       cancelText: '취소',
       onConfirm: async () => {
         console.log('✅ 사용자가 확인함 - 저장 진행');
-        
+
         try {
           setIsLoading(true);
           let savedDevice: Device;
@@ -266,50 +297,59 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               device_type: editData.device_type,
               manufacturer: editData.manufacturer,
               model: editData.model,
+              protocol_id: editData.protocol_id,
               protocol_type: editData.protocol_type,
               endpoint: editData.endpoint,
               config: editData.config,
               site_id: editData.site_id,
-              device_group_id: editData.device_group_id,
-              polling_interval: editData.polling_interval,
-              timeout: editData.timeout,
               retry_count: editData.retry_count,
-              is_enabled: editData.is_enabled
+              is_enabled: editData.is_enabled,
+              group_ids: editData.group_ids || (editData.device_group_id ? [editData.device_group_id] : [])
             };
 
             const response = await DeviceApiService.createDevice(createData);
             if (response.success && response.data) {
               savedDevice = response.data;
               console.log('🎉 디바이스 생성 성공:', savedDevice);
-              
-              // 🔥 핵심 수정: 즉시 성공 처리 후 모달 닫기
+
               showCustomModal({
                 type: 'success',
                 title: '디바이스 생성 완료',
-                message: `"${savedDevice.name}" 디바이스가 성공적으로 생성되었습니다.\n\nID: ${savedDevice.id}\n상태: ${savedDevice.is_enabled ? '활성화' : '비활성화'}`,
-                confirmText: '확인',
-                showCancel: false,
+                message: `"${savedDevice.name}" 디바이스가 성공적으로 생성되었습니다.\n\nID: ${savedDevice.id}\n\n데이터포인트 설정을 계속하시겠습니까?`,
+                confirmText: '데이터포인트 설정',
+                cancelText: '닫기',
+                showCancel: true,
                 onConfirm: () => {
-                  console.log('🔥 생성 성공 팝업 확인 - 콜백 실행');
-                  
-                  // 부모 컴포넌트에 저장된 디바이스 전달
-                  if (onSave) {
-                    console.log('📞 onSave 콜백 호출:', savedDevice.name);
-                    onSave(savedDevice);
-                  }
-                  
-                  // 모달 닫기
-                  console.log('🚪 모달 닫기 실행');
+                  console.log('🔥 생성 성공 - 데이터포인트 탭으로 전환');
+                  // 부모에게 알림 (목록 갱신 등을 위해)
+                  if (onSave) onSave(savedDevice);
+
+                  // 모달을 닫지 않고 해당 디바이스의 편집 모드로 전환
+                  // URL 파라미터를 통해 다시 열기 위해 부모 콜백 호출 or 로컬 상태 변경
+                  // 여기서는 부모가 device prop을 업데이트해주면 자동으로 다음 useEffect에서 처리될 것임
+                  // 하지만 가장 확실한 방법은 URL을 업데이트하고 모달은 그대로 두는 것
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('deviceId', savedDevice.id.toString());
+                  url.searchParams.set('mode', 'edit');
+                  url.searchParams.set('tab', 'datapoints');
+                  window.history.replaceState({}, '', url.pathname + url.search);
+
+                  // 강제 리로드나 상태 동기화가 필요할 수 있음
+                  // 여기서는 단순하게 부모에게만 알리고 수동으로 탭을 바꾸는 방식 시도
+                  // (실제 리스트 페이지에서 URL 감시 중이므로 부모가 새 device를 넣어줄 것)
+                },
+                onCancel: () => {
+                  if (onSave) onSave(savedDevice);
                   onClose();
                 }
               });
             } else {
               throw new Error(response.error || '생성 실패');
             }
-            
+
           } else if (mode === 'edit') {
             console.log('🔥 디바이스 수정 시작...');
-            
+
             // settings도 포함해서 업데이트
             const updateData = {
               name: editData.name,
@@ -319,11 +359,17 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               model: editData.model,
               endpoint: editData.endpoint,
               config: editData.config,
-              polling_interval: editData.polling_interval,
-              timeout: editData.timeout,
+              device_group_id: editData.device_group_id,
+              edge_server_id: editData.edge_server_id,
+              polling_interval: editData.polling_interval, // 🔥 추가
+              timeout: editData.timeout,                   // 🔥 추가
               retry_count: editData.retry_count,
               is_enabled: editData.is_enabled,
-              settings: editData.settings // 🔥 settings 포함
+              settings: editData.settings || {},          // 🔥 null 방지
+              tags: editData.tags,
+              metadata: editData.metadata,
+              custom_fields: editData.custom_fields,
+              group_ids: editData.group_ids
             };
 
             console.log('🚀 실제 전송할 데이터:', JSON.stringify(updateData, null, 2));
@@ -333,23 +379,23 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             if (response.success && response.data) {
               savedDevice = response.data;
               console.log('🎉 디바이스 수정 성공:', savedDevice);
-              
+
               // 🔥 핵심 수정: 즉시 성공 처리 후 모달 닫기
               showCustomModal({
                 type: 'success',
                 title: '디바이스 수정 완료',
-                message: `"${savedDevice.name}" 디바이스가 성공적으로 수정되었습니다.\n\n변경사항이 서버에 저장되었습니다.`,
+                message: `"${savedDevice.name}" 디바이스가 성공적으로 수정되었습니다.\n\n${savedDevice.sync_warning ? `⚠️ 경고: 콜렉터 동기화 실패\n(${savedDevice.sync_warning})\n\n` : ''}변경사항이 서버에 저장되었습니다.`,
                 confirmText: '확인',
                 showCancel: false,
                 onConfirm: () => {
                   console.log('🔥 수정 성공 팝업 확인 - 콜백 실행');
-                  
+
                   // 부모 컴포넌트에 수정된 디바이스 전달
                   if (onSave) {
                     console.log('📞 onSave 콜백 호출:', savedDevice.name);
                     onSave(savedDevice);
                   }
-                  
+
                   // 모달 닫기
                   console.log('🚪 모달 닫기 실행');
                   onClose();
@@ -359,10 +405,10 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               throw new Error(response.error || '수정 실패');
             }
           }
-          
+
         } catch (error) {
           console.error('❌ 디바이스 저장 실패:', error);
-          
+
           showCustomModal({
             type: 'error',
             title: '저장 실패',
@@ -384,7 +430,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   // 🎨 예쁜 삭제 함수 (브라우저 기본 팝업 대신 커스텀 모달)
   const handleDelete = useCallback(async () => {
     console.log('🔥 handleDelete 함수 진입');
-    
+
     if (!device) {
       console.log('❌ device가 없음');
       return;
@@ -402,19 +448,20 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       cancelText: '취소',
       onConfirm: async () => {
         console.log('✅ 사용자가 삭제 확인함 - 삭제 진행');
-        
+
         try {
           setIsLoading(true);
           console.log(`🗑️ 디바이스 삭제 시작: ${device.name} (ID: ${device.id})`);
-          
+
           const response = await DeviceApiService.deleteDevice(device.id);
           if (response.success) {
             console.log(`✅ 디바이스 삭제 완료: ${device.name}`);
-            
+            const syncWarning = response.data?.sync_warning;
+
             showCustomModal({
               type: 'success',
               title: '디바이스 삭제 완료',
-              message: `"${device.name}"이(가) 성공적으로 삭제되었습니다.\n\n디바이스 목록에서 제거됩니다.`,
+              message: `"${device.name}"이(가) 성공적으로 삭제되었습니다.\n\n${syncWarning ? `⚠️ 경고: 콜렉터 동기화 실패\n(${syncWarning})\n\n` : ''}디바이스 목록에서 제거됩니다.`,
               confirmText: '확인',
               showCancel: false,
               onConfirm: () => {
@@ -427,14 +474,14 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           }
         } catch (error) {
           console.error('❌ 디바이스 삭제 실패:', error);
-          
+
           showCustomModal({
             type: 'error',
             title: '삭제 실패',
             message: `디바이스 삭제에 실패했습니다.\n\n${error instanceof Error ? error.message : 'Unknown error'}\n\n다시 시도해주세요.`,
             confirmText: '확인',
             showCancel: false,
-            onConfirm: () => {}
+            onConfirm: () => { }
           });
         } finally {
           setIsLoading(false);
@@ -452,22 +499,22 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   // DeviceApiService.updateDeviceSettings() 호출 제거
   const updateSettings = useCallback((field: string, value: any) => {
     console.log(`🔥 DeviceDetailModal updateSettings 호출: ${field} = ${value}`);
-    
+
     setEditData(prev => {
       if (!prev) return null;
-      
+
       const updatedDevice = {
         ...prev,
-        settings: { 
-          ...prev.settings, 
-          [field]: value 
+        settings: {
+          ...prev.settings,
+          [field]: value
         }
       };
-      
+
       console.log('🔄 editData 업데이트 완료:', updatedDevice.settings);
       return updatedDevice;
     });
-    
+
     // 🔥 문제 해결: DeviceApiService.updateDeviceSettings() 호출 완전 제거
     // 대신 DeviceSettingsTab에서 변경된 값들은 전체 저장 시에 한번에 저장됨
     console.log('✅ 설정값이 로컬 상태에 저장됨 - 전체 저장 시 서버에 반영예정');
@@ -488,18 +535,20 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
 
   const handleTabChange = useCallback((tabName: string) => {
     setActiveTab(tabName);
-  }, []);
+    onTabChange?.(tabName);
+  }, [onTabChange]);
 
   // 라이프사이클 관리 (무한 렌더링 방지)
   useEffect(() => {
-    console.log('DeviceDetailModal useEffect:', { 
-      isOpen, 
-      deviceId: device?.id, 
-      mode 
+    console.log('DeviceDetailModal useEffect:', {
+      isOpen,
+      deviceId: device?.id,
+      mode
     });
 
     if (!isOpen) {
       setDataPoints([]);
+      setDataPointsError(null);
       setDataPointsError(null);
       setEditData(null);
       setActiveTab('basic');
@@ -511,14 +560,43 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       setEditData({ ...newDeviceTemplate });
       setDataPoints([]);
       setDataPointsError(null);
-      setActiveTab('basic');
+      setActiveTab(initialTab || 'basic');
+      setWizardStep(1); // 위저드 단계 초기화
       return;
     }
 
-    if (device && mode !== 'create') {
-      setEditData({ ...device });
-      setActiveTab('basic');
-      
+    if (device) {
+      // 🔥 핵심 수정: 이미 편집 중인 동일한 디바이스라면 덮어쓰지 않음
+      if (editData && editData.id === device.id && mode === 'edit') {
+        return;
+      }
+
+      const initialGroupIds = device.groups ? device.groups.map(g => g.id) :
+        (device.device_group_id ? [device.device_group_id] : []);
+
+      // JSON 필드 파싱 (문자열로 온 경우)
+      const parseJson = (val: any) => {
+        if (typeof val === 'string') {
+          try {
+            return JSON.parse(val);
+          } catch (e) {
+            return val;
+          }
+        }
+        return val;
+      };
+
+      setEditData({
+        ...device,
+        group_ids: initialGroupIds,
+        settings: device.settings || {}, // 🔥 초기값 보장
+        tags: parseJson(device.tags) || [],
+        metadata: parseJson(device.metadata) || {},
+        custom_fields: parseJson(device.custom_fields) || {}
+      });
+      // 초기 탭 설정 (URL 파라미터 우선)
+      setActiveTab(initialTab || 'basic');
+
       if (device.id && device.id > 0) {
         loadDataPoints(device.id);
       }
@@ -538,15 +616,15 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             <div className="modal-title">
               <div className="title-row">
                 <h2>
-                  {mode === 'create' ? '새 디바이스 추가' : 
-                   mode === 'edit' ? '디바이스 편집' : '디바이스 상세'}
+                  {mode === 'create' ? '새 디바이스 추가' :
+                    mode === 'edit' ? '디바이스 편집' : '디바이스 상세'}
                 </h2>
                 {displayData?.connection_status && (
                   <span className={`status-indicator ${displayData.connection_status}`}>
                     <i className="fas fa-circle"></i>
                     {displayData.connection_status === 'connected' ? '연결됨' :
-                     displayData.connection_status === 'disconnected' ? '연결끊김' :
-                     displayData.connection_status === 'connecting' ? '연결중' : '알수없음'}
+                      displayData.connection_status === 'disconnected' ? '연결끊김' :
+                        displayData.connection_status === 'connecting' ? '연결중' : '알수없음'}
                   </span>
                 )}
               </div>
@@ -566,154 +644,339 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
             </button>
           </div>
 
-          {/* 탭 네비게이션 */}
-          <div className="tab-navigation">
-            <button 
-              className={`tab-btn ${activeTab === 'basic' ? 'active' : ''}`}
-              onClick={() => handleTabChange('basic')}
-            >
-              <i className="fas fa-info-circle"></i>
-              기본정보
-            </button>
-            <button 
-              className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
-              onClick={() => handleTabChange('settings')}
-            >
-              <i className="fas fa-cog"></i>
-              설정
-            </button>
-            <button 
-              className={`tab-btn ${activeTab === 'datapoints' ? 'active' : ''}`}
-              onClick={() => handleTabChange('datapoints')}
-            >
-              <i className="fas fa-list"></i>
-              데이터포인트 ({dataPoints.length})
-            </button>
-            
-            {deviceHelpers.isRtuDevice(displayData) && mode !== 'create' && (
-              <>
-                <button 
-                  className={`tab-btn ${activeTab === 'rtu-network' ? 'active' : ''}`}
-                  onClick={() => handleTabChange('rtu-network')}
-                >
-                  <i className="fas fa-sitemap"></i>
-                  {deviceHelpers.isRtuMaster(displayData) ? 'RTU 네트워크' : 'RTU 연결'}
-                </button>
-                
-                <button 
-                  className={`tab-btn ${activeTab === 'rtu-monitor' ? 'active' : ''}`}
-                  onClick={() => handleTabChange('rtu-monitor')}
-                >
-                  <i className="fas fa-chart-line"></i>
-                  통신 모니터
-                </button>
-              </>
-            )}
+          {/* 위저드 진행 표시기 (생성 모드일 때만) */}
+          {mode === 'create' && (
+            <div className="wizard-steps-header">
+              <div className={`wizard-step-item ${wizardStep >= 1 ? 'active' : ''} ${wizardStep > 1 ? 'completed' : ''}`}>
+                <div className="step-number">{wizardStep > 1 ? <i className="fas fa-check"></i> : '1'}</div>
+                <div className="step-text">장치 식별</div>
+              </div>
+              <div className={`wizard-step-line ${wizardStep > 1 ? 'completed' : ''}`}></div>
+              <div className={`wizard-step-item ${wizardStep >= 2 ? 'active' : ''} ${wizardStep > 2 ? 'completed' : ''}`}>
+                <div className="step-number">{wizardStep > 2 ? <i className="fas fa-check"></i> : '2'}</div>
+                <div className="step-text">통신 설정</div>
+              </div>
+              <div className={`wizard-step-line ${wizardStep > 2 ? 'completed' : ''}`}></div>
+              <div className={`wizard-step-item ${wizardStep >= 3 ? 'active' : ''}`}>
+                <div className="step-number">3</div>
+                <div className="step-text">포인트 및 요약</div>
+              </div>
+            </div>
+          )}
 
-            {mode !== 'create' && (
-              <button 
+          {/* 탭 네비게이션 (상세/수정 모드일 때만) */}
+          {mode !== 'create' && (
+            <div className="tab-navigation">
+              <button
+                className={`tab-btn ${activeTab === 'basic' ? 'active' : ''}`}
+                onClick={() => handleTabChange('basic')}
+              >
+                <i className="fas fa-info-circle"></i>
+                기본정보
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+                onClick={() => handleTabChange('settings')}
+              >
+                <i className="fas fa-cog"></i>
+                설정
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'datapoints' ? 'active' : ''}`}
+                onClick={() => handleTabChange('datapoints')}
+              >
+                <i className="fas fa-list"></i>
+                데이터포인트 ({dataPoints.length})
+              </button>
+
+              {deviceHelpers.isRtuDevice(displayData) && (
+                <>
+                  <button
+                    className={`tab-btn ${activeTab === 'rtu-network' ? 'active' : ''}`}
+                    onClick={() => handleTabChange('rtu-network')}
+                  >
+                    <i className="fas fa-sitemap"></i>
+                    {deviceHelpers.isRtuMaster(displayData) ? 'RTU 네트워크' : 'RTU 연결'}
+                  </button>
+
+                  <button
+                    className={`tab-btn ${activeTab === 'rtu-monitor' ? 'active' : ''}`}
+                    onClick={() => handleTabChange('rtu-monitor')}
+                  >
+                    <i className="fas fa-chart-line"></i>
+                    통신 모니터
+                  </button>
+                </>
+              )}
+
+              <button
                 className={`tab-btn ${activeTab === 'status' ? 'active' : ''}`}
                 onClick={() => handleTabChange('status')}
               >
                 <i className="fas fa-chart-line"></i>
                 상태
               </button>
-            )}
-            {mode === 'view' && (
-              <button 
-                className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
-                onClick={() => handleTabChange('logs')}
-              >
-                <i className="fas fa-file-alt"></i>
-                로그
-              </button>
-            )}
-          </div>
+
+              {mode === 'view' && (
+                <button
+                  className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
+                  onClick={() => handleTabChange('logs')}
+                >
+                  <i className="fas fa-file-alt"></i>
+                  로그
+                </button>
+              )}
+            </div>
+          )}
 
           {/* 탭 내용 */}
-          <div className="modal-content">
-            {activeTab === 'basic' && (
-              <DeviceBasicInfoTab
-                device={device}
-                editData={editData}
-                mode={mode}
-                onUpdateField={updateField}
-              />
-            )}
+          <div className={`modal-content ${mode === 'create' ? 'wizard-mode' : ''}`}>
+            {mode === 'create' ? (
+              <div className="wizard-registration-layout">
+                <div className="wizard-form-area">
+                  {wizardStep === 1 && (
+                    <div className="wizard-section">
+                      <h3 className="wizard-section-title"><i className="fas fa-info-circle"></i> 1단계: 장치 식별 정보</h3>
+                      <DeviceBasicInfoTab
+                        device={device}
+                        editData={editData}
+                        mode={mode}
+                        onUpdateField={updateField}
+                      />
+                    </div>
+                  )}
 
-            {activeTab === 'settings' && (
-              <DeviceSettingsTab
-                device={device}
-                editData={editData}
-                mode={mode}
-                onUpdateField={updateField}
-                onUpdateSettings={updateSettings}
-              />
-            )}
+                  {wizardStep === 2 && (
+                    <div className="wizard-section">
+                      <h3 className="wizard-section-title"><i className="fas fa-cog"></i> 2단계: 통신 및 운영 설정</h3>
+                      <DeviceSettingsTab
+                        device={device}
+                        editData={editData}
+                        mode={mode}
+                        onUpdateField={updateField}
+                        onUpdateSettings={updateSettings}
+                      />
+                    </div>
+                  )}
 
-            {activeTab === 'datapoints' && (
-              <DeviceDataPointsTab
-                deviceId={device?.id || editData?.id || 0}
-                dataPoints={dataPoints}
-                isLoading={isLoadingDataPoints}
-                error={dataPointsError}
-                mode={mode}
-                onRefresh={handleRefreshDataPoints}
-                onCreate={handleCreateDataPoint}
-                onUpdate={handleUpdateDataPoint}
-                onDelete={handleDeleteDataPoint}
-              />
-            )}
+                  {wizardStep === 3 && (
+                    <div className="wizard-section">
+                      <h3 className="wizard-section-title"><i className="fas fa-list"></i> 3단계: 장치 요약 및 포인트 설정</h3>
+                      <div className="wizard-step3-grid">
+                        <div className="wizard-points-mini-tab">
+                          <DeviceDataPointsTab
+                            deviceId={0}
+                            dataPoints={dataPoints as any}
+                            isLoading={isLoadingDataPoints}
+                            error={dataPointsError}
+                            mode={mode}
+                            onRefresh={handleRefreshDataPoints}
+                            onCreate={handleCreateDataPoint}
+                            onUpdate={handleUpdateDataPoint}
+                            onDelete={handleDeleteDataPoint}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-            {activeTab === 'rtu-network' && deviceHelpers.isRtuDevice(displayData) && (
-              <DeviceRtuNetworkTab 
-                device={displayData}
-                mode={mode}
-                onUpdateDevice={updateRtuDevice}
-              />
-            )}
+                <div className="wizard-summary-area">
+                  <div className="wizard-summary-box">
+                    <h4 className="summary-title"><i className="fas fa-clipboard-list"></i> 등록 요약</h4>
+                    <div className="summary-content">
+                      <div className="summary-item">
+                        <label>디바이스 명</label>
+                        <span>{editData?.name || '(미입력)'}</span>
+                      </div>
+                      <div className="summary-item">
+                        <label>제조사/모델</label>
+                        <span>{editData?.manufacturer || '-'} / {editData?.model || '-'}</span>
+                      </div>
+                      <div className="summary-item">
+                        <label>사이트 ID</label>
+                        <span>{editData?.site_id || '1'} (기본값)</span>
+                      </div>
+                      <div className="summary-item">
+                        <label>프로토콜</label>
+                        <span className="protocol-badge">{editData?.protocol_type || '-'}</span>
+                      </div>
+                      <div className="summary-item">
+                        <label>엔드포인트</label>
+                        <span className="endpoint-text">{editData?.endpoint || '(미입력)'}</span>
+                      </div>
+                      <div className="summary-item">
+                        <label>데이터포인트</label>
+                        <span>{dataPoints.length} 개</span>
+                      </div>
+                    </div>
 
-            {activeTab === 'rtu-monitor' && deviceHelpers.isRtuDevice(displayData) && (
-              <DeviceRtuMonitorTab 
-                device={displayData}
-                mode={mode}
-              />
-            )}
+                    <div className="summary-footer">
+                      {wizardStep < 3 ? (
+                        <p className="summary-hint default">
+                          <i className="fas fa-info-circle"></i>
+                          {wizardStep === 1 ? '장치 기본 정보를 먼저 입력해주세요.' : '통신 설정을 마무리한 후 포인트를 설정하세요.'}
+                        </p>
+                      ) : (
+                        <p className="summary-hint success">
+                          <i className="fas fa-check-circle"></i>
+                          모든 준비가 완료되었습니다. 아래 [생성] 버튼을 클릭하세요.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {activeTab === 'basic' && (
+                  <DeviceBasicInfoTab
+                    device={device}
+                    editData={editData}
+                    mode={mode}
+                    onUpdateField={updateField}
+                  />
+                )}
 
-            {activeTab === 'status' && mode !== 'create' && (
-              <DeviceStatusTab device={device} />
-            )}
+                {activeTab === 'settings' && (
+                  <DeviceSettingsTab
+                    device={device}
+                    editData={editData}
+                    mode={mode}
+                    onUpdateField={updateField}
+                    onUpdateSettings={updateSettings}
+                  />
+                )}
 
-            {activeTab === 'logs' && mode === 'view' && (
-              <DeviceLogsTab deviceId={device?.id || 0} />
+                {activeTab === 'datapoints' && (
+                  <DeviceDataPointsTab
+                    deviceId={device?.id || editData?.id || 0}
+                    dataPoints={dataPoints as any}
+                    isLoading={isLoadingDataPoints}
+                    error={dataPointsError}
+                    mode={mode}
+                    onRefresh={handleRefreshDataPoints}
+                    onCreate={handleCreateDataPoint}
+                    onUpdate={handleUpdateDataPoint}
+                    onDelete={handleDeleteDataPoint}
+                  />
+                )}
+
+                {activeTab === 'rtu-network' && deviceHelpers.isRtuDevice(displayData) && (
+                  <DeviceRtuNetworkTab
+                    device={displayData}
+                    mode={mode}
+                    onUpdateDevice={updateRtuDevice}
+                  />
+                )}
+
+                {activeTab === 'rtu-monitor' && deviceHelpers.isRtuDevice(displayData) && (
+                  <DeviceRtuMonitorTab
+                    device={displayData}
+                    mode={mode}
+                  />
+                )}
+
+                {activeTab === 'status' && (
+                  <DeviceStatusTab device={device} dataPoints={dataPoints as any} />
+                )}
+
+                {activeTab === 'logs' && mode === 'view' && (
+                  <DeviceLogsTab deviceId={device?.id || 0} />
+                )}
+              </>
             )}
           </div>
 
           {/* 모달 푸터 */}
           <div className="modal-footer">
             <div className="footer-left">
-              {mode === 'edit' && onDelete && (
-                <button
-                  type="button"
-                  className="btn btn-error"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('🔥 삭제 버튼 클릭됨 - 커스텀 모달 표시');
-                    handleDelete();
-                  }}
-                  disabled={isLoading}
-                >
-                  <i className="fas fa-trash"></i>
-                  삭제
+              {mode === 'create' ? (
+                <button type="button" className="btn btn-secondary" onClick={onClose}>
+                  취소
                 </button>
+              ) : (
+                mode === 'edit' && onDelete && (
+                  <button
+                    type="button"
+                    className="btn btn-error"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('🔥 삭제 버튼 클릭됨 - 커스텀 모달 표시');
+                      handleDelete();
+                    }}
+                    disabled={isLoading}
+                  >
+                    <i className="fas fa-trash"></i>
+                    삭제
+                  </button>
+                )
               )}
             </div>
             <div className="footer-right">
-              <button type="button" className="btn btn-secondary" onClick={onClose}>
-                취소
-              </button>
-              {mode !== 'view' && (
+              {mode !== 'create' && (
+                <button type="button" className="btn btn-secondary" onClick={onClose}>
+                  닫기
+                </button>
+              )}
+
+              {mode === 'create' && (
+                <>
+                  {wizardStep > 1 && (
+                    <button type="button" className="btn btn-outline" onClick={() => setWizardStep(prev => prev - 1)}>
+                      <i className="fas fa-arrow-left"></i>
+                      이전
+                    </button>
+                  )}
+                  {wizardStep < 3 ? (
+                    <button type="button" className="btn btn-primary" onClick={() => setWizardStep(prev => prev + 1)}>
+                      다음
+                      <i className="fas fa-arrow-right"></i>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('🔥 생성 버튼 클릭됨 - 커스텀 모달 표시');
+                        handleSave();
+                      }}
+                      disabled={isLoading || !editData?.name}
+                    >
+                      {isLoading ? (
+                        <>
+                          <i className="fas fa-spinner fa-spin"></i>
+                          생성 중...
+                        </>
+                      ) : (
+                        <>
+                          <i className="fas fa-plus"></i>
+                          생성
+                        </>
+                      )}
+                    </button>
+                  )}
+                </>
+              )}
+
+              {mode === 'view' && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    if (onEdit) {
+                      onEdit();
+                    }
+                  }}
+                >
+                  <i className="fas fa-edit"></i>
+                  수정
+                </button>
+              )}
+              {(mode === 'edit') && (
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -733,7 +996,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                   ) : (
                     <>
                       <i className="fas fa-save"></i>
-                      {mode === 'create' ? '생성' : '저장'}
+                      저장
                     </>
                   )}
                 </button>
@@ -749,26 +1012,25 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           <div className="custom-modal-content">
             <div className="custom-modal-header">
               <div className={`custom-modal-icon ${customModal.type}`}>
-                <i className={`fas ${
-                  customModal.type === 'success' ? 'fa-check-circle' :
+                <i className={`fas ${customModal.type === 'success' ? 'fa-check-circle' :
                   customModal.type === 'error' ? 'fa-exclamation-triangle' :
-                  'fa-info-circle'
-                }`}></i>
+                    'fa-info-circle'
+                  }`}></i>
               </div>
               <h3>{customModal.title}</h3>
             </div>
             <div className="custom-modal-body">{customModal.message}</div>
             <div className="custom-modal-footer">
               {customModal.showCancel && (
-                <button 
-                  onClick={customModal.onCancel} 
+                <button
+                  onClick={customModal.onCancel}
                   className="custom-modal-btn custom-modal-btn-cancel"
                 >
                   {customModal.cancelText}
                 </button>
               )}
-              <button 
-                onClick={customModal.onConfirm} 
+              <button
+                onClick={customModal.onConfirm}
                 className={`custom-modal-btn custom-modal-btn-confirm custom-modal-btn-${customModal.type}`}
               >
                 {customModal.confirmText}
@@ -796,20 +1058,82 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
         .modal-container {
           background: white;
           border-radius: 0.75rem;
-          width: 90vw;
-          max-width: 1200px;
-          height: 90vh;
-          max-height: 800px;
+          width: 95vw;
+          max-width: 1400px; /* 위저드를 위해 조금 더 넓게 설정 */
+          max-height: 90vh;
           display: flex;
           flex-direction: column;
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+
+        /* 위저드 단계 진행 표시기 스타일 */
+        .wizard-steps-header {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1.5rem 2rem;
+          background: #f8fafc;
+          border-bottom: 1px solid #e2e8f0;
+          gap: 1rem;
+          flex-shrink: 0;
+        }
+
+        .wizard-step-item {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          color: #94a3b8;
+          font-weight: 500;
+        }
+
+        .wizard-step-item.active {
+          color: #2563eb;
+        }
+
+        .wizard-step-item.completed {
+          color: #10b981;
+        }
+
+        .step-number {
+          width: 2rem;
+          height: 2rem;
+          border-radius: 50%;
+          background: #f1f5f9;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.875rem;
+          border: 1px solid #e2e8f0;
+        }
+
+        .wizard-step-item.active .step-number {
+          background: #2563eb;
+          color: white;
+          border-color: #2563eb;
+        }
+
+        .wizard-step-item.completed .step-number {
+          background: #d1fae5;
+          color: #10b981;
+          border-color: #10b981;
+        }
+
+        .wizard-step-line {
+          flex: 0.1;
+          height: 1px;
+          background: #e2e8f0;
+          min-width: 20px;
+        }
+
+        .wizard-step-line.completed {
+          background: #10b981;
         }
 
         .modal-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 1.5rem 2rem;
+          padding: 1.25rem 1.5rem;
           border-bottom: 1px solid #e5e7eb;
           flex-shrink: 0;
         }
@@ -897,9 +1221,11 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
         }
 
         .tab-navigation {
-          display: flex;
-          border-bottom: 1px solid #e5e7eb;
-          background: #f9fafb;
+          margin: 1.25rem 1.5rem 0 1.5rem; /* Floating Tab Bar */
+          padding: 0 0.5rem;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 0.5rem;
           flex-shrink: 0;
           overflow-x: auto;
         }
@@ -908,15 +1234,15 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          padding: 1rem 1.5rem;
+          padding: 0.75rem 1rem;
           border: none;
           background: none;
-          color: #6b7280;
+          color: #64748b;
           font-size: 0.875rem;
           font-weight: 500;
           cursor: pointer;
           transition: all 0.2s ease;
-          border-bottom: 2px solid transparent;
+          position: relative;
           white-space: nowrap;
           flex-shrink: 0;
         }
@@ -927,9 +1253,11 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
         }
 
         .tab-btn.active {
-          color: #0ea5e9;
-          border-bottom-color: #0ea5e9;
-          background: white;
+          color: #0284c7;
+          background: #e0f2fe;
+          font-weight: 600;
+          border-radius: 0.375rem;
+          margin: 0.25rem 0;
         }
 
         .modal-content {
@@ -937,13 +1265,148 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           overflow: hidden;
           display: flex;
           flex-direction: column;
+          padding: 1.5rem;
+        }
+
+        .modal-content.wizard-mode {
+          padding: 0;
+          background: #f8fafc;
+        }
+
+        .wizard-registration-layout {
+          display: flex;
+          height: 100%;
+          overflow: hidden;
+        }
+
+        .wizard-form-area {
+          flex: 1;
+          overflow-y: auto;
+          padding: 2rem;
+          display: flex;
+          flex-direction: column;
+          gap: 2rem;
+        }
+
+        .wizard-section {
+          background: white;
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+          padding: 1.5rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .wizard-section-title {
+          font-size: 1rem;
+          font-weight: 700;
+          color: #1e293b;
+          margin: 0 0 1.5rem 0;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding-bottom: 1rem;
+          border-bottom: 1px solid #f1f5f9;
+        }
+
+        .wizard-section-title i {
+          color: #22c55e;
+        }
+
+        .wizard-summary-area {
+          width: 320px;
+          background: white;
+          border-left: 1px solid #e2e8f0;
+          padding: 1.5rem;
+          flex-shrink: 0;
+        }
+
+        .wizard-summary-box {
+          position: sticky;
+          top: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+        }
+
+        .summary-title {
+          font-size: 0.875rem;
+          font-weight: 700;
+          color: #64748b;
+          margin: 0;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          text-transform: uppercase;
+          letter-spacing: 0.025em;
+        }
+
+        .summary-content {
+          display: flex;
+          flex-direction: column;
+          gap: 1.25rem;
+          padding: 1.25rem;
+          background: #f8fafc;
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+        }
+
+        .summary-item {
+          display: flex;
+          flex-direction: column;
+          gap: 0.375rem;
+        }
+
+        .summary-item label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #94a3b8;
+        }
+
+        .summary-item span {
+          font-size: 0.875rem;
+          font-weight: 700;
+          color: #1e293b;
+          word-break: break-all;
+        }
+
+        .protocol-badge {
+          display: inline-block;
+          padding: 0.25rem 0.5rem;
+          background: #dcfce7;
+          color: #166534;
+          border-radius: 6px;
+          font-size: 0.75rem !important;
+        }
+
+        .endpoint-text {
+          font-family: 'JetBrains Mono', monospace;
+          color: #0284c7 !important;
+        }
+
+        .summary-footer {
+          padding-top: 1rem;
+          border-top: 1px solid #f1f5f9;
+        }
+
+        .summary-hint {
+          font-size: 0.75rem;
+          color: #64748b;
+          line-height: 1.5;
+          margin: 0;
+          display: flex;
+          gap: 0.5rem;
+        }
+
+        .summary-hint i {
+          color: #f59e0b;
+          margin-top: 2px;
         }
 
         .modal-footer {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 1.5rem 2rem;
+          padding: 1rem 1.5rem;
           border-top: 1px solid #e5e7eb;
           background: #f9fafb;
           flex-shrink: 0;
@@ -1012,7 +1475,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 2000;
+          z-index: 9000 !important;
           backdrop-filter: blur(4px);
         }
 

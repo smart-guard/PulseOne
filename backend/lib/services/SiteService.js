@@ -21,9 +21,9 @@ class SiteService extends BaseService {
     /**
      * Get all sites for a tenant
      */
-    async getAllSites(tenantId = null) {
+    async getAllSites(tenantId = null, options = {}) {
         return await this.handleRequest(async () => {
-            return await this.repository.findAll(tenantId);
+            return await this.repository.findAll(tenantId, options);
         }, 'SiteService.getAllSites');
     }
 
@@ -69,7 +69,7 @@ class SiteService extends BaseService {
             }
 
             const siteId = await this.repository.create(siteData);
-            return { id: siteId, name: siteData.name };
+            return await this.repository.findById(siteId, siteData.tenant_id);
         }, 'SiteService.createSite');
     }
 
@@ -103,9 +103,6 @@ class SiteService extends BaseService {
         }, 'SiteService.patchSite');
     }
 
-    /**
-     * Delete a site
-     */
     async deleteSite(id, tenantId = null) {
         return await this.handleRequest(async () => {
             const existing = await this.repository.findById(id, tenantId);
@@ -120,6 +117,17 @@ class SiteService extends BaseService {
             const success = await this.repository.deleteById(id, tenantId);
             return { success };
         }, 'SiteService.deleteSite');
+    }
+
+    /**
+     * Restore a deleted site
+     */
+    async restoreSite(id, tenantId = null) {
+        return await this.handleRequest(async () => {
+            const success = await this.repository.restoreById(id, tenantId);
+            if (!success) throw new Error('사이트 복구에 실패했습니다.');
+            return { success };
+        }, 'SiteService.restoreSite');
     }
 
     /**

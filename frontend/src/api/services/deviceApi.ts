@@ -4,6 +4,8 @@
 // ============================================================================
 
 import { API_CONFIG } from '../config';
+import { apiClient, ApiResponse } from '../client';
+import { ENDPOINTS } from '../endpoints';
 
 // ============================================================================
 // 프로토콜 정보 인터페이스 - ID 포함
@@ -40,8 +42,9 @@ export interface Device {
   tenant_id?: number;
   site_id?: number;
   device_group_id?: number;
+  device_group_name?: string;
   edge_server_id?: number;
-  
+
   // 디바이스 기본 속성
   name: string;
   description?: string;
@@ -49,13 +52,15 @@ export interface Device {
   manufacturer?: string;
   model?: string;
   serial_number?: string;
-  
+  template_device_id?: number;
+  template_name?: string;
+
   // 프로토콜 정보 - ID와 타입 모두 관리
   protocol_id: number;           // 데이터베이스 ID (실제 저장값)
   protocol_type: string;         // 타입 문자열 (표시용)
   endpoint: string;
   config?: any;
-  
+
   // 프로토콜 상세 정보 (JOIN된 데이터)
   protocol?: {
     id: number;
@@ -65,7 +70,7 @@ export interface Device {
     default_port?: number;
     category?: string;
   };
-  
+
   settings?: {
     polling_interval_ms?: number;
     connection_timeout_ms?: number;
@@ -83,19 +88,23 @@ export interface Device {
     is_communication_logging_enabled?: boolean;
     [key: string]: any;
   };
-  
+
   // 운영 설정
   polling_interval?: number;
   timeout?: number;
   retry_count?: number;
   is_enabled: boolean;
-  
+
   // 상태 정보
   connection_status?: string;
   status?: string | any;
+  tags?: string[] | string; // Added/Moved as per instruction
+  metadata?: any; // Added as per instruction
+  custom_fields?: any; // Added as per instruction
+  created_at?: string;
   last_seen?: string;
   last_communication?: string;
-  
+
   // Collector 상태 (실시간)
   collector_status?: {
     status?: string;
@@ -109,12 +118,12 @@ export interface Device {
       avg_response_time?: number;
     };
   };
-  
+
   // 데이터포인트 정보
   data_point_count?: number;
   enabled_point_count?: number;
   data_points_count?: number;
-  
+
   // 성능 정보
   response_time?: number;
   error_count?: number;
@@ -122,22 +131,46 @@ export interface Device {
   firmware_version?: string;
   hardware_info?: string;
   diagnostic_data?: any;
-  
+
   // RTU 특화 정보
   rtu_info?: RtuInfo | null;
   rtu_network?: RtuNetwork | null;
-  
+
   // 시간 정보
   installation_date?: string;
   last_maintenance?: string;
-  created_at: string;
-  updated_at: string;
-  
-  // 조인된 정보
+  updated_at?: string;
+  is_deleted?: number;
+
   site_name?: string;
   site_code?: string;
   group_name?: string;
   group_type?: string;
+  groups?: DeviceGroupAssignment[];
+  group_ids?: number[];
+  status_info?: {
+    connection_status: string;
+    last_communication?: string;
+    error_count: number;
+    last_error?: string;
+    response_time?: number;
+    throughput_ops_per_sec: number;
+    total_requests: number;
+    successful_requests: number;
+    failed_requests: number;
+    firmware_version?: string;
+    hardware_info?: any;
+    diagnostic_data?: any;
+    cpu_usage?: number;
+    memory_usage?: number;
+    uptime_percentage: number;
+  };
+}
+
+export interface DeviceGroupAssignment {
+  id: number;
+  name: string;
+  is_primary?: boolean;
 }
 
 // ============================================================================
@@ -227,9 +260,10 @@ export interface CreateDeviceRequest {
   timeout?: number;
   retry_count?: number;
   is_enabled: boolean;
+  group_ids?: number[];
 }
 
-export interface DeviceUpdateData {
+export interface UpdateDeviceRequest {
   name?: string;
   endpoint?: string;
   device_type?: string;
@@ -243,6 +277,10 @@ export interface DeviceUpdateData {
   is_enabled?: boolean;
   config?: any;
   device_group_id?: number;
+  protocol_id?: number;
+  tags?: string[] | string;
+  metadata?: any;
+  custom_fields?: any;
   // 🔥 핵심 추가: settings 필드
   settings?: {
     polling_interval_ms?: number;
@@ -261,6 +299,7 @@ export interface DeviceUpdateData {
     is_communication_logging_enabled?: boolean;
     [key: string]: any; // 추가 설정 필드를 위한 인덱스 시그니처
   };
+  group_ids?: number[];
 }
 
 export interface GetDevicesParams {
@@ -278,6 +317,8 @@ export interface GetDevicesParams {
   sort_order?: 'ASC' | 'DESC';
   include_rtu_relations?: boolean;
   include_collector_status?: boolean; // 실시간 상태 포함
+  includeDeleted?: boolean;           // 삭제된 장치 포함 여부
+  onlyDeleted?: boolean;              // 삭제된 장치만 조회 여부
 }
 
 export interface DigitalControlRequest {
@@ -370,14 +411,7 @@ export interface DeviceStats {
   last_updated: string;
 }
 
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
-  error_code?: string;
-  timestamp?: string;
-}
+// ApiResponse interface removed as it is now imported from ../client
 
 export interface PaginationInfo {
   page: number;
@@ -441,41 +475,41 @@ class ProtocolManager {
   private static protocols: ProtocolInfo[] = [];
   private static protocolMap: Map<number, ProtocolInfo> = new Map();
   private static typeToIdMap: Map<string, number> = new Map();
-  
+
   // 프로토콜 목록 로드
   static async loadProtocols(): Promise<ProtocolInfo[]> {
     try {
-      const response = await fetch('/api/devices/protocols');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const apiResponse: ApiResponse<ProtocolInfo[]> = await response.json();
-      
-      if (apiResponse.success && apiResponse.data) {
-        this.protocols = apiResponse.data;
-        
+      // API 응답 타입 수정 (items가 포함된 목록이라고 가정 - ProtocolService.js 확인 결과)
+      // ProtocolService.getProtocols returns { items: [], total_count: ... }
+      const response = await apiClient.get<any>('/api/protocols');
+
+      if (response.success && response.data) {
+        // 응답 구조가 { items: [...] } 인 경우와 [...] 인 경우 모두 처리
+        const items = Array.isArray(response.data) ? response.data : (response.data.items || []);
+
+        this.protocols = items;
+
         // Map 생성 (빠른 조회용)
         this.protocolMap.clear();
         this.typeToIdMap.clear();
-        
+
         this.protocols.forEach(protocol => {
           this.protocolMap.set(protocol.id, protocol);
           this.typeToIdMap.set(protocol.protocol_type, protocol.id);
         });
-        
+
         console.log(`프로토콜 ${this.protocols.length}개 로드 완료`);
         return this.protocols;
       }
-      
+
       throw new Error('프로토콜 데이터 로드 실패');
-      
+
     } catch (error) {
       console.error('프로토콜 로드 실패:', error);
       return this.getDefaultProtocols();
     }
   }
-  
+
   // 기본 프로토콜 목록 (로드 실패 시)
   static getDefaultProtocols(): ProtocolInfo[] {
     return [
@@ -530,28 +564,28 @@ class ProtocolManager {
       }
     ];
   }
-  
+
   // ID로 프로토콜 조회
   static getProtocolById(id: number): ProtocolInfo | undefined {
     return this.protocolMap.get(id);
   }
-  
+
   // 타입으로 ID 조회
   static getProtocolIdByType(type: string): number | undefined {
     return this.typeToIdMap.get(type);
   }
-  
+
   // 타입으로 프로토콜 조회
   static getProtocolByType(type: string): ProtocolInfo | undefined {
     const id = this.typeToIdMap.get(type);
     return id ? this.protocolMap.get(id) : undefined;
   }
-  
+
   // 모든 프로토콜 반환
   static getAllProtocols(): ProtocolInfo[] {
     return [...this.protocols];
   }
-  
+
   // 프로토콜 이름 조회
   static getProtocolName(id: number): string {
     const protocol = this.protocolMap.get(id);
@@ -566,17 +600,17 @@ class ProtocolManager {
 export class DeviceApiService {
   private static readonly BASE_URL = '/api/devices';
   private static readonly COLLECTOR_URL = '/api/collector';
-  
+
   // 초기화 (프로토콜 로드)
   static async initialize(): Promise<void> {
     await ProtocolManager.loadProtocols();
   }
-  
+
   // 프로토콜 관련 메서드들
   static getProtocolManager() {
     return ProtocolManager;
   }
-  
+
   // ========================================================================
   // 기본 CRUD API들
   // ========================================================================
@@ -584,24 +618,7 @@ export class DeviceApiService {
   // 디바이스 목록 조회
   static async getDevices(params?: GetDevicesParams): Promise<ApiResponse<DevicesResponse>> {
     try {
-      const queryParams = new URLSearchParams();
-      
-      if (params) {
-        Object.entries(params).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
-            queryParams.append(key, value.toString());
-          }
-        });
-      }
-      
-      const url = `${this.BASE_URL}?${queryParams.toString()}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<DevicesResponse>(this.BASE_URL, params);
     } catch (error) {
       console.error('디바이스 목록 조회 실패:', error);
       throw error;
@@ -610,36 +627,15 @@ export class DeviceApiService {
 
   // 디바이스 상세 조회
   static async getDevice(
-    id: number, 
-    options?: { 
-      include_data_points?: boolean; 
+    id: number,
+    options?: {
+      include_data_points?: boolean;
       include_rtu_network?: boolean;
       include_collector_status?: boolean;
     }
   ): Promise<ApiResponse<Device>> {
     try {
-      const queryParams = new URLSearchParams();
-      
-      if (options?.include_data_points) {
-        queryParams.append('include_data_points', 'true');
-      }
-      
-      if (options?.include_rtu_network) {
-        queryParams.append('include_rtu_network', 'true');
-      }
-      
-      if (options?.include_collector_status) {
-        queryParams.append('include_collector_status', 'true');
-      }
-      
-      const url = `${this.BASE_URL}/${id}?${queryParams.toString()}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<Device>(`${this.BASE_URL}/${id}`, options);
     } catch (error) {
       console.error(`디바이스 ${id} 조회 실패:`, error);
       throw error;
@@ -654,20 +650,8 @@ export class DeviceApiService {
       if (!protocol) {
         throw new Error(`유효하지 않은 프로토콜 ID: ${data.protocol_id}`);
       }
-      
-      const response = await fetch(this.BASE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+
+      return await apiClient.post<Device>(this.BASE_URL, data);
     } catch (error) {
       console.error('디바이스 생성 실패:', error);
       throw error;
@@ -684,20 +668,8 @@ export class DeviceApiService {
           throw new Error(`유효하지 않은 프로토콜 ID: ${data.protocol_id}`);
         }
       }
-      
-      const response = await fetch(`${this.BASE_URL}/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+
+      return await apiClient.put<Device>(`${this.BASE_URL}/${id}`, data);
     } catch (error) {
       console.error(`디바이스 ${id} 수정 실패:`, error);
       throw error;
@@ -707,18 +679,40 @@ export class DeviceApiService {
   // 디바이스 삭제
   static async deleteDevice(id: number, force?: boolean): Promise<ApiResponse<void>> {
     try {
-      const url = force ? `${this.BASE_URL}/${id}?force=true` : `${this.BASE_URL}/${id}`;
-      const response = await fetch(url, {
-        method: 'DELETE',
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      const endpoint = `${this.BASE_URL}/${id}` + (force ? '?force=true' : '');
+      return await apiClient.delete<void>(endpoint);
     } catch (error) {
       console.error(`디바이스 ${id} 삭제 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 디바이스 복구
+  static async restoreDevice(id: number): Promise<ApiResponse<any>> {
+    try {
+      return await apiClient.post<any>(`${this.BASE_URL}/${id}/restore`);
+    } catch (error) {
+      console.error(`디바이스 ${id} 복구 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 디바이스 대량 업데이트 (벌크 수정)
+  static async bulkUpdateDevices(ids: number[], data: Partial<Device>): Promise<ApiResponse<number>> {
+    try {
+      return await apiClient.put<number>(`${this.BASE_URL}/bulk`, { ids, data });
+    } catch (error) {
+      console.error('디바이스 대량 업데이트 실패:', error);
+      throw error;
+    }
+  }
+
+  // 디바이스 대량 삭제 (벌크 삭제)
+  static async bulkDeleteDevices(ids: number[]): Promise<ApiResponse<number>> {
+    try {
+      return await apiClient.delete<number>(`${this.BASE_URL}/bulk`, { ids });
+    } catch (error) {
+      console.error('디바이스 대량 삭제 실패:', error);
       throw error;
     }
   }
@@ -730,15 +724,7 @@ export class DeviceApiService {
   // 디바이스 활성화
   static async enableDevice(id: number): Promise<ApiResponse<Device>> {
     try {
-      const response = await fetch(`${this.BASE_URL}/${id}/enable`, {
-        method: 'POST',
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<Device>(`${this.BASE_URL}/${id}/enable`);
     } catch (error) {
       console.error(`디바이스 ${id} 활성화 실패:`, error);
       throw error;
@@ -748,35 +734,47 @@ export class DeviceApiService {
   // 디바이스 비활성화
   static async disableDevice(id: number): Promise<ApiResponse<Device>> {
     try {
-      const response = await fetch(`${this.BASE_URL}/${id}/disable`, {
-        method: 'POST',
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<Device>(`${this.BASE_URL}/${id}/disable`);
     } catch (error) {
       console.error(`디바이스 ${id} 비활성화 실패:`, error);
       throw error;
     }
   }
 
-  // 연결 테스트
+  // 연결 테스트 (기본 DB 연결성)
   static async testDeviceConnection(id: number): Promise<ApiResponse<ConnectionTestResult>> {
     try {
-      const response = await fetch(`${this.BASE_URL}/${id}/test-connection`, {
-        method: 'POST',
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<ConnectionTestResult>(`${this.BASE_URL}/${id}/test-connection`);
     } catch (error) {
       console.error(`디바이스 ${id} 연결 테스트 실패:`, error);
+      throw error;
+    }
+  }
+
+  // 연결 진단 (Collector 실시간 패킷 테스트)
+  static async diagnoseDevice(id: number): Promise<ApiResponse<any>> {
+    try {
+      return await apiClient.post<any>(`${this.BASE_URL}/${id}/diagnose`);
+    } catch (error) {
+      console.error(`디바이스 ${id} 연결 진단 실패:`, error);
+      throw error;
+    }
+  }
+
+  // ========================================================================
+  // 신규 추가: 네트워크 스캔 (Collector Discovery)
+  // ========================================================================
+  static async scanNetwork(params: {
+    protocol: string;
+    range?: string;
+    timeout?: number;
+    edgeServerId?: number;
+    tenantId?: number;
+  }): Promise<ApiResponse<any>> {
+    try {
+      return await apiClient.post<any>(ENDPOINTS.NETWORK_SCAN, params);
+    } catch (error) {
+      console.error('네트워크 스캔 실패:', error);
       throw error;
     }
   }
@@ -788,21 +786,7 @@ export class DeviceApiService {
   // 워커 시작 (Collector 레벨)
   static async startDeviceWorker(id: number, options?: { forceRestart?: boolean }): Promise<ApiResponse<CollectorDeviceStatus>> {
     try {
-      console.log(`🚀 Starting device worker: ${id}`);
-      
-      const response = await fetch(`${this.BASE_URL}/${id}/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(options || {})
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<CollectorDeviceStatus>(`${this.BASE_URL}/${id}/start`, options);
     } catch (error) {
       console.error(`디바이스 워커 ${id} 시작 실패:`, error);
       throw error;
@@ -812,21 +796,7 @@ export class DeviceApiService {
   // 워커 정지 (Collector 레벨)
   static async stopDeviceWorker(id: number, options?: { graceful?: boolean }): Promise<ApiResponse<CollectorDeviceStatus>> {
     try {
-      console.log(`🛑 Stopping device worker: ${id}`);
-      
-      const response = await fetch(`${this.BASE_URL}/${id}/stop`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(options || { graceful: true })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<CollectorDeviceStatus>(`${this.BASE_URL}/${id}/stop`, options || { graceful: true });
     } catch (error) {
       console.error(`디바이스 워커 ${id} 정지 실패:`, error);
       throw error;
@@ -836,21 +806,7 @@ export class DeviceApiService {
   // 워커 재시작 (Collector 레벨)
   static async restartDeviceWorker(id: number, options?: { wait?: number }): Promise<ApiResponse<CollectorDeviceStatus>> {
     try {
-      console.log(`🔄 Restarting device worker: ${id}`);
-      
-      const response = await fetch(`${this.BASE_URL}/${id}/restart`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(options || {})
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<CollectorDeviceStatus>(`${this.BASE_URL}/${id}/restart`, options);
     } catch (error) {
       console.error(`디바이스 워커 ${id} 재시작 실패:`, error);
       throw error;
@@ -860,17 +816,7 @@ export class DeviceApiService {
   // 워커 일시정지
   static async pauseDeviceWorker(id: number): Promise<ApiResponse<CollectorDeviceStatus>> {
     try {
-      console.log(`⏸️ Pausing device worker: ${id}`);
-      
-      const response = await fetch(`${this.COLLECTOR_URL}/devices/${id}/pause`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<CollectorDeviceStatus>(`${this.COLLECTOR_URL.replace('/api', '')}/devices/${id}/pause`);
     } catch (error) {
       console.error(`디바이스 워커 ${id} 일시정지 실패:`, error);
       throw error;
@@ -880,17 +826,7 @@ export class DeviceApiService {
   // 워커 재개
   static async resumeDeviceWorker(id: number): Promise<ApiResponse<CollectorDeviceStatus>> {
     try {
-      console.log(`▶️ Resuming device worker: ${id}`);
-      
-      const response = await fetch(`${this.COLLECTOR_URL}/devices/${id}/resume`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<CollectorDeviceStatus>(`${this.COLLECTOR_URL.replace('/api', '')}/devices/${id}/resume`);
     } catch (error) {
       console.error(`디바이스 워커 ${id} 재개 실패:`, error);
       throw error;
@@ -900,13 +836,7 @@ export class DeviceApiService {
   // 워커 실시간 상태 조회
   static async getDeviceWorkerStatus(id: number): Promise<ApiResponse<CollectorDeviceStatus>> {
     try {
-      const response = await fetch(`${this.BASE_URL}/${id}/status`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<CollectorDeviceStatus>(`${this.BASE_URL}/${id}/status`);
     } catch (error) {
       console.error(`디바이스 워커 ${id} 상태 조회 실패:`, error);
       throw error;
@@ -916,19 +846,7 @@ export class DeviceApiService {
   // 실시간 데이터 조회
   static async getCurrentDeviceData(id: number, pointIds?: string[]): Promise<ApiResponse<any>> {
     try {
-      const queryParams = new URLSearchParams();
-      if (pointIds && pointIds.length > 0) {
-        queryParams.append('point_ids', pointIds.join(','));
-      }
-      
-      const url = `${this.BASE_URL}/${id}/data/current?${queryParams.toString()}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<any>(`${this.BASE_URL}/${id}/data/current`, { point_ids: pointIds?.join(',') });
     } catch (error) {
       console.error(`디바이스 ${id} 실시간 데이터 조회 실패:`, error);
       throw error;
@@ -941,84 +859,42 @@ export class DeviceApiService {
 
   // 디지털 출력 제어 (릴레이, 솔레노이드 등)
   static async controlDigitalOutput(
-    deviceId: number, 
-    outputId: string, 
+    deviceId: number,
+    outputId: string,
     request: DigitalControlRequest
   ): Promise<ApiResponse<HardwareControlResult>> {
     try {
-      console.log(`🔌 Digital control: Device ${deviceId}, Output ${outputId}, State: ${request.state}`);
-      
-      const response = await fetch(`${this.BASE_URL}/${deviceId}/digital/${outputId}/control`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<HardwareControlResult>(`${this.BASE_URL}/${deviceId}/digital/${outputId}/control`, request);
     } catch (error) {
-      console.error(`디지털 출력 제어 실패 (Device ${deviceId}, Output ${outputId}):`, error);
+      console.error(`디바이스 ${deviceId} 디지털 출력 ${outputId} 제어 실패:`, error);
       throw error;
     }
   }
 
-  // 아날로그 출력 제어 (4-20mA, 0-10V 등)
+  // 아날로그 출력 제어 (VFD 속도, 밸브 개도 등)
   static async controlAnalogOutput(
-    deviceId: number, 
-    outputId: string, 
+    deviceId: number,
+    outputId: string,
     request: AnalogControlRequest
   ): Promise<ApiResponse<HardwareControlResult>> {
     try {
-      console.log(`📊 Analog control: Device ${deviceId}, Output ${outputId}, Value: ${request.value}`);
-      
-      const response = await fetch(`${this.BASE_URL}/${deviceId}/analog/${outputId}/control`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<HardwareControlResult>(`${this.BASE_URL}/${deviceId}/analog/${outputId}/control`, request);
     } catch (error) {
-      console.error(`아날로그 출력 제어 실패 (Device ${deviceId}, Output ${outputId}):`, error);
+      console.error(`디바이스 ${deviceId} 아날로그 출력 ${outputId} 제어 실패:`, error);
       throw error;
     }
   }
 
   // 펌프 제어
   static async controlPump(
-    deviceId: number, 
-    pumpId: string, 
+    deviceId: number,
+    pumpId: string,
     request: PumpControlRequest
   ): Promise<ApiResponse<HardwareControlResult>> {
     try {
-      console.log(`⚡ Pump control: Device ${deviceId}, Pump ${pumpId}, Enable: ${request.enable}`);
-      
-      const response = await fetch(`${this.BASE_URL}/${deviceId}/pump/${pumpId}/control`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<HardwareControlResult>(`${this.BASE_URL}/${deviceId}/pump/${pumpId}/control`, request);
     } catch (error) {
-      console.error(`펌프 제어 실패 (Device ${deviceId}, Pump ${pumpId}):`, error);
+      console.error(`디바이스 ${deviceId} 펌프 ${pumpId} 제어 실패:`, error);
       throw error;
     }
   }
@@ -1030,21 +906,7 @@ export class DeviceApiService {
   // 배치 워커 시작
   static async startMultipleDeviceWorkers(deviceIds: number[]): Promise<ApiResponse<WorkerBatchResult>> {
     try {
-      console.log(`🚀 Starting ${deviceIds.length} device workers:`, deviceIds);
-      
-      const response = await fetch(`${this.BASE_URL}/batch/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ device_ids: deviceIds })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<WorkerBatchResult>(`${this.BASE_URL}/batch/start`, { device_ids: deviceIds });
     } catch (error) {
       console.error('배치 워커 시작 실패:', error);
       throw error;
@@ -1053,25 +915,11 @@ export class DeviceApiService {
 
   // 배치 워커 정지
   static async stopMultipleDeviceWorkers(
-    deviceIds: number[], 
+    deviceIds: number[],
     options?: { graceful?: boolean }
   ): Promise<ApiResponse<WorkerBatchResult>> {
     try {
-      console.log(`🛑 Stopping ${deviceIds.length} device workers:`, deviceIds);
-      
-      const response = await fetch(`${this.BASE_URL}/batch/stop`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ device_ids: deviceIds, ...options })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<WorkerBatchResult>(`${this.BASE_URL}/batch/stop`, { device_ids: deviceIds, ...options });
     } catch (error) {
       console.error('배치 워커 정지 실패:', error);
       throw error;
@@ -1085,17 +933,7 @@ export class DeviceApiService {
   // 디바이스 설정 재로드
   static async reloadDeviceConfig(id: number): Promise<ApiResponse<ConfigSyncResult>> {
     try {
-      console.log(`🔄 Reloading config for device ${id}`);
-      
-      const response = await fetch(`${this.BASE_URL}/${id}/config/reload`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<ConfigSyncResult>(`${this.BASE_URL}/${id}/config/reload`);
     } catch (error) {
       console.error(`디바이스 ${id} 설정 재로드 실패:`, error);
       throw error;
@@ -1105,17 +943,7 @@ export class DeviceApiService {
   // 전체 설정 재로드
   static async reloadAllConfigs(): Promise<ApiResponse<ConfigSyncResult>> {
     try {
-      console.log('🔄 Reloading all configurations');
-      
-      const response = await fetch(`${this.COLLECTOR_URL}/config/reload`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<ConfigSyncResult>(`${this.COLLECTOR_URL}/config/reload`);
     } catch (error) {
       console.error('전체 설정 재로드 실패:', error);
       throw error;
@@ -1125,21 +953,7 @@ export class DeviceApiService {
   // 디바이스 설정 동기화
   static async syncDeviceSettings(id: number, settings: any): Promise<ApiResponse<ConfigSyncResult>> {
     try {
-      console.log(`🔄 Syncing settings for device ${id}`);
-      
-      const response = await fetch(`${this.COLLECTOR_URL}/devices/${id}/sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(settings)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<ConfigSyncResult>(`${this.COLLECTOR_URL}/devices/${id}/sync`, settings);
     } catch (error) {
       console.error(`디바이스 ${id} 설정 동기화 실패:`, error);
       throw error;
@@ -1148,26 +962,12 @@ export class DeviceApiService {
 
   // 설정 변경 알림
   static async notifyConfigChange(
-    type: string, 
-    entityId: number, 
+    type: string,
+    entityId: number,
     changes?: any
   ): Promise<ApiResponse<ConfigSyncResult>> {
     try {
-      console.log(`🔔 Notifying config change: ${type} ${entityId}`);
-      
-      const response = await fetch(`${this.COLLECTOR_URL}/config/notify-change`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type, entity_id: entityId, changes: changes || {} })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<ConfigSyncResult>(`${this.COLLECTOR_URL}/config/notify-change`, { type, entity_id: entityId, changes: changes || {} });
     } catch (error) {
       console.error(`설정 변경 알림 실패 (${type} ${entityId}):`, error);
       throw error;
@@ -1181,19 +981,7 @@ export class DeviceApiService {
   // 일괄 작업 (DB 레벨)
   static async bulkAction(data: BulkActionRequest): Promise<ApiResponse<BulkActionResult>> {
     try {
-      const response = await fetch(`${this.BASE_URL}/bulk-action`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.post<BulkActionResult>(`${this.BASE_URL}/bulk-action`, data);
     } catch (error) {
       console.error('디바이스 일괄 작업 실패:', error);
       throw error;
@@ -1203,13 +991,7 @@ export class DeviceApiService {
   // 통계 조회
   static async getDeviceStatistics(): Promise<ApiResponse<DeviceStats>> {
     try {
-      const response = await fetch(`${this.BASE_URL}/statistics`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<DeviceStats>(`${this.BASE_URL}/statistics`);
     } catch (error) {
       console.error('디바이스 통계 조회 실패:', error);
       throw error;
@@ -1219,13 +1001,7 @@ export class DeviceApiService {
   // 지원 프로토콜 목록 조회
   static async getAvailableProtocols(): Promise<ApiResponse<ProtocolInfo[]>> {
     try {
-      const response = await fetch(`${this.BASE_URL}/protocols`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<ProtocolInfo[]>(`${this.BASE_URL}/protocols`);
     } catch (error) {
       console.error('지원 프로토콜 조회 실패:', error);
       throw error;
@@ -1234,7 +1010,7 @@ export class DeviceApiService {
 
   // 데이터포인트 조회
   static async getDeviceDataPoints(
-    deviceId: number, 
+    deviceId: number,
     params?: {
       page?: number;
       limit?: number;
@@ -1243,24 +1019,7 @@ export class DeviceApiService {
     }
   ): Promise<ApiResponse<any>> {
     try {
-      const queryParams = new URLSearchParams();
-      
-      if (params) {
-        Object.entries(params).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
-            queryParams.append(key, value.toString());
-          }
-        });
-      }
-      
-      const url = `${this.BASE_URL}/${deviceId}/data-points?${queryParams.toString()}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<any>(`${this.BASE_URL}/${deviceId}/data-points`, params);
     } catch (error) {
       console.error(`디바이스 ${deviceId} 데이터포인트 조회 실패:`, error);
       throw error;
@@ -1270,13 +1029,7 @@ export class DeviceApiService {
   // RTU 네트워크 정보 조회
   static async getRtuNetworks(): Promise<ApiResponse<any>> {
     try {
-      const response = await fetch(`${this.BASE_URL}/rtu/networks`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<any>(`${this.BASE_URL}/rtu/networks`);
     } catch (error) {
       console.error('RTU 네트워크 조회 실패:', error);
       throw error;
@@ -1322,7 +1075,7 @@ export class DeviceApiService {
     parity: string;
   } | null {
     if (!this.isRtuDevice(device) || !device.rtu_info) return null;
-    
+
     return {
       baud_rate: device.rtu_info.baud_rate,
       data_bits: device.rtu_info.data_bits,
@@ -1334,9 +1087,9 @@ export class DeviceApiService {
   // RTU 네트워크별 디바이스 그룹화
   static groupRtuDevicesByNetwork(devices: Device[]): { [serialPort: string]: { master: Device; slaves: Device[] } } {
     const networks: { [serialPort: string]: { master: Device; slaves: Device[] } } = {};
-    
+
     const rtuMasters = devices.filter(d => this.isRtuMaster(d));
-    
+
     rtuMasters.forEach(master => {
       const serialPort = this.getRtuSerialPort(master);
       if (serialPort) {
@@ -1346,9 +1099,9 @@ export class DeviceApiService {
         };
       }
     });
-    
+
     const rtuSlaves = devices.filter(d => this.isRtuSlave(d));
-    
+
     rtuSlaves.forEach(slave => {
       const masterId = this.getRtuMasterDeviceId(slave);
       if (masterId) {
@@ -1359,19 +1112,19 @@ export class DeviceApiService {
         });
       }
     });
-    
+
     return networks;
   }
 
   // 디바이스 상태 체크 유틸리티
   static isDeviceOnline(device: Device): boolean {
-    return device.connection_status === 'connected' || 
-           device.connection_status === 'online';
+    return device.connection_status === 'connected' ||
+      device.connection_status === 'online';
   }
 
   static isDeviceRunning(device: Device): boolean {
-    return device.collector_status?.status === 'running' || 
-           device.status === 'running';
+    return device.collector_status?.status === 'running' ||
+      device.status === 'running';
   }
 
   static isDeviceEnabled(device: Device): boolean {
@@ -1385,11 +1138,11 @@ export class DeviceApiService {
 
   static formatDeviceUptime(uptimeSeconds: number | undefined): string {
     if (!uptimeSeconds) return '알 수 없음';
-    
+
     const hours = Math.floor(uptimeSeconds / 3600);
     const minutes = Math.floor((uptimeSeconds % 3600) / 60);
     const seconds = Math.floor(uptimeSeconds % 60);
-    
+
     if (hours > 0) {
       return `${hours}시간 ${minutes}분`;
     } else if (minutes > 0) {
@@ -1412,24 +1165,7 @@ export class DeviceApiService {
     options: any;
   }>> {
     try {
-      console.log('🌳 디바이스 트리 구조 조회:', options);
-      
-      const queryParams = new URLSearchParams();
-      if (options?.include_data_points) {
-        queryParams.append('include_data_points', 'true');
-      }
-      if (options?.include_realtime) {
-        queryParams.append('include_realtime', 'true');
-      }
-      
-      const url = `/api/devices/tree-structure?${queryParams.toString()}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<any>('/api/devices/tree-structure', options);
     } catch (error) {
       console.error('디바이스 트리 구조 조회 실패:', error);
       throw error;
@@ -1451,28 +1187,12 @@ export class DeviceApiService {
     search_criteria: any;
   }>> {
     try {
-      console.log('🔍 디바이스 트리 검색:', criteria);
-      
-      const queryParams = new URLSearchParams();
-      Object.entries(criteria).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          queryParams.append(key, value.toString());
-        }
-      });
-      
-      const url = `${this.BASE_URL}/tree-structure/search?${queryParams.toString()}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      return await response.json();
+      return await apiClient.get<any>(`${this.BASE_URL}/tree-structure/search`, criteria);
     } catch (error) {
       console.error('디바이스 트리 검색 실패:', error);
       throw error;
     }
-}
+  }
 }
 
 

@@ -41,6 +41,20 @@
     #endif
 #endif
 
+// 🔥 NEW: Linux/system headers might define INFO, DEBUG, or WARN as macros
+// 이것은 Windows 뿐만 아니라 Linux 환경에서도 충돌을 일으킬 수 있습니다.
+#ifdef INFO
+    #undef INFO
+#endif
+
+#ifdef DEBUG
+    #undef DEBUG
+#endif
+
+#ifdef WARN
+    #undef WARN
+#endif
+
 namespace PulseOne {
 namespace Enums {
 

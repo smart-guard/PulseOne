@@ -18,7 +18,7 @@ router.use(tenantIsolation);
  * @access  Private
  */
 router.get('/', async (req, res) => {
-    const response = await SiteService.getAllSites(req.tenantId);
+    const response = await SiteService.getAllSites(req.tenantId, req.query);
     res.status(response.success ? 200 : 400).json(response);
 });
 
@@ -89,6 +89,16 @@ router.patch('/:id', requireRole('system_admin', 'company_admin', 'site_manager'
  */
 router.delete('/:id', requireRole('system_admin', 'company_admin'), async (req, res) => {
     const response = await SiteService.deleteSite(req.params.id, req.tenantId);
+    res.status(response.success ? 200 : 400).json(response);
+});
+
+/**
+ * @route   POST /api/sites/:id/restore
+ * @desc    Restore a deleted site
+ * @access  Private (Admin)
+ */
+router.post('/:id/restore', requireRole('system_admin', 'company_admin'), async (req, res) => {
+    const response = await SiteService.restoreSite(req.params.id, req.tenantId);
     res.status(response.success ? 200 : 400).json(response);
 });
 

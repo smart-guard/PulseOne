@@ -7,6 +7,9 @@
 NPROC := $(shell nproc 2>/dev/null || echo 4)
 MAKEFLAGS += -j$(NPROC) --output-sync=target
 
+# C++ Standard
+CXXFLAGS += -std=c++17
+
 # 플랫폼 감지
 UNAME := $(shell uname -s)
 ifeq ($(UNAME),Linux)
@@ -27,52 +30,85 @@ endif
 HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
-# Docker 환경에서 파일이 있어도 shell 권한 문제 등으로 실패할 수 있으므로 명시적 확인 추가 또는 강제 설정 고려
-HAS_BACNET_STACK := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
-HAS_QUICKJS := 1
-HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
-HAS_LIBMODBUS := $(shell pkg-config --exists libmodbus && echo "1" || echo "0")
+# --- Protocol & Library Detection ---
+UNAME := $(shell uname)
 
-# 컴파일러 설정 (플랫폼별)
-CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -g -DPULSEONE_DEBUG_MODE -DTEST_BUILD \
-           -O1 -fno-omit-frame-pointer \
-           -Wno-unused-but-set-variable -Wno-unused-variable \
-           -Wno-unused-parameter \
-           -fdiagnostics-color=always
-
-# 플랫폼별 컴파일 플래그 추가
-ifeq ($(IS_WINDOWS),1)
-    CXXFLAGS += -DPULSEONE_WINDOWS=1 -DPULSEONE_LINUX=0 \
-                -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
-    PLATFORM_LIBS = -lws2_32 -liphlpapi -lkernel32 -luser32
-else
-    CXXFLAGS += -DPULSEONE_WINDOWS=0 -DPULSEONE_LINUX=1
-    PLATFORM_LIBS = -lbluetooth
-    
-    # macOS Specifics
-    ifeq ($(UNAME),Darwin)
-        INCLUDES += -I/opt/homebrew/opt/openssl@3/include
-        PLATFORM_LIBS += -L/opt/homebrew/opt/openssl@3/lib
-    endif
+# 1. QuickJS (macOS header path fallback)
+QUICKJS_HEADER_FOUND := $(shell [ -f "/usr/local/include/quickjs/quickjs.h" ] || [ -f "/usr/local/include/quickjs.h" ] || [ -f "/opt/homebrew/include/quickjs/quickjs.h" ] && echo "1" || echo "0")
+HAS_QUICKJS := $(shell pkg-config --exists quickjs && [ "$(QUICKJS_HEADER_FOUND)" = "1" ] && echo "1" || echo "0")
+ifeq ($(HAS_QUICKJS),0)
+    # Manual check for macOS homebrew path if pkg-config fails
+    HAS_QUICKJS := $(shell [ "$(QUICKJS_HEADER_FOUND)" = "1" ] && echo "1" || echo "0")
 endif
 
-# Modbus 라이브러리 설정
-# Modbus 라이브러리 설정
-ifeq ($(HAS_LIBMODBUS),1)
-    CXXFLAGS += -DHAVE_MODBUS $(shell pkg-config --cflags libmodbus)
-    MODBUS_LIBS = $(shell pkg-config --libs libmodbus)
-    LIBS += $(MODBUS_LIBS)
-else
-    # Fallback check
-    CHECK_MODBUS := $(shell [ -f "/usr/include/modbus/modbus.h" ] || [ -f "/usr/local/include/modbus/modbus.h" ] || [ -f "/opt/homebrew/include/modbus/modbus.h" ] && echo "1" || echo "0")
-    ifeq ($(CHECK_MODBUS),1)
-        CXXFLAGS += -DHAVE_MODBUS -I/usr/include/modbus -I/usr/local/include/modbus -I/opt/homebrew/include/modbus
-        MODBUS_LIBS = -lmodbus
-        LIBS += $(MODBUS_LIBS)
+# 2. Modbus
+HAS_MODBUS := $(shell pkg-config --exists libmodbus && echo "1" || echo "0")
+ifeq ($(HAS_MODBUS),0)
+    HAS_MODBUS := $(shell [ -f "/usr/include/modbus/modbus.h" ] || [ -f "/usr/local/include/modbus/modbus.h" ] || [ -f "/opt/homebrew/include/modbus/modbus.h" ] && echo "1" || echo "0")
+endif
+
+# 3. BACnet (Multi-path check)
+HAS_BACNET := $(shell [ -f "/usr/include/bacnet/bacdef.h" ] || [ -f "/usr/local/include/bacnet/bacdef.h" ] || [ -f "/opt/homebrew/include/bacnet/bacdef.h" ] && echo "1" || echo "0")
+has_bacnet_lib := $(shell [ -f "/usr/lib/libbacnet.a" ] || [ -f "/usr/local/lib/libbacnet.a" ] || [ -f "/opt/homebrew/lib/libbacnet.a" ] && echo "1" || echo "0")
+# We compile the driver regardless (for simulation), but only set HAS_BACNET_STACK if lib is found
+HAS_BACNET_STACK := $(has_bacnet_lib)
+
+# 4. MQTT (Paho C++)
+HAS_MQTT := $(shell echo '\#include <mqtt/async_client.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+
+# 5. HTTP (httplib)
+HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+
+# 6. CURL
+HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
+ifeq ($(HAS_CURL),0)
+    HAS_CURL := $(shell [ -f "/usr/include/curl/curl.h" ] || [ -f "/usr/local/include/curl/curl.h" ] || [ -f "/opt/homebrew/include/curl/curl.h" ] && echo "1" || echo "0")
+endif
+
+# --- Compiler Tags ---
+ifeq ($(HAS_MODBUS),1)
+    CXXFLAGS += -DHAS_MODBUS=1
+endif
+ifeq ($(HAS_BACNET),1)
+    CXXFLAGS += -DHAS_BACNET=1
+    ifeq ($(HAS_BACNET_STACK),1)
+        CXXFLAGS += -DHAS_BACNET_STACK=1
     endif
+endif
+ifeq ($(HAS_MQTT),1)
+    CXXFLAGS += -DHAS_MQTT=1
+endif
+ifeq ($(HAS_QUICKJS),1)
+    CXXFLAGS += -DHAS_QUICKJS=1
+endif
+ifeq ($(HAS_HTTPLIB),1)
+    CXXFLAGS += -DHAVE_HTTPLIB=1
+endif
+ifeq ($(HAS_CURL),1)
+    CXXFLAGS += -DHAVE_CURL=1
+endif
+
+# --- Library Setup ---
+ifeq ($(HAS_MODBUS),1)
+    MODBUS_LIBS = $(shell pkg-config --libs libmodbus 2>/dev/null || echo "-lmodbus")
+    LIBS += $(MODBUS_LIBS)
+endif
+
+ifeq ($(HAS_BACNET_STACK),1)
+    BACNET_LIBS = -lbacnet -lm
+    LIBS += $(BACNET_LIBS)
+    # macOS include mapping
+    INCLUDES += -I/usr/local/include/bacnet -I/opt/homebrew/include/bacnet
+endif
+
+ifeq ($(HAS_MQTT),1)
+    MQTT_LIBS = -lpaho-mqttpp3 -lpaho-mqtt3as
+    LIBS += $(MQTT_LIBS)
+endif
+
+ifeq ($(HAS_QUICKJS),1)
+    QUICKJS_LIBS = -lquickjs
+    LIBS += $(QUICKJS_LIBS)
 endif
 
 # 디렉토리 설정
@@ -181,12 +217,43 @@ else
     REDIS_LIBS = 
 endif
 
+# macOS/Darwin specific enablement (Manual override if pkg-config fails)
+ifeq ($(UNAME),Darwin)
+    # libmodbus usually not installed on macOS dev env
+    HAS_LIBMODBUS = 0
+    HAS_MQTT_CPP = 0
+    HAS_MQTT_C = 0
+    LDFLAGS += -L/opt/homebrew/opt/openssl/lib -L/opt/homebrew/lib
+endif
+
+# Extra protocol definitions for Application.cpp
+ifeq ($(HAS_MODBUS),1)
+    CXXFLAGS += -DHAS_MODBUS=1
+endif
+ifeq ($(HAS_BACNET_STACK),1)
+    CXXFLAGS += -DHAS_BACNET=1
+endif
+ifeq ($(HAS_MQTT_CPP),1)
+    CXXFLAGS += -DHAS_MQTT=1
+endif
+ifeq ($(HAS_QUICKJS),1)
+    CXXFLAGS += -DHAS_QUICKJS=1
+endif
+
 # JSON 라이브러리 설정
 ifeq ($(HAS_NLOHMANN_JSON),1)
     CXXFLAGS += -DHAS_NLOHMANN_JSON
 endif
 
 # QuickJS 라이브러리 설정
+# macOS에서 /usr/local/include/quickjs 가 없을 경우 대비
+QUICKJS_HEADER_FOUND := $(shell [ -f "/usr/local/include/quickjs/quickjs.h" ] || [ -f "/usr/local/include/quickjs.h" ] && echo "1" || echo "0")
+ifeq ($(HAS_QUICKJS),1)
+    ifeq ($(QUICKJS_HEADER_FOUND),0)
+        HAS_QUICKJS := 0
+    endif
+endif
+
 ifeq ($(HAS_QUICKJS),1)
     # pkg-config might return -L/usr/local/lib which is incorrect for this environment
     QUICKJS_LIBS = -L/usr/local/lib/quickjs -lquickjs
@@ -227,7 +294,22 @@ endif
 BASIC_LIBS = -lpthread -lsqlite3 $(QUICKJS_LIBS) $(HTTP_LIBS) $(CURL_LIBS) -lm -ldl $(PLATFORM_LIBS)
 OPTIONAL_LIBS = $(MODBUS_LIBS) $(MYSQL_LIBS) $(PGSQL_LIBS) $(MQTT_C_LIBS) $(MQTT_CPP_LIBS) $(BACNET_LIBS) $(REDIS_LIBS)
 LIBS = $(BASIC_LIBS) $(OPTIONAL_LIBS)
-TEST_LIBS = ./googletest/build-linux/lib/libgtest_main.a ./googletest/build-linux/lib/libgmock.a ./googletest/build-linux/lib/libgtest.a -lpthread
+# GoogleTest 설정
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+    GOOGLETEST_BUILD_DIR = build-mac
+else
+    GOOGLETEST_BUILD_DIR = build-linux
+endif
+
+# Check if GoogleTest is available
+HAS_GTEST := $(shell [ -d "./googletest/$(GOOGLETEST_BUILD_DIR)/lib" ] && echo "1" || echo "0")
+ifeq ($(HAS_GTEST),1)
+    TEST_LIBS = ./googletest/$(GOOGLETEST_BUILD_DIR)/lib/libgtest_main.a ./googletest/$(GOOGLETEST_BUILD_DIR)/lib/libgmock.a ./googletest/$(GOOGLETEST_BUILD_DIR)/lib/libgtest.a -lpthread
+else
+    # Fallback: Many BACnet tests use main() instead of GTest, so we can sometimes bypass
+    TEST_LIBS = -lpthread
+endif
 
 # 소스 파일 수집
 # Shared Sources
@@ -277,24 +359,20 @@ else
 endif
 
 DRIVERS_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
-ifneq ($(MODBUS_LIBS),)
+ifeq ($(HAS_MODBUS),1)
     DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp)
 endif
-ifeq ($(HAS_MQTT_CPP),1)
+ifeq ($(HAS_MQTT),1)
     DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp)
 endif
-ifeq ($(HAS_BACNET_STACK),1)
+ifeq ($(HAS_BACNET),1)
     DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
 endif
-ifneq ($(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp),)
+ifeq ($(HAS_OPCUA),1)
     DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
 endif
-ifneq ($(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp),)
-    DRIVERS_SOURCES += $(SRC_DIR)/Drivers/OPCUA/OPCUADriver.cpp
-endif
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
 DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp)
-DRIVERS_SOURCES += $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
 
 # Duplicate rule removed, handled in step17-opcua-build section
 
@@ -317,7 +395,9 @@ ALL_SOURCES = $(CORE_SOURCES) $(SHARED_UTILS_SOURCES) $(CONFIG_SOURCES) \
 # 플러그인용 드라이버 소스 (메인 바이너리에서 제외)
 PLUGIN_DRIVERS_SOURCES := $(SRC_DIR)/Drivers/Mqtt/MqttDriver.cpp \
                           $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
-                          $(SRC_DIR)/Drivers/OPCUA/OPCUADriver.cpp
+                          $(SRC_DIR)/Drivers/Bacnet/BACnetServiceManager.cpp \
+                          $(SRC_DIR)/Drivers/Bacnet/BACnetBIPPort.cpp \
+                          $(SRC_DIR)/Drivers/OPCUA/OPCUADriver.cpp 
 
 # OPC UA C Source
 OPCUA_C_SOURCE := $(SRC_DIR)/Drivers/OPCUA/open62541.c
@@ -562,6 +642,11 @@ $(OBJ_DIR)/test_step13_bacnet_read_write.o: test_step13_bacnet_read_write.cpp
 	@echo -e "$(CYAN)📡 Compiling Step 13 RW Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
+$(OBJ_DIR)/test_step13_bacnet_discovery.o: test_step13_bacnet_discovery.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🔍 Compiling Step 13 Discovery Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
 $(OBJ_DIR)/test_plugin_loading.o: test_plugin_loading.cpp
 	@mkdir -p $(OBJ_DIR)
 	@echo -e "$(CYAN)🔌 Compiling Plugin Loading Test [$(PLATFORM)]...$(NC)"
@@ -656,10 +741,10 @@ $(BIN_DIR)/test_workermanager: $(ALL_OBJECTS) $(OBJ_DIR)/test_workermanager.o
 	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_workermanager.o $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ WorkerManager Test build completed!$(NC)"
 
-$(BIN_DIR)/test_step8: $(ALL_OBJECTS) $(OBJ_DIR)/test_step8_driver_reconnection_data_flow.o
+$(BIN_DIR)/test_step8: $(ALL_OBJECTS) $(OBJ_DIR)/test_step8_driver_reconnection_data_flow.o $(PLUGIN_DRIVER_OBJECTS)
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 8 Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step8_driver_reconnection_data_flow.o $(TEST_LIBS) $(LIBS) -o $@
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step8_driver_reconnection_data_flow.o $(PLUGIN_DRIVER_OBJECTS) $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 8 Test build completed!$(NC)"
 
 $(BIN_DIR)/test_step9: $(ALL_OBJECTS) $(OBJ_DIR)/test_step9_scale_and_multi_protocol.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
@@ -736,10 +821,10 @@ persistence-stage-test: create-dirs $(BIN_DIR)/test_persistence_stage
 # Step 13 Read/Write 테스트
 step13-rw-build: create-dirs $(BIN_DIR)/test_step13_rw
 
-$(BIN_DIR)/test_step13_rw: $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_read_write.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking Step 13 RW Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_read_write.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(TEST_LIBS) $(LIBS) -o $@
+$(BIN_DIR)/test_step13_rw: $(OBJ_DIR)/test_step13_bacnet_read_write.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetBIPPort.o $(OBJ_DIR)/Drivers/Bacnet/BACnetServiceManager.o $(OBJ_DIR)/Workers/Protocol/BACnetWorker.o $(filter-out $(OBJ_DIR)/Workers/Protocol/% $(OBJ_DIR)/Workers/WorkerRegistry.o $(OBJ_DIR)/Workers/WorkerScheduler.o $(OBJ_DIR)/Workers/WorkerMonitor.o $(OBJ_DIR)/Workers/WorkerManager.o $(OBJ_DIR)/Workers/WorkerFactory.o $(OBJ_DIR)/Core/Application.o $(OBJ_DIR)/Core/Main.o $(OBJ_DIR)/Api/% $(OBJ_DIR)/Network/%, $(CORE_OBJECTS))
+	mkdir -p $(BIN_DIR)
+	echo -e "$(PURPLE)🔗 Linking Step 13 RW Test [$(PLATFORM)]...$(NC)"
+	$(CXX) $(OBJ_DIR)/test_step13_bacnet_read_write.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetBIPPort.o $(OBJ_DIR)/Drivers/Bacnet/BACnetServiceManager.o $(OBJ_DIR)/Workers/Protocol/BACnetWorker.o $(filter-out $(OBJ_DIR)/Workers/Protocol/% $(OBJ_DIR)/Workers/WorkerRegistry.o $(OBJ_DIR)/Workers/WorkerScheduler.o $(OBJ_DIR)/Workers/WorkerMonitor.o $(OBJ_DIR)/Workers/WorkerManager.o $(OBJ_DIR)/Workers/WorkerFactory.o $(OBJ_DIR)/Core/Application.o $(OBJ_DIR)/Core/Main.o $(OBJ_DIR)/Api/% $(OBJ_DIR)/Network/%, $(CORE_OBJECTS)) $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Step 13 RW Test build completed!$(NC)"
 
 step13-rw-test: step13-rw-build create-log-dir
@@ -752,6 +837,29 @@ step13-rw-test: step13-rw-build create-log-dir
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Step 13 RW)
 	@echo -e "$(GREEN)Step 13 RW Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Step 13 Discovery 테스트
+step13-discovery-build: create-dirs $(BIN_DIR)/test_step13_discovery
+
+$(BIN_DIR)/test_step13_discovery: $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_discovery.o
+ifeq ($(HAS_BACNET_STACK),1)
+	# BACnet driver is already in ALL_OBJECTS if enabled
+endif
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Step 13 Discovery Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_discovery.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Step 13 Discovery Test build completed!$(NC)"
+
+step13-discovery-test: step13-discovery-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step13_discovery))
+	@echo -e "$(MAGENTA)🚀 Running Step 13 Discovery Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)BACnet Device Discovery & Persistence Verification$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 13 Discovery)
+	@./$(BIN_DIR)/test_step13_discovery 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 13 Discovery)
+	@echo -e "$(GREEN)Step 13 Discovery Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 # Step 14 Object Compilation Rules
 $(OBJ_DIR)/test_step14_mqtt_jsonpath.o: test_step14_mqtt_jsonpath.cpp
@@ -870,18 +978,28 @@ $(BIN_DIR)/test_plugin_loading: $(OBJ_DIR)/test_plugin_loading.o $(PLUGIN_TEST_C
 	@$(CXX) -rdynamic $^ $(TEST_LIBS) $(LIBS) -o $@
 	@echo -e "$(GREEN)✅ Plugin Loading Test build completed!$(NC)"
 
-# Step 16.5 BLE Worker Test
-step16-worker-build: create-dirs $(BIN_DIR)/test_step16_ble_worker
+# Step 16: BLE Beacon Worker
+# -----------------------------------------------------------------------------
 
 $(OBJ_DIR)/test_step16_ble_worker.o: test_step16_ble_worker.cpp
 	@mkdir -p $(dir $@)
 	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BIN_DIR)/test_step16_ble_worker: $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_worker.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+step16-worker-build: create-dirs $(BIN_DIR)/test_step16_ble_worker
+
+# Define driver objects specifically to ensure order and presence
+DRIVER_OBJS = $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o \
+              $(OBJ_DIR)/Drivers/Bacnet/BACnetServiceManager.o \
+              $(OBJ_DIR)/Drivers/Bacnet/BACnetBIPPort.o \
+              $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o \
+              $(OBJ_DIR)/Drivers/OPCUA/open62541.o \
+              $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+
+$(BIN_DIR)/test_step16_ble_worker: $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_worker.o $(DRIVER_OBJS)
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking Step 16.5 BLE Worker Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_worker.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -lbluetooth -o $@
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_worker.o $(DRIVER_OBJS) $(TEST_LIBS) $(LIBS) -lbluetooth -lbacnet -o $@
 	@echo -e "$(GREEN)✅ Step 16.5 BLE Worker Test build completed!$(NC)"
 
 step16-worker-test: step16-worker-build create-log-dir
@@ -893,18 +1011,22 @@ step16-worker-test: step16-worker-build create-log-dir
 	$(call analyze_log,$(LOG_FILE),Step 16.5 BLE Worker)
 	@echo -e "$(GREEN)Step 16.5 BLE Worker Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-# Step 16.5 BLE E2E Verification
-step16-e2e-build: create-dirs $(BIN_DIR)/test_step16_ble_e2e
+# =============================================================================
+# Step 16: BLE Beacon E2E Integration
+# =============================================================================
 
 $(OBJ_DIR)/test_step16_ble_e2e.o: test_step16_ble_e2e.cpp
 	@mkdir -p $(dir $@)
 	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
-$(BIN_DIR)/test_step16_ble_e2e: $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_e2e.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+step16-e2e-build: create-dirs $(BIN_DIR)/test_step16_ble_e2e
+	@echo -e "-e $(BLUE)🔨 Building Step 16 BLE E2E Test...$(NC)"
+
+$(BIN_DIR)/test_step16_ble_e2e: $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_e2e.o $(DRIVER_OBJS)
 	@mkdir -p $(BIN_DIR)
 	@echo -e "$(PURPLE)🔗 Linking BLE E2E Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_e2e.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -lbluetooth -o $@
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step16_ble_e2e.o $(DRIVER_OBJS) $(TEST_LIBS) $(LIBS) -lbluetooth -lbacnet -o $@
 	@echo -e "$(GREEN)✅ BLE E2E Test build completed!$(NC)"
 
 step16-e2e-test: step16-e2e-build create-log-dir
@@ -938,6 +1060,29 @@ step17-e2e-test: step17-e2e-build create-log-dir
 	@echo -e "$(YELLOW)============================================$(NC)"
 	$(call analyze_log,$(LOG_FILE),Step 17.5 OPC UA E2E)
 	@echo -e "$(GREEN)Step 17.5 OPC UA E2E Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+# Multi-Collector Isolation Test (Step 13/14 Partitioning)
+multi-collector-build: create-dirs $(BIN_DIR)/test_multi_collector_isolation
+
+$(OBJ_DIR)/test_multi_collector_isolation.o: test_multi_collector_isolation.cpp
+	@mkdir -p $(dir $@)
+	@echo -e "$(CYAN)⚙️ Compiling $< [$(PLATFORM)]$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BIN_DIR)/test_multi_collector_isolation: $(ALL_OBJECTS) $(OBJ_DIR)/test_multi_collector_isolation.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o
+	@mkdir -p $(BIN_DIR)
+	@echo -e "$(PURPLE)🔗 Linking Multi-Collector Isolation Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_multi_collector_isolation.o $(OBJ_DIR)/Drivers/OPCUA/open62541.o $(OBJ_DIR)/Drivers/OPCUA/OPCUADriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Mqtt/MqttDriver.o $(TEST_LIBS) $(LIBS) -o $@
+	@echo -e "$(GREEN)✅ Multi-Collector Isolation Test build completed!$(NC)"
+
+multi-collector-test: multi-collector-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,multi_collector_isolation))
+	@echo -e "$(MAGENTA)🚀 Running Multi-Collector Isolation Test [$(PLATFORM)]...$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Multi-Collector Isolation)
+	@./$(BIN_DIR)/test_multi_collector_isolation 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Multi-Collector Isolation)
+	@echo -e "$(GREEN)Multi-Collector Isolation Test completed. Log saved: $(LOG_FILE)$(NC)"
 
 # =============================================================================
 # 플러그인 빌드 규칙 (Shared Library .so 생성)
@@ -986,6 +1131,7 @@ modbus-plugin: create-dirs
 	@mkdir -p $(PLUGIN_DIR)
 	@$(CXX) $(PLUGIN_CXXFLAGS) -DHAVE_MODBUS $(INCLUDES) \
 		$(SRC_DIR)/Drivers/Modbus/ModbusDriver.cpp \
+		$(SRC_DIR)/Drivers/Ble/BleBeaconDriver.cpp \
 		$(SRC_DIR)/Drivers/Modbus/ModbusDiagnostics.cpp \
 		$(SRC_DIR)/Drivers/Modbus/ModbusConnectionPool.cpp \
 		$(SRC_DIR)/Drivers/Modbus/ModbusFailover.cpp \
@@ -1516,15 +1662,44 @@ step13-test: step13-build create-log-dir
 	$(call analyze_log,$(LOG_FILE),Step 13)
 	@echo -e "$(GREEN)Step 13 Test completed. Log saved: $(LOG_FILE)$(NC)"
 
-$(BIN_DIR)/test_step13: $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_discovery.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o
-	@mkdir -p $(BIN_DIR)
-	@echo -e "$(PURPLE)🔗 Linking Step 13 Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(ALL_OBJECTS) $(OBJ_DIR)/test_step13_bacnet_discovery.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(TEST_LIBS) $(LIBS) -o $@
+$(BIN_DIR)/test_step13: $(OBJ_DIR)/test_step13_bacnet_discovery.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetBIPPort.o $(OBJ_DIR)/Drivers/Bacnet/BACnetServiceManager.o $(OBJ_DIR)/Workers/Protocol/BACnetWorker.o $(OBJ_DIR)/Workers/Protocol/BACnetDiscoveryService.o $(filter-out $(OBJ_DIR)/Workers/Protocol/% $(OBJ_DIR)/Workers/WorkerRegistry.o $(OBJ_DIR)/Workers/WorkerScheduler.o $(OBJ_DIR)/Workers/WorkerMonitor.o $(OBJ_DIR)/Workers/WorkerManager.o $(OBJ_DIR)/Workers/WorkerFactory.o $(OBJ_DIR)/Core/Application.o $(OBJ_DIR)/Core/Main.o $(OBJ_DIR)/Api/% $(OBJ_DIR)/Network/%, $(CORE_OBJECTS))
+	mkdir -p $(BIN_DIR)
+	echo -e "$(PURPLE)🔗 Linking Step 13 Test [$(PLATFORM)]...$(NC)"
+	$(CXX) $(OBJ_DIR)/test_step13_bacnet_discovery.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetBIPPort.o $(OBJ_DIR)/Drivers/Bacnet/BACnetServiceManager.o $(OBJ_DIR)/Workers/Protocol/BACnetWorker.o $(OBJ_DIR)/Workers/Protocol/BACnetDiscoveryService.o $(filter-out $(OBJ_DIR)/Workers/Protocol/% $(OBJ_DIR)/Workers/WorkerRegistry.o $(OBJ_DIR)/Workers/WorkerScheduler.o $(OBJ_DIR)/Workers/WorkerMonitor.o $(OBJ_DIR)/Workers/WorkerManager.o $(OBJ_DIR)/Workers/WorkerFactory.o $(OBJ_DIR)/Core/Application.o $(OBJ_DIR)/Core/Main.o $(OBJ_DIR)/Api/% $(OBJ_DIR)/Network/%, $(CORE_OBJECTS)) $(TEST_LIBS) $(LIBS) -o $@
+	echo -e "$(GREEN)✅ Step 13 Test build completed!$(NC)"
 	@echo -e "$(GREEN)✅ Step 13 Test build completed!$(NC)"
 
 $(OBJ_DIR)/test_step13_bacnet_discovery.o: test_step13_bacnet_discovery.cpp
 	@mkdir -p $(OBJ_DIR)
 	@echo -e "$(CYAN)🔍 Compiling Step 13 Test [$(PLATFORM)]...$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# Step 14 테스트
+step14-build: create-dirs $(BIN_DIR)/test_step14
+
+step14-test: step14-build create-log-dir
+	$(eval LOG_FILE := $(call get_log_filename,step14))
+	@echo -e "$(MAGENTA)🚀 Running Step 14 BACnet Schedule Test [$(PLATFORM)]...$(NC)"
+	@echo -e "$(CYAN)BACnet Weekly Schedule Test (Prop 123)$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	@echo -e "$(BLUE)Testing: Read/Write Weekly_Schedule (Prop 123)$(NC)"
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call create_log_summary,$(LOG_FILE),Step 14)
+	@./$(BIN_DIR)/test_step14 2>&1 | tee $(LOG_FILE)
+	@echo -e "$(YELLOW)============================================$(NC)"
+	$(call analyze_log,$(LOG_FILE),Step 14)
+	@echo -e "$(GREEN)Step 14 Test completed. Log saved: $(LOG_FILE)$(NC)"
+
+$(BIN_DIR)/test_step14: $(OBJ_DIR)/test_step14_bacnet_schedule.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetBIPPort.o $(OBJ_DIR)/Drivers/Bacnet/BACnetServiceManager.o $(filter-out $(OBJ_DIR)/Workers/Protocol/% $(OBJ_DIR)/Workers/WorkerRegistry.o $(OBJ_DIR)/Workers/WorkerScheduler.o $(OBJ_DIR)/Workers/WorkerMonitor.o $(OBJ_DIR)/Workers/WorkerManager.o $(OBJ_DIR)/Workers/WorkerFactory.o $(OBJ_DIR)/Core/Application.o $(OBJ_DIR)/Core/Main.o $(OBJ_DIR)/Api/% $(OBJ_DIR)/Network/%, $(CORE_OBJECTS))
+	mkdir -p $(BIN_DIR)
+	echo -e "$(PURPLE)🔗 Linking Step 14 Test [$(PLATFORM)]...$(NC)"
+	$(CXX) $(OBJ_DIR)/test_step14_bacnet_schedule.o $(OBJ_DIR)/Drivers/Bacnet/BACnetDriver.o $(OBJ_DIR)/Drivers/Bacnet/BACnetBIPPort.o $(OBJ_DIR)/Drivers/Bacnet/BACnetServiceManager.o $(filter-out $(OBJ_DIR)/Workers/Protocol/% $(OBJ_DIR)/Workers/WorkerRegistry.o $(OBJ_DIR)/Workers/WorkerScheduler.o $(OBJ_DIR)/Workers/WorkerMonitor.o $(OBJ_DIR)/Workers/WorkerManager.o $(OBJ_DIR)/Workers/WorkerFactory.o $(OBJ_DIR)/Core/Application.o $(OBJ_DIR)/Core/Main.o $(OBJ_DIR)/Api/% $(OBJ_DIR)/Network/%, $(CORE_OBJECTS)) $(TEST_LIBS) $(LIBS) -o $@
+	echo -e "$(GREEN)✅ Step 14 Test build completed!$(NC)"
+	@echo -e "$(GREEN)✅ Step 14 Test build completed!$(NC)"
+
+$(OBJ_DIR)/test_step14_bacnet_schedule.o: test_step14_bacnet_schedule.cpp
+	@mkdir -p $(OBJ_DIR)
+	@echo -e "$(CYAN)🔍 Compiling Step 14 Test [$(PLATFORM)]...$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 # Step 19: ROS Integration E2E Test
 step19-e2e-build: create-dirs $(BIN_DIR)/test_step19_ros_e2e
@@ -1542,6 +1717,46 @@ step19-e2e-test: step19-e2e-build create-log-dir
 	@echo -e "-e $(CYAN)🚀 Running Step 19 E2E Test (ROS Integration)...$(NC)"
 	@$(BIN_DIR)/test_step19_ros_e2e > $(LOG_DIR)/step19_ros_e2e.log 2>&1 || (echo -e "-e $(RED)❌ Step 19 Test Failed! Check logs at $(LOG_DIR)/step19_ros_e2e.log$(NC)"; cat $(LOG_DIR)/step19_ros_e2e.log; exit 1)
 	@echo -e "-e $(GREEN)✅ Step 19 Test Passed!$(NC)"
+
+# =============================================================================
+# Step 15: Network Scan & Discovery
+# =============================================================================
+
+step15-build: create-dirs $(BIN_DIR)/test_step15_network_scan
+
+$(OBJ_DIR)/test_step15_network_scan.o: test_step15_network_scan.cpp $(HEADERS)
+	@echo -e "-e $(PURPLE)🔨 Compiling Step 15 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c test_step15_network_scan.cpp -o $@
+
+# ==========================================
+# Step 16: BLE Beacon
+# ==========================================
+
+step16-beacon-build: create-dirs $(BIN_DIR)/test_step16_ble_beacon
+
+$(OBJ_DIR)/test_step16_ble_beacon.o: test_step16_ble_beacon.cpp $(HEADERS)
+	@echo -e "-e $(PURPLE)🔨 Compiling Step 16 Beacon Test...$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c test_step16_ble_beacon.cpp -o $@
+
+$(BIN_DIR)/test_step16_ble_beacon: $(OBJ_DIR)/test_step16_ble_beacon.o $(CORE_OBJECTS) $(PLUGIN_DRIVER_OBJECTS)
+	@echo -e "-e $(BLUE)🔗 Linking Step 16 Beacon Test...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(PLATFORM_LIBS) $(MODBUS_LIBS) $(MYSQL_LIBS) $(MQTT_CPP_LIBS) $(MQTT_C_LIBS) $(PGSQL_LIBS) $(BACNET_LIBS) $(REDIS_LIBS) $(QUICKJS_LIBS) $(CURL_LIBS) $(TEST_LIBS) -lsqlite3 -lbluetooth
+	@echo -e "-e $(GREEN)✅ Step 16 Beacon Test build completed!$(NC)"
+
+step16-beacon-test: step16-beacon-build create-log-dir
+	@echo -e "-e $(CYAN)🚀 Running Step 16 Test (BLE Beacon)...$(NC)"
+	@$(BIN_DIR)/test_step16_ble_beacon > $(LOG_DIR)/step16_ble_beacon.log 2>&1 || (echo -e "-e $(RED)❌ Step 16 Test Failed! Check logs at $(LOG_DIR)/step16_ble_beacon.log$(NC)"; cat $(LOG_DIR)/step16_ble_beacon.log; exit 1)
+	@echo -e "-e $(GREEN)✅ Step 16 Test Passed!$(NC)"
+
+$(BIN_DIR)/test_step15_network_scan: $(OBJ_DIR)/test_step15_network_scan.o $(CORE_OBJECTS) $(PLUGIN_DRIVER_OBJECTS)
+	@echo -e "-e $(BLUE)🔗 Linking Step 15 Test...$(NC)"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) $(PLATFORM_LIBS) $(MODBUS_LIBS) $(MYSQL_LIBS) $(MQTT_CPP_LIBS) $(MQTT_C_LIBS) $(PGSQL_LIBS) $(BACNET_LIBS) $(REDIS_LIBS) $(QUICKJS_LIBS) $(CURL_LIBS) $(TEST_LIBS) -lsqlite3 -lbluetooth
+	@echo -e "-e $(GREEN)✅ Step 15 Test build completed!$(NC)"
+
+step15-test: step15-build create-log-dir
+	@echo -e "-e $(CYAN)🚀 Running Step 15 Test (Network Scan)...$(NC)"
+	@$(BIN_DIR)/test_step15_network_scan > $(LOG_DIR)/step15_network_scan.log 2>&1 || (echo -e "-e $(RED)❌ Step 15 Test Failed! Check logs at $(LOG_DIR)/step15_network_scan.log$(NC)"; cat $(LOG_DIR)/step15_network_scan.log; exit 1)
+	@echo -e "-e $(GREEN)✅ Step 15 Test Passed!$(NC)"
 
 # =============================================================================
 # Step 20: Dynamic ROS Mapping

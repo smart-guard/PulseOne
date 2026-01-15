@@ -25,6 +25,20 @@ using ErrorInfo = PulseOne::Structs::ErrorInfo;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
 
 // =============================================================================
+// 1:N 시리얼 포트 공유를 위한 정적 뮤텍스 레지스트리
+// =============================================================================
+std::mutex& ModbusDriver::GetSerialMutex(const std::string& endpoint) {
+    static std::mutex registry_mutex;
+    static std::map<std::string, std::unique_ptr<std::mutex>> mutex_registry;
+    
+    std::lock_guard<std::mutex> lock(registry_mutex);
+    if (mutex_registry.find(endpoint) == mutex_registry.end()) {
+        mutex_registry[endpoint] = std::make_unique<std::mutex>();
+    }
+    return *mutex_registry[endpoint];
+}
+
+// =============================================================================
 // 생성자/소멸자
 // =============================================================================
 
@@ -74,8 +88,12 @@ bool ModbusDriver::Initialize(const DriverConfig& config) {
     
     // 🔥 기본 Slave ID 설정 (properties에서)
     if (config_.properties.count("slave_id")) {
-        current_slave_id_ = std::stoi(config_.properties.at("slave_id"));
-        logger_->Info("  - Default Slave ID: " + std::to_string(current_slave_id_));
+        try {
+            current_slave_id_ = std::stoi(config_.properties.at("slave_id"));
+            logger_->Info("  - Default Slave ID: " + std::to_string(current_slave_id_));
+        } catch (const std::exception& e) {
+            logger_->Warn("  - Invalid slave_id format: " + config_.properties.at("slave_id") + ". Using default: " + std::to_string(current_slave_id_));
+        }
     }
     
     // 🔥 디버그 모드 설정 (properties에서)
@@ -194,6 +212,11 @@ bool ModbusDriver::IsConnected() const {
 
 bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint>& points, 
                               std::vector<Structs::TimestampedValue>& values) {
+    // 🔍 1:N 시리얼 포트 공유 또는 동시 접근 제어를 위한 엔드포인트 잠금
+    logger_->Debug("[ModbusDriver] Entering ReadValues for endpoint: " + config_.endpoint + " (Points: " + std::to_string(points.size()) + ")");
+    std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
+    logger_->Debug("[ModbusDriver] Acquired port_lock for endpoint: " + config_.endpoint);
+    
     // 연결 풀링 활성화 시
     if (connection_pool_ && IsConnectionPoolingEnabled()) {
         return PerformReadWithConnectionPool(points, values);
@@ -219,13 +242,17 @@ bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint>& points,
         
         std::string func_type = point.data_type; // Default to data_type mapping
         if (point.protocol_params.count("function_code")) {
-            int fc = std::stoi(point.protocol_params.at("function_code"));
-             switch (fc) {
-                case 1: func_type = "COIL"; break;
-                case 2: func_type = "DISCRETE_INPUT"; break;
-                case 3: func_type = "HOLDING_REGISTER"; break;
-                case 4: func_type = "INPUT_REGISTER"; break;
-                default: func_type = point.data_type; break;
+            try {
+                int fc = std::stoi(point.protocol_params.at("function_code"));
+                switch (fc) {
+                    case 1: func_type = "COIL"; break;
+                    case 2: func_type = "DISCRETE_INPUT"; break;
+                    case 3: func_type = "HOLDING_REGISTER"; break;
+                    case 4: func_type = "INPUT_REGISTER"; break;
+                    default: func_type = point.data_type; break;
+                }
+            } catch (...) {
+                func_type = point.data_type;
             }
         } else {
              // Fallback mapping if no function code
@@ -247,6 +274,7 @@ bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint>& points,
             return a->address < b->address;
         });
         
+        logger_->Debug("[ModbusDriver] Processing Group - Slave: " + std::to_string(group.slave_id) + ", Func: " + group.func_type);
         SetSlaveId(group.slave_id);
         
         // Chunking
@@ -313,7 +341,12 @@ bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint>& points,
             // Extract Values
             for (const auto* p : chunk_points) {
                 Structs::TimestampedValue tv;
-                tv.point_id = std::stoi(p->id);
+                try {
+                    tv.point_id = std::stoi(p->id);
+                } catch (...) {
+                    tv.point_id = 0; // Use 0 for points without numeric IDs (like keep-alive)
+                }
+                tv.source = p->name; // Set semantic name for Hybrid Strategy
                 tv.timestamp = std::chrono::system_clock::now();
                 
                 if (success) {
@@ -354,6 +387,9 @@ bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint>& points,
 
 bool ModbusDriver::WriteValue(const Structs::DataPoint& point, 
                               const Structs::DataValue& value) {
+    // 🔍 엔드포인트 잠금
+    std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
+
     // 연결 풀링이 활성화된 경우 해당 방식 사용
     if (connection_pool_ && IsConnectionPoolingEnabled()) {
         return PerformWriteWithConnectionPool(point, value);
@@ -428,6 +464,9 @@ void ModbusDriver::ResetStatistics() {
 }
 
 ProtocolType ModbusDriver::GetProtocolType() const {
+    if (config_.endpoint.find('/') != std::string::npos || config_.endpoint.find("COM") != std::string::npos) {
+        return ProtocolType::MODBUS_RTU;
+    }
     return ProtocolType::MODBUS_TCP;
 }
 
@@ -497,7 +536,9 @@ bool ModbusDriver::ReadHoldingRegisters(int slave_id, uint16_t start_addr, uint1
     SetSlaveId(slave_id);
     
     values.resize(count);
+    logger_->Debug("[ModbusDriver] Calling modbus_read_registers - Slave: " + std::to_string(slave_id) + ", Addr: " + std::to_string(start_addr) + ", Count: " + std::to_string(count));
     int result = modbus_read_registers(modbus_ctx_, start_addr, count, values.data());
+    logger_->Debug("[ModbusDriver] modbus_read_registers result: " + std::to_string(result));
     
     if (result == -1) {
         auto error_msg = std::string("Read holding registers failed: ") + modbus_strerror(errno);
@@ -1414,11 +1455,7 @@ Structs::DataValue ModbusDriver::ExtractValueFromBuffer(const std::vector<uint16
 // =============================================================================
 #ifndef TEST_BUILD
 extern "C" {
-#ifdef _WIN32
-    __declspec(dllexport) void RegisterPlugin() {
-#else
-    void RegisterPlugin() {
-#endif
+    void RegisterModbusDriver() {
         // 일반 MODBUS 드라이버 등록 (설정에 따라 TCP/RTU 결정)
         PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver("MODBUS", []() {
             return std::make_unique<PulseOne::Drivers::ModbusDriver>();

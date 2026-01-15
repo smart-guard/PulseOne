@@ -10,7 +10,7 @@ import { Device } from './types';
 
 interface DeviceRtuNetworkTabProps {
   device: Device;
-  mode: 'view' | 'edit';
+  mode: 'view' | 'edit' | 'create';
   onUpdateDevice?: (device: Device) => void;
 }
 
@@ -62,13 +62,13 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
     if (device.protocol_type === 'MODBUS_RTU') {
       return true;
     }
-    
+
     // 2. protocol_id로 확인 (MODBUS_RTU는 보통 ID 2)
     if (device.protocol_id) {
       const protocol = DeviceApiService.getProtocolManager().getProtocolById(device.protocol_id);
       return protocol?.protocol_type === 'MODBUS_RTU';
     }
-    
+
     return false;
   }, []);
 
@@ -77,10 +77,10 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
    */
   const parseRtuConfig = useCallback((device: Device) => {
     try {
-      const config = typeof device.config === 'string' 
-        ? JSON.parse(device.config) 
+      const config = typeof device.config === 'string'
+        ? JSON.parse(device.config)
         : device.config || {};
-      
+
       return {
         slave_id: config.slave_id || null,
         master_device_id: config.master_device_id || null,
@@ -111,7 +111,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
    */
   const isRtuMaster = useCallback((device: Device): boolean => {
     if (!isRtuDevice(device)) return false;
-    
+
     const config = parseRtuConfig(device);
     return config.device_role === 'master' || !config.slave_id;
   }, [isRtuDevice, parseRtuConfig]);
@@ -121,7 +121,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
    */
   const isRtuSlave = useCallback((device: Device): boolean => {
     if (!isRtuDevice(device)) return false;
-    
+
     const config = parseRtuConfig(device);
     return config.device_role === 'slave' && config.slave_id && config.master_device_id;
   }, [isRtuDevice, parseRtuConfig]);
@@ -137,9 +137,9 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
     try {
       setIsLoading(true);
       setError(null);
-      
+
       console.log(`RTU 마스터 ${masterId}의 슬래이브 디바이스 로드 중...`);
-      
+
       // protocol_id 또는 protocol_type을 이용해서 RTU 디바이스들 조회
       const response = await DeviceApiService.getDevices({
         page: 1,
@@ -149,12 +149,12 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
 
       if (response.success && response.data?.items) {
         const allDevices = response.data.items;
-        
+
         // RTU 디바이스 중에서 현재 마스터의 슬래이브들만 필터링
         const slaves = allDevices
           .filter(d => {
             if (!isRtuDevice(d)) return false;
-            
+
             const config = parseRtuConfig(d);
             return config.master_device_id === masterId;
           })
@@ -195,20 +195,20 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
     try {
       setIsLoading(true);
       setError(null);
-      
+
       console.log(`RTU 마스터 디바이스 ${masterId} 정보 로드 중...`);
-      
+
       const response = await DeviceApiService.getDevice(masterId);
       if (response.success && response.data) {
         const master = response.data;
-        
+
         // RTU 디바이스인지 확인
         if (!isRtuDevice(master)) {
           throw new Error('마스터 디바이스가 RTU 프로토콜이 아닙니다');
         }
-        
+
         const config = parseRtuConfig(master);
-        
+
         setMasterDevice({
           id: master.id,
           name: master.name,
@@ -218,7 +218,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
           last_communication: master.last_communication || '',
           response_time: master.status_info?.response_time
         });
-        
+
         console.log('마스터 디바이스 정보 로드 완료');
       } else {
         throw new Error(response.error || '마스터 디바이스 조회 실패');
@@ -244,11 +244,11 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
       const response = await DeviceApiService.updateDevice(slaveId, {
         is_enabled: enabled
       });
-      
+
       if (response.success) {
-        setSlaveDevices(prev => 
-          prev.map(slave => 
-            slave.id === slaveId 
+        setSlaveDevices(prev =>
+          prev.map(slave =>
+            slave.id === slaveId
               ? { ...slave, is_enabled: enabled }
               : slave
           )
@@ -281,11 +281,11 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
     try {
       const deviceId = 'id' in targetDevice ? targetDevice.id : (targetDevice as RtuSlaveDevice).id;
       const response = await DeviceApiService.testDeviceConnection(deviceId);
-      
+
       if (response.success && response.data) {
         const result = response.data;
         alert(
-          result.test_successful 
+          result.test_successful
             ? `연결 성공! 응답시간: ${result.response_time_ms}ms`
             : `연결 실패: ${result.error_message}`
         );
@@ -305,7 +305,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
   useEffect(() => {
     if (device && isRtuDevice(device)) {
       const config = parseRtuConfig(device);
-      
+
       if (isRtuMaster(device)) {
         loadSlaveDevices(device.id);
       } else if (isRtuSlave(device) && config.master_device_id) {
@@ -326,12 +326,12 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
       error: { color: '#dc2626', bg: '#fef2f2', text: '오류' },
       unknown: { color: '#6b7280', bg: '#f3f4f6', text: '알수없음' }
     };
-    
+
     const style = statusMap[status as keyof typeof statusMap] || statusMap.unknown;
-    
+
     return (
-      <span 
-        style={{ 
+      <span
+        style={{
           display: 'inline-flex',
           alignItems: 'center',
           gap: '0.375rem',
@@ -339,7 +339,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
           borderRadius: '9999px',
           fontSize: '0.75rem',
           fontWeight: '500',
-          color: style.color, 
+          color: style.color,
           backgroundColor: style.bg,
           border: `1px solid ${style.color}40`
         }}
@@ -352,13 +352,13 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
 
   const formatLastSeen = (timestamp: string) => {
     if (!timestamp) return 'N/A';
-    
+
     try {
       const date = new Date(timestamp);
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
       const diffMinutes = Math.floor(diffMs / (1000 * 60));
-      
+
       if (diffMinutes < 1) return '방금 전';
       if (diffMinutes < 60) return `${diffMinutes}분 전`;
       if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}시간 전`;
@@ -385,12 +385,12 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
   if (!device || !isRtuDevice(device)) {
     return (
       <div style={{ padding: '1.5rem' }}>
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
           padding: '2rem',
-          color: '#dc2626' 
+          color: '#dc2626'
         }}>
           <i className="fas fa-exclamation-triangle" style={{ fontSize: '2rem', marginBottom: '1rem' }}></i>
           <p>RTU 디바이스가 아닙니다</p>
@@ -424,9 +424,9 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
           <i className="fas fa-microchip"></i>
           RTU {isMaster ? '마스터' : '슬래이브'} 정보
           {protocolInfo && (
-            <span style={{ 
-              fontSize: '0.75rem', 
-              color: '#6b7280', 
+            <span style={{
+              fontSize: '0.75rem',
+              color: '#6b7280',
               background: '#f3f4f6',
               padding: '0.25rem 0.5rem',
               borderRadius: '0.25rem',
@@ -436,7 +436,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
             </span>
           )}
         </h3>
-        
+
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
@@ -464,7 +464,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               {config.slave_id || 'N/A'}
             </div>
           </div>
-          
+
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -487,7 +487,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               {config.serial_port || device.endpoint}
             </div>
           </div>
-          
+
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -510,7 +510,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               {config.master_device_id || 'N/A'}
             </div>
           </div>
-          
+
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -530,7 +530,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
             </div>
           </div>
         </div>
-        
+
         {/* 통신 파라미터 표시 */}
         <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f0f9ff', borderRadius: '0.5rem', border: '1px solid #bae6fd' }}>
           <div style={{ fontSize: '0.75rem', color: '#0c4a6e', marginBottom: '0.5rem' }}>
@@ -556,7 +556,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
           <i className="fas fa-chart-bar"></i>
           통신 통계
         </h3>
-        
+
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
@@ -600,7 +600,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               }}>평균 응답시간</div>
             </div>
           </div>
-          
+
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -639,7 +639,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               }}>통신 오류</div>
             </div>
           </div>
-          
+
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -703,7 +703,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               연결된 슬래이브 디바이스 ({slaveDevices.length})
             </h3>
             <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button 
+              <button
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -724,7 +724,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                 <i className="fas fa-sync-alt"></i>
                 새로고침
               </button>
-              <button 
+              <button
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -791,7 +791,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                 color: '#374151'
               }}>연결된 슬래이브가 없습니다</h4>
               <p>스캔을 실행하여 새로운 슬래이브 디바이스를 찾아보세요</p>
-              <button 
+              <button
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -839,7 +839,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                   }}>
                     <i className="fas fa-microchip"></i>
                   </div>
-                  
+
                   <div style={{ flex: '1' }}>
                     <div style={{
                       fontSize: '0.875rem',
@@ -854,7 +854,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                       슬래이브 ID: {slave.slave_id} • {slave.device_type}
                     </div>
                   </div>
-                  
+
                   <div style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -869,7 +869,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                       {formatLastSeen(slave.last_communication)}
                     </div>
                   </div>
-                  
+
                   <div style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -898,7 +898,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                       }}>{slave.error_count}</span>
                     </div>
                   </div>
-                  
+
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -923,7 +923,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                     >
                       <i className="fas fa-plug"></i>
                     </button>
-                    
+
                     <label style={{
                       position: 'relative',
                       display: 'inline-block',
@@ -985,7 +985,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
             <i className="fas fa-server"></i>
             마스터 디바이스 정보
           </h3>
-          
+
           {isLoading ? (
             <div style={{
               display: 'flex',
@@ -1036,7 +1036,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
               }}>
                 <i className="fas fa-server"></i>
               </div>
-              
+
               <div style={{ flex: '1' }}>
                 <div style={{
                   fontSize: '1rem',
@@ -1051,7 +1051,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                   ID: {masterDevice.id} • {masterDevice.device_type} • {masterDevice.serial_port}
                 </div>
               </div>
-              
+
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -1067,7 +1067,7 @@ const DeviceRtuNetworkTab: React.FC<DeviceRtuNetworkTabProps> = ({
                   마지막 통신: {formatLastSeen(masterDevice.last_communication)}
                 </div>
               </div>
-              
+
               <div>
                 <button
                   style={{

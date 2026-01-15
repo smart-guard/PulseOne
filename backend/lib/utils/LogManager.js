@@ -25,7 +25,7 @@ class LogManager {
         this.currentLevel = this.parseLogLevel(config.get('LOG_LEVEL', 'info'));
         this.logToConsole = config.getBoolean('LOG_TO_CONSOLE', true);
         this.logToFile = config.getBoolean('LOG_TO_FILE', true);
-        this.logBaseDir = this.resolveLogPath(config.get('LOG_FILE_PATH', './logs/'));
+        this.logBaseDir = config.getSmartPath('LOG_FILE_PATH', './data/logs/');
         this.maxFileSizeMB = config.getNumber('LOG_MAX_SIZE_MB', 100);
         this.maxFiles = config.getNumber('LOG_MAX_FILES', 30);
 
@@ -45,6 +45,9 @@ class LogManager {
             system: 'system'
         };
 
+        this.cleanupTimer = null;
+        this.cleanupInterval = null;
+
         this.initialize();
     }
 
@@ -62,11 +65,11 @@ class LogManager {
         if (this.initialized) return;
 
         try {
-            // 기본 디렉토리 생성
-            this.ensureLogDirectory();
-
             // 현재 날짜/시간 설정
             this.updateCurrentDate();
+
+            // 기본 디렉토리 생성
+            this.ensureLogDirectory();
 
             // 로그 스트림 초기화
             if (this.logToFile) {
@@ -235,6 +238,14 @@ class LogManager {
      * 로그 경로 해결
      */
     resolveLogPath(logPath) {
+        if (logPath === null || logPath === undefined) {
+            console.error('❌ resolveLogPath: logPath is null or undefined!');
+            // binary 실행 환경인지 확인 (pkg 등)
+            const isBinary = process.pkg !== undefined || path.basename(process.execPath).includes('node') === false;
+            const baseDir = isBinary ? path.dirname(process.execPath) : process.cwd();
+            return path.resolve(baseDir, './logs');
+        }
+
         if (path.isAbsolute(logPath)) {
             return logPath;
         }
@@ -243,7 +254,17 @@ class LogManager {
         const isBinary = process.pkg !== undefined || path.basename(process.execPath).includes('node') === false;
         const baseDir = isBinary ? path.dirname(process.execPath) : process.cwd();
 
-        return path.resolve(baseDir, logPath);
+        if (logPath === null || logPath === undefined) {
+            console.error('❌ resolveLogPath: logPath is null or undefined!');
+            return path.resolve(isBinary ? path.dirname(process.execPath) : process.cwd(), './logs');
+        }
+
+        try {
+            return path.resolve(baseDir, logPath);
+        } catch (err) {
+            console.error(`❌ path.resolve error: baseDir=${baseDir}, logPath=${logPath}`, err);
+            return path.resolve(baseDir, './logs');
+        }
     }
 
     /**
@@ -423,11 +444,11 @@ class LogManager {
 
         const timeUntilMidnight = tomorrow.getTime() - now.getTime();
 
-        setTimeout(() => {
+        this.cleanupTimer = setTimeout(() => {
             this.cleanupOldLogs();
 
             // 이후 24시간마다 실행
-            setInterval(() => {
+            this.cleanupInterval = setInterval(() => {
                 this.cleanupOldLogs();
             }, 24 * 60 * 60 * 1000);
 
@@ -643,6 +664,16 @@ class LogManager {
      */
     shutdown() {
         this.system('INFO', 'LogManager 종료 중...');
+
+        if (this.cleanupTimer) {
+            clearTimeout(this.cleanupTimer);
+            this.cleanupTimer = null;
+        }
+
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
 
         this.logStreams.forEach((streamInfo, category) => {
             try {

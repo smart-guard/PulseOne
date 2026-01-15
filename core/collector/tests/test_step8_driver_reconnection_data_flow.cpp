@@ -33,6 +33,9 @@
 #include "Pipeline/DataProcessingService.h"
 #include "Storage/RedisDataWriter.h"
 #include "Client/RedisClientImpl.h"
+#include "Drivers/Common/DriverFactory.h"
+#include "Drivers/Modbus/ModbusDriver.h"
+#include "Drivers/Mqtt/MqttDriver.h"
 
 using namespace PulseOne;
 using namespace PulseOne::Workers;
@@ -238,8 +241,11 @@ protected:
         config_manager_ = &ConfigManager::getInstance();
         config_manager_->initialize(); // 핵심: 설정을 먼저 로드해야 함
 
-        db_manager_ = &DbLib::DatabaseManagerDbLib::DatabaseManager::getInstance();
-        db_manager_->initialize(); // 설정을 기반으로 DB 초기화
+        db_manager_ = &DbLib::DatabaseManager::getInstance();
+        DbLib::DatabaseConfig db_config;
+        db_config.type = "SQLITE";
+        db_config.sqlite_path = "test_pulseone.db";
+        db_manager_->initialize(db_config); // 설정을 기반으로 DB 초기화
 
         // DB 초기화 (스키마 적용)
         std::string schema_path = "db/test_schema_complete.sql";
@@ -258,6 +264,12 @@ protected:
         } else {
             std::cout << "⚠️ Failed to open schema file: " << schema_path << std::endl;
         }
+
+        // 2.5 Driver Factory Registration
+        auto& driver_factory = PulseOne::Drivers::DriverFactory::GetInstance();
+        driver_factory.RegisterDriver("MODBUS_TCP", []() { return std::make_unique<PulseOne::Drivers::ModbusDriver>(); });
+        driver_factory.RegisterDriver("MODBUS_RTU", []() { return std::make_unique<PulseOne::Drivers::ModbusDriver>(); });
+        driver_factory.RegisterDriver("MQTT", []() { return std::make_unique<PulseOne::Drivers::MqttDriver>(); });
 
         // 테스트용 디바이스 및 포인트 강제 삽입
         db_manager_->executeNonQuery(
@@ -319,6 +331,7 @@ TEST_F(DriverReconnectionDataFlowTest, Normal_Operation_And_Redis_Pipeline) {
     dev_info.timeout_ms = 1000;
     dev_info.retry_count = 3;
     dev_info.retry_interval_ms = 1000;
+    dev_info.protocol_type = "MODBUS_TCP";
     dev_info.is_enabled = true;
 
     PulseOne::DataPoint dp;
@@ -392,6 +405,7 @@ TEST_F(DriverReconnectionDataFlowTest, Reconnection_Lifecycle_Validation) {
     dev_info.timeout_ms = 500;
     dev_info.retry_count = 10;
     dev_info.retry_interval_ms = 1000; // 1초마다 재시도
+    dev_info.protocol_type = "MODBUS_TCP";
     PulseOne::DataPoint dp;
     dp.id = "101";
     dp.device_id = "1";
@@ -480,6 +494,7 @@ TEST_F(DriverReconnectionDataFlowTest, Complex_MultiDevice_Control_Validation) {
     dev_info1.name = "TestModbusDevice";
     dev_info1.endpoint = "127.0.0.1:1502";
     dev_info1.polling_interval_ms = 500;
+    dev_info1.protocol_type = "MODBUS_TCP";
     dev_info1.is_enabled = true;
     
     auto worker1 = std::make_shared<ModbusWorker>(dev_info1);
@@ -492,6 +507,7 @@ TEST_F(DriverReconnectionDataFlowTest, Complex_MultiDevice_Control_Validation) {
     dev_info2.name = "SecondModbusDevice";
     dev_info2.endpoint = "127.0.0.1:1503";
     dev_info2.polling_interval_ms = 500;
+    dev_info2.protocol_type = "MODBUS_TCP";
     dev_info2.is_enabled = true;
 
     auto worker2 = std::make_shared<ModbusWorker>(dev_info2);
@@ -599,6 +615,7 @@ TEST_F(DriverReconnectionDataFlowTest, Endianness_Swapped_Float_Validation) {
     dev_info.name = "SwappedDevice";
     dev_info.endpoint = "127.0.0.1:1502";
     dev_info.polling_interval_ms = 500;
+    dev_info.protocol_type = "MODBUS_TCP";
     dev_info.is_enabled = true;
     dev_info.driver_config.properties["byte_order"] = "swapped";
 
@@ -628,6 +645,69 @@ TEST_F(DriverReconnectionDataFlowTest, Endianness_Swapped_Float_Validation) {
         std::cout << "Waiting for swapped data... (" << val << ")" << std::endl;
     }
     EXPECT_TRUE(verified) << "Swapped float value not correctly interpreted!";
+
+    worker->Stop().get();
+}
+
+// -----------------------------------------------------------------------------
+// 테스트 케이스 5: 재연결 백오프 (Backoff/Cool-down) 검증
+// -----------------------------------------------------------------------------
+TEST_F(DriverReconnectionDataFlowTest, Reconnection_Backoff_Validation) {
+    // 1. 워커 설정 (짧은 재시도, 긴 백오프)
+    PulseOne::DeviceInfo dev_info;
+    dev_info.id = "4";
+    dev_info.name = "BackoffDevice";
+    dev_info.endpoint = "127.0.0.1:1502";
+    dev_info.protocol_type = "MODBUS_TCP";
+    dev_info.max_retry_count = 2;       // 2회 재시도 후 대기
+    dev_info.retry_interval_ms = 500;   // 0.5초 간격으로 재시도
+    dev_info.backoff_time_ms = 5000;    // 5초 대기 (Cool-down)
+    dev_info.is_enabled = true;
+
+    // 서버가 꺼진 상태로 시작
+    virtual_server_->Stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    auto worker = std::make_shared<ModbusWorker>(dev_info);
+    
+    std::cout << "🚀 Starting worker with server OFF (Expecting backoff sequence)..." << std::endl;
+    worker->Start().get();
+
+    // 2. 상태 변화 추적 (RECONNECTING -> WAITING_RETRY)
+    // 2번 재시도 + 0.5초 간격 = 약 1.5~2초 내에 WAITING_RETRY로 진입해야 함
+    bool entered_wait_cycle = false;
+    auto start_wait = std::chrono::steady_clock::now();
+    for (int i = 0; i < 20; ++i) { // 4초 동안 감시
+        if (worker->GetState() == WorkerState::WAITING_RETRY) {
+            std::cout << "✅ Found worker in WAITING_RETRY state at " << i * 0.2 << "s" << std::endl;
+            entered_wait_cycle = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+    EXPECT_TRUE(entered_wait_cycle) << "Worker did not enter WAITING_RETRY state after exhausting retries!";
+
+    // 3. 서버를 켰을 때 즉시 재연결되지 않는지 확인 (Cool-down 중이므로)
+    std::cout << "✅ Restarting server while worker is in Cool-down period..." << std::endl;
+    virtual_server_ = std::make_unique<VirtualModbusServer>(1502);
+    virtual_server_->Start();
+    
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    EXPECT_EQ(worker->GetState(), WorkerState::WAITING_RETRY) << "Worker exited Cool-down state too early!";
+    EXPECT_EQ(virtual_server_->GetConnectionCount(), 0) << "Worker reconnected during Cool-down period!";
+
+    // 4. Cool-down 종료 후 자동 재연결 확인
+    std::cout << "Waiting for Cool-down period to expire (5s total)..." << std::endl;
+    bool recovered = false;
+    for (int i = 0; i < 40; ++i) { // 추가 8초 대기
+        if (worker->GetState() == WorkerState::RUNNING) {
+            std::cout << "✅ Worker recovered to RUNNING state after " << i * 0.2 << "s" << std::endl;
+            recovered = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+    EXPECT_TRUE(recovered) << "Worker failed to recover connection after Cool-down period!";
 
     worker->Stop().get();
 }

@@ -35,12 +35,15 @@ std::vector<TenantEntity> TenantRepository::findAll() {
         
         const std::string query = R"(
             SELECT 
-                id, name, description, domain, status, max_users, max_devices, 
-                max_data_points, contact_email, contact_phone, address, city, 
-                country, timezone, subscription_start, subscription_end, 
+                id, company_name as name, domain, 
+                subscription_status as status, max_users, max_edge_servers as max_devices, 
+                max_data_points, contact_email, contact_phone, 
+                timezone, subscription_start_date as subscription_start, 
+                trial_end_date as subscription_end, 
                 created_at, updated_at
             FROM tenants 
-            ORDER BY name
+            WHERE is_deleted = 0
+            ORDER BY company_name
         )";
         
         DbLib::DatabaseAbstractionLayer db_layer;
@@ -83,9 +86,11 @@ std::optional<TenantEntity> TenantRepository::findById(int id) {
         
         const std::string query = R"(
             SELECT 
-                id, name, description, domain, status, max_users, max_devices, 
-                max_data_points, contact_email, contact_phone, address, city, 
-                country, timezone, subscription_start, subscription_end, 
+                id, company_name as name, domain, 
+                subscription_status as status, max_users, max_edge_servers as max_devices, 
+                max_data_points, contact_email, contact_phone, 
+                timezone, subscription_start_date as subscription_start, 
+                trial_end_date as subscription_end, 
                 created_at, updated_at
             FROM tenants 
             WHERE id = )" + std::to_string(id);
@@ -245,9 +250,11 @@ std::vector<TenantEntity> TenantRepository::findByIds(const std::vector<int>& id
         
         const std::string query = R"(
             SELECT 
-                id, name, description, domain, status, max_users, max_devices, 
-                max_data_points, contact_email, contact_phone, address, city, 
-                country, timezone, subscription_start, subscription_end, 
+                id, company_name as name, domain, 
+                subscription_status as status, max_users, max_edge_servers as max_devices, 
+                max_data_points, contact_email, contact_phone, 
+                timezone, subscription_start_date as subscription_start, 
+                trial_end_date as subscription_end, 
                 created_at, updated_at
             FROM tenants 
             WHERE id IN ()" + ids_ss.str() + ")";
@@ -287,9 +294,11 @@ std::vector<TenantEntity> TenantRepository::findByConditions(
         
         std::string query = R"(
             SELECT 
-                id, name, description, domain, status, max_users, max_devices, 
-                max_data_points, contact_email, contact_phone, address, city, 
-                country, timezone, subscription_start, subscription_end, 
+                id, company_name as name, domain, 
+                subscription_status as status, max_users, max_edge_servers as max_devices, 
+                max_data_points, contact_email, contact_phone, 
+                timezone, subscription_start_date as subscription_start, 
+                trial_end_date as subscription_end, 
                 created_at, updated_at
             FROM tenants
         )";
@@ -357,9 +366,11 @@ std::optional<TenantEntity> TenantRepository::findByDomain(const std::string& do
         
         const std::string query = R"(
             SELECT 
-                id, name, description, domain, status, max_users, max_devices, 
-                max_data_points, contact_email, contact_phone, address, city, 
-                country, timezone, subscription_start, subscription_end, 
+                id, company_name as name, domain, 
+                subscription_status as status, max_users, max_edge_servers as max_devices, 
+                max_data_points, contact_email, contact_phone, 
+                timezone, subscription_start_date as subscription_start, 
+                trial_end_date as subscription_end, 
                 created_at, updated_at
             FROM tenants 
             WHERE domain = ')" + RepositoryHelpers::escapeString(domain) + "'";
@@ -390,13 +401,15 @@ std::vector<TenantEntity> TenantRepository::findByStatus(TenantEntity::Status st
         
         const std::string query = R"(
             SELECT 
-                id, name, description, domain, status, max_users, max_devices, 
-                max_data_points, contact_email, contact_phone, address, city, 
-                country, timezone, subscription_start, subscription_end, 
+                id, company_name as name, domain, 
+                subscription_status as status, max_users, max_edge_servers as max_devices, 
+                max_data_points, contact_email, contact_phone, 
+                timezone, subscription_start_date as subscription_start, 
+                trial_end_date as subscription_end, 
                 created_at, updated_at
             FROM tenants 
-            WHERE status = ')" + RepositoryHelpers::escapeString(TenantEntity::statusToString(status)) + R"('
-            ORDER BY name
+            WHERE subscription_status = ')" + RepositoryHelpers::escapeString(TenantEntity::statusToString(status)) + R"('
+            ORDER BY company_name
         )";
         
         DbLib::DatabaseAbstractionLayer db_layer;
@@ -434,13 +447,15 @@ std::vector<TenantEntity> TenantRepository::findExpiredTenants() {
         
         const std::string query = R"(
             SELECT 
-                id, name, description, domain, status, max_users, max_devices, 
-                max_data_points, contact_email, contact_phone, address, city, 
-                country, timezone, subscription_start, subscription_end, 
+                id, company_name as name, domain, 
+                subscription_status as status, max_users, max_edge_servers as max_devices, 
+                max_data_points, contact_email, contact_phone, 
+                timezone, subscription_start_date as subscription_start, 
+                trial_end_date as subscription_end, 
                 created_at, updated_at
             FROM tenants 
-            WHERE subscription_end < datetime('now')
-            ORDER BY subscription_end DESC
+            WHERE trial_end_date < datetime('now')
+            ORDER BY trial_end_date DESC
         )";
         
         DbLib::DatabaseAbstractionLayer db_layer;
@@ -469,12 +484,14 @@ std::optional<TenantEntity> TenantRepository::findByName(const std::string& name
         
         const std::string query = R"(
             SELECT 
-                id, name, description, domain, status, max_users, max_devices, 
-                max_data_points, contact_email, contact_phone, address, city, 
-                country, timezone, subscription_start, subscription_end, 
+                id, company_name as name, domain, 
+                subscription_status as status, max_users, max_edge_servers as max_devices, 
+                max_data_points, contact_email, contact_phone, 
+                timezone, subscription_start_date as subscription_start, 
+                trial_end_date as subscription_end, 
                 created_at, updated_at
             FROM tenants 
-            WHERE name = ')" + RepositoryHelpers::escapeString(name) + "'";
+            WHERE company_name = ')" + RepositoryHelpers::escapeString(name) + "'";
         
         DbLib::DatabaseAbstractionLayer db_layer;
         auto results = db_layer.executeQuery(query);
@@ -802,27 +819,24 @@ std::map<std::string, std::string> TenantRepository::entityToParams(const Tenant
     std::map<std::string, std::string> params;
     
     // 기본 정보 (ID는 AUTO_INCREMENT이므로 제외)
-    params["name"] = entity.getName();
-    params["description"] = entity.getDescription();
+    params["company_name"] = entity.getName();
+    // params["description"] = entity.getDescription(); // Schema doesn't have description
     params["domain"] = entity.getDomain();
-    params["status"] = TenantEntity::statusToString(entity.getStatus());
+    params["subscription_status"] = TenantEntity::statusToString(entity.getStatus());
     
     // 제한 설정
     params["max_users"] = std::to_string(entity.getMaxUsers());
-    params["max_devices"] = std::to_string(entity.getMaxDevices());
+    params["max_edge_servers"] = std::to_string(entity.getMaxDevices());
     params["max_data_points"] = std::to_string(entity.getMaxDataPoints());
     
     // 연락처 정보
     params["contact_email"] = entity.getContactEmail();
     params["contact_phone"] = entity.getContactPhone();
-    params["address"] = entity.getAddress();
-    params["city"] = entity.getCity();
-    params["country"] = entity.getCountry();
     params["timezone"] = entity.getTimezone();
     
     // 구독 정보
-    params["subscription_start"] = RepositoryHelpers::formatTimestamp(entity.getSubscriptionStart());
-    params["subscription_end"] = RepositoryHelpers::formatTimestamp(entity.getSubscriptionEnd());
+    params["subscription_start_date"] = RepositoryHelpers::formatTimestamp(entity.getSubscriptionStart());
+    params["trial_end_date"] = RepositoryHelpers::formatTimestamp(entity.getSubscriptionEnd());
     
     params["created_at"] = db_layer.getCurrentTimestamp();
     params["updated_at"] = db_layer.getCurrentTimestamp();

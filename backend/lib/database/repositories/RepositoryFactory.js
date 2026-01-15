@@ -13,6 +13,14 @@ const AlarmRuleRepository = require('./AlarmRuleRepository');
 const UserRepository = require('./UserRepository');
 const ProtocolRepository = require('./ProtocolRepository');
 const AlarmTemplateRepository = require('./AlarmTemplateRepository');
+const ManufacturerRepository = require('./ManufacturerRepository');
+const DeviceModelRepository = require('./DeviceModelRepository');
+const TemplateDeviceRepository = require('./TemplateDeviceRepository');
+const TemplateDeviceSettingsRepository = require('./TemplateDeviceSettingsRepository');
+const TemplateDataPointRepository = require('./TemplateDataPointRepository');
+const AuditLogRepository = require('./AuditLogRepository');
+const EdgeServerRepository = require('./EdgeServerRepository');
+const DeviceGroupRepository = require('./DeviceGroupRepository');
 
 // 기존 DatabaseFactory 사용
 const DatabaseFactory = require('../DatabaseFactory');
@@ -89,13 +97,30 @@ class RepositoryFactory {
 
             this.logger.info('🏭 RepositoryFactory initialized');
             this.logger.info(`Cache: ${this.cacheConfig.enabled ? 'ENABLED' : 'DISABLED'}`);
-            this.logger.info('📦 Available Repositories: Site, Tenant, Device, VirtualPoint, AlarmOccurrence, AlarmRule, User, Protocol');
+            this.logger.info('📦 Available Repositories: Site, Tenant, Device, VirtualPoint, AlarmOccurrence, AlarmRule, User, Protocol, Manufacturer, DeviceModel, TemplateDevice, AuditLog, EdgeServer, DeviceGroup');
 
             return true;
         } catch (error) {
             console.error('❌ RepositoryFactory initialization failed:', error.message);
             this.initialized = false;
             return false;
+        }
+    }
+
+    /**
+     * 팩토리 종료 및 연결 정리
+     */
+    async shutdown() {
+        if (!this.initialized) return;
+
+        try {
+            if (this.dbManager) {
+                await this.dbManager.closeAllConnections();
+            }
+            this.initialized = false;
+            console.log('🏭 RepositoryFactory shutdown complete');
+        } catch (error) {
+            console.error('⚠️ RepositoryFactory shutdown error:', error.message);
         }
     }
 
@@ -183,6 +208,62 @@ class RepositoryFactory {
         return this.getRepository('AlarmTemplateRepository');
     }
 
+    /**
+     * ManufacturerRepository 반환
+     */
+    getManufacturerRepository() {
+        return this.getRepository('ManufacturerRepository');
+    }
+
+    /**
+     * DeviceModelRepository 반환
+     */
+    getDeviceModelRepository() {
+        return this.getRepository('DeviceModelRepository');
+    }
+
+    /**
+     * TemplateDeviceRepository 반환
+     */
+    getTemplateDeviceRepository() {
+        return this.getRepository('TemplateDeviceRepository');
+    }
+
+    /**
+     * TemplateDeviceSettingsRepository 반환
+     */
+    getTemplateDeviceSettingsRepository() {
+        return this.getRepository('TemplateDeviceSettingsRepository');
+    }
+
+    /**
+     * TemplateDataPointRepository 반환
+     */
+    getTemplateDataPointRepository() {
+        return this.getRepository('TemplateDataPointRepository');
+    }
+
+    /**
+     * AuditLogRepository 반환
+     */
+    getAuditLogRepository() {
+        return this.getRepository('AuditLogRepository');
+    }
+
+    /**
+     * EdgeServerRepository 반환
+     */
+    getEdgeServerRepository() {
+        return this.getRepository('EdgeServerRepository');
+    }
+
+    /**
+     * DeviceGroupRepository 반환
+     */
+    getDeviceGroupRepository() {
+        return this.getRepository('DeviceGroupRepository');
+    }
+
     // =========================================================================
     // 내부 구현 메서드들
     // =========================================================================
@@ -241,6 +322,38 @@ class RepositoryFactory {
 
                 case 'AlarmTemplateRepository':
                     repository = new AlarmTemplateRepository();
+                    break;
+
+                case 'ManufacturerRepository':
+                    repository = new ManufacturerRepository();
+                    break;
+
+                case 'DeviceModelRepository':
+                    repository = new DeviceModelRepository();
+                    break;
+
+                case 'TemplateDeviceRepository':
+                    repository = new TemplateDeviceRepository();
+                    break;
+
+                case 'TemplateDeviceSettingsRepository':
+                    repository = new TemplateDeviceSettingsRepository();
+                    break;
+
+                case 'TemplateDataPointRepository':
+                    repository = new TemplateDataPointRepository();
+                    break;
+
+                case 'AuditLogRepository':
+                    repository = new AuditLogRepository();
+                    break;
+
+                case 'EdgeServerRepository':
+                    repository = new EdgeServerRepository();
+                    break;
+
+                case 'DeviceGroupRepository':
+                    repository = new DeviceGroupRepository();
                     break;
 
                 default:

@@ -14,6 +14,7 @@
 #include "Common/Enums.h"
 #include "Common/Structs.h"
 #include "Common/DriverStatistics.h"
+#include "Database/RepositoryFactory.h"
 #include <string>
 #include <optional>
 #include <chrono>
@@ -30,21 +31,9 @@ namespace Database {
 // Use DbLib's EntityState
 using EntityState = DbLib::EntityState;
 
-namespace Repositories {
-    class DeviceRepository;
-    class DeviceSettingsRepository;
-    class DataPointRepository;
-    class CurrentValueRepository;
-    class VirtualPointRepository;
-    class SiteRepository;
-    class TenantRepository;
-    class UserRepository;
-    class AlarmConfigRepository;
-    class ExportLogRepository;
-    class ExportTargetRepository;
-    class ExportTargetMappingRepository;
-    class ExportScheduleRepository;
-    class PayloadTemplateRepository;
+namespace Entities {
+    // Basic types used in template signatures if needed, 
+    // but most are now handled in derived classes.
 }
 
 /**
@@ -90,48 +79,45 @@ public:
     // =======================================================================
 
 protected:
-    template<typename EntityType = DerivedType>
-    auto getRepository() -> decltype(getRepositoryImpl(static_cast<EntityType*>(nullptr))) {
-        return getRepositoryImpl(static_cast<EntityType*>(nullptr));
+    /**
+     * @brief DerivedType의 getRepository() 호출 (CRTP)
+     */
+    auto getRepository() const {
+        return static_cast<const DerivedType*>(this)->getRepository();
     }
 
     bool saveViaRepository() {
         try {
             auto repo = getRepository();
             if (repo) {
-                DerivedType& derived = static_cast<DerivedType&>(*this);
-                bool success = repo->save(derived);
+                // derived call for save
+                bool success = repo->save(static_cast<DerivedType&>(*this));
                 if (success) {
                     markSaved();
-                    logger_->Info("Saved " + getEntityTypeName());
                 }
                 return success;
             }
             return false;
         } catch (const std::exception& e) {
-            logger_->Error("Save failed: " + std::string(e.what()));
+            if (logger_) logger_->Error("Save failed: " + std::string(e.what()));
             markError();
             return false;
         }
     }
-    // ... rest of the existing methods like updateViaRepository, deleteViaRepository ...
-    // Note: I will only replace the necessary parts to save space and avoid errors.
 
     bool updateViaRepository() {
         try {
             auto repo = getRepository();
             if (repo) {
-                const DerivedType& derived = static_cast<const DerivedType&>(*this);
-                bool success = repo->update(derived);
+                bool success = repo->update(static_cast<const DerivedType&>(*this));
                 if (success) {
                     markSaved();
-                    logger_->Info("Updated " + getEntityTypeName());
                 }
                 return success;
             }
             return false;
         } catch (const std::exception& e) {
-            logger_->Error("Update failed: " + std::string(e.what()));
+            if (logger_) logger_->Error("Update failed: " + std::string(e.what()));
             markError();
             return false;
         }
@@ -144,13 +130,12 @@ protected:
                 bool success = repo->deleteById(getEntityId());
                 if (success) {
                     markDeleted();
-                    logger_->Info("Deleted " + getEntityTypeName());
                 }
                 return success;
             }
             return false;
         } catch (const std::exception& e) {
-            logger_->Error("Delete failed: " + std::string(e.what()));
+            if (logger_) logger_->Error("Delete failed: " + std::string(e.what()));
             markError();
             return false;
         }
@@ -162,63 +147,25 @@ protected:
             if (repo) {
                 auto loaded = repo->findById(getEntityId());
                 if (loaded.has_value()) {
-                    DerivedType& derived = static_cast<DerivedType&>(*this);
-                    derived = loaded.value();
+                    static_cast<DerivedType&>(*this) = loaded.value();
                     markSaved();
-                    logger_->Info("Loaded " + getEntityTypeName());
                     return true;
                 }
             }
             return false;
         } catch (const std::exception& e) {
-            logger_->Error("Load failed: " + std::string(e.what()));
+            if (logger_) logger_->Error("Load failed: " + std::string(e.what()));
             markError();
             return false;
         }
     }
 
-private:
-    std::shared_ptr<Repositories::ExportScheduleRepository> getRepositoryImpl(class ExportScheduleEntity*);
-    std::shared_ptr<Repositories::PayloadTemplateRepository> getRepositoryImpl(class PayloadTemplateEntity*);
-
     int getEntityId() const {
-        if constexpr (std::is_same_v<DerivedType, class DeviceSettingsEntity>) {
-            return static_cast<const DerivedType&>(*this).getDeviceId();
-        } else {
-            return this->id_;
-        }
+        return this->id_;
     }
 
     virtual std::string getEntityTypeName() const {
-        if constexpr (std::is_same_v<DerivedType, class DeviceEntity>) {
-            return "DeviceEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class DeviceSettingsEntity>) {
-            return "DeviceSettingsEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class DataPointEntity>) {
-            return "DataPointEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class CurrentValueEntity>) {
-            return "CurrentValueEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class VirtualPointEntity>) {
-            return "VirtualPointEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class SiteEntity>) {
-            return "SiteEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class TenantEntity>) {
-            return "TenantEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class UserEntity>) {
-            return "UserEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class AlarmConfigEntity>) {
-            return "AlarmConfigEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class ExportLogEntity>) {
-            return "ExportLogEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class ExportTargetEntity>) {
-            return "ExportTargetEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class ExportTargetMappingEntity>) {
-            return "ExportTargetMappingEntity";
-        } else if constexpr (std::is_same_v<DerivedType, class ExportScheduleEntity>) {
-            return "ExportScheduleEntity";
-        } else {
-            return "UnknownEntity";
-        }
+        return "BaseEntity"; // Derived should override if needed for logging
     }
 
 public:

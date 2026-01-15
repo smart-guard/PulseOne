@@ -126,16 +126,33 @@ bool ModbusWorker::CheckConnection() {
 bool ModbusWorker::SendKeepAlive() {
     if (!modbus_driver_ || !modbus_driver_->IsConnected()) return false;
     
-    // Read a simple register (e.g., address 0) as keep-alive
-    std::vector<uint16_t> regs;
-    PulseOne::Structs::DataPoint dp;
-    dp.address = 0; // Standard keep-alive address
-    dp.data_type = "UINT16";
-    dp.protocol_params["slave_id"] = modbus_config_.properties.count("slave_id") ? modbus_config_.properties.at("slave_id") : "1";
-    dp.protocol_params["function_code"] = "3";
-    
-    std::vector<TimestampedValue> results;
-    return modbus_driver_->ReadValues({dp}, results);
+    try {
+        // Read a simple register (e.g., address 0) as keep-alive
+        std::vector<uint16_t> regs;
+        PulseOne::Structs::DataPoint dp;
+        dp.id = "0"; // Dummy ID for keep-alive
+        dp.address = 0; // Standard keep-alive address
+        dp.data_type = "UINT16";
+        
+        std::string s_id = modbus_config_.properties.count("slave_id") ? modbus_config_.properties.at("slave_id") : "1";
+        dp.protocol_params["slave_id"] = s_id;
+        dp.protocol_params["function_code"] = "3";
+        
+        LogMessage(LogLevel::DEBUG, "Keep-alive: Sending request (SlaveID=" + s_id + ")");
+        
+        std::vector<TimestampedValue> results;
+        bool success = modbus_driver_->ReadValues({dp}, results);
+        
+        if (success) {
+            LogMessage(LogLevel::DEBUG, "Keep-alive: Success");
+        } else {
+            LogMessage(LogLevel::WARN, "Keep-alive: Driver returned false");
+        }
+        return success;
+    } catch (const std::exception& e) {
+        LogMessage(LogLevel::LOG_ERROR, "Keep-alive: EXCEPTION in SendKeepAlive: " + std::string(e.what()));
+        throw; // Re-throw to be caught by HandleKeepAlive
+    }
 }
 
 bool ModbusWorker::WriteDataPoint(const std::string& point_id, const DataValue& value) {
@@ -336,7 +353,9 @@ DataValue ModbusWorker::ConvertRegistersToValue(const std::vector<uint16_t>& reg
             if (bit_idx >= 0 && bit_idx < 16) {
                 return ((registers[0] >> bit_idx) & 0x01) != 0;
             }
-        } catch (...) {}
+        } catch (const std::exception& e) {
+            // Ignore invalid bit_index
+        }
     }
 
     // Byte selection support

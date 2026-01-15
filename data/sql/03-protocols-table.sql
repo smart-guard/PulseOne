@@ -20,12 +20,13 @@ CREATE TABLE IF NOT EXISTS protocols (
     requires_broker INTEGER DEFAULT 0,             -- 브로커 필요 여부 (MQTT 등)
     
     -- 기능 지원 정보 (JSON)
-    supported_operations TEXT,                      -- ["read", "write", "subscribe", etc.]
+    supported_operations TEXT,                      -- ["read_coils", etc.]
     supported_data_types TEXT,                      -- ["boolean", "int16", "float32", etc.]
     connection_params TEXT,                         -- 연결에 필요한 파라미터 스키마
+    capabilities TEXT DEFAULT '{}',                 -- 프로토콜별 특수 역량 (JSON)
     
     -- 설정 정보
-    default_polling_interval INTEGER DEFAULT 1000, -- 기본 폴링 간격 (ms)
+    default_polling_interval INTEGER DEFAULT 1000, -- 기본 수집 주기 (ms)
     default_timeout INTEGER DEFAULT 5000,          -- 기본 타임아웃 (ms)
     max_concurrent_connections INTEGER DEFAULT 1,   -- 최대 동시 연결 수
     

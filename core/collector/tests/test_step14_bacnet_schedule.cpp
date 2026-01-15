@@ -20,6 +20,7 @@ protected:
     void SetUp() override {
         driver = std::make_shared<BACnetDriver>();
         DriverConfig config;
+        config.properties["target_ip"] = "127.0.0.1";
         driver->Initialize(config);
         driver->SetConnectedForTesting(true); // 시뮬레이션 연결 상태로 설정
     }
@@ -37,6 +38,7 @@ TEST_F(BACnetScheduleTest, ReadWeeklySchedule) {
     point.id = "sch-001";
     point.address = 1; 
     point.address_string = "1";
+    point.protocol_params["object_type"] = "17"; // OBJECT_SCHEDULE (17)
     point.protocol_params["property_id"] = "123"; // PROP_WEEKLY_SCHEDULE (123)
     
     // 2. 읽기 수행

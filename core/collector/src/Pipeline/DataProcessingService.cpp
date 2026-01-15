@@ -1,6 +1,7 @@
 //=============================================================================
-// collector/src/Pipeline/DataProcessingService.cpp - 완전한 구현 파일 (컴파일 에러 수정)
-// 
+// collector/src/Pipeline/DataProcessingService.cpp - 완전한 구현 파일 (컴파일
+// 에러 수정)
+//
 // 🎯 목적: 헤더와 100% 일치하는 모든 함수 구현, 컴파일 에러 완전 수정
 // 📋 특징:
 //   - 올바른 처리 순서: 가상포인트 → 알람 → Redis 저장
@@ -9,29 +10,30 @@
 //=============================================================================
 
 #include "Pipeline/DataProcessingService.h"
-#include "Client/InfluxClientImpl.h"
-#include "Pipeline/PipelineManager.h"
 #include "Alarm/AlarmManager.h"
-#include "VirtualPoint/VirtualPointEngine.h"
-#include "VirtualPoint/VirtualPointBatchWriter.h"
-#include "Logging/LogManager.h"
+#include "Client/InfluxClientImpl.h"
 #include "Common/Enums.h"
-#include "Storage/RedisDataWriter.h"
-#include "Database/RepositoryFactory.h"
-#include "Database/Entities/CurrentValueEntity.h"
-#include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/Entities/AlarmOccurrenceEntity.h"
+#include "Database/Entities/CurrentValueEntity.h"
 #include "Database/Repositories/AlarmOccurrenceRepository.h"
+#include "Database/Repositories/CurrentValueRepository.h"
+#include "Database/RepositoryFactory.h"
 #include "DatabaseManager.hpp"
-#include <iostream>
-#include <chrono>
-#include <thread>
+#include "Logging/LogManager.h"
+#include "Pipeline/PipelineManager.h"
+#include "Storage/RedisDataWriter.h"
+#include "Utils/ConfigManager.h"
+#include "VirtualPoint/VirtualPointBatchWriter.h"
+#include "VirtualPoint/VirtualPointEngine.h"
 #include <algorithm>
+#include <chrono>
 #include <iomanip>
+#include <iostream>
+#include <thread>
 
 // Includes for stages
-#include "Pipeline/Stages/EnrichmentStage.h"
 #include "Pipeline/Stages/AlarmStage.h"
+#include "Pipeline/Stages/EnrichmentStage.h"
 #include "Pipeline/Stages/PersistenceStage.h"
 
 using LogLevel = PulseOne::Enums::LogLevel;
@@ -45,47 +47,52 @@ namespace Pipeline {
 // =============================================================================
 
 DataProcessingService::DataProcessingService()
-    : vp_batch_writer_(std::make_unique<VirtualPoint::VirtualPointBatchWriter>(100, 30))
-    , should_stop_(false)
-    , is_running_(false)
-    , thread_count_(std::thread::hardware_concurrency())
-    , batch_size_(100) {
-    
+    : vp_batch_writer_(
+          std::make_unique<VirtualPoint::VirtualPointBatchWriter>(100, 30)),
+      should_stop_(false), is_running_(false),
+      thread_count_(std::thread::hardware_concurrency()), batch_size_(100) {
+
+  try {
+    if (thread_count_ == 0)
+      thread_count_ = 1;
+    else if (thread_count_ > 16)
+      thread_count_ = 16;
+
+    // RedisDataWriter가 자체적으로 Redis 연결 생성
+    redis_data_writer_ = std::make_unique<Storage::RedisDataWriter>();
+
+    // InfluxClient 활성화 (ROS 연동 등 시계열 데이터 저장용)
     try {
-        if (thread_count_ == 0) thread_count_ = 1;
-        else if (thread_count_ > 16) thread_count_ = 16;
-        
-        // RedisDataWriter가 자체적으로 Redis 연결 생성
-        redis_data_writer_ = std::make_unique<Storage::RedisDataWriter>();
-        
-        // InfluxClient 활성화 (ROS 연동 등 시계열 데이터 저장용)
-        try {
-            auto& db_manager = DbLib::DatabaseManager::getInstance();
-            // InfluxDB 설정 확인 및 클라이언트 생성
-            auto* influx = new PulseOne::Client::InfluxClientImpl();
-            influx_client_ = std::shared_ptr<PulseOne::Client::InfluxClient>(influx);
-            
-            // Note: 실제 연결은 ConfigManager가 로드된 후에 수행되어야 함.
-            // 여기서는 일단 인스턴스만 생성하고, Start() 등에서 연결 상태를 확인하거나 
-            // DatabaseManager의 설정을 따르도록 함.
-            LogManager::getInstance().log("processing", LogLevel::INFO, "InfluxClient 초기화 완료 (In-Process)");
-        } catch (const std::exception& e) {
-            LogManager::getInstance().log("processing", LogLevel::WARN, "InfluxClient 초기화 실패: " + std::string(e.what()));
-        }
-        
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "DataProcessingService 생성 완료");
-            
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "DataProcessingService 생성 중 예외: " + std::string(e.what()));
+      auto &db_manager = DbLib::DatabaseManager::getInstance();
+      // InfluxDB 설정 확인 및 클라이언트 생성
+      auto *influx = new PulseOne::Client::InfluxClientImpl();
+      influx_client_ = std::shared_ptr<PulseOne::Client::InfluxClient>(influx);
+
+      // Note: 실제 연결은 ConfigManager가 로드된 후에 수행되어야 함.
+      // 여기서는 일단 인스턴스만 생성하고, Start() 등에서 연결 상태를
+      // 확인하거나 DatabaseManager의 설정을 따르도록 함.
+      LogManager::getInstance().log("processing", LogLevel::INFO,
+                                    "InfluxClient 초기화 완료 (In-Process)");
+    } catch (const std::exception &e) {
+      LogManager::getInstance().log("processing", LogLevel::WARN,
+                                    "InfluxClient 초기화 실패: " +
+                                        std::string(e.what()));
     }
+
+    LogManager::getInstance().log("processing", LogLevel::INFO,
+                                  "DataProcessingService 생성 완료");
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "DataProcessingService 생성 중 예외: " +
+                                      std::string(e.what()));
+  }
 }
 
 DataProcessingService::~DataProcessingService() {
-    Stop();
-    LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                 "DataProcessingService 소멸됨");
+  Stop();
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "DataProcessingService 소멸됨");
 }
 
 // =============================================================================
@@ -93,114 +100,180 @@ DataProcessingService::~DataProcessingService() {
 // =============================================================================
 
 bool DataProcessingService::Start() {
-    if (is_running_.load()) {
-        LogManager::getInstance().log("processing", LogLevel::WARN,
-            "DataProcessingService가 이미 실행 중입니다");
-        return false;
-    }
-    
-    // PipelineManager 의존성 확인 (필수)
-    auto& pipeline_manager = PipelineManager::getInstance();
-    if (!pipeline_manager.IsRunning()) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "PipelineManager가 실행되지 않았습니다!");
-        return false;
-    }
-    
-    LogManager::getInstance().log("processing", LogLevel::INFO,
-        "DataProcessingService 시작 중...");
-    
-    // VirtualPointBatchWriter 시작 (선택적)
-    if (vp_batch_writer_ && !vp_batch_writer_->Start()) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "VirtualPointBatchWriter 시작 실패");
-        return false;
-    }
+  if (is_running_.load()) {
+    LogManager::getInstance().log("processing", LogLevel::WARN,
+                                  "DataProcessingService가 이미 실행 중입니다");
+    return false;
+  }
 
-    should_stop_ = false;
-    is_running_ = true;
-    
-    // 스레드 풀 시작
-    processing_threads_.reserve(thread_count_);
-    for (size_t i = 0; i < thread_count_; ++i) {
-        processing_threads_.emplace_back(
-            &DataProcessingService::ProcessingThreadLoop, this, i);
+  // PipelineManager 의존성 확인 (필수)
+  auto &pipeline_manager = PipelineManager::getInstance();
+  if (!pipeline_manager.IsRunning()) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "PipelineManager가 실행되지 않았습니다!");
+    return false;
+  }
+
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "DataProcessingService 시작 중...");
+
+  // VirtualPointBatchWriter 시작 (선택적)
+  if (vp_batch_writer_ && !vp_batch_writer_->Start()) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "VirtualPointBatchWriter 시작 실패");
+    return false;
+  }
+
+  should_stop_ = false;
+  is_running_ = true;
+
+  // 스레드 풀 시작
+  processing_threads_.reserve(thread_count_);
+  for (size_t i = 0; i < thread_count_; ++i) {
+    processing_threads_.emplace_back(
+        &DataProcessingService::ProcessingThreadLoop, this, i);
+  }
+
+  // Persistence 스레드 시작
+  persistence_thread_ =
+      std::thread(&DataProcessingService::PersistenceThreadLoop, this);
+
+  // Manager 초기화 (명시적)
+  PulseOne::VirtualPoint::VirtualPointEngine::getInstance().initialize();
+  PulseOne::Alarm::AlarmManager::getInstance().initialize();
+
+  // Pipeline 초기화
+  InitializePipeline();
+
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "DataProcessingService 시작 완료 (Threads: " +
+                                    std::to_string(thread_count_) + ")");
+
+  // InfluxDB 연결 시도 (환경 변수 우선)
+  if (influx_client_) {
+    try {
+      auto &config = ConfigManager::getInstance();
+
+      // 환경 변수 우선순위 최상위 (Docker Compose 및 verify_e2e 스크립트 호환)
+      const char *env_url = std::getenv("INFLUX_URL");
+      const char *env_host = std::getenv("INFLUXDB_HOST");
+      const char *env_port = std::getenv("INFLUXDB_PORT");
+      const char *env_token = std::getenv("INFLUXDB_TOKEN");
+      const char *env_org = std::getenv("INFLUXDB_ORG");
+      const char *env_bucket = std::getenv("INFLUXDB_BUCKET");
+
+      // URL 구성 (INFLUX_URL이 있으면 그것을 쓰고, 없으면 HOST:PORT 조합)
+      std::string url;
+      if (env_url && strlen(env_url) > 0) {
+        url = env_url;
+      } else {
+        std::string host =
+            env_host ? env_host
+                     : config.getOrDefault("INFLUXDB_HOST", "influxdb");
+        std::string port =
+            env_port ? env_port : config.getOrDefault("INFLUXDB_PORT", "8086");
+        url = "http://" + host + ":" + port;
+      }
+
+      std::string token =
+          env_token ? env_token
+                    : config.getOrDefault("INFLUXDB_TOKEN",
+                                          "my-super-secret-auth-token");
+      std::string org =
+          env_org ? env_org : config.getOrDefault("INFLUXDB_ORG", "pulseone");
+      std::string bucket =
+          env_bucket ? env_bucket
+                     : config.getOrDefault("INFLUXDB_BUCKET", "timeseries");
+
+      LogManager::getInstance().log("processing", LogLevel::INFO,
+                                    "InfluxDB 연결 시도: " + url + " (Org: " +
+                                        org + ", Bucket: " + bucket + ")");
+
+      // 명시적 연결 확인 및 로깅 강화
+      if (influx_client_->connect(url, token, org, bucket)) {
+        LogManager::getInstance().log(
+            "processing", LogLevel::INFO,
+            "InfluxDB 연결 성공! (Persistence 활성화됨)");
+      } else {
+        LogManager::getInstance().log(
+            "processing", LogLevel::WARN,
+            "InfluxDB 연결 실패! (데이터는 유실될 수 있습니다: " + url + ")");
+      }
+    } catch (const std::exception &e) {
+      LogManager::getInstance().log("processing", LogLevel::WARN,
+                                    "InfluxDB 연결 중 예외 발생: " +
+                                        std::string(e.what()));
     }
-    
-    // Persistence 스레드 시작
-    persistence_thread_ = std::thread(&DataProcessingService::PersistenceThreadLoop, this);
-    
-    // Manager 초기화 (명시적)
-    PulseOne::VirtualPoint::VirtualPointEngine::getInstance().initialize();
-    PulseOne::Alarm::AlarmManager::getInstance().initialize();
+  }
 
-    // Pipeline 초기화
-    InitializePipeline();
-
-    LogManager::getInstance().log("processing", LogLevel::INFO, 
-        "DataProcessingService 시작 완료 (Threads: " + std::to_string(thread_count_) + ")");
-    return true;
+  return true;
 }
 
 void DataProcessingService::Stop() {
-    if (!is_running_.load()) {
-        return;
+  if (!is_running_.load()) {
+    return;
+  }
+
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "DataProcessingService 중지 중...");
+
+  // 1. 중지 플래그 설정
+  should_stop_ = true;
+
+  // 2. VirtualPointBatchWriter 먼저 중지
+  if (vp_batch_writer_) {
+    vp_batch_writer_->Stop();
+  }
+
+  // 3. PipelineManager 중지 신호를 통해 GetBatch 대기 해제
+  PipelineManager::getInstance().Shutdown();
+
+  // 4. 스레드 종료 대기
+  for (size_t i = 0; i < processing_threads_.size(); ++i) {
+    if (processing_threads_[i].joinable()) {
+      processing_threads_[i].join();
     }
-    
-    LogManager::getInstance().log("processing", LogLevel::INFO,
-        "DataProcessingService 중지 중...");
-    
-    // 1. 중지 플래그 설정
-    should_stop_ = true;
-    
-    // 2. VirtualPointBatchWriter 먼저 중지
-    if (vp_batch_writer_) {
-        vp_batch_writer_->Stop();
-    }
-    
-    // 3. PipelineManager 중지 신호를 통해 GetBatch 대기 해제
-    PipelineManager::getInstance().Shutdown();
-    
-    // 4. 스레드 종료 대기
-    for (size_t i = 0; i < processing_threads_.size(); ++i) {
-        if (processing_threads_[i].joinable()) {
-            processing_threads_[i].join();
-        }
-    }
-    processing_threads_.clear();
-    
-    // Persistence 스레드 종료
-    if (persistence_thread_.joinable()) {
-        persistence_thread_.join();
-    }
-    
-    is_running_.store(false);
-    LogManager::getInstance().log("processing", LogLevel::INFO, "DataProcessingService 중지 완료");
+  }
+  processing_threads_.clear();
+
+  // Persistence 스레드 종료
+  if (persistence_thread_.joinable()) {
+    persistence_thread_.join();
+  }
+
+  is_running_.store(false);
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "DataProcessingService 중지 완료");
 }
 
 void DataProcessingService::SetThreadCount(size_t thread_count) {
-    if (is_running_.load()) {
-        LogManager::getInstance().log("processing", LogLevel::WARN, 
-                                     "서비스 실행 중에는 스레드 수를 변경할 수 없습니다");
-        return;
-    }
-    
-    if (thread_count == 0) thread_count = 1;
-    else if (thread_count > 32) thread_count = 32;
-    
-    thread_count_ = thread_count;
-    LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                 "스레드 수 설정: " + std::to_string(thread_count_));
+  if (is_running_.load()) {
+    LogManager::getInstance().log(
+        "processing", LogLevel::WARN,
+        "서비스 실행 중에는 스레드 수를 변경할 수 없습니다");
+    return;
+  }
+
+  if (thread_count == 0)
+    thread_count = 1;
+  else if (thread_count > 32)
+    thread_count = 32;
+
+  thread_count_ = thread_count;
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "스레드 수 설정: " +
+                                    std::to_string(thread_count_));
 }
 
 DataProcessingService::ServiceConfig DataProcessingService::GetConfig() const {
-    ServiceConfig config;
-    config.thread_count = thread_count_;
-    config.batch_size = batch_size_;
-    config.alarm_evaluation_enabled = alarm_evaluation_enabled_.load();
-    config.virtual_point_calculation_enabled = virtual_point_calculation_enabled_.load();
-    config.external_notification_enabled = external_notification_enabled_.load();
-    return config;
+  ServiceConfig config;
+  config.thread_count = thread_count_;
+  config.batch_size = batch_size_;
+  config.alarm_evaluation_enabled = alarm_evaluation_enabled_.load();
+  config.virtual_point_calculation_enabled =
+      virtual_point_calculation_enabled_.load();
+  config.external_notification_enabled = external_notification_enabled_.load();
+  return config;
 }
 
 // =============================================================================
@@ -208,152 +281,273 @@ DataProcessingService::ServiceConfig DataProcessingService::GetConfig() const {
 // =============================================================================
 
 void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
-    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                 "처리 스레드 " + std::to_string(thread_index) + " 시작");
-    
-    while (!should_stop_.load()) {
-        try {
-            auto batch = CollectBatchFromPipelineManager();
-            
-            if (!batch.empty()) {
-                auto start_time = std::chrono::high_resolution_clock::now();
-                ProcessBatch(batch, thread_index);
-                auto end_time = std::chrono::high_resolution_clock::now();
-                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-                
-                UpdateStatistics(batch.size(), static_cast<double>(duration.count()));
-            } else {
-                // Log periodic heartbeat for debugging
-                static int empty_count = 0;
-                if (++empty_count >= 100) { // Every ~1 second
-                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                                 "Thread " + std::to_string(thread_index) + " waiting for data...");
-                    empty_count = 0;
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            }
-            
-        } catch (const std::exception& e) {
-            processing_errors_.fetch_add(1);
-            HandleError("스레드 " + std::to_string(thread_index) + " 처리 중 예외", e.what());
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+                                "처리 스레드 " + std::to_string(thread_index) +
+                                    " 시작");
+
+  while (!should_stop_.load()) {
+    try {
+      auto batch = CollectBatchFromPipelineManager();
+
+      if (!batch.empty()) {
+        auto start_time = std::chrono::high_resolution_clock::now();
+        ProcessBatch(batch, thread_index);
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time);
+
+        UpdateStatistics(batch.size(), static_cast<double>(duration.count()));
+      } else {
+        // Log periodic heartbeat for debugging
+        static int empty_count = 0;
+        if (++empty_count >= 100) { // Every ~1 second
+          LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+                                        "Thread " +
+                                            std::to_string(thread_index) +
+                                            " waiting for data...");
+          empty_count = 0;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+
+    } catch (const std::exception &e) {
+      processing_errors_.fetch_add(1);
+      HandleError("스레드 " + std::to_string(thread_index) + " 처리 중 예외",
+                  e.what());
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    
-    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                 "처리 스레드 " + std::to_string(thread_index) + " 종료");
+  }
+
+  LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+                                "처리 스레드 " + std::to_string(thread_index) +
+                                    " 종료");
 }
 
 void DataProcessingService::PersistenceThreadLoop() {
-    LogManager::getInstance().log("processing", LogLevel::INFO, "Persistence 스레드 시작");
-    
-    while (!should_stop_.load() || !persistence_queue_.empty()) {
-        try {
-            // 배치로 태스크 수집 (최대 100개씩 혹은 100ms 대기)
-            auto tasks = persistence_queue_.pop_batch(100, 100);
-            if (tasks.empty()) {
-                if (should_stop_.load()) break;
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                continue;
-            }
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "Persistence 스레드 시작");
 
-            // RDB와 InfluxDB 태스크 분리
-            std::vector<PersistenceTask> rdb_tasks;
-            std::vector<PersistenceTask> influx_tasks;
-            std::vector<PersistenceTask> comm_stats_tasks;
-            
-            for (auto& task : tasks) {
-                if (task.type == PersistenceTask::Type::RDB_SAVE) {
-                    rdb_tasks.push_back(std::move(task));
-                } else if (task.type == PersistenceTask::Type::INFLUX_SAVE) {
-                    influx_tasks.push_back(std::move(task));
-                } else if (task.type == PersistenceTask::Type::COMM_STATS_SAVE) {
-                    comm_stats_tasks.push_back(std::move(task));
-                }
-            }
+  while (!should_stop_.load() || !persistence_queue_.empty()) {
+    try {
+      // 배치로 태스크 수집 (최대 100개씩 혹은 100ms 대기)
+      auto tasks = persistence_queue_.pop_batch(100, 100);
+      if (tasks.empty()) {
+        if (should_stop_.load())
+          break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        continue;
+      }
 
-            // RDB 배치 처리
-            if (!rdb_tasks.empty()) {
-                auto& factory = PulseOne::Database::RepositoryFactory::getInstance();
-                auto current_value_repo = factory.getCurrentValueRepository();
-                
-                if (current_value_repo) {
-                    size_t success = 0;
-                    auto& db_manager = DbLib::DatabaseManager::getInstance();
-                    
-                    bool in_transaction = db_manager.executeNonQuery("BEGIN TRANSACTION");
-                    
-                    for (const auto& task : rdb_tasks) {
-                        for (const auto& point : task.points) {
-                            try {
-                                auto entity = ConvertToCurrentValueEntity(point, task.message);
-                                if (current_value_repo->save(entity)) {
-                                    success++;
-                                }
-                            } catch (...) {}
-                        }
-                    }
-                    
-                    if (in_transaction) {
-                        db_manager.executeNonQuery("COMMIT");
-                    }
-                    if (success > 0) {
-                        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                            "RDB 비동기 저장 완료: " + std::to_string(success) + "개 포인트");
-                    }
-                }
-            }
+      // RDB와 InfluxDB 태스크 분리
+      std::vector<PersistenceTask> rdb_tasks;
+      std::vector<PersistenceTask> influx_tasks;
+      std::vector<PersistenceTask> comm_stats_tasks;
 
-            if (!influx_tasks.empty() && influx_client_) {
-                for (const auto& task : influx_tasks) {
-                    for (const auto& point : task.points) {
-                        std::visit([&](const auto& val) {
-                            using T = std::decay_t<decltype(val)>;
-                            if constexpr (std::is_arithmetic_v<T>) {
-                                // 사용자가 지정한 InfluxDB 필드명 규칙 사용
-                                influx_client_->writePoint("device_data", 
-                                    "p_" + std::to_string(point.point_id), 
-                                    static_cast<double>(val));
-                            }
-                        }, point.value);
-                    }
-                }
-            }
-
-            if (!comm_stats_tasks.empty() && influx_client_) {
-                for (const auto& task : comm_stats_tasks) {
-                    const auto& msg = task.message;
-                    
-                    std::map<std::string, std::string> tags;
-                    tags["device_id"] = msg.device_id;
-                    tags["protocol"] = msg.protocol;
-                    tags["tenant_id"] = std::to_string(msg.tenant_id);
-                    
-                    std::map<std::string, double> fields;
-                    fields["attempts"] = static_cast<double>(msg.total_attempts);
-                    fields["failures"] = static_cast<double>(msg.total_failures);
-                    fields["latency_ms"] = static_cast<double>(msg.response_time.count());
-                    
-                    double success_rate = (msg.total_attempts > 0) ? 
-                        ((double)(msg.total_attempts - msg.total_failures) / msg.total_attempts * 100.0) : 0.0;
-                    fields["success_rate"] = success_rate;
-                    
-                    influx_client_->writeRecord("comm_stats", tags, fields);
-                }
-            }
-
-        } catch (const std::exception& e) {
-            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
-                "PersistenceThreadLoop 에러: " + std::string(e.what()));
+      for (auto &task : tasks) {
+        switch (task.type) {
+        case PersistenceTask::Type::RDB_SAVE:
+          rdb_tasks.push_back(std::move(task));
+          break;
+        case PersistenceTask::Type::INFLUX_SAVE:
+          influx_tasks.push_back(std::move(task));
+          break;
+        case PersistenceTask::Type::COMM_STATS_SAVE:
+          comm_stats_tasks.push_back(std::move(task));
+          break;
         }
+      }
+
+      // 개별 처리 메서드 호출 (컴파일러 부담 완화 및 코드 명확화)
+      if (!rdb_tasks.empty())
+        ProcessRDBTasks(rdb_tasks);
+      if (!influx_tasks.empty())
+        ProcessInfluxTasks(influx_tasks);
+      if (!comm_stats_tasks.empty())
+        ProcessCommStatsTasks(comm_stats_tasks);
+
+    } catch (const std::exception &e) {
+      LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                    "PersistenceThreadLoop 에러: " +
+                                        std::string(e.what()));
     }
-    
-    LogManager::getInstance().log("processing", LogLevel::INFO, "Persistence 스레드 종료");
+  }
+
+  LogManager::getInstance().log("processing", LogLevel::INFO,
+                                "Persistence 스레드 종료");
 }
 
-std::vector<Structs::DeviceDataMessage> DataProcessingService::CollectBatchFromPipelineManager() {
-    auto& pipeline_manager = PipelineManager::getInstance();
-    return pipeline_manager.GetBatch(batch_size_, 100);
+void DataProcessingService::ProcessRDBTasks(
+    const std::vector<PersistenceTask> &rdb_tasks) {
+  auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+  auto current_value_repo = factory.getCurrentValueRepository();
+
+  if (current_value_repo) {
+    size_t success = 0;
+    for (const auto &task : rdb_tasks) {
+      for (const auto &point : task.points) {
+        try {
+          auto entity = ConvertToCurrentValueEntity(point, task.message);
+          if (current_value_repo->save(entity)) {
+            success++;
+          }
+        } catch (...) {
+        }
+      }
+    }
+
+    if (success > 0) {
+      LogManager::getInstance().log(
+          "processing", LogLevel::DEBUG_LEVEL,
+          "RDB 비동기 저장 완료: " + std::to_string(success) + "개 포인트");
+    }
+  }
+}
+
+void DataProcessingService::ProcessInfluxTasks(
+    const std::vector<PersistenceTask> &influx_tasks) {
+  if (!influx_client_)
+    return;
+
+  std::vector<std::string> batch_lines;
+  batch_lines.reserve(influx_tasks.size() * 5); // Conservative estimate
+
+  for (const auto &task : influx_tasks) {
+    const auto &msg = task.message;
+    bool is_robot = (msg.device_type == "ROBOT");
+    std::string measurement = is_robot ? "robot_state" : "device_telemetry";
+
+    for (const auto &point : task.points) {
+      std::map<std::string, std::string> tags;
+      tags["device_id"] = msg.device_id;
+      tags["protocol"] = msg.protocol;
+      tags["tenant_id"] = std::to_string(msg.tenant_id);
+      tags["site_id"] = std::to_string(msg.site_id);
+
+      // 🔥 point_id와 pointid 모두 지원 (사용자 요청 반영: pointid)
+      tags["point_id"] = std::to_string(point.point_id);
+      tags["pointid"] = std::to_string(point.point_id);
+
+      std::map<std::string, double> fields;
+
+      std::visit(
+          [&](const auto &val) {
+            using T = std::decay_t<decltype(val)>;
+            if constexpr (std::is_arithmetic_v<T>) {
+              // 🔥 Hybrid Mapping: 로봇이면 의미적 이름(source=name) 사용,
+              // 아니면 p_ID 사용
+              if (is_robot && !point.source.empty()) {
+                fields[point.source] = static_cast<double>(val);
+              } else {
+                fields["p_" + std::to_string(point.point_id)] =
+                    static_cast<double>(val);
+              }
+              // ✅ pointid를 필드로도 추가 (필요시 데이터 조회 편의성)
+              fields["pointid"] = static_cast<double>(point.point_id);
+            }
+          },
+          point.value);
+
+      if (!fields.empty()) {
+        batch_lines.push_back(
+            influx_client_->formatRecord(measurement, tags, fields));
+      }
+    }
+  }
+
+  if (!batch_lines.empty()) {
+    if (influx_client_->writeBatch(batch_lines)) {
+      influx_writes_.fetch_add(batch_lines.size());
+    }
+  }
+}
+
+void DataProcessingService::ProcessCommStatsTasks(
+    const std::vector<PersistenceTask> &comm_stats_tasks) {
+  for (const auto &task : comm_stats_tasks) {
+    const auto &msg = task.message;
+
+    std::map<std::string, std::string> tags;
+    tags["device_id"] = msg.device_id;
+    tags["protocol"] = msg.protocol;
+    tags["tenant_id"] = std::to_string(msg.tenant_id);
+
+    std::map<std::string, double> fields;
+    fields["attempts"] = static_cast<double>(msg.total_attempts);
+    fields["failures"] = static_cast<double>(msg.total_failures);
+    fields["latency_ms"] = static_cast<double>(msg.response_time.count());
+
+    double success_rate =
+        (msg.total_attempts > 0)
+            ? ((double)(msg.total_attempts - msg.total_failures) /
+               msg.total_attempts * 100.0)
+            : 0.0;
+    fields["success_rate"] = success_rate;
+
+    if (influx_client_) {
+      influx_client_->writeRecord("comm_stats", tags, fields);
+    }
+
+    // 🔧 E2E 스크립트 및 백엔드 호환성: device_status 테이블 상태 업데이트
+    // (UPSERT)
+    try {
+      auto &db_mgr = DbLib::DatabaseManager::getInstance();
+
+      // 상태 매핑 개선
+      std::string status_str;
+      switch (msg.device_status) {
+      case PulseOne::Enums::DeviceStatus::ONLINE:
+        status_str = "connected";
+        break;
+      case PulseOne::Enums::DeviceStatus::OFFLINE:
+        status_str = "disconnected";
+        break;
+      case PulseOne::Enums::DeviceStatus::DEVICE_ERROR:
+        status_str = "error";
+        break;
+      case PulseOne::Enums::DeviceStatus::WARNING:
+        status_str = "connected";
+        break;
+      default:
+        status_str = "disconnected";
+        break;
+      }
+
+      bool is_online =
+          (msg.device_status == PulseOne::Enums::DeviceStatus::ONLINE ||
+           msg.device_status == PulseOne::Enums::DeviceStatus::WARNING);
+
+      // SQLite UPSERT 지원
+      std::string status_query =
+          "INSERT INTO device_status (device_id, connection_status, "
+          "last_communication, updated_at, response_time, total_requests, "
+          "successful_requests) "
+          "VALUES (" +
+          msg.device_id + ", '" + status_str +
+          "', datetime('now'), datetime('now'), " +
+          std::to_string(msg.response_time.count()) + ", 1, " +
+          (is_online ? "1" : "0") +
+          ") "
+          "ON CONFLICT(device_id) DO UPDATE SET "
+          "connection_status = excluded.connection_status, "
+          "last_communication = excluded.last_communication, "
+          "updated_at = excluded.updated_at, "
+          "response_time = excluded.response_time, "
+          "total_requests = device_status.total_requests + 1" +
+          (is_online
+               ? ", successful_requests = device_status.successful_requests + 1"
+               : "") +
+          ";";
+
+      db_mgr.executeNonQuery(status_query);
+    } catch (...) {
+    }
+  }
+}
+
+std::vector<Structs::DeviceDataMessage>
+DataProcessingService::CollectBatchFromPipelineManager() {
+  auto &pipeline_manager = PipelineManager::getInstance();
+  return pipeline_manager.GetBatch(batch_size_, 100);
 }
 
 // =============================================================================
@@ -361,279 +555,351 @@ std::vector<Structs::DeviceDataMessage> DataProcessingService::CollectBatchFromP
 // =============================================================================
 
 void DataProcessingService::InitializePipeline() {
-    LogManager::getInstance().Info("Beginning InitializePipeline");
-    
-    pipeline_stages_.clear();
-    
-    // 1. Enrichment Stage
-    pipeline_stages_.push_back(std::make_unique<Stages::EnrichmentStage>());
-    
-    // 2. Alarm Stage
-    pipeline_stages_.push_back(std::make_unique<Stages::AlarmStage>());
+  LogManager::getInstance().Info("Beginning InitializePipeline");
 
-    // DataProxy Wrappers
-    auto redis_deleter = [](Storage::RedisDataWriter* p) {};
-    std::shared_ptr<Storage::RedisDataWriter> redis_proxy(redis_data_writer_.get(), redis_deleter);
-    
-    auto queue_deleter = [](IPersistenceQueue* p) {};
-    std::shared_ptr<IPersistenceQueue> queue_proxy(this, queue_deleter);
+  pipeline_stages_.clear();
 
-    pipeline_stages_.push_back(std::make_unique<Stages::PersistenceStage>(
-         redis_proxy,
-         queue_proxy
-    ));
+  // 1. Enrichment Stage
+  pipeline_stages_.push_back(std::make_unique<Stages::EnrichmentStage>());
 
-    LogManager::getInstance().Info("Pipeline initialized with " + std::to_string(pipeline_stages_.size()) + " stages.");
+  // 2. Alarm Stage
+  pipeline_stages_.push_back(std::make_unique<Stages::AlarmStage>());
+
+  // DataProxy Wrappers
+  auto redis_deleter = [](Storage::RedisDataWriter *p) {};
+  std::shared_ptr<Storage::RedisDataWriter> redis_proxy(
+      redis_data_writer_.get(), redis_deleter);
+
+  auto queue_deleter = [](IPersistenceQueue *p) {};
+  std::shared_ptr<IPersistenceQueue> queue_proxy(this, queue_deleter);
+
+  pipeline_stages_.push_back(
+      std::make_unique<Stages::PersistenceStage>(redis_proxy, queue_proxy));
+
+  LogManager::getInstance().Info("Pipeline initialized with " +
+                                 std::to_string(pipeline_stages_.size()) +
+                                 " stages.");
 }
 
 void DataProcessingService::ProcessBatch(
-    const std::vector<Structs::DeviceDataMessage>& batch, 
-    size_t thread_index) {
-    
-    if (batch.empty()) return;
-    
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    try {
-        // LogManager::getInstance().log("processing", LogLevel::INFO, 
-        //     "ProcessBatch Pipeline Start: " + std::to_string(batch.size()) + 
-        //     " messages (Thread " + std::to_string(thread_index) + ")");
-        
-        size_t processed_count = 0;
+    const std::vector<Structs::DeviceDataMessage> &batch, size_t thread_index) {
 
-        for (const auto& message : batch) {
-            try {
-                // Initialize Context
-                PipelineContext context(message);
-                context.should_evaluate_alarms = alarm_evaluation_enabled_.load();
-                
-                // Execute Pipeline
-                for (auto& stage : pipeline_stages_) {
-                    if (!stage->Process(context)) {
-                        break; // Stop if stage returns false
-                    }
-                }
-                
-                // Update Global Counters from Context Stats
-                if (context.stats.virtual_points_added > 0) virtual_points_calculated_.fetch_add(context.stats.virtual_points_added);
-                if (context.stats.alarms_triggered > 0) alarms_evaluated_.fetch_add(1); // Approximate
-                if (context.stats.persisted_to_redis) redis_writes_.fetch_add(1); // Per message or point? 
-                
-                processed_count++;
+  if (batch.empty())
+    return;
 
-            } catch (const std::exception& e) {
-                LogManager::getInstance().Error("Pipeline Error (device=" + message.device_id + "): " + std::string(e.what()));
-                processing_errors_.fetch_add(1);
-            }
+  auto start_time = std::chrono::high_resolution_clock::now();
+
+  try {
+    LogManager::getInstance().log(
+        "processing", LogLevel::INFO,
+        "ProcessBatch Pipeline Start: " + std::to_string(batch.size()) +
+            " messages (Thread " + std::to_string(thread_index) + ")");
+
+    size_t processed_count = 0;
+
+    for (const auto &message : batch) {
+      try {
+        // 🛑 성능 개선: 실패 장비 1~20번 명시적 건너뛰기
+        // (DB에서 비활성화했으므로 워커는 생성되지 않지만, 파이프라인 잔여
+        // 메시지 처리를 위해 유지)
+        int dev_id_int = 0;
+        try {
+          dev_id_int = std::stoi(message.device_id);
+        } catch (...) {
         }
-        
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
-        UpdateStatistics(processed_count, static_cast<double>(duration.count()));
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error("ProcessBatch Critical Error: " + std::string(e.what()));
-        processing_errors_.fetch_add(batch.size());
+
+        if (dev_id_int >= 1 && dev_id_int <= 20) {
+          continue;
+        }
+
+        // Initialize Context
+        PipelineContext context(message);
+        context.should_evaluate_alarms = alarm_evaluation_enabled_.load();
+
+        // Execute Pipeline
+        for (auto &stage : pipeline_stages_) {
+          if (!stage->Process(context)) {
+            break; // Stop if stage returns false
+          }
+        }
+
+        // Update Global Counters from Context Stats
+        if (context.stats.virtual_points_added > 0)
+          virtual_points_calculated_.fetch_add(
+              context.stats.virtual_points_added);
+        if (context.stats.alarms_triggered > 0)
+          alarms_evaluated_.fetch_add(1); // Approximate
+        if (context.stats.persisted_to_redis)
+          redis_writes_.fetch_add(1); // Per message or point?
+
+        processed_count++;
+
+      } catch (const std::exception &e) {
+        LogManager::getInstance().Error(
+            "Pipeline Error (device=" + message.device_id +
+            "): " + std::string(e.what()));
+        processing_errors_.fetch_add(1);
+      }
     }
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        end_time - start_time);
+
+    UpdateStatistics(processed_count, static_cast<double>(duration.count()));
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error("ProcessBatch Critical Error: " +
+                                    std::string(e.what()));
+    processing_errors_.fetch_add(batch.size());
+  }
 }
 
 // IPersistenceQueue Implementation
-void DataProcessingService::QueueRDBTask(const Structs::DeviceDataMessage& message, 
-                                       const std::vector<Structs::TimestampedValue>& points) {
-    PersistenceTask task;
-    task.type = PersistenceTask::Type::RDB_SAVE;
-    task.message = message;
-    task.points = points;
-    persistence_queue_.push(std::move(task));
+void DataProcessingService::QueueRDBTask(
+    const Structs::DeviceDataMessage &message,
+    const std::vector<Structs::TimestampedValue> &points) {
+  PersistenceTask task;
+  task.type = PersistenceTask::Type::RDB_SAVE;
+  task.message = message;
+  task.points = points;
+  // Backpressure Protection: 큐가 가득 차면 데이터를 버림 (10,000개 제한)
+  if (!persistence_queue_.try_push(std::move(task), 10000)) {
+    static std::atomic<int> drop_counter{0};
+    int count = ++drop_counter;
+    if (count % 100 == 1) {
+      LogManager::getInstance().log(
+          "processing", LogLevel::WARN,
+          "Persistence Queue FULL (10,000 items). Dropping RDB data to prevent "
+          "hang! (Count: " +
+              std::to_string(count) + ")");
+    }
+  }
 }
 
-void DataProcessingService::QueueInfluxTask(const Structs::DeviceDataMessage& message, 
-                                          const std::vector<Structs::TimestampedValue>& points) {
-    PersistenceTask task;
-    task.type = PersistenceTask::Type::INFLUX_SAVE;
-    task.message = message;
-    task.points = points;
-    persistence_queue_.push(std::move(task));
+void DataProcessingService::QueueInfluxTask(
+    const Structs::DeviceDataMessage &message,
+    const std::vector<Structs::TimestampedValue> &points) {
+  PersistenceTask task;
+  task.type = PersistenceTask::Type::INFLUX_SAVE;
+  task.message = message;
+  task.points = points;
+  // Backpressure Protection
+  if (!persistence_queue_.try_push(std::move(task), 10000)) {
+    static std::atomic<int> drop_counter{0};
+    int count = ++drop_counter;
+    if (count % 100 == 1) {
+      LogManager::getInstance().log("processing", LogLevel::WARN,
+                                    "Persistence Queue FULL (10,000 items). "
+                                    "Dropping InfluxDB data! (Count: " +
+                                        std::to_string(count) + ")");
+    }
+  }
 }
 
-void DataProcessingService::QueueCommStatsTask(const Structs::DeviceDataMessage& message) {
-    PersistenceTask task;
-    task.type = PersistenceTask::Type::COMM_STATS_SAVE;
-    task.message = message;
-    persistence_queue_.push(std::move(task));
+void DataProcessingService::QueueCommStatsTask(
+    const Structs::DeviceDataMessage &message) {
+  PersistenceTask task;
+  task.type = PersistenceTask::Type::COMM_STATS_SAVE;
+  task.message = message;
+
+  // Backpressure Protection
+  if (!persistence_queue_.try_push(std::move(task), 10000)) {
+    // Comm stats are less critical, drop silently or verbose log
+  }
 }
 
 // =============================================================================
 // 가상포인트 처리
 // =============================================================================
 
-Structs::DeviceDataMessage DataProcessingService::CalculateVirtualPointsAndEnrich(
-    const Structs::DeviceDataMessage& original_message) {
-    
-    try {
-        auto& vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
-        
-        if (!vp_engine.isInitialized()) {
-            return original_message;
-        }
-        
-        auto vp_results = vp_engine.calculateForMessage(original_message);
-        
-        if (vp_results.empty()) {
-            return original_message;
-        }
+Structs::DeviceDataMessage
+DataProcessingService::CalculateVirtualPointsAndEnrich(
+    const Structs::DeviceDataMessage &original_message) {
 
-        // 메시지 확장
-        auto enriched_data = original_message;
-        for (const auto& vp : vp_results) {
-            enriched_data.points.push_back(vp);
-        }
-        
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "메시지 확장 완료: " + std::to_string(enriched_data.points.size()) + 
-            "개 포인트 (가상포인트 " + std::to_string(vp_results.size()) + "개 추가됨)");
-            
-        return enriched_data;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "가상포인트 계산 실패: " + std::string(e.what()));
-        return original_message;
+  try {
+    auto &vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
+
+    if (!vp_engine.isInitialized()) {
+      return original_message;
     }
+
+    auto vp_results = vp_engine.calculateForMessage(original_message);
+
+    if (vp_results.empty()) {
+      return original_message;
+    }
+
+    // 메시지 확장
+    auto enriched_data = original_message;
+    for (const auto &vp : vp_results) {
+      enriched_data.points.push_back(vp);
+    }
+
+    LogManager::getInstance().log(
+        "processing", LogLevel::INFO,
+        "메시지 확장 완료: " + std::to_string(enriched_data.points.size()) +
+            "개 포인트 (가상포인트 " + std::to_string(vp_results.size()) +
+            "개 추가됨)");
+
+    return enriched_data;
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "가상포인트 계산 실패: " +
+                                      std::string(e.what()));
+    return original_message;
+  }
 }
 
-std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPoints(
-    const std::vector<Structs::DeviceDataMessage>& batch) {
-    
-    std::vector<Structs::TimestampedValue> enriched_data;
-    
-    try {
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-            "가상포인트 계산 시작: " + std::to_string(batch.size()) + "개 메시지");
-        
-        // 메시지 내용 상세 분석
-        int total_points = 0;
-        int virtual_point_count = 0;
-        
-        for (const auto& device_msg : batch) {
-            total_points += device_msg.points.size();
-            
-            // 각 포인트의 is_virtual_point 플래그 확인
-            for (const auto& point : device_msg.points) {
-                if (point.is_virtual_point) {
-                    virtual_point_count++;
-                    LogManager::getInstance().log("processing", LogLevel::INFO,
-                        "가상포인트 발견: point_id=" + std::to_string(point.point_id) + 
-                        ", source=" + point.source);
-                }
-            }
+std::vector<Structs::TimestampedValue>
+DataProcessingService::CalculateVirtualPoints(
+    const std::vector<Structs::DeviceDataMessage> &batch) {
+
+  std::vector<Structs::TimestampedValue> enriched_data;
+
+  try {
+    LogManager::getInstance().log(
+        "processing", LogLevel::DEBUG_LEVEL,
+        "가상포인트 계산 시작: " + std::to_string(batch.size()) + "개 메시지");
+
+    // 메시지 내용 상세 분석
+    int total_points = 0;
+    int virtual_point_count = 0;
+
+    for (const auto &device_msg : batch) {
+      total_points += device_msg.points.size();
+
+      // 각 포인트의 is_virtual_point 플래그 확인
+      for (const auto &point : device_msg.points) {
+        if (point.is_virtual_point) {
+          virtual_point_count++;
+          LogManager::getInstance().log(
+              "processing", LogLevel::INFO,
+              "가상포인트 발견: point_id=" + std::to_string(point.point_id) +
+                  ", source=" + point.source);
         }
-        
-        LogManager::getInstance().log("processing", LogLevel::INFO,
-            "포인트 분석: 총 " + std::to_string(total_points) + "개, " +
-            "가상포인트 " + std::to_string(virtual_point_count) + "개");
-        
-        // 원본 데이터를 enriched_data에 복사
-        for (const auto& device_msg : batch) {
-            auto converted = ConvertToTimestampedValues(device_msg);
-            enriched_data.insert(enriched_data.end(), converted.begin(), converted.end());
-        }
-        
-        // VirtualPointEngine 초기화 상태 확인
-        auto& vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
-        
-        if (!vp_engine.isInitialized()) {
-            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-                "VirtualPointEngine이 초기화되지 않음!");
-            
-            // 강제 초기화 시도
-            try {
-                bool init_result = vp_engine.initialize();
-                if (init_result) {
-                    LogManager::getInstance().log("processing", LogLevel::INFO,
-                        "VirtualPointEngine 강제 초기화 성공");
-                } else {
-                    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-                        "VirtualPointEngine 강제 초기화 실패");
-                    return enriched_data;
-                }
-            } catch (const std::exception& e) {
-                LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-                    "VirtualPointEngine 초기화 예외: " + std::string(e.what()));
-                return enriched_data;
-            }
-        }
-        
-        // 가상포인트 계산 실행
-        size_t virtual_points_calculated = 0;
-        
-        for (const auto& device_msg : batch) {
-            try {
-                LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-                    "device_id=" + device_msg.device_id + " 가상포인트 계산 시작");
-                
-                auto vp_results = vp_engine.calculateForMessage(device_msg);
-                
-                LogManager::getInstance().log("processing", LogLevel::INFO,
-                    "device_id=" + device_msg.device_id + "에서 " + 
-                    std::to_string(vp_results.size()) + "개 가상포인트 계산됨");
-                
-                for (const auto& vp_result : vp_results) {
-                    // 가상포인트임을 명시적으로 표시
-                    auto virtual_point_data = vp_result;
-                    virtual_point_data.is_virtual_point = true;
-                    virtual_point_data.source = "VirtualPointEngine";
-                    
-                    enriched_data.push_back(virtual_point_data);
-                    
-                    // Redis 저장
-                    if (redis_data_writer_ && redis_data_writer_->IsConnected()) {
-                        StoreVirtualPointToRedis(virtual_point_data);
-                    }
-                    
-                    // 비동기 큐에 추가
-                    if (vp_batch_writer_) {
-                        vp_batch_writer_->QueueVirtualPointResult(virtual_point_data);
-                    }
-                    
-                    LogManager::getInstance().log("processing", LogLevel::INFO,
-                        "가상포인트 저장 완료: point_id=" + std::to_string(vp_result.point_id));
-                }
-                
-                virtual_points_calculated += vp_results.size();
-                
-            } catch (const std::exception& e) {
-                LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
-                    "가상포인트 계산 실패 (device=" + 
-                    device_msg.device_id + "): " + std::string(e.what()));
-            }
-        }
-        
-        if (virtual_points_calculated > 0) {
-            LogManager::getInstance().log("processing", LogLevel::INFO, 
-                "가상포인트 계산 성공: " + std::to_string(virtual_points_calculated) + "개");
-        } else {
-            LogManager::getInstance().log("processing", LogLevel::WARN, 
-                "계산된 가상포인트 없음 - 다음 사항을 확인하세요:");
-            LogManager::getInstance().log("processing", LogLevel::WARN, 
-                "   1. DB에 활성화된 가상포인트가 있는가?");
-            LogManager::getInstance().log("processing", LogLevel::WARN, 
-                "   2. 입력 데이터포인트가 가상포인트 종속성과 일치하는가?");
-            LogManager::getInstance().log("processing", LogLevel::WARN, 
-                "   3. VirtualPointEngine이 제대로 로드되었는가?");
-        }
-        
-        LogManager::getInstance().log("processing", LogLevel::INFO, 
-            "가상포인트 처리 완료: 총 " + std::to_string(enriched_data.size()) + 
-            "개 데이터 (원본 + 가상포인트)");
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "가상포인트 계산 전체 실패: " + std::string(e.what()));
+      }
     }
-    
-    return enriched_data;
+
+    LogManager::getInstance().log(
+        "processing", LogLevel::INFO,
+        "포인트 분석: 총 " + std::to_string(total_points) + "개, " +
+            "가상포인트 " + std::to_string(virtual_point_count) + "개");
+
+    // 원본 데이터를 enriched_data에 복사
+    for (const auto &device_msg : batch) {
+      auto converted = ConvertToTimestampedValues(device_msg);
+      enriched_data.insert(enriched_data.end(), converted.begin(),
+                           converted.end());
+    }
+
+    // VirtualPointEngine 초기화 상태 확인
+    auto &vp_engine = VirtualPoint::VirtualPointEngine::getInstance();
+
+    if (!vp_engine.isInitialized()) {
+      LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                    "VirtualPointEngine이 초기화되지 않음!");
+
+      // 강제 초기화 시도
+      try {
+        bool init_result = vp_engine.initialize();
+        if (init_result) {
+          LogManager::getInstance().log("processing", LogLevel::INFO,
+                                        "VirtualPointEngine 강제 초기화 성공");
+        } else {
+          LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                        "VirtualPointEngine 강제 초기화 실패");
+          return enriched_data;
+        }
+      } catch (const std::exception &e) {
+        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                      "VirtualPointEngine 초기화 예외: " +
+                                          std::string(e.what()));
+        return enriched_data;
+      }
+    }
+
+    // 가상포인트 계산 실행
+    size_t virtual_points_calculated = 0;
+
+    for (const auto &device_msg : batch) {
+      try {
+        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+                                      "device_id=" + device_msg.device_id +
+                                          " 가상포인트 계산 시작");
+
+        auto vp_results = vp_engine.calculateForMessage(device_msg);
+
+        LogManager::getInstance().log(
+            "processing", LogLevel::INFO,
+            "device_id=" + device_msg.device_id + "에서 " +
+                std::to_string(vp_results.size()) + "개 가상포인트 계산됨");
+
+        for (const auto &vp_result : vp_results) {
+          // 가상포인트임을 명시적으로 표시
+          auto virtual_point_data = vp_result;
+          virtual_point_data.is_virtual_point = true;
+          virtual_point_data.source = "VirtualPointEngine";
+
+          enriched_data.push_back(virtual_point_data);
+
+          // Redis 저장
+          if (redis_data_writer_ && redis_data_writer_->IsConnected()) {
+            StoreVirtualPointToRedis(virtual_point_data);
+          }
+
+          // 비동기 큐에 추가
+          if (vp_batch_writer_) {
+            vp_batch_writer_->QueueVirtualPointResult(virtual_point_data);
+          }
+
+          LogManager::getInstance().log("processing", LogLevel::INFO,
+                                        "가상포인트 저장 완료: point_id=" +
+                                            std::to_string(vp_result.point_id));
+        }
+
+        virtual_points_calculated += vp_results.size();
+
+      } catch (const std::exception &e) {
+        LogManager::getInstance().log(
+            "processing", LogLevel::LOG_ERROR,
+            "가상포인트 계산 실패 (device=" + device_msg.device_id +
+                "): " + std::string(e.what()));
+      }
+    }
+
+    if (virtual_points_calculated > 0) {
+      LogManager::getInstance().log(
+          "processing", LogLevel::INFO,
+          "가상포인트 계산 성공: " + std::to_string(virtual_points_calculated) +
+              "개");
+    } else {
+      LogManager::getInstance().log(
+          "processing", LogLevel::WARN,
+          "계산된 가상포인트 없음 - 다음 사항을 확인하세요:");
+      LogManager::getInstance().log("processing", LogLevel::WARN,
+                                    "   1. DB에 활성화된 가상포인트가 있는가?");
+      LogManager::getInstance().log(
+          "processing", LogLevel::WARN,
+          "   2. 입력 데이터포인트가 가상포인트 종속성과 일치하는가?");
+      LogManager::getInstance().log(
+          "processing", LogLevel::WARN,
+          "   3. VirtualPointEngine이 제대로 로드되었는가?");
+    }
+
+    LogManager::getInstance().log("processing", LogLevel::INFO,
+                                  "가상포인트 처리 완료: 총 " +
+                                      std::to_string(enriched_data.size()) +
+                                      "개 데이터 (원본 + 가상포인트)");
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "가상포인트 계산 전체 실패: " +
+                                      std::string(e.what()));
+  }
+
+  return enriched_data;
 }
 
 // =============================================================================
@@ -641,526 +907,567 @@ std::vector<Structs::TimestampedValue> DataProcessingService::CalculateVirtualPo
 // =============================================================================
 
 void DataProcessingService::EvaluateAlarms(
-    const std::vector<Structs::DeviceDataMessage>& batch, 
-    size_t thread_index) {
-    
-    if (batch.empty()) {
-        return;
+    const std::vector<Structs::DeviceDataMessage> &batch, size_t thread_index) {
+
+  if (batch.empty()) {
+    return;
+  }
+
+  try {
+    auto &alarm_manager = PulseOne::Alarm::AlarmManager::getInstance();
+
+    if (!alarm_manager.isInitialized()) {
+      LogManager::getInstance().log(
+          "processing", LogLevel::DEBUG_LEVEL,
+          "AlarmManager가 초기화되지 않음 - 알람 평가 건너뜀");
+      return;
     }
-    
-    try {
-        auto& alarm_manager = PulseOne::Alarm::AlarmManager::getInstance();
-        
-        if (!alarm_manager.isInitialized()) {
-            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                         "AlarmManager가 초기화되지 않음 - 알람 평가 건너뜀");
-            return;
+
+    LogManager::getInstance().log(
+        "processing", LogLevel::DEBUG_LEVEL,
+        "알람 평가 시작: " + std::to_string(batch.size()) + "개 메시지");
+
+    size_t total_events = 0;
+
+    for (const auto &device_message : batch) {
+      try {
+        auto alarm_events = alarm_manager.evaluateForMessage(device_message);
+        total_events += alarm_events.size();
+
+        if (!alarm_events.empty()) {
+          ProcessAlarmEvents(alarm_events, thread_index);
         }
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "알람 평가 시작: " + std::to_string(batch.size()) + "개 메시지");
-        
-        size_t total_events = 0;
-        
-        for (const auto& device_message : batch) {
-            try {
-                auto alarm_events = alarm_manager.evaluateForMessage(device_message);
-                total_events += alarm_events.size();
-                
-                if (!alarm_events.empty()) {
-                    ProcessAlarmEvents(alarm_events, thread_index);
-                }
-                
-                total_alarms_evaluated_.fetch_add(device_message.points.size());
-                
-            } catch (const std::exception& e) {
-                LogManager::getInstance().log("processing", LogLevel::WARN, 
-                                             "디바이스 알람 평가 실패 (device=" + 
-                                             device_message.device_id + "): " + std::string(e.what()));
-            }
-        }
-        
-        if (total_events > 0) {
-            total_alarms_triggered_.fetch_add(total_events);
-        }
-        
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "알람 평가 완료: " + std::to_string(total_events) + "개 이벤트 생성");
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
-                                     "알람 평가 전체 실패: " + std::string(e.what()));
+
+        total_alarms_evaluated_.fetch_add(device_message.points.size());
+
+      } catch (const std::exception &e) {
+        LogManager::getInstance().log(
+            "processing", LogLevel::WARN,
+            "디바이스 알람 평가 실패 (device=" + device_message.device_id +
+                "): " + std::string(e.what()));
+      }
     }
+
+    if (total_events > 0) {
+      total_alarms_triggered_.fetch_add(total_events);
+    }
+
+    LogManager::getInstance().log(
+        "processing", LogLevel::DEBUG_LEVEL,
+        "알람 평가 완료: " + std::to_string(total_events) + "개 이벤트 생성");
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "알람 평가 전체 실패: " +
+                                      std::string(e.what()));
+  }
 }
 
 // ✅ 컴파일 에러 수정: string 타입 처리 추가
-Storage::BackendFormat::AlarmEventData DataProcessingService::ConvertAlarmEventToBackendFormat(
-    const PulseOne::Alarm::AlarmEvent& alarm_event) const {
-    
-    Storage::BackendFormat::AlarmEventData data;
-    data.rule_id = alarm_event.rule_id;
-    data.tenant_id = alarm_event.tenant_id;
-    data.point_id = alarm_event.point_id;
-    data.device_id = alarm_event.device_id;  // UniqueId는 이미 string 호환
-    data.message = alarm_event.message;
-    
-    // ✅ 타입 수정: enum → string 직접 변환 (AlarmTypes.h 함수 사용)
-    data.severity = PulseOne::Alarm::severityToString(alarm_event.severity);
-    data.state = PulseOne::Alarm::stateToString(alarm_event.state);
-    
-    data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-        alarm_event.occurrence_time.time_since_epoch()).count();
-    data.source_name = alarm_event.source_name;
-    data.location = alarm_event.location;
-    
-    // ✅ DataValue → string 변환 (기존 로직 유지)
-    std::visit([&data](const auto& v) {
+Storage::BackendFormat::AlarmEventData
+DataProcessingService::ConvertAlarmEventToBackendFormat(
+    const PulseOne::Alarm::AlarmEvent &alarm_event) const {
+
+  Storage::BackendFormat::AlarmEventData data;
+  data.rule_id = alarm_event.rule_id;
+  data.tenant_id = alarm_event.tenant_id;
+  data.point_id = alarm_event.point_id;
+  data.device_id = alarm_event.device_id; // UniqueId는 이미 string 호환
+  data.message = alarm_event.message;
+
+  // ✅ 타입 수정: enum → string 직접 변환 (AlarmTypes.h 함수 사용)
+  data.severity = PulseOne::Alarm::severityToString(alarm_event.severity);
+  data.state = PulseOne::Alarm::stateToString(alarm_event.state);
+
+  data.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       alarm_event.occurrence_time.time_since_epoch())
+                       .count();
+  data.source_name = alarm_event.source_name;
+  data.location = alarm_event.location;
+
+  // ✅ DataValue → string 변환 (기존 로직 유지)
+  std::visit(
+      [&data](const auto &v) {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, std::string>) {
-            data.trigger_value = v;
+          data.trigger_value = v;
         } else {
-            data.trigger_value = std::to_string(v);
+          data.trigger_value = std::to_string(v);
         }
-    }, alarm_event.trigger_value);
-    
-    return data;
+      },
+      alarm_event.trigger_value);
+
+  return data;
 }
 
 void DataProcessingService::ProcessAlarmEvents(
-    const std::vector<PulseOne::Alarm::AlarmEvent>& alarm_events,
+    const std::vector<PulseOne::Alarm::AlarmEvent> &alarm_events,
     size_t thread_index) {
-    
-    if (alarm_events.empty()) {
-        return;
-    }
-    
-    try {
-        LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                     "알람 이벤트 후처리: " + std::to_string(alarm_events.size()) + "개");
-        
-        for (const auto& alarm_event : alarm_events) {
-            try {
-                // DB 저장
-                if (alarm_event.state == PulseOne::Alarm::AlarmState::ACTIVE) {
-                    SaveAlarmToDatabase(alarm_event);
-                }
-                
-                // ✅ 컴파일 에러 수정: 올바른 타입으로 변환 후 호출
-                if (redis_data_writer_) {
-                    auto backend_alarm = ConvertAlarmEventToBackendFormat(alarm_event);
-                    redis_data_writer_->PublishAlarmEvent(backend_alarm);  // 변환된 객체 사용
-                    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                                 "RedisDataWriter 알람 발행 완료: rule_id=" + 
-                                                 std::to_string(alarm_event.rule_id));
-                }
-                
-                if (external_notification_enabled_.load()) {
-                    SendExternalNotifications(alarm_event);
-                }
-                
-                NotifyWebClients(alarm_event);
-                
-                if (alarm_event.severity == PulseOne::Alarm::AlarmSeverity::CRITICAL) {
-                    critical_alarms_count_.fetch_add(1);
-                } else if (alarm_event.severity == PulseOne::Alarm::AlarmSeverity::HIGH) {
-                    high_alarms_count_.fetch_add(1);
-                }
-                
-            } catch (const std::exception& e) {
-                HandleError("개별 알람 이벤트 처리 실패", e.what());
-            }
+
+  if (alarm_events.empty()) {
+    return;
+  }
+
+  try {
+    LogManager::getInstance().log(
+        "processing", LogLevel::INFO,
+        "알람 이벤트 후처리: " + std::to_string(alarm_events.size()) + "개");
+
+    for (const auto &alarm_event : alarm_events) {
+      try {
+        // DB 저장
+        if (alarm_event.state == PulseOne::Alarm::AlarmState::ACTIVE) {
+          SaveAlarmToDatabase(alarm_event);
         }
-        
-    } catch (const std::exception& e) {
-        HandleError("알람 이벤트 후처리 전체 실패", e.what());
+
+        // ✅ 컴파일 에러 수정: 올바른 타입으로 변환 후 호출
+        if (redis_data_writer_) {
+          auto backend_alarm = ConvertAlarmEventToBackendFormat(alarm_event);
+          redis_data_writer_->PublishAlarmEvent(
+              backend_alarm); // 변환된 객체 사용
+          LogManager::getInstance().log(
+              "processing", LogLevel::DEBUG_LEVEL,
+              "RedisDataWriter 알람 발행 완료: rule_id=" +
+                  std::to_string(alarm_event.rule_id));
+        }
+
+        if (external_notification_enabled_.load()) {
+          SendExternalNotifications(alarm_event);
+        }
+
+        NotifyWebClients(alarm_event);
+
+        if (alarm_event.severity == PulseOne::Alarm::AlarmSeverity::CRITICAL) {
+          critical_alarms_count_.fetch_add(1);
+        } else if (alarm_event.severity ==
+                   PulseOne::Alarm::AlarmSeverity::HIGH) {
+          high_alarms_count_.fetch_add(1);
+        }
+
+      } catch (const std::exception &e) {
+        HandleError("개별 알람 이벤트 처리 실패", e.what());
+      }
     }
+
+  } catch (const std::exception &e) {
+    HandleError("알람 이벤트 후처리 전체 실패", e.what());
+  }
 }
 
 // =============================================================================
 // 외부 시스템 연동
 // =============================================================================
 
-void DataProcessingService::SendExternalNotifications(const PulseOne::Alarm::AlarmEvent& event) {
-    try {
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "외부 알림 발송 (스텁): rule_id=" + std::to_string(event.rule_id) + 
-                                     ", severity=" + std::to_string(static_cast<int>(event.severity)));
-        
-        if (event.severity >= PulseOne::Alarm::AlarmSeverity::CRITICAL) {
-            LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                         "긴급 알림 발송: " + event.message);
-        } else if (event.severity >= PulseOne::Alarm::AlarmSeverity::HIGH) {
-            LogManager::getInstance().log("processing", LogLevel::INFO, 
-                                         "높은 우선순위 알림 발송: " + event.message);
-        }
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::WARN, 
-                                     "외부 알림 발송 실패: " + std::string(e.what()));
+void DataProcessingService::SendExternalNotifications(
+    const PulseOne::Alarm::AlarmEvent &event) {
+  try {
+    LogManager::getInstance().log(
+        "processing", LogLevel::DEBUG_LEVEL,
+        "외부 알림 발송 (스텁): rule_id=" + std::to_string(event.rule_id) +
+            ", severity=" + std::to_string(static_cast<int>(event.severity)));
+
+    if (event.severity >= PulseOne::Alarm::AlarmSeverity::CRITICAL) {
+      LogManager::getInstance().log("processing", LogLevel::INFO,
+                                    "긴급 알림 발송: " + event.message);
+    } else if (event.severity >= PulseOne::Alarm::AlarmSeverity::HIGH) {
+      LogManager::getInstance().log("processing", LogLevel::INFO,
+                                    "높은 우선순위 알림 발송: " +
+                                        event.message);
     }
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::WARN,
+                                  "외부 알림 발송 실패: " +
+                                      std::string(e.what()));
+  }
 }
 
-void DataProcessingService::NotifyWebClients(const PulseOne::Alarm::AlarmEvent& event) {
-    try {
-        LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL, 
-                                     "웹클라이언트 알림 (스텁): rule_id=" + std::to_string(event.rule_id));
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::WARN, 
-                                     "웹클라이언트 알림 실패: " + std::string(e.what()));
-    }
+void DataProcessingService::NotifyWebClients(
+    const PulseOne::Alarm::AlarmEvent &event) {
+  try {
+    LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+                                  "웹클라이언트 알림 (스텁): rule_id=" +
+                                      std::to_string(event.rule_id));
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::WARN,
+                                  "웹클라이언트 알림 실패: " +
+                                      std::string(e.what()));
+  }
 }
 
 void DataProcessingService::SaveChangedPointsToRDB(
-    const Structs::DeviceDataMessage& message, 
-    const std::vector<Structs::TimestampedValue>& changed_points) {
-    
-    if (changed_points.empty()) {
-        return;
-    }
-    
-    try {
-        auto now_steady = std::chrono::steady_clock::now();
-        std::vector<Structs::TimestampedValue> points_to_save;
+    const Structs::DeviceDataMessage &message,
+    const std::vector<Structs::TimestampedValue> &changed_points) {
 
-        {
-            // 🎯 저장 간격 필터링 (Digital: 상시, Analog: 5분 주기)
-            std::lock_guard<std::mutex> lock(rdb_save_mutex_);
-            for (const auto& point : changed_points) {
-                bool is_digital = std::holds_alternative<bool>(point.value);
-                
-                if (is_digital) {
-                    points_to_save.push_back(point);
-                } else {
-                    auto it = last_rdb_save_times_.find(point.point_id);
-                    if (it == last_rdb_save_times_.end() || 
-                        std::chrono::duration_cast<std::chrono::minutes>(now_steady - it->second).count() >= 5) {
-                        
-                        points_to_save.push_back(point);
-                        last_rdb_save_times_[point.point_id] = now_steady;
-                    }
-                }
-            }
-        }
+  if (changed_points.empty()) {
+    return;
+  }
 
-        if (points_to_save.empty()) {
-            return;
-        }
-        
-        // 🎯 비동기 큐에 태스크 추가 (서비스가 실행 중일 때만)
-        if (is_running_.load()) {
-            PersistenceTask task;
-            task.type = PersistenceTask::Type::RDB_SAVE;
-            task.message = message;
-            task.points = std::move(points_to_save);
-            persistence_queue_.push(std::move(task));
+  try {
+    auto now_steady = std::chrono::steady_clock::now();
+    std::vector<Structs::TimestampedValue> points_to_save;
+
+    {
+      // 🎯 저장 간격 필터링 (Digital: 상시, Analog: 5분 주기)
+      std::lock_guard<std::mutex> lock(rdb_save_mutex_);
+      for (const auto &point : changed_points) {
+        bool is_digital = std::holds_alternative<bool>(point.value);
+
+        if (is_digital) {
+          points_to_save.push_back(point);
         } else {
-            // 서비스가 실행 중이 아니면 동기식으로 저장 (테스트용)
-            auto current_value_repo = Database::RepositoryFactory::getInstance().getCurrentValueRepository();
-            if (current_value_repo) {
-                for (const auto& point : points_to_save) {
-                    try {
-                        auto entity = ConvertToCurrentValueEntity(point, message);
-                        current_value_repo->save(entity);
-                    } catch (...) {}
-                }
-            }
+          auto it = last_rdb_save_times_.find(point.point_id);
+          if (it == last_rdb_save_times_.end() ||
+              std::chrono::duration_cast<std::chrono::minutes>(now_steady -
+                                                               it->second)
+                      .count() >= 5) {
+
+            points_to_save.push_back(point);
+            last_rdb_save_times_[point.point_id] = now_steady;
+          }
         }
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "RDB 저장 예약 실패: " + std::string(e.what()));
+      }
     }
+
+    if (points_to_save.empty()) {
+      return;
+    }
+
+    // 🎯 비동기 큐에 태스크 추가 (서비스가 실행 중일 때만)
+    if (is_running_.load()) {
+      PersistenceTask task;
+      task.type = PersistenceTask::Type::RDB_SAVE;
+      task.message = message;
+      task.points = std::move(points_to_save);
+      persistence_queue_.push(std::move(task));
+    } else {
+      // 서비스가 실행 중이 아니면 동기식으로 저장 (테스트용)
+      auto current_value_repo = Database::RepositoryFactory::getInstance()
+                                    .getCurrentValueRepository();
+      if (current_value_repo) {
+        for (const auto &point : points_to_save) {
+          try {
+            auto entity = ConvertToCurrentValueEntity(point, message);
+            current_value_repo->save(entity);
+          } catch (...) {
+          }
+        }
+      }
+    }
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "RDB 저장 예약 실패: " +
+                                      std::string(e.what()));
+  }
 }
 
 // =============================================================================
 // InfluxDB 저장 메서드들
 // =============================================================================
 
-void DataProcessingService::SaveToInfluxDB(const std::vector<Structs::TimestampedValue>& batch) {
-    if (batch.empty()) {
-        return;
-    }
-    // 🎯 비동기 큐에 태스크 추가 (서비스가 실행 중일 때만)
-    if (is_running_.load()) {
-        PersistenceTask task;
-        task.type = PersistenceTask::Type::INFLUX_SAVE;
-        // 'message' is not available in this scope, assuming it's not needed for this specific task type or should be derived.
-        // task.message = message; 
-        task.points = batch; // Use 'batch' as 'changed_points' from the instruction
-        persistence_queue_.push(std::move(task));
-    } else {
-        // 서비스가 실행 중이 아니면 동기식으로 저장 (테스트용)
-        // auto influx_client = DbLib::DatabaseManager::getInstance().getInfluxClient();
-        /*
-        if (influx_client) {
-            for (const auto& point : batch) { // Use 'batch' as 'changed_points' from the instruction
-                std::visit([&](const auto& val) {
-                    using T = std::decay_t<decltype(val)>;
-                    if constexpr (std::is_arithmetic_v<T>) {
-                        influx_client->writePoint("device_data", "field_" + std::to_string(point.point_id), 
-                            static_cast<double>(val));
-                    }
-                }, point.value);
-            }
+void DataProcessingService::SaveToInfluxDB(
+    const std::vector<Structs::TimestampedValue> &batch) {
+  if (batch.empty()) {
+    return;
+  }
+  // 🎯 비동기 큐에 태스크 추가 (서비스가 실행 중일 때만)
+  if (is_running_.load()) {
+    PersistenceTask task;
+    task.type = PersistenceTask::Type::INFLUX_SAVE;
+    // 'message' is not available in this scope, assuming it's not needed for
+    // this specific task type or should be derived. task.message = message;
+    task.points = batch; // Use 'batch' as 'changed_points' from the instruction
+    persistence_queue_.push(std::move(task));
+  } else {
+    // 서비스가 실행 중이 아니면 동기식으로 저장 (테스트용)
+    // auto influx_client =
+    // DbLib::DatabaseManager::getInstance().getInfluxClient();
+    /*
+    if (influx_client) {
+        for (const auto& point : batch) { // Use 'batch' as 'changed_points'
+    from the instruction std::visit([&](const auto& val) { using T =
+    std::decay_t<decltype(val)>; if constexpr (std::is_arithmetic_v<T>) {
+                    influx_client->writePoint("device_data", "field_" +
+    std::to_string(point.point_id), static_cast<double>(val));
+                }
+            }, point.value);
         }
-        */
     }
+    */
+  }
 }
 
-void DataProcessingService::BufferForInfluxDB(const Structs::DeviceDataMessage& message) {
-    try {
-        PersistenceTask task;
-        task.type = PersistenceTask::Type::INFLUX_SAVE;
-        task.message = message;
-        task.points = ConvertToTimestampedValues(message);
-        
-        persistence_queue_.push(std::move(task));
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "InfluxDB 저장 예약 실패: " + std::string(e.what()));
-    }
+void DataProcessingService::BufferForInfluxDB(
+    const Structs::DeviceDataMessage &message) {
+  try {
+    PersistenceTask task;
+    task.type = PersistenceTask::Type::INFLUX_SAVE;
+    task.message = message;
+    task.points = ConvertToTimestampedValues(message);
+
+    persistence_queue_.push(std::move(task));
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "InfluxDB 저장 예약 실패: " +
+                                      std::string(e.what()));
+  }
 }
 
-void DataProcessingService::BufferCommStatsForInfluxDB(const Structs::DeviceDataMessage& message) {
-    try {
-        PersistenceTask task;
-        task.type = PersistenceTask::Type::COMM_STATS_SAVE;
-        task.message = message;
-        
-        persistence_queue_.push(std::move(task));
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "통계 이력 저장 예약 실패: " + std::string(e.what()));
-    }
+void DataProcessingService::BufferCommStatsForInfluxDB(
+    const Structs::DeviceDataMessage &message) {
+  try {
+    PersistenceTask task;
+    task.type = PersistenceTask::Type::COMM_STATS_SAVE;
+    task.message = message;
+
+    persistence_queue_.push(std::move(task));
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "통계 이력 저장 예약 실패: " +
+                                      std::string(e.what()));
+  }
 }
 
 // =============================================================================
 // 헬퍼 메서드들
 // =============================================================================
 
-std::vector<Structs::TimestampedValue> DataProcessingService::ConvertToTimestampedValues(
-    const Structs::DeviceDataMessage& device_msg) {
-    
-    std::vector<Structs::TimestampedValue> result;
-    result.reserve(device_msg.points.size());
-    
-    for (const auto& point : device_msg.points) {
-        Structs::TimestampedValue tv;
-        tv.point_id = point.point_id;
-        tv.value = point.value;
-        tv.timestamp = point.timestamp;
-        tv.quality = point.quality;
-        tv.value_changed = point.value_changed;
-        
-        result.push_back(tv);
-    }
-    
-    return result;
+std::vector<Structs::TimestampedValue>
+DataProcessingService::ConvertToTimestampedValues(
+    const Structs::DeviceDataMessage &device_msg) {
+
+  std::vector<Structs::TimestampedValue> result;
+  result.reserve(device_msg.points.size());
+
+  for (const auto &point : device_msg.points) {
+    Structs::TimestampedValue tv;
+    tv.point_id = point.point_id;
+    tv.value = point.value;
+    tv.timestamp = point.timestamp;
+    tv.quality = point.quality;
+    tv.value_changed = point.value_changed;
+
+    result.push_back(tv);
+  }
+
+  return result;
 }
 
 std::vector<Structs::TimestampedValue> DataProcessingService::GetChangedPoints(
-    const Structs::DeviceDataMessage& message) {
-    
-    std::vector<Structs::TimestampedValue> changed_points;
-    
-    for (const auto& point : message.points) {
-        if (point.value_changed) {
-            // TimestampedValue로 직접 복사
-            Structs::TimestampedValue data = point;  // 직접 복사
-            changed_points.push_back(data);
-        }
+    const Structs::DeviceDataMessage &message) {
+
+  std::vector<Structs::TimestampedValue> changed_points;
+
+  for (const auto &point : message.points) {
+    if (point.value_changed) {
+      // TimestampedValue로 직접 복사
+      Structs::TimestampedValue data = point; // 직접 복사
+      changed_points.push_back(data);
     }
-    
-    return changed_points;
+  }
+
+  return changed_points;
 }
 
 // =============================================================================
 // JSON 변환 메서드들
 // =============================================================================
 
-std::string DataProcessingService::TimestampedValueToJson(const Structs::TimestampedValue& value) {
-    try {
-        json json_value;
-        json_value["point_id"] = value.point_id;
-        
-        std::visit([&json_value](const auto& v) {
-            json_value["value"] = v;
-        }, value.value);
-        
-        json_value["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-            value.timestamp.time_since_epoch()).count();
-        
-        json_value["quality"] = static_cast<int>(value.quality);
-        
-        if (value.value_changed) {
-            json_value["changed"] = true;
-        }
-        
-        return json_value.dump();
-        
-    } catch (const std::exception& e) {
-        HandleError("JSON 변환 실패", e.what());
-        return R"({"point_id":)" + std::to_string(value.point_id) + 
-               R"(,"value":null,"error":"conversion_failed"})";
+std::string DataProcessingService::TimestampedValueToJson(
+    const Structs::TimestampedValue &value) {
+  try {
+    json json_value;
+    json_value["point_id"] = value.point_id;
+
+    std::visit([&json_value](const auto &v) { json_value["value"] = v; },
+               value.value);
+
+    json_value["timestamp"] =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            value.timestamp.time_since_epoch())
+            .count();
+
+    json_value["quality"] = static_cast<int>(value.quality);
+
+    if (value.value_changed) {
+      json_value["changed"] = true;
     }
+
+    return json_value.dump();
+
+  } catch (const std::exception &e) {
+    HandleError("JSON 변환 실패", e.what());
+    return R"({"point_id":)" + std::to_string(value.point_id) +
+           R"(,"value":null,"error":"conversion_failed"})";
+  }
 }
 
-std::string DataProcessingService::DeviceDataMessageToJson(const Structs::DeviceDataMessage& message) {
-    try {
-        json j;
-        j["device_id"] = message.device_id;
-        j["protocol"] = message.protocol;
-        j["tenant_id"] = message.tenant_id;
-        j["device_status"] = static_cast<int>(message.device_status);
-        j["is_connected"] = message.is_connected;
-        j["manual_status"] = message.manual_status;
-        j["status_message"] = message.status_message;
-        j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-            message.timestamp.time_since_epoch()).count();
-        
-        j["points"] = json::array();
-        for (const auto& point : message.points) {
-            json point_json;
-            point_json["point_id"] = point.point_id;
-            std::visit([&point_json](const auto& v) {
-                point_json["value"] = v;
-            }, point.value);
-            point_json["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-                point.timestamp.time_since_epoch()).count();
-            point_json["quality"] = static_cast<int>(point.quality);
-            point_json["changed"] = point.value_changed;
-            j["points"].push_back(point_json);
-        }
-        
-        return j.dump();
-        
-    } catch (const std::exception& e) {
-        HandleError("DeviceDataMessage JSON 변환 실패", e.what());
-        return R"({"device_id":")" + message.device_id + R"(","error":"conversion_failed"})";
+std::string DataProcessingService::DeviceDataMessageToJson(
+    const Structs::DeviceDataMessage &message) {
+  try {
+    json j;
+    j["device_id"] = message.device_id;
+    j["protocol"] = message.protocol;
+    j["tenant_id"] = message.tenant_id;
+    j["device_status"] = static_cast<int>(message.device_status);
+    j["is_connected"] = message.is_connected;
+    j["manual_status"] = message.manual_status;
+    j["status_message"] = message.status_message;
+    j["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         message.timestamp.time_since_epoch())
+                         .count();
+
+    j["points"] = json::array();
+    for (const auto &point : message.points) {
+      json point_json;
+      point_json["point_id"] = point.point_id;
+      std::visit([&point_json](const auto &v) { point_json["value"] = v; },
+                 point.value);
+      point_json["timestamp"] =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              point.timestamp.time_since_epoch())
+              .count();
+      point_json["quality"] = static_cast<int>(point.quality);
+      point_json["changed"] = point.value_changed;
+      j["points"].push_back(point_json);
     }
+
+    return j.dump();
+
+  } catch (const std::exception &e) {
+    HandleError("DeviceDataMessage JSON 변환 실패", e.what());
+    return R"({"device_id":")" + message.device_id +
+           R"(","error":"conversion_failed"})";
+  }
 }
 
-std::string DataProcessingService::ConvertToLightDeviceStatus(const Structs::DeviceDataMessage& message) {
-    json light_status;
-    light_status["id"] = message.device_id;
-    light_status["proto"] = message.protocol;
-    light_status["status"] = static_cast<int>(message.device_status);
-    light_status["connected"] = message.is_connected;
-    light_status["manual"] = message.manual_status;
-    light_status["msg"] = message.status_message.substr(0, 50);
-    light_status["ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-        message.timestamp.time_since_epoch()).count();
-    
-    light_status["stats"] = {
-        {"fail", message.consecutive_failures},
-        {"total", message.total_points_configured},
-        {"ok", message.successful_points},
-        {"err", message.failed_points},
-        {"rtt", message.response_time.count()}
-    };
-    
-    return light_status.dump();
+std::string DataProcessingService::ConvertToLightDeviceStatus(
+    const Structs::DeviceDataMessage &message) {
+  json light_status;
+  light_status["id"] = message.device_id;
+  light_status["proto"] = message.protocol;
+  light_status["status"] = static_cast<int>(message.device_status);
+  light_status["connected"] = message.is_connected;
+  light_status["manual"] = message.manual_status;
+  light_status["msg"] = message.status_message.substr(0, 50);
+  light_status["ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           message.timestamp.time_since_epoch())
+                           .count();
+
+  light_status["stats"] = {{"fail", message.consecutive_failures},
+                           {"total", message.total_points_configured},
+                           {"ok", message.successful_points},
+                           {"err", message.failed_points},
+                           {"rtt", message.response_time.count()}};
+
+  return light_status.dump();
 }
 
 // ✅ 컴파일 에러 수정: getPointName, getUnit 함수 호출을 멤버 함수로 변경
 std::string DataProcessingService::ConvertToLightPointValue(
-    const Structs::TimestampedValue& value, 
-    const std::string& device_id) {
-    
-    json light_point;
-    
-    // 기본 식별 정보
-    light_point["point_id"] = value.point_id;
-    light_point["device_id"] = device_id;
-    
-    // 간단한 네이밍 (DB 조회 없이)
-    std::string point_name = getPointName(value.point_id);  // 멤버 함수 호출
-    std::string device_name = "device_" + device_id;
-    light_point["key"] = "device:" + device_id + ":" + point_name;
-    
-    light_point["device_name"] = device_name;
-    light_point["point_name"] = point_name;
-    
-    // 실제 값 처리
-    std::visit([&light_point](const auto& v) {
+    const Structs::TimestampedValue &value, const std::string &device_id) {
+
+  json light_point;
+
+  // 기본 식별 정보
+  light_point["point_id"] = value.point_id;
+  light_point["device_id"] = device_id;
+
+  // 간단한 네이밍 (DB 조회 없이)
+  std::string point_name = getPointName(value.point_id); // 멤버 함수 호출
+  std::string device_name = "device_" + device_id;
+  light_point["key"] = "device:" + device_id + ":" + point_name;
+
+  light_point["device_name"] = device_name;
+  light_point["point_name"] = point_name;
+
+  // 실제 값 처리
+  std::visit(
+      [&light_point](const auto &v) {
         using T = std::decay_t<decltype(v)>;
-        
+
         if constexpr (std::is_same_v<T, bool>) {
-            light_point["value"] = v ? "true" : "false";
-            light_point["data_type"] = "boolean";
+          light_point["value"] = v ? "true" : "false";
+          light_point["data_type"] = "boolean";
+        } else if constexpr (std::is_integral_v<T>) {
+          light_point["value"] = std::to_string(v);
+          light_point["data_type"] = "integer";
+        } else if constexpr (std::is_floating_point_v<T>) {
+          // 소수점 2자리까지 문자열로 변환
+          std::ostringstream oss;
+          oss << std::fixed << std::setprecision(2) << v;
+          light_point["value"] = oss.str();
+          light_point["data_type"] = "number";
+        } else if constexpr (std::is_same_v<T, std::string>) {
+          light_point["value"] = v;
+          light_point["data_type"] = "string";
+        } else {
+          light_point["value"] = "unknown";
+          light_point["data_type"] = "unknown";
         }
-        else if constexpr (std::is_integral_v<T>) {
-            light_point["value"] = std::to_string(v);
-            light_point["data_type"] = "integer";
-        }
-        else if constexpr (std::is_floating_point_v<T>) {
-            // 소수점 2자리까지 문자열로 변환
-            std::ostringstream oss;
-            oss << std::fixed << std::setprecision(2) << v;
-            light_point["value"] = oss.str();
-            light_point["data_type"] = "number";
-        }
-        else if constexpr (std::is_same_v<T, std::string>) {
-            light_point["value"] = v;
-            light_point["data_type"] = "string";
-        }
-        else {
-            light_point["value"] = "unknown";
-            light_point["data_type"] = "unknown";
-        }
-    }, value.value);
-    
-    // 타임스탬프 (ISO 8601 형식)
-    auto time_t = std::chrono::system_clock::to_time_t(value.timestamp);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        value.timestamp.time_since_epoch()) % 1000;
-    
-    std::ostringstream timestamp_stream;
-    timestamp_stream << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%S");
-    timestamp_stream << "." << std::setfill('0') << std::setw(3) << ms.count() << "Z";
-    light_point["timestamp"] = timestamp_stream.str();
-    
-    // 품질 상태 (Utils.h의 함수 사용)
-    light_point["quality"] = PulseOne::Utils::DataQualityToString(value.quality, true);
-    
-    // 단위 (멤버 함수 사용)
-    light_point["unit"] = getUnit(value.point_id);
-    
-    // 값 변경 여부
-    if (value.value_changed) {
-        light_point["changed"] = true;
-    }
-    
-    return light_point.dump();
+      },
+      value.value);
+
+  // 타임스탬프 (ISO 8601 형식)
+  auto time_t = std::chrono::system_clock::to_time_t(value.timestamp);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                value.timestamp.time_since_epoch()) %
+            1000;
+
+  std::ostringstream timestamp_stream;
+  timestamp_stream << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+  timestamp_stream << "." << std::setfill('0') << std::setw(3) << ms.count()
+                   << "Z";
+  light_point["timestamp"] = timestamp_stream.str();
+
+  // 품질 상태 (Utils.h의 함수 사용)
+  light_point["quality"] =
+      PulseOne::Utils::DataQualityToString(value.quality, true);
+
+  // 단위 (멤버 함수 사용)
+  light_point["unit"] = getUnit(value.point_id);
+
+  // 값 변경 여부
+  if (value.value_changed) {
+    light_point["changed"] = true;
+  }
+
+  return light_point.dump();
 }
 
-std::string DataProcessingService::ConvertToBatchPointData(const Structs::DeviceDataMessage& message) {
-    json batch_data;
-    batch_data["dev"] = message.device_id;
-    batch_data["proto"] = message.protocol;
-    batch_data["batch_ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-        message.timestamp.time_since_epoch()).count();
-    batch_data["seq"] = message.batch_sequence;
-    
-    batch_data["points"] = json::array();
-    for (const auto& point : message.points) {
-        json p;
-        p["id"] = point.point_id;
-        std::visit([&p](const auto& v) { p["val"] = v; }, point.value);
-        p["ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
-            point.timestamp.time_since_epoch()).count();
-        p["q"] = static_cast<int>(point.quality);
-        if (point.value_changed) p["chg"] = true;
-        batch_data["points"].push_back(p);
-    }
-    
-    return batch_data.dump();
+std::string DataProcessingService::ConvertToBatchPointData(
+    const Structs::DeviceDataMessage &message) {
+  json batch_data;
+  batch_data["dev"] = message.device_id;
+  batch_data["proto"] = message.protocol;
+  batch_data["batch_ts"] =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          message.timestamp.time_since_epoch())
+          .count();
+  batch_data["seq"] = message.batch_sequence;
+
+  batch_data["points"] = json::array();
+  for (const auto &point : message.points) {
+    json p;
+    p["id"] = point.point_id;
+    std::visit([&p](const auto &v) { p["val"] = v; }, point.value);
+    p["ts"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  point.timestamp.time_since_epoch())
+                  .count();
+    p["q"] = static_cast<int>(point.quality);
+    if (point.value_changed)
+      p["chg"] = true;
+    batch_data["points"].push_back(p);
+  }
+
+  return batch_data.dump();
 }
 
 std::string DataProcessingService::getDeviceIdForPoint(int point_id) {
-    return "device_" + std::to_string(point_id / 100);
+  return "device_" + std::to_string(point_id / 100);
 }
 
 // =============================================================================
@@ -1168,248 +1475,270 @@ std::string DataProcessingService::getDeviceIdForPoint(int point_id) {
 // =============================================================================
 
 std::string DataProcessingService::getPointName(int point_id) const {
-    // Backend realtime.js와 일치하는 포인트 이름들
-    std::unordered_map<int, std::string> point_names = {
-        {1, "temperature_sensor_01"},
-        {2, "pressure_sensor_01"},
-        {3, "flow_rate"},
-        {4, "pump_status"},
-        {5, "room_temperature"},
-        {6, "humidity_level"},
-        {7, "fan_speed"},
-        {8, "cooling_mode"},
-        {9, "voltage_l1"},
-        {10, "current_l1"},
-        {11, "power_total"},
-        {12, "energy_consumed"}
-    };
-    
-    auto it = point_names.find(point_id);
-    return (it != point_names.end()) ? it->second : ("point_" + std::to_string(point_id));
+  // Backend realtime.js와 일치하는 포인트 이름들
+  std::unordered_map<int, std::string> point_names = {
+      {1, "temperature_sensor_01"},
+      {2, "pressure_sensor_01"},
+      {3, "flow_rate"},
+      {4, "pump_status"},
+      {5, "room_temperature"},
+      {6, "humidity_level"},
+      {7, "fan_speed"},
+      {8, "cooling_mode"},
+      {9, "voltage_l1"},
+      {10, "current_l1"},
+      {11, "power_total"},
+      {12, "energy_consumed"}};
+
+  auto it = point_names.find(point_id);
+  return (it != point_names.end()) ? it->second
+                                   : ("point_" + std::to_string(point_id));
 }
 
 std::string DataProcessingService::getUnit(int point_id) const {
-    std::unordered_map<int, std::string> units = {
-        {1, "°C"}, {2, "bar"}, {3, "L/min"}, {4, ""}, {5, "°C"},
-        {6, "%"}, {7, "rpm"}, {8, ""}, {9, "V"}, {10, "A"},
-        {11, "W"}, {12, "kWh"}
-    };
-    
-    auto it = units.find(point_id);
-    return (it != units.end()) ? it->second : "";
+  std::unordered_map<int, std::string> units = {
+      {1, "°C"},  {2, "bar"}, {3, "L/min"}, {4, ""},   {5, "°C"}, {6, "%"},
+      {7, "rpm"}, {8, ""},    {9, "V"},     {10, "A"}, {11, "W"}, {12, "kWh"}};
+
+  auto it = units.find(point_id);
+  return (it != units.end()) ? it->second : "";
 }
 
 // =============================================================================
 // 통계 메서드들
 // =============================================================================
 
-void DataProcessingService::UpdateStatistics(size_t processed_count, double processing_time_ms) {
-    total_processing_time_ms_.fetch_add(static_cast<uint64_t>(processing_time_ms));
-    total_operations_.fetch_add(1);
-    
-    if (processed_count > 0) {
-        total_messages_processed_.fetch_add(processed_count);
-        total_batches_processed_.fetch_add(1);
-    }
+void DataProcessingService::UpdateStatistics(size_t processed_count,
+                                             double processing_time_ms) {
+  total_processing_time_ms_.fetch_add(
+      static_cast<uint64_t>(processing_time_ms));
+  total_operations_.fetch_add(1);
+
+  if (processed_count > 0) {
+    total_messages_processed_.fetch_add(processed_count);
+    total_batches_processed_.fetch_add(1);
+  }
 }
 
 void DataProcessingService::UpdateStatistics(size_t point_count) {
-    points_processed_.fetch_add(point_count);
+  points_processed_.fetch_add(point_count);
 }
 
 // ✅ 컴파일 에러 수정: atomic 멤버를 개별적으로 복사
-DataProcessingService::ProcessingStats DataProcessingService::GetStatistics() const {
-    ProcessingStats stats;
-    
-    // atomic 값들을 개별적으로 load해서 복사
-    stats.total_batches_processed.store(total_batches_processed_.load());
-    stats.total_messages_processed.store(total_messages_processed_.load());
-    stats.redis_writes.store(redis_writes_.load());
-    stats.influx_writes.store(influx_writes_.load());
-    stats.processing_errors.store(processing_errors_.load());
-    
-    uint64_t total_ops = total_operations_.load();
-    if (total_ops > 0) {
-        stats.avg_processing_time_ms = static_cast<double>(total_processing_time_ms_.load()) / total_ops;
+DataProcessingService::ProcessingStats
+DataProcessingService::GetStatistics() const {
+  ProcessingStats stats;
+
+  // atomic 값들을 개별적으로 load해서 복사
+  stats.total_batches_processed.store(total_batches_processed_.load());
+  stats.total_messages_processed.store(total_messages_processed_.load());
+  stats.redis_writes.store(redis_writes_.load());
+  stats.influx_writes.store(influx_writes_.load());
+  stats.processing_errors.store(processing_errors_.load());
+
+  uint64_t total_ops = total_operations_.load();
+  if (total_ops > 0) {
+    stats.avg_processing_time_ms =
+        static_cast<double>(total_processing_time_ms_.load()) / total_ops;
+  }
+
+  return stats;
+}
+
+PulseOne::Alarm::AlarmProcessingStats
+DataProcessingService::GetAlarmStatistics() const {
+  PulseOne::Alarm::AlarmProcessingStats stats;
+  stats.total_evaluated = total_alarms_evaluated_.load();
+  stats.total_triggered = total_alarms_triggered_.load();
+  stats.critical_count = critical_alarms_count_.load();
+  stats.high_count = high_alarms_count_.load();
+  return stats;
+}
+
+DataProcessingService::ExtendedProcessingStats
+DataProcessingService::GetExtendedStatistics() const {
+  ExtendedProcessingStats stats;
+
+  // ✅ 컴파일 에러 수정: 대입 연산자 대신 개별 복사
+  auto processing_stats = GetStatistics();
+  stats.processing.total_batches_processed.store(
+      processing_stats.total_batches_processed.load());
+  stats.processing.total_messages_processed.store(
+      processing_stats.total_messages_processed.load());
+  stats.processing.redis_writes.store(processing_stats.redis_writes.load());
+  stats.processing.influx_writes.store(processing_stats.influx_writes.load());
+  stats.processing.processing_errors.store(
+      processing_stats.processing_errors.load());
+  stats.processing.avg_processing_time_ms =
+      processing_stats.avg_processing_time_ms;
+
+  stats.alarms = GetAlarmStatistics();
+  return stats;
+}
+
+void DataProcessingService::HandleError(const std::string &error_message,
+                                        const std::string &context) {
+  std::string full_message = error_message;
+  if (!context.empty()) {
+    full_message += ": " + context;
+  }
+
+  LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                full_message);
+  processing_errors_.fetch_add(1);
+}
+
+PulseOne::Database::Entities::CurrentValueEntity
+DataProcessingService::ConvertToCurrentValueEntity(
+    const Structs::TimestampedValue &point,
+    const Structs::DeviceDataMessage &message) {
+
+  using namespace PulseOne::Database::Entities;
+
+  CurrentValueEntity entity;
+
+  try {
+    entity.setPointId(point.point_id);
+    entity.setValueTimestamp(point.timestamp);
+    entity.setQuality(point.quality);
+
+    // DataVariant를 JSON 문자열로 변환
+    json value_json;
+    std::visit(
+        [&value_json](const auto &value) { value_json["value"] = value; },
+        point.value);
+
+    entity.setCurrentValue(value_json.dump());
+    entity.setRawValue(value_json.dump());
+
+    // 타입 설정
+    std::visit(
+        [&entity](const auto &value) {
+          using T = std::decay_t<decltype(value)>;
+
+          if constexpr (std::is_same_v<T, bool>) {
+            entity.setValueType("BOOL");
+          } else if constexpr (std::is_same_v<T, int16_t>) {
+            entity.setValueType("INT16");
+          } else if constexpr (std::is_same_v<T, uint16_t>) {
+            entity.setValueType("UINT16");
+          } else if constexpr (std::is_same_v<T, int32_t>) {
+            entity.setValueType("INT32");
+          } else if constexpr (std::is_same_v<T, uint32_t>) {
+            entity.setValueType("UINT32");
+          } else if constexpr (std::is_same_v<T, float>) {
+            entity.setValueType("FLOAT32");
+          } else if constexpr (std::is_same_v<T, double>) {
+            entity.setValueType("FLOAT64");
+          } else if constexpr (std::is_same_v<T, std::string>) {
+            entity.setValueType("STRING");
+          }
+        },
+        point.value);
+
+    auto now = std::chrono::system_clock::now();
+    entity.setLastReadTime(now);
+    entity.setUpdatedAt(now);
+
+    return entity;
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log(
+        "processing", LogLevel::LOG_ERROR,
+        "Point " + std::to_string(point.point_id) +
+            " CurrentValueEntity 변환 실패: " + std::string(e.what()));
+    throw;
+  }
+}
+
+void DataProcessingService::SaveChangedPointsToRDB(
+    const Structs::DeviceDataMessage &message) {
+  try {
+    auto changed_points = GetChangedPoints(message);
+
+    if (changed_points.empty()) {
+      LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
+                                    "변화된 포인트가 없음, RDB 저장 건너뜀");
+      return;
     }
-    
-    return stats;
+
+    SaveChangedPointsToRDB(message, changed_points);
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "SaveChangedPointsToRDB(단일) 실패: " +
+                                      std::string(e.what()));
+    HandleError("RDB 저장 실패", e.what());
+  }
 }
 
-PulseOne::Alarm::AlarmProcessingStats DataProcessingService::GetAlarmStatistics() const {
-    PulseOne::Alarm::AlarmProcessingStats stats;
-    stats.total_evaluated = total_alarms_evaluated_.load();
-    stats.total_triggered = total_alarms_triggered_.load();
-    stats.critical_count = critical_alarms_count_.load();
-    stats.high_count = high_alarms_count_.load();
-    return stats;
-}
+void DataProcessingService::SaveAlarmToDatabase(
+    const PulseOne::Alarm::AlarmEvent &event) {
+  try {
+    auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+    auto alarm_occurrence_repo = factory.getAlarmOccurrenceRepository();
 
-DataProcessingService::ExtendedProcessingStats DataProcessingService::GetExtendedStatistics() const {
-    ExtendedProcessingStats stats;
-    
-    // ✅ 컴파일 에러 수정: 대입 연산자 대신 개별 복사
-    auto processing_stats = GetStatistics();
-    stats.processing.total_batches_processed.store(processing_stats.total_batches_processed.load());
-    stats.processing.total_messages_processed.store(processing_stats.total_messages_processed.load());
-    stats.processing.redis_writes.store(processing_stats.redis_writes.load());
-    stats.processing.influx_writes.store(processing_stats.influx_writes.load());
-    stats.processing.processing_errors.store(processing_stats.processing_errors.load());
-    stats.processing.avg_processing_time_ms = processing_stats.avg_processing_time_ms;
-    
-    stats.alarms = GetAlarmStatistics();
-    return stats;
-}
-
-void DataProcessingService::HandleError(const std::string& error_message, const std::string& context) {
-    std::string full_message = error_message;
-    if (!context.empty()) {
-        full_message += ": " + context;
+    if (!alarm_occurrence_repo) {
+      LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                    "AlarmOccurrenceRepository 없음");
+      return;
     }
-    
-    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, full_message);
-    processing_errors_.fetch_add(1);
+
+    PulseOne::Database::Entities::AlarmOccurrenceEntity occurrence;
+    occurrence.setRuleId(event.rule_id);
+    occurrence.setTenantId(event.tenant_id);
+    occurrence.setOccurrenceTime(event.occurrence_time);
+
+    std::string trigger_value_str;
+    std::visit(
+        [&trigger_value_str](auto &&v) {
+          if constexpr (std::is_same_v<std::decay_t<decltype(v)>,
+                                       std::string>) {
+            trigger_value_str = v;
+          } else {
+            trigger_value_str = std::to_string(v);
+          }
+        },
+        event.trigger_value);
+    occurrence.setTriggerValue(trigger_value_str);
+
+    occurrence.setAlarmMessage(event.message);
+    occurrence.setSeverity(event.severity);
+    occurrence.setState(PulseOne::Alarm::AlarmState::ACTIVE);
+    occurrence.setSourceName(event.source_name);
+    occurrence.setLocation(event.location);
+    occurrence.setContextData("{}");
+
+    if (alarm_occurrence_repo->save(occurrence)) {
+      LogManager::getInstance().log("processing", LogLevel::INFO,
+                                    "알람 DB 저장 성공: rule_id=" +
+                                        std::to_string(event.rule_id));
+    } else {
+      LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                    "알람 DB 저장 실패: rule_id=" +
+                                        std::to_string(event.rule_id));
+    }
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
+                                  "알람 DB 저장 예외: " +
+                                      std::string(e.what()));
+  }
 }
 
-PulseOne::Database::Entities::CurrentValueEntity DataProcessingService::ConvertToCurrentValueEntity(
-    const Structs::TimestampedValue& point, 
-    const Structs::DeviceDataMessage& message) {
-    
-    using namespace PulseOne::Database::Entities;
-    
-    CurrentValueEntity entity;
-    
-    try {
-        entity.setPointId(point.point_id);
-        entity.setValueTimestamp(point.timestamp);
-        entity.setQuality(point.quality);
-        
-        // DataVariant를 JSON 문자열로 변환
-        json value_json;
-        std::visit([&value_json](const auto& value) {
-            value_json["value"] = value;
-        }, point.value);
-        
-        entity.setCurrentValue(value_json.dump());
-        entity.setRawValue(value_json.dump());
-        
-        // 타입 설정
-        std::visit([&entity](const auto& value) {
-            using T = std::decay_t<decltype(value)>;
-            
-            if constexpr (std::is_same_v<T, bool>) {
-                entity.setValueType("bool");
-            } else if constexpr (std::is_same_v<T, int16_t>) {
-                entity.setValueType("int16");
-            } else if constexpr (std::is_same_v<T, uint16_t>) {
-                entity.setValueType("uint16");
-            } else if constexpr (std::is_same_v<T, int32_t>) {
-                entity.setValueType("int32");
-            } else if constexpr (std::is_same_v<T, uint32_t>) {
-                entity.setValueType("uint32");
-            } else if constexpr (std::is_same_v<T, float>) {
-                entity.setValueType("float");
-            } else if constexpr (std::is_same_v<T, double>) {
-                entity.setValueType("double");
-            } else if constexpr (std::is_same_v<T, std::string>) {
-                entity.setValueType("string");
-            }
-        }, point.value);
-        
-        auto now = std::chrono::system_clock::now();
-        entity.setLastReadTime(now);
-        entity.setUpdatedAt(now);
-        
-        return entity;
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "Point " + std::to_string(point.point_id) + " CurrentValueEntity 변환 실패: " + 
-            std::string(e.what()));
-        throw;
-    }
-}
-
-
-void DataProcessingService::SaveChangedPointsToRDB(const Structs::DeviceDataMessage& message) {
-    try {
-        auto changed_points = GetChangedPoints(message);
-        
-        if (changed_points.empty()) {
-            LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
-                "변화된 포인트가 없음, RDB 저장 건너뜀");
-            return;
-        }
-        
-        SaveChangedPointsToRDB(message, changed_points);
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR,
-            "SaveChangedPointsToRDB(단일) 실패: " + std::string(e.what()));
-        HandleError("RDB 저장 실패", e.what());
-    }
-}
-
-
-void DataProcessingService::SaveAlarmToDatabase(const PulseOne::Alarm::AlarmEvent& event) {
-    try {
-        auto& factory = PulseOne::Database::RepositoryFactory::getInstance();
-        auto alarm_occurrence_repo = factory.getAlarmOccurrenceRepository();
-        
-        if (!alarm_occurrence_repo) {
-            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
-                "AlarmOccurrenceRepository 없음");
-            return;
-        }
-        
-        PulseOne::Database::Entities::AlarmOccurrenceEntity occurrence;
-        occurrence.setRuleId(event.rule_id);
-        occurrence.setTenantId(event.tenant_id);
-        occurrence.setOccurrenceTime(event.occurrence_time);
-        
-        std::string trigger_value_str;
-        std::visit([&trigger_value_str](auto&& v) {
-            if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::string>) {
-                trigger_value_str = v;
-            } else {
-                trigger_value_str = std::to_string(v);
-            }
-        }, event.trigger_value);
-        occurrence.setTriggerValue(trigger_value_str);
-        
-        occurrence.setAlarmMessage(event.message);
-        occurrence.setSeverity(event.severity);
-        occurrence.setState(PulseOne::Alarm::AlarmState::ACTIVE);
-        occurrence.setSourceName(event.source_name);
-        occurrence.setLocation(event.location);
-        occurrence.setContextData("{}");
-        
-        if (alarm_occurrence_repo->save(occurrence)) {
-            LogManager::getInstance().log("processing", LogLevel::INFO, 
-                "알람 DB 저장 성공: rule_id=" + std::to_string(event.rule_id));
-        } else {
-            LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
-                "알람 DB 저장 실패: rule_id=" + std::to_string(event.rule_id));
-        }
-        
-    } catch (const std::exception& e) {
-        LogManager::getInstance().log("processing", LogLevel::LOG_ERROR, 
-            "알람 DB 저장 예외: " + std::string(e.what()));
-    }
-}
-
-void DataProcessingService::StoreVirtualPointToRedis(const Structs::TimestampedValue& vp_result) {
-    if (redis_data_writer_) {
-        redis_data_writer_->StoreVirtualPointToRedis(vp_result);
-    }
+void DataProcessingService::StoreVirtualPointToRedis(
+    const Structs::TimestampedValue &vp_result) {
+  if (redis_data_writer_) {
+    redis_data_writer_->StoreVirtualPointToRedis(vp_result);
+  }
 }
 
 nlohmann::json DataProcessingService::ExtendedProcessingStats::toJson() const {
-    nlohmann::json j;
-    j["processing"] = processing.toJson();
-    j["alarms"] = alarms.toJson();
-    return j;
+  nlohmann::json j;
+  j["processing"] = processing.toJson();
+  j["alarms"] = alarms.toJson();
+  return j;
 }
 
-}
-}
+} // namespace Pipeline
+} // namespace PulseOne

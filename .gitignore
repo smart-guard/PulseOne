@@ -26,11 +26,7 @@ test_*.db
 core/*/build/
 core/*/bin/
 core/*/lib/
-core/**/bin/
-core/**/build/
-**/bin/
-**/build/
-**/tests/bin/
+core/collector/tests/bin/
 Debug/
 Release/
 x64/

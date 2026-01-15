@@ -1,11 +1,18 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceModal/DeviceBasicInfoTab.tsx
-// 📋 디바이스 기본정보 탭 컴포넌트 - protocol_id 지원
+// 📋 디바이스 기본정보 탭 컴포넌트 - 4 Column Horizontal Layout
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
 import { DeviceApiService, ProtocolInfo } from '../../../api/services/deviceApi';
+import { GroupApiService, DeviceGroup } from '../../../api/services/groupApi';
+import { CollectorApiService, EdgeServer } from '../../../api/services/collectorApi';
+import { ManufactureApiService } from '../../../api/services/manufactureApi';
+import { SiteApiService } from '../../../api/services/siteApi';
+import { Manufacturer, DeviceModel } from '../../../types/manufacturing';
+import { Site } from '../../../types/common';
 import { DeviceBasicInfoTabProps } from './types';
+import '../../../styles/management.css';
 
 const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   device,
@@ -17,16 +24,32 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   // 상태 관리
   // ========================================================================
   const [availableProtocols, setAvailableProtocols] = useState<ProtocolInfo[]>([]);
+  const [availableGroups, setAvailableGroups] = useState<DeviceGroup[]>([]);
+  const [availableCollectors, setAvailableCollectors] = useState<EdgeServer[]>([]);
+  const [availableManufacturers, setAvailableManufacturers] = useState<Manufacturer[]>([]);
+  const [availableModels, setAvailableModels] = useState<DeviceModel[]>([]);
+  const [availableSites, setAvailableSites] = useState<Site[]>([]);
   const [isLoadingProtocols, setIsLoadingProtocols] = useState(false);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
+  const [isLoadingCollectors, setIsLoadingCollectors] = useState(false);
+  const [isLoadingManufacturers, setIsLoadingManufacturers] = useState(false);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isLoadingSites, setIsLoadingSites] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [isSlaveIdDuplicate, setIsSlaveIdDuplicate] = useState(false);
+  const [checkingSlaveId, setCheckingSlaveId] = useState(false);
+
+  // JSON 문자열 상태 (원활한 편집을 위해)
+  const [metadataStr, setMetadataStr] = useState('');
+  const [customFieldsStr, setCustomFieldsStr] = useState('');
 
   const displayData = device || editData;
-  
+
   // RTU 설정 파싱
   const getRtuConfig = () => {
     try {
-      const config = typeof editData?.config === 'string' 
-        ? JSON.parse(editData.config) 
+      const config = typeof editData?.config === 'string'
+        ? JSON.parse(editData.config)
         : editData?.config || {};
       return config;
     } catch {
@@ -47,20 +70,171 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   const loadAvailableProtocols = async () => {
     try {
       setIsLoadingProtocols(true);
-      console.log('📋 프로토콜 목록 로드 시작...');
-      
       // DeviceApiService의 ProtocolManager 사용
       await DeviceApiService.initialize();
       const protocols = DeviceApiService.getProtocolManager().getAllProtocols();
-      
-      console.log('✅ 프로토콜 로드 완료:', protocols);
       setAvailableProtocols(protocols);
-      
     } catch (error) {
       console.error('❌ 프로토콜 목록 로드 실패:', error);
-      setAvailableProtocols(getDefaultProtocols());
+      setAvailableProtocols([]); // API 실패 시 빈 배열 (사용자 요청: 서버 데이터만 표시)
     } finally {
       setIsLoadingProtocols(false);
+    }
+  };
+
+  /**
+   * 그룹 목록 로드
+   */
+  const loadGroups = async () => {
+    try {
+      setIsLoadingGroups(true);
+      const response = await GroupApiService.getGroupTree();
+      if (response.success && response.data) {
+        // 평탄화 작업 (단순 Select용)
+        const flattened: DeviceGroup[] = [];
+        const flatten = (items: DeviceGroup[]) => {
+          items.forEach(item => {
+            flattened.push(item);
+            if (item.children) flatten(item.children);
+          });
+        };
+        flatten(response.data);
+        setAvailableGroups(flattened);
+      }
+    } catch (error) {
+      console.error('❌ 그룹 목록 로드 실패:', error);
+    } finally {
+      setIsLoadingGroups(false);
+    }
+  };
+
+  /**
+   * 콜렉터 목록 로드
+   */
+  const loadCollectors = async () => {
+    try {
+      setIsLoadingCollectors(true);
+      const response = await CollectorApiService.getAllCollectors();
+      if (response.success && response.data) {
+        setAvailableCollectors(response.data);
+      }
+    } catch (error) {
+      console.error('❌ 콜렉터 목록 로드 실패:', error);
+    } finally {
+      setIsLoadingCollectors(false);
+    }
+  };
+
+  /**
+   * 제조사 목록 로드
+   */
+  const loadManufacturers = async () => {
+    try {
+      setIsLoadingManufacturers(true);
+      const response = await ManufactureApiService.getManufacturers({ limit: 100 });
+      if (response.success && response.data) {
+        setAvailableManufacturers(response.data.items || []);
+      }
+    } catch (error) {
+      console.error('❌ 제조사 목록 로드 실패:', error);
+    } finally {
+      setIsLoadingManufacturers(false);
+    }
+  };
+
+  /**
+   * 특정 제조사의 모델 목록 로드
+   */
+  const loadModels = async (manufacturerName: string) => {
+    if (!manufacturerName) {
+      setAvailableModels([]);
+      return;
+    }
+
+    try {
+      setIsLoadingModels(true);
+      // 이름으로 제조사 ID 찾기
+      const manufacturer = availableManufacturers.find(m => m.name === manufacturerName);
+      if (manufacturer) {
+        const response = await ManufactureApiService.getModelsByManufacturer(manufacturer.id, { limit: 100 });
+        if (response.success && response.data) {
+          setAvailableModels(response.data.items || []);
+        }
+      } else {
+        // ID를 못 찾으면 전체 모델 중 필터링 시도 or 검색 API
+        const response = await ManufactureApiService.getModels({ limit: 100 });
+        if (response.success && response.data) {
+          const filtered = response.data.items?.filter(m => m.manufacturer_name === manufacturerName);
+          setAvailableModels(filtered || []);
+        }
+      }
+    } catch (error) {
+      console.error('❌ 모델 목록 로드 실패:', error);
+    } finally {
+      setIsLoadingModels(false);
+    }
+  };
+
+  /**
+   * Modbus RTU Slave ID 중복 체크
+   */
+  const checkSlaveIdDuplication = async () => {
+    if (!editData?.site_id || !editData?.endpoint) return;
+
+    // config 파싱
+    let sId = rtuConfig.slave_id;
+    if (!sId || !isRtuDevice) {
+      setIsSlaveIdDuplicate(false);
+      return;
+    }
+
+    try {
+      setCheckingSlaveId(true);
+      // 동일 사이트, 동일 엔드포인트의 디바이스 목록 조회
+      const response = await DeviceApiService.getDevices({
+        site_id: editData.site_id,
+        limit: 1000 // 충분히 크게
+      });
+
+      if (response.success && response.data?.items) {
+        const duplicate = response.data.items.some(d => {
+          // 자기 자신은 제외 (수정 모드일 때)
+          if (device && d.id === device.id) return false;
+
+          // 엔드포인트 동일 여부
+          if (d.endpoint !== editData.endpoint) return false;
+
+          // Slave ID 동일 여부 (config 내에 존재)
+          try {
+            const dConfig = typeof d.config === 'string' ? JSON.parse(d.config) : d.config;
+            return dConfig?.slave_id === parseInt(sId.toString());
+          } catch {
+            return false;
+          }
+        });
+        setIsSlaveIdDuplicate(duplicate);
+      }
+    } catch (error) {
+      console.error('Slave ID 중복 체크 실패:', error);
+    } finally {
+      setCheckingSlaveId(false);
+    }
+  };
+
+  /**
+   * 사이트 목록 로드
+   */
+  const loadSites = async () => {
+    try {
+      setIsLoadingSites(true);
+      const response = await SiteApiService.getSites({ limit: 100 });
+      if (response.success && response.data) {
+        setAvailableSites(response.data.items || []);
+      }
+    } catch (error) {
+      console.error('❌ 사이트 목록 로드 실패:', error);
+    } finally {
+      setIsLoadingSites(false);
     }
   };
 
@@ -68,42 +242,42 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
    * 기본 프로토콜 목록 - API 호출 실패 시 백업용
    */
   const getDefaultProtocols = (): ProtocolInfo[] => [
-    { 
-      id: 1, 
-      protocol_type: 'MODBUS_TCP', 
-      name: 'Modbus TCP', 
+    {
+      id: 1,
+      protocol_type: 'MODBUS_TCP',
+      name: 'Modbus TCP',
       value: 'MODBUS_TCP',
       description: 'Modbus TCP/IP Protocol',
-      display_name: 'Modbus TCP', 
-      default_port: 502 
+      display_name: 'Modbus TCP',
+      default_port: 502
     },
-    { 
-      id: 2, 
-      protocol_type: 'MODBUS_RTU', 
-      name: 'Modbus RTU', 
+    {
+      id: 2,
+      protocol_type: 'MODBUS_RTU',
+      name: 'Modbus RTU',
       value: 'MODBUS_RTU',
       description: 'Modbus RTU Serial Protocol',
       display_name: 'Modbus RTU',
-      uses_serial: true 
+      uses_serial: true
     },
-    { 
-      id: 3, 
-      protocol_type: 'MQTT', 
-      name: 'MQTT', 
+    {
+      id: 3,
+      protocol_type: 'MQTT',
+      name: 'MQTT',
       value: 'MQTT',
       description: 'MQTT Protocol',
-      display_name: 'MQTT', 
+      display_name: 'MQTT',
       default_port: 1883,
-      requires_broker: true 
+      requires_broker: true
     },
-    { 
-      id: 4, 
-      protocol_type: 'BACNET', 
-      name: 'BACnet', 
+    {
+      id: 4,
+      protocol_type: 'BACNET',
+      name: 'BACnet',
       value: 'BACNET',
       description: 'Building Automation and Control Networks',
-      display_name: 'BACnet', 
-      default_port: 47808 
+      display_name: 'BACnet',
+      default_port: 47808
     }
   ];
 
@@ -119,7 +293,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
     try {
       setIsTestingConnection(true);
       const response = await DeviceApiService.testDeviceConnection(device.id);
-      
+
       if (response.success && response.data) {
         const result = response.data;
         if (result.test_successful) {
@@ -157,12 +331,10 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
     const selectedProtocol = availableProtocols.find(p => p.id === parseInt(protocolId));
     if (!selectedProtocol) return;
 
-    console.log('🔄 프로토콜 변경:', selectedProtocol);
-    
     // protocol_id와 protocol_type 모두 업데이트
     onUpdateField('protocol_id', selectedProtocol.id);
     onUpdateField('protocol_type', selectedProtocol.protocol_type);
-    
+
     // RTU로 변경 시 기본 설정 적용
     if (selectedProtocol.protocol_type === 'MODBUS_RTU') {
       const defaultRtuConfig = {
@@ -174,7 +346,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
         flow_control: 'none'
       };
       onUpdateField('config', defaultRtuConfig);
-      
+
       // 엔드포인트 기본값 설정
       if (!editData?.endpoint) {
         onUpdateField('endpoint', '/dev/ttyUSB0');
@@ -190,7 +362,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
    */
   const handleDeviceRoleChange = (role: string) => {
     const newConfig = { ...rtuConfig, device_role: role };
-    
+
     if (role === 'slave') {
       // 슬래이브로 변경 시 기본 슬래이브 ID 설정
       if (!newConfig.slave_id) {
@@ -201,7 +373,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       delete newConfig.slave_id;
       delete newConfig.master_device_id;
     }
-    
+
     onUpdateField('config', newConfig);
   };
 
@@ -211,7 +383,43 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
   useEffect(() => {
     loadAvailableProtocols();
+    loadGroups();
+    loadCollectors();
+    loadManufacturers();
+    loadSites();
   }, []);
+
+  // 제조사 변경 시 모델 목록 로드 (내부적으로 캐시하거나 필요 시 사용)
+  useEffect(() => {
+    if (editData?.manufacturer) {
+      loadModels(editData.manufacturer);
+    }
+  }, [editData?.manufacturer, availableManufacturers]);
+
+  // Slave ID 중복 체크 트리거
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isRtuDevice && rtuConfig.slave_id && editData?.endpoint && editData?.site_id) {
+        checkSlaveIdDuplication();
+      } else {
+        setIsSlaveIdDuplicate(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [editData?.site_id, editData?.endpoint, rtuConfig.slave_id, isRtuDevice]);
+
+  // JSON 초기화
+  useEffect(() => {
+    if (editData && mode !== 'view') {
+      try {
+        setMetadataStr(JSON.stringify(editData.metadata || {}, null, 2));
+        setCustomFieldsStr(JSON.stringify(editData.custom_fields || {}, null, 2));
+      } catch (e) {
+        console.warn('JSON parsing failed in BasicInfoTab init');
+      }
+    }
+  }, [mode, editData?.id]); // id가 바뀔 때(다른 기기 선택 시) 재초기화
 
   // ========================================================================
   // 헬퍼 함수들
@@ -225,7 +433,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
     if (editData?.protocol_id) {
       return editData.protocol_id;
     }
-    
+
     // 2. protocol_type으로 protocol_id 찾기
     if (editData?.protocol_type) {
       const protocol = availableProtocols.find(p => p.protocol_type === editData.protocol_type);
@@ -233,7 +441,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
         return protocol.id;
       }
     }
-    
+
     // 3. 기본값 (첫 번째 프로토콜)
     return availableProtocols.length > 0 ? availableProtocols[0].id : 1;
   };
@@ -246,12 +454,12 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       const protocol = availableProtocols.find(p => p.id === protocolId);
       return protocol?.display_name || protocol?.name || `Protocol ${protocolId}`;
     }
-    
+
     if (protocolType) {
       const protocol = availableProtocols.find(p => p.protocol_type === protocolType);
       return protocol?.display_name || protocol?.name || protocolType;
     }
-    
+
     return 'N/A';
   };
 
@@ -287,35 +495,57 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   // ========================================================================
 
   return (
-    <div className="tab-panel">
-      <div className="form-grid">
-        
-        {/* 기본 정보 섹션 */}
-        <div className="form-section">
+    <div className="bi-container">
+      {/* 4단 그리드 레이아웃 */}
+      <div className="bi-grid-row">
+
+        {/* 1. 기본 정보 */}
+        <div className="bi-card">
           <h3>📋 기본 정보</h3>
-          
-          <div className="form-row">
-            <div className="form-group">
+          <div className="bi-form-stack">
+            <div className="bi-field">
               <label>디바이스명 *</label>
               {mode === 'view' ? (
-                <div className="form-value">{displayData?.name || 'N/A'}</div>
+                <div className="form-val">{displayData?.name || 'N/A'}</div>
               ) : (
                 <input
                   type="text"
+                  className="bi-input"
                   value={editData?.name || ''}
                   onChange={(e) => onUpdateField('name', e.target.value)}
-                  placeholder="디바이스명을 입력하세요"
+                  placeholder="디바이스명"
                   required
                 />
               )}
             </div>
 
-            <div className="form-group">
-              <label>디바이스 타입</label>
+            <div className="bi-field">
+              <label>설치 사이트 *</label>
               {mode === 'view' ? (
-                <div className="form-value">{displayData?.device_type || 'N/A'}</div>
+                <div className="form-val">{displayData?.site_name || displayData?.site_id || 'N/A'}</div>
               ) : (
                 <select
+                  className="bi-select"
+                  value={editData?.site_id || ''}
+                  onChange={(e) => onUpdateField('site_id', parseInt(e.target.value))}
+                  required
+                >
+                  <option value="">사이트를 선택하세요</option>
+                  {availableSites.map(site => (
+                    <option key={site.id} value={site.id}>{site.name}</option>
+                  ))}
+                  {isLoadingSites && <option disabled>로딩 중...</option>}
+                </select>
+              )}
+            </div>
+
+            <div className="bi-field">
+              <label>디바이스 타입</label>
+              {mode === 'view' ? (
+                <div className="form-val">{displayData?.device_type || 'N/A'}</div>
+              ) : (
+                <select
+                  className="bi-select"
                   value={editData?.device_type || 'PLC'}
                   onChange={(e) => onUpdateField('device_type', e.target.value)}
                 >
@@ -330,616 +560,784 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                 </select>
               )}
             </div>
-          </div>
 
-          <div className="form-group">
-            <label>설명</label>
-            {mode === 'view' ? (
-              <div className="form-value">{displayData?.description || 'N/A'}</div>
-            ) : (
-              <textarea
-                value={editData?.description || ''}
-                onChange={(e) => onUpdateField('description', e.target.value)}
-                placeholder="디바이스에 대한 설명을 입력하세요"
-                rows={3}
-              />
-            )}
+            <div className="bi-field">
+              <label>설명</label>
+              {mode === 'view' ? (
+                <div className="form-val">{displayData?.description || 'N/A'}</div>
+              ) : (
+                <textarea
+                  className="bi-input"
+                  value={editData?.description || ''}
+                  onChange={(e) => onUpdateField('description', e.target.value)}
+                  placeholder="설명"
+                  rows={2}
+                />
+              )}
+            </div>
+
+            <div className="bi-field">
+              <label>장치 그룹 (다중 선택 가능)</label>
+              {mode === 'view' ? (
+                <div className="bi-tag-container">
+                  {displayData?.groups && displayData.groups.length > 0 ? (
+                    displayData.groups.map(g => (
+                      <span key={g.id} className="bi-tag group-tag">
+                        <i className="fas fa-folder"></i> {g.name}
+                      </span>
+                    ))
+                  ) : (
+                    <div className="form-val">그룹 없음</div>
+                  )}
+                </div>
+              ) : (
+                <div className="bi-multi-select-container">
+                  <div className="bi-group-list-scroll">
+                    {availableGroups.length > 0 ? (
+                      availableGroups.map(group => {
+                        const isSelected = (editData?.group_ids || []).includes(group.id);
+                        return (
+                          <div
+                            key={group.id}
+                            className={`bi-group-item ${isSelected ? 'selected' : ''}`}
+                            onClick={() => {
+                              const currentIds = editData?.group_ids || [];
+                              let newIds;
+                              if (currentIds.includes(group.id)) {
+                                newIds = currentIds.filter(id => id !== group.id);
+                              } else {
+                                newIds = [...currentIds, group.id];
+                              }
+                              onUpdateField('group_ids', newIds);
+                              // 대표 서버 호환성 유지 (첫 번째 선택된 그룹)
+                              onUpdateField('device_group_id', newIds.length > 0 ? newIds[0] : null);
+                            }}
+                          >
+                            <i className={`fas ${isSelected ? 'fa-check-square' : 'fa-square'}`}></i>
+                            <span>{group.name}</span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="bi-no-data">사용 가능한 그룹이 없습니다.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* 제조사 정보 섹션 */}
-        <div className="form-section">
+        {/* 2. 제조사 정보 */}
+        <div className="bi-card">
           <h3>🏭 제조사 정보</h3>
-          
-          <div className="form-row">
-            <div className="form-group">
+          <div className="bi-form-stack">
+            <div className="bi-field">
               <label>제조사</label>
               {mode === 'view' ? (
-                <div className="form-value">{displayData?.manufacturer || 'N/A'}</div>
+                <div className="form-val">{displayData?.manufacturer || 'N/A'}</div>
+              ) : (
+                <select
+                  className="bi-input"
+                  value={editData?.manufacturer || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    onUpdateField('manufacturer', value);
+                    // 제조사 변경 시 모델명 초기화
+                    onUpdateField('model', '');
+                  }}
+                >
+                  <option value="">제조사를 선택하세요</option>
+                  {availableManufacturers.map(m => (
+                    <option key={m.id} value={m.name}>{m.name}</option>
+                  ))}
+                  {/* 기존에 목록에 없는 수동 입력값 지원 */}
+                  {editData?.manufacturer && !availableManufacturers.find(m => m.name === editData.manufacturer) && (
+                    <option value={editData.manufacturer}>{editData.manufacturer} (수동 입력됨)</option>
+                  )}
+                </select>
+              )}
+            </div>
+
+            <div className="bi-field">
+              <label>모델명</label>
+              {mode === 'view' ? (
+                <div className="form-val">{displayData?.model || 'N/A'}</div>
               ) : (
                 <input
                   type="text"
-                  value={editData?.manufacturer || ''}
-                  onChange={(e) => onUpdateField('manufacturer', e.target.value)}
-                  placeholder="제조사명"
+                  className="bi-input"
+                  value={editData?.model || ''}
+                  onChange={(e) => onUpdateField('model', e.target.value)}
+                  placeholder="모델명 직접 입력"
                 />
               )}
             </div>
 
-            <div className="form-group">
-              <label>모델명</label>
+            <div className="bi-field">
+              <label>시리얼 번호</label>
               {mode === 'view' ? (
-                <div className="form-value">{displayData?.model || 'N/A'}</div>
+                <div className="form-val">{displayData?.serial_number || 'N/A'}</div>
               ) : (
                 <input
                   type="text"
-                  value={editData?.model || ''}
-                  onChange={(e) => onUpdateField('model', e.target.value)}
-                  placeholder="모델명"
+                  className="bi-input"
+                  value={editData?.serial_number || ''}
+                  onChange={(e) => onUpdateField('serial_number', e.target.value)}
+                  placeholder="시리얼 번호"
+                />
+              )}
+            </div>
+
+            <div className="bi-field">
+              <label>태그 (쉼표로 구분)</label>
+              {mode === 'view' ? (
+                <div className="bi-tag-container">
+                  {Array.isArray(displayData?.tags) ? (
+                    displayData.tags.map(tag => <span key={tag} className="bi-tag">{tag}</span>)
+                  ) : displayData?.tags ? (
+                    (() => {
+                      try {
+                        const parsed = typeof displayData.tags === 'string' ? JSON.parse(displayData.tags) : displayData.tags;
+                        return Array.isArray(parsed)
+                          ? parsed.map((tag: string) => <span key={tag} className="bi-tag">{tag}</span>)
+                          : <span className="bi-tag">{parsed}</span>;
+                      } catch (e) {
+                        return <span className="bi-tag">{displayData.tags}</span>;
+                      }
+                    })()
+                  ) : 'N/A'}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  className="bi-input"
+                  value={Array.isArray(editData?.tags) ? editData.tags.join(', ') : editData?.tags || ''}
+                  onChange={(e) => onUpdateField('tags', e.target.value.split(',').map(s => s.trim()).filter(s => s))}
+                  placeholder="예: 센서, 1층, 중요"
                 />
               )}
             </div>
           </div>
+        </div>
 
-          <div className="form-group">
-            <label>시리얼 번호</label>
-            {mode === 'view' ? (
-              <div className="form-value">{displayData?.serial_number || 'N/A'}</div>
-            ) : (
-              <input
-                type="text"
-                value={editData?.serial_number || ''}
-                onChange={(e) => onUpdateField('serial_number', e.target.value)}
-                placeholder="시리얼 번호"
-              />
+        {/* 3. 운영 설정 */}
+        <div className="bi-card">
+          <h3>⚙️ 운영 설정</h3>
+          <div className="bi-form-stack">
+            <div className="bi-field-row">
+              <div className="bi-field flex-1">
+                <label>폴링 (ms)</label>
+                {mode === 'view' ? (
+                  <div className="form-val">{displayData?.polling_interval || 'N/A'}</div>
+                ) : (
+                  <input
+                    type="number"
+                    className="bi-input"
+                    value={editData?.polling_interval || (isRtuDevice ? 2000 : 1000)}
+                    onChange={(e) => onUpdateField('polling_interval', parseInt(e.target.value))}
+                    min="100"
+                    step="100"
+                  />
+                )}
+              </div>
+              <div className="bi-field flex-1">
+                <label>타임아웃</label>
+                {mode === 'view' ? (
+                  <div className="form-val">{displayData?.timeout || 'N/A'}</div>
+                ) : (
+                  <input
+                    type="number"
+                    className="bi-input"
+                    value={editData?.timeout || (isRtuDevice ? 3000 : 5000)}
+                    onChange={(e) => onUpdateField('timeout', parseInt(e.target.value))}
+                    min="1000"
+                    step="1000"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="bi-field">
+              <label>재시도 횟수</label>
+              <div className="flex-row gap-2">
+                {mode === 'view' ? (
+                  <div className="form-val">{displayData?.retry_count || 'N/A'}</div>
+                ) : (
+                  <input
+                    type="number"
+                    className="bi-input"
+                    value={editData?.retry_count || 3}
+                    onChange={(e) => onUpdateField('retry_count', parseInt(e.target.value))}
+                    min="0"
+                    max="10"
+                    style={{ width: '60px' }}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="bi-field">
+              <label>활성화</label>
+              {mode === 'view' ? (
+                <span className={`status-badge-left ${displayData?.is_enabled ? 'enabled' : 'disabled'}`}>
+                  {displayData?.is_enabled ? '활성화됨' : '비활성화됨'}
+                </span>
+              ) : (
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={editData?.is_enabled !== false}
+                    onChange={(e) => onUpdateField('is_enabled', e.target.checked)}
+                  />
+                  <span className="slider"></span>
+                </label>
+              )}
+            </div>
+
+            <div className="bi-field">
+              <label>담당 콜렉터 (Edge Server) *</label>
+              {mode === 'view' ? (
+                <div className="form-val">
+                  {availableCollectors.find(c => c.id === displayData?.edge_server_id)?.name || `ID: ${displayData?.edge_server_id || '0 (Default)'}`}
+                </div>
+              ) : (
+                <select
+                  className="bi-select"
+                  value={editData?.edge_server_id || 0}
+                  onChange={(e) => onUpdateField('edge_server_id', parseInt(e.target.value))}
+                  required
+                >
+                  <option value={0}>기본 콜렉터 (ID: 0)</option>
+                  {availableCollectors.map(collector => (
+                    <option key={collector.id} value={collector.id}>
+                      {collector.name} ({collector.host})
+                    </option>
+                  ))}
+                </select>
+              )}
+              {mode !== 'view' && (
+                <div className="hint-text">
+                  이 장치의 데이터를 수집할 물리적 서버를 선택하세요.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. 네트워크 설정 (Moved here) */}
+        <div className="bi-card">
+          <h3>🌐 네트워크 설정</h3>
+
+          <div className="bi-form-stack">
+            <div className="bi-field">
+              <label>프로토콜 *</label>
+              {mode === 'view' ? (
+                <div className="form-val">
+                  {getProtocolDisplayName(displayData?.protocol_type, displayData?.protocol_id)}
+                </div>
+              ) : (
+                <select
+                  className="bi-select"
+                  value={getCurrentProtocolId()}
+                  onChange={(e) => handleProtocolChange(e.target.value)}
+                  disabled={isLoadingProtocols}
+                >
+                  {isLoadingProtocols ? (
+                    <option>로딩 중...</option>
+                  ) : availableProtocols.length > 0 ? (
+                    availableProtocols.map(protocol => (
+                      <option key={protocol.id} value={protocol.id}>
+                        {protocol.display_name || protocol.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option>프로토콜 없음</option>
+                  )}
+                </select>
+              )}
+            </div>
+
+            <div className="bi-field">
+              <label>{isRtuDevice ? '포트 *' : '엔드포인트 *'}</label>
+              {mode === 'view' ? (
+                <div className="form-val text-break">{displayData?.endpoint || 'N/A'}</div>
+              ) : (
+                <input
+                  type="text"
+                  className="bi-input"
+                  value={editData?.endpoint || ''}
+                  onChange={(e) => onUpdateField('endpoint', e.target.value)}
+                  placeholder={getEndpointPlaceholder(editData?.protocol_type)}
+                  required
+                />
+              )}
+              {mode !== 'view' && (
+                <div className="hint-text">
+                  예시: {getEndpointPlaceholder(editData?.protocol_type)}
+                </div>
+              )}
+            </div>
+
+            {mode === 'view' && displayData?.protocol && displayData.protocol.default_port && (
+              <div className="bi-field">
+                <label>기본 포트</label>
+                <div className="form-val">{displayData.protocol.default_port}</div>
+              </div>
+            )}
+
+            {/* 연결 테스트 버튼 (View 모드) */}
+            {mode === 'view' && device?.id && (
+              <div className="bi-field" style={{ marginTop: 'auto' }}>
+                <button
+                  type="button"
+                  className="bi-btn-test"
+                  onClick={handleTestConnection}
+                  disabled={isTestingConnection}
+                >
+                  {isTestingConnection ? (
+                    <i className="fas fa-spinner fa-spin"></i>
+                  ) : (
+                    <i className="fas fa-plug"></i>
+                  )}
+                  {isTestingConnection ? '...' : '테스트'}
+                </button>
+              </div>
             )}
           </div>
         </div>
 
-        {/* 네트워크 설정 섹션 */}
-        <div className="form-section">
-          <h3>🌐 네트워크 설정</h3>
-          
-          <div className="form-group">
-            <label>프로토콜 *</label>
-            {mode === 'view' ? (
-              <div className="form-value">
-                {getProtocolDisplayName(displayData?.protocol_type, displayData?.protocol_id)}
-                {displayData?.protocol && displayData.protocol.default_port && (
-                  <span className="protocol-port"> (Port: {displayData.protocol.default_port})</span>
-                )}
-              </div>
-            ) : (
-              <>
-                {isLoadingProtocols ? (
-                  <select disabled>
-                    <option>프로토콜 로딩 중...</option>
-                  </select>
-                ) : availableProtocols.length === 0 ? (
-                  <select disabled>
-                    <option>프로토콜을 불러올 수 없습니다</option>
-                  </select>
-                ) : (
-                  <select
-                    value={getCurrentProtocolId()}
-                    onChange={(e) => handleProtocolChange(e.target.value)}
-                  >
-                    {availableProtocols.map(protocol => (
-                      <option key={protocol.id} value={protocol.id}>
-                        {protocol.display_name || protocol.name}
-                        {protocol.default_port && ` (Port: ${protocol.default_port})`}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                
-                {/* 디버깅 정보 - 개발 중에만 표시 */}
-                {process.env.NODE_ENV === 'development' && (
-                  <div className="debug-info">
-                    <small style={{ color: '#666', fontSize: '0.7em' }}>
-                      로딩: {isLoadingProtocols ? 'Y' : 'N'} | 
-                      개수: {availableProtocols.length} | 
-                      protocol_id: {editData?.protocol_id || 'none'} | 
-                      protocol_type: {editData?.protocol_type || 'none'}
-                    </small>
-                  </div>
-                )}
-              </>
-            )}
+      </div>
+      {/* 4단 그리드 END */}
+
+      {/* RTU 상세 설정 (If applicable, shows below) */}
+      {isRtuDevice && mode !== 'view' && (
+        <div className="bi-card full-width">
+          <div className="bi-rtu-header">
+            <i className="fas fa-microchip"></i> RTU 상세 설정
           </div>
 
-          <div className="form-group">
-            <label>{isRtuDevice ? '시리얼 포트 *' : '엔드포인트 *'}</label>
-            {mode === 'view' ? (
-              <div className="form-value">{displayData?.endpoint || 'N/A'}</div>
-            ) : (
-              <input
-                type="text"
-                value={editData?.endpoint || ''}
-                onChange={(e) => onUpdateField('endpoint', e.target.value)}
-                placeholder={getEndpointPlaceholder(editData?.protocol_type)}
-                required
-              />
-            )}
-            <div className="form-hint">
-              {editData?.protocol_type && `예시: ${getEndpointPlaceholder(editData.protocol_type)}`}
-            </div>
-          </div>
-
-          {/* RTU 전용 설정 */}
-          {isRtuDevice && mode !== 'view' && (
-            <>
-              {/* 디바이스 역할 */}
-              <div className="form-group">
-                <label>디바이스 역할 *</label>
+          <div className="bi-grid-row"> {/* Use grid for RTU params too */}
+            <div className="bi-form-stack">
+              <div className="bi-field">
+                <label>역할</label>
                 <select
+                  className="bi-select"
                   value={rtuConfig.device_role || 'master'}
                   onChange={(e) => handleDeviceRoleChange(e.target.value)}
                 >
-                  <option value="master">마스터 (Master)</option>
-                  <option value="slave">슬래이브 (Slave)</option>
+                  <option value="master">마스터</option>
+                  <option value="slave">슬래이브</option>
                 </select>
-                <div className="form-hint">
-                  마스터: 다른 슬래이브 디바이스들을 관리 | 슬래이브: 마스터의 요청에 응답
-                </div>
               </div>
-
-              {/* 슬래이브 ID (슬래이브인 경우만) */}
               {rtuConfig.device_role === 'slave' && (
-                <div className="form-group">
-                  <label>슬래이브 ID *</label>
+                <div className="bi-field">
+                  <label>Slave ID</label>
                   <input
                     type="number"
+                    className="bi-input"
                     value={rtuConfig.slave_id || 1}
                     onChange={(e) => updateRtuConfig('slave_id', parseInt(e.target.value))}
                     min="1"
                     max="247"
-                    required
                   />
-                  <div className="form-hint">
-                    1~247 사이의 고유한 슬래이브 ID
-                  </div>
                 </div>
               )}
+            </div>
 
-              {/* 시리얼 통신 파라미터 */}
-              <div className="rtu-section">
-                <h4>⚡ 시리얼 통신 설정</h4>
-                
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Baud Rate</label>
-                    <select
-                      value={rtuConfig.baud_rate || 9600}
-                      onChange={(e) => updateRtuConfig('baud_rate', parseInt(e.target.value))}
-                    >
-                      <option value={1200}>1200 bps</option>
-                      <option value={2400}>2400 bps</option>
-                      <option value={4800}>4800 bps</option>
-                      <option value={9600}>9600 bps</option>
-                      <option value={19200}>19200 bps</option>
-                      <option value={38400}>38400 bps</option>
-                      <option value={57600}>57600 bps</option>
-                      <option value={115200}>115200 bps</option>
-                    </select>
-                  </div>
+            <div className="bi-form-stack">
+              <div className="bi-field">
+                <label>Baud Rate</label>
+                <select
+                  className="bi-select"
+                  value={rtuConfig.baud_rate || 9600}
+                  onChange={(e) => updateRtuConfig('baud_rate', parseInt(e.target.value))}
+                >
+                  {[1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map(bps => (
+                    <option key={bps} value={bps}>{bps} bps</option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-                  <div className="form-group">
-                    <label>Data Bits</label>
-                    <select
-                      value={rtuConfig.data_bits || 8}
-                      onChange={(e) => updateRtuConfig('data_bits', parseInt(e.target.value))}
-                    >
-                      <option value={7}>7 bits</option>
-                      <option value={8}>8 bits</option>
-                    </select>
-                  </div>
-                </div>
+            <div className="bi-form-stack">
+              <div className="bi-field">
+                <label>Data Bits</label>
+                <select
+                  className="bi-select"
+                  value={rtuConfig.data_bits || 8}
+                  onChange={(e) => updateRtuConfig('data_bits', parseInt(e.target.value))}
+                >
+                  <option value={7}>7</option>
+                  <option value={8}>8</option>
+                </select>
+              </div>
+            </div>
 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Stop Bits</label>
-                    <select
-                      value={rtuConfig.stop_bits || 1}
-                      onChange={(e) => updateRtuConfig('stop_bits', parseInt(e.target.value))}
-                    >
-                      <option value={1}>1 bit</option>
-                      <option value={2}>2 bits</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Parity</label>
-                    <select
-                      value={rtuConfig.parity || 'N'}
-                      onChange={(e) => updateRtuConfig('parity', e.target.value)}
-                    >
-                      <option value="N">None</option>
-                      <option value="E">Even</option>
-                      <option value="O">Odd</option>
-                    </select>
-                  </div>
+            <div className="bi-form-stack">
+              <div className="bi-field">
+                <label>Parity / Stop</label>
+                <div className="bi-field-row">
+                  <select
+                    className="bi-select"
+                    value={rtuConfig.parity || 'N'}
+                    onChange={(e) => updateRtuConfig('parity', e.target.value)}
+                  >
+                    <option value="N">N</option>
+                    <option value="E">E</option>
+                    <option value="O">O</option>
+                  </select>
+                  <select
+                    className="bi-select"
+                    value={rtuConfig.stop_bits || 1}
+                    onChange={(e) => updateRtuConfig('stop_bits', parseInt(e.target.value))}
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                  </select>
                 </div>
               </div>
-            </>
-          )}
+            </div>
 
-          {/* 연결 테스트 버튼 */}
-          {mode === 'view' && device?.id && (
-            <div className="form-group">
-              <button
-                type="button"
-                className="btn btn-info"
-                onClick={handleTestConnection}
-                disabled={isTestingConnection}
-              >
-                {isTestingConnection ? (
-                  <>
-                    <i className="fas fa-spinner fa-spin"></i>
-                    테스트 중...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-plug"></i>
-                    연결 테스트
-                  </>
-                )}
-              </button>
+          </div>
+          {isSlaveIdDuplicate && (
+            <div className="bi-error-banner" style={{ marginTop: '10px', padding: '8px', background: 'rgba(255, 0, 0, 0.1)', color: '#d32f2f', borderRadius: '4px', fontSize: '0.85rem' }}>
+              <i className="fas fa-exclamation-triangle"></i> 동일 사이트 및 엔드포인트에 이미 같은 Slave ID가 존재합니다.
             </div>
           )}
         </div>
+      )}
 
-        {/* 운영 설정 섹션 */}
-        <div className="form-section">
-          <h3>⚙️ 운영 설정</h3>
-          
-          <div className="form-row">
-            <div className="form-group">
-              <label>폴링 간격 (ms)</label>
+      {/* 5. 고급 데이터 (엔지니어링 메타데이터) */}
+      {(mode === 'edit' || mode === 'create' || (mode === 'view' && (Object.keys(displayData?.metadata || {}).length > 0 || Object.keys(displayData?.custom_fields || {}).length > 0))) && (
+        <div className="bi-card full-width" style={{ marginTop: '16px' }}>
+          <h3><i className="fas fa-database"></i> 확장 엔지니어링 데이터</h3>
+          <div className="bi-grid-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="bi-field">
+              <label>시스템 메타데이터 (JSON)</label>
               {mode === 'view' ? (
-                <div className="form-value">{displayData?.polling_interval || 'N/A'}</div>
+                <pre className="json-preview">{JSON.stringify(displayData?.metadata || {}, null, 2)}</pre>
               ) : (
-                <input
-                  type="number"
-                  value={editData?.polling_interval || (isRtuDevice ? 2000 : 1000)}
-                  onChange={(e) => onUpdateField('polling_interval', parseInt(e.target.value))}
-                  min="100"
-                  max="60000"
-                  step="100"
-                />
-              )}
-              <div className="form-hint">
-                {isRtuDevice ? 'RTU 권장값: 2000ms 이상' : '일반 권장값: 1000ms'}
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>타임아웃 (ms)</label>
-              {mode === 'view' ? (
-                <div className="form-value">{displayData?.timeout || 'N/A'}</div>
-              ) : (
-                <input
-                  type="number"
-                  value={editData?.timeout || (isRtuDevice ? 3000 : 5000)}
-                  onChange={(e) => onUpdateField('timeout', parseInt(e.target.value))}
-                  min="1000"
-                  max="30000"
-                  step="1000"
+                <textarea
+                  className="bi-input json-input"
+                  value={metadataStr}
+                  onChange={(e) => {
+                    setMetadataStr(e.target.value);
+                    try {
+                      const parsed = JSON.parse(e.target.value);
+                      onUpdateField('metadata', parsed);
+                    } catch { }
+                  }}
+                  placeholder='{"key": "value"}'
+                  rows={6}
                 />
               )}
             </div>
-
-            <div className="form-group">
-              <label>재시도 횟수</label>
+            <div className="bi-field">
+              <label>사용자 정의 필드 (JSON)</label>
               {mode === 'view' ? (
-                <div className="form-value">{displayData?.retry_count || 'N/A'}</div>
+                <pre className="json-preview">{JSON.stringify(displayData?.custom_fields || {}, null, 2)}</pre>
               ) : (
-                <input
-                  type="number"
-                  value={editData?.retry_count || 3}
-                  onChange={(e) => onUpdateField('retry_count', parseInt(e.target.value))}
-                  min="0"
-                  max="10"
+                <textarea
+                  className="bi-input json-input"
+                  value={customFieldsStr}
+                  onChange={(e) => {
+                    setCustomFieldsStr(e.target.value);
+                    try {
+                      const parsed = JSON.parse(e.target.value);
+                      onUpdateField('custom_fields', parsed);
+                    } catch { }
+                  }}
+                  placeholder='{"field": "info"}'
+                  rows={6}
                 />
               )}
             </div>
           </div>
-
-          <div className="form-group">
-            <label>활성화</label>
-            {mode === 'view' ? (
-              <div className="form-value">
-                <span className={`status-badge ${displayData?.is_enabled ? 'enabled' : 'disabled'}`}>
-                  {displayData?.is_enabled ? '활성화됨' : '비활성화됨'}
-                </span>
-              </div>
-            ) : (
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={editData?.is_enabled !== false}
-                  onChange={(e) => onUpdateField('is_enabled', e.target.checked)}
-                />
-                <span className="slider"></span>
-              </label>
-            )}
-          </div>
         </div>
+      )}
 
-        {/* 추가 정보 섹션 */}
-        {mode === 'view' && (
-          <div className="form-section">
-            <h3>ℹ️ 추가 정보</h3>
-            
-            <div className="form-row">
-              <div className="form-group">
-                <label>생성일시</label>
-                <div className="form-value">
-                  {displayData?.created_at ? new Date(displayData.created_at).toLocaleString() : 'N/A'}
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>수정일시</label>
-                <div className="form-value">
-                  {displayData?.updated_at ? new Date(displayData.updated_at).toLocaleString() : 'N/A'}
-                </div>
-              </div>
+      {/* 5. 추가 정보 (View Mode Only) */}
+      {mode === 'view' && (
+        <div className="bi-card full-width">
+          <h3>ℹ️ 추가 정보</h3>
+          <div className="bi-field-row">
+            <div className="bi-field">
+              <label>생성: </label>
+              <span className="form-val-inline">{displayData?.created_at ? new Date(displayData.created_at).toLocaleString() : '-'}</span>
             </div>
-
+            <div className="bi-field">
+              <label>수정: </label>
+              <span className="form-val-inline">{displayData?.updated_at ? new Date(displayData.updated_at).toLocaleString() : '-'}</span>
+            </div>
             {displayData?.installation_date && (
-              <div className="form-group">
-                <label>설치일자</label>
-                <div className="form-value">
-                  {new Date(displayData.installation_date).toLocaleDateString()}
-                </div>
-              </div>
-            )}
-            
-            {/* 프로토콜 상세 정보 표시 */}
-            {displayData?.protocol && (
-              <div className="form-group">
-                <label>프로토콜 상세 정보</label>
-                <div className="protocol-details">
-                  <div><strong>ID:</strong> {displayData.protocol.id}</div>
-                  <div><strong>타입:</strong> {displayData.protocol.type}</div>
-                  {displayData.protocol.category && (
-                    <div><strong>카테고리:</strong> {displayData.protocol.category}</div>
-                  )}
-                  {displayData.protocol.default_port && (
-                    <div><strong>기본 포트:</strong> {displayData.protocol.default_port}</div>
-                  )}
-                </div>
+              <div className="bi-field">
+                <label>설치: </label>
+                <span className="form-val-inline">{new Date(displayData.installation_date).toLocaleDateString()}</span>
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* 스타일 */}
-      <style jsx>{`
-        .tab-panel {
-          flex: 1;
-          padding: 1.5rem;
+
+      <style>{`
+        .bi-container {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          height: 100%;
           overflow-y: auto;
+          box-sizing: border-box;
+          padding: 8px;
+          background: #f8fafc;
         }
 
-        .form-grid {
-          display: flex;
-          flex-direction: column;
-          gap: 2rem;
-        }
-
-        .form-section {
-          border: 1px solid #e5e7eb;
-          border-radius: 0.5rem;
-          padding: 1.5rem;
-          background: #fafafa;
-        }
-
-        .form-section h3 {
-          margin: 0 0 1rem 0;
-          font-size: 1rem;
-          font-weight: 600;
-          color: #374151;
-        }
-
-        .rtu-section {
-          margin-top: 1.5rem;
-          padding-top: 1.5rem;
-          border-top: 1px solid #e5e7eb;
-        }
-
-        .rtu-section h4 {
-          margin: 0 0 1rem 0;
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: #374151;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-
-        .form-row {
+        .bi-grid-row {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 1rem;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 12px;
+          flex-shrink: 0;
         }
 
-        .form-group {
+        .bi-card {
+           background: white;
+           border: 1px solid #e2e8f0;
+           border-radius: 8px;
+           padding: 16px;
+           box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+           display: flex;
+           flex-direction: column;
+           gap: 12px;
+           min-width: 0; /* Prevent flex overflow */
+        }
+
+        .bi-card.full-width {
+           width: 100%;
+        }
+
+        .bi-card h3 {
+           margin: 0;
+           font-size: 13px;
+           font-weight: 600;
+           color: #475569;
+           padding-bottom: 8px;
+           border-bottom: 1px solid #f1f5f9;
+        }
+
+        .bi-form-stack {
+           display: flex;
+           flex-direction: column;
+           gap: 12px;
+        }
+
+        .bi-field-row {
+           display: flex;
+           gap: 12px;
+           width: 100%;
+        }
+
+        .bi-field {
+           display: flex;
+           flex-direction: column;
+           gap: 4px;
+           min-width: 0; /* Text truncation */
+        }
+        .bi-field.flex-1 { flex: 1; }
+        .bi-field.flex-2 { flex: 2; }
+
+        .bi-field label {
+           font-size: 11px;
+           font-weight: 500;
+           color: #64748b;
+        }
+
+        .bi-input, .bi-select {
+           padding: 6px 10px;
+           border: 1px solid #cbd5e1;
+           border-radius: 4px;
+           font-size: 13px;
+           color: #1e293b;
+           width: 100%;
+           box-sizing: border-box;
+           height: 32px;
+        }
+        .bi-input:focus, .bi-select:focus {
+           outline: none;
+           border-color: #3b82f6;
+           box-shadow: 0 0 0 1px rgba(59,130,246,0.1);
+        }
+        textarea.bi-input {
+           height: auto;
+           resize: vertical;
+        }
+
+        .form-val {
+           font-size: 13px;
+           color: #334155;
+           font-weight: 500;
+           padding: 6px 0;
+           white-space: nowrap;
+           overflow: hidden;
+           text-overflow: ellipsis;
+        }
+        .text-break {
+            white-space: normal;
+            word-break: break-all;
+        }
+
+        .form-val-inline {
+           font-size: 13px;
+           color: #334155;
+           font-weight: 500;
+        }
+
+        .hint-text {
+           font-size: 10px;
+           color: #94a3b8;
+           margin-top: 2px;
+        }
+
+        /* Status Badge Override for Left Alignment */
+        .status-badge-left {
+           display: inline-flex;
+           align-items: center;
+           padding: 2px 8px;
+           border-radius: 999px;
+           font-size: 11px;
+           font-weight: 600;
+           align-self: flex-start; /* FORCE LEFT */
+        }
+        .status-badge-left.enabled { background: #dcfce7; color: #166534; }
+        .status-badge-left.disabled { background: #f1f5f9; color: #64748b; }
+
+        .bi-btn-test {
+           height: 32px;
+           padding: 0 12px;
+           background: #0ea5e9;
+           color: white;
+           border: none;
+           border-radius: 4px;
+           cursor: pointer;
+           font-size: 12px;
+           display: flex;
+           align-items: center;
+           gap: 6px;
+           width: fit-content;
+        }
+        .bi-btn-test:hover { background: #0284c7; }
+        .bi-btn-test:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* Responsive */
+        @media (max-width: 1400px) {
+           .bi-grid-row {
+              grid-template-columns: repeat(2, 1fr);
+           }
+        }
+        @media (max-width: 768px) {
+           .bi-grid-row {
+              grid-template-columns: 1fr;
+           }
+        }
+
+        .bi-tag-container {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          margin-top: 4px;
+        }
+
+        .bi-tag {
+          background: #e0f2fe;
+          color: #0369a1;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 500;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .bi-tag.group-tag {
+          background: #f0fdf4;
+          color: #166534;
+          border: 1px solid #bbf7d0;
+        }
+
+        /* 다중 선택 컨테이너 */
+        .bi-multi-select-container {
+          border: 1px solid #e2e8f0;
+          border-radius: 4px;
+          background: #fff;
+          overflow: hidden;
           display: flex;
           flex-direction: column;
-          gap: 0.5rem;
         }
 
-        .form-group label {
-          font-size: 0.875rem;
+        .bi-group-list-scroll {
+          max-height: 120px;
+          overflow-y: auto;
+          padding: 4px;
+        }
+
+        .bi-group-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+          color: #475569;
+          transition: all 0.2s;
+        }
+
+        .bi-group-item:hover {
+          background: #f1f5f9;
+          color: #1e293b;
+        }
+
+        .bi-group-item.selected {
+          background: #eff6ff;
+          color: #2563eb;
           font-weight: 500;
-          color: #374151;
         }
 
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-          padding: 0.5rem 0.75rem;
-          border: 1px solid #d1d5db;
-          border-radius: 0.375rem;
-          font-size: 0.875rem;
-          transition: border-color 0.2s ease;
+        .bi-group-item i {
+          font-size: 14px;
+          width: 16px;
         }
 
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-          outline: none;
-          border-color: #0ea5e9;
-          box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+        .bi-no-data {
+          padding: 8px;
+          font-size: 11px;
+          color: #94a3b8;
+          text-align: center;
         }
 
-        .form-group select:disabled {
-          background-color: #f3f4f6;
-          color: #9ca3af;
-          cursor: not-allowed;
-        }
-
-        .form-group textarea {
+        .json-input {
+          font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+          font-size: 11px;
+          line-height: 1.5;
           resize: vertical;
-          min-height: 80px;
+          background: #fafafa;
+          color: #334155;
         }
 
-        .form-value {
-          padding: 0.5rem 0.75rem;
-          background: #f9fafb;
-          border: 1px solid #e5e7eb;
-          border-radius: 0.375rem;
-          font-size: 0.875rem;
-          color: #374151;
-        }
-
-        .form-hint {
-          font-size: 0.75rem;
-          color: #6b7280;
-          font-style: italic;
-        }
-
-        .debug-info {
-          margin-top: 0.25rem;
-          padding: 0.25rem;
-          background: #f0f9ff;
-          border: 1px solid #e0f2fe;
-          border-radius: 0.25rem;
-        }
-
-        .protocol-port {
-          color: #6b7280;
-          font-size: 0.875rem;
-        }
-
-        .protocol-details {
-          background: #f9fafb;
-          padding: 1rem;
-          border-radius: 0.375rem;
-          border: 1px solid #e5e7eb;
-        }
-
-        .protocol-details > div {
-          margin-bottom: 0.5rem;
-          font-size: 0.875rem;
-          color: #374151;
-        }
-
-        .protocol-details > div:last-child {
-          margin-bottom: 0;
-        }
-
-        .status-badge {
-          display: inline-flex;
-          align-items: center;
-          padding: 0.25rem 0.75rem;
-          border-radius: 9999px;
-          font-size: 0.75rem;
-          font-weight: 500;
-        }
-
-        .status-badge.enabled {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .status-badge.disabled {
-          background: #fee2e2;
-          color: #991b1b;
-        }
-
-        .switch {
-          position: relative;
-          display: inline-block;
-          width: 3rem;
-          height: 1.5rem;
-        }
-
-        .switch input {
-          opacity: 0;
-          width: 0;
-          height: 0;
-        }
-
-        .slider {
-          position: absolute;
-          cursor: pointer;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: #cbd5e1;
-          transition: 0.2s;
-          border-radius: 1.5rem;
-        }
-
-        .slider:before {
-          position: absolute;
-          content: "";
-          height: 1.125rem;
-          width: 1.125rem;
-          left: 0.1875rem;
-          bottom: 0.1875rem;
-          background: white;
-          transition: 0.2s;
-          border-radius: 50%;
-        }
-
-        input:checked + .slider {
-          background: #0ea5e9;
-        }
-
-        input:checked + .slider:before {
-          transform: translateX(1.5rem);
-        }
-
-        .btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.5rem 1rem;
-          border: none;
-          border-radius: 0.375rem;
-          font-size: 0.875rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .btn-info {
-          background: #0891b2;
-          color: white;
-        }
-
-        .btn-info:hover:not(:disabled) {
-          background: #0e7490;
-        }
-
-        .btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
+        .json-preview {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 4px;
+          padding: 8px;
+          font-family: inherit;
+          font-size: 11px;
+          margin: 0;
+          white-space: pre-wrap;
+          word-break: break-all;
+          color: #475569;
+          max-height: 156px;
+          overflow-y: auto;
         }
       `}</style>
     </div>

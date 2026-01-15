@@ -35,6 +35,7 @@ namespace Repositories {
     class AlarmOccurrenceRepository;
     class ScriptLibraryRepository;
     class ProtocolRepository;
+    class EdgeServerRepository;
     
     // 🆕 Export 시스템 Repository들
     class ExportTargetRepository;
@@ -182,6 +183,15 @@ public:
         return protocol_repository_;
     }
 
+    std::shared_ptr<Repositories::EdgeServerRepository> getEdgeServerRepository() {
+        std::lock_guard<std::mutex> lock(factory_mutex_);
+        if (!initialized_.load()) {
+            throw std::runtime_error("RepositoryFactory not initialized");
+        }
+        creation_count_.fetch_add(1);
+        return edge_server_repository_;
+    }
+
     // =============================================================================
     // 🆕 Export 시스템 Repository 접근자들
     // =============================================================================
@@ -296,6 +306,7 @@ private:
     std::shared_ptr<Repositories::AlarmOccurrenceRepository> alarm_occurrence_repository_;
     std::shared_ptr<Repositories::ScriptLibraryRepository> script_library_repository_;
     std::shared_ptr<Repositories::ProtocolRepository> protocol_repository_;
+    std::shared_ptr<Repositories::EdgeServerRepository> edge_server_repository_;
     
     // 🆕 Export 시스템 Repository들
     std::shared_ptr<Repositories::ExportTargetRepository> export_target_repository_;

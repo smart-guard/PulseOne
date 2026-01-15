@@ -480,6 +480,10 @@ std::chrono::system_clock::time_point CurrentValueEntity::getTimestamp() const {
     return value_timestamp_;
 }
 
+std::shared_ptr<Repositories::CurrentValueRepository> CurrentValueEntity::getRepository() const {
+    return RepositoryFactory::getInstance().getCurrentValueRepository();
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

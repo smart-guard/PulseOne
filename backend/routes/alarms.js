@@ -125,7 +125,6 @@ router.get('/occurrences/:id', async (req, res) => {
  */
 router.get('/history', async (req, res) => {
     try {
-        const repo = getOccurrenceRepo();
         const filters = {
             tenantId: req.tenantId,
             page: parseInt(req.query.page) || 1,
@@ -141,13 +140,10 @@ router.get('/history', async (req, res) => {
             sortOrder: 'DESC'
         };
 
-        const result = await repo.findAll(filters);
-
-        console.log(`알람 이력 ${result.items.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'Alarm history retrieved successfully'));
+        const result = await AlarmOccurrenceService.findAll(filters);
+        res.json(result);
 
     } catch (error) {
-        console.error('알람 이력 조회 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_HISTORY_ERROR'));
     }
 });
@@ -186,17 +182,12 @@ router.post('/occurrences/:id/clear', async (req, res) => {
  */
 router.get('/user/:userId/cleared', async (req, res) => {
     try {
-        const repo = getOccurrenceRepo();
-        const occurrences = await repo.findClearedByUser(
+        const result = await AlarmOccurrenceService.findClearedByUser(
             parseInt(req.params.userId),
             req.tenantId
         );
-
-        console.log(`사용자 ${req.params.userId}가 해제한 알람 ${occurrences.length}개 조회 완료`);
-        res.json(createResponse(true, occurrences, 'User cleared alarms retrieved successfully'));
-
+        res.json(result);
     } catch (error) {
-        console.error(`사용자 ${req.params.userId} 해제 알람 조회 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'USER_CLEARED_ALARMS_ERROR'));
     }
 });
@@ -207,17 +198,12 @@ router.get('/user/:userId/cleared', async (req, res) => {
  */
 router.get('/user/:userId/acknowledged', async (req, res) => {
     try {
-        const repo = getOccurrenceRepo();
-        const occurrences = await repo.findAcknowledgedByUser(
+        const result = await AlarmOccurrenceService.findAcknowledgedByUser(
             parseInt(req.params.userId),
             req.tenantId
         );
-
-        console.log(`사용자 ${req.params.userId}가 확인한 알람 ${occurrences.length}개 조회 완료`);
-        res.json(createResponse(true, occurrences, 'User acknowledged alarms retrieved successfully'));
-
+        res.json(result);
     } catch (error) {
-        console.error(`사용자 ${req.params.userId} 확인 알람 조회 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'USER_ACKNOWLEDGED_ALARMS_ERROR'));
     }
 });
@@ -241,14 +227,9 @@ router.get('/occurrences/category/:category', async (req, res) => {
  */
 router.get('/occurrences/tag/:tag', async (req, res) => {
     try {
-        const repo = getOccurrenceRepo();
-        const occurrences = await repo.findByTag(req.params.tag, req.tenantId);
-
-        console.log(`태그 ${req.params.tag} 알람 발생 ${occurrences.length}개 조회 완료`);
-        res.json(createResponse(true, occurrences, 'Tag alarm occurrences retrieved successfully'));
-
+        const result = await AlarmOccurrenceService.findByTag(req.params.tag, req.tenantId);
+        res.json(result);
     } catch (error) {
-        console.error(`태그 ${req.params.tag} 알람 발생 조회 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'TAG_ALARM_OCCURRENCES_ERROR'));
     }
 });
@@ -569,7 +550,6 @@ router.delete('/rules/:id', async (req, res) => {
  */
 router.get('/templates', async (req, res) => {
     try {
-        const repo = getTemplateRepo();
         const filters = {
             tenantId: req.tenantId,
             page: parseInt(req.query.page) || 1,
@@ -580,13 +560,10 @@ router.get('/templates', async (req, res) => {
             search: req.query.search
         };
 
-        const result = await repo.findAll(filters);
-
-        console.log(`알람 템플릿 ${result.items.length}개 조회 완료`);
-        res.json(createResponse(true, result, 'Alarm templates retrieved successfully'));
+        const result = await AlarmTemplateService.findAll(filters);
+        res.json(result);
 
     } catch (error) {
-        console.error('알람 템플릿 조회 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATES_ERROR'));
     }
 });
@@ -597,21 +574,11 @@ router.get('/templates', async (req, res) => {
  */
 router.get('/templates/:id', async (req, res) => {
     try {
-        const repo = getTemplateRepo();
-        const template = await repo.findById(parseInt(req.params.id), req.tenantId);
-
-        if (!template) {
-            return res.status(404).json(
-                createResponse(false, null, 'Alarm template not found', 'ALARM_TEMPLATE_NOT_FOUND')
-            );
-        }
-
-        console.log(`알람 템플릿 ID ${req.params.id} 조회 완료`);
-        res.json(createResponse(true, template, 'Alarm template retrieved successfully'));
-
+        const result = await AlarmTemplateService.findById(parseInt(req.params.id), req.tenantId);
+        res.json(result);
     } catch (error) {
-        console.error(`알람 템플릿 ${req.params.id} 조회 실패:`, error.message);
-        res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_DETAIL_ERROR'));
+        const status = error.message.includes('not found') ? 404 : 500;
+        res.status(status).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_DETAIL_ERROR'));
     }
 });
 
@@ -621,20 +588,16 @@ router.get('/templates/:id', async (req, res) => {
  */
 router.post('/templates', async (req, res) => {
     try {
-        const repo = getTemplateRepo();
         const templateData = {
             ...req.body,
             tenant_id: req.tenantId,
             created_by: req.user.id
         };
 
-        const newTemplate = await repo.create(templateData, req.user.id);
-
-        console.log(`새 알람 템플릿 생성 완료: ID ${newTemplate.id}`);
-        res.status(201).json(createResponse(true, newTemplate, 'Alarm template created successfully'));
+        const result = await AlarmTemplateService.create(templateData, req.tenantId);
+        res.status(201).json(result);
 
     } catch (error) {
-        console.error('알람 템플릿 생성 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_CREATE_ERROR'));
     }
 });
@@ -645,24 +608,13 @@ router.post('/templates', async (req, res) => {
  */
 router.put('/templates/:id', async (req, res) => {
     try {
-        const repo = getTemplateRepo();
-        const updatedTemplate = await repo.update(
+        const result = await AlarmTemplateService.update(
             parseInt(req.params.id),
             req.body,
             req.tenantId
         );
-
-        if (!updatedTemplate) {
-            return res.status(404).json(
-                createResponse(false, null, 'Alarm template not found or update failed', 'ALARM_TEMPLATE_UPDATE_FAILED')
-            );
-        }
-
-        console.log(`알람 템플릿 ID ${req.params.id} 수정 완료`);
-        res.json(createResponse(true, updatedTemplate, 'Alarm template updated successfully'));
-
+        res.json(result);
     } catch (error) {
-        console.error(`알람 템플릿 ${req.params.id} 수정 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_UPDATE_ERROR'));
     }
 });
@@ -699,14 +651,9 @@ router.get('/templates/category/:category', async (req, res) => {
  */
 router.get('/templates/tag/:tag', async (req, res) => {
     try {
-        const repo = getTemplateRepo();
-        const templates = await repo.findByTag(req.params.tag, req.tenantId);
-
-        console.log(`태그 ${req.params.tag} 템플릿 ${templates.length}개 조회 완료`);
-        res.json(createResponse(true, templates, 'Tag templates retrieved successfully'));
-
+        const result = await AlarmTemplateService.findByTag(req.params.tag, req.tenantId);
+        res.json(result);
     } catch (error) {
-        console.error(`태그 ${req.params.tag} 템플릿 조회 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'TAG_TEMPLATES_ERROR'));
     }
 });
@@ -758,14 +705,9 @@ router.post('/templates/:id/apply', async (req, res) => {
  */
 router.get('/templates/:id/applied-rules', async (req, res) => {
     try {
-        const repo = getTemplateRepo();
-        const rules = await repo.findAppliedRules(parseInt(req.params.id), req.tenantId);
-
-        console.log(`템플릿 ${req.params.id}로 생성된 규칙 ${rules.length}개 조회 완료`);
-        res.json(createResponse(true, rules, 'Applied rules retrieved successfully'));
-
+        const result = await AlarmTemplateService.findAppliedRules(parseInt(req.params.id), req.tenantId);
+        res.json(result);
     } catch (error) {
-        console.error(`템플릿 ${req.params.id} 적용 규칙 조회 실패:`, error.message);
         res.status(500).json(createResponse(false, null, error.message, 'APPLIED_RULES_ERROR'));
     }
 });
@@ -795,14 +737,10 @@ router.get('/templates/search', async (req, res) => {
             );
         }
 
-        const repo = getTemplateRepo();
-        const templates = await repo.search(req.query.q, req.tenantId, parseInt(req.query.limit) || 20);
-
-        console.log(`검색 결과: ${templates.length}개 템플릿`);
-        res.json(createResponse(true, templates, 'Template search completed successfully'));
+        const result = await AlarmTemplateService.search(req.query.q, req.tenantId, parseInt(req.query.limit) || 20);
+        res.json(result);
 
     } catch (error) {
-        console.error('템플릿 검색 실패:', error.message);
         res.status(500).json(createResponse(false, null, error.message, 'TEMPLATE_SEARCH_ERROR'));
     }
 });
@@ -861,106 +799,27 @@ router.get('/statistics', async (req, res) => {
 router.get('/test', async (req, res) => {
     try {
         res.json(createResponse(true, {
-            message: 'Alarm API with Repository Pattern - Complete!',
+            message: 'Alarm API with Service-Repository Pattern - Complete!',
             architecture: [
-                'Repository Pattern Implementation',
-                'AlarmOccurrenceRepository - 16 endpoints',
-                'AlarmRuleRepository - 12 endpoints',
-                'AlarmTemplateRepository - 14 endpoints',
+                'Service Layer Implementation',
+                'AlarmOccurrenceService - 16 endpoints',
+                'AlarmRuleService - 12 endpoints',
+                'AlarmTemplateService - 14 endpoints',
                 'Statistics and Test - 2 endpoints',
                 'Total: 44 endpoints fully refactored'
             ],
             improvements: [
-                'No direct DB calls (dbAll, dbGet, dbRun removed)',
+                'Strict separation of concerns',
+                'Unified business logic in Services',
                 'Consistent error handling',
-                'Pagination support on all list endpoints',
-                'Type-safe parameter handling',
-                'Cached queries where appropriate',
-                'Clean separation of concerns'
+                'Standardized response structure'
             ],
-            repositories: {
-                AlarmOccurrenceRepository: {
-                    singleton: !!occurrenceRepo,
-                    methods: [
-                        'findAll', 'findById', 'findActive', 'findUnacknowledged',
-                        'findByDevice', 'findByCategory', 'findByTag', 'findRecentOccurrences',
-                        'findTodayAlarms', 'acknowledge', 'clear', 'create',
-                        'getStatsSummary', 'getStatsByCategory', 'getStatsToday'
-                    ]
-                },
-                AlarmRuleRepository: {
-                    singleton: !!ruleRepo,
-                    methods: [
-                        'findAll', 'findById', 'findByCategory', 'findByTag',
-                        'findByTarget', 'findEnabled', 'create', 'update',
-                        'updateEnabledStatus', 'updateSettings', 'updateName', 'updateSeverity',
-                        'delete', 'getStatsSummary', 'getStatsBySeverity', 'getStatsByCategory'
-                    ]
-                },
-                AlarmTemplateRepository: {
-                    singleton: !!templateRepo,
-                    methods: [
-                        'findAll', 'findById', 'findByCategory', 'findByTag',
-                        'findSystemTemplates', 'findByDataType', 'create', 'update',
-                        'delete', 'search', 'findMostUsed', 'incrementUsage',
-                        'findAppliedRules', 'getStatsSummary', 'getStatsByCategory'
-                    ]
-                }
-            },
-            endpoints: [
-                // AlarmOccurrence endpoints
-                'GET /api/alarms/active',
-                'GET /api/alarms/occurrences',
-                'GET /api/alarms/occurrences/:id',
-                'GET /api/alarms/history',
-                'POST /api/alarms/occurrences/:id/acknowledge',
-                'POST /api/alarms/occurrences/:id/clear',
-                'GET /api/alarms/user/:userId/cleared',
-                'GET /api/alarms/user/:userId/acknowledged',
-                'GET /api/alarms/occurrences/category/:category',
-                'GET /api/alarms/occurrences/tag/:tag',
-                'GET /api/alarms/unacknowledged',
-                'GET /api/alarms/device/:deviceId',
-                'GET /api/alarms/recent',
-                'GET /api/alarms/today',
-                'GET /api/alarms/audit-trail',
-                'GET /api/alarms/statistics/today',
-
-                // AlarmRule endpoints
-                'PATCH /api/alarms/rules/:id/toggle',
-                'PATCH /api/alarms/rules/:id/settings',
-                'PATCH /api/alarms/rules/:id/name',
-                'PATCH /api/alarms/rules/:id/severity',
-                'GET /api/alarms/rules/category/:category',
-                'GET /api/alarms/rules/tag/:tag',
-                'GET /api/alarms/rules/statistics',
-                'GET /api/alarms/rules',
-                'GET /api/alarms/rules/:id',
-                'POST /api/alarms/rules',
-                'PUT /api/alarms/rules/:id',
-                'DELETE /api/alarms/rules/:id',
-
-                // AlarmTemplate endpoints
-                'GET /api/alarms/templates',
-                'GET /api/alarms/templates/:id',
-                'POST /api/alarms/templates',
-                'PUT /api/alarms/templates/:id',
-                'DELETE /api/alarms/templates/:id',
-                'GET /api/alarms/templates/category/:category',
-                'GET /api/alarms/templates/tag/:tag',
-                'GET /api/alarms/templates/system',
-                'GET /api/alarms/templates/data-type/:dataType',
-                'POST /api/alarms/templates/:id/apply',
-                'GET /api/alarms/templates/:id/applied-rules',
-                'GET /api/alarms/templates/statistics',
-                'GET /api/alarms/templates/search',
-                'GET /api/alarms/templates/most-used',
-
-                // Statistics endpoints
-                'GET /api/alarms/statistics',
-                'GET /api/alarms/test'
-            ]
-        }, 'Repository Pattern Alarm API Test Successful!'));
+            services: {
+                AlarmOccurrenceService: 'Loaded',
+                AlarmRuleService: 'Loaded',
+                AlarmTemplateService: 'Loaded'
+            }
+        }, 'Service-Repository Pattern Alarm API Test Successful!'));
 
     } catch (error) {
         console.error('테스트 실패:', error.message);

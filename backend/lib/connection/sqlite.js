@@ -6,7 +6,6 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const ConfigManager = require('../config/ConfigManager');
-
 const config = ConfigManager.getInstance();
 
 class SQLiteConnection {
@@ -17,7 +16,7 @@ class SQLiteConnection {
         } else {
             this.config = {
                 path: config.getDatabaseConfig().sqlite.path, // ConfigManager의 통합 경로 사용
-                timeout: config.getNumber('SQLITE_BUSY_TIMEOUT', 5000),
+                timeout: config.getNumber('SQLITE_BUSY_TIMEOUT', 10000),
                 journalMode: config.get('SQLITE_JOURNAL_MODE', 'WAL'),
                 foreignKeys: config.getBoolean('SQLITE_FOREIGN_KEYS', true),
                 cacheSize: config.getNumber('SQLITE_CACHE_SIZE', 2000)
@@ -28,20 +27,20 @@ class SQLiteConnection {
         this.isConnected = false;
 
         // 🔥 핵심 수정: ConfigManager를 통한 경로 처리 (Docker/Windows 대응)
-        this.resolvedPath = this.config.path;
+        this.resolvedPath = this._resolvePath(this.config.path);
 
-        console.log(`📋 SQLite 연결 설정:
-   설정 경로: ${this.config.path}
-   작업 디렉토리: ${process.cwd()}
-   해석된 경로: ${this.resolvedPath}
-   저널 모드: ${this.config.journalMode}
-   외래키: ${this.config.foreignKeys ? '활성화' : '비활성화'}`);
+        console.log(`🔧 SQLite 연결 시도: ${this.resolvedPath}`);
     }
 
     /**
      * 경로 해석 - 상대 경로를 process.cwd() 기준으로 절대 경로로 변환
      */
     _resolvePath(configPath) {
+        // :memory: 인 경우 그대로 반환 (SQLite 특수 경로)
+        if (configPath === ':memory:') {
+            return configPath;
+        }
+
         // 이미 절대 경로인 경우 그대로 사용
         if (path.isAbsolute(configPath)) {
             return configPath;

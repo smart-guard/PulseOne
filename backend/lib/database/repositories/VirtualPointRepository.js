@@ -1,231 +1,132 @@
 // =============================================================================
 // backend/lib/database/repositories/VirtualPointRepository.js
-// 가상포인트 리포지토리 - 실제 DB 스키마 완전 반영
+// 가상포인트 리포지토리 - Knex 및 BaseRepository 패턴 적용
 // =============================================================================
 
-const DatabaseFactory = require('../DatabaseFactory');
-const VirtualPointQueries = require('../queries/VirtualPointQueries');
+const BaseRepository = require('./BaseRepository');
 
-class VirtualPointRepository {
+class VirtualPointRepository extends BaseRepository {
     constructor() {
-        this.dbFactory = new DatabaseFactory();
+        super('virtual_points');
     }
 
     // ==========================================================================
     // 조회 메소드들
     // ==========================================================================
 
-    async findById(id, tenantId = null) {
+    /**
+     * ID로 가상포인트 상세 조회 (관련 데이터 포함)
+     */
+    async findById(id, tenantId = null, trx = null) {
         try {
-            console.log(`VirtualPointRepository.findById: id=${id}, tenantId=${tenantId}`);
-      
-            let query = VirtualPointQueries.getVirtualPointById();
-            const params = [id];
+            const query = (trx || this.knex)('virtual_points').where('id', id);
 
             if (tenantId) {
-                query += ' AND tenant_id = ?';
-                params.push(tenantId);
+                query.where('tenant_id', tenantId);
             }
 
-            const result = await this.dbFactory.executeQuery(query, params);
-            const virtualPoints = Array.isArray(result) ? result : (result.rows || []);
-      
-            if (virtualPoints.length === 0) {
-                console.log(`가상포인트 ID ${id} 찾을 수 없음`);
-                return null;
-            }
-      
-            console.log(`가상포인트 ID ${id} 조회 성공: ${virtualPoints[0].name}`);
-      
-            // 관련 데이터도 함께 조회
-            const virtualPoint = this.parseVirtualPoint(virtualPoints[0]);
-            virtualPoint.inputs = await this.getInputsByVirtualPoint(id);
-            virtualPoint.currentValue = await this.getCurrentValue(id);
-            virtualPoint.dependencies = await this.getDependencies(id);
-      
+            const vp = await query.first();
+            if (!vp) return null;
+
+            const virtualPoint = this.parseVirtualPoint(vp);
+
+            // 관련 데이터 조회
+            virtualPoint.inputs = await this.getInputsByVirtualPoint(id, trx);
+            virtualPoint.currentValue = await this.getCurrentValue(id, trx);
+            virtualPoint.dependencies = await this.getDependencies(id, trx);
+
             return virtualPoint;
-      
         } catch (error) {
-            console.error('VirtualPointRepository.findById 실패:', error);
-            throw new Error(`가상포인트 조회 실패: ${error.message}`);
+            this.logger.error(`VirtualPointRepository.findById 실패 (ID: ${id}):`, error);
+            throw error;
         }
     }
 
-    async findByName(name, tenantId = null) {
+    /**
+     * 이름으로 가상포인트 조회
+     */
+    async findByName(name, tenantId = null, trx = null) {
         try {
-            console.log(`VirtualPointRepository.findByName: name=${name}, tenantId=${tenantId}`);
-      
-            let query = VirtualPointQueries.getVirtualPointsList();
-            query += ' AND vp.name = ?';
-            const params = [name];
+            const query = (trx || this.knex)('virtual_points').where('name', name);
+            if (tenantId) query.where('tenant_id', tenantId);
 
-            if (tenantId) {
-                query += VirtualPointQueries.addTenantFilter();
-                params.push(tenantId);
-            }
-
-            query += VirtualPointQueries.getGroupByAndOrder();
-
-            const result = await this.dbFactory.executeQuery(query, params);
-            const virtualPoints = Array.isArray(result) ? result : (result.rows || []);
-      
-            if (virtualPoints.length === 0) {
-                console.log(`가상포인트 이름 '${name}' 찾을 수 없음`);
-                return null;
-            }
-      
-            console.log(`가상포인트 이름 '${name}' 조회 성공: ID ${virtualPoints[0].id}`);
-            return this.parseVirtualPoint(virtualPoints[0]);
-      
+            const vp = await query.first();
+            return vp ? this.parseVirtualPoint(vp) : null;
         } catch (error) {
-            console.error('VirtualPointRepository.findByName 실패:', error);
-            throw new Error(`가상포인트 이름 조회 실패: ${error.message}`);
+            this.logger.error(`VirtualPointRepository.findByName 실패 (Name: ${name}):`, error);
+            throw error;
         }
     }
 
+    /**
+     * 조건부 목록 조회 (필터 및 페이징)
+     */
     async findAllVirtualPoints(filters = {}) {
         try {
-            console.log('VirtualPointRepository.findAllVirtualPoints:', filters);
-      
-            let query = VirtualPointQueries.getVirtualPointsList();
-            const params = [];
+            const query = this.query();
+            const tenantId = filters.tenantId || filters.tenant_id || 1;
 
-            // 기본 tenant 필터 (필수)
-            query += VirtualPointQueries.addTenantFilter();
-            params.push(filters.tenantId || filters.tenant_id || 1);
+            query.where('tenant_id', tenantId);
 
-            // 선택적 필터들
             if (filters.siteId || filters.site_id) {
-                query += VirtualPointQueries.addSiteFilter();
-                params.push(filters.siteId || filters.site_id);
+                query.where('site_id', filters.siteId || filters.site_id);
             }
 
             if (filters.deviceId || filters.device_id) {
-                query += VirtualPointQueries.addDeviceFilter();
-                params.push(filters.deviceId || filters.device_id);
+                query.where('device_id', filters.deviceId || filters.device_id);
             }
 
             if (filters.scopeType || filters.scope_type) {
-                query += VirtualPointQueries.addScopeTypeFilter();
-                params.push(filters.scopeType || filters.scope_type);
+                query.where('scope_type', filters.scopeType || filters.scope_type);
             }
 
-            if (filters.isEnabled !== undefined || filters.is_enabled !== undefined) {
-                query += VirtualPointQueries.addEnabledFilter();
-                params.push((filters.isEnabled !== undefined ? filters.isEnabled : filters.is_enabled) ? 1 : 0);
+            if (filters.is_enabled !== undefined) {
+                query.where('is_enabled', filters.is_enabled ? 1 : 0);
             }
 
             if (filters.category) {
-                query += VirtualPointQueries.addCategoryFilter();
-                params.push(filters.category);
+                query.where('category', filters.category);
             }
 
-            if (filters.calculationTrigger || filters.calculation_trigger) {
-                query += VirtualPointQueries.addTriggerFilter();
-                params.push(filters.calculationTrigger || filters.calculation_trigger);
+            if (filters.calculation_trigger) {
+                query.where('calculation_trigger', filters.calculation_trigger);
             }
 
             if (filters.search) {
-                query += VirtualPointQueries.addSearchFilter();
-                const searchTerm = `%${filters.search}%`;
-                params.push(searchTerm, searchTerm);
+                const search = `%${filters.search}%`;
+                query.andWhere(function () {
+                    this.where('name', 'like', search)
+                        .orWhere('description', 'like', search);
+                });
             }
 
-            // 정렬
-            query += VirtualPointQueries.getGroupByAndOrder();
-
-            // 페이징
-            const limit = filters.limit || 25;
-            const page = filters.page || 1;
+            // Pagination
+            const limit = parseInt(filters.limit) || 25;
+            const page = parseInt(filters.page) || 1;
             const offset = (page - 1) * limit;
-      
-            query += VirtualPointQueries.addLimit();
-            params.push(limit);
 
-            console.log('실행할 쿼리:', query.substring(0, 200) + '...');
-            console.log('파라미터:', params.length + '개');
+            // Total count
+            const countQuery = query.clone().clearSelect().clearOrder().count('id as total').first();
+            const countResult = await countQuery;
+            const totalCount = countResult ? countResult.total : 0;
 
-            const result = await this.dbFactory.executeQuery(query, params);
-      
-            // 결과 처리 (다양한 DB 드라이버 대응)
-            let virtualPoints = [];
-            if (Array.isArray(result)) {
-                virtualPoints = result;
-            } else if (result && result.rows) {
-                virtualPoints = result.rows;
-            } else if (result && result.recordset) {
-                virtualPoints = result.recordset;
-            } else {
-                console.warn('예상치 못한 쿼리 결과 구조:', result);
-                virtualPoints = [];
-            }
-
-            console.log(`${virtualPoints.length}개 가상포인트 조회 완료`);
-
-            // 데이터 파싱
-            const parsedVirtualPoints = virtualPoints.map(vp => this.parseVirtualPoint(vp));
-
-            // 페이징 정보 계산
-            const totalCount = virtualPoints.length > 0 ? 
-                (filters.page && filters.limit ? await this.getVirtualPointCount(filters) : virtualPoints.length) : 0;
-      
-            const pagination = {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total_items: totalCount,
-                has_next: page * limit < totalCount,
-                has_prev: page > 1
-            };
+            // Execution
+            const items = await query.orderBy('created_at', 'desc').limit(limit).offset(offset);
+            const parsedItems = items.map(vp => this.parseVirtualPoint(vp));
 
             return {
-                items: parsedVirtualPoints,
-                pagination: pagination
+                items: parsedItems,
+                pagination: {
+                    page,
+                    limit,
+                    total_items: totalCount,
+                    has_next: page * limit < totalCount,
+                    has_prev: page > 1
+                }
             };
-
         } catch (error) {
-            console.error('VirtualPointRepository.findAllVirtualPoints 실패:', error.message);
-            throw new Error(`가상포인트 목록 조회 실패: ${error.message}`);
-        }
-    }
-
-    async getVirtualPointCount(filters = {}) {
-        try {
-            let query = 'SELECT COUNT(*) as count FROM virtual_points WHERE 1=1';
-            const params = [];
-
-            // 기본 tenant 필터
-            query += ' AND tenant_id = ?';
-            params.push(filters.tenantId || filters.tenant_id || 1);
-
-            // 추가 필터들
-            if (filters.siteId || filters.site_id) {
-                query += ' AND site_id = ?';
-                params.push(filters.siteId || filters.site_id);
-            }
-
-            if (filters.deviceId || filters.device_id) {
-                query += ' AND device_id = ?';
-                params.push(filters.deviceId || filters.device_id);
-            }
-
-            if (filters.category) {
-                query += ' AND category = ?';
-                params.push(filters.category);
-            }
-
-            if (filters.search) {
-                query += ' AND (name LIKE ? OR description LIKE ?)';
-                const searchTerm = `%${filters.search}%`;
-                params.push(searchTerm, searchTerm);
-            }
-
-            const result = await this.dbFactory.executeQuery(query, params);
-            const countResult = Array.isArray(result) ? result[0] : (result.rows ? result.rows[0] : result);
-      
-            return countResult?.count || 0;
-        } catch (error) {
-            console.error('가상포인트 수 조회 실패:', error.message);
-            return 0;
+            this.logger.error('VirtualPointRepository.findAllVirtualPoints 실패:', error);
+            throw error;
         }
     }
 
@@ -233,405 +134,298 @@ class VirtualPointRepository {
     // CRUD 메소드들
     // ==========================================================================
 
+    /**
+     * 가상포인트 생성 (관련 테이블 포함)
+     */
     async createVirtualPoint(virtualPointData, inputs = [], tenantId = null) {
-        try {
-            console.log(`VirtualPointRepository.createVirtualPoint: ${virtualPointData.name}`);
-      
-            // 트랜잭션 시작
-            await this.dbFactory.executeQuery('BEGIN TRANSACTION');
-      
-            try {
-                // 1. 메인 가상포인트 생성
-                const virtualPointQuery = VirtualPointQueries.createVirtualPointSimple();
-                const virtualPointParams = [
-                    tenantId || virtualPointData.tenant_id || 1,
-                    virtualPointData.name,
-                    virtualPointData.formula || 'return 0;',
-                    virtualPointData.description || null,
-                    virtualPointData.data_type || 'float',
-                    virtualPointData.unit || null,
-                    virtualPointData.calculation_trigger || 'timer',
-                    virtualPointData.is_enabled !== false ? 1 : 0,
-                    virtualPointData.category || 'calculation'
-                ];
-        
-                const virtualPointResult = await this.dbFactory.executeQuery(virtualPointQuery, virtualPointParams);
-                console.log('INSERT 결과:', virtualPointResult);
-        
-                // SQLite에서 ID 추출
-                let virtualPointId = null;
-        
-                if (virtualPointResult) {
-                    if (virtualPointResult.insertId) {
-                        virtualPointId = virtualPointResult.insertId;
-                    } else if (virtualPointResult.lastInsertRowid) {
-                        virtualPointId = virtualPointResult.lastInsertRowid;
-                    } else if (virtualPointResult.changes && virtualPointResult.changes > 0) {
-                        const idResult = await this.dbFactory.executeQuery('SELECT last_insert_rowid() as id');
-                        if (idResult && idResult.length > 0 && idResult[0].id) {
-                            virtualPointId = idResult[0].id;
-                        }
-                    }
-                }
-        
-                if (!virtualPointId) {
-                    // 이름으로 조회
-                    const createdVirtualPoint = await this.findByName(virtualPointData.name, tenantId);
-                    if (createdVirtualPoint && createdVirtualPoint.id) {
-                        virtualPointId = createdVirtualPoint.id;
-                    } else {
-                        throw new Error('가상포인트 생성 실패: ID를 얻을 수 없음');
-                    }
-                }
-        
-                console.log(`가상포인트 생성 완료: ID ${virtualPointId}`);
-        
-                // 2. 초기값 생성
-                try {
-                    await this.dbFactory.executeQuery(VirtualPointQueries.createInitialValue(), [virtualPointId]);
-                    console.log(`초기값 생성 완료: ID ${virtualPointId}`);
-                } catch (valueError) {
-                    console.warn('초기값 생성 실패 (계속 진행):', valueError.message);
-                }
-        
-                // 3. 입력 매핑 생성
-                try {
-                    if (inputs && inputs.length > 0) {
-                        for (const input of inputs) {
-                            await this.dbFactory.executeQuery(VirtualPointQueries.createInput(), [
-                                virtualPointId,
-                                input.variable_name,
-                                input.source_type || 'constant',
-                                input.source_id || null,
-                                input.constant_value || null,
-                                input.source_formula || null,
-                                input.data_processing || 'current'
-                            ]);
-                        }
-                        console.log(`${inputs.length}개 입력 매핑 생성 완료`);
-                    } else {
-                        // 기본 입력 매핑 생성
-                        await this.dbFactory.executeQuery(VirtualPointQueries.createDefaultInput(), [virtualPointId]);
-                        console.log('기본 입력 매핑 생성 완료');
-                    }
-                } catch (inputError) {
-                    console.warn('입력 매핑 생성 실패 (계속 진행):', inputError.message);
-                }
-        
-                // 4. 초기 실행 이력 생성
-                try {
-                    await this.dbFactory.executeQuery(VirtualPointQueries.createInitialExecutionHistory(), [virtualPointId]);
-                    console.log(`초기 실행 이력 생성 완료: ID ${virtualPointId}`);
-                } catch (historyError) {
-                    console.warn('초기 실행 이력 생성 실패 (계속 진행):', historyError.message);
-                }
-        
-                // 트랜잭션 커밋
-                await this.dbFactory.executeQuery('COMMIT');
-        
-                // 생성된 가상포인트 조회해서 반환
-                const createdVirtualPoint = await this.findById(virtualPointId, tenantId);
-                console.log(`완전한 가상포인트 생성 성공: ${virtualPointData.name} (ID: ${virtualPointId})`);
-        
-                return createdVirtualPoint;
-        
-            } catch (error) {
-                // 트랜잭션 롤백
-                await this.dbFactory.executeQuery('ROLLBACK');
-                throw error;
+        return await this.transaction(async (trx) => {
+            // 1. 메인 가상포인트 생성
+            const dataToInsert = {
+                tenant_id: tenantId || virtualPointData.tenant_id || 1,
+                name: virtualPointData.name,
+                formula: virtualPointData.formula || virtualPointData.expression || 'return 0;',
+                description: virtualPointData.description || null,
+                data_type: virtualPointData.data_type || 'float',
+                unit: virtualPointData.unit || null,
+                calculation_trigger: virtualPointData.calculation_trigger || 'timer',
+                is_enabled: virtualPointData.is_enabled !== false ? 1 : 0,
+                category: virtualPointData.category || 'calculation',
+                scope_type: virtualPointData.scope_type || 'system',
+                site_id: virtualPointData.site_id || null,
+                device_id: virtualPointData.device_id || null,
+                tags: virtualPointData.tags ? (typeof virtualPointData.tags === 'string' ? virtualPointData.tags : JSON.stringify(virtualPointData.tags)) : null,
+                created_at: this.knex.fn.now(),
+                updated_at: this.knex.fn.now()
+            };
+
+            const [virtualPointId] = await trx('virtual_points').insert(dataToInsert);
+
+            // 2. 초기값 생성
+            await trx('virtual_point_values').insert({
+                virtual_point_id: virtualPointId,
+                value: null,
+                quality: 'initialization',
+                last_calculated: this.knex.fn.now(),
+                calculation_duration_ms: 0,
+                is_stale: 1
+            });
+
+            // 3. 입력 매핑 생성
+            if (inputs && inputs.length > 0) {
+                const inputsToInsert = inputs.map(input => ({
+                    virtual_point_id: virtualPointId,
+                    variable_name: input.variable_name,
+                    source_type: input.source_type || 'constant',
+                    source_id: input.source_id || null,
+                    constant_value: input.constant_value !== undefined ? input.constant_value : null,
+                    source_formula: input.source_formula || null,
+                    is_required: input.is_required !== false ? 1 : 0,
+                    sort_order: input.sort_order || 0
+                }));
+                await trx('virtual_point_inputs').insert(inputsToInsert);
+            } else {
+                // 기본 입력
+                await trx('virtual_point_inputs').insert({
+                    virtual_point_id: virtualPointId,
+                    variable_name: 'defaultInput',
+                    source_type: 'constant',
+                    constant_value: 0,
+                    is_required: 1,
+                    sort_order: 0
+                });
             }
-      
-        } catch (error) {
-            console.error('VirtualPointRepository.createVirtualPoint 실패:', error.message);
-            throw new Error(`완전한 가상포인트 생성 실패: ${error.message}`);
-        }
+
+            // 4. 초기 실행 이력
+            await trx('virtual_point_execution_history').insert({
+                virtual_point_id: virtualPointId,
+                execution_time: this.knex.fn.now(),
+                execution_duration_ms: 0,
+                result_type: 'success',
+                result_value: JSON.stringify({ action: 'created', status: 'initialized' }),
+                trigger_source: 'system',
+                success: 1
+            });
+
+            return await this.findById(virtualPointId, tenantId, trx);
+        });
     }
 
+    /**
+     * 가상포인트 업데이트
+     */
     async updateVirtualPoint(id, virtualPointData, inputs = null, tenantId = null) {
-        try {
-            console.log(`VirtualPointRepository.updateVirtualPoint: ID ${id}`);
-      
-            // 존재 확인
-            const existing = await this.findById(id, tenantId);
-            if (!existing) {
-                throw new Error(`가상포인트 ID ${id}가 존재하지 않습니다`);
+        return await this.transaction(async (trx) => {
+            // 1. 메인 정보 업데이트
+            const dataToUpdate = {
+                name: virtualPointData.name,
+                formula: virtualPointData.formula || virtualPointData.expression,
+                description: virtualPointData.description,
+                data_type: virtualPointData.data_type,
+                unit: virtualPointData.unit,
+                calculation_trigger: virtualPointData.calculation_trigger,
+                is_enabled: virtualPointData.is_enabled ? 1 : 0,
+                category: virtualPointData.category,
+                scope_type: virtualPointData.scope_type,
+                site_id: virtualPointData.site_id,
+                device_id: virtualPointData.device_id,
+                tags: virtualPointData.tags ? (typeof virtualPointData.tags === 'string' ? virtualPointData.tags : JSON.stringify(virtualPointData.tags)) : undefined,
+                updated_at: this.knex.fn.now()
+            };
+
+            // undefined 필드 제거
+            Object.keys(dataToUpdate).forEach(key => dataToUpdate[key] === undefined && delete dataToUpdate[key]);
+
+            const query = trx('virtual_points').where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            const updatedRows = await query.update(dataToUpdate);
+            if (updatedRows === 0) {
+                throw new Error(`가상포인트 ID ${id}를 업데이트할 수 없습니다 (존재하지 않거나 권한 없음)`);
             }
 
-            // 트랜잭션 시작
-            await this.dbFactory.executeQuery('BEGIN TRANSACTION');
+            // 2. 입력 매핑 업데이트
+            if (inputs !== null) {
+                await trx('virtual_point_inputs').where('virtual_point_id', id).delete();
 
-            try {
-                // 1. 메인 정보 업데이트
-                await this.dbFactory.executeQuery(VirtualPointQueries.updateVirtualPointSimple(), [
-                    virtualPointData.name,
-                    virtualPointData.formula,
-                    virtualPointData.description,
-                    virtualPointData.data_type,
-                    virtualPointData.unit,
-                    virtualPointData.calculation_trigger,
-                    virtualPointData.is_enabled ? 1 : 0,
-                    virtualPointData.category,
-                    id
-                ]);
-                console.log('메인 정보 업데이트 완료');
-
-                // 2. 입력 매핑 업데이트 (제공된 경우)
-                if (inputs !== null && Array.isArray(inputs)) {
-                    // 기존 입력 삭제
-                    await this.dbFactory.executeQuery(VirtualPointQueries.deleteInputsByVirtualPointId(), [id]);
-          
-                    // 새로운 입력 생성
-                    for (const input of inputs) {
-                        await this.dbFactory.executeQuery(VirtualPointQueries.createInput(), [
-                            id,
-                            input.variable_name,
-                            input.source_type || 'constant',
-                            input.source_id || null,
-                            input.constant_value || null,
-                            input.source_formula || null,
-                            input.data_processing || 'current'
-                        ]);
-                    }
-                    console.log(`${inputs.length}개 입력 매핑 업데이트 완료`);
+                if (inputs.length > 0) {
+                    const inputsToInsert = inputs.map(input => ({
+                        virtual_point_id: id,
+                        variable_name: input.variable_name,
+                        source_type: input.source_type || 'constant',
+                        source_id: input.source_id || null,
+                        constant_value: input.constant_value !== undefined ? input.constant_value : null,
+                        source_formula: input.source_formula || null,
+                        is_required: input.is_required !== false ? 1 : 0,
+                        sort_order: input.sort_order || 0
+                    }));
+                    await trx('virtual_point_inputs').insert(inputsToInsert);
                 }
-
-                // 3. 현재값 무효화
-                await this.dbFactory.executeQuery(VirtualPointQueries.invalidateCurrentValue(), [id]);
-                console.log('현재값 무효화 완료');
-
-                // 4. 업데이트 이력 추가
-                await this.dbFactory.executeQuery(VirtualPointQueries.createUpdateHistory(), [id]);
-                console.log('업데이트 이력 추가 완료');
-
-                // 트랜잭션 커밋
-                await this.dbFactory.executeQuery('COMMIT');
-        
-                console.log(`가상포인트 업데이트 완료: ID ${id}`);
-        
-                // 업데이트된 가상포인트 반환
-                return await this.findById(id, tenantId);
-        
-            } catch (error) {
-                // 트랜잭션 롤백
-                await this.dbFactory.executeQuery('ROLLBACK');
-                throw error;
             }
-      
-        } catch (error) {
-            console.error('VirtualPointRepository.updateVirtualPoint 실패:', error.message);
-            throw new Error(`가상포인트 업데이트 실패: ${error.message}`);
-        }
+
+            // 3. 현재값 무효화
+            await trx('virtual_point_values')
+                .where('virtual_point_id', id)
+                .update({
+                    quality: 'pending_update',
+                    is_stale: 1,
+                    last_calculated: this.knex.fn.now()
+                });
+
+            // 4. 업데이트 이력
+            await trx('virtual_point_execution_history').insert({
+                virtual_point_id: id,
+                execution_time: this.knex.fn.now(),
+                execution_duration_ms: 0,
+                result_type: 'success',
+                result_value: JSON.stringify({ action: 'updated', status: 'completed' }),
+                trigger_source: 'manual',
+                success: 1
+            });
+
+            return await this.findById(id, tenantId, trx);
+        });
     }
 
-    // 간단한 토글 업데이트 메소드 추가
+    /**
+     * 상태 토글 전용
+     */
     async updateEnabledStatus(id, isEnabled, tenantId = null) {
         try {
-            console.log(`VirtualPointRepository.updateEnabledStatus: ID ${id}, enabled: ${isEnabled}`);
-      
-            const result = await this.dbFactory.executeQuery(VirtualPointQueries.updateEnabledOnly(), [
-                isEnabled ? 1 : 0,
-                id
-            ]);
-      
-            if (result.changes === 0) {
-                throw new Error(`가상포인트 ID ${id}를 찾을 수 없습니다`);
-            }
-      
-            console.log(`가상포인트 ${id} 활성화 상태 업데이트 완료`);
-      
-            // 업데이트된 가상포인트 반환
+            const query = this.query().where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            await query.update({
+                is_enabled: isEnabled ? 1 : 0,
+                updated_at: this.knex.fn.now()
+            });
+
             return await this.findById(id, tenantId);
-      
         } catch (error) {
-            console.error('가상포인트 활성화 상태 업데이트 실패:', error);
+            this.logger.error(`VirtualPointRepository.updateEnabledStatus 실패 (ID: ${id}):`, error);
             throw error;
         }
     }
 
+    /**
+     * 삭제 (관련 데이터 모두 삭제)
+     */
     async deleteById(id, tenantId = null) {
-        try {
-            console.log(`VirtualPointRepository.deleteById: ID ${id}`);
-      
-            // 존재 확인
-            const existing = await this.findById(id, tenantId);
-            if (!existing) {
-                console.log(`가상포인트 ID ${id}가 존재하지 않음`);
-                return false;
-            }
+        return await this.transaction(async (trx) => {
+            const query = trx('virtual_points').where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
 
-            console.log(`삭제 대상: ${existing.name} (ID: ${id})`);
+            const existing = await query.first();
+            if (!existing) return false;
 
-            // 트랜잭션 시작
-            await this.dbFactory.executeQuery('BEGIN TRANSACTION');
+            // 1. 실행 이력
+            await trx('virtual_point_execution_history').where('virtual_point_id', id).delete();
+            // 2. 의존성
+            await trx('virtual_point_dependencies').where('virtual_point_id', id).delete();
+            // 3. 현재값
+            await trx('virtual_point_values').where('virtual_point_id', id).delete();
+            // 4. 입력 매핑
+            await trx('virtual_point_inputs').where('virtual_point_id', id).delete();
 
-            try {
-                // CASCADE DELETE 순서대로 실행
-                const historyResult = await this.dbFactory.executeQuery(VirtualPointQueries.deleteExecutionHistory(), [id]);
-                console.log(`1단계: 실행 이력 ${historyResult.changes || 0}개 삭제`);
+            // 5. 알람 발생에서 참조 제거
+            await trx('alarm_occurrences')
+                .where('point_id', id)
+                .whereIn('rule_id', function () {
+                    this.select('id').from('alarm_rules').where('target_type', 'virtual_point');
+                })
+                .update({ point_id: null });
 
-                const depsResult = await this.dbFactory.executeQuery(VirtualPointQueries.deleteDependencies(), [id]);
-                console.log(`2단계: 의존성 ${depsResult.changes || 0}개 삭제`);
+            // 6. 알람 룰 삭제
+            await trx('alarm_rules')
+                .where('target_type', 'virtual_point')
+                .where('target_id', id)
+                .delete();
 
-                const valuesResult = await this.dbFactory.executeQuery(VirtualPointQueries.deleteValues(), [id]);
-                console.log(`3단계: 현재값 ${valuesResult.changes || 0}개 삭제`);
+            // 7. 다른 VP 참조 제거
+            await trx('virtual_point_inputs')
+                .where('source_type', 'virtual_point')
+                .where('source_id', id)
+                .delete();
 
-                const inputsResult = await this.dbFactory.executeQuery(VirtualPointQueries.deleteInputs(), [id]);
-                console.log(`4단계: 입력 매핑 ${inputsResult.changes || 0}개 삭제`);
+            await trx('virtual_point_dependencies')
+                .where('depends_on_type', 'virtual_point')
+                .where('depends_on_id', id)
+                .delete();
 
-                const alarmOccResult = await this.dbFactory.executeQuery(VirtualPointQueries.nullifyAlarmOccurrences(), [id]);
-                console.log(`5단계: 알람 발생 ${alarmOccResult.changes || 0}개 정리`);
+            // 8. 본체 삭제
+            await trx('virtual_points').where('id', id).delete();
 
-                const alarmRulesResult = await this.dbFactory.executeQuery(VirtualPointQueries.deleteAlarmRules(), [id]);
-                console.log(`6단계: 알람 룰 ${alarmRulesResult.changes || 0}개 삭제`);
-
-                const otherInputsResult = await this.dbFactory.executeQuery(
-                    VirtualPointQueries.deleteOtherVirtualPointInputReferences(), 
-                    ['virtual_point', id]
-                );
-                console.log(`7단계: 다른 VP 입력 참조 ${otherInputsResult.changes || 0}개 제거`);
-
-                const otherDepsResult = await this.dbFactory.executeQuery(
-                    VirtualPointQueries.deleteOtherVirtualPointDependencyReferences(), 
-                    ['virtual_point', id]
-                );
-                console.log(`8단계: 다른 VP 의존성 참조 ${otherDepsResult.changes || 0}개 제거`);
-
-                const mainResult = await this.dbFactory.executeQuery(VirtualPointQueries.deleteVirtualPoint(), [id]);
-                console.log(`9단계: 가상포인트 본체 ${mainResult.changes || 0}개 삭제`);
-
-                // 트랜잭션 커밋
-                await this.dbFactory.executeQuery('COMMIT');
-
-                const deletedCount = mainResult.changes || mainResult.affectedRows || 0;
-        
-                if (deletedCount > 0) {
-                    console.log(`가상포인트 ID ${id} 완전 삭제 성공!`);
-                    return true;
-                } else {
-                    console.log('가상포인트 본체 삭제 실패');
-                    return false;
-                }
-
-            } catch (error) {
-                // 트랜잭션 롤백
-                await this.dbFactory.executeQuery('ROLLBACK');
-                throw error;
-            }
-      
-        } catch (error) {
-            console.error('VirtualPointRepository.deleteById 실패:', error.message);
-            throw new Error(`가상포인트 삭제 실패: ${error.message}`);
-        }
+            return true;
+        });
     }
 
     // ==========================================================================
-    // 관련 데이터 조회 메소드들
+    // 관련 데이터 조회
     // ==========================================================================
 
-    async getInputsByVirtualPoint(virtualPointId) {
-        try {
-            const result = await this.dbFactory.executeQuery(VirtualPointQueries.getInputsByVirtualPointId(), [virtualPointId]);
-            const inputs = Array.isArray(result) ? result : (result.rows || []);
-      
-            console.log(`가상포인트 ID ${virtualPointId}의 입력 매핑 ${inputs.length}개 조회 완료`);
-            return inputs.map(input => this.parseVirtualPointInput(input));
-      
-        } catch (error) {
-            console.error('getInputsByVirtualPoint 실패:', error.message);
-            return [];
-        }
+    async getInputsByVirtualPoint(virtualPointId, trx = null) {
+        return (trx || this.knex)('virtual_point_inputs')
+            .where('virtual_point_id', virtualPointId)
+            .orderBy('sort_order', 'asc')
+            .orderBy('id', 'asc');
     }
 
-    async getCurrentValue(virtualPointId) {
-        try {
-            const result = await this.dbFactory.executeQuery(VirtualPointQueries.getCurrentValue(), [virtualPointId]);
-            const values = Array.isArray(result) ? result : (result.rows || []);
-      
-            return values.length > 0 ? values[0] : null;
-      
-        } catch (error) {
-            console.error('getCurrentValue 실패:', error.message);
-            return null;
-        }
+    async getCurrentValue(virtualPointId, trx = null) {
+        return (trx || this.knex)('virtual_point_values')
+            .where('virtual_point_id', virtualPointId)
+            .first();
     }
 
-    async getDependencies(virtualPointId) {
-        try {
-            const result = await this.dbFactory.executeQuery(VirtualPointQueries.getDependencies(), [virtualPointId]);
-            const dependencies = Array.isArray(result) ? result : (result.rows || []);
-      
-            return dependencies;
-      
-        } catch (error) {
-            console.error('getDependencies 실패:', error.message);
-            return [];
-        }
+    async getDependencies(virtualPointId, trx = null) {
+        return (trx || this.knex)('virtual_point_dependencies')
+            .where('virtual_point_id', virtualPointId)
+            .where('is_active', 1)
+            .orderBy('dependency_level', 'asc');
     }
 
     // ==========================================================================
-    // 통계 및 분석 메소드들
+    // 통계 및 정리
     // ==========================================================================
 
     async getStatsByCategory(tenantId) {
-        try {
-            const result = await this.dbFactory.executeQuery(VirtualPointQueries.getStatsByCategorySimple(), [tenantId]);
-            const stats = Array.isArray(result) ? result : (result.rows || []);
-            return stats;
-        } catch (error) {
-            console.error('getStatsByCategory error:', error);
-            return [];
-        }
+        return this.query()
+            .where('tenant_id', tenantId)
+            .select('category')
+            .count('* as count')
+            .sum('is_enabled as enabled_count')
+            .groupBy('category')
+            .orderBy('count', 'desc');
     }
 
     async getPerformanceStats(tenantId) {
-        try {
-            const result = await this.dbFactory.executeQuery(VirtualPointQueries.getPerformanceStatsSimple(), [tenantId]);
-            const stats = Array.isArray(result) ? result : (result.rows || []);
-            return stats[0] || { total_points: 0, enabled_points: 0 };
-        } catch (error) {
-            console.error('getPerformanceStats error:', error);
-            return { total_points: 0, enabled_points: 0 };
-        }
+        const result = await this.query()
+            .where('tenant_id', tenantId)
+            .count('* as total_points')
+            .sum('is_enabled as enabled_points')
+            .first();
+
+        return result || { total_points: 0, enabled_points: 0 };
     }
 
     async cleanupOrphanedRecords() {
-        try {
-            console.log('고아 레코드 정리 시작...');
+        return await this.transaction(async (trx) => {
+            const vpSubquery = trx('virtual_points').select('id');
 
-            await this.dbFactory.executeQuery('BEGIN TRANSACTION');
+            const results = [];
 
-            try {
-                const results = [];
+            const deletedInputs = await trx('virtual_point_inputs').whereNotIn('virtual_point_id', vpSubquery).delete();
+            results.push({ table: 'virtual_point_inputs', cleaned: deletedInputs });
 
-                const orphanInputs = await this.dbFactory.executeQuery(VirtualPointQueries.cleanupOrphanedInputs());
-                results.push({ table: 'virtual_point_inputs', cleaned: orphanInputs.changes || 0 });
+            const deletedValues = await trx('virtual_point_values').whereNotIn('virtual_point_id', vpSubquery).delete();
+            results.push({ table: 'virtual_point_values', cleaned: deletedValues });
 
-                const orphanValues = await this.dbFactory.executeQuery(VirtualPointQueries.cleanupOrphanedValues());
-                results.push({ table: 'virtual_point_values', cleaned: orphanValues.changes || 0 });
+            const deletedDeps = await trx('virtual_point_dependencies').whereNotIn('virtual_point_id', vpSubquery).delete();
+            results.push({ table: 'virtual_point_dependencies', cleaned: deletedDeps });
 
-                const orphanDeps = await this.dbFactory.executeQuery(VirtualPointQueries.cleanupOrphanedDependencies());
-                results.push({ table: 'virtual_point_dependencies', cleaned: orphanDeps.changes || 0 });
+            const deletedHistory = await trx('virtual_point_execution_history').whereNotIn('virtual_point_id', vpSubquery).delete();
+            results.push({ table: 'virtual_point_execution_history', cleaned: deletedHistory });
 
-                const orphanHistory = await this.dbFactory.executeQuery(VirtualPointQueries.cleanupOrphanedExecutionHistory());
-                results.push({ table: 'virtual_point_execution_history', cleaned: orphanHistory.changes || 0 });
-
-                const orphanAlarms = await this.dbFactory.executeQuery(VirtualPointQueries.cleanupOrphanedAlarmOccurrences());
-                results.push({ table: 'alarm_occurrences', cleaned: orphanAlarms.changes || 0 });
-
-                await this.dbFactory.executeQuery('COMMIT');
-
-                console.log('고아 레코드 정리 완료:', results);
-                return results;
-
-            } catch (error) {
-                await this.dbFactory.executeQuery('ROLLBACK');
-                throw error;
-            }
-
-        } catch (error) {
-            console.error('고아 레코드 정리 실패:', error);
-            throw error;
-        }
+            return results;
+        });
     }
 
     // ==========================================================================
@@ -644,17 +438,7 @@ class VirtualPointRepository {
         return {
             ...vp,
             is_enabled: !!vp.is_enabled,
-            tags: vp.tags ? JSON.parse(vp.tags) : [],
-            dependencies: vp.dependencies ? JSON.parse(vp.dependencies) : []
-        };
-    }
-
-    parseVirtualPointInput(input) {
-        if (!input) return null;
-
-        return {
-            ...input,
-            constant_value: input.constant_value ? parseFloat(input.constant_value) : null
+            tags: vp.tags ? (typeof vp.tags === 'string' ? JSON.parse(vp.tags) : vp.tags) : []
         };
     }
 }

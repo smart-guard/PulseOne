@@ -322,8 +322,9 @@ bool MQTTWorker::SendMQTTDataToPipeline(const std::string& topic,
         tv.quality = PulseOne::Enums::DataQuality::GOOD;
         tv.source = "mqtt_" + topic;
         
-        // DataPoint가 있으면 ID 설정
+        // DataPoint가 있으면 ID 및 Source 설정
         if (data_point) {
+            tv.source = data_point->name; // Use semantic name (Hybrid Strategy)
             tv.point_id = std::stoi(data_point->id);
             
             // 이전값과 비교 (protected 멤버 접근)
@@ -396,7 +397,7 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json& json_data,
                             PulseOne::Structs::TimestampedValue tv;
                             tv.timestamp = std::chrono::system_clock::now();
                             tv.quality = PulseOne::Enums::DataQuality::GOOD;
-                            tv.source = "mqtt_mapped_" + topic_context;
+                            tv.source = point.name; // Use semantic name (Hybrid Strategy)
                             tv.point_id = std::stoi(point.id); // DataPoint ID 사용
                             
                             // 값 변환 로직
@@ -596,6 +597,7 @@ bool MQTTWorker::SendSingleTopicValueToPipeline(const std::string& topic,
         // 🔥 개선: DataPoint 연결 시도
         PulseOne::Structs::DataPoint* data_point = FindDataPointByTopic(topic);
         if (data_point) {
+            tv.source = data_point->name; // Use semantic name (Hybrid Strategy)
             tv.point_id = std::stoi(data_point->id);
             
             // 🔥 이전값과 비교 (protected 멤버 접근)
@@ -665,6 +667,7 @@ bool MQTTWorker::SendMultipleTopicValuesToPipeline(const std::map<std::string, P
             // DataPoint 연결 시도
             PulseOne::Structs::DataPoint* data_point = FindDataPointByTopic(topic);
             if (data_point) {
+                tv.source = data_point->name; // Use semantic name (Hybrid Strategy)
                 tv.point_id = std::stoi(data_point->id);
                 
                 // 이전값과 비교

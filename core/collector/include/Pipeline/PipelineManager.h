@@ -28,10 +28,7 @@ public:
     // 🔥 싱글톤 패턴
     // ==========================================================================
     
-    static PipelineManager& getInstance() {
-        static PipelineManager instance;
-        return instance;
-    }
+    static PipelineManager& getInstance();
     
     // 복사/이동/대입 방지
     PipelineManager(const PipelineManager&) = delete;
@@ -60,7 +57,7 @@ public:
      * @param message DeviceDataMessage 구조체
      * @return 성공 시 true, 큐 오버플로우 시 false
      */
-    bool SendDeviceData(const Structs::DeviceDataMessage& message);
+    bool PushMessage(const Structs::DeviceDataMessage& message);
     /**
      * @brief Worker에서 데이터 전송 (큐에 추가만!)
      */

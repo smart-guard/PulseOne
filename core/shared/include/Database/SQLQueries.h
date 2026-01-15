@@ -140,6 +140,19 @@ namespace Device {
         ORDER BY name
     )";
     
+    // 🔥 에지 서버별 조회 (컬렉터 필터링용)
+    const std::string FIND_BY_EDGE_SERVER = R"(
+        SELECT 
+            id, tenant_id, site_id, device_group_id, edge_server_id,
+            name, description, device_type, manufacturer, model, serial_number,
+            protocol_id, endpoint, config, polling_interval, timeout, retry_count,
+            is_enabled, installation_date, last_maintenance, 
+            created_by, created_at, updated_at
+        FROM devices 
+        WHERE edge_server_id = ? AND is_enabled = 1
+        ORDER BY name
+    )";
+    
     const std::string FIND_ENABLED = R"(
         SELECT 
             d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id,
@@ -1491,6 +1504,45 @@ namespace QueryBuilder {
     }
     
 } // namespace QueryBuilder
+
+// =============================================================================
+// 🎯 EdgeServerRepository 쿼리들 - 컬렉터 아이덴티티 관리
+// =============================================================================
+namespace EdgeServer {
+    const std::string FIND_ALL = R"(
+        SELECT id, tenant_id, server_name as name, factory_name, location,
+               ip_address, port, registration_token, status,
+               last_seen, version, created_at, updated_at
+        FROM edge_servers
+        WHERE is_deleted = 0
+        ORDER BY id
+    )";
+
+    const std::string FIND_BY_ID = R"(
+        SELECT id, tenant_id, server_name as name, factory_name, location,
+               ip_address, port, registration_token, status,
+               last_seen, version, created_at, updated_at
+        FROM edge_servers
+        WHERE id = ?
+    )";
+
+    const std::string CREATE_TABLE = R"(
+        CREATE TABLE IF NOT EXISTS edge_servers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id INTEGER NOT NULL,
+            name VARCHAR(100) NOT NULL,
+            description TEXT,
+            ip_address VARCHAR(45),
+            port INTEGER DEFAULT 50051,
+            is_enabled INTEGER DEFAULT 1,
+            max_devices INTEGER DEFAULT 100,
+            max_data_points INTEGER DEFAULT 1000,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+        )
+    )";
+} // namespace EdgeServer
 
 } // namespace SQL
 } // namespace Database  

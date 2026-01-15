@@ -35,6 +35,7 @@ bool ScriptExecutor::initJSEngine() {
     if (!js_runtime_) return false;
     
     JS_SetMemoryLimit(js_runtime_, 16 * 1024 * 1024);
+    JS_SetMaxStackSize(js_runtime_, 1024 * 1024); // 1MB stack
     
     js_context_ = JS_NewContext(js_runtime_);
     if (!js_context_) {
@@ -42,6 +43,16 @@ bool ScriptExecutor::initJSEngine() {
         js_runtime_ = nullptr;
         return false;
     }
+
+    // Verify context works (in current thread)
+    JS_UpdateStackTop(js_runtime_);
+    JSValue val = JS_Eval(js_context_, "1+1", 3, "<init>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(val)) {
+        JS_FreeValue(js_context_, val);
+        cleanupJSEngine();
+        return false;
+    }
+    JS_FreeValue(js_context_, val);
     return true;
 #else
     return false;
@@ -66,6 +77,7 @@ bool ScriptExecutor::registerSystemFunctions() {
 #if HAS_QUICKJS
     std::lock_guard<std::recursive_mutex> lock(js_mutex_);
     if (!js_context_) return false;
+    JS_UpdateStackTop(js_runtime_);
 
     // Common system functions for both VP and Alarms
     const char* systemFuncs = R"(
@@ -88,82 +100,129 @@ function getCurrentValue(pointId) { return getPointValue(pointId); }
 PulseOne::Structs::DataValue ScriptExecutor::evaluate(const ScriptContext& ctx) {
 #if HAS_QUICKJS
     std::lock_guard<std::recursive_mutex> lock(js_mutex_);
-    if (!js_context_) throw std::runtime_error("JS context not initialized");
+    if (!js_runtime_) throw std::runtime_error("JS runtime not initialized");
+    JS_UpdateStackTop(js_runtime_);
 
-    std::string processed_script = preprocessFormula(ctx.script, ctx.tenant_id);
+    // Create a fresh context for each evaluation to avoid persistent thread/stack issues
+    JSContext* temp_ctx = JS_NewContext(js_runtime_);
+    if (!temp_ctx) throw std::runtime_error("Failed to create temporary JS context");
 
-    // Context setup
-    JSValue global_obj = JS_GetGlobalObject(js_context_);
-    JSValue point_values = JS_NewObject(js_context_);
-    if (ctx.inputs) {
-        for (auto& [key, value] : ctx.inputs->items()) {
-            JSValue js_val;
-            if (value.is_number()) js_val = JS_NewFloat64(js_context_, value.get<double>());
-            else if (value.is_boolean()) js_val = JS_NewBool(js_context_, value.get<bool>());
-            else if (value.is_string()) js_val = JS_NewString(js_context_, value.get<std::string>().c_str());
-            else continue;
-            
-            JS_SetPropertyStr(js_context_, global_obj, key.c_str(), JS_DupValue(js_context_, js_val));
-            JS_SetPropertyStr(js_context_, point_values, key.c_str(), JS_DupValue(js_context_, js_val));
-            JS_FreeValue(js_context_, js_val);
-        }
-    }
-    JS_SetPropertyStr(js_context_, global_obj, "point_values", point_values);
-    JS_FreeValue(js_context_, global_obj);
+    try {
+        std::string processed_script = preprocessFormula(ctx.script, ctx.tenant_id);
 
-    // Bytecode check
-    JSValue script_func;
-    auto cached = getCachedBytecode(processed_script);
-    if (cached.first != nullptr) {
-        script_func = JS_ReadObject(js_context_, static_cast<const uint8_t*>(cached.first), cached.second, JS_READ_OBJ_BYTECODE);
-    } else {
-        script_func = JS_Eval(js_context_, processed_script.c_str(), processed_script.length(), 
-                              "<script>", JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_COMPILE_ONLY);
-        if (!JS_IsException(script_func)) {
-            size_t bc_len;
-            uint8_t* bc = JS_WriteObject(js_context_, &bc_len, script_func, JS_WRITE_OBJ_BYTECODE);
-            if (bc) {
-                cacheBytecode(processed_script, bc, bc_len);
-                js_free(js_context_, bc);
+        // Register system functions in this context
+        const char* systemFuncs = R"(
+function getPointValue(pointId) {
+    var id = parseInt(pointId);
+    if (isNaN(id)) return null;
+    if (typeof point_values !== 'undefined') return point_values[id] !== undefined ? point_values[id] : point_values[pointId];
+    return null;
+}
+function getCurrentValue(pointId) { return getPointValue(pointId); }
+)";
+        JSValue sys_res = JS_Eval(temp_ctx, systemFuncs, std::strlen(systemFuncs), "<system>", JS_EVAL_TYPE_GLOBAL);
+        JS_FreeValue(temp_ctx, sys_res);
+
+        // Context setup
+        JSValue global_obj = JS_GetGlobalObject(temp_ctx);
+        JSValue point_values = JS_NewObject(temp_ctx);
+        
+        std::stringstream debug_inputs;
+        if (ctx.inputs) {
+            for (auto& [key, value] : ctx.inputs->items()) {
+                JSValue js_val;
+                if (value.is_number()) {
+                    js_val = JS_NewFloat64(temp_ctx, value.get<double>());
+                    debug_inputs << key << "=" << value.get<double>() << " ";
+                }
+                else if (value.is_boolean()) {
+                    js_val = JS_NewBool(temp_ctx, value.get<bool>());
+                    debug_inputs << key << "=" << (value.get<bool>() ? "true" : "false") << " ";
+                }
+                else if (value.is_string()) {
+                    js_val = JS_NewString(temp_ctx, value.get<std::string>().c_str());
+                    debug_inputs << key << "=\"" << value.get<std::string>() << "\" ";
+                }
+                else continue;
+                
+                JS_SetPropertyStr(temp_ctx, global_obj, key.c_str(), JS_DupValue(temp_ctx, js_val));
+                JS_SetPropertyStr(temp_ctx, point_values, key.c_str(), JS_DupValue(temp_ctx, js_val));
+                JS_FreeValue(temp_ctx, js_val);
             }
         }
-    }
+        JS_SetPropertyStr(temp_ctx, global_obj, "point_values", point_values);
+        JS_FreeValue(temp_ctx, global_obj);
 
-    if (JS_IsException(script_func)) {
-        JSValue exception = JS_GetException(js_context_);
-        const char* msg = JS_ToCString(js_context_, exception);
-        std::string err = msg ? msg : "Unknown compile error";
-        if (msg) JS_FreeCString(js_context_, msg);
-        JS_FreeValue(js_context_, exception);
-        JS_FreeValue(js_context_, script_func);
-        throw std::runtime_error("JS Compile error: " + err);
-    }
+        // Execution
+        JSValue eval_result = JS_Eval(temp_ctx, processed_script.c_str(), processed_script.length(), 
+                                    "<script>", JS_EVAL_TYPE_GLOBAL);
 
-    JSValue eval_result = JS_EvalFunction(js_context_, script_func);
-    if (JS_IsException(eval_result)) {
-        JSValue exception = JS_GetException(js_context_);
-        const char* msg = JS_ToCString(js_context_, exception);
-        std::string err = msg ? msg : "Unknown execution error";
-        if (msg) JS_FreeCString(js_context_, msg);
-        JS_FreeValue(js_context_, exception);
-        JS_FreeValue(js_context_, eval_result);
-        throw std::runtime_error("JS Execution error: " + err);
-    }
+        if (JS_IsException(eval_result)) {
+            JSValue exception = JS_GetException(temp_ctx);
+            std::string err = "Unknown error";
+            
+            // Try get message property first
+            JSValue msg_val = JS_GetPropertyStr(temp_ctx, exception, "message");
+            if (!JS_IsUndefined(msg_val) && !JS_IsNull(msg_val)) {
+                const char* msg_ptr = JS_ToCString(temp_ctx, msg_val);
+                if (msg_ptr) {
+                    err = msg_ptr;
+                    JS_FreeCString(temp_ctx, msg_ptr);
+                }
+                JS_FreeValue(temp_ctx, msg_val);
+            } else {
+                const char* msg_ptr = JS_ToCString(temp_ctx, exception);
+                if (msg_ptr) {
+                    err = msg_ptr;
+                    JS_FreeCString(temp_ctx, msg_ptr);
+                }
+            }
 
-    PulseOne::Structs::DataValue result = 0.0;
-    if (JS_IsBool(eval_result)) result = static_cast<bool>(JS_ToBool(js_context_, eval_result));
-    else if (JS_IsNumber(eval_result)) {
-        double val;
-        JS_ToFloat64(js_context_, &val, eval_result);
-        result = val;
-    } else if (JS_IsString(eval_result)) {
-        const char* str = JS_ToCString(js_context_, eval_result);
-        result = std::string(str);
-        JS_FreeCString(js_context_, str);
-    }
+            // Try get stack property
+            JSValue stack_val = JS_GetPropertyStr(temp_ctx, exception, "stack");
+            if (!JS_IsUndefined(stack_val) && !JS_IsNull(stack_val)) {
+                const char* stack_ptr = JS_ToCString(temp_ctx, stack_val);
+                if (stack_ptr) {
+                    err += "\nStack: " + std::string(stack_ptr);
+                    JS_FreeCString(temp_ctx, stack_ptr);
+                }
+                JS_FreeValue(temp_ctx, stack_val);
+            }
 
-    JS_FreeValue(js_context_, eval_result);
-    return result;
+            // Log details on failure
+            LogManager::getInstance().log("ScriptExecutor", Enums::LogLevel::LOG_ERROR, 
+                "VP " + std::to_string(ctx.id) + " Execution FAILED: " + err + 
+                " | Script: " + processed_script + " | Inputs: " + debug_inputs.str());
+
+            JS_FreeValue(temp_ctx, exception);
+            JS_FreeValue(temp_ctx, eval_result);
+            JS_FreeContext(temp_ctx);
+            throw std::runtime_error("JS Execution error: " + err);
+        }
+
+        PulseOne::Structs::DataValue result = 0.0;
+        if (JS_IsBool(eval_result)) {
+            result = static_cast<bool>(JS_ToBool(temp_ctx, eval_result));
+        } else if (JS_IsNumber(eval_result)) {
+            double val;
+            JS_ToFloat64(temp_ctx, &val, eval_result);
+            result = val;
+        } else if (JS_IsString(eval_result)) {
+            const char* str = JS_ToCString(temp_ctx, eval_result);
+            if (str) {
+                result = std::string(str);
+                JS_FreeCString(temp_ctx, str);
+            }
+        }
+
+        JS_FreeValue(temp_ctx, eval_result);
+        JS_FreeContext(temp_ctx);
+        return result;
+
+    } catch (...) {
+        JS_FreeContext(temp_ctx);
+        throw;
+    }
 #else
     return 0.0;
 #endif

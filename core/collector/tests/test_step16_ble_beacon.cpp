@@ -12,18 +12,27 @@ using namespace PulseOne::Drivers::Ble;
 
 class Step16BleBeaconTest : public ::testing::Test {
 protected:
+    std::unique_ptr<BleBeaconDriver> driver;
+
     void SetUp() override {
-        // 1. Initialize DB
+        // Initialize DatabaseManager
+        DbLib::DatabaseConfig dbConfig;
+        dbConfig.type = "SQLITE"; // Struct uses string type
+        dbConfig.sqlite_path = ":memory:";
         auto& db = DbLib::DatabaseManager::getInstance();
-        ASSERT_TRUE(db.initialize()); 
+        db.initialize(dbConfig);
         
-        // 2. Load Schema
+        // Initialize Driver
+        driver = std::make_unique<BleBeaconDriver>();
+        
+        // Load Schema
         std::string schemaPath = "db/test_schema_complete.sql";
         std::ifstream schemaFile(schemaPath);
         ASSERT_TRUE(schemaFile.is_open()) << "Failed to open " << schemaPath;
+        
         std::stringstream buffer;
         buffer << schemaFile.rdbuf();
-        ASSERT_TRUE(db.executeNonQuery(buffer.str()));
+        ASSERT_TRUE(db.executeNonQuerySQLite(buffer.str()));
 
         // 3. Load BLE Data
         std::string dataPath = "db/test_data_ble.sql";

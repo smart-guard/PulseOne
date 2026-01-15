@@ -15,6 +15,9 @@ export interface Device {
   site_id?: number;
   device_group_id?: number;
   edge_server_id?: number;
+  tags?: string[] | string;
+  metadata?: any;
+  custom_fields?: any;
   name: string;
   description?: string;
   device_type: string;
@@ -22,6 +25,14 @@ export interface Device {
   model?: string;
   serial_number?: string;
   protocol_type: string;
+  protocol_id: number;
+  protocol?: {
+    id: number;
+    name: string;
+    type: string;
+    category?: string;
+    default_port?: number;
+  };
   endpoint: string;
   config?: any;
   polling_interval?: number;
@@ -30,39 +41,51 @@ export interface Device {
   is_enabled: boolean;
   installation_date?: string;
   last_maintenance?: string;
-  created_at: string;
-  updated_at: string;
-  
+  created_at?: string;
+  updated_at?: string;
+
   // 상태 정보
   connection_status?: string;
   status?: string | any;
   last_seen?: string;
   last_communication?: string;
-  
+
   // 확장 정보
   settings?: DeviceSettings;
   status_info?: DeviceStatus;
-  
+
   site_name?: string;
   group_name?: string;
+  groups?: DeviceGroupAssignment[];
+  group_ids?: number[];
   data_points?: DataPoint[];
   data_points_count?: number;
+
+  // 🔥 동기화 정보 (Backend partial success 대응)
+  sync_warning?: string;
+  sync_error?: string;
+}
+
+export interface DeviceGroupAssignment {
+  id: number;
+  name: string;
+  is_primary?: boolean;
 }
 
 export interface DeviceSettings {
-  polling_interval_ms: number;
-  connection_timeout_ms: number;
-  read_timeout_ms: number;
-  write_timeout_ms: number;
-  max_retry_count: number;
-  retry_interval_ms: number;
-  backoff_time_ms: number;
-  is_keep_alive_enabled: boolean;
-  keep_alive_interval_s: number;
-  is_data_validation_enabled: boolean;
-  is_performance_monitoring_enabled: boolean;
-  is_detailed_logging_enabled: boolean;
-  is_diagnostic_mode_enabled: boolean;
+  polling_interval_ms?: number;
+  connection_timeout_ms?: number;
+  read_timeout_ms?: number;
+  write_timeout_ms?: number;
+  max_retry_count?: number;
+  retry_interval_ms?: number;
+  backoff_time_ms?: number;
+  is_keep_alive_enabled?: boolean;
+  keep_alive_interval_s?: number;
+  is_data_validation_enabled?: boolean;
+  is_performance_monitoring_enabled?: boolean;
+  is_detailed_logging_enabled?: boolean;
+  is_diagnostic_mode_enabled?: boolean;
   is_communication_logging_enabled?: boolean;
   scan_rate_override?: number;
   scan_group?: number;
@@ -73,8 +96,8 @@ export interface DeviceSettings {
   backoff_multiplier?: number;
   max_backoff_time_ms?: number;
   keep_alive_timeout_s?: number;
-  outlier_detection_enabled?: boolean;
-  deadband_enabled?: boolean;
+  is_outlier_detection_enabled?: boolean;
+  is_deadband_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
   updated_by?: string;
@@ -109,6 +132,9 @@ export interface DeviceModalProps {
   onClose: () => void;
   onSave?: (device: Device) => void;
   onDelete?: (deviceId: number) => void;
+  onEdit?: () => void;
+  initialTab?: string;
+  onTabChange?: (tab: string) => void;
 }
 
 // ============================================================================
@@ -144,6 +170,7 @@ export interface DeviceDataPointsTabProps {
 
 export interface DeviceStatusTabProps {
   device?: Device | null;
+  dataPoints?: DataPoint[];
 }
 
 export interface DeviceLogsTabProps {
@@ -156,14 +183,14 @@ export interface DeviceLogsTabProps {
 
 export type DeviceType = 'PLC' | 'HMI' | 'SENSOR' | 'ACTUATOR' | 'METER' | 'CONTROLLER' | 'GATEWAY' | 'OTHER';
 
-export type ProtocolType = 
-  | 'MODBUS_TCP' 
-  | 'MODBUS_RTU' 
-  | 'MQTT' 
-  | 'BACNET' 
-  | 'OPCUA' 
-  | 'ETHERNET_IP' 
-  | 'PROFINET' 
+export type ProtocolType =
+  | 'MODBUS_TCP'
+  | 'MODBUS_RTU'
+  | 'MQTT'
+  | 'BACNET'
+  | 'OPCUA'
+  | 'ETHERNET_IP'
+  | 'PROFINET'
   | 'HTTP_REST';
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error' | 'unknown';
@@ -230,6 +257,17 @@ export interface DeviceLogEntry {
   category: string;
   message: string;
   details?: any;
+}
+
+export interface PacketLogEntry {
+  id: number;
+  device_id: number;
+  timestamp: string;
+  direction: 'TX' | 'RX';
+  protocol: string;
+  length: number;
+  data_hex: string;
+  data_ascii?: string;
 }
 
 export interface DeviceBulkActionResult {

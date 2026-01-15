@@ -5,10 +5,11 @@
 
 const jwt = require('jsonwebtoken');
 const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const ConfigManager = require('../lib/config/ConfigManager');
+const config = ConfigManager.getInstance();
 
 // 데이터베이스 연결
-const dbPath = process.env.SQLITE_PATH || path.join(__dirname, '../data/db/pulseone.db');
+const dbPath = config.getDatabaseConfig().sqlite.path;
 const db = new sqlite3.Database(dbPath);
 
 /**
@@ -17,6 +18,20 @@ const db = new sqlite3.Database(dbPath);
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+    // 🛠️ 개발 환경에서는 인증 스킵 (app.js에서 설정한 devUser 사용 또는 더미 유저 주입)
+    if (process.env.NODE_ENV === 'development' || token === 'dev-dummy-token') {
+        req.user = {
+            id: 1,
+            email: 'admin@pulseone.com',
+            role: 'system_admin',
+            tenant_id: null, // System Admin sees all tenants
+            permissions: JSON.stringify(['*']),
+            site_access: JSON.stringify([]),
+            device_access: JSON.stringify([])
+        };
+        return next();
+    }
 
     if (!token) {
         return res.status(401).json({
@@ -295,7 +310,7 @@ function addTenantFilter(baseQuery, tenantId, tableName = 'devices') {
     // WHERE 절이 이미 있는지 확인
     const hasWhere = baseQuery.toLowerCase().includes('where');
     const connector = hasWhere ? ' AND' : ' WHERE';
-    
+
     return `${baseQuery}${connector} ${tableName}.tenant_id = ${tenantId}`;
 }
 
@@ -310,7 +325,7 @@ function addSiteFilter(baseQuery, siteAccess, tableName = 'devices') {
     const hasWhere = baseQuery.toLowerCase().includes('where');
     const connector = hasWhere ? ' AND' : ' WHERE';
     const siteIds = siteAccess.join(',');
-    
+
     return `${baseQuery}${connector} ${tableName}.site_id IN (${siteIds})`;
 }
 

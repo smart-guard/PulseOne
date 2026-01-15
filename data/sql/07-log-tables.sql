@@ -398,3 +398,44 @@ CREATE INDEX IF NOT EXISTS idx_performance_logs_name ON performance_logs(metric_
 CREATE INDEX IF NOT EXISTS idx_performance_logs_hostname ON performance_logs(hostname);
 CREATE INDEX IF NOT EXISTS idx_performance_logs_component ON performance_logs(component);
 CREATE INDEX IF NOT EXISTS idx_performance_logs_category_name_time ON performance_logs(metric_category, metric_name, timestamp DESC);
+
+-- =============================================================================
+-- 감사 로그 테이블 (상세한 설정 업데이트 추적)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER,
+    user_id INTEGER,
+    
+    -- 🔥 액션 정보
+    action VARCHAR(50) NOT NULL,                     -- CREATE, UPDATE, DELETE, EXECUTE, etc.
+    entity_type VARCHAR(50) NOT NULL,                -- DEVICE, DATA_POINT, PROTOCOL, SITE, USER, etc.
+    entity_id INTEGER,
+    entity_name VARCHAR(100),
+    
+    -- 🔥 변경 상세
+    old_value TEXT,                                  -- JSON 형태 (변경 전)
+    new_value TEXT,                                  -- JSON 형태 (변경 후)
+    change_summary TEXT,                             -- 변경 사항 요약
+    
+    -- 🔥 요청 정보
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    request_id VARCHAR(50),
+    
+    -- 🔥 메타데이터
+    severity VARCHAR(20) DEFAULT 'info',             -- info, warning, critical
+    details TEXT,                                    -- JSON 형태
+    
+    -- 🔥 감사 정보
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);

@@ -5,10 +5,10 @@
 
 import { API_CONFIG } from '../config';
 import { ENDPOINTS } from '../endpoints';
-import { 
-  ApiResponse, 
-  PaginatedApiResponse, 
-  PaginationParams 
+import {
+  ApiResponse,
+  PaginatedApiResponse,
+  PaginationParams
 } from '../../types/common';
 
 // ============================================================================
@@ -29,7 +29,21 @@ export interface DataPoint {
   min_value?: number;
   max_value?: number;
   scaling_factor?: number;
+  scaling_offset?: number;
   polling_interval?: number;
+  access_mode?: 'read' | 'write' | 'read_write';
+  is_log_enabled?: boolean;
+  log_interval_ms?: number;
+  log_deadband?: number;
+  is_alarm_enabled?: boolean;
+  alarm_priority?: 'low' | 'medium' | 'high' | 'critical';
+  high_alarm_limit?: number;
+  low_alarm_limit?: number;
+  alarm_deadband?: number;
+  group_name?: string;
+  tags?: string[];
+  metadata?: any;
+  protocol_params?: any;
   created_at: string;
   updated_at: string;
   tenant_id?: number;
@@ -124,6 +138,7 @@ export interface CurrentValueParams {
   quality_filter?: string;
   limit?: number;
   source?: string;
+  include_metadata?: boolean;
 }
 
 export interface HistoricalDataParams {
@@ -182,7 +197,7 @@ class HttpClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     // 🔥 URL 중복 방지 로직
     let url: string;
-    
+
     if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
       // 이미 완전한 URL인 경우
       url = endpoint;
@@ -193,13 +208,13 @@ class HttpClient {
       // 상대 경로인 경우
       url = `${this.baseUrl}/${endpoint}`;
     }
-    
+
     console.log('🌐 Data API Request:', {
       method: options.method || 'GET',
       url: url,
       endpoint: endpoint
     });
-    
+
     const config: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
@@ -211,39 +226,39 @@ class HttpClient {
 
     try {
       const response = await fetch(url, config);
-      
+
       console.log('📡 Data API Response:', {
         status: response.status,
         ok: response.ok,
         url: response.url
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
-      
+
       // Backend 응답 형식 보장
       if ('success' in data) {
         return data as ApiResponse<T>;
       }
-      
+
       // 표준 형식이 아닌 경우 변환
       return {
         success: true,
         data: data as T,
         message: 'Success'
       } as ApiResponse<T>;
-      
+
     } catch (error) {
       console.error('❌ Data API Request failed:', {
         endpoint,
         url,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
-      
+
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -256,7 +271,7 @@ class HttpClient {
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
     if (params) {
       const queryParams = new URLSearchParams();
-      
+
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           if (Array.isArray(value)) {
@@ -266,15 +281,15 @@ class HttpClient {
           }
         }
       });
-      
+
       const queryString = queryParams.toString();
       if (queryString) {
-        endpoint = endpoint.includes('?') 
-          ? `${endpoint}&${queryString}` 
+        endpoint = endpoint.includes('?')
+          ? `${endpoint}&${queryString}`
           : `${endpoint}?${queryString}`;
       }
     }
-    
+
     return this.request<T>(endpoint, { method: 'GET' });
   }
 
@@ -377,11 +392,15 @@ export class DataApiService {
   }> {
     console.log('🔄 데이터포인트 목록 조회:', filters);
 
-    const response = await this.searchDataPoints(filters);
-    
+    const response = await this.searchDataPoints({
+      ...filters,
+      page: filters?.page || 1,
+      limit: filters?.limit || 1000
+    });
+
     if (response.success && response.data) {
       const { items = [], pagination } = response.data;
-      
+
       return {
         points: items,
         totalCount: pagination?.total || items.length,
@@ -414,16 +433,16 @@ export class DataApiService {
     connection_status: string;
   }>> {
     console.log('🔄 디바이스 목록 조회');
-    
+
     const response = await fetch('/api/devices?limit=100&enabled_only=true');
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
     const result = await response.json();
     console.log('📦 디바이스 API 응답:', result);
-    
+
     if (result.success && result.data?.items) {
       return result.data.items;
     } else if (Array.isArray(result.data)) {
@@ -610,25 +629,25 @@ export class DataApiService {
     return dataPoints.filter(point => {
       if (filters.search) {
         const search = filters.search.toLowerCase();
-        const matchesSearch = 
+        const matchesSearch =
           point.name.toLowerCase().includes(search) ||
           point.description?.toLowerCase().includes(search) ||
           point.device_name?.toLowerCase().includes(search);
         if (!matchesSearch) return false;
       }
-      
+
       if (filters.data_type && point.data_type !== filters.data_type) {
         return false;
       }
-      
+
       if (filters.enabled_only && !point.is_enabled) {
         return false;
       }
-      
+
       if (filters.device_id && point.device_id !== filters.device_id) {
         return false;
       }
-      
+
       return true;
     });
   }
@@ -639,7 +658,7 @@ export class DataApiService {
   static sortDataPoints(dataPoints: DataPoint[], sortBy: string = 'name', sortOrder: 'ASC' | 'DESC' = 'ASC'): DataPoint[] {
     return [...dataPoints].sort((a, b) => {
       let aValue: any, bValue: any;
-      
+
       switch (sortBy) {
         case 'name':
           aValue = a.name;
@@ -661,7 +680,7 @@ export class DataApiService {
           aValue = a.name;
           bValue = b.name;
       }
-      
+
       if (aValue < bValue) {
         return sortOrder === 'ASC' ? -1 : 1;
       }

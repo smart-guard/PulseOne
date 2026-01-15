@@ -25,7 +25,7 @@ namespace Workers {
 
 BACnetWorker::BACnetWorker(const DeviceInfo& device_info)
     : UdpBasedWorker(device_info)
-    , thread_running_(false)
+    , data_scan_thread_running_(false)
     , cleanup_timer_(0) {
 
     LogMessage(LogLevel::INFO, "BACnetWorker created for device: " + device_info.name);
@@ -72,8 +72,8 @@ BACnetWorker::BACnetWorker(const DeviceInfo& device_info)
 
 BACnetWorker::~BACnetWorker() {
     // 스레드 정리
-    if (thread_running_.load()) {
-        thread_running_ = false;
+    if (data_scan_thread_running_.load()) {
+        data_scan_thread_running_ = false;
         
         if (data_scan_thread_ && data_scan_thread_->joinable()) {
             data_scan_thread_->join();
@@ -105,7 +105,7 @@ std::future<bool> BACnetWorker::Start() {
         }
         
         // 3. 데이터 스캔 스레드 시작
-        thread_running_ = true;
+        data_scan_thread_running_ = true;
         data_scan_thread_ = std::make_unique<std::thread>(&BACnetWorker::DataScanThreadFunction, this);
         
         LogMessage(LogLevel::INFO, "BACnetWorker started successfully");
@@ -117,9 +117,12 @@ std::future<bool> BACnetWorker::Stop() {
     return std::async(std::launch::async, [this]() -> bool {
         LogMessage(LogLevel::INFO, "Stopping BACnetWorker...");
         
-        // 1. 스레드 정리
-        if (thread_running_.load()) {
-            thread_running_ = false;
+        // 1. BaseDeviceWorker의 스레드 정리 (재연결 스레드 등)
+        StopAllThreads();
+        
+        // 2. BACnet 특정 스레드 정리
+        if (data_scan_thread_running_.load()) {
+            data_scan_thread_running_ = false;
             
             if (data_scan_thread_ && data_scan_thread_->joinable()) {
                 data_scan_thread_->join();
@@ -641,7 +644,13 @@ PulseOne::Structs::DriverConfig BACnetWorker::CreateDriverConfigFromDeviceInfo()
     
     // BACnet 특화 설정들
     config.properties["device_id"] = config.device_id;
-    config.properties["local_device_id"] = config.device_id;
+    
+    auto local_it = props.find("local_device_id");
+    if (local_it != props.end()) {
+        config.properties["local_device_id"] = local_it->second;
+    } else {
+        config.properties["local_device_id"] = "1001"; // Default for collector
+    }
     
     auto port_it = props.find("bacnet_port");
     config.properties["port"] = (port_it != props.end()) ? 
@@ -705,7 +714,7 @@ void BACnetWorker::DataScanThreadFunction() {
     
     uint32_t polling_interval_ms = device_info_.polling_interval_ms;
     
-    while (thread_running_.load()) {
+    while (data_scan_thread_running_.load()) {
         try {
             if (PerformDataScan()) {
                 worker_stats_.polling_cycles++;

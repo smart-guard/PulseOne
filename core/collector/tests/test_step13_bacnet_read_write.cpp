@@ -23,7 +23,10 @@ protected:
         LogManager::getInstance();
         
         // DB 초기화
-        DbLib::DatabaseManager::getInstance().initialize(); 
+        DbLib::DatabaseConfig db_config;
+        db_config.type = "SQLITE";
+        db_config.sqlite_path = ":memory:";
+        DbLib::DatabaseManager::getInstance().initialize(db_config); 
 
         // 드라이버 수동 등록
         DriverFactory::GetInstance().RegisterDriver("BACNET", []() {

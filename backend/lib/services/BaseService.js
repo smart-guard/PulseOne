@@ -35,6 +35,10 @@ class BaseService {
             return this.createResponse(true, result);
         } catch (error) {
             this.logger.error(`❌ [${errorContext}] Error:`, error.message);
+            if (error.stack) {
+                // 스택 트레이스도 함께 출력하여 디버깅 용이성 확보
+                this.logger.error(error.stack);
+            }
             return this.createResponse(false, null, error.message, 'INTERNAL_SERVICE_ERROR');
         }
     }

@@ -769,6 +769,18 @@ namespace Structs {
             tv.timestamp = value_timestamp;
             tv.quality = quality_code;
             tv.source = name;
+            
+            // 🔥 포인트 ID 전파 (문자열 -> 숫자 변환)
+            try {
+                if (!id.empty()) {
+                    tv.point_id = std::stoi(id);
+                } else {
+                    tv.point_id = 0;
+                }
+            } catch (...) {
+                tv.point_id = 0;
+            }
+            
             return tv;
         }
         
@@ -1762,6 +1774,7 @@ namespace Structs {
         std::string type = "device_data";                    // 메시지 타입 (고정값)
         UniqueId device_id;                                      // 디바이스 고유 ID
         std::string protocol;                                // 통신 프로토콜명 (modbus, bacnet, mqtt 등)
+        std::string device_type;                             // 디바이스 타입 (ROBOT, PLC, SENSOR 등) - Hybrid Strategy용
         std::vector<TimestampedValue> points;                // 수집된 데이터포인트들
         Timestamp timestamp;                                 // 메시지 생성 시간
         uint32_t priority = 0;                              // 처리 우선순위 (0=일반, 1=높음)

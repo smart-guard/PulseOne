@@ -516,6 +516,10 @@ std::chrono::system_clock::time_point VirtualPointEntity::stringToTimestamp(cons
     return std::chrono::system_clock::from_time_t(std::mktime(&tm));
 }
 
+std::shared_ptr<Repositories::VirtualPointRepository> VirtualPointEntity::getRepository() const {
+    return RepositoryFactory::getInstance().getVirtualPointRepository();
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

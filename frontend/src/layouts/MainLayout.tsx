@@ -18,6 +18,13 @@ export const MainLayout: React.FC = () => {
     if (path === '/dashboard') {
       return location.pathname === '/' || location.pathname === '/dashboard';
     }
+    if (path === '/devices') {
+      return location.pathname === '/devices' ||
+        (location.pathname.startsWith('/devices/') &&
+          !location.pathname.startsWith('/devices/templates') &&
+          !location.pathname.startsWith('/devices/manufacturers') &&
+          !location.pathname.startsWith('/devices/sites'));
+    }
     return location.pathname.startsWith(path);
   };
 
@@ -39,7 +46,7 @@ export const MainLayout: React.FC = () => {
             <i className="fas fa-bolt text-primary"></i>
             {!sidebarCollapsed && <span className="logo-text">PulseOne</span>}
           </div>
-          <button 
+          <button
             className="sidebar-toggle"
             onClick={toggleSidebar}
             aria-label="메뉴 토글"
@@ -47,13 +54,13 @@ export const MainLayout: React.FC = () => {
             <i className="fas fa-bars"></i>
           </button>
         </div>
-        
+
         <nav className="sidebar-nav">
           <ul className="menu">
             {/* 대시보드 */}
             <li className="menu-item">
-              <Link 
-                to="/dashboard" 
+              <Link
+                to="/dashboard"
                 className={`menu-link ${isActiveMenu('/dashboard') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -81,8 +88,8 @@ export const MainLayout: React.FC = () => {
               )}
             </li>
             <li className="menu-item">
-              <Link 
-                to="/devices" 
+              <Link
+                to="/devices"
                 className={`menu-link ${isActiveMenu('/devices') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -91,11 +98,44 @@ export const MainLayout: React.FC = () => {
                 <span className="menu-title">디바이스 목록</span>
               </Link>
             </li>
+            <li className="menu-item">
+              <Link
+                to="/devices/sites"
+                className={`menu-link ${isActiveSubMenu('/devices/sites') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-map-marker-alt"></i>
+                </div>
+                <span className="menu-title">사이트 관리</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link
+                to="/devices/templates"
+                className={`menu-link ${isActiveSubMenu('/devices/templates') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-file-invoice"></i>
+                </div>
+                <span className="menu-title">디바이스 마스터 모델</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link
+                to="/devices/manufacturers"
+                className={`menu-link ${isActiveSubMenu('/devices/manufacturers') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-industry"></i>
+                </div>
+                <span className="menu-title">제조사 관리</span>
+              </Link>
+            </li>
 
             {/* 🆕 프로토콜 관리 - 새로 추가 */}
             <li className="menu-item">
-              <Link 
-                to="/protocols" 
+              <Link
+                to="/protocols"
                 className={`menu-link ${isActiveMenu('/protocols') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -123,8 +163,8 @@ export const MainLayout: React.FC = () => {
               )}
             </li>
             <li className="menu-item">
-              <Link 
-                to="/data/explorer" 
+              <Link
+                to="/data/explorer"
                 className={`menu-link ${isActiveSubMenu('/data/explorer') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -160,8 +200,8 @@ export const MainLayout: React.FC = () => {
             </li>
             */}
             <li className="menu-item">
-              <Link 
-                to="/data/virtual-points" 
+              <Link
+                to="/data/virtual-points"
                 className={`menu-link ${isActiveSubMenu('/data/virtual-points') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -171,8 +211,8 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
             <li className="menu-item">
-              <Link 
-                to="/data/export" 
+              <Link
+                to="/data/export"
                 className={`menu-link ${isActiveSubMenu('/data/export') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -200,8 +240,8 @@ export const MainLayout: React.FC = () => {
               )}
             </li>
             <li className="menu-item">
-              <Link 
-                to="/alarms/active" 
+              <Link
+                to="/alarms/active"
                 className={`menu-link ${isActiveSubMenu('/alarms/active') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -209,9 +249,9 @@ export const MainLayout: React.FC = () => {
                 </div>
                 <span className="menu-title">실시간 알람</span>
                 {!sidebarCollapsed && activeAlarmCount > 0 && (
-                  <span 
-                    className="status status-error" 
-                    style={{ 
+                  <span
+                    className="status status-error"
+                    style={{
                       marginLeft: 'auto',
                       padding: '2px 6px',
                       fontSize: '10px',
@@ -228,8 +268,8 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
             <li className="menu-item">
-              <Link 
-                to="/alarms/history" 
+              <Link
+                to="/alarms/history"
                 className={`menu-link ${isActiveSubMenu('/alarms/history') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -239,8 +279,8 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
             <li className="menu-item">
-              <Link 
-                to="/alarms/settings" 
+              <Link
+                to="/alarms/settings"
                 className={`menu-link ${isActiveSubMenu('/alarms/settings') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -250,8 +290,8 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
             <li className="menu-item">
-              <Link 
-                to="/alarms/rules" 
+              <Link
+                to="/alarms/rules"
                 className={`menu-link ${isActiveSubMenu('/alarms/rules') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -279,8 +319,8 @@ export const MainLayout: React.FC = () => {
               )}
             </li>
             <li className="menu-item">
-              <Link 
-                to="/system/status" 
+              <Link
+                to="/system/status"
                 className={`menu-link ${isActiveSubMenu('/system/status') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -290,8 +330,8 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
             <li className="menu-item">
-              <Link 
-                to="/system/users" 
+              <Link
+                to="/system/users"
                 className={`menu-link ${isActiveSubMenu('/system/users') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -301,8 +341,19 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
             <li className="menu-item">
-              <Link 
-                to="/system/permissions" 
+              <Link
+                to="/system/tenants"
+                className={`menu-link ${isActiveSubMenu('/system/tenants') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-building"></i>
+                </div>
+                <span className="menu-title">고객사 관리</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link
+                to="/system/permissions"
                 className={`menu-link ${isActiveSubMenu('/system/permissions') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -312,14 +363,25 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
             <li className="menu-item">
-              <Link 
-                to="/system/backup" 
+              <Link
+                to="/system/backup"
                 className={`menu-link ${isActiveSubMenu('/system/backup') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
                   <i className="fas fa-database"></i>
                 </div>
                 <span className="menu-title">백업/복원</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link
+                to="/system/audit-logs"
+                className={`menu-link ${isActiveSubMenu('/system/audit-logs') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-history"></i>
+                </div>
+                <span className="menu-title">감사 로그</span>
               </Link>
             </li>
           </ul>
@@ -333,22 +395,26 @@ export const MainLayout: React.FC = () => {
           <div className="topbar-left">
             <div className="breadcrumb">
               <span className="breadcrumb-item active">
-                {location.pathname === '/' || location.pathname === '/dashboard' ? '대시보드' : 
-                 location.pathname.includes('/devices') ? '디바이스 관리' :
-                 location.pathname.includes('/protocols') ? '프로토콜 관리' : // 🆕 추가
-                 location.pathname.includes('/data') ? '데이터 관리' :
-                 location.pathname.includes('/alarms') ? '알람 관리' :
-                 location.pathname.includes('/system') ? '시스템 관리' : '페이지'}
+                {location.pathname === '/' || location.pathname === '/dashboard' ? '대시보드' :
+                  location.pathname === '/devices/manufacturers' ? '제조사 관리' : // 🆕 구체적인 경로 우선 매칭
+                    location.pathname === '/devices/templates' ? '디바이스 마스터 모델' : // 🆕 구체적인 경로 우선 매칭
+                      location.pathname === '/devices/sites' ? '사이트 관리' : // 🆕 구체적인 경로 우선 매칭
+                        location.pathname === '/system/tenants' ? '고객사 관리' : // 🆕 구체적인 경로 우선 매칭
+                          location.pathname.startsWith('/devices') ? '디바이스 관리' :
+                            location.pathname.includes('/protocols') ? '프로토콜 관리' :
+                              location.pathname.includes('/data') ? '데이터 관리' :
+                                location.pathname.includes('/alarms') ? '알람 관리' :
+                                  location.pathname.includes('/system') ? '시스템 관리' : '페이지'}
               </span>
             </div>
           </div>
-          
+
           <div className="topbar-right">
             <div className="connection-status">
               <div className="live-indicator"></div>
               <span className="status-text">실시간 연결됨</span>
             </div>
-            
+
             <button className="btn btn-outline btn-sm" title="알림" style={{
               position: 'relative',
               padding: '8px'
@@ -371,11 +437,11 @@ export const MainLayout: React.FC = () => {
                 </span>
               )}
             </button>
-            
+
             <button className="btn btn-outline btn-sm" title="설정">
               <i className="fas fa-cog"></i>
             </button>
-            
+
             <div className="user-menu">
               <div className="user-avatar">
                 <i className="fas fa-user"></i>

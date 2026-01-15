@@ -19,11 +19,23 @@ export interface ServiceInfo {
   description: string;
   port?: number;
   version?: string;
-  uptime?: number;
+  uptime?: string | number;
   memory_usage?: number;
   cpu_usage?: number;
+  memoryUsage?: string | number;
+  cpuUsage?: string | number;
   last_error?: string;
   health_check_url?: string;
+  collectorId?: number;
+  ip?: string;
+  exists?: boolean;
+  devices?: {
+    id: number;
+    name: string;
+    status: string;
+    protocol: string;
+    lastSeen: string;
+  }[];
 }
 
 export interface SystemMetrics {
@@ -37,7 +49,7 @@ export interface SystemMetrics {
   activeConnections: number;
   queueSize: number;
   timestamp: string;
-  
+
   // 시스템 정보
   system?: {
     platform: string;
@@ -46,7 +58,7 @@ export interface SystemMetrics {
     uptime: number;
     load_average: number[];
   };
-  
+
   // 프로세스 정보
   process?: {
     pid: number;
@@ -61,7 +73,7 @@ export interface SystemMetrics {
     platform: string;
     arch: string;
   };
-  
+
   // CPU 세부 정보
   cpu?: {
     count: number;
@@ -69,7 +81,7 @@ export interface SystemMetrics {
     speed: number;
     usage: number;
   };
-  
+
   // 메모리 세부 정보
   memory?: {
     total: number;
@@ -78,7 +90,7 @@ export interface SystemMetrics {
     usage: number;
     available: number;
   };
-  
+
   // 디스크 세부 정보
   disk?: {
     total: number;
@@ -86,7 +98,7 @@ export interface SystemMetrics {
     free: number;
     usage: number;
   };
-  
+
   // 네트워크 세부 정보
   network?: {
     usage: number;
@@ -119,21 +131,21 @@ export interface DatabaseStats {
 
 export interface PerformanceMetrics {
   timestamp: string;
-  
+
   // API 성능
   api: {
     response_time_ms: number;
     throughput_per_second: number;
     error_rate: number;
   };
-  
+
   // 데이터베이스 성능
   database: {
     query_time_ms: number;
     connection_pool_usage: number;
     slow_queries: number;
   };
-  
+
   // 캐시 성능
   cache: {
     hit_rate: number;
@@ -141,7 +153,7 @@ export interface PerformanceMetrics {
     memory_usage_mb: number;
     eviction_count: number;
   };
-  
+
   // 큐 성능
   queue?: {
     pending_jobs: number;
@@ -217,6 +229,13 @@ export interface DashboardOverviewData {
     message_queue?: 'healthy' | 'warning' | 'critical';
   };
   last_updated: string;
+  hierarchy?: {
+    id: number;
+    name: string;
+    code: string;
+    collectors: ServiceInfo[];
+  }[];
+  unassigned_collectors?: ServiceInfo[];
 }
 
 export interface ServiceControlRequest {
@@ -302,7 +321,7 @@ class HttpClient {
       });
 
       const responseText = await response.text();
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}, response: ${responseText}`);
       }
@@ -321,7 +340,7 @@ class HttpClient {
 
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
     const queryParams = new URLSearchParams();
-    
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -329,10 +348,10 @@ class HttpClient {
         }
       });
     }
-    
-    const url = params && queryParams.toString() ? 
+
+    const url = params && queryParams.toString() ?
       `${endpoint}?${queryParams.toString()}` : endpoint;
-    
+
     return this.request<T>(url, { method: 'GET' });
   }
 
@@ -438,15 +457,15 @@ export class DashboardApiService {
    * @param action start, stop, restart
    */
   static async controlService(
-    serviceName: string, 
+    serviceName: string,
     action: 'start' | 'stop' | 'restart'
   ): Promise<ApiResponse<ServiceControlResponse>> {
     console.log(`🔧 서비스 제어: ${serviceName} ${action}`);
-    
+
     const request: ServiceControlRequest = { action };
-    
+
     return this.httpClient.post<ServiceControlResponse>(
-      ENDPOINTS.DASHBOARD_SERVICE_CONTROL(serviceName, action), 
+      ENDPOINTS.DASHBOARD_SERVICE_CONTROL(serviceName, action),
       request
     );
   }
@@ -524,6 +543,38 @@ export class DashboardApiService {
   }
 
   // ========================================================================
+  // 📱 디바이스 및 포인트 제어 (Hierarchical Control)
+  // ========================================================================
+
+  /**
+   * 디바이스 워커 제어 (시작/중지/재시작)
+   */
+  static async controlDevice(
+    deviceId: number | string,
+    action: 'start' | 'stop' | 'restart',
+    options: any = {}
+  ): Promise<ApiResponse<any>> {
+    console.log(`📱 디바이스 제어: ${deviceId} ${action}`);
+    return this.httpClient.post<any>(`${ENDPOINTS.DEVICES}/${deviceId}/${action}`, options);
+  }
+
+  /**
+   * 포인트 제어 (디지털 DO / 아날로그 AO)
+   */
+  static async controlPoint(
+    deviceId: number | string,
+    outputId: number | string,
+    type: 'digital' | 'analog',
+    value: any,
+    options: any = {}
+  ): Promise<ApiResponse<any>> {
+    console.log(`⚡ 포인트 제어: Device ${deviceId}, ${type} ${outputId} = ${value}`);
+    const endpoint = `${ENDPOINTS.DEVICES}/${deviceId}/${type}/${outputId}/control`;
+    const payload = type === 'digital' ? { state: value, options } : { value, options };
+    return this.httpClient.post<any>(endpoint, payload);
+  }
+
+  // ========================================================================
   // 📊 알람 관련 대시보드 데이터 (알람 API를 활용)
   // ========================================================================
 
@@ -567,13 +618,13 @@ export class DashboardApiService {
     errors: string[];
   }> {
     console.log('🎯 전체 대시보드 데이터 병렬 로드 시작...');
-    
+
     const errors: string[] = [];
-    
+
     // 4개 API 병렬 호출
     const [
       servicesResult,
-      metricsResult, 
+      metricsResult,
       dbStatsResult,
       performanceResult
     ] = await Promise.allSettled([
@@ -582,34 +633,34 @@ export class DashboardApiService {
       this.getDatabaseStats(),
       this.getPerformanceMetrics()
     ]);
-    
+
     // 결과 처리
-    const servicesData = servicesResult.status === 'fulfilled' && servicesResult.value.success 
+    const servicesData = servicesResult.status === 'fulfilled' && servicesResult.value.success
       ? servicesResult.value.data : null;
     if (servicesResult.status === 'rejected' || !servicesData) {
       errors.push('서비스 상태 로드 실패');
     }
-    
+
     const systemMetrics = metricsResult.status === 'fulfilled' && metricsResult.value.success
       ? metricsResult.value.data : null;
     if (metricsResult.status === 'rejected' || !systemMetrics) {
       errors.push('시스템 메트릭 로드 실패');
     }
-    
+
     const databaseStats = dbStatsResult.status === 'fulfilled' && dbStatsResult.value.success
       ? dbStatsResult.value.data : null;
     if (dbStatsResult.status === 'rejected' || !databaseStats) {
       errors.push('데이터베이스 통계 로드 실패');
     }
-    
+
     const performanceData = performanceResult.status === 'fulfilled' && performanceResult.value.success
       ? performanceResult.value.data : null;
     if (performanceResult.status === 'rejected' || !performanceData) {
       errors.push('성능 지표 로드 실패');
     }
-    
+
     console.log(`✅ 대시보드 데이터 로드 완료 - ${4 - errors.length}/4개 성공`);
-    
+
     return {
       servicesData,
       systemMetrics,
@@ -643,7 +694,7 @@ export class DashboardApiService {
     service_control: boolean;
   }> {
     console.log('🔍 모든 엔드포인트 상태 확인...');
-    
+
     const endpoints = [
       { name: 'dashboard_overview', url: ENDPOINTS.DASHBOARD_OVERVIEW },
       { name: 'service_health', url: ENDPOINTS.MONITORING_SERVICE_HEALTH },
@@ -651,9 +702,9 @@ export class DashboardApiService {
       { name: 'database_stats', url: ENDPOINTS.MONITORING_DATABASE_STATS },
       { name: 'performance', url: ENDPOINTS.MONITORING_PERFORMANCE }
     ];
-    
+
     const results: Record<string, boolean> = {};
-    
+
     for (const endpoint of endpoints) {
       try {
         const response = await fetch(endpoint.url, { method: 'HEAD' });
@@ -662,26 +713,26 @@ export class DashboardApiService {
         results[endpoint.name] = false;
       }
     }
-    
+
     // 서비스 제어는 POST이므로 별도 확인
     results.service_control = true; // 백엔드에서 구현됨을 확인했음
-    
+
     return results as any;
   }
 
-    /**
-     * 오늘 발생한 알람 조회
-     */
-    static async getTodayAlarms(limit: number = 20): Promise<ApiResponse<RecentAlarm[]>> {
-        console.log('📅 오늘 발생한 알람 조회:', limit);
-        return this.httpClient.get<RecentAlarm[]>(ENDPOINTS.ALARM_TODAY, { limit });
-    }
+  /**
+   * 오늘 발생한 알람 조회
+   */
+  static async getTodayAlarms(limit: number = 20): Promise<ApiResponse<RecentAlarm[]>> {
+    console.log('📅 오늘 발생한 알람 조회:', limit);
+    return this.httpClient.get<RecentAlarm[]>(ENDPOINTS.ALARM_TODAY, { limit });
+  }
 
-    /**
-     * 오늘 알람 통계 조회
-     */
-    static async getTodayAlarmStatistics(): Promise<ApiResponse<any>> {
-        console.log('📊 오늘 알람 통계 조회');
-        return this.httpClient.get<any>(ENDPOINTS.ALARM_TODAY_STATISTICS);
-    }
+  /**
+   * 오늘 알람 통계 조회
+   */
+  static async getTodayAlarmStatistics(): Promise<ApiResponse<any>> {
+    console.log('📊 오늘 알람 통계 조회');
+    return this.httpClient.get<any>(ENDPOINTS.ALARM_TODAY_STATISTICS);
+  }
 }

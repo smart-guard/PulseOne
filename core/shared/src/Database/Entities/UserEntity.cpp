@@ -335,6 +335,10 @@ std::string UserEntity::hashPassword(const std::string& password) const {
     return std::to_string(hashed);
 }
 
+std::shared_ptr<Repositories::UserRepository> UserEntity::getRepository() const {
+    return RepositoryFactory::getInstance().getUserRepository();
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

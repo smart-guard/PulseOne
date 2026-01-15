@@ -32,67 +32,194 @@ class DeviceService extends BaseService {
         return this._configSyncHooks;
     }
 
+    get auditLogService() {
+        if (!this._auditLogService) {
+            const AuditLogService = require('./AuditLogService');
+            this._auditLogService = new AuditLogService();
+        }
+        return this._auditLogService;
+    }
+
     /**
      * 디바이스 트리 구조 데이터 반환
      */
     async getDeviceTree(options) {
         return await this.handleRequest(async () => {
-            const tenantId = options.tenantId || 1;
+            const tenantId = options.tenantId;
+            const isSystemAdmin = options.isSystemAdmin === true;
 
-            // 1. 모든 디바이스 조회
-            const devicesResult = await this.repository.findAll(tenantId, {
-                includeCount: true,
-                page: 1,
-                limit: 1000
+            // 1. 테넌트 목록 준비
+            const tenantRepo = RepositoryFactory.getInstance().getRepository('TenantRepository');
+            let relevantTenants = [];
+
+            if (isSystemAdmin) {
+                // 시스템 관리자는 모든 활성 테넌트 조회
+                const tenantsResult = await tenantRepo.findAll({ isActive: true, limit: 1000 });
+                relevantTenants = (Array.isArray(tenantsResult) ? tenantsResult : tenantsResult.items) || [];
+            } else {
+                // 일반 사용자는 자신의 테넌트 정보만 조회
+                const tenant = await tenantRepo.findById(tenantId);
+                if (tenant) relevantTenants = [tenant];
+            }
+
+            if (relevantTenants.length === 0) {
+                return { id: 'root', label: 'No Data', type: 'tenant', children: [] };
+            }
+
+            // 2. 모든 데이터 병렬 조회 (성능 최적화)
+            this.logger.log(`🔍 [DeviceService] Fetching devices and collectors for tree... (SystemAdmin: ${isSystemAdmin}, TenantId: ${tenantId})`);
+
+            const [allDevicesResult, allCollectorsResult] = await Promise.all([
+                this.repository.findAll(isSystemAdmin ? null : tenantId, { limit: 5000 }),
+                RepositoryFactory.getInstance().getRepository('EdgeServerRepository').findAll(isSystemAdmin ? null : tenantId)
+            ]);
+
+            // 결과 형식 표준화 (배열 또는 {items: []} 처리)
+            const allDevices = Array.isArray(allDevicesResult) ? allDevicesResult : (allDevicesResult?.items || []);
+            const allCollectors = Array.isArray(allCollectorsResult) ? allCollectorsResult : (allCollectorsResult?.items || []);
+
+            this.logger.log(`📊 [DeviceService] Data fetched: ${allDevices.length} devices, ${allCollectors.length} collectors`);
+
+            // 3. 테넌트별 트리 구성
+            const tenantNodes = relevantTenants.map(tenant => {
+                try {
+                    const tenantDevices = allDevices.filter(d => d.tenant_id === tenant.id);
+                    const tenantCollectors = allCollectors.filter(c => c.tenant_id === tenant.id);
+
+                    const tenantTree = this.buildTreeData(tenantDevices, tenantCollectors, options);
+                    return {
+                        ...tenantTree,
+                        id: `tenant-${tenant.id}`,
+                        label: tenant.company_name || tenant.name || `Tenant ${tenant.id}`,
+                        type: 'tenant',
+                        level: 1
+                    };
+                } catch (error) {
+                    this.logger.error(`❌ [DeviceService] Failed to build tree for tenant ${tenant.id}:`, error.message);
+                    return {
+                        id: `tenant-${tenant.id}-error`,
+                        label: `${tenant.company_name || tenant.name} (Error)`,
+                        type: 'tenant',
+                        level: 1,
+                        children: []
+                    };
+                }
             });
 
-            let devices = devicesResult.items || [];
-            devices = this.enhanceDevicesWithRtuInfo(devices);
-            devices = await this.addRtuRelationships(devices, tenantId);
+            // 4. 통계 계산 (프론트엔드 대시보드 및 탐색기용)
+            const stats = {
+                total_devices: allDevices.length,
+                total_collectors: allCollectors.length,
+                rtu_masters: allDevices.filter(d => d.protocol_type === 'MODBUS_RTU' && d.device_type === 'GATEWAY').length,
+                rtu_slaves: allDevices.filter(d => d.protocol_type === 'MODBUS_RTU' && d.device_type !== 'GATEWAY').length,
+                active_devices: allDevices.filter(d => d.is_enabled === 1).length
+            };
 
-            // 2. 트리 데이터 구성 (기존 route/devices.js의 buildTreeData 로직)
-            return this.buildTreeData(devices, options);
+            // 5. 최종 구조 반환 (프론트엔드 DataExplorer.tsx의 기대 형식에 맞춤)
+            const rootLabel = isSystemAdmin ? 'System Overview' : (relevantTenants[0]?.company_name || relevantTenants[0]?.name || 'PulseOne Factory');
+
+            return {
+                tree: {
+                    id: 'root-system',
+                    label: rootLabel,
+                    type: 'tenant',
+                    level: 0,
+                    children: tenantNodes
+                },
+                statistics: stats
+            };
         }, 'GetDeviceTree');
     }
 
-    buildTreeData(devices, options) {
-        const { includeDataPoints = false } = options;
-
+    buildTreeData(devices, collectors, options) {
         // Site별로 그룹화
         const sitesMap = new Map();
 
-        devices.forEach(device => {
-            const siteId = device.site_id || 0;
-            const siteName = device.site_name || 'Unassigned Site';
+        // 모든 수집기를 Site에 먼저 배치
+        collectors.forEach(collector => {
+            const siteId = collector.site_id || 0;
+            const siteName = collector.site_name || 'Unassigned Site';
 
             if (!sitesMap.has(siteId)) {
                 sitesMap.set(siteId, {
-                    id: siteId,
-                    name: siteName,
+                    id: `site-${siteId}`,
+                    label: siteName,
                     type: 'site',
+                    level: 1,
                     children: []
                 });
             }
 
             const siteNode = sitesMap.get(siteId);
-            const deviceNode = {
-                id: device.id,
-                name: device.name,
-                type: 'device',
-                protocol: device.protocol_type,
-                device_type: device.device_type,
-                status: device.connection_status || 'unknown',
-                is_enabled: device.is_enabled,
-                rtu_info: device.rtu_info,
-                children: [] // 데이터 포인트 등이 들어갈 수 있음
-            };
-
-            siteNode.children.push(deviceNode);
+            siteNode.children.push({
+                id: `collector-${collector.id}`,
+                label: collector.name,
+                type: 'device', // DataExplorer에서 'device' 타입이 아이콘 표시됨 (추후 프론트에서 타입 확장 예정)
+                level: 2,
+                collector_info: collector,
+                children: []
+            });
         });
 
-        return Array.from(sitesMap.values());
-    }
+        // 디바이스를 수집기 하위로 배치
+        devices.forEach(device => {
+            const siteId = device.site_id || 0;
+            const collectorId = device.edge_server_id;
 
+            let siteNode = sitesMap.get(siteId);
+            if (!siteNode) {
+                // 사이트가 없으면 생성 (수집기 없는 사이트의 디바이스 대비)
+                siteNode = {
+                    id: `site-${siteId}`,
+                    label: device.site_name || 'Unassigned Site',
+                    type: 'site',
+                    level: 1,
+                    children: []
+                };
+                sitesMap.set(siteId, siteNode);
+            }
+
+            // 수집기 노드 찾기
+            let collectorNode = siteNode.children.find(c => c.id === `collector-${collectorId}`);
+
+            if (!collectorNode) {
+                // 수집기 정보가 DB에 없거나 비정상적인 경우 'Unknown Collector' 생성
+                collectorNode = {
+                    id: `collector-${collectorId || 'unknown'}`,
+                    label: collectorId ? `Collector ${collectorId}` : 'Unassigned Collector',
+                    type: 'device',
+                    level: 2,
+                    children: []
+                };
+                siteNode.children.push(collectorNode);
+            }
+
+            collectorNode.children.push({
+                id: `dev-${device.id}`,
+                label: device.name,
+                type: 'master', // RTU 등 구분 위해 'master' 타입 사용
+                level: 3,
+                device_info: {
+                    device_id: device.id.toString(),
+                    device_name: device.name,
+                    device_type: device.device_type,
+                    protocol_type: device.protocol_type,
+                    status: device.connection_status,
+                    is_enabled: device.is_enabled
+                },
+                children: []
+            });
+        });
+
+        // 단일 루트 노드(Tenant)로 감싸서 반환
+        return {
+            id: 'root-tenant',
+            label: 'PulseOne Factory',
+            type: 'tenant',
+            level: 0,
+            children: Array.from(sitesMap.values())
+        };
+    }
     /**
      * 디바이스 목록 조회 (RTU 및 Collector 상태 포함)
      */
@@ -121,6 +248,25 @@ class DeviceService extends BaseService {
 
             return result;
         }, 'GetDevices');
+    }
+
+    /**
+     * 디바이스 통계 조회
+     */
+    async getDeviceStatistics(tenantId) {
+        return await this.handleRequest(async () => {
+            return await this.repository.getStatistics(tenantId);
+        }, 'GetDeviceStatistics');
+    }
+
+    /**
+     * 사용 가능한 프로토콜 목록 조회
+     */
+    async getAvailableProtocols() {
+        return await this.handleRequest(async () => {
+            const protocolRepo = RepositoryFactory.getInstance().getProtocolRepository();
+            return await protocolRepo.findActive();
+        }, 'GetAvailableProtocols');
     }
 
     calculateRtuSummary(items) {
@@ -156,11 +302,63 @@ class DeviceService extends BaseService {
     }
 
     /**
+     * 디바이스의 데이터 포인트 목록 조회
+     */
+    async getDeviceDataPoints(deviceId, options = {}) {
+        return await this.handleRequest(async () => {
+            let dataPoints = await this.repository.getDataPointsByDevice(deviceId);
+
+            // 필터링 적용
+            if (options.data_type) {
+                dataPoints = dataPoints.filter(dp => dp.data_type === options.data_type);
+            }
+            if (options.enabled_only === 'true' || options.enabled_only === true) {
+                dataPoints = dataPoints.filter(dp => dp.is_enabled === 1 || dp.is_enabled === true);
+            }
+
+            // 페이징 (선택사항, 데이터 포인트가 많을 경우 대비)
+            const page = parseInt(options.page) || 1;
+            const limit = parseInt(options.limit) || 1000;
+            const startIndex = (page - 1) * limit;
+            const paginatedPoints = dataPoints.slice(startIndex, startIndex + limit);
+
+            return {
+                items: paginatedPoints,
+                pagination: {
+                    page,
+                    limit,
+                    total: dataPoints.length,
+                    totalPages: Math.ceil(dataPoints.length / limit)
+                }
+            };
+        }, 'GetDeviceDataPoints');
+    }
+
+    /**
      * 디바이스 생성 및 후크 실행
      */
-    async createDevice(deviceData, tenantId) {
+    async createDevice(deviceData, tenantId, user = null) {
         return await this.handleRequest(async () => {
-            const newDevice = await this.repository.create(deviceData, tenantId);
+            // System Admin인 경우 body의 tenant_id를 우선 사용 (테넌트 간 이동/생성 지원)
+            const targetTenantId = (user && user.role === 'system_admin' && deviceData.tenant_id)
+                ? deviceData.tenant_id
+                : tenantId;
+
+            if (!targetTenantId) {
+                throw new Error('Tenant ID is required for device creation');
+            }
+
+            // 한도 체크
+            await this.validateDataPointLimit(targetTenantId);
+
+            const newDevice = await this.repository.create(deviceData, targetTenantId);
+
+            // Audit Log
+            if (user) {
+                await this.auditLogService.logChange(user, 'CREATE',
+                    { type: 'DEVICE', id: newDevice.id, name: newDevice.name },
+                    null, newDevice, 'New device created');
+            }
 
             // 설정 동기화 후크 실행
             await this.configSyncHooks.afterDeviceCreate(newDevice);
@@ -172,35 +370,192 @@ class DeviceService extends BaseService {
     /**
      * 디바이스 업데이트 및 동기화
      */
-    async updateDevice(id, updateData, tenantId) {
+    async updateDevice(id, updateData, tenantId, user = null) {
         return await this.handleRequest(async () => {
-            const oldDevice = await this.repository.findById(id, tenantId);
-            if (!oldDevice) throw new Error('Device not found');
+            this.logger.log(`🚀 [DeviceService] Updating device ${id}...`);
+            this.logger.debug(`📦 [DeviceService] Update payload:`, JSON.stringify(updateData, null, 2));
 
+            const oldDevice = await this.repository.findById(id, tenantId);
+            if (!oldDevice) {
+                this.logger.warn(`⚠️ [DeviceService] Device ${id} not found for tenant ${tenantId}`);
+                throw new Error('Device not found');
+            }
+
+            // DB 업데이트 실행
             const updatedDevice = await this.repository.update(id, updateData, tenantId);
 
-            // 설정 동기화 후크 실행
-            await this.configSyncHooks.afterDeviceUpdate(oldDevice, updatedDevice);
+            // 상태 변경 시(비활성 -> 활성) 한도 체크
+            if (updateData.is_enabled === 1 || updateData.is_enabled === true) {
+                if (!oldDevice.is_enabled) {
+                    try {
+                        await this.validateDataPointLimit(tenantId);
+                    } catch (error) {
+                        // 한도 초과 시 다시 비활성화하고 에러 발생
+                        await this.repository.update(id, { is_enabled: 0 }, tenantId);
+                        throw error;
+                    }
+                }
+            }
+
+            this.logger.log(`✅ [DeviceService] Database updated for device ${id}`);
+
+            // Audit Log
+            if (user && updatedDevice) {
+                try {
+                    await this.auditLogService.logChange(user, 'UPDATE',
+                        { type: 'DEVICE', id: updatedDevice.id, name: updatedDevice.name },
+                        oldDevice, updatedDevice, 'Device configuration updated');
+                } catch (auditError) {
+                    this.logger.warn(`⚠️ [DeviceService] Audit log failed (non-critical):`, auditError.message);
+                }
+            }
+
+            // 설정 동기화 후크 실행 (Collector 연동)
+            this.logger.log(`🔄 [DeviceService] Initiating config sync for device ${id}...`);
+            try {
+                await this.configSyncHooks.afterDeviceUpdate(oldDevice, updatedDevice);
+                this.logger.log(`✅ [DeviceService] Config sync successful for device ${id}`);
+            } catch (syncError) {
+                this.logger.error(`❌ [DeviceService] Config sync failed for device ${id}:`, syncError.message);
+
+                // 🔥 DEADLOCK PREVENTION:
+                // SyncError이고 데이터베이스 업데이트는 이미 성공한 상황임.
+                // Circuit breaker가 열려있는 등의 통신 장애는 경고와 함께 성공 응답을 반환하여 
+                // 사용자가 설정을 수정하여 통신을 복구할 기회를 제공함.
+                if (syncError.name === 'SyncError' || syncError.message.includes('Circuit breaker is OPEN')) {
+                    this.logger.warn(`⚠️ [DeviceService] Returning partial success for ${id} due to sync failure`);
+
+                    // Attach warning info directly to the device object so it's not double-wrapped
+                    // handleRequest will wrap this in a { success: true, data: updatedDevice } structure
+                    updatedDevice.sync_warning = `Database updated, but Collector sync failed: ${syncError.message}`;
+                    updatedDevice.sync_error = syncError.message;
+
+                    return updatedDevice;
+                }
+
+                throw syncError;
+            }
 
             return updatedDevice;
         }, 'UpdateDevice');
     }
 
     /**
+     * 디바이스 대량 업데이트 및 동기화
+     */
+    async bulkUpdateDevices(ids, updateData, tenantId, user = null) {
+        return await this.handleRequest(async () => {
+            if (!ids || ids.length === 0) return 0;
+
+            const affected = await this.repository.bulkUpdate(ids, updateData, tenantId);
+
+            // Audit Log
+            if (user && affected > 0) {
+                await this.auditLogService.logAction({
+                    tenant_id: tenantId,
+                    user_id: user.id,
+                    action: 'BULK_UPDATE',
+                    entity_type: 'DEVICE',
+                    entity_name: `${ids.length} devices`,
+                    change_summary: `Bulk update for devices: ${ids.join(', ')}`,
+                    new_value: updateData
+                });
+            }
+
+            // TODO: 설정 동기화 후크 연동 (성능 고려 필요)
+            // 개별 디바이스별로 동기화가 필요한 경우 루프를 돌아야 할 수 있음
+
+            return affected;
+        }, 'BulkUpdateDevices');
+    }
+
+    /**
      * 디바이스 삭제
      */
-    async delete(id, tenantId) {
+    async delete(id, tenantId, user = null) {
         return await this.handleRequest(async () => {
             const device = await this.repository.findById(id, tenantId);
             if (!device) throw new Error('Device not found');
 
             const result = await this.repository.deleteById(id, tenantId);
 
+            // Audit Log
+            if (user && result) {
+                await this.auditLogService.logAction({
+                    tenant_id: tenantId,
+                    user_id: user.id,
+                    action: 'DELETE',
+                    entity_type: 'DEVICE',
+                    entity_id: id,
+                    entity_name: device.name,
+                    old_value: device,
+                    change_summary: 'Device soft-deleted'
+                });
+            }
+
             // 동기화 후크 실행 (삭제 후 처리)
-            await this.configSyncHooks.afterDeviceDelete(device);
+            try {
+                await this.configSyncHooks.afterDeviceDelete(device);
+            } catch (syncError) {
+                this.logger.error(`❌ [DeviceService] Sync failed during deletion for ${id}:`, syncError.message);
+
+                // Circuit breaker open 등의 통신 장애인 경우 무시하고 성공 리턴 (이미 DB에서는 삭제됨/처리됨)
+                if (syncError.name === 'SyncError' || syncError.message.includes('Circuit breaker is OPEN')) {
+                    this.logger.warn(`⚠️ [DeviceService] Device ${id} soft-deleted in DB, but Collector sync failed. Continuing.`);
+                    return {
+                        success: true,
+                        result,
+                        sync_warning: `Database updated, but Collector sync failed: ${syncError.message}`
+                    };
+                }
+                // 다른 치명적 에러는 전파
+                throw syncError;
+            }
 
             return result;
         }, 'DeleteDevice');
+    }
+
+    /**
+     * 삭제된 디바이스를 복구합니다.
+     */
+    async restore(id, tenantId, user = null) {
+        return await this.handleRequest(async () => {
+            // 삭제된 데이터도 포함해서 검색
+            const device = await this.repository.findById(id, tenantId, null, { includeDeleted: true });
+            if (!device) throw new Error('Device not found');
+            if (device.is_deleted === 0) return { success: true, already_active: true };
+
+            const result = await this.repository.restoreById(id, tenantId);
+
+            // Audit Log
+            if (user && result) {
+                await this.auditLogService.logAction({
+                    tenant_id: tenantId,
+                    user_id: user.id,
+                    action: 'UPDATE',
+                    entity_type: 'DEVICE',
+                    entity_id: id,
+                    entity_name: device.name,
+                    new_value: { ...device, is_deleted: 0 },
+                    change_summary: 'Device restored from soft-delete'
+                });
+            }
+
+            // 동기화 후크 실행 (삭제 복구는 신규 생성과 유사함)
+            try {
+                await this.configSyncHooks.afterDeviceCreate(device);
+            } catch (syncError) {
+                this.logger.error(`❌ [DeviceService] Sync failed during restoration for ${id}:`, syncError.message);
+                return {
+                    success: true,
+                    result,
+                    sync_warning: `Device restored in Database, but Collector sync failed: ${syncError.message}`
+                };
+            }
+
+            return result;
+        }, 'RestoreDevice');
     }
 
     /**
@@ -213,15 +568,17 @@ class DeviceService extends BaseService {
             if (!device) throw new Error('Device not found or access denied');
 
             let result;
+            const proxyOptions = { ...options, edgeServerId: device.edge_server_id };
+
             switch (action) {
                 case 'start':
-                    result = await this.collectorProxy.startDevice(id.toString(), options);
+                    result = await this.collectorProxy.startDevice(id.toString(), proxyOptions);
                     break;
                 case 'stop':
-                    result = await this.collectorProxy.stopDevice(id.toString(), options);
+                    result = await this.collectorProxy.stopDevice(id.toString(), proxyOptions);
                     break;
                 case 'restart':
-                    result = await this.collectorProxy.restartDevice(id.toString(), options);
+                    result = await this.collectorProxy.restartDevice(id.toString(), proxyOptions);
                     break;
                 default:
                     throw new Error(`Invalid action: ${action}`);
@@ -229,6 +586,96 @@ class DeviceService extends BaseService {
 
             return result;
         }, `ExecuteAction:${action}`);
+    }
+
+    /**
+     * 디지털 출력 제어 (DO)
+     */
+    async controlDigitalOutput(deviceId, outputId, state, options, tenantId) {
+        return await this.handleRequest(async () => {
+            const device = await this.repository.findById(deviceId, tenantId);
+            if (!device) throw new Error('Device not found');
+
+            return await this.collectorProxy.controlDigitalOutput(deviceId, outputId, state, {
+                ...options,
+                edgeServerId: device.edge_server_id
+            });
+        }, 'ControlDigitalOutput');
+    }
+
+    /**
+     * 아날로그 출력 제어 (AO)
+     */
+    async controlAnalogOutput(deviceId, outputId, value, options, tenantId) {
+        return await this.handleRequest(async () => {
+            const device = await this.repository.findById(deviceId, tenantId);
+            if (!device) throw new Error('Device not found');
+
+            return await this.collectorProxy.controlAnalogOutput(deviceId, outputId, value, {
+                ...options,
+                edgeServerId: device.edge_server_id
+            });
+        }, 'ControlAnalogOutput');
+    }
+
+    /**
+     * 연결 진단 시행 (Ping/Modbus/BACnet 등 프로토콜별 체크)
+     */
+    async diagnoseConnection(id, tenantId) {
+        return await this.handleRequest(async () => {
+            const device = await this.repository.findById(id, tenantId);
+            if (!device) throw new Error('Device not found');
+
+            // CollectorProxy를 통한 실시간 진단 요청
+            // TODO: Collector 측에 diagnose API 구현 필요. 현재는 통신 상태 확인으로 대체
+            const status = await this.collectorProxy.getDeviceStatus(id.toString(), {
+                edgeServerId: device.edge_server_id
+            });
+
+            return {
+                device_id: id,
+                protocol: device.protocol_type,
+                endpoint: device.endpoint,
+                diag_result: status.success ? 'Success' : 'Failed',
+                details: status.data || {},
+                timestamp: new Date().toISOString()
+            };
+        }, 'DiagnoseConnection');
+    }
+
+    /**
+     * 네트워크 스캔 (Collector Discovery) Trigger
+     */
+    async scanNetwork(options) {
+        return await this.handleRequest(async () => {
+            // 1. Edge Server 결정 Logic
+            let edgeServerId = options.edgeServerId;
+            if (!edgeServerId && options.tenantId) {
+                // Tenant의 첫번째 Edge Server를 조회하거나 0 (Default) 사용
+                const edgeRepo = RepositoryFactory.getInstance().getEdgeServerRepository();
+                const servers = await edgeRepo.findByTenant(options.tenantId);
+                if (servers.length > 0) {
+                    edgeServerId = servers[0].id;
+                } else {
+                    edgeServerId = 0;
+                }
+            }
+
+            // 2. Collector 스캔 요청
+            const result = await this.collectorProxy.scanNetwork({
+                edgeServerId: edgeServerId,
+                protocol: options.protocol || 'BACNET',
+                range: options.range || '', // e.g., "192.168.1.0/24" or empty for local broadcast
+                timeout: options.timeout || 10000
+            });
+
+            return {
+                status: result.success ? 'started' : 'failed',
+                job_id: Date.now().toString(), // 임시 Job ID
+                message: result.data?.message || 'Scan initiated',
+                target_edge_server: edgeServerId
+            };
+        }, 'ScanNetwork');
     }
 
     // --- Helper Methods (기존 route/devices.js의 유틸리티들을 서비스로 이동) ---
@@ -318,15 +765,67 @@ class DeviceService extends BaseService {
     }
 
     async enrichWithCollectorStatus(items) {
+        if (!items || items.length === 0) return;
+
         try {
-            const workerResult = await this.collectorProxy.getWorkerStatus();
-            const statuses = workerResult.data?.workers || {};
-            items.forEach(d => {
-                d.collector_status = statuses[d.id.toString()] || { status: 'unknown' };
-            });
+            // Edge Server ID별로 디바이스 그룹화
+            const groupedByServer = items.reduce((acc, item) => {
+                const serverId = item.edge_server_id || 0;
+                if (!acc[serverId]) acc[serverId] = [];
+                acc[serverId].push(item);
+                return acc;
+            }, {});
+
+            // 각 서버별로 상태 조회 (병렬 처리)
+            await Promise.all(Object.entries(groupedByServer).map(async ([serverId, devices]) => {
+                try {
+                    const id = parseInt(serverId);
+                    const workerResult = await this.collectorProxy.getWorkerStatus(id);
+                    const statuses = workerResult.data?.workers || {};
+
+                    devices.forEach(d => {
+                        d.collector_status = statuses[d.id.toString()] || { status: 'unknown' };
+                    });
+                } catch (e) {
+                    this.logger.warn(`Collector [${serverId}] status enrichment failed:`, e.message);
+                    devices.forEach(d => { d.collector_status = { status: 'unknown', error: e.message }; });
+                }
+            }));
         } catch (e) {
-            this.logger.warn('Collector status enrichment failed:', e.message);
+            this.logger.warn('Global collector status enrichment failed:', e.message);
         }
+    }
+
+    async validateDataPointLimit(tenantId, additionalPoints = 0, trx = null) {
+        const TenantService = require('./TenantService');
+        const tenantService = new TenantService();
+        const tenantRes = await tenantService.getTenantById(tenantId, trx);
+
+        if (!tenantRes.success) throw new Error(tenantRes.message || 'Tenant not found');
+        const tenant = tenantRes.data;
+
+        const currentCount = tenant.data_points_count || 0;
+        const maxLimit = tenant.max_data_points || 0;
+
+        if (maxLimit > 0 && (currentCount + additionalPoints) >= maxLimit) {
+            throw new Error(`데이터 포인트 사용 한도(${maxLimit.toLocaleString()}개)를 초과했습니다. 현재 사용량: ${currentCount.toLocaleString()}개`);
+        }
+    }
+
+    /**
+     * 장치들을 대량으로 삭제합니다.
+     */
+    async bulkDeleteDevices(ids, tenantId, user = null) {
+        return await this.handleRequest(async () => {
+            const affected = await this.repository.bulkDelete(ids, tenantId);
+
+            // 감사 로그 (선택 사항)
+            if (affected > 0 && user) {
+                this.logger.info(`User ${user.id} deleted ${affected} devices in bulk`, { deviceIds: ids });
+            }
+
+            return affected;
+        }, 'BulkDeleteDevices');
     }
 }
 

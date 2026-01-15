@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     libssl-dev uuid-dev \
     autotools-dev autoconf automake libtool \
     tree htop procps \
-    libhttplib-dev \
+    tree htop procps \
     && rm -rf /var/lib/apt/lists/*
 
 # httplib 직접 다운로드 (패키지 매니저에 없는 경우 대비)
@@ -57,10 +57,10 @@ RUN echo "Installing Paho MQTT C++..." && \
     cd /tmp && git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
     cd paho.mqtt.cpp && mkdir -p build && cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
-             -DPAHO_WITH_SSL=TRUE \
-             -DPAHO_BUILD_DOCUMENTATION=FALSE \
-             -DPAHO_BUILD_SAMPLES=FALSE \
-             -DPAHO_BUILD_TESTS=FALSE && \
+    -DPAHO_WITH_SSL=TRUE \
+    -DPAHO_BUILD_DOCUMENTATION=FALSE \
+    -DPAHO_BUILD_SAMPLES=FALSE \
+    -DPAHO_BUILD_TESTS=FALSE && \
     make -j$(nproc) && make install && ldconfig && \
     cd / && rm -rf /tmp/paho.mqtt.cpp && echo "Paho MQTT C++ installed"
 
@@ -74,11 +74,13 @@ RUN echo "Installing nlohmann/json..." && \
 
 # 5. QuickJS JavaScript 엔진 설치
 RUN echo "Installing QuickJS..." && \
-    cd /tmp && git clone --depth 1 --branch 2024-01-13 https://github.com/bellard/quickjs.git && \
+    cd /tmp && git clone --depth 1 https://github.com/bellard/quickjs.git && \
     cd quickjs && \
     make && \
     make install PREFIX=/usr/local && \
     ldconfig && \
+    ([ -f /usr/local/lib/quickjs/libquickjs.a ] && mv /usr/local/lib/quickjs/libquickjs.a /usr/local/lib/ && rm -rf /usr/local/lib/quickjs || true) && \
+    ([ -d /usr/local/include/quickjs ] && cp /usr/local/include/quickjs/* /usr/local/include/ && rm -rf /usr/local/include/quickjs || true) && \
     cd / && rm -rf /tmp/quickjs && echo "QuickJS installed"
 
 # 6. spdlog 설치
@@ -266,7 +268,9 @@ ENV CC=gcc CXX=g++
 ENV CFLAGS="-std=c11 -Wall -Wextra"
 ENV CXXFLAGS="-std=c++17 -Wall -Wextra"
 
-WORKDIR /app
+COPY core/shared /app/shared
+COPY core/collector /app/collector
+WORKDIR /app/collector
 
 # 최종 확인 (httplib 포함)
 RUN echo "Docker 이미지 빌드 완료!" && \
@@ -281,4 +285,7 @@ RUN echo "Docker 이미지 빌드 완료!" && \
     ls -la /usr/local/lib/libquickjs* 2>/dev/null && \
     echo "모든 라이브러리 설치 완료!"
 
-CMD ["/bin/bash"]
+RUN cd /app/shared && make clean && make all -j$(nproc)
+RUN cd /app/collector && make clean && make all -j$(nproc)
+
+CMD ["/app/collector/bin/pulseone-collector"]

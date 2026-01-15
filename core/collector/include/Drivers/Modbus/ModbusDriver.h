@@ -10,7 +10,16 @@
 #include "Common/DriverStatistics.h"
 #include "Common/Structs.h"
 #include "Logging/LogManager.h"
-#include <modbus/modbus.h>
+
+// Modbus 라이브러리 조건부 포함
+#ifdef HAVE_MODBUS
+    #include <modbus/modbus.h>
+#else
+    // 라이브러리 부재 시 전방 선언
+    struct _modbus;
+    typedef struct _modbus modbus_t;
+#endif
+
 #include <memory>
 #include <atomic>
 #include <mutex>
@@ -173,6 +182,10 @@ public:
     const DriverConfig& GetConfiguration() const override {
         return config_;  // 실제 config 반환
     }
+
+    // 1:N 시리얼 포트 공유를 위한 뮤텍스 관리 (static registry)
+    static std::mutex& GetSerialMutex(const std::string& endpoint);
+
 private:
     // =======================================================================
     // Core 멤버 변수 (항상 존재)
@@ -188,7 +201,9 @@ private:
     std::atomic<bool> is_started_{false};
     std::recursive_mutex driver_mutex_;
     LogManager* logger_;
-    PulseOne::Enums::ConnectionStatus status_ = PulseOne::Enums::ConnectionStatus::DISCONNECTED;    // =======================================================================
+    PulseOne::Enums::ConnectionStatus status_ = PulseOne::Enums::ConnectionStatus::DISCONNECTED;    
+    
+    // =======================================================================
     // 고급 기능 멤버 (선택적 생성 - std::unique_ptr 사용)
     // =======================================================================
     

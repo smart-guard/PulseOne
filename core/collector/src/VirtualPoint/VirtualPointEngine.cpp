@@ -47,7 +47,7 @@ bool VirtualPointEngine::doInitialize() {
         LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR, "ScriptExecutor 초기화 실패");
         return false;
     }
-    if (!registry_.loadVirtualPoints(0)) {
+    if (!registry_.loadVirtualPoints(1)) {
         LogManager::getInstance().log("VirtualPointEngine", LogLevel::WARN, "가상포인트 로드 실패 - 빈 상태로 시작");
     }
     return true;
@@ -119,6 +119,8 @@ CalculationResult VirtualPointEngine::calculate(int vp_id, const nlohmann::json&
         
         updateVirtualPointStats(vp_id, result);
     } catch (const std::exception& e) {
+        LogManager::getInstance().log("VirtualPointEngine", LogLevel::LOG_ERROR, 
+            "VP " + std::to_string(vp_id) + " Calculation Error: " + std::string(e.what()));
         result.success = false;
         result.error_message = e.what();
     }

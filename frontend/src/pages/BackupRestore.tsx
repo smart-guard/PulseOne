@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/base.css';
-import '../styles/user-management.css';
+import '../styles/management.css';
 
 interface BackupRecord {
   id: string;
@@ -80,11 +80,11 @@ const BackupRestore: React.FC = () => {
     // 백업 기록
     const mockBackupRecords: BackupRecord[] = [];
     const now = new Date();
-    
+
     for (let i = 0; i < 30; i++) {
       const createdAt = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
       const status: BackupRecord['status'] = Math.random() > 0.1 ? 'completed' : 'failed';
-      
+
       const record: BackupRecord = {
         id: `backup_${Date.now() - i * 1000}`,
         name: `백업_${createdAt.toISOString().split('T')[0]}`,
@@ -195,11 +195,11 @@ const BackupRestore: React.FC = () => {
       setBackupRecords(prev => prev.map(backup =>
         backup.id === newBackup.id
           ? {
-              ...backup,
-              status: 'completed',
-              size: Math.random() * 1000 * 1024 * 1024, // 0-1GB
-              duration: Math.random() * 1800 + 300 // 5-35분
-            }
+            ...backup,
+            status: 'completed',
+            size: Math.random() * 1000 * 1024 * 1024, // 0-1GB
+            duration: Math.random() * 1800 + 300 // 5-35분
+          }
           : backup
       ));
     }, 3000);
@@ -436,12 +436,11 @@ const BackupRestore: React.FC = () => {
                 </div>
 
                 <div className="table-cell" data-label="타입">
-                  <span className={`role-badge ${
-                    backup.type === 'full' ? 'role-admin' : 
-                    backup.type === 'incremental' ? 'role-engineer' : 'role-manager'
-                  }`}>
+                  <span className={`role-badge ${backup.type === 'full' ? 'role-admin' :
+                      backup.type === 'incremental' ? 'role-engineer' : 'role-manager'
+                    }`}>
                     {backup.type === 'full' ? '전체' :
-                     backup.type === 'incremental' ? '증분' : '차등'}
+                      backup.type === 'incremental' ? '증분' : '차등'}
                   </span>
                 </div>
 
@@ -450,8 +449,8 @@ const BackupRestore: React.FC = () => {
                     <i className={`fas ${getStatusIcon(backup.status)}`}></i>
                     <span className="status-text">
                       {backup.status === 'completed' ? '완료' :
-                       backup.status === 'running' ? '진행중' :
-                       backup.status === 'failed' ? '실패' : '예약됨'}
+                        backup.status === 'running' ? '진행중' :
+                          backup.status === 'failed' ? '실패' : '예약됨'}
                     </span>
                   </div>
                 </div>
@@ -524,7 +523,7 @@ const BackupRestore: React.FC = () => {
               <div className="pagination-info">
                 {startIndex + 1}-{Math.min(endIndex, backupRecords.length)} / {backupRecords.length} 항목
               </div>
-              
+
               <div className="pagination-controls">
                 <select
                   value={pageSize}
@@ -553,11 +552,11 @@ const BackupRestore: React.FC = () => {
                 >
                   <i className="fas fa-angle-left"></i>
                 </button>
-                
+
                 <span className="page-info">
                   {currentPage} / {Math.ceil(backupRecords.length / pageSize)}
                 </span>
-                
+
                 <button
                   className="btn btn-sm"
                   disabled={currentPage === Math.ceil(backupRecords.length / pageSize)}
@@ -607,7 +606,7 @@ const BackupRestore: React.FC = () => {
                         </span>
                         <span className="text-sm text-neutral-600">
                           {schedule.schedule.frequency === 'daily' ? '매일' :
-                           schedule.schedule.frequency === 'weekly' ? '매주' : '매월'} 
+                            schedule.schedule.frequency === 'weekly' ? '매주' : '매월'}
                           {' '}{schedule.schedule.time}
                         </span>
                       </div>
@@ -693,7 +692,7 @@ const BackupRestore: React.FC = () => {
                         <i className={`fas ${getStatusIcon(job.status)}`}></i>
                         <span className="text-sm text-neutral-600">
                           {job.status === 'completed' ? '완료' :
-                           job.status === 'running' ? '진행중' : '실패'}
+                            job.status === 'running' ? '진행중' : '실패'}
                         </span>
                       </div>
                     </div>
@@ -716,7 +715,7 @@ const BackupRestore: React.FC = () => {
                         <span className="text-sm text-neutral-800">{job.progress}%</span>
                       </div>
                       <div className="w-full bg-neutral-200 rounded-full h-2">
-                        <div 
+                        <div
                           className="bg-primary-500 h-2 rounded-full transition-all duration-300"
                           style={{ width: `${job.progress}%` }}
                         ></div>

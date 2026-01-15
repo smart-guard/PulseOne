@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/base.css';
-import '../styles/user-management.css';
+import '../styles/management.css';
 
 interface NetworkInterface {
   id: string;
@@ -220,10 +220,10 @@ const NetworkSettings: React.FC = () => {
     setVPNConnections(prev => prev.map(vpn =>
       vpn.id === vpnId
         ? {
-            ...vpn,
-            status: vpn.status === 'connected' ? 'disconnected' : 'connected',
-            lastConnected: vpn.status !== 'connected' ? new Date() : vpn.lastConnected
-          }
+          ...vpn,
+          status: vpn.status === 'connected' ? 'disconnected' : 'connected',
+          lastConnected: vpn.status !== 'connected' ? new Date() : vpn.lastConnected
+        }
         : vpn
     ));
   };

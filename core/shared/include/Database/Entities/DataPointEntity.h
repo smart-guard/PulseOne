@@ -95,6 +95,9 @@ public:
     bool deleteFromDatabase() override;
     bool updateToDatabase() override;
 
+    // Repository access
+    std::shared_ptr<Repositories::DataPointRepository> getRepository() const;
+
     // =======================================================================
     // JSON 직렬화/역직렬화 (모든 필드 포함)
     // =======================================================================

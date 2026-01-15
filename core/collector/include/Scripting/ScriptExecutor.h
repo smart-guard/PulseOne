@@ -11,7 +11,7 @@
 // QuickJS forward declarations or headers
 #if HAS_QUICKJS
 extern "C" {
-    #include <quickjs/quickjs.h>
+    #include <quickjs.h>
 }
 #endif
 

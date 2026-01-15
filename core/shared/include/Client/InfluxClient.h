@@ -3,6 +3,7 @@
 
 #include <string>
 #include <map>
+#include <vector>
 
 namespace PulseOne {
 namespace Client {
@@ -14,6 +15,10 @@ public:
     virtual bool writeRecord(const std::string& measurement, 
                              const std::map<std::string, std::string>& tags,
                              const std::map<std::string, double>& fields) = 0;
+    virtual bool writeBatch(const std::vector<std::string>& lines) = 0;
+    virtual std::string formatRecord(const std::string& measurement,
+                                   const std::map<std::string, std::string>& tags,
+                                   const std::map<std::string, double>& fields) = 0;
     virtual std::string query(const std::string& fluxQuery) = 0;
     virtual void disconnect() = 0;
     virtual ~InfluxClient() {}

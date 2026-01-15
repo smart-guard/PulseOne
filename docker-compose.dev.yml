@@ -14,7 +14,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./data/sql/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,7 +31,7 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -55,7 +55,7 @@ services:
       - influxdb_data:/var/lib/influxdb2
       - influxdb_config:/etc/influxdb2
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8086/ping" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -75,10 +75,24 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      test: [ "CMD", "rabbitmq-diagnostics", "check_port_connectivity" ]
       interval: 30s
       timeout: 10s
       retries: 5
+    networks:
+      - pulseone_network
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: pulseone-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
     networks:
       - pulseone_network
     restart: unless-stopped
@@ -96,11 +110,15 @@ services:
       BACKEND_PORT: 3000
       DATABASE_TYPE: SQLITE
       SQLITE_DB_PATH: /app/data/db/pulseone.db
-      REDIS_PRIMARY_ENABLED: "false"
+      COLLECTOR_HOST: collector
+      POSTGRES_HOST: postgres
       REDIS_PRIMARY_HOST: redis
       REDIS_PRIMARY_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      INFLUX_HOST: influxdb
     ports:
       - "3000:3000"
+      - "50502:50502"
       - "9229:9229"
     volumes:
       - ./backend:/app/backend
@@ -186,11 +204,12 @@ services:
       LOG_LEVEL: debug
       ENV_STAGE: ${ENV_STAGE:-dev}
       AUTO_BUILD: "true"
-      AUTO_RUN: "false"
+      AUTO_RUN: "true"
       SHARED_LIB_DIR: /app/core/shared/lib
       SHARED_INCLUDE_DIR: /app/core/shared/include
       PULSEONE_CONFIG_DIR: /app/config
       DATA_DIR: /app/data
+      PULSEONE_DATA_DIR: /app/data
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -236,21 +255,33 @@ services:
       bash -c '
         echo "🔧 PulseOne Collector Development Environment"
         if [ -f /app/secrets/anthropic_api_key ]; then
-          export ANTHROPIC_API_KEY=$(cat /app/secrets/anthropic_api_key)
+          export ANTHROPIC_API_KEY=$$(cat /app/secrets/anthropic_api_key)
         fi
         create-build-dirs.sh
-        if [ ! -f "$SQLITE_PATH" ]; then
-          mkdir -p $(dirname "$SQLITE_PATH")
-          touch "$SQLITE_PATH"
+        if [ ! -f "$$SQLITE_PATH" ]; then
+          mkdir -p $$(dirname "$$SQLITE_PATH")
+          touch "$$SQLITE_PATH"
         fi
         test-httplib.sh
         check-deps.sh
-        if [ "$AUTO_BUILD" = "true" ]; then
+        if [ "$$AUTO_BUILD" = "true" ]; then
           make clean 2>/dev/null || true
-          make debug SHARED_LIB_DIR=$SHARED_LIB_DIR SHARED_INCLUDE_DIR=$SHARED_INCLUDE_DIR || true
+          make debug SHARED_LIB_DIR=$$SHARED_LIB_DIR SHARED_INCLUDE_DIR=$$SHARED_INCLUDE_DIR || true
         fi
-        echo "🔧 PulseOne Collector Ready!"
-        tail -f /dev/null
+        if [ "$$AUTO_RUN" = "true" ]; then
+          mkdir -p bin
+          if [ -f "bin/pulseone-collector" ]; then
+            chmod +x bin/pulseone-collector
+            echo "🚀 Starting PulseOne Collector..."
+            ./bin/pulseone-collector
+          else
+            echo "⚠️ Binary not found, idling..."
+            tail -f /dev/null
+          fi
+        else
+          echo "🔧 PulseOne Collector Ready (Manual mode)!"
+          tail -f /dev/null
+        fi
       '
 
   export-gateway:
@@ -262,14 +293,16 @@ services:
     stdin_open: true
     working_dir: /app/core/export-gateway
     environment:
+      COLLECTOR_ID: "1"
       BUILD_TYPE: Debug
       LOG_LEVEL: debug
       ENV_STAGE: ${ENV_STAGE:-dev}
-      AUTO_BUILD: "false"
+      AUTO_RUN: "true"
       SHARED_LIB_DIR: /app/core/shared/lib
       SHARED_INCLUDE_DIR: /app/core/shared/include
       PULSEONE_CONFIG_DIR: /app/config
       DATA_DIR: /app/data
+      PULSEONE_DATA_DIR: /app/data
       SQLITE_DB_PATH: /app/data/db/pulseone.db
       LOG_FILE_PATH: /app/logs
       DATABASE_TYPE: SQLITE
@@ -315,17 +348,29 @@ services:
     command: >
       bash -c '
         echo "🌐 Export Gateway Starting..."
-        echo "Config: $PULSEONE_CONFIG_DIR"
-        echo "Data: $DATA_DIR"
-        echo "DB: $SQLITE_DB_PATH"
+        echo "Config: $$PULSEONE_CONFIG_DIR"
+        echo "Data: $$DATA_DIR"
+        echo "DB: $$SQLITE_DB_PATH"
         ls -la /app/data/db/ || echo "No db directory"
         ls -la /app/config/ || echo "No config directory"
         mount | grep /app/data
-        echo "🌐 Export Gateway Ready!"
-        tail -f /dev/null
+        if [ "$$AUTO_RUN" = "true" ]; then
+          mkdir -p bin
+          if [ -f "bin/pulseone-export-gateway" ]; then
+            chmod +x bin/pulseone-export-gateway
+            echo "🌐 Starting Export Gateway..."
+            ./bin/pulseone-export-gateway
+          else
+            echo "⚠️ Export Gateway binary not found, idling..."
+            tail -f /dev/null
+          fi
+        else
+          echo "🌐 Export Gateway Ready (Manual mode)!"
+          tail -f /dev/null
+        fi
       '
     healthcheck:
-      test: ["CMD-SHELL", "test -d /app/data"]
+      test: [ "CMD-SHELL", "test -d /app/data" ]
       interval: 30s
       timeout: 10s
       retries: 3

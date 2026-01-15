@@ -345,7 +345,7 @@ private:
     BACnetWorkerStats worker_stats_;
     
     // 스레드 관리
-    std::atomic<bool> thread_running_;
+    std::atomic<bool> data_scan_thread_running_;
     std::unique_ptr<std::thread> data_scan_thread_;
     
     // 메모리 정리 카운터 (새로 추가)

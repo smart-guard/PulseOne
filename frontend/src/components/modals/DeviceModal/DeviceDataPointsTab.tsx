@@ -1,11 +1,13 @@
 // ============================================================================
 // frontend/src/components/modals/DeviceModal/DeviceDataPointsTab.tsx
-// 📊 데이터포인트 탭 - 완전한 편집 기능 구현
+// 📊 데이터포인트 탭 - 고급 필드 (스케일링, 로깅 등) 포함 확장 버전
 // ============================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DataApiService, DataPoint } from '../../../api/services/dataApi';
 import { DeviceDataPointsTabProps } from './types';
+import DeviceDataPointsBulkModal from './DeviceDataPointsBulkModal';
 
 const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   deviceId,
@@ -29,44 +31,83 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [editingPoint, setEditingPoint] = useState<DataPoint | null>(null);
+  const [showBulkModal, setShowBulkModal] = useState(false);
 
-  // 폼 상태
-  const [newPoint, setNewPoint] = useState({
+  // URL Params 관리
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // URL 파라미터로 Bulk Modal 상태 복원
+  useEffect(() => {
+    const bulkParam = searchParams.get('bulk');
+    if (bulkParam === 'true') {
+      setShowBulkModal(true);
+    } else {
+      setShowBulkModal(false);
+    }
+  }, [searchParams]);
+
+  // Bulk Modal 상태 변경 시 URL 업데이트 핸들러
+  const handleBulkModalChange = (isOpen: boolean) => {
+    setShowBulkModal(isOpen);
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev);
+      if (isOpen) {
+        newParams.set('bulk', 'true');
+      } else {
+        newParams.delete('bulk');
+      }
+      return newParams;
+    }, { replace: true });
+  };
+
+  // 폼 탭 관리
+  const [activeFormTab, setActiveFormTab] = useState<'basic' | 'engineering' | 'logging' | 'alarm'>('basic');
+
+  // 편집용 초기 데이터
+  const initialPointData: Partial<DataPoint> = {
     name: '',
     description: '',
     address: '',
-    data_type: 'number' as const,
+    data_type: 'number',
     unit: '',
-    is_enabled: true
-  });
+    is_enabled: true,
+    access_mode: 'read',
+    // Engineering
+    scaling_factor: 1,
+    scaling_offset: 0,
+    min_value: undefined,
+    max_value: undefined,
+    // Logging
+    is_log_enabled: true,
+    log_interval_ms: 0,
+    log_deadband: 0,
+    // Alarm
+    is_alarm_enabled: false,
+    alarm_priority: 'medium',
+    high_alarm_limit: undefined,
+    low_alarm_limit: undefined,
+    alarm_deadband: 0,
+    // Metadata & Group
+    group_name: '',
+    tags: [],
+    metadata: {}
+  };
 
-  // 편집 중인 데이터포인트 상태 - 기본값 설정
-  const [editingPointData, setEditingPointData] = useState({
-    name: '',
-    description: '',
-    address: '',
-    data_type: 'number' as const,
-    unit: '',
-    is_enabled: true
-  });
+  const [formData, setFormData] = useState<Partial<DataPoint>>(initialPointData);
 
-  // 편집 모드 확인
-  const isReadOnly = mode === 'view';
   const canEdit = mode === 'edit' || mode === 'create';
 
   // ========================================================================
-  // 필터링된 데이터포인트
+  // 필터링
   // ========================================================================
   const filteredDataPoints = React.useMemo(() => {
-    const points = dataPoints || [];
-    
-    return points.filter(dp => {
-      const matchesSearch = !searchTerm || 
+    return (dataPoints || []).filter(dp => {
+      const matchesSearch = !searchTerm ||
         dp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        dp.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (dp.description && dp.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
         dp.address.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesEnabled = filterEnabled === 'all' || 
+      const matchesEnabled = filterEnabled === 'all' ||
         (filterEnabled === 'enabled' && dp.is_enabled) ||
         (filterEnabled === 'disabled' && !dp.is_enabled);
 
@@ -77,997 +118,634 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   }, [dataPoints, searchTerm, filterEnabled, filterDataType]);
 
   // ========================================================================
-  // 이벤트 핸들러들
+  // 핸들러
   // ========================================================================
-
-  const handleDataPointSelect = (pointId: number, selected: boolean) => {
-    setSelectedDataPoints(prev => 
-      selected ? [...prev, pointId] : prev.filter(id => id !== pointId)
-    );
+  const handleOpenCreateCtx = () => {
+    setFormData(initialPointData);
+    setActiveFormTab('basic');
+    setShowCreateForm(true);
   };
 
-  const handleSelectAll = (selected: boolean) => {
-    setSelectedDataPoints(selected ? filteredDataPoints.map(dp => dp.id) : []);
-  };
-
-  const handleCreateDataPoint = async () => {
-    // 안전한 문자열 검증
-    const name = String(newPoint.name || '').trim();
-    const address = String(newPoint.address || '').trim();
-
-    if (!name || !address) {
-      alert('포인트명과 주소는 필수입니다.');
-      return;
-    }
-
-    try {
-      setIsProcessing(true);
-      
-      const mockNewPoint: DataPoint = {
-        id: Date.now(),
-        device_id: deviceId,
-        name: newPoint.name,
-        description: newPoint.description,
-        address: String(newPoint.address), // 문자열로 변환
-        data_type: newPoint.data_type,
-        unit: newPoint.unit,
-        is_enabled: newPoint.is_enabled,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      onCreate(mockNewPoint);
-      setShowCreateForm(false);
-      setNewPoint({ 
-        name: '', 
-        description: '', 
-        address: '', 
-        data_type: 'number', 
-        unit: '', 
-        is_enabled: true 
-      });
-      alert('데이터포인트가 생성되었습니다.');
-    } catch (error) {
-      alert(`생성 실패: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleEditDataPoint = (dataPoint: DataPoint) => {
-    if (!canEdit) {
-      console.log('읽기 전용 모드에서는 편집 불가');
-      return;
-    }
-
-    console.log(`데이터포인트 편집 시작: ${dataPoint.name}`);
-    
-    setEditingPoint(dataPoint);
-    setEditingPointData({
-      name: dataPoint.name || '',
-      description: dataPoint.description || '',
-      address: String(dataPoint.address || ''), // 문자열로 변환
-      data_type: dataPoint.data_type as any,
-      unit: dataPoint.unit || '',
-      is_enabled: dataPoint.is_enabled || false
-    });
+  const handleOpenEditCtx = (dp: DataPoint) => {
+    setEditingPoint(dp);
+    setFormData({ ...dp }); // 복사
+    setActiveFormTab('basic');
     setShowEditForm(true);
   };
 
-  const handleUpdateDataPoint = async () => {
-    if (!editingPoint || !editingPointData.name.trim() || !editingPointData.address.trim()) {
-      alert('포인트명과 주소는 필수입니다.');
+  const handleSave = async (isCreate: boolean) => {
+    // 유효성 검사
+    if (!formData.name?.trim() || !formData.address?.trim()) {
+      alert('필수 입력값(이름, 주소)을 확인해주세요.');
       return;
     }
 
     try {
       setIsProcessing(true);
-      
-      const updatedPoint: DataPoint = {
-        ...editingPoint,
-        name: editingPointData.name,
-        description: editingPointData.description,
-        address: editingPointData.address,
-        data_type: editingPointData.data_type,
-        unit: editingPointData.unit,
-        is_enabled: editingPointData.is_enabled,
-        updated_at: new Date().toISOString()
-      };
+      const payload = {
+        ...formData,
+        id: isCreate ? Date.now() : editingPoint!.id,
+        device_id: deviceId,
+        updated_at: new Date().toISOString(),
+        created_at: isCreate ? new Date().toISOString() : formData.created_at
+      } as DataPoint;
 
-      onUpdate(updatedPoint);
-      setShowEditForm(false);
-      setEditingPoint(null);
-      alert('데이터포인트가 수정되었습니다.');
-    } catch (error) {
-      alert(`수정 실패: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (isCreate) {
+        onCreate(payload);
+        setShowCreateForm(false);
+      } else {
+        onUpdate(payload);
+        setShowEditForm(false);
+      }
+      alert(`데이터포인트가 ${isCreate ? '생성' : '수정'}되었습니다.`);
+    } catch (e) {
+      alert(`저장 실패: ${e instanceof Error ? e.message : 'Unknown'}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleTestRead = async (dataPoint: DataPoint) => {
+  const handleTestRead = async (dp: DataPoint) => {
     try {
       setIsProcessing(true);
-      const response = await DataApiService.getCurrentValues({
-        point_ids: [dataPoint.id],
-        include_metadata: true
-      });
-      
-      if (response.success && response.data) {
-        const currentValue = response.data.current_values.find(cv => cv.point_id === dataPoint.id);
-        if (currentValue) {
-          alert(`읽기 성공!\n값: ${currentValue.value}\n품질: ${currentValue.quality}`);
-        } else {
-          alert('현재값을 찾을 수 없습니다.');
-        }
+      const res = await DataApiService.getCurrentValues({ point_ids: [dp.id], include_metadata: true });
+      if (res.success && res.data?.current_values) {
+        const val = res.data.current_values.find(v => v.point_id === dp.id);
+        alert(val ? `값: ${val.value} (${val.quality})\n시간: ${val.timestamp}` : '값을 읽지 못했습니다.');
       } else {
-        alert(`테스트 실패: ${response.error}`);
+        alert('읽기 실패');
       }
-    } catch (error) {
-      alert(`테스트 오류: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (e) {
+      alert('통신 오류');
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleBulkCreate = async (points: Partial<DataPoint>[]) => {
+    try {
+      setIsProcessing(true);
+      // TODO: 백엔드에 Bulk Insert API가 있다면 그것을 사용 (현재는 개별 생성 반복)
+      // 병렬 처리 시 부하 고려하여 순차 처리 또는 Promise.all 사용
+      // 여기서는 UI 반응성을 위해 순차 처리 + 로딩 표시 (최대 20개씩 병렬)
+
+      const BATCH_SIZE = 20;
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < points.length; i += BATCH_SIZE) {
+        const batch = points.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (point) => {
+          try {
+            const payload = {
+              ...point,
+              id: Date.now() + Math.random(), // 임시 ID
+              device_id: deviceId,
+              updated_at: new Date().toISOString(),
+              created_at: new Date().toISOString()
+            } as DataPoint;
+
+            await onCreate(payload);
+            successCount++;
+          } catch (e) {
+            console.error('Failed to create point', point, e);
+            failCount++;
+          }
+        }));
+      }
+
+      alert(`완료: 성공 ${successCount}건${failCount > 0 ? `, 실패 ${failCount}건` : ''}`);
+      handleBulkModalChange(false);
+      onRefresh(); // 목록 갱신
+    } catch (e) {
+      alert(`일괄 저장 중 오류가 발생했습니다: ${e instanceof Error ? e.message : 'Unknown'}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ========================================================================
+  // 렌더링 헬퍼
+  // ========================================================================
+  const renderFormContent = () => {
+    return (
+      <div className="form-content-scroll">
+        {activeFormTab === 'basic' && (
+          <div className="form-grid-2">
+            <div className="form-field">
+              <label>이름 *</label>
+              <input
+                type="text"
+                value={formData.name || ''}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Ex: Temp_Sensor_1"
+              />
+            </div>
+            <div className="form-field">
+              <label>주소 (Address) *</label>
+              <input
+                type="text"
+                value={formData.address || ''}
+                onChange={e => setFormData({ ...formData, address: e.target.value })}
+                placeholder="Ex: 40001"
+              />
+            </div>
+
+            <div className="form-field">
+              <label>데이터 타입</label>
+              <select
+                value={formData.data_type || 'number'}
+                onChange={e => setFormData({ ...formData, data_type: e.target.value as any })}
+              >
+                <option value="number">Number (Float/Int)</option>
+                <option value="boolean">Boolean</option>
+                <option value="string">String</option>
+              </select>
+            </div>
+            <div className="form-field">
+              <label>접근 모드</label>
+              <select
+                value={formData.access_mode || 'read'}
+                onChange={e => setFormData({ ...formData, access_mode: e.target.value as any })}
+              >
+                <option value="read">Read Only</option>
+                <option value="write">Write Only</option>
+                <option value="read_write">Read / Write</option>
+              </select>
+            </div>
+
+            <div className="form-field full">
+              <label>설명</label>
+              <input
+                type="text"
+                value={formData.description || ''}
+                onChange={e => setFormData({ ...formData, description: e.target.value })}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>그룹명 (Group)</label>
+              <input
+                type="text"
+                value={formData.group_name || ''}
+                onChange={e => setFormData({ ...formData, group_name: e.target.value })}
+                placeholder="Ex: MainEngine"
+              />
+            </div>
+            <div className="form-field">
+              <label>태그 (Tags, 콤마 구분)</label>
+              <input
+                type="text"
+                value={Array.isArray(formData.tags) ? formData.tags.join(', ') : ''}
+                onChange={e => setFormData({ ...formData, tags: e.target.value.split(',').map(s => s.trim()).filter(s => s) })}
+                placeholder="Ex: critical, temp"
+              />
+            </div>
+
+            <div className="form-field">
+              <label className="checkbox-wrap">
+                <input
+                  type="checkbox"
+                  checked={formData.is_enabled !== false}
+                  onChange={e => setFormData({ ...formData, is_enabled: e.target.checked })}
+                />
+                포인트 활성화
+              </label>
+            </div>
+
+            <div className="form-field full">
+              <label>메타데이터 (JSON)</label>
+              <textarea
+                style={{ height: '60px', fontSize: '12px', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                value={typeof formData.metadata === 'object' ? JSON.stringify(formData.metadata) : formData.metadata || '{}'}
+                onChange={e => {
+                  try {
+                    const parsed = JSON.parse(e.target.value);
+                    setFormData({ ...formData, metadata: parsed });
+                  } catch (err) {
+                    setFormData({ ...formData, metadata: e.target.value });
+                  }
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeFormTab === 'engineering' && (
+          <div className="form-grid-2">
+            <div className="form-field">
+              <label>단위 (Unit)</label>
+              <input
+                type="text"
+                value={formData.unit || ''}
+                onChange={e => setFormData({ ...formData, unit: e.target.value })}
+                placeholder="Ex: °C, kg, m/s"
+              />
+            </div>
+            <div className="form-field">
+              {/* Empty spacer */}
+            </div>
+
+            <div className="form-field">
+              <label>스케일링 팩터 (Scale)</label>
+              <input
+                type="number"
+                value={formData.scaling_factor ?? 1}
+                onChange={e => setFormData({ ...formData, scaling_factor: parseFloat(e.target.value) })}
+              />
+              <span className="hint">Raw Value * Factor</span>
+            </div>
+            <div className="form-field">
+              <label>오프셋 (Offset)</label>
+              <input
+                type="number"
+                value={formData.scaling_offset ?? 0}
+                onChange={e => setFormData({ ...formData, scaling_offset: parseFloat(e.target.value) })}
+              />
+              <span className="hint">+ Offset</span>
+            </div>
+
+            <div className="form-field">
+              <label>최소값 (Min)</label>
+              <input
+                type="number"
+                value={formData.min_value ?? ''}
+                onChange={e => setFormData({ ...formData, min_value: parseFloat(e.target.value) })}
+                placeholder="No Limit"
+              />
+            </div>
+            <div className="form-field">
+              <label>최대값 (Max)</label>
+              <input
+                type="number"
+                value={formData.max_value ?? ''}
+                onChange={e => setFormData({ ...formData, max_value: parseFloat(e.target.value) })}
+                placeholder="No Limit"
+              />
+            </div>
+          </div>
+        )}
+
+        {activeFormTab === 'logging' && (
+          <div className="form-stack">
+            <div className="form-field">
+              <label className="checkbox-wrap">
+                <input
+                  type="checkbox"
+                  checked={formData.is_log_enabled !== false}
+                  onChange={e => setFormData({ ...formData, is_log_enabled: e.target.checked })}
+                />
+                데이터 로깅 활성화
+              </label>
+            </div>
+
+            {formData.is_log_enabled && (
+              <div className="form-grid-2">
+                <div className="form-field">
+                  <label>로깅 간격 (ms)</label>
+                  <input
+                    type="number"
+                    value={formData.log_interval_ms ?? 0}
+                    onChange={e => setFormData({ ...formData, log_interval_ms: parseInt(e.target.value) })}
+                    min="0"
+                  />
+                  <span className="hint">0 = 변경 시마다 로깅 (COV)</span>
+                </div>
+                <div className="form-field">
+                  <label>로깅 데드밴드 (Deadband)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.log_deadband ?? 0}
+                    onChange={e => setFormData({ ...formData, log_deadband: parseFloat(e.target.value) })}
+                  />
+                  <span className="hint">값 변화량이 이보다 클 때만 저장</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeFormTab === 'alarm' && (
+          <div className="form-stack">
+            <div className="form-field">
+              <label className="checkbox-wrap">
+                <input
+                  type="checkbox"
+                  checked={formData.is_alarm_enabled === true}
+                  onChange={e => setFormData({ ...formData, is_alarm_enabled: e.target.checked })}
+                />
+                알람 사용
+              </label>
+            </div>
+
+            {formData.is_alarm_enabled && (
+              <div className="form-grid-2">
+                <div className="form-field">
+                  <label>알람 우선순위</label>
+                  <select
+                    value={formData.alarm_priority || 'medium'}
+                    onChange={e => setFormData({ ...formData, alarm_priority: e.target.value as any })}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>알람 데드밴드</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.alarm_deadband ?? 0}
+                    onChange={e => setFormData({ ...formData, alarm_deadband: parseFloat(e.target.value) })}
+                  />
+                </div>
+                <div className="form-field">
+                  <label>상한 임계치 (High Limit)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.high_alarm_limit ?? ''}
+                    onChange={e => setFormData({ ...formData, high_alarm_limit: parseFloat(e.target.value) })}
+                    placeholder="No Limit"
+                  />
+                </div>
+                <div className="form-field">
+                  <label>하한 임계치 (Low Limit)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.low_alarm_limit ?? ''}
+                    onChange={e => setFormData({ ...formData, low_alarm_limit: parseFloat(e.target.value) })}
+                    placeholder="No Limit"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // ========================================================================
   // 메인 렌더링
   // ========================================================================
-
   return (
-    <div className="datapoints-tab-wrapper">
-      <div className="datapoints-tab-container">
-        
-        {/* 헤더 */}
-        <div className="datapoints-header">
-          <div className="header-left">
-            <h3>데이터포인트 관리</h3>
-            <span className="count-badge">{filteredDataPoints.length}개</span>
-            <span className={`mode-badge ${mode}`}>
-              {mode === 'view' ? '보기' : mode === 'edit' ? '편집' : '생성'}
-            </span>
-          </div>
-          <div className="header-right">
-            <button className="btn btn-secondary" onClick={onRefresh} disabled={isLoading}>
-              <i className={`fas ${isLoading ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`}></i>
-              {isLoading ? '새로고침 중...' : '새로고침'}
-            </button>
-            {canEdit && (
-              <button className="btn btn-primary" onClick={() => setShowCreateForm(true)}>
-                <i className="fas fa-plus"></i>
-                추가
-              </button>
-            )}
-          </div>
+    <div className="dp-container">
+      {/* 헤더 */}
+      <div className="dp-header">
+        <div className="left">
+          <h3>데이터포인트 <span className="count">({filteredDataPoints.length})</span></h3>
         </div>
+        <div className="right">
+          {canEdit && (
+            <button className="btn-primary-sm" onClick={handleOpenCreateCtx}>
+              <i className="fas fa-plus"></i> 추가
+            </button>
+          )}
+          {canEdit && (
+            <button className="btn-secondary-sm" onClick={() => handleBulkModalChange(true)}>
+              <i className="fas fa-paste"></i> 대량 등록
+            </button>
+          )}
+          <button className="btn-icon" onClick={onRefresh} disabled={isLoading} title="새로고침">
+            <i className={`fas ${isLoading ? 'fa-spinner fa-spin' : 'fa-sync-alt'}`}></i>
+          </button>
+        </div>
+      </div>
 
-        {/* 필터 */}
-        <div className="datapoints-filters">
+      {/* 필터 바 */}
+      <div className="dp-toolbar">
+        <div className="search-box">
+          <i className="fas fa-search"></i>
           <input
             type="text"
             placeholder="검색..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"
+            onChange={e => setSearchTerm(e.target.value)}
           />
-          <select value={filterEnabled} onChange={(e) => setFilterEnabled(e.target.value)} className="filter-select">
-            <option value="all">전체 상태</option>
-            <option value="enabled">활성화됨</option>
-            <option value="disabled">비활성화됨</option>
-          </select>
-          <select value={filterDataType} onChange={(e) => setFilterDataType(e.target.value)} className="filter-select">
-            <option value="all">전체 타입</option>
-            <option value="number">숫자</option>
-            <option value="boolean">Bool</option>
-            <option value="string">문자열</option>
-          </select>
         </div>
+        <select value={filterDataType} onChange={e => setFilterDataType(e.target.value)}>
+          <option value="all">모든 타입</option>
+          <option value="number">Number</option>
+          <option value="boolean">Boolean</option>
+          <option value="string">String</option>
+        </select>
+        <select value={filterEnabled} onChange={e => setFilterEnabled(e.target.value)}>
+          <option value="all">모든 상태</option>
+          <option value="enabled">활성화됨</option>
+          <option value="disabled">비활성화됨</option>
+        </select>
+      </div>
 
-        {/* 일괄 작업 */}
-        {canEdit && selectedDataPoints.length > 0 && (
-          <div className="bulk-actions">
-            <span>{selectedDataPoints.length}개 선택됨</span>
-            <button className="btn btn-success btn-sm">활성화</button>
-            <button className="btn btn-warning btn-sm">비활성화</button>
-            <button className="btn btn-error btn-sm">삭제</button>
-          </div>
-        )}
-
-        {/* 에러 메시지 */}
-        {error && (
-          <div className="error-message">
-            <i className="fas fa-exclamation-triangle"></i>
-            {error}
-          </div>
-        )}
-
-        {/* 데이터포인트 테이블 */}
-        <div className="datapoints-table-container">
-          
-          {/* 고정 헤더 */}
-          <div className="datapoints-table-header">
-            <div className="header-col checkbox-col">
-              <input
-                type="checkbox"
-                checked={filteredDataPoints.length > 0 && 
-                         filteredDataPoints.every(dp => selectedDataPoints.includes(dp.id))}
-                onChange={(e) => handleSelectAll(e.target.checked)}
-                disabled={isReadOnly || filteredDataPoints.length === 0}
-              />
-            </div>
-            <div className="header-col name-col">포인트명</div>
-            <div className="header-col address-col">주소</div>
-            <div className="header-col type-col">타입</div>
-            <div className="header-col unit-col">단위</div>
-            <div className="header-col value-col">현재값</div>
-            <div className="header-col action-col">작업</div>
-          </div>
-
-          {/* 스크롤 가능한 바디 */}
-          <div className="datapoints-table-body">
-            {isLoading ? (
-              <div className="empty-state">
-                <i className="fas fa-spinner fa-spin"></i>
-                <span>로딩 중...</span>
+      {/* 테이블 */}
+      <div className="dp-table-wrap">
+        <div className="dp-table-head">
+          <div className="th col-name">이름 / 설명</div>
+          <div className="th col-addr">주소</div>
+          <div className="th col-type">타입 / 단위</div>
+          <div className="th col-access">권한</div>
+          <div className="th col-scale">스케일</div>
+          <div className="th col-range">범위 (Min~Max)</div>
+          <div className="th col-val">현재값</div>
+          <div className="th col-action"></div>
+        </div>
+        <div className="dp-table-body">
+          {filteredDataPoints.map(dp => (
+            <div key={dp.id} className="tr">
+              <div className="td col-name">
+                <div className="name-row">
+                  <span className="name">{dp.name}</span>
+                  {!dp.is_enabled && <span className="badge disabled">OFF</span>}
+                </div>
+                {dp.description && <div className="desc">{dp.description}</div>}
               </div>
-            ) : filteredDataPoints.length === 0 ? (
-              <div className="empty-state">
-                <i className="fas fa-database"></i>
-                <h3>{dataPoints.length === 0 ? '등록된 데이터포인트가 없습니다' : '검색 결과가 없습니다'}</h3>
-                <p>{dataPoints.length === 0 ? '새 데이터포인트를 추가하여 시작하세요' : '검색 조건을 변경해보세요'}</p>
-                {canEdit && dataPoints.length === 0 && (
-                  <button className="btn btn-primary" onClick={() => setShowCreateForm(true)}>
-                    <i className="fas fa-plus"></i>
-                    첫 번째 데이터포인트 추가
-                  </button>
+              <div className="td col-addr">
+                <span className="addr-tag">{dp.address}</span>
+              </div>
+              <div className="td col-type">
+                <div className="type-tag">{dp.data_type}</div>
+                {dp.unit && <div className="unit">{dp.unit}</div>}
+              </div>
+              <div className="td col-access">
+                <span className={`access-tag ${dp.access_mode || 'read'}`}>
+                  {dp.access_mode === 'read_write' ? 'R/W' : (dp.access_mode === 'write' ? 'W' : 'R')}
+                </span>
+              </div>
+              <div className="td col-scale">
+                <div className="scale-row">x{dp.scaling_factor ?? 1}</div>
+                <div className="scale-row offset">{(dp.scaling_offset ?? 0) >= 0 ? '+' : ''}{dp.scaling_offset ?? 0}</div>
+              </div>
+              <div className="td col-range">
+                {(dp.min_value !== undefined || dp.max_value !== undefined) ? (
+                  <span className="range-tag">
+                    {dp.min_value ?? '-∞'} ~ {dp.max_value ?? '+∞'}
+                  </span>
+                ) : (
+                  <span className="range-none">-</span>
                 )}
               </div>
-            ) : (
-              filteredDataPoints.map((dataPoint) => (
-                <div key={dataPoint.id} className={`datapoints-table-row ${selectedDataPoints.includes(dataPoint.id) ? 'selected' : ''}`}>
-                  
-                  {/* 체크박스 */}
-                  <div className="table-col checkbox-col">
-                    <input
-                      type="checkbox"
-                      checked={selectedDataPoints.includes(dataPoint.id)}
-                      onChange={(e) => handleDataPointSelect(dataPoint.id, e.target.checked)}
-                      disabled={isReadOnly}
-                    />
-                  </div>
-
-                  {/* 포인트명 */}
-                  <div className="table-col name-col">
-                    <div className="point-name">
-                      {dataPoint.name}
-                      {!dataPoint.is_enabled && <span className="disabled-badge">비활성</span>}
-                    </div>
-                    <div className="point-description">{dataPoint.description || 'N/A'}</div>
-                  </div>
-
-                  {/* 주소 */}
-                  <div className="table-col address-col" title={dataPoint.address}>
-                    {dataPoint.address}
-                  </div>
-
-                  {/* 타입 */}
-                  <div className="table-col type-col">
-                    <span className={`type-badge ${dataPoint.data_type}`}>
-                      {dataPoint.data_type}
-                    </span>
-                  </div>
-
-                  {/* 단위 */}
-                  <div className="table-col unit-col">{dataPoint.unit || 'N/A'}</div>
-
-                  {/* 현재값 */}
-                  <div className="table-col value-col">
-                    {dataPoint.current_value ? (
-                      <div className="current-value">
-                        <div className="value">{dataPoint.current_value.value}</div>
-                        <div className={`quality ${dataPoint.current_value.quality}`}>
-                          {dataPoint.current_value.quality}
-                        </div>
-                      </div>
-                    ) : 'N/A'}
-                  </div>
-
-                  {/* 작업 */}
-                  <div className="table-col action-col">
-                    <div className="action-buttons">
-                      <button
-                        className="btn btn-info btn-xs"
-                        onClick={() => handleTestRead(dataPoint)}
-                        disabled={isProcessing}
-                        title="읽기 테스트"
-                      >
-                        <i className="fas fa-play"></i>
-                      </button>
-                      {canEdit && (
-                        <>
-                          <button 
-                            className="btn btn-secondary btn-xs" 
-                            onClick={() => handleEditDataPoint(dataPoint)}
-                            disabled={isProcessing}
-                            title="편집"
-                          >
-                            <i className="fas fa-edit"></i>
-                          </button>
-                          <button
-                            className="btn btn-error btn-xs"
-                            onClick={() => {
-                              if (confirm(`"${dataPoint.name}" 삭제하시겠습니까?`)) {
-                                onDelete(dataPoint.id);
-                              }
-                            }}
-                            disabled={isProcessing}
-                            title="삭제"
-                          >
-                            <i className="fas fa-trash"></i>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
+              <div className="td col-val">
+                {dp.current_value && dp.current_value.value !== undefined ? (
+                  <span className="val">{String(dp.current_value.value)}</span>
+                ) : (
+                  <span className="no-val">-</span>
+                )}
+              </div>
+              <div className="td col-action">
+                <div className="btn-group">
+                  <button onClick={() => handleTestRead(dp)} title="읽기 테스트"><i className="fas fa-play"></i></button>
+                  {canEdit && (
+                    <>
+                      <button onClick={() => handleOpenEditCtx(dp)} title="편집"><i className="fas fa-pencil-alt"></i></button>
+                      <button onClick={() => confirm('삭제?') && onDelete(dp.id)} title="삭제" className="danger"><i className="fas fa-trash"></i></button>
+                    </>
+                  )}
                 </div>
-              ))
-            )}
-          </div>
+              </div>
+            </div>
+          ))}
+          {filteredDataPoints.length === 0 && (
+            <div className="empty-msg">데이터가 없습니다.</div>
+          )}
         </div>
       </div>
 
-      {/* 생성 폼 모달 */}
-      {showCreateForm && (
-        <div className="create-modal-overlay">
-          <div className="create-modal-content">
-            <div className="create-modal-header">
-              <h3>새 데이터포인트 추가</h3>
-              <button onClick={() => setShowCreateForm(false)} className="close-btn">
+      {/* 모달 (생성/수정) */}
+      {(showCreateForm || showEditForm) && (
+        <div className="modal-overlay">
+          <div className="modal-dialog">
+            <div className="modal-hdr">
+              <h3>{showCreateForm ? '새 데이터포인트' : '데이터포인트 편집'}</h3>
+              <button onClick={() => { setShowCreateForm(false); setShowEditForm(false); }}>
                 <i className="fas fa-times"></i>
               </button>
             </div>
-            
-            <div className="create-modal-body">
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>포인트명 *</label>
-                  <input
-                    type="text"
-                    value={newPoint.name}
-                    onChange={(e) => setNewPoint(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="데이터포인트명"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>주소 *</label>
-                  <input
-                    type="text"
-                    value={newPoint.address}
-                    onChange={(e) => setNewPoint(prev => ({ ...prev, address: e.target.value }))}
-                    placeholder="예: 40001"
-                  />
-                </div>
-              </div>
 
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>데이터 타입</label>
-                  <select
-                    value={newPoint.data_type}
-                    onChange={(e) => setNewPoint(prev => ({ ...prev, data_type: e.target.value as any }))}
-                  >
-                    <option value="number">숫자</option>
-                    <option value="boolean">불린</option>
-                    <option value="string">문자열</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>단위</label>
-                  <input
-                    type="text"
-                    value={newPoint.unit}
-                    onChange={(e) => setNewPoint(prev => ({ ...prev, unit: e.target.value }))}
-                    placeholder="예: °C, bar"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>설명</label>
-                <textarea
-                  value={newPoint.description}
-                  onChange={(e) => setNewPoint(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="설명"
-                  rows={2}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={newPoint.is_enabled}
-                    onChange={(e) => setNewPoint(prev => ({ ...prev, is_enabled: e.target.checked }))}
-                  />
-                  활성화
-                </label>
-              </div>
+            <div className="modal-tabs">
+              <button className={activeFormTab === 'basic' ? 'active' : ''} onClick={() => setActiveFormTab('basic')}>기본 정보</button>
+              <button className={activeFormTab === 'engineering' ? 'active' : ''} onClick={() => setActiveFormTab('engineering')}>엔지니어링</button>
+              <button className={activeFormTab === 'logging' ? 'active' : ''} onClick={() => setActiveFormTab('logging')}>로깅</button>
+              <button className={activeFormTab === 'alarm' ? 'active' : ''} onClick={() => setActiveFormTab('alarm')}>알람</button>
             </div>
 
-            <div className="create-modal-footer">
-              <button onClick={() => setShowCreateForm(false)} className="btn btn-secondary">
-                취소
-              </button>
-              <button
-                onClick={handleCreateDataPoint}
-                disabled={isProcessing || !String(newPoint.name || '').trim() || !String(newPoint.address || '').trim()}
-                className="btn btn-primary"
-              >
-                {isProcessing ? (
-                  <>
-                    <i className="fas fa-spinner fa-spin"></i>
-                    생성 중...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-save"></i>
-                    생성
-                  </>
-                )}
-              </button>
+            <div className="modal-body icon-inputs">
+              {renderFormContent()}
+            </div>
+
+            <div className="modal-ftr">
+              <button className="btn-sec" onClick={() => { setShowCreateForm(false); setShowEditForm(false); }}>취소</button>
+              <button className="btn-pri" onClick={() => handleSave(showCreateForm)}>저장</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 편집 폼 모달 */}
-      {showEditForm && editingPoint && (
-        <div className="create-modal-overlay">
-          <div className="create-modal-content">
-            <div className="create-modal-header">
-              <h3>데이터포인트 편집</h3>
-              <button onClick={() => setShowEditForm(false)} className="close-btn">
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-            
-            <div className="create-modal-body">
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>포인트명 *</label>
-                  <input
-                    type="text"
-                    value={editingPointData.name}
-                    onChange={(e) => setEditingPointData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="데이터포인트명"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>주소 *</label>
-                  <input
-                    type="text"
-                    value={editingPointData.address}
-                    onChange={(e) => setEditingPointData(prev => ({ ...prev, address: e.target.value }))}
-                    placeholder="예: 40001"
-                  />
-                </div>
-              </div>
-
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>데이터 타입</label>
-                  <select
-                    value={editingPointData.data_type}
-                    onChange={(e) => setEditingPointData(prev => ({ ...prev, data_type: e.target.value as any }))}
-                  >
-                    <option value="number">숫자</option>
-                    <option value="boolean">불린</option>
-                    <option value="string">문자열</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label>단위</label>
-                  <input
-                    type="text"
-                    value={editingPointData.unit}
-                    onChange={(e) => setEditingPointData(prev => ({ ...prev, unit: e.target.value }))}
-                    placeholder="예: °C, bar"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>설명</label>
-                <textarea
-                  value={editingPointData.description}
-                  onChange={(e) => setEditingPointData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="설명"
-                  rows={2}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={editingPointData.is_enabled}
-                    onChange={(e) => setEditingPointData(prev => ({ ...prev, is_enabled: e.target.checked }))}
-                  />
-                  활성화
-                </label>
-              </div>
-            </div>
-
-            <div className="create-modal-footer">
-              <button onClick={() => setShowEditForm(false)} className="btn btn-secondary">
-                취소
-              </button>
-              <button
-                onClick={handleUpdateDataPoint}
-                disabled={isProcessing || !String(editingPointData.name || '').trim() || !String(editingPointData.address || '').trim()}
-                className="btn btn-primary"
-              >
-                {isProcessing ? (
-                  <>
-                    <i className="fas fa-spinner fa-spin"></i>
-                    수정 중...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-save"></i>
-                    수정
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 스타일 */}
-      <style jsx>{`
-        .datapoints-tab-wrapper {
-          height: 100%;
-          overflow-y: auto;
-          background: #f8fafc;
-          padding: 1.5rem;
-        }
-
-        .datapoints-tab-container {
-          display: flex;
-          flex-direction: column;
-          gap: 1.5rem;
-          max-width: 100%;
-        }
-
-        .datapoints-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: white;
-          padding: 1.5rem;
-          border-radius: 8px;
-          border: 1px solid #e5e7eb;
-          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-        }
-
-        .header-left {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .header-left h3 {
-          margin: 0;
-          font-size: 1.25rem;
-          font-weight: 600;
-          color: #111827;
-        }
-
-        .count-badge, .mode-badge {
-          padding: 0.25rem 0.75rem;
-          border-radius: 9999px;
-          font-size: 0.75rem;
-          font-weight: 500;
-        }
-
-        .count-badge {
-          background: #0ea5e9;
-          color: white;
-        }
-
-        .mode-badge.view { background: #e5e7eb; color: #374151; }
-        .mode-badge.edit { background: #dbeafe; color: #1d4ed8; }
-        .mode-badge.create { background: #dcfce7; color: #166534; }
-
-        .header-right {
-          display: flex;
-          gap: 0.75rem;
-        }
-
-        .datapoints-filters {
-          display: flex;
-          gap: 1rem;
-          background: white;
-          padding: 1.5rem;
-          border-radius: 8px;
-          border: 1px solid #e5e7eb;
-          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-          align-items: center;
-        }
-
-        .search-input {
-          flex: 1;
-          padding: 0.75rem 1rem;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          font-size: 0.875rem;
-        }
-
-        .filter-select {
-          padding: 0.75rem 1rem;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          background: white;
-          font-size: 0.875rem;
-          min-width: 120px;
-        }
-
-        .bulk-actions {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          background: #fef3c7;
-          padding: 1rem 1.5rem;
-          border-radius: 8px;
-          border: 1px solid #f59e0b;
-        }
-
-        .error-message {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          background: #fef2f2;
-          color: #dc2626;
-          padding: 1rem 1.5rem;
-          border-radius: 8px;
-          border: 1px solid #fecaca;
-        }
-
-        .datapoints-table-container {
-          background: white;
-          border-radius: 8px;
-          border: 1px solid #e5e7eb;
-          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          height: 500px;
-        }
-
-        .datapoints-table-header {
-          display: grid;
-          grid-template-columns: 50px 2fr 1.2fr 100px 100px 120px 120px;
-          gap: 1rem;
-          padding: 1rem 1.5rem;
-          background: #f9fafb;
-          border-bottom: 2px solid #e5e7eb;
-          font-weight: 600;
-          font-size: 0.875rem;
-          color: #374151;
-          position: sticky;
-          top: 0;
-          z-index: 10;
-        }
-
-        .header-col {
-          display: flex;
-          align-items: center;
-        }
-
-        .checkbox-col, .action-col {
-          justify-content: center;
-        }
-
-        .datapoints-table-body {
-          flex: 1;
-          overflow-y: auto;
-          overflow-x: hidden;
-        }
-
-        .datapoints-table-row {
-          display: grid;
-          grid-template-columns: 50px 2fr 1.2fr 100px 100px 120px 120px;
-          gap: 1rem;
-          padding: 1rem 1.5rem;
-          border-bottom: 1px solid #e5e7eb;
-          font-size: 0.875rem;
-          align-items: center;
-          transition: background-color 0.2s;
-        }
-
-        .datapoints-table-row:hover {
-          background: #f9fafb;
-        }
-
-        .datapoints-table-row.selected {
-          background: #eff6ff;
-        }
-
-        .table-col {
-          display: flex;
-          align-items: center;
-          overflow: hidden;
-        }
-
-        .table-col.checkbox-col, .table-col.action-col {
-          justify-content: center;
-        }
-
-        .table-col.name-col {
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 0.25rem;
-        }
-
-        .point-name {
-          font-weight: 500;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .point-description {
-          font-size: 0.75rem;
-          color: #6b7280;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          width: 100%;
-        }
-
-        .disabled-badge {
-          background: #fee2e2;
-          color: #991b1b;
-          padding: 0.125rem 0.375rem;
-          border-radius: 9999px;
-          font-size: 0.625rem;
-        }
-
-        .type-badge {
-          padding: 0.25rem 0.5rem;
-          border-radius: 0.25rem;
-          font-size: 0.75rem;
-          font-weight: 500;
-        }
-
-        .type-badge.number { background: #dbeafe; color: #1d4ed8; }
-        .type-badge.boolean { background: #dcfce7; color: #166534; }
-        .type-badge.string { background: #fef3c7; color: #92400e; }
-
-        .current-value {
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-        }
-
-        .value {
-          font-weight: 500;
-        }
-
-        .quality {
-          font-size: 0.75rem;
-          padding: 0.125rem 0.375rem;
-          border-radius: 0.25rem;
-          font-weight: 500;
-        }
-
-        .quality.good { background: #dcfce7; color: #166534; }
-        .quality.bad { background: #fee2e2; color: #991b1b; }
-        .quality.uncertain { background: #fef3c7; color: #92400e; }
-
-        .action-buttons {
-          display: flex;
-          gap: 0.5rem;
-        }
-
-        .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 4rem 2rem;
-          color: #6b7280;
-          text-align: center;
-          gap: 1rem;
-        }
-
-        .empty-state i {
-          font-size: 3rem;
-          margin-bottom: 1rem;
-          color: #d1d5db;
-        }
-
-        .empty-state h3 {
-          margin: 0;
-          font-size: 1.125rem;
-          font-weight: 600;
-          color: #374151;
-        }
-
-        .empty-state p {
-          margin: 0;
-          font-size: 0.875rem;
-        }
-
-        .btn {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-          padding: 0.5rem 1rem;
-          border: none;
-          border-radius: 6px;
-          font-size: 0.875rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-          white-space: nowrap;
-          text-decoration: none;
-        }
-
-        .btn-xs { padding: 0.375rem 0.5rem; font-size: 0.75rem; }
-        .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.75rem; }
-
-        .btn-primary { background: #0ea5e9; color: white; }
-        .btn-primary:hover:not(:disabled) { background: #0284c7; }
-
-        .btn-secondary { background: #64748b; color: white; }
-        .btn-secondary:hover:not(:disabled) { background: #475569; }
-
-        .btn-success { background: #059669; color: white; }
-        .btn-warning { background: #d97706; color: white; }
-        .btn-error { background: #dc2626; color: white; }
-        .btn-info { background: #0891b2; color: white; }
-
-        .btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .create-modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 2000;
-        }
-
-        .create-modal-content {
-          background: white;
-          border-radius: 8px;
-          width: 600px;
-          max-width: 90vw;
-          max-height: 80vh;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-        }
-
-        .create-modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1.5rem;
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        .create-modal-header h3 {
-          margin: 0;
-          font-size: 1.125rem;
-          font-weight: 600;
-        }
-
-        .close-btn {
-          background: none;
-          border: none;
-          font-size: 1.5rem;
-          cursor: pointer;
-          padding: 0.5rem;
-          border-radius: 4px;
-          color: #6b7280;
-        }
-
-        .close-btn:hover {
-          background: #f3f4f6;
-          color: #374151;
-        }
-
-        .create-modal-body {
-          flex: 1;
-          padding: 1.5rem;
-          overflow-y: auto;
-        }
-
-        .create-modal-footer {
-          display: flex;
-          justify-content: flex-end;
-          gap: 0.75rem;
-          padding: 1.5rem;
-          border-top: 1px solid #e5e7eb;
-        }
-
-        .form-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1rem;
-          margin-bottom: 1rem;
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-
-        .form-group label {
-          font-weight: 500;
-          font-size: 0.875rem;
-          color: #374151;
-        }
-
-        .form-group input, .form-group select, .form-group textarea {
-          padding: 0.75rem;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          font-size: 0.875rem;
-        }
-
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-          outline: none;
-          border-color: #0ea5e9;
-          box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
-        }
-
-        .checkbox-label {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          cursor: pointer;
-          font-size: 0.875rem;
-        }
-
-        .checkbox-label input {
-          margin: 0;
-        }
-
-        @media (max-width: 768px) {
-          .datapoints-tab-wrapper {
-            padding: 1rem;
-          }
-          
-          .datapoints-table-header, .datapoints-table-row {
-            grid-template-columns: 40px 1fr 80px 60px;
-          }
-          
-          .address-col, .unit-col, .value-col {
-            display: none;
-          }
-          
-          .form-grid {
-            grid-template-columns: 1fr;
-          }
-          
-          .create-modal-content {
-            margin: 1rem;
-            width: auto;
-          }
-        }
+      {/* 대량 등록 모달 */}
+      <DeviceDataPointsBulkModal
+        deviceId={deviceId}
+        isOpen={showBulkModal}
+        onClose={() => handleBulkModalChange(false)}
+        onSave={handleBulkCreate}
+        existingAddresses={dataPoints?.map(dp => dp.address) || []}
+      />
+
+      <style>{`
+         .dp-container { display: flex; flex-direction: column; height: 100%; background: #f8fafc; font-family: 'Inter', sans-serif; gap: 8px; }
+         .dp-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: white; border-bottom: 1px solid #e2e8f0; }
+         .dp-header h3 { margin: 0; font-size: 15px; font-weight: 600; color: #1e293b; }
+         .dp-header .count { color: #64748b; font-size: 13px; font-weight: 500; }
+         .dp-header .right { display: flex; gap: 8px; align-items: center; }
+
+         .dp-toolbar { display: flex; padding: 8px 16px; gap: 8px; background: white; border-bottom: 1px solid #e2e8f0; }
+         .search-box { display: flex; align-items: center; background: #f1f5f9; border-radius: 4px; padding: 0 8px; flex: 1; border: 1px solid transparent; }
+         .search-box:focus-within { border-color: #3b82f6; background: white; }
+         .search-box i { color: #94a3b8; font-size: 12px; margin-right: 6px; }
+         .search-box input { border: none; background: transparent; height: 32px; font-size: 13px; width: 100%; outline: none; }
+         
+         .dp-toolbar select { padding: 0 12px; height: 34px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; color: #475569; outline: none; background: white; }
+
+         .btn-primary-sm { background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+         .btn-primary-sm:hover { background: #2563eb; }
+         .btn-secondary-sm { background: white; color: #475569; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+         .btn-secondary-sm:hover { background: #f8fafc; border-color: #94a3b8; }
+         .btn-icon { background: white; border: 1px solid #cbd5e1; width: 32px; height: 32px; border-radius: 4px; color: #64748b; cursor: pointer; display: inline-flex; justify-content: center; align-items: center; }
+         .btn-icon:hover { background: #f1f5f9; color: #3b82f6; }
+
+         /* Table */
+         .dp-table-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: white; }
+         .dp-table-head { display: grid; grid-template-columns: 1fr 100px 120px 90px 100px 150px 120px 80px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
+         .th { padding: 10px 12px; display: flex; align-items: center; }
+         
+         .dp-table-body { flex: 1; overflow-y: auto; }
+         .tr { display: grid; grid-template-columns: 1fr 100px 120px 90px 100px 150px 120px 80px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
+         .tr:hover { background: #f8fafc; }
+         .td { padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; }
+         
+         .name-row { display: flex; align-items: center; gap: 6px; }
+         .name { font-weight: 500; color: #1e293b; }
+         .desc { font-size: 11px; color: #94a3b8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+         .badge.disabled { background: #f1f5f9; color: #94a3b8; font-size: 10px; padding: 1px 4px; border-radius: 3px; border: 1px solid #e2e8f0; }
+         
+         .addr-tag { font-family: monospace; background: #eff6ff; color: #1d4ed8; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+         .type-tag { font-size: 12px; font-weight: 500; }
+         .unit { font-size: 11px; color: #94a3b8; }
+         
+         .access-tag { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; }
+         .access-tag.read { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+         .access-tag.write { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+         .access-tag.read_write { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+
+         .scale-row { font-size: 12px; color: #475569; }
+         .scale-row.offset { font-size: 11px; color: #94a3b8; }
+         
+         .range-tag { font-size: 11px; color: #475569; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+         .range-none { color: #cbd5e1; }
+
+         .val { font-weight: 600; color: #0f172a; }
+         .no-val { color: #cbd5e1; }
+
+         .btn-group { display: flex; gap: 4px; }
+         .btn-group button { width: 26px; height: 26px; border: 1px solid #e2e8f0; background: white; border-radius: 4px; color: #64748b; cursor: pointer; font-size: 11px; display: flex; justify-content: center; align-items: center; }
+         .btn-group button:hover { border-color: #3b82f6; color: #3b82f6; }
+         .btn-group button.danger:hover { border-color: #ef4444; color: #ef4444; }
+
+         .empty-msg { padding: 32px; text-align: center; color: #94a3b8; font-size: 13px; }
+
+         /* Modal */
+         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; justify-content: center; align-items: center; z-index: 50; }
+         .modal-dialog { background: white; width: 500px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; max-height: 90vh; }
+         .modal-hdr { display: flex; justify-content: space-between; padding: 16px; border-bottom: 1px solid #e2e8f0; align-items: center; }
+         .modal-hdr h3 { margin: 0; font-size: 16px; }
+         .modal-hdr button { background: none; border: none; cursor: pointer; color: #94a3b8; font-size: 16px; }
+
+         .modal-tabs { display: flex; padding: 0 16px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; gap: 16px; }
+         .modal-tabs button { background: none; border: none; padding: 12px 0; font-size: 13px; color: #64748b; cursor: pointer; position: relative; font-weight: 500; }
+         .modal-tabs button.active { color: #3b82f6; }
+         .modal-tabs button.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: #3b82f6; }
+
+         .modal-body { padding: 20px; overflow-y: auto; }
+         .modal-ftr { padding: 16px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 8px; background: #f8fafc; }
+         
+         .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+         .form-stack { display: flex; flex-direction: column; gap: 16px; }
+         .form-field { display: flex; flex-direction: column; gap: 6px; }
+         .form-field.full { grid-column: span 2; }
+         .form-field label { font-size: 12px; font-weight: 500; color: #475569; }
+         .form-field input, .form-field select { height: 34px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; outline: none; }
+         .form-field input:focus, .form-field select:focus { border-color: #3b82f6; box-shadow: 0 0 0 1px rgba(59,130,246,0.1); }
+         .hint { font-size: 10px; color: #94a3b8; }
+         .checkbox-wrap { display: flex; flex-direction: row; align-items: center; gap: 8px; font-weight: normal; cursor: pointer; }
+         
+         .btn-pri { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; }
+         .btn-sec { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+         @media (max-width: 1200px) {
+            .dp-table-head, .tr { grid-template-columns: 1fr 80px 100px 70px 80px 110px 90px 70px; }
+         }
       `}</style>
     </div>
   );

@@ -2,70 +2,50 @@
 #define BLE_BEACON_DRIVER_H
 
 #include "Drivers/Common/IProtocolDriver.h"
-#include "Common/Enums.h"
-#include "Logging/LogManager.h"
 #include <map>
 #include <mutex>
-#include <thread>
-#include <atomic>
-#include <chrono>
+#include <vector>
+#include <string>
 
 namespace PulseOne {
 namespace Drivers {
 namespace Ble {
 
-struct BeaconInfo {
-    std::string uuid;
-    int rssi;
-    int tx_power;
-    std::chrono::system_clock::time_point last_seen;
-};
-
-class BleBeaconDriver : public IProtocolDriver {
+class BleBeaconDriver : public PulseOne::Drivers::IProtocolDriver {
 public:
     BleBeaconDriver();
     virtual ~BleBeaconDriver();
 
     // IProtocolDriver implementation
-    bool Initialize(const PulseOne::Structs::DriverConfig& config) override;
+    bool Initialize(const Structs::DriverConfig& config) override;
     bool Connect() override;
     bool Disconnect() override;
     bool IsConnected() const override;
-    bool Start() override { return Connect(); }
-    bool Stop() override { return Disconnect(); }
     
-    bool ReadValues(const std::vector<PulseOne::Structs::DataPoint>& points, 
-              std::vector<PulseOne::Structs::TimestampedValue>& values) override;
-              
-    bool WriteValue(const PulseOne::Structs::DataPoint& point, 
-               const PulseOne::Structs::DataValue& value) override;
+    // Generic ReadValues (uses cached scan results)
+    bool ReadValues(const std::vector<Structs::DataPoint>& points, 
+                   std::vector<Structs::TimestampedValue>& out_values) override;
 
-    PulseOne::Enums::ProtocolType GetProtocolType() const override { return PulseOne::Enums::ProtocolType::BLE_BEACON; }
-    PulseOne::Enums::DriverStatus GetStatus() const override;
-    PulseOne::Structs::ErrorInfo GetLastError() const override { return last_error_; }
+    // Write is not supported for Beacons
+    // IProtocolDriver implementation continued
+    bool Start() override;
+    bool Stop() override;
+    
+    // Single point write (required by interface)
+    bool WriteValue(const Structs::DataPoint& point, const Structs::DataValue& value) override;
 
-    // Not supported
-    bool Subscribe(const std::string& topic, int qos = 0) override { return false; }
-    bool Unsubscribe(const std::string& topic) override { return false; }
+    // Getters
+    Enums::ProtocolType GetProtocolType() const override;
+    Structs::DriverStatus GetStatus() const override;
+    Structs::ErrorInfo GetLastError() const override;
 
-    // Simulation helper for testing
+    // Simulation Helper
     void SimulateBeaconDiscovery(const std::string& uuid, int rssi);
 
 private:
-    void ScanningLoop();
-    void CleanUpStaleBeacons();
-
-    bool is_initialized_ = false;
-    std::atomic<bool> is_connected_{false};
-    std::atomic<bool> stop_scanning_{false};
-    
-    std::string adapter_name_;
-    int scan_window_ms_ = 100;
-    int stale_timeout_ms_ = 10000; // 10 seconds
-
-    std::thread scanning_thread_;
-    mutable std::mutex beacons_mutex_;
-    std::map<std::string, BeaconInfo> beacons_; // Key: UUID
+    bool is_connected_;
+    std::mutex data_mutex_;
+    std::map<std::string, int> discovered_rssi_; // UUID -> RSSI
 };
 
 } // namespace Ble

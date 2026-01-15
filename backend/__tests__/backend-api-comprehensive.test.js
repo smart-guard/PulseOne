@@ -19,8 +19,8 @@ try {
     const express = require('express');
     app = express();
     app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
-    app.get('/api/info', (req, res) => res.json({ 
-        name: 'PulseOne Backend API', 
+    app.get('/api/info', (req, res) => res.json({
+        name: 'PulseOne Backend API',
         version: '1.0.0',
         endpoints: { health: '/health', info: '/api/info' }
     }));
@@ -33,11 +33,11 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
 
     beforeAll(async () => {
         console.log('\n🚀 === PulseOne Backend API 테스트 시작 (에러 핸들링 개선) ===\n');
-        
+
         // ⚠️ 수정 3: RepositoryFactory 초기화를 try-catch로 감싸기
         try {
             factory = RepositoryFactory.getInstance();
-            
+
             // initialize 메서드가 있는지 확인 후 호출
             if (factory.initialize && typeof factory.initialize === 'function') {
                 await factory.initialize({
@@ -62,7 +62,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
             server = app.listen(PORT, () => {
                 console.log(`✅ 테스트 서버 시작: http://localhost:${PORT}`);
             });
-            
+
             // 서버 시작 대기
             await new Promise(resolve => setTimeout(resolve, 100));
         } catch (error) {
@@ -89,34 +89,32 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
             );
         }
 
-        if (server) {
+        if (app && app.shutdown) {
             cleanupTasks.push(
-                new Promise((resolve) => {
-                    server.close((err) => {
-                        if (err) {
-                            console.warn('⚠️ 서버 종료 중 오류:', err.message);
-                        } else {
-                            console.log('✅ 테스트 서버 종료');
-                        }
-                        resolve();
-                    });
-                })
+                (async () => {
+                    try {
+                        await app.shutdown();
+                        console.log('✅ Express 앱 셧다운 완료');
+                    } catch (error) {
+                        console.warn('⚠️ Express 앱 셧다운 중 오류:', error.message);
+                    }
+                })()
             );
         }
 
         // 모든 정리 작업 완료 대기
         await Promise.allSettled(cleanupTasks);
-        
+
         // 추가 대기로 비동기 작업 완료 보장
         await new Promise(resolve => setTimeout(resolve, 100));
-        
+
         console.log('\n🏁 === PulseOne Backend API 테스트 완료 ===\n');
     });
 
     // =========================================================================
     // 1. 기본 서버 상태 검증
     // =========================================================================
-    
+
     describe('🔍 기본 서버 상태 검증', () => {
         test('✅ Health Check 엔드포인트', async () => {
             try {
@@ -125,7 +123,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
                     .timeout(5000);
 
                 expect([200, 404]).toContain(response.status);
-                
+
                 if (response.status === 200) {
                     expect(response.body).toHaveProperty('status');
                     console.log('✅ Health Check 정상 동작');
@@ -145,7 +143,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
                     .timeout(5000);
 
                 expect([200, 404]).toContain(response.status);
-                
+
                 if (response.status === 200) {
                     expect(response.body).toHaveProperty('name');
                     console.log('✅ API 정보 엔드포인트 검증 완료');
@@ -162,7 +160,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
     // =========================================================================
     // 2. RepositoryFactory 검증 (Factory가 초기화된 경우만)
     // =========================================================================
-    
+
     describe('🏭 RepositoryFactory 검증', () => {
         test('✅ RepositoryFactory 기본 동작', () => {
             if (!isFactoryInitialized) {
@@ -174,10 +172,10 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
             try {
                 expect(factory).toBeDefined();
                 expect(factory.getInstance).toBeDefined();
-                
+
                 const instance = RepositoryFactory.getInstance();
                 expect(instance).toBe(factory);
-                
+
                 console.log('✅ RepositoryFactory 싱글턴 패턴 검증 완료');
             } catch (error) {
                 console.warn('⚠️ RepositoryFactory 테스트 실패:', error.message);
@@ -194,18 +192,18 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
 
             const repositoryTypes = [
                 'DeviceRepository',
-                'SiteRepository', 
+                'SiteRepository',
                 'UserRepository',
                 'VirtualPointRepository',
                 'AlarmRuleRepository'
             ];
 
             let successCount = 0;
-            
+
             repositoryTypes.forEach(repoType => {
                 try {
                     const methodName = `get${repoType}`;
-                    
+
                     if (factory[methodName] && typeof factory[methodName] === 'function') {
                         const repo = factory[methodName]();
                         if (repo) {
@@ -228,7 +226,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
     // =========================================================================
     // 3. API 엔드포인트 구조 검증
     // =========================================================================
-    
+
     describe('🔌 API 엔드포인트 구조 검증', () => {
         const testEndpoints = [
             { path: '/api/devices', name: '디바이스 관리', method: 'GET' },
@@ -248,17 +246,17 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
 
                     // 200, 401(인증필요), 404(미구현), 500(DB연결필요) 모두 허용
                     expect([200, 401, 404, 500]).toContain(response.status);
-                    
+
                     let statusDescription = '';
                     switch (response.status) {
-                    case 200: statusDescription = '정상 동작'; break;
-                    case 401: statusDescription = '인증 필요 (정상)'; break;
-                    case 404: statusDescription = '엔드포인트 미구현'; break;
-                    case 500: statusDescription = 'DB 연결 필요'; break;
+                        case 200: statusDescription = '정상 동작'; break;
+                        case 401: statusDescription = '인증 필요 (정상)'; break;
+                        case 404: statusDescription = '엔드포인트 미구현'; break;
+                        case 500: statusDescription = 'DB 연결 필요'; break;
                     }
-                    
+
                     console.log(`   ${endpoint.name}: ${response.status} - ${statusDescription}`);
-                    
+
                 } catch (error) {
                     if (error.code === 'ECONNREFUSED') {
                         console.log(`   ${endpoint.name}: 서버 연결 실패`);
@@ -274,7 +272,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
     // =========================================================================
     // 4. 에러 처리 검증
     // =========================================================================
-    
+
     describe('❌ 에러 처리 검증', () => {
         test('✅ 존재하지 않는 엔드포인트', async () => {
             try {
@@ -284,7 +282,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
 
                 expect([404, 500]).toContain(response.status);
                 console.log(`✅ 404 에러 처리: ${response.status} 응답`);
-                
+
             } catch (error) {
                 console.log('⚠️ 404 테스트 실패:', error.message);
                 expect(true).toBe(true); // 테스트 실패 방지
@@ -301,7 +299,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
 
                 expect([400, 404, 500]).toContain(response.status);
                 console.log(`✅ 잘못된 JSON 에러 처리: ${response.status} 응답`);
-                
+
             } catch (error) {
                 console.log('⚠️ JSON 에러 테스트 실패:', error.message);
                 expect(true).toBe(true); // 테스트 실패 방지
@@ -312,21 +310,21 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
     // =========================================================================
     // 5. 성능 테스트 (간단 버전)
     // =========================================================================
-    
+
     describe('⚡ 기본 성능 검증', () => {
         test('✅ 응답 시간 측정', async () => {
             try {
                 const startTime = Date.now();
-                
+
                 await request(app)
                     .get('/health')
                     .timeout(5000);
-                
+
                 const responseTime = Date.now() - startTime;
-                
+
                 console.log(`✅ 응답 시간: ${responseTime}ms`);
                 expect(responseTime).toBeLessThan(5000); // 5초 이내
-                
+
             } catch (error) {
                 console.log('⚠️ 응답 시간 테스트 실패:', error.message);
                 expect(true).toBe(true); // 테스트 실패 방지
@@ -349,10 +347,10 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
 
                 const results = await Promise.all(promises);
                 const successCount = results.filter(r => !r.error).length;
-                
+
                 console.log(`✅ 동시 요청 처리: ${successCount}/${concurrency}개 성공`);
                 expect(successCount).toBeGreaterThanOrEqual(0);
-                
+
             } catch (error) {
                 console.log('⚠️ 동시 요청 테스트 실패:', error.message);
                 expect(true).toBe(true); // 테스트 실패 방지
@@ -363,11 +361,11 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
     // =========================================================================
     // 6. 종합 상태 리포트
     // =========================================================================
-    
+
     describe('📋 종합 상태 리포트', () => {
         test('✅ 전체 시스템 상태 요약', async () => {
             console.log('\n🎯 === PulseOne Backend API 상태 요약 ===');
-            
+
             const testResults = {
                 server: false,
                 factory: isFactoryInitialized,
@@ -403,7 +401,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
             console.log(`🔌 엔드포인트: ${testResults.endpoints}/${endpoints.length}개 응답`);
             console.log(`❌ 에러 수: ${testResults.errors}개`);
             console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            
+
             // 전체 점수 계산
             const totalTests = 4; // server, factory, endpoints, errors
             let score = 0;
@@ -411,10 +409,10 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
             if (testResults.factory) score++;
             if (testResults.endpoints > 0) score++;
             if (testResults.errors === 0) score++;
-            
+
             const percentage = Math.round((score / totalTests) * 100);
             console.log(`\n🎯 전체 상태: ${percentage}% (${score}/${totalTests})`);
-            
+
             if (percentage >= 75) {
                 console.log('✅ 시스템 상태: 우수 - 개발 진행 가능');
             } else if (percentage >= 50) {
@@ -424,7 +422,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
             } else {
                 console.log('🚨 시스템 상태: 심각 - 전면 점검 필요');
             }
-            
+
             console.log('\n📝 권장 조치사항:');
             if (!testResults.server) {
                 console.log('   1. Express 서버 설정 확인');
@@ -438,7 +436,7 @@ describe('🎯 PulseOne Backend API 종합 검증 (수정 버전)', () => {
             if (testResults.errors > 0) {
                 console.log('   4. 데이터베이스 연결 설정 확인');
             }
-            
+
             // 테스트 통과 조건: 최소 25% 이상
             expect(percentage).toBeGreaterThanOrEqual(25);
             console.log('\n✅ 백엔드 기본 구조 검증 완료!');

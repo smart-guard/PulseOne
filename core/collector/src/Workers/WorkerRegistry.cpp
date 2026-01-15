@@ -38,8 +38,13 @@ std::shared_ptr<BaseDeviceWorker> WorkerRegistry::CreateAndRegisterWorker(const 
         auto worker = worker_factory_->CreateWorkerById(device_int_id);
         
         if (worker) {
+            // 🔥 Load and set data points for the worker
+            auto points = worker_factory_->LoadDeviceDataPoints(device_int_id);
+            worker->ReloadDataPoints(points);
+            LogManager::getInstance().Info("WorkerRegistry - Worker created with " + 
+                                         std::to_string(points.size()) + " data points: " + device_id);
+            
             workers_[device_id] = std::move(worker);
-            LogManager::getInstance().Info("WorkerRegistry - Worker created and registered: " + device_id);
             return workers_[device_id];
         } else {
             LogManager::getInstance().Error("WorkerRegistry - Factory failed to create worker: " + device_id);

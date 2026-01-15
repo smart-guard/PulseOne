@@ -8,6 +8,7 @@
 
 #include "Workers/Protocol/BACnetDiscoveryService.h"
 #include "Workers/Protocol/BACnetWorker.h"
+#include "Drivers/Bacnet/BACnetDriver.h" // Added for dynamic_cast
 #include "Logging/LogManager.h"
 #include "Common/Enums.h"
 #include "DatabaseManager.hpp"
@@ -65,7 +66,7 @@ namespace Workers {
                                               "' to ID " + std::to_string(protocol_opt->getId()));
                 return protocol_opt->getId();
             } else {
-                LogManager::getInstance().Error("Protocol type not found in database: " + actual_protocol_type);
+                LogManager::getInstance().Warn("Protocol type not found in database: " + actual_protocol_type + ". Attempting to seed...");
                 return 0;  // 프로토콜이 DB에 없으면 0 반환
             }
             
@@ -73,6 +74,31 @@ namespace Workers {
             LogManager::getInstance().Error("Failed to resolve protocol type '" + protocol_type + 
                                           "': " + std::string(e.what()));
             return 0;
+        }
+    }
+
+    void SeedBACnetProtocol() {
+        try {
+            auto& repo_factory = Database::RepositoryFactory::getInstance();
+            auto protocol_repo = repo_factory.getProtocolRepository();
+            if (!protocol_repo) return;
+
+            auto protocol_opt = protocol_repo->findByType("BACNET_IP");
+            if (!protocol_opt) {
+                PulseOne::Database::Entities::ProtocolEntity protocol;
+                protocol.setProtocolType("BACNET_IP");
+                protocol.setDisplayName("BACnet IP");
+                protocol.setDescription("Building Automation and Control Network over IP");
+                protocol.setCategory("building_automation");
+                // protocol.setManufacturer("ASHRAE"); // Removed - field does not exist
+                protocol.setEnabled(true);
+                
+                if (protocol_repo->save(protocol)) {
+                    LogManager::getInstance().Info("Successfully seeded BACNET_IP protocol into database");
+                }
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("Error seeding BACnet protocol: " + std::string(e.what()));
         }
     }
 
@@ -108,6 +134,13 @@ void BACnetDiscoveryService::ConvertDeviceInfoToEntity(const DeviceInfo& device_
         // Tenant/Site ID initialization (Default to 1 for discovered devices)
         entity.setTenantId(1);
         entity.setSiteId(1);
+        
+        // Default values for optional fields to avoid database compatibility issues with NULL
+        entity.setDeviceGroupId(0);
+        entity.setEdgeServerId(0);
+        entity.setCreatedBy(0);
+        entity.setInstallationDate(std::chrono::system_clock::now());
+        entity.setLastMaintenance(std::chrono::system_clock::now());
         
         // 수정됨: setProtocolType → setProtocolId + ProtocolRepository 조회
         int protocol_id = ResolveProtocolTypeToId(device_info.protocol_type);
@@ -153,6 +186,10 @@ Database::Entities::DeviceEntity BACnetDiscoveryService::ConvertDeviceInfoToEnti
     return entity;
 }
 
+void BACnetDiscoveryService::SetDeviceScheduleRepository(std::shared_ptr<Database::Repositories::DeviceScheduleRepository> device_schedule_repo) {
+    device_schedule_repository_ = device_schedule_repo;
+}
+
 // =============================================================================
 // 생성자 및 소멸자
 // =============================================================================
@@ -191,6 +228,9 @@ BACnetDiscoveryService::BACnetDiscoveryService(
     
     // 통계 초기화
     statistics_ = Statistics{};
+
+    // 프로토콜 시딩 (건물 자동화 프로토콜이 DB에 없을 경우를 대비)
+    SeedBACnetProtocol();
 }
 
 
@@ -299,6 +339,132 @@ bool BACnetDiscoveryService::StopWorkerForDeviceSafe(const std::string& device_i
     }
     
     return true;
+}
+
+void BACnetDiscoveryService::SyncDeviceSchedules(uint32_t device_id) {
+    if (!device_schedule_repository_) {
+        LogManager::getInstance().Warn("SyncDeviceSchedules: Repository not set");
+        return;
+    }
+    
+    // 1. Get managed worker
+    std::string s_device_id = std::to_string(device_id);
+    BaseDeviceWorker* base_worker = nullptr;
+    
+    {
+        std::lock_guard<std::mutex> lock(managed_workers_mutex_);
+        auto it = managed_workers_.find(s_device_id);
+        if (it != managed_workers_.end()) {
+            base_worker = it->second->worker.get();
+        }
+    }
+    
+    if (!base_worker) {
+        LogManager::getInstance().Warn("SyncDeviceSchedules: Worker not found for device " + s_device_id);
+        return;
+    }
+
+    // 2. Cast to BACnetWorker
+    auto bacnet_worker = dynamic_cast<BACnetWorker*>(base_worker);
+    if (!bacnet_worker) {
+        LogManager::getInstance().Warn("SyncDeviceSchedules: Worker is not BACnetWorker");
+        return;
+    }
+    
+    // 3. Get Driver
+    auto protocol_driver = bacnet_worker->GetProtocolDriver();
+    auto bacnet_driver = dynamic_cast<PulseOne::Drivers::BACnetDriver*>(protocol_driver);
+    if (!bacnet_driver) {
+        LogManager::getInstance().Warn("SyncDeviceSchedules: Driver is not BACnetDriver");
+        return;
+    }
+
+    // 4. Get DataPoints (Schedule Objects)
+    if (!datapoint_repository_) return;
+    auto points = datapoint_repository_->findByDeviceId(device_id);
+    
+    // Get BACnet Device Instance Number
+    uint32_t bacnet_device_id = 0;
+    auto managed_info = GetManagedWorkerInfo(s_device_id);
+    if (managed_info) {
+        if (managed_info->device_info.properties.count("instance_number")) {
+            try {
+                bacnet_device_id = std::stoul(managed_info->device_info.properties.at("instance_number"));
+            } catch (...) {}
+        } else if (managed_info->device_info.properties.count("device_id")) {
+             try {
+                bacnet_device_id = std::stoul(managed_info->device_info.properties.at("device_id"));
+             } catch (...) {}
+        }
+    }
+    
+    if (bacnet_device_id == 0) {
+        // Log warning but maybe try with 0? Or skip.
+        // Some drivers handle 0 as "target" if single device.
+        LogManager::getInstance().Debug("SyncDeviceSchedules: BACnet Device ID not found for " + s_device_id);
+    }
+    
+    for (const auto& point : points) {
+        try {
+            // Use getProtocolParam instead of JSON parsing
+            std::string obj_type_str = point.getProtocolParam("object_type", "");
+            if (obj_type_str.empty()) continue;
+            
+            if (obj_type_str == "17" || obj_type_str == "SCHEDULE") { 
+                 std::string obj_instance_str = point.getProtocolParam("object_instance", "0");
+                 uint32_t object_instance = std::stoul(obj_instance_str);
+                 
+                 // Create temp Structs::DataPoint for ReadSingleProperty
+                 PulseOne::Structs::DataPoint dp;
+                 dp.id = std::to_string(point.getId());
+                 dp.address = bacnet_device_id;
+                 dp.protocol_params["device_id"] = std::to_string(bacnet_device_id);
+                 dp.protocol_params["object_type"] = obj_type_str;
+                 dp.protocol_params["object_instance"] = obj_instance_str;
+                 dp.protocol_params["property_id"] = "123"; // Weekly_Schedule
+                 
+                 // 5. Read Weekly Schedule (Prop 123)
+                 PulseOne::Structs::TimestampedValue result;
+                 if (bacnet_driver->ReadSingleProperty(dp, result)) {
+                     
+                     // Save to repository
+                     PulseOne::Database::Entities::DeviceScheduleEntity schedule_entity;
+                     schedule_entity.setDeviceId(device_id);
+                     schedule_entity.setPointId(point.getId());
+                     schedule_entity.setScheduleType("WEEKLY");
+                     
+                     if (std::holds_alternative<std::string>(result.value)) {
+                         schedule_entity.setScheduleData(std::get<std::string>(result.value));
+                     } else {
+                         schedule_entity.setScheduleData("{}"); 
+                     }
+                     schedule_entity.setSynced(true);
+                     
+                     auto existing = device_schedule_repository_->findByDeviceId(device_id);
+                     bool found = false;
+                     for (auto& item : existing) {
+                         if (item.getPointId() == point.getId()) {
+                             schedule_entity.setId(item.getId());
+                             device_schedule_repository_->update(schedule_entity);
+                             found = true;
+                             break;
+                         }
+                     }
+                     
+                     if (!found) {
+                         device_schedule_repository_->save(schedule_entity);
+                     }
+                     
+                     LogManager::getInstance().Info("Synced schedule for device " + s_device_id + " point " + std::to_string(point.getId()));
+                 } else {
+                     LogManager::getInstance().Warn("Failed to read schedule for device " + s_device_id);
+                 }
+            }
+        } catch (const std::exception& e) {
+            LogManager::getInstance().Error("Error syncing schedule point: " + std::string(e.what()));
+            continue;
+        }
+    }
 }
 
 
@@ -973,11 +1139,28 @@ bool BACnetDiscoveryService::StartNetworkScan(const std::string& network_range) 
                 
                 while (network_scan_running_.load()) {
                     try {
-                        // TODO: 실제 BACnet 네트워크 스캔 구현
-                        std::this_thread::sleep_for(std::chrono::seconds(10));
+                        auto& driver_factory = PulseOne::Drivers::DriverFactory::GetInstance();
+                        auto driver_ptr = driver_factory.CreateDriver("BACNET_IP");
+                        if (driver_ptr) {
+                            auto bacnet_driver = dynamic_cast<PulseOne::Drivers::BACnetDriver*>(driver_ptr.get());
+                            if (bacnet_driver) {
+                                // 1. Discover devices
+                                auto discovered = bacnet_driver->DiscoverDevices(5000); // 5 sec scan
+                                
+                                // 2. Process each discovered device
+                                for (const auto& dev : discovered) {
+                                    OnDeviceDiscovered(dev);
+                                }
+                            }
+                        }
+                        
+                        // Scan every 30 seconds if running in background
+                        for (int i = 0; i < 30 && network_scan_running_.load(); ++i) {
+                            std::this_thread::sleep_for(std::chrono::seconds(1));
+                        }
                     } catch (const std::exception& e) {
                         logger.Error("Exception in network scan loop: " + std::string(e.what()));
-                        break;
+                        std::this_thread::sleep_for(std::chrono::seconds(5));
                     }
                 }
                 
