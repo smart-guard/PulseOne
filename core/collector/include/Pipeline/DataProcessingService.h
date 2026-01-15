@@ -230,6 +230,11 @@ private:
     std::shared_ptr<PulseOne::Client::InfluxClient> influx_client_;
     std::unique_ptr<VirtualPoint::VirtualPointBatchWriter> vp_batch_writer_;
     
+    // Persistence Task Processing Helpers
+    void ProcessRDBTasks(const std::vector<PersistenceTask>& rdb_tasks);
+    void ProcessInfluxTasks(const std::vector<PersistenceTask>& influx_tasks);
+    void ProcessCommStatsTasks(const std::vector<PersistenceTask>& comm_stats_tasks);
+    
     // Pipeline
     std::vector<std::unique_ptr<IPipelineStage>> pipeline_stages_;
 

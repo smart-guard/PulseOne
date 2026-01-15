@@ -186,6 +186,7 @@ class ProtocolRepository extends BaseRepository {
                 supported_operations: JSON.stringify(protocolData.supported_operations || []),
                 supported_data_types: JSON.stringify(protocolData.supported_data_types || []),
                 connection_params: JSON.stringify(protocolData.connection_params || {}),
+                capabilities: JSON.stringify(protocolData.capabilities || {}),
                 default_polling_interval: protocolData.default_polling_interval || 1000,
                 default_timeout: protocolData.default_timeout || 5000,
                 max_concurrent_connections: protocolData.max_concurrent_connections || 1,
@@ -210,14 +211,18 @@ class ProtocolRepository extends BaseRepository {
             const allowedFields = [
                 'display_name', 'description', 'default_port', 'default_polling_interval',
                 'default_timeout', 'max_concurrent_connections', 'category', 'vendor',
-                'standard_reference', 'is_enabled', 'is_deprecated', 'min_firmware_version'
+                'standard_reference', 'is_enabled', 'is_deprecated', 'min_firmware_version',
+                'uses_serial', 'requires_broker', 'supported_operations', 'supported_data_types',
+                'connection_params', 'capabilities'
             ];
 
             const updateFields = {};
             allowedFields.forEach(field => {
                 if (updateData[field] !== undefined) {
-                    if (field === 'is_enabled' || field === 'is_deprecated') {
+                    if (field === 'is_enabled' || field === 'is_deprecated' || field === 'uses_serial' || field === 'requires_broker') {
                         updateFields[field] = updateData[field] ? 1 : 0;
+                    } else if (['supported_operations', 'supported_data_types', 'connection_params', 'capabilities'].includes(field)) {
+                        updateFields[field] = JSON.stringify(updateData[field] || (field === 'connection_params' || field === 'capabilities' ? {} : []));
                     } else {
                         updateFields[field] = updateData[field];
                     }
@@ -225,14 +230,16 @@ class ProtocolRepository extends BaseRepository {
             });
 
             // manufacturer mapping to vendor if vendor missing
-            if (updateData.manufacturer && !updateData.vendor) {
+            if (updateData.manufacturer && updateData.vendor === undefined) {
                 updateFields.vendor = updateData.manufacturer;
             }
-            if (updateData.specification && !updateData.standard_reference) {
+            if (updateData.specification && updateData.standard_reference === undefined) {
                 updateFields.standard_reference = updateData.specification;
             }
 
-            await this.query().update(updateFields).where('id', id);
+            if (Object.keys(updateFields).length > 0) {
+                await this.query().update(updateFields).where('id', id);
+            }
             return await this.findById(id);
         } catch (error) {
             this.logger.error('ProtocolRepository.update 실패:', error);
@@ -442,6 +449,7 @@ class ProtocolRepository extends BaseRepository {
             supported_operations: this.parseJsonField(protocol.supported_operations),
             supported_data_types: this.parseJsonField(protocol.supported_data_types),
             connection_params: this.parseJsonField(protocol.connection_params),
+            capabilities: this.parseJsonField(protocol.capabilities),
             is_enabled: Boolean(protocol.is_enabled),
             is_deprecated: Boolean(protocol.is_deprecated),
             uses_serial: Boolean(protocol.uses_serial),

@@ -258,6 +258,10 @@ bool DataPointEntity::updateToDatabase() {
     }
 }
 
+std::shared_ptr<Repositories::DataPointRepository> DataPointEntity::getRepository() const {
+    return RepositoryFactory::getInstance().getDataPointRepository();
+}
+
 // =============================================================================
 // 품질 관리 메서드 구현
 // =============================================================================

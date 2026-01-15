@@ -7,6 +7,8 @@
 #include "Workers/WorkerScheduler.h"
 #include "Workers/WorkerMonitor.h"
 #include "Workers/Base/BaseDeviceWorker.h"
+#include "Workers/Protocol/BACnetDiscoveryService.h"
+#include "Database/RepositoryFactory.h"
 #include "Storage/RedisDataWriter.h"
 #include "Logging/LogManager.h"
 
@@ -30,6 +32,18 @@ WorkerManager::WorkerManager() {
         registry_ = std::make_shared<WorkerRegistry>();
         scheduler_ = std::make_shared<WorkerScheduler>(registry_, redis_writer_);
         monitor_ = std::make_shared<WorkerMonitor>(registry_);
+
+        // Initialize BACnet Discovery Service
+        auto& repo_factory = Database::RepositoryFactory::getInstance();
+        bacnet_discovery_service_ = std::make_shared<BACnetDiscoveryService>(
+            repo_factory.getDeviceRepository(),
+            repo_factory.getDataPointRepository(),
+            repo_factory.getCurrentValueRepository(),
+            repo_factory.getDeviceSettingsRepository(),
+            nullptr // WorkerFactory will be passed if needed, or nullptr for now
+        );
+        // Set Schedule Repository
+        bacnet_discovery_service_->SetDeviceScheduleRepository(repo_factory.getDeviceScheduleRepository());
         
         LogManager::getInstance().Info("WorkerManager (Facade) initialized with sub-components");
     } catch (const std::exception& e) {
@@ -125,6 +139,36 @@ std::vector<PulseOne::Structs::DataPoint> WorkerManager::DiscoverDevicePoints(co
     auto worker = registry_->GetWorker(device_id);
     if (!worker) return {};
     return worker->DiscoverDataPoints();
+}
+
+bool WorkerManager::StartNetworkScan(const std::string& protocol, const std::string& range, int timeout_ms) {
+    if (protocol == "BACNET" || protocol == "BACnet") {
+        if (bacnet_discovery_service_) {
+            LogManager::getInstance().Info("WorkerManager: Starting BACnet network scan");
+            return bacnet_discovery_service_->StartNetworkScan(range);
+        } else {
+            LogManager::getInstance().Error("WorkerManager: BACnet Discovery Service not initialized");
+            return false;
+        }
+    } else if (protocol == "MODBUS_TCP" || protocol == "MODBUS_RTU") {
+        LogManager::getInstance().Info("WorkerManager: Starting stubbed Modbus network scan for protocol: " + protocol);
+        // 🔥 Phase 3: Modbus Network Scan Stub
+        // In real implementation, this would spawn a ModbusScanner worker
+        return true; 
+    }
+    
+    LogManager::getInstance().Warn("WorkerManager: Unsupported partial scan protocol: " + protocol);
+    return false;
+}
+
+void WorkerManager::StopNetworkScan(const std::string& protocol) {
+    if (protocol == "BACNET" || protocol == "BACnet") {
+        if (bacnet_discovery_service_) {
+            bacnet_discovery_service_->StopNetworkScan();
+        }
+    } else if (protocol == "MODBUS_TCP" || protocol == "MODBUS_RTU") {
+        LogManager::getInstance().Info("WorkerManager: Stopping stubbed Modbus network scan");
+    }
 }
 
 // =============================================================================

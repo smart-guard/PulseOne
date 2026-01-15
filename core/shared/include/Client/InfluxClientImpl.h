@@ -11,6 +11,7 @@
 #include "Client/HttpClient.h"
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace PulseOne {
 namespace Client {
@@ -33,6 +34,11 @@ public:
     bool writeRecord(const std::string& measurement, 
                      const std::map<std::string, std::string>& tags,
                      const std::map<std::string, double>& fields) override;
+    
+    bool writeBatch(const std::vector<std::string>& lines) override;
+    std::string formatRecord(const std::string& measurement,
+                           const std::map<std::string, std::string>& tags,
+                           const std::map<std::string, double>& fields) override;
     
     std::string query(const std::string& fluxQuery) override;
     

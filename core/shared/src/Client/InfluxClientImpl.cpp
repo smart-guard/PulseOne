@@ -59,6 +59,38 @@ bool InfluxClientImpl::writePoint(const std::string& measurement, const std::str
     }
 }
 
+bool InfluxClientImpl::writeBatch(const std::vector<std::string>& lines) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!connected_ || lines.empty()) return false;
+
+    // API: POST /api/v2/write?org=YOUR_ORG&bucket=YOUR_BUCKET&precision=s
+    std::string path = "/api/v2/write?org=" + org_ + "&bucket=" + bucket_ + "&precision=s";
+    
+    std::ostringstream oss;
+    for (const auto& line : lines) {
+        oss << line << "\n";
+    }
+    std::string body = oss.str();
+
+    auto response = http_client_->post(path, body, "text/plain");
+    
+    if (response.isSuccess()) {
+         LogManager::getInstance().log("database", LogLevel::DEBUG_LEVEL, 
+            "InfluxDB batch write success: " + std::to_string(lines.size()) + " points");
+        return true;
+    } else {
+        LogManager::getInstance().log("database", LogLevel::LOG_ERROR, 
+            "InfluxDB batch write failed: " + response.error_message + " (Status: " + std::to_string(response.status_code) + ")");
+        return false;
+    }
+}
+
+std::string InfluxClientImpl::formatRecord(const std::string& measurement, 
+                                         const std::map<std::string, std::string>& tags,
+                                         const std::map<std::string, double>& fields) {
+    return formatLineProtocol(measurement, tags, fields);
+}
+
 bool InfluxClientImpl::writeRecord(const std::string& measurement, 
                                  const std::map<std::string, std::string>& tags,
                                  const std::map<std::string, double>& fields) {

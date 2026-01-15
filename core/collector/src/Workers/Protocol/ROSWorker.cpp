@@ -134,7 +134,7 @@ void ROSWorker::HandleRosMessage(const std::string& topic, const nlohmann::json&
         try { val.point_id = std::stoul(point_id_str); } catch (...) { continue; }
         
         val.timestamp = now;
-        val.source = "ROS:" + topic;
+        val.source = target_dp->name; // Use semantic name (Hybrid Strategy)
         val.quality = PulseOne::Enums::DataQuality::GOOD;
 
         bool value_found = false;

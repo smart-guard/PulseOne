@@ -22,8 +22,18 @@ router.use(tenantIsolation);
  * @access  Admin (System/Company/Site)
  */
 router.get('/', async (req, res) => {
-    const response = await UserService.getAllUsers(req.tenantId);
-    res.status(response.success ? 200 : 500).json(response);
+    const filters = {
+        includeDeleted: req.query.includeDeleted === 'true',
+        onlyDeleted: req.query.onlyDeleted === 'true'
+    };
+    const response = await UserService.getAllUsers(req.tenantId, filters);
+    res.json(response);
+});
+
+// 사용자 복구
+router.post('/:id/restore', async (req, res) => {
+    const response = await UserService.restoreUser(req.params.id, req.tenantId);
+    res.json(response);
 });
 
 /**

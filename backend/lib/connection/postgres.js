@@ -11,7 +11,7 @@ class PostgresConnection {
         this.config = this.loadConfig();
         this.pool = null;
         this.isConnected = false;
-        
+
         console.log(`📋 PostgreSQL 연결 설정:
    호스트: ${this.config.host}:${this.config.port}
    데이터베이스: ${this.config.database}
@@ -23,13 +23,13 @@ class PostgresConnection {
      */
     loadConfig() {
         const configManager = ConfigManager.getInstance();
-        
+
         return {
-            host: configManager.get('POSTGRES_MAIN_DB_HOST', 'localhost'),
-            port: configManager.getNumber('POSTGRES_MAIN_DB_PORT', 5432),
-            database: configManager.get('POSTGRES_MAIN_DB_NAME', 'pulseone'),
-            user: configManager.get('POSTGRES_MAIN_DB_USER', 'postgres'),
-            password: configManager.get('POSTGRES_MAIN_DB_PASSWORD', 'postgres123'),
+            host: configManager.get('POSTGRES_MAIN_DB_HOST', configManager.get('POSTGRES_HOST', 'localhost')),
+            port: configManager.getNumber('POSTGRES_MAIN_DB_PORT', configManager.getNumber('POSTGRES_PORT', 5432)),
+            database: configManager.get('POSTGRES_MAIN_DB_NAME', configManager.get('POSTGRES_DB', 'pulseone')),
+            user: configManager.get('POSTGRES_MAIN_DB_USER', configManager.get('POSTGRES_USER', 'postgres')),
+            password: configManager.get('POSTGRES_MAIN_DB_PASSWORD', configManager.get('POSTGRES_PASSWORD', 'postgres123')),
             max: configManager.getNumber('POSTGRES_POOL_MAX', 10),
             idleTimeoutMillis: configManager.getNumber('POSTGRES_IDLE_TIMEOUT', 30000),
             connectionTimeoutMillis: configManager.getNumber('POSTGRES_CONNECT_TIMEOUT', 5000)
@@ -46,7 +46,7 @@ class PostgresConnection {
 
         try {
             console.log('🔄 PostgreSQL 연결 시도...');
-            
+
             this.pool = new Pool({
                 host: this.config.host,
                 port: this.config.port,
@@ -66,9 +66,9 @@ class PostgresConnection {
             this.isConnected = true;
             console.log('✅ PostgreSQL 연결 성공');
             console.log(`   현재 시간: ${result.rows[0].current_time}`);
-            
+
             return this.pool;
-            
+
         } catch (error) {
             this.isConnected = false;
             console.error('❌ PostgreSQL 연결 실패:', error.message);
@@ -84,7 +84,7 @@ class PostgresConnection {
         if (!this.isConnected || !this.pool) {
             await this.connect();
         }
-        
+
         try {
             const result = await this.pool.query(text, params);
             return result;
@@ -105,7 +105,7 @@ class PostgresConnection {
         }
 
         const client = await this.pool.connect();
-        
+
         try {
             await client.query('BEGIN');
             const result = await callback(client);
@@ -127,7 +127,7 @@ class PostgresConnection {
             await this.connect();
         }
 
-        const placeholders = values.map((_, i) => 
+        const placeholders = values.map((_, i) =>
             `(${columns.map((_, j) => `$${i * columns.length + j + 1}`).join(', ')})`
         ).join(', ');
 

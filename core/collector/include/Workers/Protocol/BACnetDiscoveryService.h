@@ -20,6 +20,7 @@
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/CurrentValueRepository.h"
 #include "Database/Repositories/DeviceSettingsRepository.h"
+#include "Database/Repositories/DeviceScheduleRepository.h"
 #include "DatabaseTypes.hpp"    
 #include "Common/Structs.h"
 #include "Common/Enums.h"
@@ -50,6 +51,7 @@ class BACnetDiscoveryService {
 public:
     // Repository 의존성 주입
     void SetDeviceSettingsRepository(std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repo);
+    void SetDeviceScheduleRepository(std::shared_ptr<Database::Repositories::DeviceScheduleRepository> device_schedule_repo);
     
     // =======================================================================
     // DeviceInfo ↔ DeviceEntity 변환 함수들 - 안전성 강화
@@ -162,6 +164,11 @@ public:
     void StopNetworkScan();
     bool IsNetworkScanActive() const;
 
+    // =======================================================================
+    // 스케줄 동기화
+    // =======================================================================
+    void SyncDeviceSchedules(uint32_t device_id);
+
 private:
     // =======================================================================
     // 동적 Worker 생성 및 관리 메서드들 - 안전성 강화
@@ -212,6 +219,7 @@ private:
     std::shared_ptr<Database::Repositories::DataPointRepository> datapoint_repository_;
     std::shared_ptr<Database::Repositories::CurrentValueRepository> current_value_repository_;
     std::shared_ptr<Database::Repositories::DeviceSettingsRepository> device_settings_repository_;
+    std::shared_ptr<Database::Repositories::DeviceScheduleRepository> device_schedule_repository_;
     
     // WorkerFactory
     std::shared_ptr<WorkerFactory> worker_factory_;

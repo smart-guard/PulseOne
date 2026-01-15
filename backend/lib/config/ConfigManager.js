@@ -232,9 +232,9 @@ class ConfigManager {
                 });
             }
 
-            // process.env의 모든 변수 복사 (기존 env 변수들 보존)
+            // process.env의 모든 변수 복사 (환경변수가 파일 설정보다 우선)
             Object.entries(process.env).forEach(([key, value]) => {
-                if (!this.env.has(key)) {
+                if (value !== undefined) {
                     this.env.set(key, value);
                 }
             });
@@ -297,9 +297,14 @@ class ConfigManager {
                 // 따옴표 제거
                 const cleanValue = value.replace(/^["']|["']$/g, '');
 
-                // 환경변수 설정 (.env 파일이 우선)
-                this.env.set(key, cleanValue);
-                process.env[key] = cleanValue;
+                // 환경변수 설정 (process.env가 이미 있으면 무시)
+                if (process.env[key] === undefined) {
+                    this.env.set(key, cleanValue);
+                    process.env[key] = cleanValue;
+                } else {
+                    // 이미 설정된 경우 this.env에만 보관
+                    this.env.set(key, process.env[key]);
+                }
                 loadedCount++;
             });
 
@@ -408,7 +413,11 @@ class ConfigManager {
      */
     getDatabaseConfig() {
         // SQLite 경로를 플랫폼별로 자동 처리
-        const sqlitePath = this.getSmartPath('SQLITE_PATH', this.get('SQLITE_DB_PATH', './data/db/pulseone.db'));
+        const sqlitePath = this.getSmartPath('SQLITE_PATH',
+            this.get('SQLITE_DB_PATH',
+                this.get('DB_PATH', './data/db/pulseone.db')
+            )
+        );
         const backupPath = this.getSmartPath('SQLITE_BACKUP_PATH', './data/backup');
         const logsPath = this.getSmartPath('SQLITE_LOGS_PATH', './data/logs');
         const tempPath = this.getSmartPath('SQLITE_TEMP_PATH', './data/temp');
@@ -481,19 +490,19 @@ class ConfigManager {
 
         // 타입별 확인
         switch (dbType) {
-        case 'POSTGRESQL':
-        case 'POSTGRES':
-        case 'PG':
-            return 'postgresql';
-        case 'MARIADB':
-        case 'MYSQL':
-            return 'mariadb';
-        case 'MSSQL':
-        case 'SQLSERVER':
-            return 'mssql';
-        case 'SQLITE':
-        default:
-            return 'sqlite';
+            case 'POSTGRESQL':
+            case 'POSTGRES':
+            case 'PG':
+                return 'postgresql';
+            case 'MARIADB':
+            case 'MYSQL':
+                return 'mariadb';
+            case 'MSSQL':
+            case 'SQLSERVER':
+                return 'mssql';
+            case 'SQLITE':
+            default:
+                return 'sqlite';
         }
     }
 
@@ -607,6 +616,8 @@ class ConfigManager {
         this.logger.log(`   Windows: ${this.platform.isWindows}`);
         this.logger.log(`   로딩된 파일들: ${this.loadedFiles.join(', ')}`);
         this.logger.log(`   NODE_ENV: ${this.get('NODE_ENV')}`);
+        this.logger.log(`   POSTGRES_HOST: ${this.get('POSTGRES_HOST')}`);
+        this.logger.log(`   COLLECTOR_HOST: ${this.get('COLLECTOR_HOST')}`);
         this.logger.log(`   DATABASE_TYPE: ${this.get('DATABASE_TYPE')}`);
         this.logger.log(`   SQLITE_PATH (원본): ${this.get('SQLITE_PATH')}`);
         this.logger.log(`   SQLITE_PATH (변환): ${this.getSmartPath('SQLITE_PATH', './data/db/pulseone.db')}`);
@@ -856,6 +867,7 @@ module.exports = {
     get: (key, defaultValue) => configManager.get(key, defaultValue),
     getBoolean: (key, defaultValue) => configManager.getBoolean(key, defaultValue),
     getNumber: (key, defaultValue) => configManager.getNumber(key, defaultValue),
+    getSmartPath: (key, defaultValue) => configManager.getSmartPath(key, defaultValue),
     require: (key) => configManager.require(key),
 
     // 설정 그룹들

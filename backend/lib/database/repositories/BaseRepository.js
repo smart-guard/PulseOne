@@ -33,13 +33,21 @@ class BaseRepository {
     }
 
     /**
-     * Knex 쿼리 빌더 반환
-     * @param {string} alias 테이블 별칭 (optional)
+     * Knex 쿼리 빌더 반환 (트랜잭션 지원)
+     * @param {import('knex').Knex.Transaction|string} trx 트래잭션 객체 또는 테이블 별칭
+     * @param {string} alias 테이블 별칭 (trx가 첫 번째 인자인 경우)
      * @returns {import('knex').Knex.QueryBuilder}
      */
-    query(alias = null) {
-        if (alias) {
-            return this.knex(`${this.tableName} as ${alias}`);
+    query(trx = null, alias = null) {
+        if (trx && typeof trx !== 'string') {
+            const q = trx(this.tableName);
+            return alias ? q.as(alias) : q;
+        }
+
+        // 구버전 호환용 (첫 번째 인자가 별칭인 경우)
+        const actualAlias = typeof trx === 'string' ? trx : alias;
+        if (actualAlias) {
+            return this.knex(`${this.tableName} as ${actualAlias}`);
         }
         return this.knex(this.tableName);
     }
@@ -478,7 +486,7 @@ class BaseRepository {
         return {
             current_page: parseInt(page),
             total_pages: totalPages,
-            total_items: total,
+            total_count: total,
             items_per_page: parseInt(limit),
             has_next: page < totalPages,
             has_prev: page > 1
@@ -551,6 +559,14 @@ class BaseRepository {
             this.logger.error(`Transaction error in ${this.tableName}:`, error);
             throw error;
         }
+    }
+
+    /**
+     * Knex.js 트랜잭션 실행 (콜백 방식)
+     * @param {Function} callback (trx) => Promise
+     */
+    async transaction(callback) {
+        return await this.knex.transaction(callback);
     }
 
     // ========================================================================

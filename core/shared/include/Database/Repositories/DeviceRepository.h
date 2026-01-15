@@ -99,6 +99,7 @@ public:
     
     std::vector<DeviceEntity> findByTenant(int tenant_id);
     std::vector<DeviceEntity> findBySite(int site_id);
+    std::vector<DeviceEntity> findByEdgeServer(int edge_server_id); // 🔥 추가: 에지 서버 필터링
     std::vector<DeviceEntity> findEnabledDevices();
     
     /**

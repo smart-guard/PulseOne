@@ -35,7 +35,7 @@ extern "C" {
 #ifdef _WIN32
     __declspec(dllexport) void RegisterPlugin() {
 #else
-    void RegisterPlugin() {
+    void RegisterMqttDriver() {
 #endif
         DriverFactory::GetInstance().RegisterDriver("MQTT", []() {
             return std::make_unique<MqttDriver>();

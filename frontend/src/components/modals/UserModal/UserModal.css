@@ -1,0 +1,131 @@
+.user-modal {
+    max-width: 800px !important;
+}
+
+.user-modal .modal-body {
+    padding: 16px 20px;
+    max-height: calc(90vh - 120px);
+    overflow-y: auto;
+}
+
+.user-modal .modal-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+}
+
+.user-modal .modal-form-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.user-modal .modal-form-section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--neutral-800);
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--primary-100);
+}
+
+.user-modal .modal-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.user-modal .modal-form-group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--neutral-700);
+}
+
+.user-modal .modal-form-group label.required::after {
+    content: ' *';
+    color: var(--error-500);
+}
+
+.user-modal .modal-form-group .form-control {
+    padding: 8px 12px;
+    border: 1px solid var(--neutral-200);
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.2s;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.user-modal .modal-form-group .form-control:focus {
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-100);
+    outline: none;
+}
+
+.user-modal .modal-form-group .form-control:disabled {
+    background-color: var(--neutral-50);
+    color: var(--neutral-500);
+    cursor: not-allowed;
+}
+
+.user-modal .checkbox-group {
+    padding: 10px 14px;
+    background: var(--neutral-50);
+    border-radius: 8px;
+    border: 1px solid var(--neutral-200);
+}
+
+.user-modal .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 500;
+    margin: 0;
+}
+
+.user-modal .modal-form-hint {
+    font-size: 11px;
+    color: var(--neutral-500);
+    margin-top: 2px;
+}
+
+.user-modal .span-full {
+    grid-column: 1 / -1;
+}
+
+.user-modal .permissions-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    background: var(--neutral-50);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--neutral-200);
+}
+
+.user-modal .permission-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--neutral-700);
+    cursor: pointer;
+}
+
+/* Footer Button Spacing */
+.user-modal .footer-right {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+@media (max-width: 768px) {
+    .user-modal .modal-form-grid {
+        grid-template-columns: 1fr;
+    }
+}

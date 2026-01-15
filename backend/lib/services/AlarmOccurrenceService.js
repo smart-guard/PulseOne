@@ -137,6 +137,42 @@ class AlarmOccurrenceService extends BaseService {
     }
 
     /**
+     * Find alarm occurrences cleared by a specific user.
+     */
+    async findClearedByUser(userId, tenantId) {
+        return this.handleRequest(async () => {
+            return await this.repository.findClearedByUser(userId, tenantId);
+        });
+    }
+
+    /**
+     * Find alarm occurrences acknowledged by a specific user.
+     */
+    async findAcknowledgedByUser(userId, tenantId) {
+        return this.handleRequest(async () => {
+            return await this.repository.findAcknowledgedByUser(userId, tenantId);
+        });
+    }
+
+    /**
+     * Find alarm occurrences by tag.
+     */
+    async findByTag(tag, tenantId) {
+        return this.handleRequest(async () => {
+            return await this.repository.findByTag(tag, tenantId);
+        });
+    }
+
+    /**
+     * Find active alarm occurrences by device.
+     */
+    async findActiveByDevice(deviceId, tenantId) {
+        return this.handleRequest(async () => {
+            return await this.repository.findActiveByDevice(deviceId, tenantId);
+        });
+    }
+
+    /**
      * Get statistics summary for alarm occurrences.
      */
     async getStatsSummary(tenantId) {

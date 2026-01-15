@@ -27,12 +27,12 @@
 #include <set>
 #include <chrono>
 
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
 #include <nlohmann/json.hpp>
 #endif
 
 // Eclipse Paho MQTT C++ 헤더들
-#if HAVE_MQTT_CPP
+#ifdef HAVE_MQTT
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
 #include <mqtt/iaction_listener.h>
@@ -180,7 +180,7 @@ public:
     /**
      * @brief 연결 성공 콜백
      */
-#if HAVE_MQTT_CPP
+#ifdef HAVE_MQTT
     /**
      * @brief 연결 성공 콜백
      */
@@ -458,7 +458,7 @@ public:
     // =======================================================================
     
     // Eclipse Paho MQTT 클라이언트
-#if HAVE_MQTT_CPP
+#ifdef HAVE_MQTT
     // Eclipse Paho MQTT 클라이언트
     std::unique_ptr<mqtt::async_client> mqtt_client_;
     std::shared_ptr<MqttCallbackImpl> mqtt_callback_;

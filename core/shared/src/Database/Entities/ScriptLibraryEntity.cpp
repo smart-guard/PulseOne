@@ -472,6 +472,10 @@ std::string ScriptLibraryEntity::toString() const {
 
 
 
+std::shared_ptr<Repositories::ScriptLibraryRepository> ScriptLibraryEntity::getRepository() const {
+    return RepositoryFactory::getInstance().getScriptLibraryRepository();
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

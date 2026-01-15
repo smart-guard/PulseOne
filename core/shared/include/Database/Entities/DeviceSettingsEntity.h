@@ -124,6 +124,9 @@ public:
     
     std::string getTableName() const override { return "device_settings"; }
 
+    // Repository access
+    std::shared_ptr<Repositories::DeviceSettingsRepository> getRepository() const;
+
     // =======================================================================
     // Getter/Setter 메서드들 (인라인)
     // =======================================================================

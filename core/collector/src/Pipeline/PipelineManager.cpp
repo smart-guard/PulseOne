@@ -4,6 +4,7 @@
 
 #include "Pipeline/PipelineManager.h"
 #include "Logging/LogManager.h"
+#include <iostream>
 #include <chrono>
 
 namespace PulseOne {
@@ -13,6 +14,11 @@ namespace Pipeline {
 // 🔥 순수 큐 관리 구현
 // =============================================================================
 
+PipelineManager& PipelineManager::getInstance() {
+    static PipelineManager instance;
+    return instance;
+}
+
 void PipelineManager::Start() {
     if (is_running_.load()) {
         LogManager::getInstance().Warn("⚠️ PipelineManager already running");
@@ -20,7 +26,7 @@ void PipelineManager::Start() {
     }
     
     is_running_ = true;
-    LogManager::getInstance().Info("✅ PipelineManager 큐 시스템 시작됨");
+    LogManager::getInstance().Info("✅ PipelineManager 큐 시스템 시작됨 (Instance: " + std::to_string((uintptr_t)this) + ")");
 }
 
 void PipelineManager::Shutdown() {
@@ -50,7 +56,7 @@ void PipelineManager::Shutdown() {
     LogManager::getInstance().Info("✅ PipelineManager 큐 시스템 종료 완료");
 }
 
-bool PipelineManager::SendDeviceData(const Structs::DeviceDataMessage& message) {
+bool PipelineManager::PushMessage(const Structs::DeviceDataMessage& message) {
     if (!is_running_.load() || message.points.empty()) {
         return false;
     }
@@ -110,7 +116,6 @@ bool PipelineManager::SendDeviceData(
         
         // 오버플로우 체크
         if (data_queue_.size() >= MAX_QUEUE_SIZE) {
-            total_dropped_.fetch_add(1);
             LogManager::getInstance().Warn("❌ 큐 오버플로우! 데이터 드롭: {} (Worker: {})", 
                                          device_id, worker_id);
             return false;
@@ -118,6 +123,8 @@ bool PipelineManager::SendDeviceData(
         
         // 큐에 추가
         data_queue_.push(std::move(message));
+        std::cout << "[PipelineManager] Pushed data. Queue size: " << data_queue_.size() << std::endl;
+        LogManager::getInstance().Info("PipelineManager::SendDeviceData pushed (Instance: " + std::to_string((uintptr_t)this) + "), QSize: " + std::to_string(data_queue_.size()));
     }
     
     // 대기 중인 처리기 깨우기
@@ -138,6 +145,8 @@ std::vector<Structs::DeviceDataMessage> PipelineManager::GetBatch(
     
     std::unique_lock<std::mutex> lock(queue_mutex_);
     
+    // LogManager::getInstance().Info("PipelineManager::GetBatch waiting (Instance: " + std::to_string((uintptr_t)this) + ")");
+
     // 타임아웃 또는 데이터 있을 때까지 대기
     auto timeout = std::chrono::milliseconds(timeout_ms);
     bool has_data = queue_cv_.wait_for(lock, timeout, [this] {

@@ -78,7 +78,7 @@ const Dashboard: React.FC = () => {
   // ==========================================================================
   // 📊 상태 관리
   // ==========================================================================
-  
+
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,23 +91,23 @@ const Dashboard: React.FC = () => {
     action: () => void;
     type: 'danger' | 'warning' | 'info';
   } | null>(null);
-  
+
   // 실시간 업데이트 설정
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(10000); // 10초
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
-  
+
   // 성공 메시지 상태
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
-  
+
   // 유틸리티 함수
   const formatUptime = (seconds: number) => {
     const days = Math.floor(seconds / (24 * 3600));
     const hours = Math.floor((seconds % (24 * 3600)) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    
+
     if (days > 0) {
       return `${days}일 ${hours}시간`;
     } else if (hours > 0) {
@@ -146,20 +146,20 @@ const Dashboard: React.FC = () => {
       let alarmStats = null;
       let recentAlarms: any[] = [];
       let todayAlarmStats: TodayAlarmStats | null = null;
-      
+
       try {
         const [statsResponse, recentResponse, todayStatsResponse] = await Promise.all([
           DashboardApiService.getAlarmStatistics(),
           DashboardApiService.getRecentAlarms(5),
           DashboardApiService.getTodayAlarmStatistics && DashboardApiService.getTodayAlarmStatistics() || Promise.resolve({ success: false })
         ]);
-        
+
         if (statsResponse.success) alarmStats = statsResponse.data;
         if (recentResponse.success) {
           recentAlarms = recentResponse.data || [];
           console.log(`✅ 최근 알람 ${recentAlarms.length}개 로드 성공`);
         }
-        if (todayStatsResponse.success) todayAlarmStats = todayStatsResponse.data;
+        if ((todayStatsResponse as any).success) todayAlarmStats = (todayStatsResponse as any).data;
         // 알람이 없는 것은 정상 상황 (에러가 아님)
         if (recentAlarms.length === 0) {
           console.log('ℹ️ 현재 발생한 최근 알람이 없습니다 (정상)');
@@ -171,9 +171,9 @@ const Dashboard: React.FC = () => {
 
       // 데이터 변환 및 통합
       const dashboardData = transformApiDataToDashboard(
-        servicesData, 
-        systemMetrics, 
-        databaseStats, 
+        servicesData,
+        systemMetrics,
+        databaseStats,
         performanceData,
         alarmStats,
         recentAlarms,
@@ -183,7 +183,7 @@ const Dashboard: React.FC = () => {
       setDashboardData(dashboardData);
       setConnectionStatus(errors.length === 0 ? 'connected' : 'reconnecting');
       setConsecutiveErrors(errors.length);
-      
+
       if (errors.length > 0) {
         console.warn('⚠️ 일부 데이터 로드 실패:', errors);
         setError(`일부 서비스 연결 실패: ${errors.join(', ')}`);
@@ -197,7 +197,7 @@ const Dashboard: React.FC = () => {
       setError(errorMessage);
       setConnectionStatus('disconnected');
       setConsecutiveErrors(prev => prev + 1);
-      
+
       // API 실패 시 폴백 데이터 설정
       setDashboardData(createFallbackDashboardData());
     } finally {
@@ -246,7 +246,7 @@ const Dashboard: React.FC = () => {
         {
           name: 'collector',
           displayName: 'Data Collector',
-          status: (servicesData?.services?.collector === 'healthy' ? 'running' : 'stopped') as const,
+          status: (servicesData?.services?.collector === 'healthy' ? 'running' : 'stopped'),
           icon: 'download',
           controllable: true,
           description: 'C++ 데이터 수집 서비스',
@@ -256,13 +256,13 @@ const Dashboard: React.FC = () => {
         {
           name: 'redis',
           displayName: 'Redis Cache',
-          status: (servicesData?.services?.redis === 'healthy' ? 'running' : 'stopped') as const,
+          status: (servicesData?.services?.redis === 'healthy' ? 'running' : 'stopped'),
           icon: 'database',
           controllable: true,
           description: '실시간 데이터 캐시',
           port: ports.redis || 6379,
           last_error: servicesData?.services?.redis === 'healthy' ? undefined :
-                    servicesData?.services?.redis === 'disabled' ? 'Service disabled' : 'Connection failed'
+            servicesData?.services?.redis === 'disabled' ? 'Service disabled' : 'Connection failed'
         },
         {
           name: 'rabbitmq',
@@ -277,7 +277,7 @@ const Dashboard: React.FC = () => {
         {
           name: 'postgresql',
           displayName: 'PostgreSQL',
-          status: (databaseStats?.connection_status === 'connected' ? 'running' : 'stopped') as const,
+          status: (databaseStats?.connection_status === 'connected' ? 'running' : 'stopped'),
           icon: 'elephant',
           controllable: true,
           description: '메타데이터 저장소',
@@ -335,7 +335,7 @@ const Dashboard: React.FC = () => {
       major: todayAlarmStats?.severity_breakdown?.major || 0,
       minor: todayAlarmStats?.severity_breakdown?.minor || 0,
       warning: todayAlarmStats?.severity_breakdown?.warning || 0,
-      recent_alarms: (recentAlarms || []).slice(0, 5).map(alarm => ({
+      recent_alarms: (Array.isArray(recentAlarms) ? recentAlarms : []).slice(0, 5).map(alarm => ({
         id: alarm.id || `alarm_${Date.now()}`,
         type: (alarm.severity === 'medium' ? 'warning' : alarm.severity) as any || 'info',
         message: alarm.alarm_message || alarm.message || '알람 메시지',
@@ -375,7 +375,7 @@ const Dashboard: React.FC = () => {
       health_status,
       performance,
       last_updated: now.toISOString()
-    };
+    } as any;
   };
 
   /**
@@ -383,7 +383,7 @@ const Dashboard: React.FC = () => {
    */
   const createFallbackDashboardData = (): DashboardData => {
     const now = new Date();
-    
+
     return {
       services: {
         total: 5,
@@ -508,7 +508,7 @@ const Dashboard: React.FC = () => {
         type: 'info' as const
       },
       stop: {
-        title: '서비스 중지', 
+        title: '서비스 중지',
         message: `${displayName}를 중지하시겠습니까?\n\n중지하면 관련된 모든 기능이 일시적으로 사용할 수 없습니다.`,
         confirmText: '중지하기',
         type: 'danger' as const
@@ -516,13 +516,13 @@ const Dashboard: React.FC = () => {
       restart: {
         title: '서비스 재시작',
         message: `${displayName}를 재시작하시겠습니까?\n\n재시작 중에는 일시적으로 서비스가 중단됩니다.`,
-        confirmText: '재시작하기', 
+        confirmText: '재시작하기',
         type: 'warning' as const
       }
     };
 
     const config = actionConfig[action];
-    
+
     setConfirmModal({
       show: true,
       title: config.title,
@@ -530,7 +530,7 @@ const Dashboard: React.FC = () => {
       confirmText: config.confirmText,
       type: config.type,
       action: () => {
-        executeServiceAction(serviceName, displayName, action);
+        executeServiceAction(serviceName, displayName, action as any);
         setConfirmModal(null);
       }
     });
@@ -554,10 +554,10 @@ const Dashboard: React.FC = () => {
     try {
       setProcessing(serviceName);
       console.log(`🔧 ${serviceName} ${action} 실행중...`);
-      
+
       // DashboardApiService를 사용한 실제 API 호출
       const response = await DashboardApiService.controlService(serviceName, action);
-      
+
       if (response.success) {
         setSuccessMessage(`${displayName}이(가) 성공적으로 ${action} 되었습니다.`);
         // 상태 업데이트를 위한 데이터 새로고침
@@ -617,7 +617,7 @@ const Dashboard: React.FC = () => {
       switch (type) {
         case 'danger': return '#ef4444';
         case 'warning': return '#f59e0b';
-        case 'info': 
+        case 'info':
         default: return '#3b82f6';
       }
     };
@@ -670,7 +670,7 @@ const Dashboard: React.FC = () => {
               {config.title}
             </h3>
           </div>
-          
+
           <p style={{
             margin: 0,
             marginBottom: '24px',
@@ -748,10 +748,10 @@ const Dashboard: React.FC = () => {
 
   if (isLoading && !dashboardData) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
         height: '400px',
         flexDirection: 'column',
         gap: '1rem'
@@ -763,11 +763,11 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <div style={{ 
-      width: '100%', 
-      maxWidth: 'none', 
+    <div style={{
+      width: '100%',
+      maxWidth: 'none',
       padding: '24px',
-      backgroundColor: '#f8fafc' 
+      backgroundColor: '#f8fafc'
     }}>
       {/* 성공 메시지 */}
       {successMessage && <SuccessMessage message={successMessage} />}
@@ -776,19 +776,19 @@ const Dashboard: React.FC = () => {
       <ConfirmDialog config={confirmModal} />
 
       {/* 헤더 */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        marginBottom: '32px' 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '32px'
       }}>
         <div>
-          <h1 style={{ 
-            fontSize: '28px', 
-            fontWeight: '700', 
-            color: '#1e293b', 
-            margin: 0, 
-            marginBottom: '8px' 
+          <h1 style={{
+            fontSize: '28px',
+            fontWeight: '700',
+            color: '#1e293b',
+            margin: 0,
+            marginBottom: '8px'
           }}>
             시스템 대시보드
           </h1>
@@ -816,8 +816,8 @@ const Dashboard: React.FC = () => {
                 borderRadius: '50%',
                 background: connectionStatus === 'connected' ? '#22c55e' : '#ef4444'
               }}></span>
-              {connectionStatus === 'connected' ? '연결됨' : 
-               connectionStatus === 'reconnecting' ? '재연결 중' : '연결 끊김'}
+              {connectionStatus === 'connected' ? '연결됨' :
+                connectionStatus === 'reconnecting' ? '재연결 중' : '연결 끊김'}
             </span>
             {consecutiveErrors > 0 && (
               <span style={{ color: '#dc2626', fontSize: '12px' }}>
@@ -827,7 +827,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button 
+          <button
             onClick={() => setAutoRefresh(!autoRefresh)}
             style={{
               padding: '8px 16px',
@@ -844,7 +844,7 @@ const Dashboard: React.FC = () => {
           >
             {autoRefresh ? '⏸ 일시정지' : '▶️ 재시작'}
           </button>
-          <button 
+          <button
             onClick={handleRefreshConfirm}
             style={{
               padding: '8px 16px',
@@ -891,7 +891,7 @@ const Dashboard: React.FC = () => {
         gap: '24px',
         marginBottom: '24px'
       }}>
-        
+
         {/* 📋 왼쪽: 서비스 상태 목록 */}
         {dashboardData && (
           <div style={{
@@ -939,7 +939,7 @@ const Dashboard: React.FC = () => {
                 </span>
               </div>
             </div>
-            
+
             <div style={{ padding: '20px' }}>
               {dashboardData.services.details.map((service) => (
                 <div key={service.name} style={{
@@ -955,7 +955,7 @@ const Dashboard: React.FC = () => {
                   minHeight: '120px',
                   opacity: processing === service.name ? 0.6 : 1
                 }}>
-                  
+
                   {/* 에러 메시지 - 오른쪽 상단 */}
                   {service.last_error && service.status !== 'running' && (
                     <div style={{
@@ -975,7 +975,7 @@ const Dashboard: React.FC = () => {
                       {service.last_error}
                     </div>
                   )}
-                  
+
                   {/* 상태 표시 */}
                   <div style={{
                     width: '8px',
@@ -984,7 +984,7 @@ const Dashboard: React.FC = () => {
                     background: service.status === 'running' ? '#22c55e' : '#6b7280',
                     flexShrink: 0
                   }}></div>
-                  
+
                   {/* 서비스 아이콘 */}
                   <div style={{
                     width: '32px',
@@ -998,15 +998,15 @@ const Dashboard: React.FC = () => {
                     fontSize: '16px',
                     flexShrink: 0
                   }}>
-                    {service.icon === 'server' ? '🖥️' : 
-                    service.icon === 'download' ? '📥' :
-                    service.icon === 'database' ? '🗄️' :
-                    service.icon === 'exchange' ? '🔄' :
-                    service.icon === 'elephant' ? '🐘' : '⚙️'}
+                    {service.icon === 'server' ? '🖥️' :
+                      service.icon === 'download' ? '📥' :
+                        service.icon === 'database' ? '🗄️' :
+                          service.icon === 'exchange' ? '🔄' :
+                            service.icon === 'elephant' ? '🐘' : '⚙️'}
                   </div>
-                  
+
                   {/* 서비스 정보 */}
-                  <div style={{ 
+                  <div style={{
                     flex: 1,
                     display: 'flex',
                     flexDirection: 'column',
@@ -1023,7 +1023,7 @@ const Dashboard: React.FC = () => {
                     }}>
                       {service.displayName}
                     </h3>
-                    
+
                     <p style={{
                       margin: 0,
                       marginBottom: '4px',
@@ -1033,7 +1033,7 @@ const Dashboard: React.FC = () => {
                     }}>
                       {service.description}
                     </p>
-                    
+
                     <div style={{
                       fontSize: '12px',
                       color: '#64748b'
@@ -1043,7 +1043,7 @@ const Dashboard: React.FC = () => {
                       {service.version && `v${service.version}`}
                     </div>
                   </div>
-                  
+
                   {/* 메트릭 정보 */}
                   {service.status === 'running' && (
                     <div style={{
@@ -1067,9 +1067,9 @@ const Dashboard: React.FC = () => {
                       )}
                     </div>
                   )}
-                  
+
                   {/* 제어 버튼 */}
-                  <div style={{ 
+                  <div style={{
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '6px',
@@ -1078,7 +1078,7 @@ const Dashboard: React.FC = () => {
                     {service.controllable ? (
                       service.status === 'running' ? (
                         <>
-                          <button 
+                          <button
                             onClick={() => handleServiceAction(service.name, service.displayName, 'stop')}
                             disabled={processing === service.name}
                             style={{
@@ -1096,8 +1096,8 @@ const Dashboard: React.FC = () => {
                           >
                             {processing === service.name ? '⏳' : '⏹️ 중지'}
                           </button>
-                          
-                          <button 
+
+                          <button
                             onClick={() => handleServiceAction(service.name, service.displayName, 'restart')}
                             disabled={processing === service.name}
                             style={{
@@ -1117,7 +1117,7 @@ const Dashboard: React.FC = () => {
                           </button>
                         </>
                       ) : (
-                        <button 
+                        <button
                           onClick={() => handleServiceAction(service.name, service.displayName, 'start')}
                           disabled={processing === service.name}
                           style={{
@@ -1148,7 +1148,7 @@ const Dashboard: React.FC = () => {
                         필수
                       </span>
                     )}
-                    
+
                     {/* 상태 정보 - 카드 하단 */}
                     {service.status !== 'running' && (
                       <div style={{
@@ -1183,7 +1183,7 @@ const Dashboard: React.FC = () => {
             gridTemplateColumns: '1fr 1fr',
             gap: '16px'
           }}>
-            
+
             {/* 시스템 개요 */}
             <div style={{
               background: 'white',
@@ -1238,7 +1238,7 @@ const Dashboard: React.FC = () => {
                   gridTemplateColumns: '1fr 1fr',
                   gap: '12px'
                 }}>
-                  <div style={{ 
+                  <div style={{
                     textAlign: 'center',
                     padding: '16px',
                     background: '#f8fafc',
@@ -1267,8 +1267,8 @@ const Dashboard: React.FC = () => {
                       연결: {dashboardData.device_summary.connected_devices} / 활성: {dashboardData.device_summary.enabled_devices}
                     </div>
                   </div>
-                  
-                  <div style={{ 
+
+                  <div style={{
                     textAlign: 'center',
                     padding: '16px',
                     background: '#f8fafc',
@@ -1297,8 +1297,8 @@ const Dashboard: React.FC = () => {
                       응답시간: {dashboardData.system_metrics.avgResponseTime}ms
                     </div>
                   </div>
-                  
-                  <div style={{ 
+
+                  <div style={{
                     textAlign: 'center',
                     padding: '16px',
                     background: '#f8fafc',
@@ -1327,8 +1327,8 @@ const Dashboard: React.FC = () => {
                       심각: {dashboardData.alarms.critical || 0} / 미확인: {dashboardData.alarms.unacknowledged || 0}
                     </div>
                   </div>
-                  
-                  <div style={{ 
+
+                  <div style={{
                     textAlign: 'center',
                     padding: '16px',
                     background: '#f8fafc',
@@ -1441,7 +1441,7 @@ const Dashboard: React.FC = () => {
                     </div>
                   </div>
                 ))}
-                
+
                 <div style={{
                   borderTop: '1px solid #e5e7eb',
                   paddingTop: '16px',
@@ -1582,15 +1582,15 @@ const Dashboard: React.FC = () => {
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
-                      color: health.status === 'healthy' ? '#16a34a' : 
-                             health.status === 'warning' ? '#f59e0b' : '#dc2626'
+                      color: health.status === 'healthy' ? '#16a34a' :
+                        health.status === 'warning' ? '#f59e0b' : '#dc2626'
                     }}>
                       <span style={{
                         width: '6px',
                         height: '6px',
                         borderRadius: '50%',
-                        background: health.status === 'healthy' ? '#22c55e' : 
-                                   health.status === 'warning' ? '#f59e0b' : '#ef4444'
+                        background: health.status === 'healthy' ? '#22c55e' :
+                          health.status === 'warning' ? '#f59e0b' : '#ef4444'
                       }}></span>
                       {health.status}
                     </span>
@@ -1665,7 +1665,7 @@ const Dashboard: React.FC = () => {
               모든 알람 보기 →
             </button>
           </div>
-          
+
           <div style={{ padding: '20px' }}>
             {!dashboardData.alarms.recent_alarms || dashboardData.alarms.recent_alarms.length === 0 ? (
               dashboardData.alarms.today_total > 0 ? (
@@ -1696,10 +1696,10 @@ const Dashboard: React.FC = () => {
                     color: '#64748b',
                     marginBottom: '16px'
                   }}>
-                    24시간 내 {dashboardData.alarms.today_total}건의 알람이 있지만<br/>
+                    24시간 내 {dashboardData.alarms.today_total}건의 알람이 있지만<br />
                     최근 알람 목록을 가져오는 중 오류가 발생했습니다.
                   </p>
-                  <button 
+                  <button
                     onClick={() => loadDashboardOverview(true)}
                     style={{
                       padding: '8px 16px',
@@ -1761,21 +1761,21 @@ const Dashboard: React.FC = () => {
                   <div style={{
                     width: '32px',
                     height: '32px',
-                    background: alarm.type === 'warning' ? '#fef3c7' : 
-                               alarm.type === 'critical' ? '#fef2f2' :
-                               alarm.type === 'major' ? '#fef3c7' : '#e0f2fe',
-                    color: alarm.type === 'warning' ? '#f59e0b' : 
-                           alarm.type === 'critical' ? '#dc2626' :
-                           alarm.type === 'major' ? '#f59e0b' : '#0891b2',
+                    background: alarm.type === 'warning' ? '#fef3c7' :
+                      alarm.type === 'critical' ? '#fef2f2' :
+                        alarm.type === 'major' ? '#fef3c7' : '#e0f2fe',
+                    color: alarm.type === 'warning' ? '#f59e0b' :
+                      alarm.type === 'critical' ? '#dc2626' :
+                        alarm.type === 'major' ? '#f59e0b' : '#0891b2',
                     borderRadius: '6px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0
                   }}>
-                    {alarm.type === 'warning' ? '⚠️' : 
-                     alarm.type === 'critical' ? '🚨' :
-                     alarm.type === 'major' ? '🔶' : 'ℹ️'}
+                    {alarm.type === 'warning' ? '⚠️' :
+                      alarm.type === 'critical' ? '🚨' :
+                        alarm.type === 'major' ? '🔶' : 'ℹ️'}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{
@@ -1849,7 +1849,7 @@ const Dashboard: React.FC = () => {
             {autoRefresh ? '10초마다 자동 새로고침' : '자동 새로고침 일시정지'}
           </span>
         </div>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{

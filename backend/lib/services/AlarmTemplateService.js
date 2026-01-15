@@ -143,6 +143,33 @@ class AlarmTemplateService extends BaseService {
             return await this.repository.getStatistics(tenantId);
         });
     }
+
+    /**
+     * Find alarm templates by tag.
+     */
+    async findByTag(tag, tenantId) {
+        return this.handleRequest(async () => {
+            return await this.repository.findByTag(tag, tenantId);
+        });
+    }
+
+    /**
+     * Find rules created from a specific template.
+     */
+    async findAppliedRules(templateId, tenantId) {
+        return this.handleRequest(async () => {
+            return await this.repository.findAppliedRules(templateId, tenantId);
+        });
+    }
+
+    /**
+     * Search alarm templates by keyword.
+     */
+    async search(keyword, tenantId, limit) {
+        return this.handleRequest(async () => {
+            return await this.repository.search(keyword, tenantId, limit);
+        });
+    }
 }
 
 module.exports = new AlarmTemplateService();

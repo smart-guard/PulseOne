@@ -10,7 +10,9 @@ process.env.LOG_LEVEL = 'error';
 
 // 테스트용 데이터베이스 설정
 process.env.DB_TYPE = 'sqlite';
-process.env.DB_PATH = ':memory:';
+process.env.DB_PATH = '/app/data/db/pulseone_test.db';
+process.env.SQLITE_DB_PATH = '/app/data/db/pulseone_test.db';
+process.env.SQLITE_PATH = '/app/data/db/pulseone_test.db';
 process.env.REDIS_URL = 'redis://localhost:6379/15'; // 테스트용 DB
 process.env.POSTGRES_HOST = 'localhost';
 process.env.POSTGRES_PORT = '5432';
@@ -28,6 +30,8 @@ process.env.JWT_EXPIRE = '1h';
 // 서버 설정
 process.env.PORT = '3001'; // 메인 서버와 다른 포트
 process.env.API_PREFIX = '/api';
+process.env.AUTO_INITIALIZE_ON_START = 'true';
+process.env.SKIP_IF_INITIALIZED = 'false';
 
 // 글로벌 테스트 설정
 global.console = {
@@ -58,7 +62,7 @@ beforeAll(async () => {
 // 모든 테스트 완료 후 정리
 afterAll(async () => {
     console.log('\n🧹 === 테스트 정리 작업 ===');
-    
+
     // 테스트 결과 요약
     const testResults = global.testResults || {};
     console.log('📊 테스트 통계:');
@@ -102,7 +106,7 @@ global.testUtils = {
     withTimeout: (asyncFn, timeout = 5000) => {
         return Promise.race([
             asyncFn(),
-            new Promise((_, reject) => 
+            new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Test timeout')), timeout)
             )
         ]);

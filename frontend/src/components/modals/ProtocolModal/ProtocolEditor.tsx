@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ProtocolApiService } from '../../../api/services/protocolApi';
+import './ProtocolModal.css';
 
+// Consolidated Protocol Interface
 interface Protocol {
   id: number;
   protocol_type: string;
@@ -13,6 +15,10 @@ interface Protocol {
   supported_operations?: string[];
   supported_data_types?: string[];
   connection_params?: Record<string, any>;
+  capabilities?: {
+    serial?: 'supported' | 'unsupported' | 'required';
+    broker?: 'supported' | 'unsupported' | 'required';
+  };
   default_polling_interval?: number;
   default_timeout?: number;
   max_concurrent_connections?: number;
@@ -31,25 +37,25 @@ interface ProtocolEditorProps {
   onCancel?: () => void;
 }
 
-// 팝업 확인 다이얼로그 인터페이스
-interface ConfirmDialogState {
+import { useConfirmContext } from '../../common/ConfirmProvider';
+
+interface ProtocolEditorProps {
+  protocolId?: number;
+  mode: 'create' | 'edit' | 'view';
   isOpen: boolean;
-  title: string;
-  message: string;
-  confirmText: string;
-  cancelText: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-  type: 'warning' | 'danger' | 'info';
+  onSave?: (protocol: Protocol) => void;
+  onCancel?: () => void;
 }
 
-const ProtocolEditor: React.FC<ProtocolEditorProps> = ({ 
-  protocolId, 
-  mode, 
+const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
+  protocolId,
+  mode,
   isOpen,
-  onSave, 
-  onCancel 
+  onSave,
+  onCancel
 }) => {
+  const { confirm } = useConfirmContext();
+
   const [protocol, setProtocol] = useState<Partial<Protocol>>({
     protocol_type: '',
     display_name: '',
@@ -75,21 +81,6 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // 팝업 확인 다이얼로그 상태
-  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
-    isOpen: false,
-    title: '',
-    message: '',
-    confirmText: '확인',
-    cancelText: '취소',
-    onConfirm: () => {},
-    onCancel: () => {},
-    type: 'info'
-  });
-
-  // 성공 메시지 상태
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && onCancel) onCancel();
@@ -110,14 +101,6 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
     }
   }, [mode, protocolId, isOpen]);
 
-  // 성공 메시지 자동 제거
-  useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [successMessage]);
-
   const loadProtocol = async () => {
     try {
       setLoading(true);
@@ -133,6 +116,26 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
       setError(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // 편집 모드에서는 확인 팝업 표시
+    if (mode === 'edit') {
+      const isConfirmed = await confirm({
+        title: '프로토콜 수정 확인',
+        message: `프로토콜 "${protocol.display_name || protocol.protocol_type}"을(를) 수정하시겠습니까?\n\n수정된 설정은 즉시 적용되며, 이 프로토콜을 사용하는 디바이스들에게 영향을 줄 수 있습니다.`,
+        confirmText: '수정하기',
+        confirmButtonType: 'warning'
+      });
+
+      if (isConfirmed) {
+        await executeSubmit();
+      }
+    } else {
+      await executeSubmit();
     }
   };
 
@@ -154,18 +157,19 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
       }
 
       if (response?.success) {
-        const successMessage = mode === 'create' 
-          ? `프로토콜 "${protocol.display_name}"이(가) 성공적으로 생성되었습니다.` 
-          : `프로토콜 "${protocol.display_name}"이(가) 성공적으로 수정되었습니다.`;
-        
-        setSuccessMessage(successMessage);
-        
-        // 2초 후 모달 닫기 및 콜백 실행
-        setTimeout(() => {
-          if (onSave) {
-            onSave(response.data);
-          }
-        }, 2000);
+        await confirm({
+          title: '저장 완료',
+          message: mode === 'create'
+            ? `프로토콜 "${protocol.display_name}"이(가) 성공적으로 생성되었습니다.`
+            : `프로토콜 "${protocol.display_name}"이(가) 성공적으로 수정되었습니다.`,
+          confirmText: '확인',
+          showCancelButton: false,
+          confirmButtonType: 'primary'
+        });
+
+        if (onSave) {
+          onSave(response.data);
+        }
       } else {
         throw new Error(response?.message || '저장 실패');
       }
@@ -174,32 +178,6 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
       setError(errorMessage);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // 편집 모드에서는 확인 팝업 표시
-    if (mode === 'edit') {
-      setConfirmDialog({
-        isOpen: true,
-        title: '프로토콜 수정 확인',
-        message: `프로토콜 "${protocol.display_name || protocol.protocol_type}"을(를) 수정하시겠습니까?\n\n수정된 설정은 즉시 적용되며, 이 프로토콜을 사용하는 디바이스들에게 영향을 줄 수 있습니다.`,
-        confirmText: '수정하기',
-        cancelText: '취소',
-        type: 'warning',
-        onConfirm: () => {
-          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-          executeSubmit();
-        },
-        onCancel: () => {
-          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-        }
-      });
-    } else {
-      // 생성 모드는 바로 실행
-      executeSubmit();
     }
   };
 
@@ -230,399 +208,100 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
     }
   };
 
-  // 확인 다이얼로그 컴포넌트
-  const ConfirmDialog: React.FC<{ config: ConfirmDialogState }> = ({ config }) => {
-    if (!config.isOpen) return null;
-
-    const getDialogColor = (type: string) => {
-      switch (type) {
-        case 'danger': return '#ef4444';
-        case 'warning': return '#f59e0b';
-        case 'info': 
-        default: return '#3b82f6';
-      }
-    };
-
-    return (
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10001
-      }}>
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '24px',
-          minWidth: '400px',
-          maxWidth: '500px',
-          boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)'
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            marginBottom: '16px'
-          }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              backgroundColor: `${getDialogColor(config.type)}20`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '20px'
-            }}>
-              {config.type === 'warning' ? '⚠️' : config.type === 'danger' ? '🚨' : 'ℹ️'}
-            </div>
-            <h3 style={{
-              margin: 0,
-              fontSize: '18px',
-              fontWeight: '600',
-              color: '#1e293b'
-            }}>
-              {config.title}
-            </h3>
-          </div>
-          
-          <p style={{
-            margin: 0,
-            marginBottom: '24px',
-            fontSize: '14px',
-            color: '#64748b',
-            lineHeight: '1.5',
-            whiteSpace: 'pre-line'
-          }}>
-            {config.message}
-          </p>
-
-          <div style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: '12px'
-          }}>
-            <button
-              onClick={config.onCancel}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#f3f4f6',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#374151',
-                cursor: 'pointer'
-              }}
-            >
-              {config.cancelText}
-            </button>
-            <button
-              onClick={config.onConfirm}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: getDialogColor(config.type),
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer'
-              }}
-            >
-              {config.confirmText}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // 성공 메시지 컴포넌트
-  const SuccessMessage: React.FC<{ message: string }> = ({ message }) => (
-    <div style={{
-      position: 'fixed',
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      backgroundColor: '#dcfce7',
-      border: '2px solid #16a34a',
-      borderRadius: '12px',
-      padding: '24px 32px',
-      color: '#166534',
-      fontSize: '16px',
-      fontWeight: '600',
-      zIndex: 10002,
-      boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '12px',
-      minWidth: '400px',
-      textAlign: 'center'
-    }}>
-      <div style={{ fontSize: '24px' }}>✅</div>
-      <div>{message}</div>
-    </div>
-  );
-
-  console.log('🔥 ProtocolEditor Debug:', { mode, isReadOnly: mode === 'view', protocolId });
-  
   const isReadOnly = mode === 'view';
   const title = mode === 'create' ? '새 프로토콜 등록' : mode === 'edit' ? '프로토콜 편집' : '프로토콜 상세보기';
 
   if (!isOpen) return null;
 
   return (
-    <>
-      {/* 성공 메시지 */}
-      {successMessage && <SuccessMessage message={successMessage} />}
-
-      {/* 확인 다이얼로그 */}
-      <ConfirmDialog config={confirmDialog} />
-
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        padding: '20px'
-      }}>
-        <div 
-          style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            width: '95vw',
-            maxWidth: '1000px',
-            height: '90vh',
-            maxHeight: '800px',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.25)'
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* 모달 헤더 */}
-          <div style={{
-            padding: '24px',
-            borderBottom: '1px solid #e5e7eb',
-            backgroundColor: '#f8fafc',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexShrink: 0
-          }}>
-            <h2 style={{
-              margin: 0,
-              fontSize: '24px',
-              fontWeight: '700',
-              color: '#1e293b'
-            }}>
-              {title}
-            </h2>
-            <button
-              onClick={onCancel}
-              style={{
-                background: 'none',
-                border: 'none',
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#6b7280',
-                cursor: 'pointer',
-                fontSize: '20px'
-              }}
-            >
-              ✕
-            </button>
+    <div className="modal-overlay">
+      <div
+        className="modal-container protocol-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 모달 헤더 */}
+        <div className="modal-header">
+          <div className="modal-title">
+            <h2>{title}</h2>
           </div>
+          <button className="close-btn" onClick={onCancel}>
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
 
-          {loading ? (
-            <div style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: '200px',
-              flexDirection: 'column',
-              gap: '16px'
-            }}>
-              <div>프로토콜 정보를 불러오는 중...</div>
-            </div>
-          ) : (
-            <>
-              {error && (
-                <div style={{
-                  backgroundColor: '#fee2e2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  margin: '24px 24px 0 24px',
-                  color: '#dc2626'
-                }}>
-                  {error}
-                </div>
-              )}
+        {loading ? (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: '200px',
+            flexDirection: 'column',
+            gap: '16px'
+          }}>
+            <div>프로토콜 정보를 불러오는 중...</div>
+          </div>
+        ) : (
+          <>
+            {error && (
+              <div className="alert alert-error" style={{ margin: '24px 24px 0 24px' }}>
+                {error}
+              </div>
+            )}
 
-              <form onSubmit={handleSubmit} style={{ 
-                display: 'flex', 
-                flexDirection: 'column',
-                height: '100%'
-              }}>
-                {/* 스크롤 가능한 컨텐츠 영역 */}
-                <div style={{
-                  height: '630px',
-                  overflowY: 'auto',
-                  overflowX: 'hidden',
-                  padding: '16px'
-                }}>
+            <div className="modal-body">
+              <form id="protocol-form" onSubmit={handleSubmit}>
+                <div className="modal-form-grid">
                   {/* 기본 정보 */}
-                  <div style={{ marginBottom: '24px' }}>
-                    <h3 style={{
-                      fontSize: '16px',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                      margin: 0,
-                      marginBottom: '12px',
-                      paddingBottom: '6px',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>
-                      기본 정보
-                    </h3>
+                  <div className="modal-form-section">
+                    <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
 
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(2, 1fr)',
-                      gap: '12px',
-                      marginBottom: '12px'
-                    }}>
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          프로토콜 타입 *
-                        </label>
+                    <div className="modal-form-row">
+                      <div className="modal-form-group">
+                        <label className="required">프로토콜 타입</label>
                         <input
                           type="text"
+                          className="form-control"
                           value={protocol.protocol_type || ''}
                           onChange={(e) => handleInputChange('protocol_type', e.target.value)}
                           readOnly={isReadOnly || (mode === 'edit')}
                           placeholder="예: MODBUS_TCP"
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: (isReadOnly || (mode === 'edit')) ? '#f9fafb' : 'white'
-                          }}
                           required
                         />
                       </div>
-
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          표시명 *
-                        </label>
+                      <div className="modal-form-group">
+                        <label className="required">표시명</label>
                         <input
                           type="text"
+                          className="form-control"
                           value={protocol.display_name || ''}
                           onChange={(e) => handleInputChange('display_name', e.target.value)}
                           readOnly={isReadOnly}
                           placeholder="예: Modbus TCP"
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                          }}
                           required
                         />
                       </div>
                     </div>
 
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{
-                        display: 'block',
-                        marginBottom: '4px',
-                        fontSize: '13px',
-                        fontWeight: '500',
-                        color: '#374151'
-                      }}>
-                        설명
-                      </label>
+                    <div className="modal-form-group">
+                      <label>설명</label>
                       <textarea
+                        className="form-control"
                         value={protocol.description || ''}
                         onChange={(e) => handleInputChange('description', e.target.value)}
                         readOnly={isReadOnly}
-                        placeholder="프로토콜에 대한 설명을 입력하세요"
-                        rows={2}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '4px',
-                          fontSize: '13px',
-                          resize: 'vertical',
-                          backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                        }}
+                        placeholder="프로토콜에 대한 내용을 입력하세요"
+                        rows={3}
                       />
                     </div>
 
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: '12px',
-                      marginBottom: '12px'
-                    }}>
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          카테고리
-                        </label>
+                    <div className="modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                      <div className="modal-form-group">
+                        <label>카테고리</label>
                         <select
+                          className="form-control"
                           value={protocol.category || ''}
                           onChange={(e) => handleInputChange('category', e.target.value)}
                           disabled={isReadOnly}
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                          }}
                         >
                           <option value="industrial">산업용</option>
                           <option value="iot">IoT</option>
@@ -631,384 +310,244 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                           <option value="web">웹</option>
                         </select>
                       </div>
-
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          기본 포트
-                        </label>
+                      <div className="modal-form-group">
+                        <label>기본 포트</label>
                         <input
                           type="number"
+                          className="form-control"
                           value={protocol.default_port || ''}
-                          onChange={(e) => handleInputChange('default_port', e.target.value ? 
-                            parseInt(e.target.value) : null)}
+                          onChange={(e) => handleInputChange('default_port', e.target.value ? parseInt(e.target.value) : null)}
                           readOnly={isReadOnly}
                           placeholder="예: 502"
-                          min="1"
-                          max="65535"
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                          }}
                         />
                       </div>
-
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          제조사/벤더
-                        </label>
+                      <div className="modal-form-group">
+                        <label>제조사/벤더</label>
                         <input
                           type="text"
+                          className="form-control"
                           value={protocol.vendor || ''}
                           onChange={(e) => handleInputChange('vendor', e.target.value)}
                           readOnly={isReadOnly}
-                          placeholder="예: Modbus Organization"
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                          }}
+                          placeholder="예: Modbus Org"
+                        />
+                      </div>
+                      <div className="modal-form-group">
+                        <label>최소 펌웨어</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={protocol.min_firmware_version || ''}
+                          onChange={(e) => handleInputChange('min_firmware_version', e.target.value)}
+                          readOnly={isReadOnly}
+                          placeholder="예: v1.0.0"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* 기술 설정 */}
-                  <div style={{ marginBottom: '24px' }}>
-                    <h3 style={{
-                      fontSize: '16px',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                      margin: 0,
-                      marginBottom: '12px',
-                      paddingBottom: '6px',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>
-                      기술 설정
-                    </h3>
+                  <div className="modal-form-section">
+                    <h3><i className="fas fa-cogs"></i> 기술 설정</h3>
 
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: '12px',
-                      marginBottom: '12px'
-                    }}>
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          기본 폴링 주기 (ms)
-                        </label>
+                    <div className="modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                      <div className="modal-form-group">
+                        <label>기본 폴링 주기 (ms)</label>
                         <input
                           type="number"
+                          className="form-control"
                           value={protocol.default_polling_interval || ''}
-                          onChange={(e) => handleInputChange('default_polling_interval', 
-                            e.target.value ? parseInt(e.target.value) : null)}
+                          onChange={(e) => handleInputChange('default_polling_interval', e.target.value ? parseInt(e.target.value) : null)}
                           readOnly={isReadOnly}
                           placeholder="1000"
-                          min="100"
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                          }}
                         />
                       </div>
-
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          기본 타임아웃 (ms)
-                        </label>
+                      <div className="modal-form-group">
+                        <label>기본 타임아웃 (ms)</label>
                         <input
                           type="number"
+                          className="form-control"
                           value={protocol.default_timeout || ''}
-                          onChange={(e) => handleInputChange('default_timeout', 
-                            e.target.value ? parseInt(e.target.value) : null)}
+                          onChange={(e) => handleInputChange('default_timeout', e.target.value ? parseInt(e.target.value) : null)}
                           readOnly={isReadOnly}
                           placeholder="5000"
-                          min="1000"
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                          }}
                         />
                       </div>
-
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          최대 동시 연결 수
-                        </label>
+                      <div className="modal-form-group">
+                        <label>최대 동시 연결 수</label>
                         <input
                           type="number"
+                          className="form-control"
                           value={protocol.max_concurrent_connections || ''}
-                          onChange={(e) => handleInputChange('max_concurrent_connections', 
-                            e.target.value ? parseInt(e.target.value) : null)}
+                          onChange={(e) => handleInputChange('max_concurrent_connections', e.target.value ? parseInt(e.target.value) : null)}
                           readOnly={isReadOnly}
                           placeholder="1"
-                          min="1"
-                          max="100"
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                          }}
                         />
                       </div>
                     </div>
 
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(3, 1fr)',
-                      gap: '12px',
-                      marginBottom: '12px'
-                    }}>
-                      <label style={{
+                    <div className="modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                      <div className="checkbox-group" style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        fontSize: '13px',
-                        color: '#374151',
-                        cursor: isReadOnly ? 'default' : 'pointer'
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        gap: '4px',
+                        opacity: (protocol.capabilities?.serial === 'unsupported') ? 0.6 : 1
                       }}>
-                        <input
-                          type="checkbox"
-                          checked={protocol.uses_serial || false}
-                          onChange={(e) => handleInputChange('uses_serial', e.target.checked)}
-                          disabled={isReadOnly}
-                          style={{ cursor: isReadOnly ? 'default' : 'pointer' }}
-                        />
-                        시리얼 사용
-                      </label>
-
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        fontSize: '13px',
-                        color: '#374151',
-                        cursor: isReadOnly ? 'default' : 'pointer'
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={protocol.requires_broker || false}
-                          onChange={(e) => handleInputChange('requires_broker', e.target.checked)}
-                          disabled={isReadOnly}
-                          style={{ cursor: isReadOnly ? 'default' : 'pointer' }}
-                        />
-                        브로커 필요
-                      </label>
-
-                      <label style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        fontSize: '13px',
-                        color: '#374151',
-                        cursor: isReadOnly ? 'default' : 'pointer'
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={protocol.is_enabled || false}
-                          onChange={(e) => handleInputChange('is_enabled', e.target.checked)}
-                          disabled={isReadOnly}
-                          style={{ cursor: isReadOnly ? 'default' : 'pointer' }}
-                        />
-                        활성화
-                      </label>
-                    </div>
-
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(2, 1fr)',
-                      gap: '12px'
-                    }}>
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          지원 명령어 (쉼표로 구분)
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={protocol.uses_serial || protocol.capabilities?.serial === 'required' || false}
+                            onChange={(e) => handleInputChange('uses_serial', e.target.checked)}
+                            disabled={isReadOnly || protocol.capabilities?.serial === 'unsupported' || protocol.capabilities?.serial === 'required'}
+                          />
+                          시리얼 사용
                         </label>
-                        <input
-                          type="text"
-                          value={protocol.supported_operations?.join(', ') || ''}
-                          onChange={(e) => handleArrayChange('supported_operations', e.target.value)}
-                          readOnly={isReadOnly}
-                          placeholder="예: read_coils, read_discrete_inputs, read_holding_registers"
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                          }}
-                        />
+                        <small style={{ color: '#6b7280', fontSize: '11px', display: 'block', marginTop: '-4px', marginLeft: '24px' }}>
+                          RS-232/485 통신 필요 여부
+                          {protocol.capabilities?.serial === 'unsupported' && " (미지원)"}
+                          {protocol.capabilities?.serial === 'required' && " (필수)"}
+                        </small>
                       </div>
-
-                      <div>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '4px',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          color: '#374151'
-                        }}>
-                          지원 데이터 타입 (쉼표로 구분)
+                      <div className="checkbox-group" style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        gap: '4px',
+                        opacity: (protocol.capabilities?.broker === 'unsupported') ? 0.6 : 1
+                      }}>
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={protocol.requires_broker || protocol.capabilities?.broker === 'required' || false}
+                            onChange={(e) => handleInputChange('requires_broker', e.target.checked)}
+                            disabled={isReadOnly || protocol.capabilities?.broker === 'unsupported' || protocol.capabilities?.broker === 'required'}
+                          />
+                          브로커 필요
                         </label>
-                        <input
-                          type="text"
-                          value={protocol.supported_data_types?.join(', ') || ''}
-                          onChange={(e) => handleArrayChange('supported_data_types', e.target.value)}
-                          readOnly={isReadOnly}
-                          placeholder="예: boolean, int16, uint16, int32, uint32, float32"
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '4px',
-                            fontSize: '13px',
-                            backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                          }}
-                        />
+                        <small style={{ color: '#6b7280', fontSize: '11px', display: 'block', marginTop: '-4px', marginLeft: '24px' }}>
+                          MQTT 서버 등 중계기 필요 여부
+                          {protocol.capabilities?.broker === 'unsupported' && " (미지원)"}
+                          {protocol.capabilities?.broker === 'required' && " (필수)"}
+                        </small>
+                      </div>
+                      <div className="checkbox-group">
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={protocol.is_enabled || false}
+                            onChange={(e) => handleInputChange('is_enabled', e.target.checked)}
+                            disabled={isReadOnly}
+                          />
+                          활성화
+                        </label>
+                      </div>
+                      <div className="checkbox-group">
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={protocol.is_deprecated || false}
+                            onChange={(e) => handleInputChange('is_deprecated', e.target.checked)}
+                            disabled={isReadOnly}
+                          />
+                          사용 중단 예정
+                        </label>
                       </div>
                     </div>
                   </div>
 
-                  {/* 연결 파라미터 */}
-                  <div style={{ marginBottom: '24px' }}>
-                    <h3 style={{
-                      fontSize: '16px',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                      margin: 0,
-                      marginBottom: '12px',
-                      paddingBottom: '6px',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>
-                      연결 파라미터 (JSON)
-                    </h3>
-                    <textarea
-                      value={JSON.stringify(protocol.connection_params || {}, null, 2)}
-                      onChange={(e) => handleConnectionParamsChange(e.target.value)}
-                      readOnly={isReadOnly}
-                      placeholder='{"host": "127.0.0.1", "port": 502, "slave_id": 1}'
-                      rows={4}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        fontFamily: 'monospace',
-                        resize: 'vertical',
-                        backgroundColor: isReadOnly ? '#f9fafb' : 'white'
-                      }}
-                    />
+                  {/* 3 & 4. 사이드-바이-사이드 도메인 레이아웃 */}
+                  <div className="modal-form-domains">
+                    {/* 드라이버 역량 (Capabilities) */}
+                    <div className="modal-form-domain">
+                      <div className="modal-form-section">
+                        <h3><i className="fas fa-microchip"></i> 드라이버 역량</h3>
+                        <div className="modal-form-group">
+                          <label>지원 명령어 (쉼표로 구분)</label>
+                          <div className="capability-badge-container" style={{ marginBottom: '8px' }}>
+                            {protocol.supported_operations?.map((op, i) => (
+                              <span key={i} className="capability-badge">{op}</span>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={protocol.supported_operations?.join(', ') || ''}
+                            onChange={(e) => handleArrayChange('supported_operations', e.target.value)}
+                            readOnly={isReadOnly}
+                            placeholder="예: read, write"
+                          />
+                        </div>
+                        <div className="modal-form-group" style={{ marginBottom: 0 }}>
+                          <label>지원 데이터 타입 (쉼표로 구분)</label>
+                          <div className="capability-badge-container" style={{ marginBottom: '8px' }}>
+                            {protocol.supported_data_types?.map((type, i) => (
+                              <span key={i} className="capability-badge">{type}</span>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={protocol.supported_data_types?.join(', ') || ''}
+                            onChange={(e) => handleArrayChange('supported_data_types', e.target.value)}
+                            readOnly={isReadOnly}
+                            placeholder="예: BOOL, INT16, FLOAT32"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 연결 파라미터 (JSON) */}
+                    <div className="modal-form-domain">
+                      <div className="modal-form-section">
+                        <h3><i className="fas fa-code"></i> 연결 파라미터</h3>
+                        <div className="modal-form-group" style={{ marginBottom: 0 }}>
+                          <label>JSON 설정</label>
+                          <textarea
+                            className="form-control"
+                            value={JSON.stringify(protocol.connection_params || {}, null, 2)}
+                            onChange={(e) => handleConnectionParamsChange(e.target.value)}
+                            readOnly={isReadOnly}
+                            placeholder='{"host": "127.0.0.1", "port": 502}'
+                            rows={8}
+                            style={{
+                              fontFamily: 'monospace',
+                              fontSize: '12px',
+                              backgroundColor: 'var(--neutral-50)',
+                              border: '1px solid var(--neutral-200)'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                {/* 모달 푸터 - 절대 위치로 고정 */}
-                {!isReadOnly && (
-                  <div style={{
-                    position: 'sticky',
-                    bottom: 0,
-                    padding: '16px 20px',
-                    borderTop: '1px solid #e5e7eb',
-                    backgroundColor: '#f8fafc',
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    gap: '12px',
-                    zIndex: 10
-                  }}>
-                    <button
-                      type="button"
-                      onClick={onCancel}
-                      disabled={saving}
-                      style={{
-                        padding: '12px 24px',
-                        backgroundColor: '#f3f4f6',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        cursor: saving ? 'not-allowed' : 'pointer',
-                        color: '#374151'
-                      }}
-                    >
-                      취소
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      style={{
-                        padding: '12px 24px',
-                        backgroundColor: saving ? '#9ca3af' : '#3b82f6',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        cursor: saving ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {saving ? '저장 중...' : mode === 'create' ? '등록하기' : '수정하기'}
-                    </button>
-                  </div>
-                )}
               </form>
-            </>
-          )}
+            </div>
+          </>
+        )}
+
+        {/* 모달 푸터 */}
+        <div className="modal-footer">
+          <div className="footer-right" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <button type="button" className="btn btn-outline" onClick={onCancel} disabled={saving}>
+              취소
+            </button>
+            {!isReadOnly && (
+              <button
+                type="submit"
+                form="protocol-form"
+                className="btn btn-primary"
+                disabled={saving}
+              >
+                {saving ? '저장 중...' : mode === 'create' ? '등록하기' : '수정하기'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </>
+    </div>
+
   );
 };
 

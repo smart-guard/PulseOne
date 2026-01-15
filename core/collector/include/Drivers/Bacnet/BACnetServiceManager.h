@@ -28,6 +28,8 @@ extern "C" {
     #include <bacnet/bacenum.h>
     #include <bacnet/bacapp.h>
     #include <bacnet/bacaddr.h>
+    #include <bacnet/apdu.h>
+    #include <bacnet/rp.h>
 }
 #endif
 
@@ -136,6 +138,8 @@ public:
                               const std::map<DataPoint, DataValue>& values,
                               uint32_t timeout_ms = 5000);
     
+    BACnetDriver* GetDriver() const { return driver_; }
+    
     /**
      * @brief 개별 속성 쓰기
      * @param device_id 대상 디바이스 ID
@@ -242,6 +246,20 @@ public:
      * @brief 서비스 통계 초기화
      */
     void ResetServiceStatistics();
+
+    // ==========================================================================
+    // Datalink Bridge (BIP Port 지원)
+    // ==========================================================================
+    
+    /**
+     * @brief 로우 패킷 전송 (bip_send_pdu 지원)
+     */
+    int SendRawPacket(uint8_t* dest_addr, uint32_t addr_len, uint8_t* payload, uint32_t payload_len);
+    
+    /**
+     * @brief 소켓 FD 조회 (bip_receive 지원)
+     */
+    int GetSocketFd() const;
     
 private:
     // ==========================================================================
@@ -256,11 +274,16 @@ private:
         std::string service_type;
         std::chrono::steady_clock::time_point timeout_time;
         std::promise<bool> promise;
+        TimestampedValue* result_ptr;
         
         PendingRequest(uint8_t id, const std::string& type, uint32_t timeout_ms)
             : invoke_id(id)
             , service_type(type)
-            , timeout_time(std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms)) {}
+            , timeout_time(std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms))
+            , result_ptr(nullptr) {}
+            
+        // Context for special decoding
+        uint32_t property_id = 0;
     };
     
     /**
@@ -335,6 +358,21 @@ private:
     bool GetCachedDeviceInfo(uint32_t device_id, DeviceInfo& device_info);
     void CleanupDeviceCache();
     
+    // ==========================================================================
+    // C-to-C++ Bridge (Static Handlers)
+    // ==========================================================================
+#if HAS_BACNET_STACK
+    static void HandlerReadPropertyAck(
+        uint8_t* service_request,
+        uint16_t service_len,
+        BACNET_ADDRESS* src,
+        BACNET_CONFIRMED_SERVICE_ACK_DATA* service_data);
+
+    void ProcessReadPropertyAck(
+        BACNET_READ_PROPERTY_DATA* data,
+        uint8_t invoke_id);
+#endif
+
     /// 요청 관리 시스템
     void RegisterRequest(std::unique_ptr<PendingRequest> request);
     bool CompleteRequest(uint8_t invoke_id, bool success);

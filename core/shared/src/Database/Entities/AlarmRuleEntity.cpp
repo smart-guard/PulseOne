@@ -603,6 +603,10 @@ std::string AlarmRuleEntity::getCategoryDisplayName() const {
     return (it != category_display_names.end()) ? it->second : category_;
 }
 
+std::shared_ptr<Repositories::AlarmRuleRepository> AlarmRuleEntity::getRepository() const {
+    return RepositoryFactory::getInstance().getAlarmRuleRepository();
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

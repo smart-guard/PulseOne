@@ -16,7 +16,7 @@ class DatabaseFactory {
         this.config = config || this.loadConfig();
         this.connections = new Map();
         this.queryAdapter = new QueryAdapter();
-        
+
         // 연결 타입별 클래스 매핑
         this.connectionClasses = {
             'postgresql': PostgresConnection,
@@ -35,7 +35,7 @@ class DatabaseFactory {
     loadConfig() {
         const configManager = ConfigManager.getInstance();
         const dbType = configManager.get('DATABASE_TYPE') || 'sqlite';
-        
+
         const config = {
             database: {
                 type: dbType,
@@ -43,13 +43,13 @@ class DatabaseFactory {
                 retryAttempts: parseInt(process.env.DB_RETRY_ATTEMPTS || '3'),
                 retryDelay: parseInt(process.env.DB_RETRY_DELAY || '1000')
             },
-            
+
             // SQLite 설정
             sqlite: {
-                path: process.env.SQLITE_DB_PATH || './data/db/pulseone.db',
-                logPath: process.env.SQLITE_LOG_DB_PATH || './data/db/pulseone_logs.db',
-                walMode: process.env.SQLITE_WAL_MODE === 'true',
-                busyTimeout: parseInt(process.env.SQLITE_BUSY_TIMEOUT || '30000')
+                path: configManager.getDatabaseConfig().sqlite.path,
+                logPath: configManager.getDatabaseConfig().sqlite.logsPath,
+                walMode: configManager.getBoolean('SQLITE_WAL_MODE', true),
+                busyTimeout: configManager.getNumber('SQLITE_BUSY_TIMEOUT', 30000)
             },
 
             // PostgreSQL 설정
@@ -94,7 +94,7 @@ class DatabaseFactory {
      */
     async getMainConnection() {
         const cacheKey = `main_${this.config.database.type}`;
-        
+
         if (this.connections.has(cacheKey)) {
             const conn = this.connections.get(cacheKey);
             if (await this.isConnectionValid(conn)) {
@@ -106,7 +106,7 @@ class DatabaseFactory {
 
         const connection = await this.createConnection(this.config.database.type, 'main');
         this.connections.set(cacheKey, connection);
-        
+
         return connection;
     }
 
@@ -115,31 +115,31 @@ class DatabaseFactory {
      */
     async createConnection(dbType, purpose = 'main') {
         const ConnectionClass = this.connectionClasses[dbType.toLowerCase()];
-        
+
         if (!ConnectionClass) {
             throw new Error(`지원하지 않는 데이터베이스 타입: ${dbType}`);
         }
 
         let connectionConfig;
-        
+
         switch (dbType.toLowerCase()) {
-        case 'postgresql':
-        case 'postgres':
-            connectionConfig = this.config.postgresql;
-            break;
-        case 'sqlite':
-        case 'sqlite3':
-            connectionConfig = this.config.sqlite;
-            break;
-        case 'mariadb':
-        case 'mysql':
-            connectionConfig = this.config.mariadb;
-            break;
-        case 'mssql':
-            connectionConfig = this.config.mssql;
-            break;
-        default:
-            throw new Error(`설정되지 않은 데이터베이스 타입: ${dbType}`);
+            case 'postgresql':
+            case 'postgres':
+                connectionConfig = this.config.postgresql;
+                break;
+            case 'sqlite':
+            case 'sqlite3':
+                connectionConfig = this.config.sqlite;
+                break;
+            case 'mariadb':
+            case 'mysql':
+                connectionConfig = this.config.mariadb;
+                break;
+            case 'mssql':
+                connectionConfig = this.config.mssql;
+                break;
+            default:
+                throw new Error(`설정되지 않은 데이터베이스 타입: ${dbType}`);
         }
 
         try {
@@ -154,10 +154,10 @@ class DatabaseFactory {
                 connection = new ConnectionClass(connectionConfig); // 다른 DB는 생성자 사용
             }
             await connection.connect();
-            
+
             console.log(`✅ ${dbType} 연결 성공 (${purpose})`);
             return connection;
-            
+
         } catch (error) {
             console.error(`❌ ${dbType} 연결 실패 (${purpose}):`, error.message);
             throw error;
@@ -169,7 +169,7 @@ class DatabaseFactory {
      */
     async executeQuery(query, params = []) {
         const connection = await this.getMainConnection();
-        
+
         try {
             // 연결 클래스별 쿼리 실행 방법 통합
             if (connection.query) {
@@ -182,7 +182,7 @@ class DatabaseFactory {
             } else {
                 throw new Error('쿼리 실행 메소드를 찾을 수 없습니다');
             }
-            
+
         } catch (error) {
             console.error('쿼리 실행 오류:', error);
             console.error('쿼리:', query);
@@ -196,7 +196,7 @@ class DatabaseFactory {
      */
     async executeTransaction(queries) {
         const connection = await this.getMainConnection();
-        
+
         try {
             if (connection.beginTransaction) {
                 await connection.beginTransaction();
@@ -213,7 +213,7 @@ class DatabaseFactory {
             }
 
             return results;
-            
+
         } catch (error) {
             if (connection.rollback) {
                 await connection.rollback();
@@ -236,7 +236,7 @@ class DatabaseFactory {
     async isConnectionValid(connection) {
         try {
             if (!connection) return false;
-            
+
             // 연결별 ping/health check
             if (connection.ping) {
                 await connection.ping();
@@ -249,9 +249,9 @@ class DatabaseFactory {
                 await connection.get('SELECT 1');
                 return true;
             }
-            
+
             return false;
-            
+
         } catch (error) {
             return false;
         }
@@ -262,7 +262,7 @@ class DatabaseFactory {
      */
     async closeAllConnections() {
         const closePromises = [];
-        
+
         for (const [key, connection] of this.connections) {
             try {
                 if (connection.close) {
@@ -279,7 +279,7 @@ class DatabaseFactory {
 
         await Promise.all(closePromises);
         this.connections.clear();
-        
+
         console.log('✅ 모든 데이터베이스 연결이 정리되었습니다');
     }
 
@@ -309,10 +309,10 @@ class DatabaseFactory {
      */
     getPublicConfig() {
         const publicConfig = JSON.parse(JSON.stringify(this.config));
-        
+
         // 민감 정보 제거
         const sensitiveKeys = ['password', 'token', 'secret', 'key'];
-        
+
         function removeSensitiveData(obj) {
             for (const key in obj) {
                 if (typeof obj[key] === 'object' && obj[key] !== null) {
@@ -322,7 +322,7 @@ class DatabaseFactory {
                 }
             }
         }
-        
+
         removeSensitiveData(publicConfig);
         return publicConfig;
     }

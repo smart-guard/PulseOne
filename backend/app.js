@@ -87,12 +87,15 @@ const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 const { initializeConnections } = require('./lib/connection/db');
+const crossPlatformManager = require('./lib/services/crossPlatformManager');
+const RealtimeService = require('./lib/services/RealtimeService');
 
 // =============================================================================
 // ConfigManager 및 LogManager 로드 (최우선)
 // =============================================================================
 const config = require('./lib/config/ConfigManager');
 const logger = require('./lib/utils/LogManager');
+const RepositoryFactory = require('./lib/database/repositories/RepositoryFactory');
 
 // 서버 시작 로그
 logger.system('INFO', 'PulseOne Backend Server 시작 중...', {
@@ -128,7 +131,7 @@ try {
     CacheControlMiddleware = cacheControlModule.CacheControlMiddleware;
     createChromeCacheBuster = cacheControlModule.createChromeCacheBuster;
     createSPACacheMiddleware = cacheControlModule.createSPACacheMiddleware;
-    
+
     logger.system('INFO', '캐시 제어 미들웨어 로드 성공');
 } catch (error) {
     logger.system('WARN', '캐시 제어 미들웨어 로드 실패', { error: error.message });
@@ -171,14 +174,14 @@ let CollectorProxyService = null;
 try {
     const { getInstance: getCollectorProxy } = require('./lib/services/CollectorProxyService');
     CollectorProxyService = getCollectorProxy;
-    
+
     // 인스턴스 테스트
     const testProxy = CollectorProxyService();
     logger.system('INFO', 'CollectorProxyService 로드 및 인스턴스 생성 성공');
 } catch (error) {
-    logger.system('WARN', 'CollectorProxyService 로드 실패', { 
+    logger.system('WARN', 'CollectorProxyService 로드 실패', {
         error: error.message,
-        stack: error.stack?.split('\n')[0] 
+        stack: error.stack?.split('\n')[0]
     });
     CollectorProxyService = null;
 }
@@ -188,7 +191,7 @@ let ConfigSyncHooks = null;
 try {
     const { getInstance: getConfigSyncHooks } = require('./lib/hooks/ConfigSyncHooks');
     ConfigSyncHooks = getConfigSyncHooks;
-    
+
     // 인스턴스 테스트
     const testHooks = ConfigSyncHooks();
     logger.system('INFO', 'ConfigSyncHooks 로드 및 인스턴스 생성 성공');
@@ -229,14 +232,14 @@ if (CacheControlMiddleware && createChromeCacheBuster && createSPACacheMiddlewar
         addVersionParam: true,
         disableETag: config.getBoolean('DISABLE_ALL_CACHE', noCacheMode)
     });
-    
+
     app.use(cacheControl.createMiddleware());
     logger.system('DEBUG', '캐시 제어 미들웨어 적용');
 
     // 3. SPA 캐시 방지
     app.use(createSPACacheMiddleware());
     logger.system('DEBUG', 'SPA 캐시 방지 미들웨어 적용');
-    
+
     logger.system('INFO', '브라우저 캐시 제어 시스템 완전 활성화', {
         chromeCacheBuster: true,
         cacheControl: true,
@@ -254,7 +257,7 @@ if (CacheControlMiddleware && createChromeCacheBuster && createSPACacheMiddlewar
         });
         next();
     });
-    
+
     logger.system('WARN', '기본 캐시 방지 헤더만 적용됨 (고급 캐시 제어 미들웨어 없음)');
 }
 
@@ -275,23 +278,23 @@ logger.system('INFO', '요청 로깅 미들웨어 활성화', {
 const corsOptions = {
     origin: function (origin, callback) {
         const isDevelopment = serverConfig.env === 'development';
-        
+
         if (isDevelopment || !origin) {
             callback(null, true);
             return;
         }
-        
+
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:5173',
-            'http://localhost:5174', 
+            'http://localhost:5174',
             'http://localhost:8080',
             'http://127.0.0.1:3000',
             'http://127.0.0.1:5173',
             config.get('FRONTEND_URL', 'http://localhost:5173'),
             ...config.get('CORS_ALLOWED_ORIGINS', '').split(',').filter(Boolean)
         ];
-        
+
         if (allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
@@ -302,8 +305,8 @@ const corsOptions = {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
-        'Content-Type', 
-        'Authorization', 
+        'Content-Type',
+        'Authorization',
         'X-Tenant-ID',
         'X-Requested-With',
         'Accept',
@@ -329,7 +332,7 @@ if (WebSocketService) {
     io = webSocketService.io;
     app.locals.webSocketService = webSocketService;
     app.locals.io = io;
-    
+
     logger.system('INFO', 'WebSocket 서비스 초기화 완료', {
         service: 'WebSocketService',
         transport: 'polling + websocket'
@@ -344,14 +347,14 @@ if (WebSocketService) {
                     callback(null, true);
                     return;
                 }
-                
+
                 const allowedOrigins = [
                     'http://localhost:3000',
                     'http://localhost:5173',
                     'http://localhost:5174',
                     config.get('FRONTEND_URL', 'http://localhost:5173')
                 ];
-                
+
                 callback(null, allowedOrigins.includes(origin));
             },
             methods: ['GET', 'POST'],
@@ -360,26 +363,26 @@ if (WebSocketService) {
         transports: ['polling', 'websocket'],
         allowEIO3: true
     });
-    
+
     io.on('connection', (socket) => {
         logger.system('DEBUG', 'WebSocket 클라이언트 연결', { socketId: socket.id });
-        
+
         socket.on('disconnect', () => {
             logger.system('DEBUG', 'WebSocket 클라이언트 연결 해제', { socketId: socket.id });
         });
-        
+
         socket.on('join_tenant', (tenantId) => {
             socket.join(`tenant:${tenantId}`);
-            logger.system('DEBUG', '테넌트 룸 조인', { 
-                socketId: socket.id, 
-                tenantId: tenantId 
+            logger.system('DEBUG', '테넌트 룸 조인', {
+                socketId: socket.id,
+                tenantId: tenantId
             });
         });
     });
-    
+
     app.locals.io = io;
     app.locals.webSocketService = null;
-    
+
     logger.system('INFO', '기본 Socket.IO 서버 초기화 완료', {
         service: 'Direct Socket.IO',
         corsEnabled: true
@@ -414,7 +417,7 @@ if (serverConfig.env === 'production') {
             }
         }
     }));
-    
+
     logger.system('INFO', '정적 파일 서빙 활성화 (프로덕션)', {
         staticPath: path.join(__dirname, '../frontend'),
         maxAge: staticMaxAge
@@ -434,45 +437,7 @@ logger.system('INFO', '기본 미들웨어 설정 완료', {
 // =============================================================================
 // 인증 및 테넌트 미들웨어 (로그 포함)
 // =============================================================================
-const authenticateToken = (req, res, next) => {
-    if (!req.originalUrl.startsWith('/api/') || 
-        req.originalUrl.startsWith('/api/health') ||
-        req.originalUrl.startsWith('/api/init/') ||
-        req.originalUrl.startsWith('/api/test/') ||
-        req.originalUrl.startsWith('/api/websocket/')) {
-        return next();
-    }
-
-    const devUser = {
-        id: config.getNumber('DEV_USER_ID', 1),
-        username: config.get('DEV_USERNAME', 'admin'),
-        tenant_id: config.getNumber('DEV_TENANT_ID', 1),
-        role: config.get('DEV_USER_ROLE', 'admin')
-    };
-    
-    req.user = devUser;
-    
-    // 인증 로그 (DEBUG 레벨에서만)
-    if (serverConfig.logLevel === 'debug') {
-        logger.api('DEBUG', 'API 인증 처리', {
-            url: req.originalUrl,
-            method: req.method,
-            userId: devUser.id,
-            tenantId: devUser.tenant_id
-        });
-    }
-    
-    next();
-};
-
-const tenantIsolation = (req, res, next) => {
-    if (req.user) {
-        req.tenantId = req.user.tenant_id;
-    } else {
-        req.tenantId = config.getNumber('DEFAULT_TENANT_ID', 1);
-    }
-    next();
-};
+const { authenticateToken, tenantIsolation } = require('./middleware/tenantIsolation');
 
 app.use('/api/*', authenticateToken);
 app.use('/api/*', tenantIsolation);
@@ -490,36 +455,51 @@ let connections = {};
 async function initializeSystem() {
     try {
         logger.system('INFO', 'PulseOne 시스템 초기화 시작');
-        
+
         // 1. 데이터베이스 연결
         logger.database('INFO', '데이터베이스 연결 초기화 중...');
         connections = await initializeConnections();
         app.locals.getDB = () => connections;
         logger.database('INFO', '데이터베이스 연결 초기화 완료');
-        
+
+        // 1.5 RepositoryFactory 초기화 (Service-Repository 패턴 필수)
+        logger.database('INFO', 'RepositoryFactory 초기화 중...');
+        const rf = RepositoryFactory.getInstance();
+        await rf.initialize({
+            database: dbConfig,
+            cache: { enabled: config.getBoolean('REPOSITORY_CACHE', false) }
+        });
+        logger.database('INFO', 'RepositoryFactory 초기화 완료');
+
         // 2. 자동 초기화 확인
         const autoInitialize = config.getBoolean('AUTO_INITIALIZE_ON_START', false);
         const skipIfInitialized = config.getBoolean('SKIP_IF_INITIALIZED', false);
         const failOnInitError = config.getBoolean('FAIL_ON_INIT_ERROR', false);
-        
+
         logger.system('INFO', '자동 초기화 설정 확인', {
             autoInitialize,
             skipIfInitialized,
             failOnInitError,
             databaseInitializerAvailable: !!DatabaseInitializer
         });
-        
+
         if (autoInitialize && DatabaseInitializer) {
             logger.system('INFO', '자동 초기화 프로세스 시작');
-            
+
             const initializer = new DatabaseInitializer(connections);
             await initializer.checkDatabaseStatus();
-            
-            if (initializer.isFullyInitialized() && skipIfInitialized) {
+
+            const isAlreadyInitialized = initializer.isFullyInitialized();
+
+            if (isAlreadyInitialized && skipIfInitialized) {
                 logger.system('INFO', '데이터베이스 이미 초기화됨 - 스킵');
-            } else if (!initializer.isFullyInitialized()) {
-                logger.system('INFO', '데이터베이스 초기화 필요 - 프로세스 시작');
-                
+            } else {
+                if (isAlreadyInitialized) {
+                    logger.system('INFO', '데이터베이스가 존재하지만 강제 재초기화 진행 (SKIP_IF_INITIALIZED=false)');
+                } else {
+                    logger.system('INFO', '데이터베이스 초기화 필요 - 프로세스 시작');
+                }
+
                 try {
                     const createBackup = config.getBoolean('CREATE_BACKUP_ON_INIT', true);
                     if (createBackup) {
@@ -527,12 +507,12 @@ async function initializeSystem() {
                         await initializer.createBackup(true);
                         logger.database('INFO', '백업 생성 완료');
                     }
-                    
+
                     await initializer.performInitialization();
                     logger.system('INFO', '데이터베이스 자동 초기화 완료');
                 } catch (initError) {
                     logger.system('ERROR', '자동 초기화 실패', { error: initError.message });
-                    
+
                     if (failOnInitError) {
                         logger.system('FATAL', '초기화 실패로 인한 서버 종료');
                         process.exit(1);
@@ -542,12 +522,12 @@ async function initializeSystem() {
         } else if (autoInitialize) {
             logger.system('WARN', '자동 초기화 활성화되었으나 DatabaseInitializer 없음');
         }
-        
+
         logger.system('INFO', '시스템 초기화 완료');
-        
+
     } catch (error) {
         logger.system('ERROR', '시스템 초기화 실패', { error: error.message });
-        
+
         const failOnInitError = config.getBoolean('FAIL_ON_INIT_ERROR', false);
         if (failOnInitError) {
             logger.system('FATAL', '시스템 초기화 실패로 인한 서버 종료');
@@ -569,22 +549,21 @@ async function startAlarmSubscriber() {
         });
         return;
     }
-    
+
     try {
         logger.services('INFO', '실시간 알람 구독자 시작 중...');
         alarmSubscriber = new AlarmEventSubscriber(io);
         await alarmSubscriber.start();
-        
+
         app.locals.alarmSubscriber = alarmSubscriber;
         logger.services('INFO', '실시간 알람 구독자 시작 완료');
-        
+
     } catch (error) {
         logger.services('ERROR', '실시간 알람 구독자 시작 실패', { error: error.message });
     }
 }
 
-// 시스템 초기화 실행
-initializeSystem();
+// 시스템 초기화는 서버 시작 시(listen callback) 대기 처리됨
 
 // =============================================================================
 // 헬스체크 및 관리 엔드포인트
@@ -593,8 +572,8 @@ initializeSystem();
 // Health check
 app.get('/api/health', async (req, res) => {
     try {
-        const healthInfo = { 
-            status: 'ok', 
+        const healthInfo = {
+            status: 'ok',
             timestamp: new Date().toISOString(),
             uptime: process.uptime(),
             pid: process.pid,
@@ -618,13 +597,13 @@ app.get('/api/health', async (req, res) => {
                 log_level: serverConfig.logLevel
             }
         };
-        
+
         // 실시간 기능 상태
         healthInfo.realtime = {
             websocket: {
                 enabled: !!(webSocketService || io),
-                connected_clients: webSocketService ? 
-                    webSocketService.getStatus()?.stats?.socket_clients || 0 : 
+                connected_clients: webSocketService ?
+                    webSocketService.getStatus()?.stats?.socket_clients || 0 :
                     (io ? io.engine.clientsCount : 0)
             },
             alarm_subscriber: {
@@ -632,13 +611,13 @@ app.get('/api/health', async (req, res) => {
                 status: alarmSubscriber ? alarmSubscriber.getStatus() : null
             }
         };
-        
+
         // Collector 통합 상태
         healthInfo.collector_integration = {
             proxy_service: { enabled: !!CollectorProxyService },
             config_sync: { enabled: !!ConfigSyncHooks }
         };
-        
+
         // 초기화 상태
         healthInfo.initialization = {
             databaseInitializer: {
@@ -646,10 +625,10 @@ app.get('/api/health', async (req, res) => {
                 autoInit: config.getBoolean('AUTO_INITIALIZE_ON_START')
             }
         };
-        
+
         logger.api('DEBUG', 'Health check 요청', { status: 'ok' });
         res.json(healthInfo);
-        
+
     } catch (error) {
         logger.api('ERROR', 'Health check 실패', { error: error.message });
         res.status(500).json({
@@ -664,7 +643,7 @@ app.get('/api/health', async (req, res) => {
 app.get('/api/system/logs', (req, res) => {
     try {
         const logStats = logger.getStats();
-        
+
         logger.api('INFO', '로그 상태 조회');
         res.json({
             success: true,
@@ -684,18 +663,18 @@ app.get('/api/system/logs', (req, res) => {
 app.post('/api/system/logs/settings', (req, res) => {
     try {
         const { logLevel, logToConsole, logToFile } = req.body;
-        
+
         logger.updateSettings({
             logLevel,
             logToConsole,
             logToFile
         });
-        
-        logger.system('INFO', '로그 설정 변경됨', { 
+
+        logger.system('INFO', '로그 설정 변경됨', {
             newSettings: { logLevel, logToConsole, logToFile },
             changedBy: req.user?.username || 'system'
         });
-        
+
         res.json({
             success: true,
             message: '로그 설정이 변경되었습니다.',
@@ -718,7 +697,7 @@ app.post('/api/test/alarm', (req, res) => {
             error: 'Socket.IO 서비스가 비활성화되어 있습니다.'
         });
     }
-    
+
     try {
         const testAlarm = {
             occurrence_id: Date.now(),
@@ -736,7 +715,7 @@ app.post('/api/test/alarm', (req, res) => {
             trigger_value: 85.5,
             formatted_time: new Date().toLocaleString('ko-KR')
         };
-        
+
         let sent = false;
         if (webSocketService) {
             sent = webSocketService.sendAlarm(testAlarm);
@@ -745,21 +724,21 @@ app.post('/api/test/alarm', (req, res) => {
             io.emit('alarm_triggered', testAlarm);
             sent = true;
         }
-        
-        logger.services('INFO', '테스트 알람 전송', { 
+
+        logger.services('INFO', '테스트 알람 전송', {
             alarmId: testAlarm.occurrence_id,
             sent: sent,
             connectedClients: io ? io.engine.clientsCount : 0
         });
-        
-        res.json({ 
+
+        res.json({
             success: true,
             message: '테스트 알람이 전송되었습니다.',
             alarm: testAlarm,
             sent_via_websocket: sent,
             connected_clients: io ? io.engine.clientsCount : 0
         });
-        
+
     } catch (error) {
         logger.services('ERROR', '테스트 알람 전송 실패', { error: error.message });
         res.status(500).json({
@@ -776,16 +755,29 @@ logger.system('INFO', 'API 라우트 등록 시작');
 
 // 기본 시스템 라우트들
 const systemRoutes = require('./routes/system');
+const rbacRoutes = require('./routes/rbac');
 const processRoutes = require('./routes/processes');
 const serviceRoutes = require('./routes/services');
 const userRoutes = require('./routes/user');
 const dataRoutes = require('./routes/data');
 
+app.use('/api/system', rbacRoutes); // RBAC routes first (roles, permissions)
 app.use('/api/system', systemRoutes);
 app.use('/api/processes', processRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/data', dataRoutes);
+
+// 신규 추가: 제조사 및 모델 관리
+const manufacturerRoutes = require('./routes/manufacturers');
+const modelRoutes = require('./routes/models');
+const templateRoutes = require('./routes/templates');
+const auditLogRoutes = require('./routes/audit-logs');
+
+app.use('/api/manufacturers', manufacturerRoutes);
+app.use('/api/models', modelRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
 
 logger.system('INFO', '기본 시스템 라우트 등록 완료');
 
@@ -814,22 +806,22 @@ try {
     logger.system('INFO', 'Alarm API 라우트 등록 완료');
 } catch (error) {
     logger.system('ERROR', 'Alarm 라우트 로드 실패', { error: error.message });
-    
+
     // 디버그 모드 알람 라우트
     const express = require('express');
     const debugAlarmRouter = express.Router();
-    
+
     debugAlarmRouter.use((req, res, next) => {
-        req.user = { 
-            id: config.getNumber('DEV_USER_ID', 1), 
-            username: config.get('DEV_USERNAME', 'admin'), 
-            tenant_id: config.getNumber('DEV_TENANT_ID', 1), 
-            role: config.get('DEV_USER_ROLE', 'admin') 
+        req.user = {
+            id: config.getNumber('DEV_USER_ID', 1),
+            username: config.get('DEV_USERNAME', 'admin'),
+            tenant_id: config.getNumber('DEV_TENANT_ID', 1),
+            role: config.get('DEV_USER_ROLE', 'admin')
         };
         req.tenantId = config.getNumber('DEV_TENANT_ID', 1);
         next();
     });
-    
+
     debugAlarmRouter.get('/test', (req, res) => {
         logger.services('INFO', '디버그 알람 API 테스트 호출');
         res.json({
@@ -839,20 +831,24 @@ try {
             debug_mode: true
         });
     });
-    
+
     app.use('/api/alarms', debugAlarmRouter);
     logger.system('WARN', '디버그 알람 라우트 등록됨');
 }
 
 // 선택적 라우트들
 const optionalRoutes = [
+    { path: './routes/tenants', mount: '/api/tenants', name: 'Tenant Management' },
     { path: './routes/collector-proxy', mount: '/api/collector', name: 'Collector Proxy' },
     { path: './routes/dashboard', mount: '/api/dashboard', name: 'Dashboard' },
     { path: './routes/realtime', mount: '/api/realtime', name: 'Realtime Data' },
     { path: './routes/virtual-points', mount: '/api/virtual-points', name: 'Virtual Points' },
     { path: './routes/sites', mount: '/api/sites', name: 'Site Management' },
+    { path: './routes/groups', mount: '/api/groups', name: 'Device Groups' },
+    { path: './routes/collectors', mount: '/api/collectors', name: 'Collector Management' },
     { path: './routes/data-points', mount: '/api/data-points', name: 'Data Points' },
     { path: './routes/monitoring', mount: '/api/monitoring', name: 'System Monitoring' },
+    { path: './routes/errors', mount: '/api/errors', name: 'Error Monitoring' },
     { path: './routes/backup', mount: '/api/backup', name: 'Backup/Restore' },
     { path: './routes/websocket', mount: '/api/websocket', name: 'WebSocket Management' }
 ];
@@ -880,8 +876,8 @@ app.use('/api/*', (req, res) => {
         url: req.originalUrl,
         userAgent: req.get('User-Agent')
     });
-    
-    res.status(404).json({ 
+
+    res.status(404).json({
         success: false,
         error: 'API endpoint not found',
         path: req.originalUrl,
@@ -902,10 +898,10 @@ app.use((error, req, res, next) => {
         method: req.method,
         userId: req.user?.id
     });
-    
+
     let statusCode = 500;
     let message = 'Internal server error';
-    
+
     if (error.name === 'ValidationError') {
         statusCode = 400;
         message = 'Validation failed';
@@ -913,7 +909,7 @@ app.use((error, req, res, next) => {
         statusCode = 401;
         message = 'Unauthorized';
     }
-    
+
     res.status(statusCode).json({
         success: false,
         error: message,
@@ -930,7 +926,7 @@ if (serverConfig.env === 'production') {
     app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, '../frontend/index.html'));
     });
-    
+
     logger.system('INFO', 'SPA Catch-all 라우트 등록 (프로덕션)');
 } else {
     // 개발 환경: Frontend는 별도 서버에서 제공됨을 안내
@@ -943,36 +939,61 @@ if (serverConfig.env === 'production') {
             timestamp: new Date().toISOString()
         });
     });
-    
+
     logger.system('INFO', 'Development 모드: Frontend 서빙 비활성화');
 }
 
 // =============================================================================
-// Graceful Shutdown (로그 포함)
+// Graceful Shutdown (개선 버전)
 // =============================================================================
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
+async function gracefulShutdown(signal = 'MANUAL') {
+    logger.system('INFO', `Graceful shutdown 시작 (Signal: ${signal})`);
 
-function gracefulShutdown(signal) {
-    logger.system('INFO', 'Graceful shutdown 시작', { signal });
-    
+    // 0. Collector 중지 (가장 먼저)
+    try {
+        logger.system('INFO', 'Collector 프로세스 종료 시도...');
+        await crossPlatformManager.stopCollector();
+    } catch (err) {
+        logger.system('WARN', 'Collector 종료 중 오류 발생', { error: err.message });
+    }
+
     const shutdownTimeout = config.getNumber('SHUTDOWN_TIMEOUT_MS', 10000);
-    
-    server.close(async (err) => {
-        if (err) {
-            logger.system('ERROR', 'HTTP 서버 종료 중 오류', { error: err.message });
-            process.exit(1);
+    const shutdownTimer = setTimeout(() => {
+        logger.system('ERROR', 'Graceful shutdown 타임아웃 - 강제 종료');
+        console.error('❌ 강제 종료');
+        if (signal !== 'MANUAL') process.exit(1);
+    }, shutdownTimeout);
+
+    try {
+        // 1. HTTP 서버 종료 (새로운 연결 차단)
+        if (server && server.listening) {
+            await new Promise(resolve => server.close(resolve));
+            logger.system('INFO', 'HTTP 서버 종료 완료');
         }
-        
-        logger.system('INFO', 'HTTP 서버 종료 완료');
-        
-        // WebSocket 서버 정리
-        if (io) {
+
+        // 2. WebSocket 서비스 정리
+        if (webSocketService && webSocketService.cleanup) {
+            webSocketService.cleanup();
+            logger.system('INFO', 'WebSocket 서비스 정리 완료');
+        } else if (io) {
             io.close();
             logger.system('INFO', 'WebSocket 서버 종료 완료');
         }
-        
-        // 알람 구독자 정리
+
+        // 3. Collector 서비스 정리
+        if (CollectorProxyService) {
+            try {
+                const proxy = CollectorProxyService();
+                if (proxy && proxy.shutdown) {
+                    await proxy.shutdown();
+                    logger.system('INFO', 'Collector 프록시 서비스 종료 완료');
+                }
+            } catch (err) {
+                logger.system('WARN', 'Collector 프록시 종료 중 오류', { error: err.message });
+            }
+        }
+
+        // 4. 알람 구독자 정리
         if (alarmSubscriber) {
             try {
                 await alarmSubscriber.stop();
@@ -981,50 +1002,114 @@ function gracefulShutdown(signal) {
                 logger.system('ERROR', '알람 구독자 종료 중 오류', { error: error.message });
             }
         }
-        
-        // 데이터베이스 연결 정리
-        if (connections.postgres) connections.postgres.end();
-        if (connections.redis) connections.redis.disconnect();
-        logger.system('INFO', '데이터베이스 연결 종료 완료');
-        
-        // 로그 매니저 종료
+
+        // 5. 데이터베이스 및 전역 팩토리 정리
+        if (connections) {
+            if (connections.postgres && connections.postgres.end) await connections.postgres.end();
+            if (connections.redis && connections.redis.disconnect) await connections.redis.disconnect();
+            if (connections.sqlite && connections.sqlite.close) await connections.sqlite.close();
+        }
+
+        // 6. RepositoryFactory 정리
+        try {
+            const rf = require('./lib/database/repositories/RepositoryFactory').getInstance();
+            if (rf && rf.shutdown) {
+                await rf.shutdown();
+                logger.system('INFO', 'RepositoryFactory 종료 완료');
+            }
+        } catch (rfErr) {
+            // 무시 (로드되지 않았을 수 있음)
+        }
+
+        // 7. 로그 매니저 종료
         logger.shutdown();
-        
-        console.log('✅ Graceful shutdown 완료');
-        process.exit(0);
-    });
-    
-    setTimeout(() => {
-        logger.system('ERROR', 'Graceful shutdown 타임아웃 - 강제 종료');
-        console.error('❌ 강제 종료');
-        process.exit(1);
-    }, shutdownTimeout);
+
+        clearTimeout(shutdownTimer);
+        console.log(`✅ Graceful shutdown 완료 (${signal})`);
+
+        if (signal !== 'MANUAL') {
+            process.exit(0);
+        }
+    } catch (error) {
+        console.error('❌ Graceful shutdown 중 오류 발생:', error);
+        if (signal !== 'MANUAL') {
+            process.exit(1);
+        }
+    }
 }
+
+// 시그널 핸들러 등록
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// app 객체에 종료 메서드 추가 (테스트용)
+app.shutdown = () => gracefulShutdown('MANUAL');
+
+// =============================================================================
+// 서버 시작 (로그 포함)
+// =============================================================================
+// 시스템 초기화 실행 (비동기 작업을 위한 Promise 저장)
+const initializationPromise = initializeSystem();
 
 // =============================================================================
 // 서버 시작 (로그 포함)
 // =============================================================================
 const PORT = serverConfig.port;
 
-server.listen(PORT, '0.0.0.0', async () => {
-    const wsStatus = webSocketService ? 
-        `활성화 (${webSocketService.getStatus()?.stats?.socket_clients || 0}명 연결)` : 
-        (io ? `기본 모드 (${io.engine.clientsCount}명 연결)` : '비활성화');
-        
-    // 서버 시작 로그
-    logger.system('INFO', 'PulseOne Backend Server 시작 완료', {
-        port: PORT,
-        environment: serverConfig.env,
-        stage: serverConfig.stage,
-        pid: process.pid,
-        websocket: wsStatus,
-        collectorIntegration: !!CollectorProxyService,
-        cacheControl: !!CacheControlMiddleware,
-        logManager: true,
-        frontendServing: serverConfig.env === 'production' ? 'enabled' : 'disabled'
-    });
-    
-    console.log(`
+if (require.main === module) {
+    server.listen(PORT, '0.0.0.0', async () => {
+        // 시스템 초기화 완료 대기 (RepositoryFactory 등 필수)
+        await initializationPromise;
+
+        const wsStatus = webSocketService ?
+            `활성화 (${webSocketService.getStatus()?.stats?.socket_clients || 0}명 연결)` :
+            (io ? `기본 모드 (${io.engine.clientsCount}명 연결)` : '비활성화');
+
+        // 서버 시작 로그
+        logger.system('INFO', 'PulseOne Backend Server 시작 완료', {
+            port: PORT,
+            environment: serverConfig.env,
+            stage: serverConfig.stage,
+            pid: process.pid,
+            websocket: wsStatus,
+            collectorIntegration: !!CollectorProxyService,
+            cacheControl: !!CacheControlMiddleware,
+            logManager: true,
+            frontendServing: serverConfig.env === 'production' ? 'enabled' : 'disabled'
+        });
+
+        // Redis 데이터 초기화 (DB -> Redis)
+        if (RealtimeService && typeof RealtimeService.initializeRedisData === 'function') {
+            try {
+                logger.system('INFO', 'Redis 초기 데이터 동기화 시작 (DB -> Redis)...');
+                const initResult = await RealtimeService.initializeRedisData();
+                if (initResult.success) {
+                    logger.system('INFO', 'Redis 초기 데이터 동기화 완료', initResult.data);
+
+                    // ⏱️ Redis 데이터가 안정화될 때까지 대기 (2초)
+                    logger.system('INFO', 'Redis 데이터 안정화 대기 중 (2초)...');
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } else {
+                    logger.system('WARN', 'Redis 초기 데이터 동기화 실패', { error: initResult.message });
+                }
+            } catch (err) {
+                logger.system('ERROR', 'Redis 데이터 초기화 중 예외 발생', { error: err.message });
+            }
+        }
+
+        // Collector 자동 시작 (설정에 따라)
+        // 테스트 모드이거나 강제 비활성화된 경우 제외
+        if (config.getBoolean('START_COLLECTOR_ON_BOOT', true) && !process.env.TEST_MODE) {
+            try {
+                logger.system('INFO', 'Collector 자동 시작 중...');
+                await crossPlatformManager.startCollector();
+                logger.system('INFO', 'Collector 자동 시작 명령 전송 완료');
+            } catch (err) {
+                logger.system('ERROR', 'Collector 자동 시작 실패', { error: err.message });
+            }
+        }
+
+        console.log(`
 🚀 PulseOne Backend Server Started!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 Backend API:   http://localhost:${PORT}/api
@@ -1034,10 +1119,10 @@ server.listen(PORT, '0.0.0.0', async () => {
 🔥 Alarm Test:    http://localhost:${PORT}/api/alarms/test
 🧪 Test Alarm:    POST http://localhost:${PORT}/api/test/alarm
 
-${serverConfig.env === 'development' ? 
-        `🎨 Frontend:      http://localhost:5173 (Vite Dev Server)
+${serverConfig.env === 'development' ?
+                `🎨 Frontend:      http://localhost:5173 (Vite Dev Server)
 ⚠️  Note:          개발 환경 - Frontend는 별도 컨테이너에서 실행됨` :
-        `📊 Dashboard:     http://localhost:${PORT}
+                `📊 Dashboard:     http://localhost:${PORT}
 ✅ Note:          프로덕션 환경 - Backend가 정적 파일 서빙`}
 
 🌐 Environment: ${serverConfig.env}
@@ -1054,27 +1139,29 @@ ${serverConfig.env === 'development' ?
 PID: ${process.pid}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `);
-    
-    // Collector 연결 확인
-    if (CollectorProxyService) {
-        try {
-            logger.services('INFO', 'Collector 연결 상태 확인 중...');
-            const proxy = CollectorProxyService();
-            const healthResult = await proxy.healthCheck();
-            
-            logger.services('INFO', 'Collector 연결 성공', {
-                url: `${proxy.getCollectorConfig().host}:${proxy.getCollectorConfig().port}`,
-                status: healthResult.data?.status
-            });
-            
-        } catch (collectorError) {
-            logger.services('WARN', 'Collector 연결 실패', { error: collectorError.message });
+
+        // Collector 연결 확인
+        if (CollectorProxyService) {
+            try {
+                logger.services('INFO', 'Collector 연결 상태 확인 중...');
+                const proxy = CollectorProxyService();
+                const healthResult = await proxy.healthCheck();
+
+                logger.services('INFO', 'Collector 연결 성공', {
+                    url: `${proxy.getCollectorConfig().host}:${proxy.getCollectorConfig().port}`,
+                    status: healthResult.data?.status
+                });
+
+            } catch (collectorError) {
+                logger.services('WARN', 'Collector 연결 실패', { error: collectorError.message });
+            }
         }
-    }
-    
-    // 알람 구독자 시작 (지연)
-    const alarmStartDelay = config.getNumber('ALARM_SUBSCRIBER_START_DELAY_MS', 3000);
-    setTimeout(startAlarmSubscriber, alarmStartDelay);
-});
+
+        // 알람 구독자 시작 (지연)
+        const alarmStartDelay = config.getNumber('ALARM_SUBSCRIBER_START_DELAY_MS', 3000);
+        setTimeout(startAlarmSubscriber, alarmStartDelay);
+    });
+
+}
 
 module.exports = app;

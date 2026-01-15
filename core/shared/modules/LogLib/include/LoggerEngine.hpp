@@ -80,7 +80,7 @@ private:
     void updateStatistics(LogLevel level);
 
     // Member Variables
-    mutable std::mutex mutex_;
+    mutable std::recursive_mutex mutex_;
     std::map<std::string, std::ofstream> logFiles_;
     
     LogLevel minLevel_;

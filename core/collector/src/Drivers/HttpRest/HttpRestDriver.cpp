@@ -25,11 +25,7 @@ namespace Drivers {
 // =============================================================================
 #ifndef TEST_BUILD
 extern "C" {
-#ifdef _WIN32
-    __declspec(dllexport) void RegisterPlugin() {
-#else
-    void RegisterPlugin() {
-#endif
+    void RegisterHttpDriver() {
         DriverFactory::GetInstance().RegisterDriver("HTTP_REST", []() {
             return std::make_unique<HttpRestDriver>();
         });

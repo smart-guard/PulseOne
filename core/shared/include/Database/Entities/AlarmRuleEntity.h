@@ -316,6 +316,9 @@ public:
         return "alarm_rules"; 
     }
 
+    // Repository access
+    std::shared_ptr<Repositories::AlarmRuleRepository> getRepository() const;
+
     // =======================================================================
     // 기존 접근자들 (유지)
     // =======================================================================

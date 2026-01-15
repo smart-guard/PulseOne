@@ -223,6 +223,20 @@ class AlarmOccurrenceRepository extends BaseRepository {
         }
     }
 
+    /**
+     * Dashboard 전용: Raw SQL을 사용한 활성 알람 조회
+     */
+    async findActivePlainSQL(tenantId = null, limit = 5) {
+        try {
+            const sql = AlarmQueries.AlarmOccurrence.FIND_ACTIVE;
+            const items = await this.executeQuery(sql + ` LIMIT ${limit}`, [tenantId || 1]);
+            return (items || []).map(item => this.parseAlarmOccurrence(item));
+        } catch (error) {
+            this.logger?.error('AlarmOccurrenceRepository.findActivePlainSQL failed:', error.message);
+            return [];
+        }
+    }
+
     async findUnacknowledged(tenantId = null) {
         try {
             const items = await this.query('ao')
@@ -406,6 +420,13 @@ class AlarmOccurrenceRepository extends BaseRepository {
             this.logger?.error('AlarmOccurrenceRepository.findRecentOccurrences failed:', error.message);
             throw error;
         }
+    }
+
+    /**
+     * Dashboard 전용 별칭: findRecentAlarms
+     */
+    async findRecentAlarms(tenantId = null, limit = 5) {
+        return await this.findRecentOccurrences(limit, tenantId);
     }
 
     async findClearedByUser(userId, tenantId = null) {

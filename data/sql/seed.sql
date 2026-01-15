@@ -46,6 +46,17 @@ INSERT OR IGNORE INTO sites (
 (4, 2, 'Detroit Automotive Plant', 'DAP004', 'factory', 'Detroit, MI', 'Automotive Manufacturing Plant', 1),
 (5, 3, 'Demo Factory', 'DEMO005', 'factory', 'Demo Location', 'Demonstration facility', 1),
 (6, 4, 'Test Facility', 'TEST006', 'factory', 'Test Location', 'Testing and R&D facility', 1);
+
+-- =============================================================================
+-- 2.5. 컬렉터(에지 서버) 생성 (devices가 참조)
+-- =============================================================================
+INSERT OR IGNORE INTO edge_servers (
+    id, tenant_id, site_id, server_name, factory_name, ip_address, port, status, version, is_deleted
+) VALUES 
+(1, 1, 1, 'Main Collector', 'Seoul Main Factory', '127.0.0.1', 8080, 'active', '2.1.0', 0),
+(2, 2, 3, 'NY Collector', 'New York Plant', '10.0.1.5', 8080, 'active', '2.1.0', 0),
+(3, 3, 5, 'Demo Collector', 'Demo Factory', '192.168.100.20', 8080, 'active', '2.1.0', 0),
+(4, 4, 6, 'Test Collector', 'Test Facility', '192.168.200.20', 8080, 'active', '2.1.0', 0);
 -- =============================================================================
 -- 3. 프로토콜 테이블 생성 및 데이터 삽입
 -- =============================================================================
@@ -60,110 +71,175 @@ INSERT OR IGNORE INTO protocols (
 -- ID=1: MODBUS_TCP
 (1, 'MODBUS_TCP', 'Modbus TCP/IP', 'Industrial protocol over Ethernet',
  502, 0, 0,
- '["read_coils", "read_discrete_inputs", "read_holding_registers", "read_input_registers", "write_single_coil", "write_single_register", "write_multiple_coils", "write_multiple_registers"]',
- '["boolean", "int16", "uint16", "int32", "uint32", "float32"]',
- '{"slave_id": {"type": "integer", "default": 1, "min": 1, "max": 247}, "timeout_ms": {"type": "integer", "default": 3000}, "byte_order": {"type": "string", "default": "big_endian"}}',
+ '["read", "write"]',
+ '["BOOL", "INT16", "UINT16", "INT32", "UINT32", "FLOAT32"]',
+ '{"slave_id": {"type": "integer", "default": 1}}',
  1000, 3000, 10, 1, 0, '1.0',
  'industrial', 'Modbus Organization', 'Modbus Application Protocol V1.1b3'),
 
--- ID=2: BACNET 
-(2, 'BACNET', 'BACnet/IP', 'Building automation and control networks',
- 47808, 0, 0,
- '["read_property", "write_property", "read_property_multiple", "who_is", "i_am", "subscribe_cov"]',
- '["boolean", "int32", "uint32", "float32", "string", "enumerated", "bitstring"]',
- '{"device_id": {"type": "integer", "default": 1001}, "network": {"type": "integer", "default": 1}, "max_apdu": {"type": "integer", "default": 1476}}',
- 5000, 10000, 5, 1, 0, '1.0',
- 'building_automation', 'ASHRAE', 'ANSI/ASHRAE 135-2020'),
+-- ID=2: MODBUS_RTU
+(2, 'MODBUS_RTU', 'Modbus RTU', 'Modbus over serial communication',
+ NULL, 1, 0,
+ '["read", "write"]',
+ '["BOOL", "INT16", "UINT16", "INT32", "UINT32", "FLOAT32"]',
+ '{"slave_id": {"type": "integer", "default": 1}}',
+ 1000, 3000, 1, 1, 0, '1.0',
+ 'industrial', 'Modbus Organization', 'Modbus over Serial Line V1.02'),
 
--- ID=3: MQTT
-(3, 'MQTT', 'MQTT v3.1.1', 'Lightweight messaging protocol for IoT',
+-- ID=4: MQTT
+(4, 'MQTT', 'MQTT v3.1.1', 'Lightweight messaging protocol for IoT',
  1883, 0, 1,
- '["publish", "subscribe", "unsubscribe", "ping", "connect", "disconnect"]',
- '["boolean", "int32", "float32", "string", "json", "binary"]',
- '{"client_id": {"type": "string", "default": "pulseone_client"}, "username": {"type": "string"}, "password": {"type": "string"}, "keep_alive": {"type": "integer", "default": 60}}',
+ '["publish", "subscribe"]',
+ '["BOOL", "INT32", "FLOAT32", "STRING", "JSON"]',
+ '{"broker_url": {"type": "string"}, "client_id": {"type": "string"}}',
  0, 5000, 100, 1, 0, '3.1.1',
  'iot', 'MQTT.org', 'MQTT v3.1.1 OASIS Standard'),
 
--- ID=4: ETHERNET_IP
-(4, 'ETHERNET_IP', 'EtherNet/IP', 'Industrial Ethernet communication protocol',
- 44818, 0, 0,
- '["explicit_messaging", "implicit_messaging", "forward_open", "forward_close", "get_attribute_single", "set_attribute_single"]',
- '["boolean", "int8", "int16", "int32", "uint8", "uint16", "uint32", "float32", "string"]',
- '{"connection_type": {"type": "string", "default": "explicit"}, "assembly_instance": {"type": "integer", "default": 100}, "originator_to_target": {"type": "integer", "default": 500}, "target_to_originator": {"type": "integer", "default": 500}}',
- 200, 1000, 20, 1, 0, '1.0',
- 'industrial', 'ODVA', 'EtherNet/IP Specification Volume 1 & 2'),
+-- ID=6: BACNET
+(6, 'BACNET', 'BACnet/IP', 'Building automation and control networks',
+ 47808, 0, 0,
+ '["read", "write"]',
+ '["BOOL", "INT32", "UINT32", "FLOAT32", "STRING"]',
+ '{"device_id": {"type": "integer", "default": 1001}}',
+ 5000, 10000, 5, 1, 0, '1.0',
+ 'building_automation', 'ASHRAE', 'ANSI/ASHRAE 135-2020'),
 
--- ID=5: MODBUS_RTU (직렬 통신용)
-(5, 'MODBUS_RTU', 'Modbus RTU', 'Modbus over serial communication',
- NULL, 1, 0,
- '["read_coils", "read_discrete_inputs", "read_holding_registers", "read_input_registers", "write_single_coil", "write_single_register", "write_multiple_coils", "write_multiple_registers"]',
- '["boolean", "int16", "uint16", "int32", "uint32", "float32"]',
- '{"slave_id": {"type": "integer", "default": 1}, "baud_rate": {"type": "integer", "default": 9600}, "parity": {"type": "string", "default": "none"}, "data_bits": {"type": "integer", "default": 8}, "stop_bits": {"type": "integer", "default": 1}}',
- 1000, 3000, 1, 1, 0, '1.0',
- 'industrial', 'Modbus Organization', 'Modbus over Serial Line V1.02');
+-- ID=13: BLE_BEACON
+(13, 'BLE_BEACON', 'BLE Beacon', 'Bluetooth Low Energy Beaconing',
+ NULL, 0, 0,
+ '["read"]',
+ '["BOOL", "INT32", "FLOAT32", "STRING"]',
+ '{"uuid": {"type": "string"}}',
+ 1000, 3000, 100, 1, 0, '4.0',
+ 'iot', 'Bluetooth SIG', 'Bluetooth Core Specification 4.0');
+
+-- =============================================================================
+-- 3.1 제조사 및 모델 초기 데이터
+-- =============================================================================
+INSERT OR IGNORE INTO manufacturers (id, name, description, country, website) VALUES
+(1, 'LS Electric', 'Global total solution provider in electric power and automation', 'South Korea', 'https://www.lselectric.co.kr'),
+(2, 'Siemens', 'German multinational technology conglomerate', 'Germany', 'https://www.siemens.com'),
+(3, 'Schneider Electric', 'French multinational company specializing in digital automation and energy management', 'France', 'https://www.se.com'),
+(4, 'ABB', 'Swedish-Swiss multinational corporation operating mainly in robotics, power, heavy electrical equipment, and automation technology', 'Switzerland', 'https://new.abb.com'),
+(5, 'Delta Electronics', 'Taiwanese electronics manufacturing company', 'Taiwan', 'https://www.deltaww.com');
+
+INSERT OR IGNORE INTO device_models (id, manufacturer_id, name, model_number, device_type, description) VALUES
+(1, 1, 'XGT Series', 'XGK-CPUS', 'PLC', 'LS Electric XGT Series Programmable Logic Controller'),
+(2, 1, 'iS7 Inverter', 'SV-iS7', 'INVERTER', 'LS Electric iS7 Series High Performance Inverter'),
+(3, 2, 'S7-1200', 'CPU 1214C', 'PLC', 'Siemens SIMATIC S7-1200 Compact Controller'),
+(4, 3, 'PowerLogic PM8000', 'METSEPM8000', 'METER', 'Schneider Electric PowerLogic PM8000 series power meter');
+
+-- =============================================================================
+-- 3.2 디바이스 템플릿 초기 데이터
+-- =============================================================================
+INSERT OR IGNORE INTO template_devices (id, model_id, name, description, protocol_id, config) VALUES
+(1, 1, 'XGT Standard Modbus TCP', 'Standard template for LS XGT PLC using Modbus TCP', 1, '{"slave_id": 1, "byte_order": "big_endian"}'),
+(2, 2, 'iS7 Inverter Basic', 'Basic monitoring and control for iS7 Inverter', 1, '{"slave_id": 1, "byte_order": "big_endian"}'),
+(3, 3, 'S7-1200 Standard', 'Standard monitoring for Siemens S7-1200', 1, '{"slave_id": 1, "byte_order": "big_endian"}'),
+(4, 4, 'PM8000 Basic', 'Basic energy monitoring for Schneider PM8000', 1, '{"slave_id": 1, "byte_order": "big_endian"}');
+
+INSERT OR IGNORE INTO template_device_settings (template_device_id, polling_interval_ms, max_retry_count) VALUES
+(1, 1000, 3),
+(2, 1000, 3),
+(3, 1000, 3),
+(4, 5000, 3);
+
+-- XGT Template Data Points
+INSERT OR IGNORE INTO template_data_points (template_device_id, name, address, data_type, access_mode, unit) VALUES
+(1, 'CPU_Status', 0, 'UINT16', 'read', ''),
+(1, 'Run_Stop', 1, 'BOOL', 'read', ''),
+(1, 'Error_Code', 2, 'UINT16', 'read', ''),
+(1, 'Input_W0', 100, 'UINT16', 'read', ''),
+(1, 'Output_W0', 200, 'UINT16', 'read_write', '');
+
+-- iS7 Inverter Template Data Points
+INSERT OR IGNORE INTO template_data_points (template_device_id, name, address, data_type, access_mode, unit) VALUES
+(2, 'Frequency', 1, 'FLOAT32', 'read', 'Hz'),
+(2, 'Output_Current', 2, 'FLOAT32', 'read', 'A'),
+(2, 'Output_Voltage', 3, 'FLOAT32', 'read', 'V'),
+(2, 'DC_Link_Voltage', 4, 'FLOAT32', 'read', 'V'),
+(2, 'Status_Word', 10, 'UINT16', 'read', ''),
+(2, 'Control_Word', 11, 'UINT16', 'read_write', '');
+
+-- S7-1200 Template Data Points
+INSERT OR IGNORE INTO template_data_points (template_device_id, name, address, data_type, access_mode, unit) VALUES
+(3, 'Status', 0, 'UINT16', 'read', ''),
+(3, 'Run_Mode', 1, 'BOOL', 'read', ''),
+(3, 'Process_Value', 10, 'FLOAT32', 'read', ''),
+(3, 'Setpoint', 12, 'FLOAT32', 'read_write', '');
+
+-- PM8000 Template Data Points
+INSERT OR IGNORE INTO template_data_points (template_device_id, name, address, data_type, access_mode, unit) VALUES
+(4, 'Voltage_A-N', 100, 'FLOAT32', 'read', 'V'),
+(4, 'Voltage_B-N', 102, 'FLOAT32', 'read', 'V'),
+(4, 'Voltage_C-N', 104, 'FLOAT32', 'read', 'V'),
+(4, 'Current_A', 110, 'FLOAT32', 'read', 'A'),
+(4, 'Current_B', 112, 'FLOAT32', 'read', 'A'),
+(4, 'Current_C', 114, 'FLOAT32', 'read', 'A'),
+(4, 'Total_Active_Power', 120, 'FLOAT32', 'read', 'kW');
 
 -- =============================================================================
 -- 4. 디바이스 생성 (현재 스키마에 맞춤 - protocol_id 외래키 사용)
 -- =============================================================================
 INSERT OR IGNORE INTO devices (
-    tenant_id, site_id, name, description, device_type, manufacturer, model,
+    tenant_id, site_id, edge_server_id, name, description, device_type, manufacturer, model,
     protocol_id, endpoint, config, polling_interval, timeout, retry_count,
     is_enabled
 ) VALUES 
--- Smart Factory Korea 디바이스들 (site_id = 1)
-(1, 1, 'PLC-001', 'Main production line PLC', 'PLC', 'Siemens', 'S7-1515F',
+-- Smart Factory Korea 디바이스들 (site_id = 1, edge_server_id = 1)
+(1, 1, 1, 'PLC-001', 'Main production line PLC', 'PLC', 'Siemens', 'S7-1515F',
  1, '192.168.1.10:502', 
  '{"slave_id": 1, "timeout_ms": 3000, "byte_order": "big_endian", "unit_id": 1}',
  1000, 3000, 3, 1),
 
-(1, 1, 'HMI-001', 'Operator HMI panel', 'HMI', 'Schneider Electric', 'Harmony GT2512',
+(1, 1, 1, 'HMI-001', 'Operator HMI panel', 'HMI', 'Schneider Electric', 'Harmony GT2512',
  1, '192.168.1.11:502',
  '{"slave_id": 2, "timeout_ms": 3000, "screen_size": "12_inch", "unit_id": 2}',
  2000, 3000, 3, 1),
 
-(1, 1, 'ROBOT-001', 'Automated welding robot', 'ROBOT', 'KUKA', 'KR 16-3 F',
+(1, 1, 1, 'ROBOT-001', 'Automated welding robot', 'ROBOT', 'KUKA', 'KR 16-3 F',
  1, '192.168.1.12:502',
  '{"slave_id": 3, "timeout_ms": 2000, "coordinate_system": "world", "unit_id": 3}',
  500, 2000, 5, 1),
 
-(1, 1, 'VFD-001', 'Conveyor motor VFD', 'INVERTER', 'ABB', 'ACS580-01',
+(1, 1, 1, 'VFD-001', 'Conveyor motor VFD', 'INVERTER', 'ABB', 'ACS580-01',
  1, '192.168.1.13:502',
  '{"slave_id": 4, "timeout_ms": 3000, "motor_rated_power": "15kW", "unit_id": 4}',
  1000, 3000, 3, 1),
 
-(1, 1, 'HVAC-001', 'Main air handling unit', 'CONTROLLER', 'Honeywell', 'Spyder',
+(1, 1, 1, 'HVAC-001', 'Main air handling unit', 'CONTROLLER', 'Honeywell', 'Spyder',
  2, '192.168.1.30:47808',
  '{"device_id": 1001, "network": 1, "max_apdu": 1476, "segmentation": "segmented_both"}',
  5000, 10000, 3, 1),
 
-(1, 1, 'METER-001', 'Main facility power meter', 'METER', 'Schneider Electric', 'PowerLogic PM8000',
+(1, 1, 1, 'METER-001', 'Main facility power meter', 'METER', 'Schneider Electric', 'PowerLogic PM8000',
  1, '192.168.1.40:502',
  '{"slave_id": 10, "timeout_ms": 3000, "measurement_class": "0.2S", "unit_id": 10}',
  5000, 3000, 3, 1),
 
--- Global Manufacturing 디바이스들 (site_id = 3)  
-(2, 3, 'PLC-NY-001', 'New York plant main PLC', 'PLC', 'Rockwell Automation', 'CompactLogix 5380',
+-- Global Manufacturing 디바이스들 (site_id = 3, edge_server_id = 2)  
+(2, 3, 2, 'PLC-NY-001', 'New York plant main PLC', 'PLC', 'Rockwell Automation', 'CompactLogix 5380',
  1, '10.0.1.10:502',
  '{"slave_id": 1, "timeout_ms": 3000, "communication_format": "RTU_over_TCP", "unit_id": 1}',
  1000, 3000, 3, 1),
 
-(2, 3, 'ROBOT-NY-001', 'Assembly robot station 1', 'ROBOT', 'Fanuc', 'R-2000iD/210F',
+(2, 3, 2, 'ROBOT-NY-001', 'Assembly robot station 1', 'ROBOT', 'Fanuc', 'R-2000iD/210F',
  4, '10.0.1.15:44818',
  '{"connection_type": "explicit", "assembly_instance": 100, "originator_to_target": 500, "target_to_originator": 500}',
  200, 1000, 5, 1),
 
--- Demo/Test 디바이스들 (site_id = 5, 6)
-(3, 5, 'DEMO-PLC-001', 'Demo PLC for training', 'PLC', 'Demo Manufacturer', 'Demo-PLC-v2',
+-- Demo/Test 디바이스들 (site_id = 5, 6, edge_server_id = 3, 4)
+(3, 5, 3, 'DEMO-PLC-001', 'Demo PLC for training', 'PLC', 'Demo Manufacturer', 'Demo-PLC-v2',
  1, '192.168.100.10:502',
  '{"slave_id": 1, "timeout_ms": 3000, "demo_mode": true, "unit_id": 1}',
  2000, 3000, 3, 1),
 
-(3, 5, 'DEMO-IOT-001', 'IoT gateway for wireless sensors', 'GATEWAY', 'Generic IoT', 'MultiProtocol-GW',
- 3, 'mqtt://192.168.100.20:1883',
+(3, 5, 3, 'DEMO-IOT-001', 'IoT gateway for wireless sensors', 'GATEWAY', 'Generic IoT', 'MultiProtocol-GW',
+ 4, 'mqtt://192.168.100.20:1883',
  '{"client_id": "demo_gateway", "username": "demo_user", "password": "demo_pass", "keep_alive": 60}',
  0, 5000, 3, 1),
 
-(4, 6, 'TEST-PLC-001', 'Advanced test PLC for R&D', 'PLC', 'Test Systems', 'TestPLC-Pro',
+(4, 6, 4, 'TEST-PLC-001', 'Advanced test PLC for R&D', 'PLC', 'Test Systems', 'TestPLC-Pro',
  1, '192.168.200.10:502',
  '{"slave_id": 1, "timeout_ms": 3000, "test_mode": true, "advanced_diagnostics": true, "unit_id": 1}',
  1000, 3000, 3, 1);
@@ -174,7 +250,7 @@ INSERT OR IGNORE INTO devices (
 INSERT OR IGNORE INTO data_points (
     device_id, name, description, address, data_type, access_mode, unit,
     scaling_factor, scaling_offset, min_value, max_value, is_enabled,
-    is_log_enabled, log_interval_ms, polling_interval_ms, group_name, tags, metadata
+    log_enabled, log_interval_ms, polling_interval_ms, group_name, tags, metadata
 ) VALUES 
 -- PLC-001 (device_id = 1) 데이터 포인트들
 (1, 'Production_Count', 'Production counter', 1001, 'UINT32', 'read', 'pcs',

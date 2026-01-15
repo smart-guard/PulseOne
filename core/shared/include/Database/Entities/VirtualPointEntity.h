@@ -40,6 +40,9 @@ public:
     bool deleteFromDatabase() override;
     std::string getTableName() const override { return "virtual_points"; }
 
+    // Repository access
+    std::shared_ptr<Repositories::VirtualPointRepository> getRepository() const;
+
     // =======================================================================
     // Getter/Setter - DB 스키마와 완전 일치
     // =======================================================================

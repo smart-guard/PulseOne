@@ -1,113 +1,18 @@
 /* ============================================================================
-   DeviceList CSS 완성본 - 균형잡힌 Grid + 스크롤바 대응
+   DeviceList CSS - Refactored with Design System Tokens
    ============================================================================ */
 
-/* 기본 컨테이너 */
 .device-list-container {
   width: 100%;
-  background: #f8fafc;
+  background: var(--neutral-50);
   min-height: 100vh;
   padding: 0;
   margin: 0;
 }
 
-/* 페이지 헤더 */
-.device-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 24px;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
-  margin-bottom: 24px;
-}
+/* Stats section removed - using StatCard components instead */
 
-.device-list-header h1 {
-  font-size: 28px;
-  font-weight: 700;
-  color: #111827;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.device-list-header h1 i {
-  color: #3b82f6;
-}
-
-.device-list-header .subtitle {
-  font-size: 16px;
-  color: #6b7280;
-  margin: 8px 0 0 0;
-}
-
-.device-list-header .actions {
-  display: flex;
-  gap: 12px;
-}
-
-.device-list-header .btn-primary {
-  padding: 12px 20px;
-  background: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  transition: background-color 0.15s ease;
-}
-
-/* 통계 카드 */
-.device-list-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 32px;
-  padding: 0 24px;
-}
-
-.device-list-stat-card {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 24px;
-  text-align: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.device-list-stat-card i {
-  font-size: 32px;
-  margin-bottom: 12px;
-}
-
-.device-list-stat-card .value {
-  font-size: 32px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.device-list-stat-card .label {
-  font-size: 14px;
-  color: #6b7280;
-}
-
-/* 필터 섹션 */
-.device-list-filters {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px 24px;
-  margin: 0 24px 24px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-}
+/* Filter section removed - using FilterBar component instead */
 
 .device-list-search {
   position: relative;
@@ -117,792 +22,865 @@
 
 .device-list-search i {
   position: absolute;
-  left: 12px;
+  left: var(--space-3);
   top: 50%;
   transform: translateY(-50%);
-  color: #9ca3af;
+  color: var(--neutral-400);
 }
 
 .device-list-search input {
   width: 100%;
-  padding: 12px 16px 12px 40px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-10);
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  transition: var(--transition-fast);
+}
+
+.device-list-search input:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-100);
 }
 
 .device-list-filters select {
-  padding: 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 14px;
-  background: #ffffff;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  background: white;
   min-width: 120px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.device-list-filters select:focus {
+  outline: none;
+  border-color: var(--primary-500);
 }
 
 /* 에러 메시지 */
 .device-list-error {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  color: #dc2626;
-  margin: 0 24px 16px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--error-50);
+  border: 1px solid var(--error-100);
+  border-radius: var(--radius-lg);
+  color: var(--error-700);
+  margin-bottom: var(--space-4);
 }
 
 .device-list-error button {
   margin-left: auto;
   background: none;
   border: none;
-  color: #dc2626;
+  color: var(--error-600);
   cursor: pointer;
 }
 
 /* ============================================================================
-   핵심: 테이블 컨테이너 - 스크롤바 대응
+   테이블 컨테이너
    ============================================================================ */
 .device-list-table-container {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
   overflow: hidden;
-  margin: 0 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  width: calc(100% - 48px);
-  max-width: calc(100% - 48px);
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 0 !important;
+  flex: 1;
+  /* Grow to fill remaining space */
+  min-height: 0;
+  /* Required for nested flex scroll */
 }
 
-/* 로딩 스피너 */
-.device-list-loading {
+.device-list-table-wrapper {
+  width: 100%;
+  height: 100%;
+  /* Fill container */
+  display: flex;
+  flex-direction: column;
+  display: flex;
+  flex-direction: column;
+  overflow-x: auto;
+  /* Enable horizontal scroll if needed */
+  overflow-y: hidden;
+}
+
+.device-list-loading,
+.device-list-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 80px;
-  color: #6b7280;
-}
-
-.device-list-loading i {
-  font-size: 32px;
-  color: #3b82f6;
-  margin-bottom: 16px;
-}
-
-/* 빈 상태 */
-.device-list-empty {
+  padding: var(--space-16);
+  color: var(--neutral-500);
   text-align: center;
-  padding: 80px;
-  color: #6b7280;
+}
+
+.device-list-loading i,
+.device-list-empty i {
+  font-size: 3rem;
+  color: var(--primary-500);
+  margin-bottom: var(--space-4);
 }
 
 .device-list-empty i {
-  font-size: 48px;
-  color: #d1d5db;
-  margin-bottom: 16px;
+  color: var(--neutral-300);
 }
 
-.device-list-empty h3 {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  color: #374151;
-}
-
-.device-list-empty p {
-  font-size: 14px;
-  color: #6b7280;
-  margin-bottom: 24px;
-}
-
-.device-list-empty button {
-  padding: 12px 20px;
-  background: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-/* ============================================================================
-   핵심: 테이블 헤더 - 스크롤바 고려한 정렬
-   ============================================================================ */
+/* 테이블 구조 (Grid-based for complex responsiveness) */
 .device-list-table-header {
   display: grid;
-  background: #f8fafc;
-  border-bottom: 2px solid #e5e7eb;
-  font-weight: 700;
-  color: #374151;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
+  background: var(--neutral-50);
+  border-bottom: 2px solid var(--neutral-100);
+  position: sticky;
+  top: 0;
+  z-index: 10;
   align-items: center;
   width: 100%;
   box-sizing: border-box;
-  /* 🔥 스크롤바 공간 확보 */
-  padding-right: 17px; /* 스크롤바 너비만큼 */
+  overflow-y: scroll;
+  /* Force space for scrollbar to match body */
+  min-width: 100%;
+  /* Ensure it fills wrapper */
 }
 
-/* 🔥 헤더 모든 셀을 가운데 정렬 */
-.device-list-table-header > div {
-  text-align: center;
+/* Hide header scrollbar thumb but keep space for alignment */
+.device-list-table-header::-webkit-scrollbar {
+  width: 8px;
+}
+
+.device-list-table-header::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.device-list-table-header::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.device-list-table-header>div {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-weight: 700;
+  justify-content: flex-start !important;
+  font-size: 13px;
+  /* Standardized to 13px for readability */
+  padding: var(--space-3) var(--space-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--neutral-600);
+  /* Better contrast */
+  font-weight: 600;
 }
 
-/* 체크박스와 디바이스는 왼쪽 정렬 유지 */
-.device-list-table-header > div:first-child {
-  justify-content: flex-start;
+
+/* Explicit alignment for checkbox and name cells - forcing left align */
+.device-list-table-header>.device-list-checkbox-cell {
+  padding-left: 0;
+  padding-right: 0;
+  justify-content: flex-start !important;
 }
 
-.device-list-table-header > div:nth-child(2) {
-  justify-content: flex-start;
+.device-list-table-header>.device-list-device-cell {
+  justify-content: flex-start !important;
   text-align: left;
 }
 
-/* 테이블 바디 */
+/* Handled by explicit classes above */
+
 .device-list-table-body {
-  max-height: 65vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* 🔥 스크롤바 커스터마이징으로 정확한 너비 보장 */
+  flex: 1;
+  /* Fill remaining vertical space */
+  min-height: 0;
+  /* Essential for scroll to work */
+  overflow-y: scroll;
+  /* Always show scrollbar track */
+  overflow-x: auto;
+  /* Allow individual scroll? No, normally hidden but wrapper handles. Let's make it visible/auto */
+  /* If wrapper scrolls, body should just be wide. */
+  border-bottom: 1px solid var(--neutral-100);
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 100%;
 }
 
-/* 🔥 스크롤바 스타일링 및 너비 고정 */
+/* Custom Scrollbar for consistent alignment */
 .device-list-table-body::-webkit-scrollbar {
-  width: 8px; /* 정확한 스크롤바 너비 */
+  width: 8px;
 }
 
 .device-list-table-body::-webkit-scrollbar-track {
-  background: #f8fafc;
+  background: var(--neutral-50);
 }
 
 .device-list-table-body::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: var(--neutral-300);
+  border-radius: var(--radius-full);
 }
 
 .device-list-table-body::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--neutral-400);
 }
 
-/* Firefox 스크롤바 너비 */
-.device-list-table-body {
-  scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 #f8fafc;
-}
-
-/* 테이블 행 */
 .device-list-table-row {
   display: grid;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--neutral-50);
   align-items: center;
-  transition: background-color 0.15s ease;
+  transition: var(--transition-fast);
   cursor: pointer;
-  min-height: 60px;
+  min-height: 52px;
+  /* Balanced height for 13px font */
   width: 100%;
   box-sizing: border-box;
 }
 
-.device-list-table-row:nth-child(even) {
-  background-color: #fafafa;
-}
-
 .device-list-table-row:hover {
-  background-color: #f3f4f6;
+  background-color: var(--neutral-25);
 }
 
-/* ============================================================================
-   핵심: 화면 크기별 최적화된 Grid 설정
-   ============================================================================ */
+/* Grid Layout Media Queries moved to bottom of file */
 
-/* 🔥 큰 화면 (1400px 이상) - 여백 없이 꽉 채우기 */
-@media (min-width: 1400px) {
-  .device-list-table-header,
-  .device-list-table-row {
-    grid-template-columns: 
-      50px                        /* 체크박스 */
-      3fr                         /* 디바이스: 가장 넓게 */
-      1.2fr                       /* 프로토콜 */
-      0.8fr                       /* 상태 */
-      1fr                         /* 연결 */
-      1fr                         /* 데이터 */
-      1fr                         /* 성능 */
-      160px;                      /* 작업버튼: 고정 */
-    gap: 12px;
-    padding: 12px 16px;
-    font-size: 12px;
-  }
-  
-  .device-list-action-btn {
-    width: 28px;
-    height: 28px;
-    font-size: 11px;
-    margin: 0 1px;
-  }
-  
-  .device-list-actions {
-    gap: 2px;
-  }
-}
-
-/* 🔥 중간 화면 (1000px-1399px) - 비례 축소 */
-@media (max-width: 1399px) and (min-width: 1000px) {
-  .device-list-table-header,
-  .device-list-table-row {
-    grid-template-columns: 
-      40px                        /* 체크박스 축소 */
-      2.5fr                       /* 디바이스: 여전히 넓게 */
-      1fr                         /* 프로토콜 */
-      0.7fr                       /* 상태 축소 */
-      0.8fr                       /* 연결 축소 */
-      0.8fr                       /* 데이터 축소 */
-      0.8fr                       /* 성능 축소 */
-      140px;                      /* 작업버튼 축소 */
-    gap: 8px;
-    padding: 10px 12px;
-    font-size: 11px;
-  }
-  
-  .device-list-action-btn {
-    width: 25px;
-    height: 25px;
-    font-size: 10px;
-    margin: 0 1px;
-  }
-  
-  .device-list-actions {
-    gap: 1px;
-  }
-}
-
-/* 🔥 작은 화면 (1000px 미만) - 간격 최소화 */
-@media (max-width: 999px) {
-  .device-list-table-header,
-  .device-list-table-row {
-    grid-template-columns: 
-      35px                        /* 체크박스 */
-      2fr                         /* 디바이스: 충분한 공간 */
-      0.9fr                       /* 프로토콜 */
-      0.6fr                       /* 상태 */
-      0.7fr                       /* 연결 */
-      0.7fr                       /* 데이터 */
-      0.7fr                       /* 성능 */
-      120px;                      /* 작업버튼 */
-    gap: 4px;                     /* 🔥 간격 축소 */
-    padding: 8px 8px;
-    font-size: 10px;
-  }
-  
-  /* 🔥 프로토콜/상태 폰트 더 축소 */
-  .device-list-protocol-badge {
-    font-size: 9px;
-    padding: 2px 6px;
-  }
-  
-  .device-list-status-badge {
-    font-size: 9px;
-    padding: 2px 6px;
-  }
-  
-  .device-list-action-btn {
-    width: 22px;
-    height: 22px;
-    font-size: 8px;
-    margin: 0;
-  }
-}
-
-/* ============================================================================
-   디바이스 셀 내용 최적화
-   ============================================================================ */
-
-/* 체크박스 셀 */
-.device-list-checkbox-cell {
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.device-list-checkbox-cell input {
-  cursor: pointer;
-}
-
-/* 디바이스 정보 셀 */
-.device-list-device-cell {
-  justify-content: flex-start;
-  align-items: center;
-  min-width: 0;
-  overflow: hidden;
-}
-
+/* 디바이스 셀 */
 .device-list-device-info {
   display: flex;
   align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 8px;
-  transition: background-color 0.15s ease;
-  min-width: 0;
+  gap: var(--space-3);
   width: 100%;
-  max-width: 100%;
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  transition: var(--transition-fast);
+  min-width: 0;
+  /* Important for horizontal truncation */
 }
 
 .device-list-device-info:hover {
-  background-color: rgba(59, 130, 246, 0.05);
+  background-color: var(--primary-50);
 }
 
 .device-list-device-icon {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 14px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================================
+   Group Side Panel
+   ============================================================================ */
+.device-list-main-layout {
+  display: flex;
+  height: calc(100vh - 180px);
+  /* Adjust based on header/stats/filter height */
+  overflow: hidden;
+  margin: 0;
+  background: white;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--neutral-200);
+}
+
+.group-side-panel {
+  width: 260px;
+  background: var(--neutral-25);
+  border-right: 1px solid var(--neutral-200);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
   flex-shrink: 0;
 }
 
-.device-list-device-details {
-  min-width: 0;
+.group-side-panel .panel-header {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--neutral-100);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+}
+
+.group-side-panel .panel-header h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--neutral-800);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.group-side-panel .group-tree-content {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+}
+
+.group-tree-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  color: var(--neutral-600);
+  font-size: 13px;
+  position: relative;
+}
+
+.group-tree-item:hover {
+  background: var(--neutral-100);
+  color: var(--neutral-900);
+}
+
+.group-tree-item.active {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-weight: 600;
+}
+
+.group-tree-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--primary-500);
+}
+
+.group-tree-item .expand-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: var(--space-1);
+}
+
+.group-tree-item .group-icon {
+  margin-right: var(--space-2);
+  width: 16px;
+  text-align: center;
+}
+
+.group-tree-item .device-count {
+  margin-left: auto;
+  font-size: 11px;
+  background: var(--neutral-200);
+  color: var(--neutral-600);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.group-tree-item.active .device-count {
+  background: var(--primary-100);
+  color: var(--primary-600);
+}
+
+.group-side-panel .panel-footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--neutral-100);
+  background: white;
+  display: flex;
+}
+
+.group-side-panel .panel-footer button {
+  width: 100%;
+}
+
+.group-children {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* ============================================================================
+   Live Pulse Animation
+   ============================================================================ */
+@keyframes status-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.status-pulse-success {
+  animation: status-pulse 2s infinite;
+  background-color: var(--success-500) !important;
+}
+
+@keyframes status-pulse-error {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.status-pulse-error {
+  animation: status-pulse-error 2s infinite;
+  background-color: var(--error-500) !important;
 }
 
 .device-list-device-name {
   font-weight: 600;
-  color: #3b82f6;
+  color: var(--neutral-900);
   font-size: 14px;
+  /* Primary name should be slightly larger */
   margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2;
-  max-width: 100%;
+  width: 100%;
+  transition: color 0.2s ease;
 }
 
-.device-list-device-meta {
-  font-size: 12px;
-  color: #6b7280;
-  margin: 1px 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-  max-width: 100%;
+.clickable-name:hover {
+  color: var(--primary-600);
+  text-decoration: underline;
 }
 
-.device-list-device-endpoint {
-  font-size: 11px;
-  color: #9ca3af;
-  font-family: monospace;
-  margin: 2px 0 0 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-  max-width: 100%;
-}
-
-/* 프로토콜 셀 */
-.device-list-protocol-cell {
-  text-align: center;
+.device-list-device-details {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
 }
 
+.device-list-device-meta,
+.device-list-device-endpoint {
+  font-size: 12px;
+  /* Standardized metadata */
+  color: var(--neutral-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+/* 배지 스타일 */
 .device-list-protocol-badge {
   font-size: 11px;
-  padding: 4px 8px;
-  display: inline-block;
-  border-radius: 4px;
+  /* Increased to 11px for better visibility */
+  padding: 2px 8px;
+  /* Slightly more breathing room */
+  border-radius: var(--radius-full);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .device-list-protocol-modbus {
-  background: #dbeafe;
-  color: #1e40af;
-  border: 1px solid #93c5fd;
+  background: var(--primary-100);
+  color: var(--primary-700);
+  border: 1px solid var(--primary-200);
 }
 
 .device-list-protocol-bacnet {
-  background: #dcfce7;
-  color: #166534;
-  border: 1px solid #86efac;
+  background: var(--success-100);
+  color: var(--success-700);
+  border: 1px solid var(--success-200);
 }
 
 .device-list-protocol-unknown {
-  background: #f1f5f9;
-  color: #475569;
-  border: 1px solid #cbd5e1;
-}
-
-/* 상태 셀 */
-.device-list-status-cell {
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: var(--neutral-100);
+  color: var(--neutral-700);
+  border: 1px solid var(--neutral-300);
 }
 
 .device-list-status-badge {
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  padding: 2px 10px;
+  /* Increased padding */
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  /* Increased to 12px */
   font-weight: 600;
-  display: inline-block;
   white-space: nowrap;
 }
 
 .device-list-status-connected {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--success-100);
+  color: var(--success-700);
 }
 
 .device-list-status-disconnected {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--error-100);
+  color: var(--error-700);
 }
 
-.device-list-status-unknown {
-  background: #f3f4f6;
-  color: #4b5563;
-}
-
-/* 연결, 데이터, 성능 셀 - 🔥 가운데 정렬 + 여백 최적화 */
-.device-list-info-cell {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2px;
-}
-
-.device-list-info-title {
-  font-size: 12px;
-  font-weight: 600;
-  margin: 0;
-  color: #374151;
-  line-height: 1.2;
-}
-
-.device-list-info-subtitle {
-  font-size: 10px;
-  color: #9ca3af;
-  margin: 1px 0 0 0;
-  line-height: 1.2;
-}
-
-/* 액션 버튼 셀 */
-.device-list-actions-cell {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  width: 100%;
-}
-
-.device-list-actions {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.device-list-action-btn {
-  border: none;
-  border-radius: 4px;
+.device-list-table-row>div {
+  font-size: 13px;
+  /* Standardized to 13px */
+  color: var(--neutral-700);
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  justify-content: flex-start !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  /* Essential for grid item shrinkage */
 }
 
-.device-list-action-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+.device-list-cell-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
 }
 
-.device-list-btn-edit {
-  background: #8b5cf6;
-  color: white;
+/* 상태 인디케이터 */
+.device-list-status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  display: inline-block;
 }
 
-.device-list-btn-start {
-  background: #10b981;
-  color: white;
+.device-list-status-indicator.status-connected,
+.device-list-status-indicator.status-online,
+.device-list-status-indicator.status-running {
+  background-color: var(--success-500);
+  box-shadow: 0 0 0 3px var(--success-100);
 }
 
-.device-list-btn-stop {
-  background: #ef4444;
-  color: white;
+.device-list-status-indicator.status-disconnected,
+.device-list-status-indicator.status-offline,
+.device-list-status-indicator.status-stopped {
+  background-color: var(--neutral-400);
+  box-shadow: 0 0 0 3px var(--neutral-100);
 }
 
-.device-list-btn-restart {
-  background: #f59e0b;
-  color: white;
+.device-list-status-indicator.status-error,
+.device-list-status-indicator.status-fault {
+  background-color: var(--error-500);
+  box-shadow: 0 0 0 3px var(--error-100);
 }
+
+.device-list-status-indicator.status-unknown {
+  background-color: var(--neutral-300);
+}
+
+.device-list-table-row>.device-list-checkbox-cell,
+.device-list-table-row>.device-list-device-cell {
+  justify-content: flex-start !important;
+}
+
+/* 액션 버튼 그룹 */
+.device-list-row-actions {
+  display: flex;
+  justify-content: flex-start !important;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.device-list-row-actions .btn-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
+.device-list-row-actions .btn-icon i {
+  font-size: 14px;
+}
+
+/* Old button styles removed */
 
 /* 페이징 */
 .device-list-pagination {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
-  background: #ffffff;
-  border-top: 1px solid #e5e7eb;
-  border-radius: 0 0 12px 12px;
-  margin: 0 24px 24px;
-}
-
-.device-list-pagination-info {
-  flex: 1;
-  text-align: left;
-  color: #6b7280;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.device-list-pagination-controls {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.device-list-pagination-btn {
-  min-width: 32px;
-  height: 32px;
-  padding: 0 8px;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  color: #374151;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.device-list-pagination-btn:hover:not(:disabled) {
-  background: #f3f4f6;
-}
-
-.device-list-pagination-btn:disabled {
-  color: #d1d5db;
-  cursor: not-allowed;
-}
-
-.device-list-pagination-btn.active {
-  background: #3b82f6;
-  border-color: #3b82f6;
-  color: #ffffff;
-}
-
-.device-list-pagination-size {
-  flex: 1;
-  text-align: right;
-}
-
-.device-list-pagination-select {
-  padding: 6px 8px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #374151;
-  font-size: 14px;
-  cursor: pointer;
-  min-width: 100px;
+  padding: var(--space-4) var(--space-6);
+  background: white;
+  border-top: 1px solid var(--neutral-100);
 }
 
 /* 상태바 */
 .device-list-status-bar {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 16px 24px;
-  margin: 24px 24px 0;
+  background: white;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-6);
+  margin: var(--space-6) var(--space-6) 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: var(--shadow-sm);
 }
 
-.device-list-status-bar-left {
+/* ============================================================================
+   Grid Layout & Responsiveness
+   Placed at the end to ensure overrides
+   ============================================================================ */
+
+@media (min-width: 1400px) {
+
+  .device-list-table-header,
+  .device-list-table-row {
+    /* Checkbox(44) + Name(min 200) + MasterModel/Mfg(min 220) + Info/Proto(reduced min 140) + Status(100) + Pts(60) + Action(100) */
+    grid-template-columns: 44px minmax(200px, 1fr) minmax(220px, 1.2fr) minmax(140px, 1fr) 100px 60px 100px !important;
+    gap: var(--space-4);
+    padding: 0 var(--space-4);
+  }
+}
+
+@media (max-width: 1399px) and (min-width: 1025px) {
+
+  .device-list-table-header,
+  .device-list-table-row {
+    /* Checkbox(44) + Name(min 150) + MasterModel/Mfg(min 180) + Info/Proto(reduced min 120) + Status(90) + Pts(60) + Action(100) */
+    grid-template-columns: 44px minmax(150px, 1.1fr) minmax(180px, 1.1fr) minmax(120px, 0.9fr) 90px 60px 100px !important;
+    gap: var(--space-2);
+    padding: 0 var(--space-4);
+    min-width: 800px;
+  }
+
+  .group-side-panel {
+    width: 220px !important;
+  }
+}
+
+@media (max-width: 1024px) {
+
+  .device-list-table-header,
+  .device-list-table-row {
+    /* Checkbox(40) + Name(min 120) + MasterModel/Mfg(min 150) + Info/Proto(reduced min 110) + Status(80) + Pts(50) + Action(90) */
+    grid-template-columns: 40px minmax(120px, 1fr) minmax(150px, 1.1fr) minmax(110px, 0.9fr) 80px 50px 90px !important;
+    gap: var(--space-1);
+    padding: 0 var(--space-3);
+    font-size: 11px;
+    min-width: 700px;
+  }
+}
+
+/* ============================================================================
+   Bulk Action Bar (Floating)
+   ============================================================================ */
+.bulk-action-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #1e293b;
+  color: white;
+  padding: 12px 24px;
+  border-radius: var(--radius-full);
   display: flex;
   align-items: center;
   gap: 24px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.device-list-last-update {
+.bulk-action-bar.active {
+  transform: translateX(-50%) translateY(0);
+}
+
+.bulk-info {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  color: #6b7280;
-}
-
-.device-list-update-time {
-  color: #111827;
   font-weight: 600;
+  font-size: 14px;
 }
 
-.device-list-background-refresh {
+.bulk-info .count {
+  background: var(--primary-500);
+  color: white;
+  min-width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: #3b82f6;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  font-size: 12px;
 }
 
-.device-list-status-bar-right {
+.bulk-actions {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.device-list-processing {
+.btn-bulk {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #3b82f6;
+  transition: all 0.2s;
 }
 
-.device-list-refresh-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  color: #374151;
-  font-size: 14px;
+.btn-bulk:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-bulk.danger:hover {
+  background: var(--error-600);
+}
+
+.bulk-actions .separator {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 0 4px;
+}
+
+.btn-close-bulk {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
-  transition: all 0.15s ease;
+  padding: 4px;
+  font-size: 16px;
+  transition: color 0.2s;
 }
 
-.device-list-refresh-btn:hover:not(:disabled) {
-  background: #e5e7eb;
+.btn-close-bulk:hover {
+  color: white;
 }
 
-/* 모달 */
-.device-list-modal-overlay {
+/* 그룹 카운트 배지 (N:N 그룹 대응) */
+.group-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 4px;
+  line-height: 14px;
+  height: 16px;
+}
+
+.bi-tag.group-tag {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ============================================================================
+   Deleted Device Styles
+   ============================================================================ */
+.device-deleted-row {
+  background-color: var(--neutral-50) !important;
+  opacity: 0.6;
+  border-left: 4px solid var(--neutral-300);
+}
+
+.device-deleted-row:hover {
+  background-color: var(--neutral-100) !important;
+  opacity: 0.8;
+}
+
+.device-deleted-row .device-list-device-name {
+  text-decoration: line-through;
+  color: var(--neutral-500);
+}
+
+.device-deleted-row .device-list-device-icon {
+  filter: grayscale(1);
+  background: var(--neutral-400);
+}
+
+.mgmt-checkbox-label {
+  user-select: none;
+  transition: all 0.2s;
+}
+
+.mgmt-checkbox-label:hover {
+  background: var(--neutral-50);
+  border-radius: var(--radius-md);
+}
+
+/* Processing Overlay */
+.processing-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 21000;
+  animation: processing-fade-in 0.3s ease-out;
 }
 
-.device-list-modal-content {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 32px;
-  max-width: 500px;
-  width: 90%;
+.processing-content {
+  background: white;
+  padding: 32px 48px;
+  border-radius: 20px;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  border: 1px solid #e5e7eb;
-}
-
-.device-list-modal-header {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: 20px;
+  border: 1px solid #e2e8f0;
+  min-width: 280px;
 }
 
-.device-list-modal-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.device-list-modal-icon.info {
-  background: #eff6ff;
+.processing-content i {
+  font-size: 3.5rem;
   color: #3b82f6;
 }
 
-.device-list-modal-icon.warning {
-  background: #fef3c7;
-  color: #d97706;
-}
-
-.device-list-modal-icon.danger {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.device-list-modal-header h3 {
-  font-size: 20px;
+.processing-content span {
+  font-size: 18px;
   font-weight: 700;
-  color: #111827;
-  margin: 0;
+  color: #1e293b;
 }
 
-.device-list-modal-body {
-  font-size: 14px;
-  color: #4b5563;
-  line-height: 1.6;
-  margin-bottom: 32px;
-  white-space: pre-line;
-}
+@keyframes processing-fade-in {
+  from {
+    opacity: 0;
+  }
 
-.device-list-modal-footer {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
-.device-list-modal-btn {
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.device-list-modal-btn-cancel {
-  border: 1px solid #d1d5db;
-  background: #ffffff;
-  color: #374151;
-}
-
-.device-list-modal-btn-confirm {
-  border: none;
-  color: white;
-}
-
-.device-list-modal-btn-info {
-  background: #3b82f6;
-}
-
-.device-list-modal-btn-warning {
-  background: #d97706;
-}
-
-.device-list-modal-btn-danger {
-  background: #dc2626;
+  to {
+    opacity: 1;
+  }
 }

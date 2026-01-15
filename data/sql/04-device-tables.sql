@@ -5,6 +5,41 @@
 -- =============================================================================
 
 -- =============================================================================
+
+-- =============================================================================
+-- 제조사 및 모델 정보 (공통 참조)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS manufacturers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    country VARCHAR(50),
+    website VARCHAR(255),
+    logo_url VARCHAR(255),
+    is_active INTEGER DEFAULT 1,
+    is_deleted INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS device_models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    manufacturer_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    model_number VARCHAR(100),
+    device_type VARCHAR(50),                             -- PLC, HMI, SENSOR, etc.
+    description TEXT,
+    image_url VARCHAR(255),
+    manual_url VARCHAR(255),
+    metadata TEXT,                                       -- JSON 형태
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE CASCADE,
+    UNIQUE(manufacturer_id, name)
+);
+
+-- =============================================================================
 -- 디바이스 그룹 테이블
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS device_groups (
@@ -38,6 +73,19 @@ CREATE TABLE IF NOT EXISTS device_groups (
     
     -- 🔥 제약조건
     CONSTRAINT chk_group_type CHECK (group_type IN ('functional', 'physical', 'protocol', 'location'))
+);
+
+-- =============================================================================
+-- 장치-그룹 다중 배정 테이블 (N:N 관계)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS device_group_assignments (
+    device_id INTEGER NOT NULL,
+    group_id INTEGER NOT NULL,
+    is_primary INTEGER DEFAULT 0,                         -- 대표 그룹 여부
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (device_id, group_id),
+    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES device_groups(id) ON DELETE CASCADE
 );
 
 -- =============================================================================
@@ -124,6 +172,7 @@ CREATE TABLE IF NOT EXISTS devices (
     
     -- 상태 정보
     is_enabled INTEGER DEFAULT 1,
+    is_deleted INTEGER DEFAULT 0,                       -- ⬅️ Added for soft delete
     is_simulation_mode INTEGER DEFAULT 0,               -- 시뮬레이션 모드
     priority INTEGER DEFAULT 100,                       -- 수집 우선순위 (낮을수록 높은 우선순위)
     
@@ -131,6 +180,11 @@ CREATE TABLE IF NOT EXISTS devices (
     tags TEXT,                                          -- JSON 배열
     metadata TEXT,                                      -- JSON 객체
     custom_fields TEXT,                                 -- JSON 객체 (사용자 정의 필드)
+    
+    -- 템플릿 및 제조사 연동
+    template_device_id INTEGER,
+    manufacturer_id INTEGER,
+    model_id INTEGER,
     
     -- 감사 정보
     created_by INTEGER,
@@ -143,63 +197,9 @@ CREATE TABLE IF NOT EXISTS devices (
     FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
     FOREIGN KEY (created_by) REFERENCES users(id),
-    
-    -- 제약조건
-    CONSTRAINT chk_device_type CHECK (device_type IN ('PLC', 'HMI', 'SENSOR', 'GATEWAY', 'METER', 'CONTROLLER', 'ROBOT', 'INVERTER', 'DRIVE', 'SWITCH'))
-);CREATE TABLE IF NOT EXISTS devices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    site_id INTEGER NOT NULL,
-    device_group_id INTEGER,
-    edge_server_id INTEGER,
-    
-    -- 디바이스 기본 정보
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    device_type VARCHAR(50) NOT NULL,                    -- PLC, HMI, SENSOR, GATEWAY, METER, CONTROLLER, ROBOT, INVERTER
-    manufacturer VARCHAR(100),
-    model VARCHAR(100),
-    serial_number VARCHAR(100),
-    firmware_version VARCHAR(50),
-    
-    -- 프로토콜 설정 (외래키로 변경!)
-    protocol_id INTEGER NOT NULL,
-    endpoint VARCHAR(255) NOT NULL,                      -- IP:Port 또는 연결 문자열
-    config TEXT NOT NULL,                               -- JSON 형태 프로토콜별 설정
-    
-    -- 기본 수집 설정 (세부 설정은 device_settings 테이블 참조)
-    polling_interval INTEGER DEFAULT 1000,               -- 밀리초
-    timeout INTEGER DEFAULT 3000,                       -- 밀리초
-    retry_count INTEGER DEFAULT 3,
-    
-    -- 물리적 정보
-    location_description VARCHAR(200),
-    installation_date DATE,
-    last_maintenance DATE,
-    next_maintenance DATE,
-    warranty_expires DATE,
-    
-    -- 상태 정보
-    is_enabled INTEGER DEFAULT 1,
-    is_simulation_mode INTEGER DEFAULT 0,               -- 시뮬레이션 모드
-    priority INTEGER DEFAULT 100,                       -- 수집 우선순위 (낮을수록 높은 우선순위)
-    
-    -- 메타데이터
-    tags TEXT,                                          -- JSON 배열
-    metadata TEXT,                                      -- JSON 객체
-    custom_fields TEXT,                                 -- JSON 객체 (사용자 정의 필드)
-    
-    -- 감사 정보
-    created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
-    FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
-    FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
-    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
-    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE SET NULL,
+    FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE SET NULL,
+    FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE SET NULL,
     
     -- 제약조건
     CONSTRAINT chk_device_type CHECK (device_type IN ('PLC', 'HMI', 'SENSOR', 'GATEWAY', 'METER', 'CONTROLLER', 'ROBOT', 'INVERTER', 'DRIVE', 'SWITCH'))
@@ -468,3 +468,57 @@ CREATE INDEX IF NOT EXISTS idx_current_values_quality ON current_values(quality_
 CREATE INDEX IF NOT EXISTS idx_current_values_updated ON current_values(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_current_values_alarm ON current_values(alarm_active);
 CREATE INDEX IF NOT EXISTS idx_current_values_quality_name ON current_values(quality);
+
+-- =============================================================================
+-- 디바이스 템플릿 테이블 (운영 디바이스 생성을 위한 참조)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS template_devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,                           -- 템플릿 명칭
+    description TEXT,
+    protocol_id INTEGER NOT NULL,
+    config TEXT NOT NULL,                                -- 기본 프로토콜 설정 (JSON)
+    polling_interval INTEGER DEFAULT 1000,
+    timeout INTEGER DEFAULT 3000,
+    is_public INTEGER DEFAULT 1,                         -- 시스템 공유 여부
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE CASCADE,
+    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS template_device_settings (
+    template_device_id INTEGER PRIMARY KEY,
+    polling_interval_ms INTEGER DEFAULT 1000,
+    connection_timeout_ms INTEGER DEFAULT 10000,
+    read_timeout_ms INTEGER DEFAULT 5000,
+    write_timeout_ms INTEGER DEFAULT 5000,
+    max_retry_count INTEGER DEFAULT 3,
+    FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS template_data_points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_device_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    address INTEGER NOT NULL,
+    address_string VARCHAR(255),
+    data_type VARCHAR(20) NOT NULL,
+    access_mode VARCHAR(10) DEFAULT 'read',
+    unit VARCHAR(50),
+    scaling_factor REAL DEFAULT 1.0,
+    is_writable INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    metadata TEXT,                                       -- JSON 형태
+    FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE CASCADE
+);
+
+-- 템플릿 인덱스
+CREATE INDEX IF NOT EXISTS idx_template_devices_model ON template_devices(model_id);
+CREATE INDEX IF NOT EXISTS idx_template_data_points_template ON template_data_points(template_device_id);
+CREATE INDEX IF NOT EXISTS idx_manufacturers_name ON manufacturers(name);
+CREATE INDEX IF NOT EXISTS idx_device_models_manufacturer ON device_models(manufacturer_id);

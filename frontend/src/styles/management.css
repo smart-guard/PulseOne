@@ -1,0 +1,893 @@
+/* ============================================================================
+   frontend/src/styles/management.css
+   모든 관리 페이지를 위한 공통 디자인 시스템 (White Box Design)
+   ============================================================================ */
+
+/* 관리 페이지 전용 컨테이너 */
+.management-container {
+    width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: var(--space-4);
+    /* Reduced standard padding */
+    gap: var(--space-4);
+    height: 100vh;
+    /* Full viewport height */
+    max-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    overflow: hidden;
+    /* Prevent window scrolling */
+}
+
+/* === 공통 화이트 박스 스타일 === */
+.mgmt-card,
+.mgmt-header,
+.mgmt-filter-bar,
+.mgmt-stats-panel>div {
+    background: white;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--neutral-200);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-base);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* === 페이지 헤더 === */
+.mgmt-header {
+    padding: var(--space-4) var(--space-6);
+    /* Compact vertical padding */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.mgmt-header-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.mgmt-title {
+    font-size: 24px;
+    /* Reduced from 2xl (1.5rem/24px base) to be more stable */
+    font-weight: 700;
+    color: var(--neutral-900);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.mgmt-subtitle {
+    font-size: var(--text-sm);
+    color: var(--neutral-500);
+    margin: 0;
+}
+
+/* === 통계 패널 === */
+.mgmt-stats-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-4);
+}
+
+.mgmt-stat-card {
+    padding: var(--space-6);
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    position: relative;
+    overflow: hidden;
+}
+
+.mgmt-stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--neutral-200);
+}
+
+.mgmt-stat-card.primary::before {
+    background: var(--primary-500);
+}
+
+.mgmt-stat-card.success::before {
+    background: var(--success-500);
+}
+
+.mgmt-stat-card.warning::before {
+    background: var(--warning-500);
+}
+
+.mgmt-stat-card.error::before {
+    background: var(--error-500);
+}
+
+.mgmt-stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-xl);
+    background: var(--neutral-50);
+    color: var(--neutral-500);
+}
+
+.primary .mgmt-stat-icon {
+    background: var(--primary-50);
+    color: var(--primary-600);
+}
+
+.success .mgmt-stat-icon {
+    background: var(--success-50);
+    color: var(--success-600);
+}
+
+.warning .mgmt-stat-icon {
+    background: var(--warning-50);
+    color: var(--warning-600);
+}
+
+.error .mgmt-stat-icon {
+    background: var(--error-50);
+    color: var(--error-600);
+}
+
+.mgmt-stat-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.mgmt-stat-value {
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--neutral-900);
+    line-height: 1.2;
+}
+
+.mgmt-stat-label {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--neutral-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* === 필터 바 === */
+.mgmt-filter-bar {
+    padding: var(--space-4) var(--space-6);
+    /* Reduced vertical padding */
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.mgmt-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 140px;
+}
+
+.mgmt-filter-group.search {
+    flex: 2;
+    /* Increased priority for search */
+    min-width: 300px;
+}
+
+.mgmt-filter-group label {
+    font-size: 13px;
+    /* Standardized with table header */
+    font-weight: 600;
+    color: var(--neutral-700);
+}
+
+.mgmt-input,
+.mgmt-select {
+    width: 100%;
+    height: 40px;
+    /* Increased height for premium feel */
+    padding: 0 var(--space-4);
+    border: 1px solid var(--neutral-300);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    /* Slightly increased font size */
+    color: var(--neutral-800);
+    background: white;
+    transition: all var(--transition-fast);
+    box-sizing: border-box;
+}
+
+.mgmt-input.sm,
+.mgmt-select.sm {
+    height: 36px;
+    /* Substantial but compact for tables */
+    padding: 0 var(--space-3);
+    font-size: 13px;
+}
+
+.mgmt-input:focus,
+.mgmt-select:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-100);
+}
+
+.mgmt-search-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.mgmt-search-icon {
+    position: absolute;
+    left: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--neutral-400);
+}
+
+.mgmt-input-with-icon {
+    padding-left: var(--space-10);
+    /* Changed from undefined space-9 to 40px */
+}
+
+/* === 그리드 레이아웃 === */
+.mgmt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--space-6);
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding-bottom: var(--space-6);
+}
+
+/* === 카드 상세 스타일 === */
+.mgmt-card {
+    padding: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.mgmt-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.mgmt-card .card-title {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.mgmt-card .card-title h4 {
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: 600;
+}
+
+.mgmt-card .badge {
+    font-size: var(--text-xs);
+    background: var(--neutral-100);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+}
+
+.mgmt-card .card-body {
+    flex: 1;
+    font-size: var(--text-sm);
+    color: var(--neutral-600);
+}
+
+.mgmt-card .card-meta {
+    margin-top: var(--space-4);
+    display: flex;
+    gap: var(--space-4);
+    font-size: var(--text-xs);
+    color: var(--neutral-500);
+}
+
+.mgmt-card .card-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+/* === 테이블 스타일 === */
+.table-container {
+    overflow-x: auto;
+}
+
+.mgmt-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.mgmt-table th {
+    text-align: left;
+    padding: var(--space-4) var(--space-6);
+    background: var(--neutral-50);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--neutral-500);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--neutral-200);
+}
+
+.mgmt-table td {
+    padding: var(--space-4) var(--space-6);
+    border-bottom: 1px solid var(--neutral-100);
+    font-size: var(--text-sm);
+}
+
+.mgmt-table tr:hover td {
+    background: var(--neutral-50);
+}
+
+/* === 상태 표시 (Pills) === */
+.status-pill {
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 600;
+}
+
+.status-pill.active {
+    background: var(--success-100);
+    color: var(--success-700);
+}
+
+.status-pill.inactive {
+    background: var(--neutral-100);
+    color: var(--neutral-600);
+}
+
+.status-pill.error {
+    background: var(--error-100);
+    color: var(--error-700);
+}
+
+/* === 버튼 유틸리티 (Management 전용) === */
+.btn-primary,
+.btn-outline,
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    height: 32px;
+    /* Compact height matched with FilterBar */
+    padding: 0 var(--space-4);
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    border: 1px solid transparent;
+}
+
+.btn-primary {
+    background: var(--primary-500);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-600);
+}
+
+.btn-outline {
+    background: white;
+    color: var(--neutral-700);
+    border-color: var(--neutral-300);
+}
+
+.btn-outline:hover {
+    background: var(--neutral-50);
+    border-color: var(--neutral-400);
+}
+
+.btn-outline.primary {
+    color: var(--primary-600);
+    border-color: var(--primary-200);
+}
+
+.btn-outline.success {
+    color: var(--success-600);
+    border-color: var(--success-200);
+}
+
+.btn-outline.warning {
+    color: var(--warning-600);
+    border-color: var(--warning-200);
+}
+
+.btn-outline.error {
+    color: var(--error-600);
+    border-color: var(--error-200);
+}
+
+.btn-icon {
+    width: 32px;
+    height: 32px;
+    /* Compact size */
+    padding: 0;
+    background: transparent;
+    color: var(--neutral-500);
+}
+
+.btn-icon:hover {
+    background: var(--neutral-100);
+    color: var(--neutral-900);
+}
+
+.btn-icon.primary {
+    color: var(--primary-500);
+}
+
+.btn-icon.success {
+    color: var(--success-500);
+}
+
+.btn-icon.warning {
+    color: var(--warning-500);
+}
+
+.btn-icon.error {
+    color: var(--error-500);
+}
+
+.btn-icon.active {
+    background: var(--neutral-100);
+    color: var(--primary-600);
+    border: 1px solid var(--primary-200);
+}
+
+.view-toggle {
+    display: flex;
+    background: var(--neutral-50);
+    padding: 2px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--neutral-200);
+    gap: 2px;
+}
+
+.btn-primary:disabled,
+.btn-outline:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.btn-status {
+    flex: 1;
+    padding: 8px;
+    border-radius: var(--radius-md);
+    border: none;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-status.active {
+    background: var(--success-500);
+    color: white;
+}
+
+.btn-status.disabled {
+    background: var(--neutral-200);
+    color: var(--neutral-600);
+}
+
+/* === 반응형 대응 === */
+
+/* 1024px 전용 (10.1인치~태블릿 가로) */
+@media (max-width: 1024px) {
+    .management-container {
+        padding: var(--space-4);
+        gap: var(--space-4);
+    }
+
+    .mgmt-header,
+    .mgmt-filter-bar,
+    .mgmt-card {
+        padding: var(--space-4);
+    }
+
+    .mgmt-stats-panel {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .mgmt-grid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: var(--space-4);
+    }
+}
+
+/* 맥북 / 고해상도 대응 */
+@media (min-width: 1600px) {
+    .management-container {
+        max-width: 1540px;
+    }
+}
+
+/* 모바일 대응 */
+@media (max-width: 768px) {
+    .mgmt-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-4);
+    }
+
+    .mgmt-stats-panel {
+        grid-template-columns: 1fr;
+    }
+
+    .mgmt-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .mgmt-filter-group {
+        width: 100%;
+    }
+}
+
+/* === 모달 폼 스타일 (Pro-Engineer Density) === */
+.modal-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+    align-items: start;
+}
+
+.modal-form-section {
+    margin-bottom: var(--space-6);
+    padding: var(--space-4);
+    background: white;
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-lg);
+}
+
+.modal-form-section h3 {
+    margin: 0 0 var(--space-4) 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--neutral-900);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.modal-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: var(--space-3);
+}
+
+.modal-form-group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--neutral-700);
+}
+
+.modal-form-hint {
+    font-size: 11px;
+    color: var(--neutral-500);
+    margin-top: 2px;
+}
+
+/* 1컬럼 강제 (설명 필드 등) */
+.span-full {
+    grid-column: 1 / -1;
+}
+
+/* 섹션 내 2컬럼 레이아웃 지원 */
+.modal-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+
+/* === 제조사 관리 전용 추가 스타일 === */
+/* === 공통 관리 페이지 레이아웃 === */
+.mgmt-content-area {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    min-height: 0;
+}
+
+.mgmt-table-container,
+.mgmt-table-wrapper {
+    background: white;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--neutral-200);
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+    padding-bottom: var(--space-4);
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--primary-500);
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-link:hover {
+    background: var(--primary-50);
+    color: var(--primary-600);
+}
+
+.mgmt-table-id-link {
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--neutral-900) !important;
+}
+
+.clickable-name {
+    cursor: pointer;
+    color: var(--neutral-900) !important;
+}
+
+.mgmt-table-id-link:hover,
+.clickable-name:hover {
+    color: var(--neutral-900) !important;
+    text-decoration: underline !important;
+}
+
+.card-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 뷰 토글 버튼 보강 */
+.view-toggle {
+    display: flex;
+    gap: 4px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 2px;
+    background: white;
+}
+
+.view-toggle .btn-icon {
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    width: auto;
+    height: auto;
+}
+
+.view-toggle .btn-icon:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+.view-toggle .btn-icon.active {
+    background: var(--primary-500);
+    color: white;
+    border: none;
+}
+
+/* === 공통 모달 스타일 === */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(8px) !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5000 !important;
+    /* Ensure it's above everything */
+    padding: 20px;
+}
+
+.modal-container {
+    background: #ffffff !important;
+    border-radius: 12px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.3) !important;
+    width: 100%;
+    max-width: 600px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: modal-in 0.3s ease-out;
+    border: 1px solid #e2e8f0;
+}
+
+.modal-container.compact-modal {
+    max-width: 400px !important;
+    width: 400px !important;
+}
+
+.modal-header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #ffffff !important;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+    background: #ffffff !important;
+}
+
+.modal-footer {
+    padding: 16px 24px;
+    background: #f8fafc !important;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #94a3b8;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.close-btn:hover {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+@keyframes modal-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* === 액션 그룹 스타일 === */
+.card-actions,
+.table-actions {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+.table-actions {
+    justify-content: flex-end;
+}
+
+.btn-icon-sm {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--neutral-200);
+    background: white;
+    color: var(--neutral-600);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+}
+
+.btn-icon-sm:hover {
+    background: var(--neutral-50);
+    border-color: var(--neutral-300);
+    color: var(--neutral-900);
+}
+
+.btn-icon-sm.delete:hover {
+    background: #fef2f2;
+    border-color: #fee2e2;
+    color: #ef4444;
+}
+
+/* === 모달 닫기 버튼 보강 === */
+.btn-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    line-height: 1;
+}
+
+.btn-close:hover {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+/* === 인터랙티브 요소 (Clickable) === */
+.clickable-name {
+    color: var(--primary-600);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 600;
+}
+
+.clickable-name:hover {
+    color: var(--primary-500);
+    text-decoration: underline;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--primary-600);
+    cursor: pointer;
+    padding: 0;
+    font-size: inherit;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-link:hover {
+    color: var(--primary-500);
+    text-decoration: underline;
+}
+
+.card-meta span.clickable-name {
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}

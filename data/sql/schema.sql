@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
+    is_deleted BOOLEAN DEFAULT 0,
+    
     -- 🔥 제약조건
     CONSTRAINT chk_subscription_plan CHECK (subscription_plan IN ('starter', 'professional', 'enterprise')),
     CONSTRAINT chk_subscription_status CHECK (subscription_status IN ('active', 'trial', 'suspended', 'cancelled'))
@@ -76,6 +78,7 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     
     -- 🔥 등록 및 보안
     registration_token VARCHAR(255) UNIQUE,
+    instance_key VARCHAR(255) UNIQUE,                      -- 컬렉터 인스턴스 고유 키 (hostname:hash)
     activation_code VARCHAR(50),
     api_key VARCHAR(255),
     
@@ -100,8 +103,11 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     -- 🔥 메타데이터
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_deleted INTEGER DEFAULT 0,
+    site_id INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
     
     -- 🔥 제약조건
     CONSTRAINT chk_edge_status CHECK (status IN ('pending', 'active', 'inactive', 'maintenance', 'error'))
@@ -318,6 +324,7 @@ CREATE TABLE IF NOT EXISTS sites (
     
     -- 🔥 상태 및 설정
     is_active INTEGER DEFAULT 1,
+    is_deleted INTEGER DEFAULT 0,                        -- ⬅️ Added for soft delete
     is_visible INTEGER DEFAULT 1,                        -- 사용자에게 표시 여부
     monitoring_enabled INTEGER DEFAULT 1,                -- 모니터링 활성화
     
@@ -461,12 +468,13 @@ CREATE TABLE IF NOT EXISTS protocols (
     requires_broker INTEGER DEFAULT 0,             -- 브로커 필요 여부 (MQTT 등)
     
     -- 기능 지원 정보 (JSON)
-    supported_operations TEXT,                      -- ["read", "write", "subscribe", etc.]
+    supported_operations TEXT,                      -- ["read_coils", etc.]
     supported_data_types TEXT,                      -- ["boolean", "int16", "float32", etc.]
     connection_params TEXT,                         -- 연결에 필요한 파라미터 스키마
+    capabilities TEXT DEFAULT '{}',                 -- 프로토콜별 특수 역량 (JSON)
     
     -- 설정 정보
-    default_polling_interval INTEGER DEFAULT 1000, -- 기본 폴링 간격 (ms)
+    default_polling_interval INTEGER DEFAULT 1000, -- 기본 수집 주기 (ms)
     default_timeout INTEGER DEFAULT 5000,          -- 기본 타임아웃 (ms)
     max_concurrent_connections INTEGER DEFAULT 1,   -- 최대 동시 연결 수
     
@@ -493,6 +501,41 @@ CREATE TABLE IF NOT EXISTS protocols (
 -- 디바이스 및 데이터 포인트 테이블 (SQLite 버전) - 2025-08-14 최신 업데이트
 -- PulseOne v2.1.0 완전 호환, C++ Struct DataPoint 100% 반영
 -- =============================================================================
+
+-- =============================================================================
+
+-- =============================================================================
+-- 제조사 및 모델 정보 (공통 참조)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS manufacturers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    country VARCHAR(50),
+    website VARCHAR(255),
+    logo_url VARCHAR(255),
+    is_active INTEGER DEFAULT 1,
+    is_deleted INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS device_models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    manufacturer_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    model_number VARCHAR(100),
+    device_type VARCHAR(50),                             -- PLC, HMI, SENSOR, etc.
+    description TEXT,
+    image_url VARCHAR(255),
+    manual_url VARCHAR(255),
+    metadata TEXT,                                       -- JSON 형태
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE CASCADE,
+    UNIQUE(manufacturer_id, name)
+);
 
 -- =============================================================================
 -- 디바이스 그룹 테이블
@@ -528,6 +571,19 @@ CREATE TABLE IF NOT EXISTS device_groups (
     
     -- 🔥 제약조건
     CONSTRAINT chk_group_type CHECK (group_type IN ('functional', 'physical', 'protocol', 'location'))
+);
+
+-- =============================================================================
+-- 장치-그룹 다중 배정 테이블 (N:N 관계)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS device_group_assignments (
+    device_id INTEGER NOT NULL,
+    group_id INTEGER NOT NULL,
+    is_primary INTEGER DEFAULT 0,                         -- 대표 그룹 여부
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (device_id, group_id),
+    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES device_groups(id) ON DELETE CASCADE
 );
 
 -- =============================================================================
@@ -614,6 +670,7 @@ CREATE TABLE IF NOT EXISTS devices (
     
     -- 상태 정보
     is_enabled INTEGER DEFAULT 1,
+    is_deleted INTEGER DEFAULT 0,                       -- ⬅️ Added for soft delete
     is_simulation_mode INTEGER DEFAULT 0,               -- 시뮬레이션 모드
     priority INTEGER DEFAULT 100,                       -- 수집 우선순위 (낮을수록 높은 우선순위)
     
@@ -621,6 +678,11 @@ CREATE TABLE IF NOT EXISTS devices (
     tags TEXT,                                          -- JSON 배열
     metadata TEXT,                                      -- JSON 객체
     custom_fields TEXT,                                 -- JSON 객체 (사용자 정의 필드)
+    
+    -- 템플릿 및 제조사 연동
+    template_device_id INTEGER,
+    manufacturer_id INTEGER,
+    model_id INTEGER,
     
     -- 감사 정보
     created_by INTEGER,
@@ -633,63 +695,9 @@ CREATE TABLE IF NOT EXISTS devices (
     FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
     FOREIGN KEY (created_by) REFERENCES users(id),
-    
-    -- 제약조건
-    CONSTRAINT chk_device_type CHECK (device_type IN ('PLC', 'HMI', 'SENSOR', 'GATEWAY', 'METER', 'CONTROLLER', 'ROBOT', 'INVERTER', 'DRIVE', 'SWITCH'))
-);CREATE TABLE IF NOT EXISTS devices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tenant_id INTEGER NOT NULL,
-    site_id INTEGER NOT NULL,
-    device_group_id INTEGER,
-    edge_server_id INTEGER,
-    
-    -- 디바이스 기본 정보
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    device_type VARCHAR(50) NOT NULL,                    -- PLC, HMI, SENSOR, GATEWAY, METER, CONTROLLER, ROBOT, INVERTER
-    manufacturer VARCHAR(100),
-    model VARCHAR(100),
-    serial_number VARCHAR(100),
-    firmware_version VARCHAR(50),
-    
-    -- 프로토콜 설정 (외래키로 변경!)
-    protocol_id INTEGER NOT NULL,
-    endpoint VARCHAR(255) NOT NULL,                      -- IP:Port 또는 연결 문자열
-    config TEXT NOT NULL,                               -- JSON 형태 프로토콜별 설정
-    
-    -- 기본 수집 설정 (세부 설정은 device_settings 테이블 참조)
-    polling_interval INTEGER DEFAULT 1000,               -- 밀리초
-    timeout INTEGER DEFAULT 3000,                       -- 밀리초
-    retry_count INTEGER DEFAULT 3,
-    
-    -- 물리적 정보
-    location_description VARCHAR(200),
-    installation_date DATE,
-    last_maintenance DATE,
-    next_maintenance DATE,
-    warranty_expires DATE,
-    
-    -- 상태 정보
-    is_enabled INTEGER DEFAULT 1,
-    is_simulation_mode INTEGER DEFAULT 0,               -- 시뮬레이션 모드
-    priority INTEGER DEFAULT 100,                       -- 수집 우선순위 (낮을수록 높은 우선순위)
-    
-    -- 메타데이터
-    tags TEXT,                                          -- JSON 배열
-    metadata TEXT,                                      -- JSON 객체
-    custom_fields TEXT,                                 -- JSON 객체 (사용자 정의 필드)
-    
-    -- 감사 정보
-    created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
-    FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
-    FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
-    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
-    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE SET NULL,
+    FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE SET NULL,
+    FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE SET NULL,
     
     -- 제약조건
     CONSTRAINT chk_device_type CHECK (device_type IN ('PLC', 'HMI', 'SENSOR', 'GATEWAY', 'METER', 'CONTROLLER', 'ROBOT', 'INVERTER', 'DRIVE', 'SWITCH'))
@@ -720,20 +728,20 @@ CREATE TABLE IF NOT EXISTS device_settings (
     max_backoff_time_ms INTEGER DEFAULT 300000,         -- 최대 5분
     
     -- 🔥 Keep-alive 설정
-    is_keep_alive_enabled INTEGER DEFAULT 1,
+    keep_alive_enabled INTEGER DEFAULT 1,
     keep_alive_interval_s INTEGER DEFAULT 30,
     keep_alive_timeout_s INTEGER DEFAULT 10,
     
     -- 🔥 데이터 품질 관리
-    is_data_validation_enabled INTEGER DEFAULT 1,
-    is_outlier_detection_enabled INTEGER DEFAULT 0,
-    is_deadband_enabled INTEGER DEFAULT 1,
+    data_validation_enabled INTEGER DEFAULT 1,
+    outlier_detection_enabled INTEGER DEFAULT 0,
+    deadband_enabled INTEGER DEFAULT 1,
     
     -- 🔥 로깅 및 진단
-    is_detailed_logging_enabled INTEGER DEFAULT 0,
-    is_performance_monitoring_enabled INTEGER DEFAULT 1,
-    is_diagnostic_mode_enabled INTEGER DEFAULT 0,
-    is_communication_logging_enabled INTEGER DEFAULT 0,    -- 통신 로그 기록
+    detailed_logging_enabled INTEGER DEFAULT 0,
+    performance_monitoring_enabled INTEGER DEFAULT 1,
+    diagnostic_mode_enabled INTEGER DEFAULT 0,
+    communication_logging_enabled INTEGER DEFAULT 0,    -- 통신 로그 기록
     
     -- 🔥 버퍼링 설정
     read_buffer_size INTEGER DEFAULT 1024,
@@ -823,14 +831,14 @@ CREATE TABLE IF NOT EXISTS data_points (
     max_value REAL DEFAULT 0.0,                        -- double max_value
     
     -- 🔥🔥🔥 로깅 및 수집 설정 (SQLQueries.h가 찾던 핵심 컬럼들!)
-    is_log_enabled INTEGER DEFAULT 1,                     -- bool is_log_enabled ✅
+    log_enabled INTEGER DEFAULT 1,                     -- bool log_enabled ✅
     log_interval_ms INTEGER DEFAULT 0,                 -- uint32_t log_interval_ms ✅
     log_deadband REAL DEFAULT 0.0,                     -- double log_deadband ✅
     polling_interval_ms INTEGER DEFAULT 0,             -- uint32_t polling_interval_ms
     
     -- 🔥 데이터 품질 설정
-    is_quality_check_enabled INTEGER DEFAULT 1,
-    is_range_check_enabled INTEGER DEFAULT 1,
+    quality_check_enabled INTEGER DEFAULT 1,
+    range_check_enabled INTEGER DEFAULT 1,
     rate_of_change_limit REAL DEFAULT 0.0,             -- 변화율 제한
     
     -- 🔥🔥🔥 메타데이터 (SQLQueries.h가 찾던 핵심 컬럼들!)
@@ -840,7 +848,7 @@ CREATE TABLE IF NOT EXISTS data_points (
     protocol_params TEXT,                               -- JSON: 프로토콜별 매개변수
     
     -- 🔥 알람 관련 설정
-    is_alarm_enabled INTEGER DEFAULT 0,
+    alarm_enabled INTEGER DEFAULT 0,
     high_alarm_limit REAL,
     low_alarm_limit REAL,
     alarm_deadband REAL DEFAULT 0.0,
@@ -852,6 +860,8 @@ CREATE TABLE IF NOT EXISTS data_points (
     -- 🔥 시간 정보
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    is_deleted BOOLEAN DEFAULT 0,
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     
@@ -957,7 +967,61 @@ CREATE INDEX IF NOT EXISTS idx_current_values_timestamp ON current_values(value_
 CREATE INDEX IF NOT EXISTS idx_current_values_quality ON current_values(quality_code);
 CREATE INDEX IF NOT EXISTS idx_current_values_updated ON current_values(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_current_values_alarm ON current_values(alarm_active);
-CREATE INDEX IF NOT EXISTS idx_current_values_quality_name ON current_values(quality);-- =============================================================================
+CREATE INDEX IF NOT EXISTS idx_current_values_quality_name ON current_values(quality);
+
+-- =============================================================================
+-- 디바이스 템플릿 테이블 (운영 디바이스 생성을 위한 참조)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS template_devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,                           -- 템플릿 명칭
+    description TEXT,
+    protocol_id INTEGER NOT NULL,
+    config TEXT NOT NULL,                                -- 기본 프로토콜 설정 (JSON)
+    polling_interval INTEGER DEFAULT 1000,
+    timeout INTEGER DEFAULT 3000,
+    is_public INTEGER DEFAULT 1,                         -- 시스템 공유 여부
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE CASCADE,
+    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS template_device_settings (
+    template_device_id INTEGER PRIMARY KEY,
+    polling_interval_ms INTEGER DEFAULT 1000,
+    connection_timeout_ms INTEGER DEFAULT 10000,
+    read_timeout_ms INTEGER DEFAULT 5000,
+    write_timeout_ms INTEGER DEFAULT 5000,
+    max_retry_count INTEGER DEFAULT 3,
+    FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS template_data_points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_device_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    address INTEGER NOT NULL,
+    address_string VARCHAR(255),
+    data_type VARCHAR(20) NOT NULL,
+    access_mode VARCHAR(10) DEFAULT 'read',
+    unit VARCHAR(50),
+    scaling_factor REAL DEFAULT 1.0,
+    is_writable INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    metadata TEXT,                                       -- JSON 형태
+    FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE CASCADE
+);
+
+-- 템플릿 인덱스
+CREATE INDEX IF NOT EXISTS idx_template_devices_model ON template_devices(model_id);
+CREATE INDEX IF NOT EXISTS idx_template_data_points_template ON template_data_points(template_device_id);
+CREATE INDEX IF NOT EXISTS idx_manufacturers_name ON manufacturers(name);
+CREATE INDEX IF NOT EXISTS idx_device_models_manufacturer ON device_models(manufacturer_id);-- =============================================================================
 -- backend/lib/database/schemas/05-alarm-tables.sql
 -- 알람 시스템 테이블 (SQLite 버전) - device_id INTEGER 수정
 -- PulseOne v2.1.0 완전 호환, 현재 DB와 100% 동기화
@@ -1370,18 +1434,18 @@ CREATE TABLE IF NOT EXISTS virtual_points (
     retry_count INTEGER DEFAULT 3,                     -- 실패 시 재시도 횟수
     
     -- 🔥 품질 관리
-    is_quality_check_enabled INTEGER DEFAULT 1,
+    quality_check_enabled INTEGER DEFAULT 1,
     result_validation TEXT,                             -- JSON: 결과 검증 규칙
-    is_outlier_detection_enabled INTEGER DEFAULT 0,
+    outlier_detection_enabled INTEGER DEFAULT 0,
     
     -- 🔥 로깅 설정
-    is_log_enabled INTEGER DEFAULT 1,
+    log_enabled INTEGER DEFAULT 1,
     log_interval_ms INTEGER DEFAULT 5000,
     log_inputs INTEGER DEFAULT 0,                      -- 입력값 로깅 여부
     log_errors INTEGER DEFAULT 1,                      -- 에러 로깅 여부
     
     -- 🔥 알람 연동
-    is_alarm_enabled INTEGER DEFAULT 0,
+    alarm_enabled INTEGER DEFAULT 0,
     high_limit REAL,
     low_limit REAL,
     deadband REAL DEFAULT 0.0,
@@ -2164,38 +2228,54 @@ CREATE INDEX IF NOT EXISTS idx_performance_logs_category ON performance_logs(met
 CREATE INDEX IF NOT EXISTS idx_performance_logs_name ON performance_logs(metric_name);
 CREATE INDEX IF NOT EXISTS idx_performance_logs_hostname ON performance_logs(hostname);
 CREATE INDEX IF NOT EXISTS idx_performance_logs_component ON performance_logs(component);
-CREATE INDEX IF NOT EXISTS idx_performance_logs_category_name_time ON performance_logs(metric_category, metric_name, timestamp DESC);-- =============================================================================
+CREATE INDEX IF NOT EXISTS idx_performance_logs_category_name_time ON performance_logs(metric_category, metric_name, timestamp DESC);
+
+-- =============================================================================
+-- 감사 로그 테이블 (상세한 설정 업데이트 추적)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER,
+    user_id INTEGER,
+    
+    -- 🔥 액션 정보
+    action VARCHAR(50) NOT NULL,                     -- CREATE, UPDATE, DELETE, EXECUTE, etc.
+    entity_type VARCHAR(50) NOT NULL,                -- DEVICE, DATA_POINT, PROTOCOL, SITE, USER, etc.
+    entity_id INTEGER,
+    entity_name VARCHAR(100),
+    
+    -- 🔥 변경 상세
+    old_value TEXT,                                  -- JSON 형태 (변경 전)
+    new_value TEXT,                                  -- JSON 형태 (변경 후)
+    change_summary TEXT,                             -- 변경 사항 요약
+    
+    -- 🔥 요청 정보
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    request_id VARCHAR(50),
+    
+    -- 🔥 메타데이터
+    severity VARCHAR(20) DEFAULT 'info',             -- info, warning, critical
+    details TEXT,                                    -- JSON 형태
+    
+    -- 🔥 감사 정보
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);-- =============================================================================
 -- backend/lib/database/schemas/07-indexes.sql
 -- 성능 최적화 인덱스 (SQLite 버전) - 2025-08-14 최신 업데이트
 -- PulseOne v2.1.0 완전 최적화 - 실시간 조회 및 대용량 데이터 지원
 -- =============================================================================
 
--- ============================================================================
--- PulseOne Export System - Database Schema (SQLite)
--- 
--- 파일명: 10-export_system.sql
--- 목적: Export Gateway 및 Protocol Server를 위한 데이터베이스 스키마
--- 버전: 2.2 (template_id 컬럼 추가)
--- 작성일: 2025-10-23
---
--- 주요 변경사항 (v2.1 → v2.2):
---   - export_targets: template_id 컬럼 추가 (외래키로 payload_templates 참조)
---   - export_targets: template_id 인덱스 추가
---   - config JSON에서 템플릿 참조 분리 (정규화)
---
--- 이전 변경사항:
---   - v2.1: payload_templates 테이블 추가
---   - v2.0: export_targets 통계 필드 제거, export_logs 확장
---
--- 적용 방법:
---   sqlite3 /app/data/pulseone.db < 10-export_system.sql
--- ============================================================================
-
-PRAGMA foreign_keys = ON;
-
--- ============================================================================
--- 1. export_profiles (내보낼 데이터 세트)
--- ============================================================================
+-- =============================================================================
 
 CREATE TABLE IF NOT EXISTS export_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2686,437 +2766,3 @@ BEGIN
     WHERE id = OLD.profile_id;
 END;
 
--- ============================================================================
--- 초기 테스트 데이터 (개발환경용)
--- ============================================================================
-
-INSERT OR IGNORE INTO export_profiles (name, description) VALUES 
-    ('건물 1층 센서 데이터', '1층의 온도, 습도, CO2 센서 데이터'),
-    ('공조기 실시간 데이터', 'AHU-01의 운전 상태 및 센서값');
-
--- ============================================================================
--- 완료 메시지
--- ============================================================================
-
-SELECT '✅ PulseOne Export System 스키마 생성 완료! (v2.2)' as message;
-SELECT '📊 통계는 VIEW를 통해 조회하세요 (v_export_targets_stats_24h, v_export_targets_stats_all)' as note;
-SELECT '🎨 Payload 템플릿은 payload_templates 테이블에서 관리됩니다' as info;
-SELECT '🔗 export_targets.template_id로 템플릿 참조 가능 (v2.2 신규)' as new_feature;
-
--- ============================================================================
--- 사용 가능한 템플릿 변수
--- ============================================================================
-
-/*
-AlarmMessage 원본:
-  {{building_id}}, {{point_name}}, {{value}}, {{timestamp}}
-  {{alarm_flag}}, {{status}}, {{description}}
-
-매핑 필드:
-  {{target_field_name}}, {{target_description}}, {{converted_value}}
-
-계산된 필드:
-  {{timestamp_iso8601}}, {{timestamp_unix_ms}}, {{alarm_status}}
-  
-v2.2 변경사항:
-  - export_targets에 template_id 컬럼 추가
-  - payload_templates 외래키 참조
-  - v_export_targets_with_templates 뷰 추가
-*/-- ============================================================================
--- PulseOne Export System - HDCL-CSP 완전한 설정 (최종 완성본)
--- ============================================================================
--- 파일명: hdcl-export-system-complete.sql
--- 작성일: 2025-10-23
--- 버전: 2.0.0 FINAL
--- 
--- 📋 이 파일의 역할:
---   - 기존 export 관련 데이터 완전 삭제
---   - HDCL-CSP 운영 환경에 맞는 Export Targets 생성 (4개)
---   - 포인트 매핑 설정 (총 28개)
---   - 모든 Foreign Key 에러 해결
---
--- 🏗️ 데이터 흐름:
---   iCos Collector
---     ↓
---   1️⃣ S3 저장 (s3://hdcl-csp-prod/icos/) - 전체 백업
---   2️⃣ API Gateway → Lambda → EC2 WAS
---       - POST /alarm → icos_5_csp_alarm
---       - POST /control → icos_5_csp_control_request
---       - PUT /control → icos_5_csp_control_result
---
--- 📊 Export Targets (4개):
---   1. Alarm API (알람 전송) - 2개 포인트
---   2. S3 Data Lake (전체 백업) - 17개 포인트
---   3. Control Request API (제어 요청) - 6개 포인트
---   4. Control Result API (제어 결과) - 3개 포인트
---
--- 🚀 적용 방법:
---   sqlite3 /app/data/sql/pulseone.db < hdcl-export-system-complete.sql
---
--- ⚠️ 주의:
---   - 기존 export_targets, export_target_mappings 데이터 삭제됨
---   - AWS 키와 API Gateway 키는 YOUR_XXX로 설정됨 (나중에 업데이트)
--- ============================================================================
-
-PRAGMA foreign_keys = ON;
-
--- ============================================================================
--- 1단계: 기존 데이터 완전 삭제
--- ============================================================================
-
-BEGIN TRANSACTION;
-
--- export_schedules 삭제 (FK 제약 때문에 먼저)
-DELETE FROM export_schedules;
-
--- export_logs 삭제
-DELETE FROM export_logs;
-
--- export_target_mappings 삭제 (FK 제약 때문에 먼저)
-DELETE FROM export_target_mappings;
-
--- export_targets 삭제
-DELETE FROM export_targets;
-
--- export_profile_points 삭제
-DELETE FROM export_profile_points;
-
--- protocol_mappings 삭제
-DELETE FROM protocol_mappings;
-
--- protocol_services 삭제
-DELETE FROM protocol_services;
-
-COMMIT;
-
-SELECT '✅ 1단계: 기존 Export 데이터 삭제 완료' as step1;
-
--- ============================================================================
--- 2단계: Export Profiles 확인/생성
--- ============================================================================
-
--- 기본 프로필이 없으면 생성
-INSERT OR IGNORE INTO export_profiles (id, name, description, is_enabled)
-VALUES (1, 'HDCL-CSP 운영 데이터', 'HDCL-CSP 실제 운영 환경 데이터', 1);
-
-SELECT '✅ 2단계: Export Profile 확인 완료' as step2;
-
--- ============================================================================
--- 3단계: Export Targets 생성 (4개) - FK 에러 없는 버전
--- ============================================================================
-
--- ============================================================================
--- Target 1: Alarm API (긴급 알람 전송)
--- ============================================================================
--- 엔드포인트: POST https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/alarm
--- Lambda: icos_5_csp_alarm → EC2 WAS
--- 전송 조건: 알람 발생 시 즉시 (on_change)
--- 매핑: Emergency_Stop, Active_Alarms (2개)
-
-INSERT INTO export_targets (
-    id,
-    name,
-    target_type,
-    description,
-    config,
-    is_enabled,
-    export_mode
-) VALUES (
-    1,
-    'ICOS5 API - Alarm',
-    'http',
-    'API Gateway POST /alarm → Lambda (icos_5_csp_alarm) → EC2 WAS',
-    '{
-        "url": "https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/alarm",
-        "method": "POST",
-        "headers": {
-            "Content-Type": "application/json",
-            "x-api-key": "YOUR_API_GATEWAY_KEY"
-        },
-        "timeout": 10000,
-        "retry": 3,
-        "retryDelay": 2000,
-        "lambdaFunction": "icos_5_csp_alarm"
-    }',
-    1,
-    'on_change'
-);
-
--- ============================================================================
--- Target 2: S3 Data Lake (전체 데이터 백업)
--- ============================================================================
--- 엔드포인트: s3://hdcl-csp-prod/icos/
--- 전송 조건: 1분마다 배치 (batch)
--- 매핑: 전체 17개 포인트
-
-INSERT INTO export_targets (
-    id,
-    name,
-    target_type,
-    description,
-    config,
-    is_enabled,
-    export_mode
-) VALUES (
-    2,
-    'HDCL-CSP S3 Data Lake',
-    's3',
-    'S3 저장 (s3://hdcl-csp-prod/icos/) - 전체 데이터 백업',
-    '{
-        "bucket": "hdcl-csp-prod",
-        "region": "ap-northeast-2",
-        "prefix": "icos/",
-        "accessKey": "YOUR_AWS_ACCESS_KEY",
-        "secretKey": "YOUR_AWS_SECRET_KEY",
-        "fileFormat": "json",
-        "compression": "gzip",
-        "partitionBy": "datetime",
-        "fileNaming": "{timestamp}-{type}.json.gz"
-    }',
-    1,
-    'batch'
-);
-
--- ============================================================================
--- Target 3: Control Request API (제어 명령 전송)
--- ============================================================================
--- 엔드포인트: POST https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/control
--- Lambda: icos_5_csp_control_request → EC2 WAS
--- 전송 조건: 제어 요청 시 즉시 (on_change)
--- 매핑: Line_Speed, Motor_Current, Robot 위치, Welding_Current (6개)
-
-INSERT INTO export_targets (
-    id,
-    name,
-    target_type,
-    description,
-    config,
-    is_enabled,
-    export_mode
-) VALUES (
-    3,
-    'ICOS5 API - Control Request',
-    'http',
-    'API Gateway POST /control → Lambda (icos_5_csp_control_request) → EC2 WAS',
-    '{
-        "url": "https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/control",
-        "method": "POST",
-        "headers": {
-            "Content-Type": "application/json",
-            "x-api-key": "YOUR_API_GATEWAY_KEY"
-        },
-        "timeout": 10000,
-        "retry": 3,
-        "retryDelay": 2000,
-        "lambdaFunction": "icos_5_csp_control_request"
-    }',
-    1,
-    'on_change'
-);
-
--- ============================================================================
--- Target 4: Control Result API (제어 결과 업데이트)
--- ============================================================================
--- 엔드포인트: PUT https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/control
--- Lambda: icos_5_csp_control_result → EC2 WAS
--- 전송 조건: 명시적 호출 시 (on_demand)
--- 매핑: Production_Count, Screen_Status, User_Level (3개)
-
-INSERT INTO export_targets (
-    id,
-    name,
-    target_type,
-    description,
-    config,
-    is_enabled,
-    export_mode
-) VALUES (
-    4,
-    'ICOS5 API - Control Result',
-    'http',
-    'API Gateway PUT /control → Lambda (icos_5_csp_control_result) → EC2 WAS',
-    '{
-        "url": "https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/control",
-        "method": "PUT",
-        "headers": {
-            "Content-Type": "application/json",
-            "x-api-key": "YOUR_API_GATEWAY_KEY"
-        },
-        "timeout": 10000,
-        "retry": 2,
-        "retryDelay": 1000,
-        "lambdaFunction": "icos_5_csp_control_result"
-    }',
-    1,
-    'on_demand'
-);
-
-SELECT '✅ 3단계: Export Targets 생성 완료 (4개)' as step3;
-
--- ============================================================================
--- 4단계: Export Target Mappings (포인트 매핑) - 총 28개
--- ============================================================================
-
--- ============================================================================
--- Target 1 (Alarm API): 알람 관련 포인트만 (2개)
--- ============================================================================
--- Emergency_Stop (id=5), Active_Alarms (id=7)
-
-INSERT INTO export_target_mappings (
-    target_id, point_id, target_field_name, target_description, is_enabled
-) VALUES
-    (1, 5, 'emergency_stop', 'Emergency Stop - 긴급정지', 1),
-    (1, 7, 'active_alarms', 'Active Alarms - 활성 알람', 1);
-
--- ============================================================================
--- Target 2 (S3): 전체 데이터 백업 (17개)
--- ============================================================================
--- 모든 포인트를 S3에 백업
-
-INSERT INTO export_target_mappings (target_id, point_id, target_field_name, is_enabled)
-SELECT 2, id, name, 1 FROM data_points WHERE id <= 17;
-
--- ============================================================================
--- Target 3 (Control Request): 제어 가능 포인트 (6개)
--- ============================================================================
--- Line_Speed, Motor_Current, Robot 위치(X,Y,Z), Welding_Current
-
-INSERT INTO export_target_mappings (
-    target_id, point_id, target_field_name, target_description, is_enabled
-) VALUES
-    (3, 2, 'line_speed', 'Line Speed - 라인 속도 제어', 1),
-    (3, 3, 'motor_current', 'Motor Current - 모터 전류', 1),
-    (3, 9, 'robot_x_position', 'Robot X Position', 1),
-    (3, 10, 'robot_y_position', 'Robot Y Position', 1),
-    (3, 11, 'robot_z_position', 'Robot Z Position', 1),
-    (3, 12, 'welding_current', 'Welding Current - 용접 전류', 1);
-
--- ============================================================================
--- Target 4 (Control Result): 제어 결과 포인트 (3개)
--- ============================================================================
--- Production_Count, Screen_Status, User_Level
-
-INSERT INTO export_target_mappings (
-    target_id, point_id, target_field_name, target_description, is_enabled
-) VALUES
-    (4, 1, 'production_count', 'Production Count - 생산 수량', 1),
-    (4, 6, 'screen_status', 'Screen Status - 화면 상태', 1),
-    (4, 8, 'user_level', 'User Level - 사용자 레벨', 1);
-
-SELECT '✅ 4단계: Export Target Mappings 생성 완료 (28개)' as step4;
-
--- ============================================================================
--- 5단계: 검증 및 결과 출력
--- ============================================================================
-
-SELECT '' as blank;
-SELECT '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' as separator;
-SELECT '🎉 HDCL-CSP Export System 설정 완료!' as message;
-SELECT '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' as separator;
-SELECT '' as blank2;
-
--- 데이터 흐름 설명
-SELECT '🏗️  데이터 흐름:' as architecture;
-SELECT '   iCos Collector' as flow1;
-SELECT '     ↓' as arrow1;
-SELECT '   1️⃣  S3 저장 (전체 백업 - 1분마다)' as flow2;
-SELECT '   2️⃣  API Gateway → Lambda → EC2 WAS' as flow3;
-SELECT '       • POST /alarm → icos_5_csp_alarm' as flow4;
-SELECT '       • POST /control → icos_5_csp_control_request' as flow5;
-SELECT '       • PUT /control → icos_5_csp_control_result' as flow6;
-SELECT '' as blank3;
-
--- Export Targets 요약
-SELECT '📊 Export Targets (4개):' as targets_title;
-SELECT '' as blank4;
-
-SELECT 
-    '   ' || id || '. ' || name as target,
-    '      Type: ' || target_type || ' | Mode: ' || export_mode || ' | ' || 
-    CASE WHEN is_enabled = 1 THEN '✅ 활성' ELSE '❌ 비활성' END as status
-FROM export_targets
-WHERE id IN (1, 2, 3, 4)
-ORDER BY id;
-
-SELECT '' as blank5;
-
--- 엔드포인트 정보
-SELECT '🌐 엔드포인트:' as endpoint_title;
-SELECT '   Target 1: POST /alarm → icos_5_csp_alarm' as ep1;
-SELECT '   Target 2: s3://hdcl-csp-prod/icos/' as ep2;
-SELECT '   Target 3: POST /control → icos_5_csp_control_request' as ep3;
-SELECT '   Target 4: PUT /control → icos_5_csp_control_result' as ep4;
-SELECT '' as blank6;
-
--- 매핑 통계
-SELECT '🔗 Target별 매핑 포인트:' as mapping_title;
-SELECT '' as blank7;
-
-SELECT 
-    '   Target ' || et.id || ': ' || et.name as target,
-    '      매핑: ' || COUNT(tm.id) || '개 포인트' as count
-FROM export_targets et
-LEFT JOIN export_target_mappings tm ON et.id = tm.target_id
-WHERE et.id IN (1, 2, 3, 4)
-GROUP BY et.id
-ORDER BY et.id;
-
-SELECT '' as blank8;
-
--- 상세 매핑 정보
-SELECT '📋 매핑 상세:' as detail_title;
-SELECT '   Target 1 (Alarm):        Emergency_Stop, Active_Alarms' as detail1;
-SELECT '   Target 2 (S3):           전체 17개 포인트' as detail2;
-SELECT '   Target 3 (Control Req):  Line_Speed, Motor, Robot(X,Y,Z), Welding' as detail3;
-SELECT '   Target 4 (Control Res):  Production_Count, Screen_Status, User_Level' as detail4;
-SELECT '' as blank9;
-
--- 설정 필요 항목
-SELECT '⚠️  설정 필요 항목:' as warning_title;
-SELECT '   1. AWS Access Key / Secret Key (S3용)' as item1;
-SELECT '   2. API Gateway x-api-key (HTTP API 3개 공통)' as item2;
-SELECT '' as blank10;
-
--- 키 업데이트 방법
-SELECT '🔑 인증 키 업데이트 SQL:' as update_title;
-SELECT '' as blank11;
-SELECT '   -- API Gateway 키 업데이트' as update1;
-SELECT '   UPDATE export_targets' as update2;
-SELECT '   SET config = json_set(config, ''$.headers."x-api-key"'', ''실제-API-키'')' as update3;
-SELECT '   WHERE id IN (1, 3, 4);' as update4;
-SELECT '' as blank12;
-SELECT '   -- S3 키 업데이트' as update5;
-SELECT '   UPDATE export_targets' as update6;
-SELECT '   SET config = json_set(config,' as update7;
-SELECT '       ''$.accessKey'', ''AKIA실제키'',' as update8;
-SELECT '       ''$.secretKey'', ''실제시크릿키'')' as update9;
-SELECT '   WHERE id = 2;' as update10;
-SELECT '' as blank13;
-
--- 확인 쿼리
-SELECT '🔍 확인 쿼리:' as check_title;
-SELECT '' as blank14;
-SELECT '   -- 타겟 목록' as check1;
-SELECT '   SELECT id, name, target_type, is_enabled FROM export_targets;' as check2;
-SELECT '' as blank15;
-SELECT '   -- 매핑 통계' as check3;
-SELECT '   SELECT et.id, et.name, COUNT(tm.id) as points' as check4;
-SELECT '   FROM export_targets et' as check5;
-SELECT '   LEFT JOIN export_target_mappings tm ON et.id = tm.target_id' as check6;
-SELECT '   GROUP BY et.id ORDER BY et.id;' as check7;
-SELECT '' as blank16;
-SELECT '   -- 매핑 상세' as check8;
-SELECT '   SELECT et.name, dp.name, tm.target_field_name' as check9;
-SELECT '   FROM export_target_mappings tm' as check10;
-SELECT '   JOIN export_targets et ON tm.target_id = et.id' as check11;
-SELECT '   JOIN data_points dp ON tm.point_id = dp.id' as check12;
-SELECT '   ORDER BY et.id, dp.id;' as check13;
-SELECT '' as blank17;
-
-SELECT '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' as separator2;
-SELECT '✅ 설정 완료! 인증 키 업데이트 후 C++ Collector 시작!' as final_message;
-SELECT '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' as separator3;
-
--- ============================================================================
--- 끝
--- ============================================================================

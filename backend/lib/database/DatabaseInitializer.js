@@ -65,6 +65,18 @@ class DatabaseInitializer {
     }
 
     /**
+     * SQL 스크립트 실행 (여러 명령 동시 실행 지원)
+     */
+    async executeSQLScript(sql) {
+        if (this.dbLayer && this.dbLayer.executeScript) {
+            return await this.dbLayer.executeScript(sql);
+        }
+
+        // 폴백
+        return await this.executeDirectSQLScript(sql);
+    }
+
+    /**
      * 범용 쿼리 메서드 (데이터베이스 타입 자동 감지)  
      */
     async querySQL(query, params = []) {
@@ -81,14 +93,14 @@ class DatabaseInitializer {
      */
     async executeDirectSQL(statement, params = []) {
         switch (this.databaseType) {
-        case 'sqlite':
-            return await this.executeSQLiteSQL(statement, params);
-        case 'postgresql':
-            return await this.executePostgresSQL(statement, params);
-        case 'mysql':
-            return await this.executeMySQLSQL(statement, params);
-        default:
-            throw new Error(`지원하지 않는 데이터베이스 타입: ${this.databaseType}`);
+            case 'sqlite':
+                return await this.executeSQLiteSQL(statement, params);
+            case 'postgresql':
+                return await this.executePostgresSQL(statement, params);
+            case 'mysql':
+                return await this.executeMySQLSQL(statement, params);
+            default:
+                throw new Error(`지원하지 않는 데이터베이스 타입: ${this.databaseType}`);
         }
     }
 
@@ -97,14 +109,14 @@ class DatabaseInitializer {
      */
     async queryDirectSQL(query, params = []) {
         switch (this.databaseType) {
-        case 'sqlite':
-            return await this.querySQLiteSQL(query, params);
-        case 'postgresql':
-            return await this.queryPostgresSQL(query, params);
-        case 'mysql':
-            return await this.queryMySQLSQL(query, params);
-        default:
-            throw new Error(`지원하지 않는 데이터베이스 타입: ${this.databaseType}`);
+            case 'sqlite':
+                return await this.querySQLiteSQL(query, params);
+            case 'postgresql':
+                return await this.queryPostgresSQL(query, params);
+            case 'mysql':
+                return await this.queryMySQLSQL(query, params);
+            default:
+                throw new Error(`지원하지 않는 데이터베이스 타입: ${this.databaseType}`);
         }
     }
 
@@ -128,6 +140,38 @@ class DatabaseInitializer {
         }
 
         return await this.connections.sqlite.all(query, params);
+    }
+
+    /**
+     * 직접 SQL 스크립트 실행 (타입별 분기)
+     */
+    async executeDirectSQLScript(sql) {
+        switch (this.databaseType) {
+            case 'sqlite':
+                return await this.executeSQLiteScript(sql);
+            default:
+                // SQLite 외에는 기존 방식(명령분할)으로 폴백
+                const statements = this.parseAdvancedSQLStatements(sql);
+                for (const statement of statements) {
+                    await this.executeSQL(statement);
+                }
+        }
+    }
+
+    /**
+     * SQLite 전용 스크립트 실행 (여러 명령 동시 실행)
+     */
+    async executeSQLiteScript(sql) {
+        if (!this.connections?.sqlite) {
+            throw new Error('SQLite 연결이 없습니다');
+        }
+
+        return new Promise((resolve, reject) => {
+            this.connections.sqlite.exec(sql, (err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
     }
 
     /**
@@ -193,6 +237,7 @@ class DatabaseInitializer {
                 if (sqlFiles.length > 0) {
                     console.log(`✅ 스키마 경로 발견: ${possiblePath} (${sqlFiles.length}개 SQL 파일)`);
                     this.schemasPath = possiblePath;
+                    console.log(`📁 최종 schemasPath: ${this.schemasPath}`);
                     return possiblePath;
                 }
             } catch (error) {
@@ -200,7 +245,7 @@ class DatabaseInitializer {
             }
         }
 
-        console.log('❌ 스키마 폴더를 찾을 수 없습니다. 초기화 실패.');
+        this.log('❌ 스키마 폴더를 찾을 수 없습니다. 초기화 실패.');
         return null;
     }
 
@@ -212,7 +257,7 @@ class DatabaseInitializer {
             const schemasPath = await this.findSchemasPath();
 
             if (!schemasPath) {
-                console.error(`❌ 스키마 경로를 찾을 수 없어 ${filename} 실행 불가`);
+                this.log(`❌ 스키마 경로를 찾을 수 없어 ${filename} 실행 불가`);
                 return false;
             }
 
@@ -220,38 +265,25 @@ class DatabaseInitializer {
 
             try {
                 const sqlContent = await fs.readFile(filePath, 'utf8');
-                console.log(`📁 실제 파일에서 읽음: ${filePath}`);
+                this.log(`📁 실제 파일에서 읽음: ${filePath}`);
 
                 if (!sqlContent || sqlContent.trim().length === 0) {
-                    console.log(`⚠️ ${filename} 파일이 비어있음, 스킵`);
+                    this.log(`⚠️ ${filename} 파일이 비어있음, 스킵`);
                     return true;
                 }
 
-                // SQL 파싱 및 실행
-                const statements = this.parseAdvancedSQLStatements(sqlContent);
-                console.log(`  📁 ${filename}: ${statements.length}개 SQL 명령 실행 중...`);
-
-                let successCount = 0;
-                for (const statement of statements) {
-                    try {
-                        await this.executeSQL(statement);
-                        successCount++;
-                    } catch (error) {
-                        console.log(`    ⚠️ SQL 실행 실패: ${error.message}`);
-                        console.log(`    📝 실패한 SQL (일부): ${statement.substring(0, 100)}...`);
-                    }
-                }
-
-                console.log(`  ✅ ${filename} 실행 완료 (${successCount}/${statements.length})`);
-                return successCount > 0;
+                // SQL 스크립트 실행 (성능 및 트리거 지원을 위해 executeSQLScript 사용)
+                this.log(`  📁 ${filename}: SQL 스크립트 직접 실행 중...`);
+                await this.executeSQLScript(sqlContent);
+                this.log(`  ✅ ${filename} 실행 완료`);
+                return true;
 
             } catch (fileError) {
-                console.error(`❌ ${filename} 파일 읽기 실패: ${fileError.message}`);
+                this.log(`❌ ${filename} 실행 중 오류: ${fileError.message}`);
                 return false;
             }
-
         } catch (error) {
-            console.error(`❌ SQL 파일 실행 실패 (${filename}):`, error.message);
+            this.log(`❌ ${filename} 처리 중 심각한 예외: ${error.message}`);
             return false;
         }
     }
@@ -371,8 +403,12 @@ class DatabaseInitializer {
      */
     restoreStringLiterals(statement, placeholders) {
         let restored = statement;
+        // 성능 최적화: 정규표현식 대신 문자열 치환 사용 (간단한 경우)
         for (const [placeholder, original] of Object.entries(placeholders)) {
-            restored = restored.replace(new RegExp(placeholder, 'g'), original);
+            // 모든 발생 지점 치환 (replaceAll이 지원되는 환경인 경우)
+            if (restored.includes(placeholder)) {
+                restored = restored.split(placeholder).join(original);
+            }
         }
         return restored;
     }
@@ -383,29 +419,29 @@ class DatabaseInitializer {
     async doesTableExist(tableName) {
         try {
             switch (this.databaseType) {
-            case 'sqlite':
-                const sqliteResult = await this.querySQL(
-                    'SELECT name FROM sqlite_master WHERE type=\'table\' AND name = ?',
-                    [tableName]
-                );
-                return sqliteResult.length > 0;
+                case 'sqlite':
+                    const sqliteResult = await this.querySQL(
+                        'SELECT name FROM sqlite_master WHERE type=\'table\' AND name = ?',
+                        [tableName]
+                    );
+                    return sqliteResult.length > 0;
 
-            case 'postgresql':
-                const pgResult = await this.querySQL(
-                    'SELECT table_name FROM information_schema.tables WHERE table_schema = \'public\' AND table_name = $1',
-                    [tableName]
-                );
-                return pgResult.length > 0;
+                case 'postgresql':
+                    const pgResult = await this.querySQL(
+                        'SELECT table_name FROM information_schema.tables WHERE table_schema = \'public\' AND table_name = $1',
+                        [tableName]
+                    );
+                    return pgResult.length > 0;
 
-            case 'mysql':
-                const mysqlResult = await this.querySQL(
-                    'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
-                    [tableName]
-                );
-                return mysqlResult.length > 0;
+                case 'mysql':
+                    const mysqlResult = await this.querySQL(
+                        'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+                        [tableName]
+                    );
+                    return mysqlResult.length > 0;
 
-            default:
-                return false;
+                default:
+                    return false;
             }
         } catch (error) {
             return false;
@@ -417,16 +453,21 @@ class DatabaseInitializer {
      */
     async checkIfAlreadyInitialized() {
         try {
-            console.log('🔍 데이터베이스 초기화 상태 확인 중...');
+            this.log('🔍 데이터베이스 초기화 상태 확인 중...');
 
             // 1단계: 기본 연결 확인
             if (!this.connections) {
-                console.log('📋 데이터베이스 연결이 없음 - 초기화 필요');
+                this.log('📋 데이터베이스 연결이 없음 - 초기화 필요');
                 return false;
             }
 
             // 2단계: 핵심 테이블 존재 확인 (안전한 방식)
-            const requiredTables = ['tenants', 'users', 'sites', 'protocols', 'devices'];
+            const requiredTables = ['tenants', 'users', 'sites', 'protocols', 'devices', 'data_points', 'virtual_points', 'alarm_rules'];
+
+            // 테스트 환경에서는 더 엄격하게 체크
+            if (process.env.NODE_ENV === 'test') {
+                this.log('🧪 테스트 환경: 초강력 초기화 체크 모드');
+            }
             let missingTables = [];
 
             for (const tableName of requiredTables) {
@@ -437,17 +478,34 @@ class DatabaseInitializer {
                     }
                 } catch (error) {
                     // 테이블 확인 자체가 실패하면 해당 테이블이 없는 것으로 간주
-                    console.log(`📋 테이블 '${tableName}' 확인 실패 (${error.message}) - 없는 것으로 간주`);
+                    this.log(`📋 테이블 '${tableName}' 확인 실패 (${error.message}) - 없는 것으로 간주`);
                     missingTables.push(tableName);
                 }
             }
 
             if (missingTables.length > 0) {
-                console.log(`📋 누락된 필수 테이블: ${missingTables.join(', ')} - 초기화 필요`);
+                this.log(`📋 누락된 필수 테이블: ${missingTables.join(', ')} - 초기화 필요`);
                 return false;
             }
 
-            console.log('✅ 모든 필수 테이블 존재함');
+            this.log('✅ 모든 필수 테이블 존재함');
+
+            // 2.5단계: 특정 테이블의 컬럼 존재 확인 (스키마 변경 대응)
+            if (await this.doesTableExist('virtual_points')) {
+                try {
+                    const columns = await this.querySQL("PRAGMA table_info(virtual_points)");
+                    const hasDescription = columns.some(c => c.name === 'description');
+                    const hasCreatedAt = columns.some(c => c.name === 'created_at');
+
+                    if (!hasDescription || !hasCreatedAt) {
+                        this.log(`📊 virtual_points 컬럼 누락 (description: ${hasDescription}, created_at: ${hasCreatedAt}) - 초기화 필요`);
+                        return false;
+                    }
+                } catch (error) {
+                    this.log('📊 virtual_points 컬럼 확인 실패 - 초기화 필요');
+                    return false;
+                }
+            }
 
             // 3단계: 기본 데이터 존재 확인 (안전한 방식)
             try {
@@ -455,25 +513,29 @@ class DatabaseInitializer {
                 const tenantCount = parseInt(tenantResult[0]?.count || '0');
 
                 if (tenantCount === 0) {
-                    console.log('📊 테넌트 데이터 없음 - 초기화 필요');
+                    this.log('📊 테넌트 데이터 없음 - 초기화 필요');
                     return false;
                 }
 
-                console.log(`📊 테넌트 데이터 확인: ${tenantCount}개`);
+                this.log(`📊 테넌트 데이터 확인: ${tenantCount}개`);
             } catch (error) {
-                console.log(`📊 테넌트 데이터 확인 실패 (${error.message}) - 초기화 필요`);
+                this.log(`📊 테넌트 데이터 확인 실패 (${error.message}) - 초기화 필요`);
                 return false;
             }
 
-            console.log('✅ 데이터베이스가 완전히 초기화되어 있음');
+            this.log('✅ 데이터베이스가 완전히 초기화되어 있음');
             return true;
 
         } catch (error) {
             // 최상위 예외 처리: 어떤 예상치 못한 에러든 초기화 필요로 간주
-            console.log(`❌ 초기화 상태 확인 중 예외 발생: ${error.message}`);
-            console.log('🔧 안전을 위해 초기화 진행');
+            this.log(`❌ 초기화 상태 확인 중 예외 발생: ${error.message}`);
+            this.log('🔧 안전을 위해 초기화 진행');
             return false;
         }
+    }
+
+    log(message) {
+        process.stdout.write(`[DB_INIT] ${message}\n`);
     }
 
     /**
@@ -481,49 +543,67 @@ class DatabaseInitializer {
      */
     async performAutoInitialization() {
         try {
-            console.log('🚀 완전 자동 초기화 시작...\n');
+            this.log('🚀 완전 자동 초기화 시작...');
 
             // 스키마 경로 확인
             await this.findSchemasPath();
             if (!this.schemasPath) {
-                console.error('❌ 스키마 파일을 찾을 수 없어 초기화 불가');
+                this.log('❌ 스키마 파일을 찾을 수 없어 초기화 불가');
                 return false;
             }
+
+            this.log(`📁 스키마 경로: ${this.schemasPath}`);
 
             // SKIP_IF_INITIALIZED 체크 (개선된 로직)
             const skipIfInitialized = this.config.getBoolean('SKIP_IF_INITIALIZED', true);
 
             if (skipIfInitialized) {
-                console.log('🔍 기존 데이터베이스 상태 확인 중...');
+                this.log('🔍 기존 데이터베이스 상태 확인 중...');
 
                 const isAlreadyInitialized = await this.checkIfAlreadyInitialized();
 
                 if (isAlreadyInitialized) {
-                    console.log('✅ 데이터베이스가 이미 완전히 초기화되어 있습니다. 초기화를 건너뜁니다.');
-                    console.log('💡 강제 초기화를 원하면 SKIP_IF_INITIALIZED=false로 설정하세요.');
+                    this.log('✅ 데이터베이스가 이미 완전히 초기화되어 있습니다. 초기화를 건너뜜');
                     return true;
                 }
 
-                console.log('📋 기존 데이터가 불완전하거나 없어서 초기화를 진행합니다.');
+                this.log('📋 기존 데이터가 불완전하거나 없어서 초기화를 진행합니다.');
             } else {
-                console.log('🔧 SKIP_IF_INITIALIZED=false 설정으로 강제 초기화 진행');
+                this.log('🔧 SKIP_IF_INITIALIZED=false 설정으로 강제 초기화 진행');
+            }
+
+            // 초기화 진행 결정된 경우 무조건 클린업 실행 (SQLite만)
+            if (this.databaseType === 'sqlite') {
+                this.log('🧹 SQLite 초기화 전 모든 기존 테이블 삭제 중...');
+                try {
+                    const tables = await this.querySQL("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+                    for (const row of tables) {
+                        try {
+                            await this.executeSQL(`DROP TABLE IF EXISTS ${row.name}`);
+                        } catch (e) {
+                            this.log(`  ⚠️ ${row.name} 삭제 실패: ${e.message}`);
+                        }
+                    }
+                    this.log('✅ 기존 테이블 삭제 완료');
+                } catch (error) {
+                    this.log(`⚠️ 테이블 목록 조회 실패 (신규 DB일 수 있음): ${error.message}`);
+                }
             }
 
             // 실제 초기화 단계
-            console.log('📋 [1/2] 마스터 스키마 생성 중 (schema.sql)...');
+            this.log('📋 [1/2] 마스터 스키마 생성 중 (schema.sql)...');
             await this.executeSQLFile('schema.sql');
 
-            console.log('📊 [2/2] 마스터 시드 데이터 삽입 중 (seed.sql)...');
+            this.log('📊 [2/2] 마스터 시드 데이터 삽입 중 (seed.sql)...');
             await this.executeSQLFile('seed.sql');
 
             // 최종 상태 확인
             await this.checkDatabaseStatus();
 
-            console.log('🎉 완전 자동 초기화가 성공적으로 완료되었습니다!');
+            this.log('🎉 완전 자동 초기화가 성공적으로 완료되었습니다!');
             return true;
-
         } catch (error) {
-            console.error('❌ 완전 자동 초기화 실패:', error.message);
+            this.log(`❌ 완전 자동 초기화 실패: ${error.message}`);
             return false;
         }
     }
@@ -532,7 +612,7 @@ class DatabaseInitializer {
         const autoInit = this.config.getBoolean('AUTO_INITIALIZE_ON_START', false);
 
         if (!autoInit) {
-            console.log('🔧 데이터베이스 자동 초기화가 비활성화되어 있습니다.');
+            this.log('🔧 데이터베이스 자동 초기화가 비활성화되어 있습니다.');
             return false;
         }
 
@@ -546,28 +626,22 @@ class DatabaseInitializer {
             this.initStatus.sampleData = await this.checkSampleData();
             this.initStatus.indexesCreated = await this.checkIndexes();
 
-            console.log('📊 초기화 상태:', this.initStatus);
+            this.log(`📊 초기화 상태: ${JSON.stringify(this.initStatus)}`);
         } catch (error) {
-            console.error('❌ 데이터베이스 상태 확인 실패:', error.message);
+            this.log(`❌ 데이터베이스 상태 확인 실패: ${error.message}`);
         }
     }
 
     async createSystemTables() {
-        const sqlFiles = ['01-core-tables.sql', '02-users-sites.sql', '03-protocols-table.sql'];
-        for (const sqlFile of sqlFiles) {
-            await this.executeSQLFile(sqlFile);
-        }
+        this.log('⚠️ createSystemTables skipped (strictly using schema.sql/seed.sql)');
     }
 
     async createExtendedTables() {
-        const sqlFiles = ['04-device-tables.sql', '05-alarm-tables.sql', '06-virtual-points.sql', '07-log-tables.sql'];
-        for (const sqlFile of sqlFiles) {
-            await this.executeSQLFile(sqlFile);
-        }
+        this.log('⚠️ createExtendedTables skipped (strictly using schema.sql/seed.sql)');
     }
 
     async createIndexes() {
-        await this.executeSQLFile('08-indexes.sql');
+        this.log('⚠️ createIndexes skipped (strictly using schema.sql/seed.sql)');
     }
 
     async checkSystemTables() {
@@ -590,7 +664,20 @@ class DatabaseInitializer {
 
         for (const tableName of extendedTables) {
             if (await this.doesTableExist(tableName)) {
-                foundTables++;
+                // 특정 테이블의 경우 스키마 깊이 체크 (v3.0.0 대응)
+                if (tableName === 'virtual_points') {
+                    const columns = await this.querySQL("PRAGMA table_info(virtual_points)");
+                    const hasDescription = columns.some(c => c.name === 'description');
+                    const hasCreatedAt = columns.some(c => c.name === 'created_at');
+
+                    if (hasDescription && hasCreatedAt) {
+                        foundTables++;
+                    } else {
+                        this.log(`🏢 virtual_points 발견되었으나 스키마가 구버전임 (description: ${hasDescription}, created_at: ${hasCreatedAt})`);
+                    }
+                } else {
+                    foundTables++;
+                }
             }
         }
 
@@ -618,20 +705,20 @@ class DatabaseInitializer {
             let indexName;
 
             switch (this.databaseType) {
-            case 'sqlite':
-                indexQuery = 'SELECT name FROM sqlite_master WHERE type=\'index\' AND name = ?';
-                indexName = 'idx_users_tenant';
-                break;
-            case 'postgresql':
-                indexQuery = 'SELECT indexname FROM pg_indexes WHERE indexname = $1';
-                indexName = 'idx_users_tenant';
-                break;
-            case 'mysql':
-                indexQuery = 'SELECT index_name FROM information_schema.statistics WHERE index_name = ?';
-                indexName = 'idx_users_tenant';
-                break;
-            default:
-                return false;
+                case 'sqlite':
+                    indexQuery = 'SELECT name FROM sqlite_master WHERE type=\'index\' AND name = ?';
+                    indexName = 'idx_users_tenant';
+                    break;
+                case 'postgresql':
+                    indexQuery = 'SELECT indexname FROM pg_indexes WHERE indexname = $1';
+                    indexName = 'idx_users_tenant';
+                    break;
+                case 'mysql':
+                    indexQuery = 'SELECT index_name FROM information_schema.statistics WHERE index_name = ?';
+                    indexName = 'idx_users_tenant';
+                    break;
+                default:
+                    return false;
             }
 
             const result = await this.querySQL(indexQuery, [indexName]);
@@ -666,8 +753,8 @@ class DatabaseInitializer {
             // 사용자는 성공했으므로 그대로 유지
             try {
                 await this.executeSQL(
-                    `INSERT OR IGNORE INTO users (tenant_id, username, email, role, is_active) 
-                    VALUES (1, 'admin', 'admin@pulseone.local', 'admin', 1)`
+                    `INSERT OR IGNORE INTO users (tenant_id, username, email, role, is_active, is_deleted) 
+                    VALUES (1, 'admin', 'admin@pulseone.local', 'admin', 1, 0)`
                 );
                 console.log('  ✅ 기본 사용자 생성 성공');
             } catch (userError) {

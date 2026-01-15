@@ -41,6 +41,7 @@ class UserQueries {
                 role, permissions, site_access, device_access,
                 is_active, last_login, created_at, updated_at
             FROM users 
+            WHERE is_deleted = 0
             ORDER BY username
         `;
     }
@@ -55,7 +56,7 @@ class UserQueries {
                 role, permissions, site_access, device_access,
                 is_active, last_login, created_at, updated_at
             FROM users 
-            WHERE id = ?
+            WHERE id = ? AND is_deleted = 0
         `;
     }
 
@@ -73,7 +74,7 @@ class UserQueries {
                 role, permissions, site_access, device_access,
                 is_active, last_login, created_at, updated_at
             FROM users 
-            WHERE username = ?
+            WHERE username = ? AND is_deleted = 0
         `;
     }
 
@@ -87,7 +88,7 @@ class UserQueries {
                 role, permissions, site_access, device_access,
                 is_active, last_login, created_at, updated_at
             FROM users 
-            WHERE email = ?
+            WHERE email = ? AND is_deleted = 0
         `;
     }
 
@@ -100,7 +101,7 @@ class UserQueries {
                 id, tenant_id, username, email, password_hash, 
                 role, is_active, last_login
             FROM users 
-            WHERE (username = ? OR email = ?) AND is_active = 1
+            WHERE (username = ? OR email = ?) AND is_active = 1 AND is_deleted = 0
         `;
     }
 
@@ -118,7 +119,7 @@ class UserQueries {
                 role, permissions, site_access, device_access,
                 is_active, last_login, created_at, updated_at
             FROM users 
-            WHERE tenant_id = ?
+            WHERE tenant_id = ? AND is_deleted = 0
             ORDER BY username
         `;
     }
@@ -133,7 +134,7 @@ class UserQueries {
                 role, permissions, site_access, device_access,
                 is_active, last_login, created_at, updated_at
             FROM users 
-            WHERE role = ?
+            WHERE role = ? AND is_deleted = 0
             ORDER BY username
         `;
     }
@@ -148,7 +149,7 @@ class UserQueries {
                 role, permissions, site_access, device_access,
                 is_active, last_login, created_at, updated_at
             FROM users 
-            WHERE is_active = 1
+            WHERE is_active = 1 AND is_deleted = 0
             ORDER BY username
         `;
     }
@@ -163,7 +164,7 @@ class UserQueries {
                 role, permissions, site_access, device_access,
                 is_active, last_login, created_at, updated_at
             FROM users 
-            WHERE tenant_id = ? AND is_active = 1
+            WHERE tenant_id = ? AND is_active = 1 AND is_deleted = 0
             ORDER BY username
         `;
     }
@@ -177,7 +178,7 @@ class UserQueries {
                 id, tenant_id, username, email, full_name, department,
                 role, permissions, is_active, last_login, created_at, updated_at
             FROM users 
-            WHERE role = 'system_admin' AND is_active = 1
+            WHERE role = 'system_admin' AND is_active = 1 AND is_deleted = 0
             ORDER BY username
         `;
     }
@@ -421,6 +422,7 @@ class UserQueries {
         return `
             SELECT COUNT(*) as count 
             FROM users
+            WHERE is_deleted = 0
         `;
     }
 
@@ -431,7 +433,7 @@ class UserQueries {
         return `
             SELECT COUNT(*) as count 
             FROM users 
-            WHERE is_active = 1
+            WHERE is_active = 1 AND is_deleted = 0
         `;
     }
 
@@ -442,7 +444,7 @@ class UserQueries {
         return `
             SELECT COUNT(*) as count 
             FROM users 
-            WHERE tenant_id = ?
+            WHERE tenant_id = ? AND is_deleted = 0
         `;
     }
 
@@ -456,6 +458,7 @@ class UserQueries {
                 COUNT(*) as total_count,
                 SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_count
             FROM users 
+            WHERE is_deleted = 0
             GROUP BY role
             ORDER BY role
         `;
@@ -471,7 +474,7 @@ class UserQueries {
                 COUNT(*) as total_count,
                 SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active_count
             FROM users 
-            WHERE tenant_id = ?
+            WHERE tenant_id = ? AND is_deleted = 0
             GROUP BY role
             ORDER BY role
         `;
@@ -504,7 +507,7 @@ class UserQueries {
                 COUNT(CASE WHEN last_login >= datetime('now', '-30 days') THEN 1 END) as month_logins,
                 COUNT(CASE WHEN last_login IS NULL THEN 1 END) as never_logged_in
             FROM users 
-            WHERE is_active = 1
+            WHERE is_active = 1 AND is_deleted = 0
         `;
     }
 
@@ -527,6 +530,7 @@ class UserQueries {
               AND (? IS NULL OR role = ?)
               AND (? IS NULL OR tenant_id = ?)
               AND (? IS NULL OR is_active = ?)
+              AND is_deleted = 0
             ORDER BY username
         `;
     }
@@ -540,6 +544,7 @@ class UserQueries {
                 id, username, email, full_name, role, 
                 is_active, created_at
             FROM users 
+            WHERE is_deleted = 0
             ORDER BY created_at DESC
             LIMIT ?
         `;
@@ -554,7 +559,7 @@ class UserQueries {
                 id, tenant_id, username, email, full_name, 
                 role, permissions, is_active
             FROM users 
-            WHERE permissions LIKE ? AND is_active = 1
+            WHERE permissions LIKE ? AND is_active = 1 AND is_deleted = 0
             ORDER BY username
         `;
     }
@@ -568,7 +573,7 @@ class UserQueries {
                 id, username, email, full_name, role, 
                 last_login, created_at
             FROM users 
-            WHERE is_active = 1 
+            WHERE is_active = 1 AND is_deleted = 0
               AND (last_login IS NULL OR last_login < datetime('now', '-? days'))
             ORDER BY last_login ASC NULLS FIRST
         `;
@@ -593,6 +598,22 @@ class UserQueries {
             WHERE u.id = ?
             GROUP BY u.id, u.username, u.email, u.full_name, u.role, u.is_active,
                      u.last_login, u.created_at
+        `;
+    }
+
+    /**
+     * 사용자 통계 요약 조회
+     */
+    static getUserStatistics() {
+        return `
+            SELECT 
+                COUNT(*) as total_users,
+                SUM(CASE WHEN is_active = 1 AND is_deleted = 0 THEN 1 ELSE 0 END) as active_users,
+                SUM(CASE WHEN is_deleted = 1 THEN 1 ELSE 0 END) as deleted_users,
+                SUM(CASE WHEN role = 'company_admin' AND is_deleted = 0 THEN 1 ELSE 0 END) as admin_users,
+                SUM(CASE WHEN last_login >= datetime('now', '-24 hours') AND is_deleted = 0 THEN 1 ELSE 0 END) as active_today
+            FROM users
+            WHERE tenant_id = ?
         `;
     }
 }

@@ -47,20 +47,26 @@ class UserService extends BaseService {
                 delete userData.password;
             }
 
-            // 테넌트 보장
-            if (tenantId) userData.tenant_id = tenantId;
+            // 테넌트 보장 (System Admin인 경우 req.body.tenant_id 허용)
+            if (tenantId) {
+                userData.tenant_id = tenantId;
+            } else if (!userData.tenant_id) {
+                // System Admin이지만 tenant_id를 지정하지 않은 경우 에러 또는 기본 처리
+                // 여기서는 에러보다는 필수로 지정해야 함을 가정
+                // throw new Error('테넌트를 지정해야 합니다.');
+            }
 
-            const userId = await this.repository.create(userData);
-            return { id: userId, username: userData.username };
-        }, 'UserService.createUser');
+            const id = await this.repository.create(userData);
+            return await this.repository.findById(id, tenantId || userData.tenant_id);
+        }, 'CreateUser');
     }
 
-    async updateUser(id, userData, tenantId = null) {
+    async updateUser(id, userData, tenantId) {
         return await this.handleRequest(async () => {
-            const success = await this.repository.update(id, userData, tenantId);
-            if (!success) throw new Error('사용자 업데이트 실패 (존재하지 않거나 권한 없음)');
-            return { id, success: true };
-        }, 'UserService.updateUser');
+            const updated = await this.repository.update(id, userData, tenantId);
+            if (!updated) throw new Error('User not found or update failed');
+            return await this.repository.findById(id, tenantId);
+        }, 'UpdateUser');
     }
 
     async patchUser(id, updateData, tenantId = null) {
@@ -77,12 +83,20 @@ class UserService extends BaseService {
         }, 'UserService.patchUser');
     }
 
-    async deleteUser(id, tenantId = null) {
+    async deleteUser(id, tenantId) {
         return await this.handleRequest(async () => {
-            const success = await this.repository.deleteById(id, tenantId);
-            if (!success) throw new Error('사용자 삭제 실패');
-            return { id, success: true };
-        }, 'UserService.deleteUser');
+            const deleted = await this.repository.deleteById(id, tenantId);
+            if (!deleted) throw new Error('User not found or delete failed');
+            return { id, deleted: true };
+        }, 'DeleteUser');
+    }
+
+    async restoreUser(id, tenantId) {
+        return await this.handleRequest(async () => {
+            const restored = await this.repository.restoreById(id, tenantId);
+            if (!restored) throw new Error('User not found or restore failed');
+            return await this.repository.findById(id, tenantId);
+        }, 'RestoreUser');
     }
 
     // ==========================================================================

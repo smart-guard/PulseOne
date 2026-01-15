@@ -388,6 +388,27 @@ std::vector<DeviceEntity> DeviceRepository::findBySite(int site_id) {
     }
 }
 
+std::vector<DeviceEntity> DeviceRepository::findByEdgeServer(int edge_server_id) {
+    try {
+        if (!ensureTableExists()) {
+            return {};
+        }
+        
+        DbLib::DatabaseAbstractionLayer db_layer;
+        std::string query = RepositoryHelpers::replaceParameter(SQL::Device::FIND_BY_EDGE_SERVER, std::to_string(edge_server_id));
+        auto results = db_layer.executeQuery(query);
+        std::vector<DeviceEntity> entities = mapResultToEntities(results);
+        
+        logger_->Info("DeviceRepository::findByEdgeServer - Found " + std::to_string(entities.size()) + 
+                     " devices for edge server " + std::to_string(edge_server_id));
+        return entities;
+        
+    } catch (const std::exception& e) {
+        logger_->Error("DeviceRepository::findByEdgeServer failed: " + std::string(e.what()));
+        return {};
+    }
+}
+
 std::vector<DeviceEntity> DeviceRepository::findEnabledDevices() {
     try {
         if (!ensureTableExists()) {

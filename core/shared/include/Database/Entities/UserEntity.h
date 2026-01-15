@@ -301,6 +301,9 @@ public:
     json extractConfiguration() const;
     json getAuthContext() const;
     json getProfileInfo() const;
+    
+    // Repository access
+    std::shared_ptr<Repositories::UserRepository> getRepository() const;
 
 private:
     // =======================================================================

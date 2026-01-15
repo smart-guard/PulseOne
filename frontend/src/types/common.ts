@@ -29,7 +29,7 @@ export interface PaginatedResponse<T> {
   pagination: PaginationMeta;
 }
 
-export interface PaginatedApiResponse<T> extends ApiResponse<PaginatedResponse<T>> {}
+export interface PaginatedApiResponse<T> extends ApiResponse<PaginatedResponse<T>> { }
 
 export interface BulkActionRequest<T = any> {
   action: string;
@@ -45,6 +45,43 @@ export interface BulkActionResponse {
     item_id: number;
     error: string;
   }>;
+}
+
+export interface Tenant {
+  id: number;
+  company_name: string;
+  company_code: string;
+  domain?: string;
+  contact_name?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  subscription_plan: 'starter' | 'professional' | 'enterprise';
+  subscription_status: 'active' | 'trial' | 'suspended' | 'cancelled';
+  max_edge_servers: number;
+  max_data_points: number;
+  max_users: number;
+  is_active: boolean;
+  trial_end_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Site {
+  id: number;
+  tenant_id: number;
+  parent_site_id?: number;
+  name: string;
+  code: string;
+  site_type: string;
+  description?: string;
+  location?: string;
+  address?: string;
+  timezone: string;
+  is_active: boolean;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+  children?: Site[];
 }
 
 // ============================================================================

@@ -178,6 +178,10 @@ bool DeviceSettingsEntity::updateToDatabase() {
     }
 }
 
+std::shared_ptr<Repositories::DeviceSettingsRepository> DeviceSettingsEntity::getRepository() const {
+    return RepositoryFactory::getInstance().getDeviceSettingsRepository();
+}
+
 } // namespace Entities
 } // namespace Database
 } // namespace PulseOne

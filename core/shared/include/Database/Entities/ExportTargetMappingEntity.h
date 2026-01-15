@@ -61,6 +61,7 @@ public:
     bool deleteFromDatabase() override;
     
     std::string getTableName() const override { return "export_target_mappings"; }
+
     
 private:
     int target_id_ = 0;

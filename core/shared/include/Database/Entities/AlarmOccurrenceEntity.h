@@ -93,6 +93,9 @@ public:
         return "alarm_occurrences";
     }
 
+    // Repository access
+    std::shared_ptr<Repositories::AlarmOccurrenceRepository> getRepository() const;
+
     // =======================================================================
     // JSON 직렬화/역직렬화
     // =======================================================================

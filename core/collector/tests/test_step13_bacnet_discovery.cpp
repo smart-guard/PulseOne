@@ -139,7 +139,11 @@ int main() {
     LogManager::getInstance().Info("Initializing test...");
     
     // Initialize Database
-    if (!DbLib::DatabaseManager::getInstance().initialize()) {
+    DbLib::DatabaseConfig db_config;
+    db_config.type = "SQLITE";
+    db_config.sqlite_path = "test.db";
+    
+    if (!DbLib::DatabaseManager::getInstance().initialize(db_config)) {
         std::cerr << "Failed to initialize database!" << std::endl;
         // Proceeding might be dangerous but let's see if sqlite works regardless
     }

@@ -3,7 +3,7 @@
 # =============================================================================
 FROM node:20-slim
 
-# 개발에 필요한 시스템 패키지 설치
+# 개발에 필요한 시스템 패키지 및 C++ 수집기 의존성 설치
 RUN apt-get update && apt-get install -y \
     curl \
     git \
@@ -12,6 +12,17 @@ RUN apt-get update && apt-get install -y \
     procps \
     vim \
     redis-tools \
+    cmake \
+    make \
+    build-essential \
+    gcc \
+    g++ \
+    libsqlite3-dev \
+    libpq-dev \
+    libssl-dev \
+    uuid-dev \
+    libmodbus-dev \
+    libhiredis-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # 전역 개발 도구 설치
@@ -34,6 +45,7 @@ RUN npm ci --include=dev
 WORKDIR /app
 COPY backend ./backend
 COPY config ./config
+COPY core ./core
 
 # 데이터 디렉토리 생성 (SQLite용)
 RUN mkdir -p ./data/db ./data/logs ./data/backup
@@ -52,7 +64,7 @@ WORKDIR /app/backend
 
 # 헬스체크 수정 (실제 작동하는 엔드포인트로)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:3000/ || exit 1
+    CMD curl -f http://localhost:3000/api/health || exit 1
 
 # 환경변수 설정
 ENV NODE_ENV=development

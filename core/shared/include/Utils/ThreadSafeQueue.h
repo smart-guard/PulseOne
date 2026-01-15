@@ -27,6 +27,19 @@ public:
         cond_.notify_one();
     }
 
+    // Try to push a single item with capacity limit
+    bool try_push(T value, size_t max_size) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (queue_.size() >= max_size) {
+                return false;
+            }
+            queue_.push(std::move(value));
+        }
+        cond_.notify_one();
+        return true;
+    }
+
     // Pop a single item (blocking)
     T pop() {
         std::unique_lock<std::mutex> lock(mutex_);

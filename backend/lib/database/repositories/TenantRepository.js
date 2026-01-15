@@ -1,27 +1,67 @@
 // =============================================================================
 // backend/lib/database/repositories/TenantRepository.js
-// 🔧 DeviceRepository 패턴과 완전 동일 (쿼리 분리 적용)
+// 🔧 DeviceRepository 패턴과 완전 동일 (Knex 기반 리팩토링)
 // =============================================================================
 
 const BaseRepository = require('./BaseRepository');
-const TenantQueries = require('../queries/TenantQueries');
 
 class TenantRepository extends BaseRepository {
     constructor() {
-        // DeviceRepository와 동일한 패턴: 매개변수 없는 생성자
         super('tenants');
-        console.log('🏢 TenantRepository initialized with standard pattern');
     }
 
-    // ==========================================================================
-    // 기본 CRUD 연산 (TenantQueries 사용)
-    // ==========================================================================
-
-    async findAll() {
+    /**
+     * 모든 테넌트를 조회합니다 (페이징/검색 지원).
+     */
+    async findAll(options = {}) {
         try {
-            const query = TenantQueries.findAll();
-            const results = await this.executeQuery(query);
-            return results;
+            const buildQuery = (builder) => {
+                if (options.isActive !== undefined) {
+                    builder.where('is_active', options.isActive ? 1 : 0);
+                }
+                if (options.search) {
+                    builder.where(function () {
+                        this.where('company_name', 'like', `%${options.search}%`)
+                            .orWhere('company_code', 'like', `%${options.search}%`)
+                            .orWhere('domain', 'like', `%${options.search}%`);
+                    });
+                }
+
+                // 삭제된 항목 필터링
+                if (options.onlyDeleted === true) {
+                    builder.where('is_deleted', 1);
+                } else if (options.includeDeleted !== true) {
+                    builder.where('is_deleted', 0);
+                }
+
+                return builder;
+            };
+
+            // 1. 전체 카운트 조회
+            const countBuilder = this.query().count('* as count');
+            buildQuery(countBuilder);
+            const countResult = await countBuilder.first();
+            const total = countResult ? (parseInt(countResult.count) || 0) : 0;
+
+            // 2. 데이터 조회
+            const query = this.query().select('*');
+            buildQuery(query);
+
+            const limit = parseInt(options.limit) || 20;
+            const page = Math.max(1, parseInt(options.page) || 1);
+            const offset = (page - 1) * limit;
+
+            const items = await query.orderBy('company_name', 'asc').limit(limit).offset(offset);
+
+            return {
+                items,
+                pagination: {
+                    total_count: total,
+                    current_page: page,
+                    total_pages: Math.ceil(total / limit),
+                    limit
+                }
+            };
         } catch (error) {
             console.error(`TenantRepository::findAll failed: ${error.message}`);
             throw error;
@@ -30,9 +70,7 @@ class TenantRepository extends BaseRepository {
 
     async findById(id) {
         try {
-            const query = TenantQueries.findById();
-            const results = await this.executeQuery(query, [id]);
-            return results.length > 0 ? results[0] : null;
+            return await this.query().where('id', id).first();
         } catch (error) {
             console.error(`TenantRepository::findById failed: ${error.message}`);
             throw error;
@@ -41,9 +79,7 @@ class TenantRepository extends BaseRepository {
 
     async findByDomain(domain) {
         try {
-            const query = TenantQueries.findByDomain();
-            const results = await this.executeQuery(query, [domain]);
-            return results.length > 0 ? results[0] : null;
+            return await this.query().where('domain', domain).where('is_deleted', 0).first();
         } catch (error) {
             console.error(`TenantRepository::findByDomain failed: ${error.message}`);
             throw error;
@@ -52,69 +88,31 @@ class TenantRepository extends BaseRepository {
 
     async findByCompanyCode(companyCode) {
         try {
-            const query = TenantQueries.findByCompanyCode();
-            const results = await this.executeQuery(query, [companyCode]);
-            return results.length > 0 ? results[0] : null;
+            return await this.query().where('company_code', companyCode).where('is_deleted', 0).first();
         } catch (error) {
             console.error(`TenantRepository::findByCompanyCode failed: ${error.message}`);
             throw error;
         }
     }
 
-    async findActiveTenants() {
-        try {
-            const query = TenantQueries.findActiveTenants();
-            const results = await this.executeQuery(query);
-            return results;
-        } catch (error) {
-            console.error(`TenantRepository::findActiveTenants failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    async findBySubscriptionPlan(plan) {
-        try {
-            const query = TenantQueries.findBySubscriptionPlan();
-            const results = await this.executeQuery(query, [plan]);
-            return results;
-        } catch (error) {
-            console.error(`TenantRepository::findBySubscriptionPlan failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    async findExpiringTrials(days = 7) {
-        try {
-            const query = TenantQueries.findExpiringTrials();
-            const results = await this.executeQuery(query, [days]);
-            return results;
-        } catch (error) {
-            console.error(`TenantRepository::findExpiringTrials failed: ${error.message}`);
-            throw error;
-        }
-    }
-
     async create(tenantData) {
         try {
-            const query = TenantQueries.create();
-            const params = [
-                tenantData.company_name,
-                tenantData.company_code,
-                tenantData.domain || null,
-                tenantData.contact_name || null,
-                tenantData.contact_email || null,
-                tenantData.contact_phone || null,
-                tenantData.subscription_plan || 'starter',
-                tenantData.subscription_status || 'active',
-                tenantData.max_edge_servers || 3,
-                tenantData.max_data_points || 1000,
-                tenantData.max_users || 5,
-                tenantData.is_active !== false ? 1 : 0,
-                tenantData.trial_end_date || null
-            ];
-            
-            const result = await this.executeNonQuery(query, params);
-            return result.insertId || result.lastInsertRowid;
+            const [id] = await this.query().insert({
+                company_name: tenantData.company_name,
+                company_code: tenantData.company_code,
+                domain: tenantData.domain || null,
+                contact_name: tenantData.contact_name || null,
+                contact_email: tenantData.contact_email || null,
+                contact_phone: tenantData.contact_phone || null,
+                subscription_plan: tenantData.subscription_plan || 'starter',
+                subscription_status: tenantData.subscription_status || 'active',
+                max_edge_servers: tenantData.max_edge_servers || 3,
+                max_data_points: tenantData.max_data_points || 1000,
+                max_users: tenantData.max_users || 5,
+                is_active: tenantData.is_active !== false ? 1 : 0,
+                trial_end_date: tenantData.trial_end_date || null
+            });
+            return id;
         } catch (error) {
             console.error(`TenantRepository::create failed: ${error.message}`);
             throw error;
@@ -123,90 +121,60 @@ class TenantRepository extends BaseRepository {
 
     async update(id, tenantData) {
         try {
-            const query = TenantQueries.update();
-            const params = [
-                tenantData.company_name,
-                tenantData.company_code,
-                tenantData.domain || null,
-                tenantData.contact_name || null,
-                tenantData.contact_email || null,
-                tenantData.contact_phone || null,
-                tenantData.subscription_plan || 'starter',
-                tenantData.subscription_status || 'active',
-                tenantData.max_edge_servers || 3,
-                tenantData.max_data_points || 1000,
-                tenantData.max_users || 5,
-                tenantData.is_active !== false ? 1 : 0,
-                tenantData.trial_end_date || null,
-                id
-            ];
-            
-            const result = await this.executeNonQuery(query, params);
-            return result.affectedRows > 0 || result.changes > 0;
+            const affected = await this.query().where('id', id).update({
+                company_name: tenantData.company_name,
+                company_code: tenantData.company_code,
+                domain: tenantData.domain || null,
+                contact_name: tenantData.contact_name || null,
+                contact_email: tenantData.contact_email || null,
+                contact_phone: tenantData.contact_phone || null,
+                subscription_plan: tenantData.subscription_plan || 'starter',
+                subscription_status: tenantData.subscription_status || 'active',
+                max_edge_servers: tenantData.max_edge_servers || 3,
+                max_data_points: tenantData.max_data_points || 1000,
+                max_users: tenantData.max_users || 5,
+                is_active: tenantData.is_active !== false ? 1 : 0,
+                trial_end_date: tenantData.trial_end_date || null,
+                updated_at: this.knex.fn.now()
+            });
+            return affected > 0;
         } catch (error) {
             console.error(`TenantRepository::update failed: ${error.message}`);
             throw error;
         }
     }
 
-    async updateSubscription(id, subscriptionData) {
-        try {
-            const query = TenantQueries.updateSubscription();
-            const params = [
-                subscriptionData.subscription_plan,
-                subscriptionData.subscription_status,
-                subscriptionData.max_edge_servers || 3,
-                subscriptionData.max_data_points || 1000,
-                subscriptionData.max_users || 5,
-                subscriptionData.trial_end_date || null,
-                id
-            ];
-            
-            const result = await this.executeNonQuery(query, params);
-            return result.affectedRows > 0 || result.changes > 0;
-        } catch (error) {
-            console.error(`TenantRepository::updateSubscription failed: ${error.message}`);
-            throw error;
-        }
-    }
-
     async deleteById(id) {
         try {
-            const query = TenantQueries.delete();
-            const result = await this.executeNonQuery(query, [id]);
-            return result.affectedRows > 0 || result.changes > 0;
+            const affected = await this.query().where('id', id).update({
+                is_deleted: 1,
+                updated_at: this.knex.fn.now()
+            });
+            return affected > 0;
         } catch (error) {
-            console.error(`TenantRepository::deleteById failed: ${error.message}`);
+            console.error(`TenantRepository::deleteById (soft) failed: ${error.message}`);
             throw error;
         }
     }
 
-    async exists(id) {
+    async restoreById(id) {
         try {
-            const query = TenantQueries.exists();
-            const result = await this.executeQuerySingle(query, [id]);
-            return result && result.count > 0;
+            const affected = await this.query().where('id', id).update({
+                is_deleted: 0,
+                updated_at: this.knex.fn.now()
+            });
+            return affected > 0;
         } catch (error) {
-            console.error(`TenantRepository::exists failed: ${error.message}`);
+            console.error(`TenantRepository::restoreById failed: ${error.message}`);
             throw error;
         }
     }
-
-    // ==========================================================================
-    // 특화 메서드들 (TenantQueries 사용)
-    // ==========================================================================
 
     async checkCompanyNameExists(companyName, excludeId = null) {
         try {
-            let query = TenantQueries.checkCompanyNameExists();
-            let params = [companyName];
-            
-            if (excludeId) {
-                query += ' AND id != ?';
-                params.push(excludeId);
-            }
-            
-            const result = await this.executeQuerySingle(query, params);
+            let query = this.query().where('company_name', companyName);
+            if (excludeId) query = query.whereNot('id', excludeId);
+            const result = await query.count('* as count').first();
             return result && result.count > 0;
         } catch (error) {
             console.error(`TenantRepository::checkCompanyNameExists failed: ${error.message}`);
@@ -216,15 +184,9 @@ class TenantRepository extends BaseRepository {
 
     async checkCompanyCodeExists(companyCode, excludeId = null) {
         try {
-            let query = TenantQueries.checkCompanyCodeExists();
-            let params = [companyCode];
-            
-            if (excludeId) {
-                query += ' AND id != ?';
-                params.push(excludeId);
-            }
-            
-            const result = await this.executeQuerySingle(query, params);
+            let query = this.query().where('company_code', companyCode);
+            if (excludeId) query = query.whereNot('id', excludeId);
+            const result = await query.count('* as count').first();
             return result && result.count > 0;
         } catch (error) {
             console.error(`TenantRepository::checkCompanyCodeExists failed: ${error.message}`);
@@ -232,53 +194,66 @@ class TenantRepository extends BaseRepository {
         }
     }
 
-    async checkDomainExists(domain, excludeId = null) {
+    async getGlobalStatistics() {
         try {
-            let query = TenantQueries.checkDomainExists();
-            let params = [domain];
-            
-            if (excludeId) {
-                query += ' AND id != ?';
-                params.push(excludeId);
-            }
-            
-            const result = await this.executeQuerySingle(query, params);
-            return result && result.count > 0;
+            const totalResult = await this.query().where('is_deleted', 0).count('* as count').first();
+            const activeResult = await this.query().where('is_deleted', 0).where('subscription_status', 'active').count('* as count').first();
+            const trialResult = await this.query().where('is_deleted', 0).where('subscription_status', 'trial').count('* as count').first();
+
+            return {
+                total_tenants: parseInt(totalResult.count) || 0,
+                active_tenants: parseInt(activeResult.count) || 0,
+                trial_tenants: parseInt(trialResult.count) || 0
+            };
         } catch (error) {
-            console.error(`TenantRepository::checkDomainExists failed: ${error.message}`);
+            console.error(`TenantRepository::getGlobalStatistics failed: ${error.message}`);
             throw error;
         }
     }
 
-    async getTenantStatistics(id) {
+    async getTenantStatistics(id, trx = null) {
         try {
-            const query = TenantQueries.getTenantStatistics();
-            const results = await this.executeQuery(query, [id]);
-            return results.length > 0 ? results[0] : null;
+            const knex = trx || this.knex;
+            // Simplified stats
+            const tenant = await this.query(trx).where('id', id).first();
+            if (!tenant) return null;
+
+            const edgeServers = await knex('edge_servers')
+                .where('tenant_id', id)
+                .where('is_deleted', 0)
+                .count('* as count')
+                .first();
+
+            const sites = await knex('sites')
+                .where('tenant_id', id)
+                .where('is_deleted', 0)
+                .count('* as count')
+                .first();
+
+            const users = await knex('users')
+                .where('tenant_id', id)
+                .count('* as count')
+                .first();
+
+            // 데이터 포인트 합계 (활성화된 디바이스의 활성화된 데이터 포인트만 합산)
+            const dataPoints = await knex('data_points as dp')
+                .join('devices as d', 'dp.device_id', 'd.id')
+                .where('d.tenant_id', id)
+                .where('d.is_deleted', 0)
+                .where('d.is_enabled', 1)
+                .where('dp.is_enabled', 1)
+                .count('* as count')
+                .first();
+
+            return {
+                ...tenant,
+                edge_servers_count: parseInt(edgeServers.count) || 0,
+                data_points_count: parseInt(dataPoints.count) || 0,
+                sites_count: parseInt(sites.count) || 0,
+                users_count: parseInt(users.count) || 0
+            };
         } catch (error) {
             console.error(`TenantRepository::getTenantStatistics failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    async searchByCompanyName(searchTerm) {
-        try {
-            const query = TenantQueries.searchByCompanyName();
-            const results = await this.executeQuery(query, [`%${searchTerm}%`]);
-            return results;
-        } catch (error) {
-            console.error(`TenantRepository::searchByCompanyName failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    async getUsageLimits(id) {
-        try {
-            const query = TenantQueries.getUsageLimits();
-            const results = await this.executeQuery(query, [id]);
-            return results.length > 0 ? results[0] : null;
-        } catch (error) {
-            console.error(`TenantRepository::getUsageLimits failed: ${error.message}`);
             throw error;
         }
     }

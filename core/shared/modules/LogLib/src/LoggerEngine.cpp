@@ -27,12 +27,12 @@ LoggerEngine& LoggerEngine::getInstance() {
 }
 
 void LoggerEngine::setLogLevel(LogLevel level) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     minLevel_ = level;
 }
 
 LogLevel LoggerEngine::getLogLevel() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (log_level_provider_) {
         // Callback exists, update minLevel periodically or every check
         // User is responsible for performance of the callback
@@ -42,12 +42,12 @@ LogLevel LoggerEngine::getLogLevel() const {
 }
 
 void LoggerEngine::setLogLevelProvider(LogLevelProvider provider) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     log_level_provider_ = provider;
 }
 
 void LoggerEngine::setLogBasePath(const std::string& path) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     log_base_path_ = path;
     if (!log_base_path_.empty() && log_base_path_.back() != '/' && log_base_path_.back() != '\\') {
         log_base_path_ += std::filesystem::path::preferred_separator;
@@ -55,27 +55,27 @@ void LoggerEngine::setLogBasePath(const std::string& path) {
 }
 
 std::string LoggerEngine::getLogBasePath() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     return log_base_path_;
 }
 
 void LoggerEngine::setConsoleOutput(bool enabled) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     console_output_enabled_ = enabled;
 }
 
 void LoggerEngine::setFileOutput(bool enabled) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     file_output_enabled_ = enabled;
 }
 
 void LoggerEngine::setMaxLogSizeMB(size_t size_mb) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     max_log_size_mb_ = size_mb;
 }
 
 void LoggerEngine::setMaxLogFiles(int count) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     max_log_files_ = count;
 }
 
@@ -110,7 +110,7 @@ void LoggerEngine::logPacket(const std::string& driver, const std::string& devic
 }
 
 void LoggerEngine::flushAll() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     for (auto& kv : logFiles_) {
         if (kv.second.is_open()) {
             kv.second.flush();
@@ -125,12 +125,12 @@ void LoggerEngine::rotateLogs() {
 }
 
 LogStatistics LoggerEngine::getStatistics() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     return statistics_;
 }
 
 void LoggerEngine::resetStatistics() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     statistics_ = LogStatistics{};
 }
 
@@ -229,7 +229,7 @@ std::filesystem::path LoggerEngine::buildLogFilePath(const std::string& category
 }
 
 void LoggerEngine::writeToFile(const std::string& filePath, const std::string& message) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     
     if (console_output_enabled_) {
         std::cout << message << std::endl;
@@ -303,7 +303,7 @@ std::string LoggerEngine::getCurrentTimestamp() {
 }
 
 void LoggerEngine::updateStatistics(LogLevel level) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     
     switch (level) {
         case LogLevel::TRACE: statistics_.trace_count++; break;

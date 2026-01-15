@@ -7,11 +7,11 @@
 const getApiBase = () => {
   // 브라우저 환경
   if (typeof window !== 'undefined') {
-    return window.location.hostname === 'localhost' 
+    return window.location.hostname === 'localhost'
       ? 'http://localhost:3000'
       : window.location.origin;
   }
-  
+
   // 빌드 시점에 환경변수가 있다면 사용
   try {
     return process?.env?.REACT_APP_API_BASE || 'http://localhost:3000';
@@ -32,49 +32,49 @@ export const ENDPOINTS = {
   // ==========================================================================
   HEALTH: `${API_BASE}/api/health`,
   API_INFO: `${API_BASE}/api`,
-  
+
   // ==========================================================================
   // 시스템 관리 API
   // ==========================================================================
   SYSTEM_STATUS: `${API_BASE}/api/system/status`,
-  SYSTEM_INFO: `${API_BASE}/api/system/info`, 
+  SYSTEM_INFO: `${API_BASE}/api/system/info`,
   SYSTEM_DATABASES: `${API_BASE}/api/system/databases`,
   SYSTEM_HEALTH: `${API_BASE}/api/system/health`,
-  
+
   // ==========================================================================
   // 서비스 제어 - 백엔드와 완벽 일치
   // ==========================================================================
   SERVICES: `${API_BASE}/api/services`,
   SERVICE_BY_NAME: (name: string) => `${API_BASE}/api/services/${name}`,
-  
+
   // Collector 서비스 제어
   COLLECTOR_START: `${API_BASE}/api/services/collector/start`,
   COLLECTOR_STOP: `${API_BASE}/api/services/collector/stop`,
   COLLECTOR_RESTART: `${API_BASE}/api/services/collector/restart`,
   COLLECTOR_STATUS: `${API_BASE}/api/services/collector`,
-  
+
   // Redis 서비스 제어
   REDIS_START: `${API_BASE}/api/services/redis/start`,
   REDIS_STOP: `${API_BASE}/api/services/redis/stop`,
   REDIS_RESTART: `${API_BASE}/api/services/redis/restart`,
   REDIS_SERVICE_STATUS: `${API_BASE}/api/services/redis/status`,
-  
+
   // 범용 서비스 제어 함수
   SERVICE_START: (name: string) => `${API_BASE}/api/services/${name}/start`,
   SERVICE_STOP: (name: string) => `${API_BASE}/api/services/${name}/stop`,
   SERVICE_RESTART: (name: string) => `${API_BASE}/api/services/${name}/restart`,
   SERVICE_STATUS: (name: string) => `${API_BASE}/api/services/${name}`,
-  
+
   // 서비스 헬스체크 및 시스템 정보
   SERVICES_HEALTH_CHECK: `${API_BASE}/api/services/health/check`,
   SERVICES_SYSTEM_INFO: `${API_BASE}/api/services/system/info`,
   SERVICES_PROCESSES: `${API_BASE}/api/services/processes`,
   SERVICES_PLATFORM_INFO: `${API_BASE}/api/services/platform/info`,
-  
+
   // 프로세스 관리
   PROCESSES: `${API_BASE}/api/processes`,
   PROCESS_BY_ID: (id: number | string) => `${API_BASE}/api/processes/${id}`,
-  
+
   // ==========================================================================
   // 디바이스 관리 API (protocol_id 직접 처리 지원)
   // ==========================================================================
@@ -88,7 +88,32 @@ export const ENDPOINTS = {
   DEVICE_PROTOCOLS: `${API_BASE}/api/devices/protocols`,  // ID 정보 포함하여 반환
   DEVICE_STATISTICS: `${API_BASE}/api/devices/statistics`,
   DEVICE_BULK_ACTION: `${API_BASE}/api/devices/bulk-action`,
-  
+  DEVICE_DIAGNOSE: (id: number | string) => `${API_BASE}/api/devices/${id}/diagnose`,
+
+  // ==========================================================================
+  // 제조사 및 모델 관리 API
+  // ==========================================================================
+  MANUFACTURERS: `${API_BASE}/api/manufacturers`,
+  MANUFACTURER_BY_ID: (id: number | string) => `${API_BASE}/api/manufacturers/${id}`,
+  MODELS: `${API_BASE}/api/models`,
+  MODEL_BY_ID: (id: number | string) => `${API_BASE}/api/models/${id}`,
+  MODELS_BY_MANUFACTURER: (id: number | string) => `${API_BASE}/api/models?manufacturer_id=${id}`,
+
+  // ==========================================================================
+  // 디바이스 템플릿 관리 API
+  // ==========================================================================
+  TEMPLATES: `${API_BASE}/api/templates`,
+  TEMPLATE_BY_ID: (id: number | string) => `${API_BASE}/api/templates/${id}`,
+  TEMPLATE_INSTANTIATE: (id: number | string) => `${API_BASE}/api/templates/${id}/instantiate`,
+  TEMPLATE_DATA_POINTS: (id: number | string) => `${API_BASE}/api/templates/${id}/data-points`,
+
+  // ==========================================================================
+  // 감사 로그(Audit Logs) API
+  // ==========================================================================
+  AUDIT_LOGS: `${API_BASE}/api/audit-logs`,
+  AUDIT_LOG_BY_ID: (id: number | string) => `${API_BASE}/api/audit-logs/${id}`,
+  AUDIT_LOGS_BY_ENTITY: (type: string, id: number | string) => `${API_BASE}/api/audit-logs?entity_type=${type}&entity_id=${id}`,
+
   // RTU 전용 엔드포인트들
   RTU_NETWORKS: `${API_BASE}/api/devices/rtu/networks`,
   RTU_NETWORK_BY_ID: (id: number | string) => `${API_BASE}/api/devices/rtu/networks/${id}`,
@@ -96,11 +121,11 @@ export const ENDPOINTS = {
   RTU_SLAVE_STATUS: (slaveId: number | string) => `${API_BASE}/api/devices/rtu/slave/${slaveId}/status`,
   RTU_NETWORK_SCAN: `${API_BASE}/api/devices/rtu/scan`,
   RTU_NETWORK_STATUS: (port: string) => `${API_BASE}/api/devices/rtu/port/${encodeURIComponent(port)}/status`,
-  
+
   // 디버깅 API (개발용)
   DEBUG_DEVICES_DIRECT: `${API_BASE}/api/devices/debug/direct`,
   DEBUG_REPOSITORY: `${API_BASE}/api/devices/debug/repository`,
-  
+
   // ==========================================================================
   // 데이터 탐색 API
   // ==========================================================================
@@ -112,7 +137,7 @@ export const ENDPOINTS = {
   DATA_QUERY: `${API_BASE}/api/data/query`,
   DATA_EXPORT: `${API_BASE}/api/data/export`,
   DATA_STATISTICS: `${API_BASE}/api/data/statistics`,
-  
+
   // ==========================================================================
   // 실시간 데이터 API
   // ==========================================================================
@@ -123,11 +148,11 @@ export const ENDPOINTS = {
   REALTIME_SUBSCRIPTIONS: `${API_BASE}/api/realtime/subscriptions`,
   REALTIME_POLL: (id: string) => `${API_BASE}/api/realtime/poll/${id}`,
   REALTIME_STATS: `${API_BASE}/api/realtime/stats`,
-  
+
   // ==========================================================================
   // 완전한 알람 관리 API
   // ==========================================================================
-  
+
   // ---- 알람 발생 (Alarm Occurrences) ----
   ALARMS_ACTIVE: `${API_BASE}/api/alarms/active`,
   ALARMS_OCCURRENCES: `${API_BASE}/api/alarms/occurrences`,
@@ -137,26 +162,26 @@ export const ENDPOINTS = {
   ALARMS_HISTORY: `${API_BASE}/api/alarms/history`,
   ALARM_TODAY: `${API_BASE}/api/alarms/today`,
   ALARM_TODAY_STATISTICS: `${API_BASE}/api/alarms/statistics/today`,
-  
+
   // ---- 카테고리/태그별 알람 발생 ----
   ALARMS_OCCURRENCES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/occurrences/category/${category}`,
   ALARMS_OCCURRENCES_TAG: (tag: string) => `${API_BASE}/api/alarms/occurrences/tag/${tag}`,
-  
+
   // ---- 알람 규칙 (Alarm Rules) ----
   ALARM_RULES: `${API_BASE}/api/alarms/rules`,
   ALARM_RULE_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}`,
   ALARM_RULES_STATISTICS: `${API_BASE}/api/alarms/rules/statistics`,
   ALARM_RULE_SETTINGS: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/settings`,
-  
+
   // 간단한 업데이트 엔드포인트들
   ALARM_RULE_TOGGLE: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/toggle`,
   ALARM_RULE_NAME: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/name`,
   ALARM_RULE_SEVERITY: (id: number | string) => `${API_BASE}/api/alarms/rules/${id}/severity`,
-  
+
   // ---- 카테고리/태그별 알람 규칙 ----
   ALARM_RULES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/rules/category/${category}`,
   ALARM_RULES_TAG: (tag: string) => `${API_BASE}/api/alarms/rules/tag/${tag}`,
-  
+
   // ---- 알람 템플릿 (Alarm Templates) ----
   ALARM_TEMPLATES: `${API_BASE}/api/alarms/templates`,
   ALARM_TEMPLATE_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/templates/${id}`,
@@ -168,22 +193,22 @@ export const ENDPOINTS = {
   ALARM_TEMPLATES_STATISTICS: `${API_BASE}/api/alarms/templates/statistics`,
   ALARM_TEMPLATES_SEARCH: `${API_BASE}/api/alarms/templates/search`,
   ALARM_TEMPLATES_MOST_USED: `${API_BASE}/api/alarms/templates/most-used`,
-  
+
   // ---- 태그별 알람 템플릿 ----
   ALARM_TEMPLATES_TAG: (tag: string) => `${API_BASE}/api/alarms/templates/tag/${tag}`,
-  
+
   // ---- 특화 알람 엔드포인트들 ----
   ALARM_STATISTICS: `${API_BASE}/api/alarms/statistics`,
   ALARM_UNACKNOWLEDGED: `${API_BASE}/api/alarms/unacknowledged`,
   ALARM_RECENT: `${API_BASE}/api/alarms/recent`,
   ALARM_DEVICE: (deviceId: number | string) => `${API_BASE}/api/alarms/device/${deviceId}`,
   ALARM_TEST: `${API_BASE}/api/alarms/test`,
-  
+
   // ---- 기존 호환성 엔드포인트들 ----
   ALARM_BY_ID: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}`,
   ALARM_ACKNOWLEDGE: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/acknowledge`,
   ALARM_CLEAR: (id: number | string) => `${API_BASE}/api/alarms/occurrences/${id}/clear`,
-  
+
   // ==========================================================================
   // 대시보드 API
   // ==========================================================================
@@ -191,10 +216,10 @@ export const ENDPOINTS = {
   DASHBOARD_TENANT_STATS: `${API_BASE}/api/dashboard/tenant-stats`,
   DASHBOARD_RECENT_DEVICES: `${API_BASE}/api/dashboard/recent-devices`,
   DASHBOARD_SYSTEM_HEALTH: `${API_BASE}/api/dashboard/system-health`,
-  DASHBOARD_SERVICE_CONTROL: (name: string, action: string) => 
+  DASHBOARD_SERVICE_CONTROL: (name: string, action: string) =>
     `${API_BASE}/api/services/${name}/${action}`,  // 수정됨
   DASHBOARD_SERVICES_STATUS: `${API_BASE}/api/dashboard/services/status`,
-  
+
   // ==========================================================================
   // 사용자 관리 API
   // ==========================================================================
@@ -204,7 +229,7 @@ export const ENDPOINTS = {
   USER_LOGOUT: `${API_BASE}/api/users/logout`,
   USER_PERMISSIONS: (id: number | string) => `${API_BASE}/api/users/${id}/permissions`,
   USER_LOGIN_HISTORY: `${API_BASE}/api/users/login-history`,
-  
+
   // ==========================================================================
   // 가상포인트 관리 API
   // ==========================================================================
@@ -217,12 +242,12 @@ export const ENDPOINTS = {
   VIRTUAL_POINT_VALUE: (id: number | string) => `${API_BASE}/api/virtual-points/${id}/value`,
   VIRTUAL_POINTS_STATS_CATEGORY: `${API_BASE}/api/virtual-points/stats/category`,
   VIRTUAL_POINTS_STATS_PERFORMANCE: `${API_BASE}/api/virtual-points/stats/performance`,
-  
+
   // ==========================================================================
   // WebSocket 엔드포인트
   // ==========================================================================
   WS_REALTIME: '/ws/realtime',
-  
+
   // ==========================================================================
   // Redis 데이터 API
   // ==========================================================================
@@ -242,14 +267,14 @@ export const ENDPOINTS = {
   REDIS_TEST: `${API_BASE}/api/redis/test`,
   REDIS_PING: `${API_BASE}/api/redis/ping`,
   REDIS_CONNECTION_CHECK: `${API_BASE}/api/redis-connection-check`,
-  
+
   // ==========================================================================
   // 초기화 및 설정 API
   // ==========================================================================
   INIT_STATUS: `${API_BASE}/api/init/status`,
   INIT_TRIGGER: `${API_BASE}/api/init/trigger`,
   INIT_MANUAL: `${API_BASE}/api/init/manual`,
-  
+
   // ==========================================================================
   // 모니터링 API
   // ==========================================================================
@@ -258,7 +283,7 @@ export const ENDPOINTS = {
   MONITORING_DATABASE_STATS: `${API_BASE}/api/monitoring/database-stats`,
   MONITORING_PERFORMANCE: `${API_BASE}/api/monitoring/performance`,
   MONITORING_LOGS: `${API_BASE}/api/monitoring/logs`,
-  
+
   // ==========================================================================
   // 사이트 관리
   // ==========================================================================
@@ -266,7 +291,7 @@ export const ENDPOINTS = {
   SITE_BY_ID: (id: number | string) => `${API_BASE}/api/sites/${id}`,
   SITE_DEVICES: (id: number | string) => `${API_BASE}/api/sites/${id}/devices`,
   SITE_STATISTICS: (id: number | string) => `${API_BASE}/api/sites/${id}/statistics`,
-  
+
   // ==========================================================================
   // 백업/복원
   // ==========================================================================
@@ -276,14 +301,15 @@ export const ENDPOINTS = {
   BACKUP_DELETE: (id: number | string) => `${API_BASE}/api/backup/${id}`,
   BACKUP_STATUS: (id: number | string) => `${API_BASE}/api/backup/${id}/status`,
   BACKUP_SCHEDULE: `${API_BASE}/api/backup/schedule`,
-  
+
   // ==========================================================================
   // 네트워크 설정
   // ==========================================================================
   NETWORK_SETTINGS: `${API_BASE}/api/network/settings`,
   NETWORK_INTERFACES: `${API_BASE}/api/network/interfaces`,
   NETWORK_TEST: `${API_BASE}/api/network/test`,
-  
+  NETWORK_SCAN: `${API_BASE}/api/devices/scan`, // New Scan Endpoint
+
   // ==========================================================================
   // 권한 관리
   // ==========================================================================
@@ -291,14 +317,14 @@ export const ENDPOINTS = {
   PERMISSION_ROLES: `${API_BASE}/api/permissions/roles`,
   PERMISSION_USERS: `${API_BASE}/api/permissions/users`,
   PERMISSION_ASSIGN: `${API_BASE}/api/permissions/assign`,
-  
+
   // ==========================================================================
   // 로그 관리
   // ==========================================================================
   LOGS: `${API_BASE}/api/logs`,
   LOGS_DOWNLOAD: `${API_BASE}/api/logs/download`,
   LOGS_CLEAR: `${API_BASE}/api/logs/clear`,
-  
+
   // ==========================================================================
   // 설정 관리
   // ==========================================================================
@@ -350,19 +376,19 @@ export function validateDeviceData(data: {
   [key: string]: any;
 }): { isValid: boolean; errors: string[] } {
   const errors: string[] = [];
-  
+
   if (data.name !== undefined && (!data.name || data.name.trim().length === 0)) {
     errors.push('Device name is required');
   }
-  
+
   if (data.protocol_id !== undefined && (!data.protocol_id || typeof data.protocol_id !== 'number' || data.protocol_id < 1)) {
     errors.push('Valid protocol_id is required');
   }
-  
+
   if (data.endpoint !== undefined && (!data.endpoint || data.endpoint.trim().length === 0)) {
     errors.push('Endpoint is required');
   }
-  
+
   return {
     isValid: errors.length === 0,
     errors
@@ -443,9 +469,9 @@ export function buildUrlWithParams(endpoint: string, params?: Record<string, any
   if (!params || Object.keys(params).length === 0) {
     return endpoint;
   }
-  
+
   const queryParams = new URLSearchParams();
-  
+
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       if (Array.isArray(value)) {
@@ -455,7 +481,7 @@ export function buildUrlWithParams(endpoint: string, params?: Record<string, any
       }
     }
   });
-  
+
   const queryString = queryParams.toString();
   return queryString ? `${endpoint}?${queryString}` : endpoint;
 }
@@ -469,7 +495,7 @@ export function buildPaginatedUrl(endpoint: string, params: {
   [key: string]: any;
 }): string {
   const { page = 1, limit = 25, ...otherParams } = params;
-  
+
   return buildUrlWithParams(endpoint, {
     page,
     limit,
@@ -486,7 +512,7 @@ export function buildSortedUrl(endpoint: string, params: {
   [key: string]: any;
 }): string {
   const { sort_by = 'id', sort_order = 'ASC', ...otherParams } = params;
-  
+
   return buildUrlWithParams(endpoint, {
     sort_by,
     sort_order,
@@ -599,7 +625,7 @@ export const API_GROUPS = {
     DATABASES: ENDPOINTS.SYSTEM_DATABASES,
     HEALTH: ENDPOINTS.SYSTEM_HEALTH
   },
-  
+
   SERVICES: {
     LIST: ENDPOINTS.SERVICES,
     DETAIL: ENDPOINTS.SERVICE_BY_NAME,
@@ -620,7 +646,7 @@ export const API_GROUPS = {
     PROCESSES: ENDPOINTS.SERVICES_PROCESSES,
     PLATFORM: ENDPOINTS.SERVICES_PLATFORM_INFO
   },
-  
+
   DEVICES: {
     LIST: ENDPOINTS.DEVICES,
     DETAIL: ENDPOINTS.DEVICE_BY_ID,
@@ -632,7 +658,7 @@ export const API_GROUPS = {
     PROTOCOLS: ENDPOINTS.DEVICE_PROTOCOLS,  // ID 정보 포함
     STATISTICS: ENDPOINTS.DEVICE_STATISTICS,
     BULK_ACTION: ENDPOINTS.DEVICE_BULK_ACTION,
-    
+
     // RTU 전용 엔드포인트 그룹
     RTU: {
       NETWORKS: ENDPOINTS.RTU_NETWORKS,
@@ -642,14 +668,37 @@ export const API_GROUPS = {
       NETWORK_SCAN: ENDPOINTS.RTU_NETWORK_SCAN,
       NETWORK_STATUS: ENDPOINTS.RTU_NETWORK_STATUS
     },
-    
-    // 디버깅 API
+
     DEBUG: {
       DIRECT: ENDPOINTS.DEBUG_DEVICES_DIRECT,
       REPOSITORY: ENDPOINTS.DEBUG_REPOSITORY
-    }
+    },
+
+    // 진단
+    DIAGNOSE: ENDPOINTS.DEVICE_DIAGNOSE
   },
-  
+
+  MANUFACTURING: {
+    MANUFACTURERS: ENDPOINTS.MANUFACTURERS,
+    MANUFACTURER_DETAIL: ENDPOINTS.MANUFACTURER_BY_ID,
+    MODELS: ENDPOINTS.MODELS,
+    MODEL_DETAIL: ENDPOINTS.MODEL_BY_ID,
+    MODELS_BY_MANUFACTURER: ENDPOINTS.MODELS_BY_MANUFACTURER
+  },
+
+  TEMPLATES: {
+    LIST: ENDPOINTS.TEMPLATES,
+    DETAIL: ENDPOINTS.TEMPLATE_BY_ID,
+    INSTANTIATE: ENDPOINTS.TEMPLATE_INSTANTIATE,
+    DATA_POINTS: ENDPOINTS.TEMPLATE_DATA_POINTS
+  },
+
+  AUDIT: {
+    LIST: ENDPOINTS.AUDIT_LOGS,
+    DETAIL: ENDPOINTS.AUDIT_LOG_BY_ID,
+    BY_ENTITY: ENDPOINTS.AUDIT_LOGS_BY_ENTITY
+  },
+
   DATA: {
     POINTS: ENDPOINTS.DATA_POINTS,
     POINT_DETAIL: ENDPOINTS.DATA_POINT_BY_ID,
@@ -660,7 +709,7 @@ export const API_GROUPS = {
     EXPORT: ENDPOINTS.DATA_EXPORT,
     STATISTICS: ENDPOINTS.DATA_STATISTICS
   },
-  
+
   REALTIME: {
     CURRENT_VALUES: ENDPOINTS.REALTIME_CURRENT_VALUES,
     DEVICE_VALUES: ENDPOINTS.REALTIME_DEVICE_VALUES,
@@ -670,7 +719,7 @@ export const API_GROUPS = {
     POLL: ENDPOINTS.REALTIME_POLL,
     STATS: ENDPOINTS.REALTIME_STATS
   },
-  
+
   ALARMS: {
     // 알람 발생 관련
     ACTIVE: ENDPOINTS.ALARMS_ACTIVE,
@@ -682,26 +731,26 @@ export const API_GROUPS = {
     UNACKNOWLEDGED: ENDPOINTS.ALARM_UNACKNOWLEDGED,
     RECENT: ENDPOINTS.ALARM_RECENT,
     DEVICE_ALARMS: ENDPOINTS.ALARM_DEVICE,
-    
+
     // 카테고리/태그별 알람 발생
     OCCURRENCES_BY_CATEGORY: ENDPOINTS.ALARMS_OCCURRENCES_CATEGORY,
     OCCURRENCES_BY_TAG: ENDPOINTS.ALARMS_OCCURRENCES_TAG,
-    
+
     // 알람 규칙 관련
     RULES: ENDPOINTS.ALARM_RULES,
     RULE_DETAIL: ENDPOINTS.ALARM_RULE_BY_ID,
     RULES_STATISTICS: ENDPOINTS.ALARM_RULES_STATISTICS,
     RULE_SETTINGS: ENDPOINTS.ALARM_RULE_SETTINGS,
-    
+
     // 간단한 업데이트 엔드포인트들
     RULE_TOGGLE: ENDPOINTS.ALARM_RULE_TOGGLE,
     RULE_NAME: ENDPOINTS.ALARM_RULE_NAME,
     RULE_SEVERITY: ENDPOINTS.ALARM_RULE_SEVERITY,
-    
+
     // 카테고리/태그별 알람 규칙
     RULES_BY_CATEGORY: ENDPOINTS.ALARM_RULES_CATEGORY,
     RULES_BY_TAG: ENDPOINTS.ALARM_RULES_TAG,
-    
+
     // 알람 템플릿 관련
     TEMPLATES: ENDPOINTS.ALARM_TEMPLATES,
     TEMPLATE_DETAIL: ENDPOINTS.ALARM_TEMPLATE_BY_ID,
@@ -714,14 +763,14 @@ export const API_GROUPS = {
     TEMPLATES_SEARCH: ENDPOINTS.ALARM_TEMPLATES_SEARCH,
     TEMPLATES_MOST_USED: ENDPOINTS.ALARM_TEMPLATES_MOST_USED,
     TEMPLATES_BY_TAG: ENDPOINTS.ALARM_TEMPLATES_TAG,
-    
+
     // 통계 및 기타
     STATISTICS: ENDPOINTS.ALARM_STATISTICS,
     TEST: ENDPOINTS.ALARM_TEST,
     TODAY: ENDPOINTS.ALARM_TODAY,
     TODAY_STATISTICS: ENDPOINTS.ALARM_TODAY_STATISTICS
   },
-  
+
   VIRTUAL_POINTS: {
     LIST: ENDPOINTS.VIRTUAL_POINTS,
     DETAIL: ENDPOINTS.VIRTUAL_POINT_BY_ID,
@@ -733,7 +782,7 @@ export const API_GROUPS = {
     STATS_CATEGORY: ENDPOINTS.VIRTUAL_POINTS_STATS_CATEGORY,
     STATS_PERFORMANCE: ENDPOINTS.VIRTUAL_POINTS_STATS_PERFORMANCE
   },
-  
+
   DASHBOARD: {
     OVERVIEW: ENDPOINTS.DASHBOARD_OVERVIEW,
     TENANT_STATS: ENDPOINTS.DASHBOARD_TENANT_STATS,
@@ -753,9 +802,9 @@ export const API_GROUPS = {
  */
 export function isValidEndpoint(endpoint: string): boolean {
   return Object.values(ENDPOINTS).includes(endpoint as any) ||
-         Object.values(ENDPOINTS).some(value => 
-           typeof value === 'function' || endpoint.startsWith('/api/')
-         );
+    Object.values(ENDPOINTS).some(value =>
+      typeof value === 'function' || endpoint.startsWith('/api/')
+    );
 }
 
 /**
@@ -825,22 +874,22 @@ export const ERROR_CODES = {
   // 네트워크 관련
   NETWORK_ERROR: 'NETWORK_ERROR',
   TIMEOUT_ERROR: 'TIMEOUT_ERROR',
-  
+
   // 인증 관련
   UNAUTHORIZED: 'UNAUTHORIZED',
   FORBIDDEN: 'FORBIDDEN',
-  
+
   // 데이터 관련
   NOT_FOUND: 'NOT_FOUND',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   DUPLICATE_ERROR: 'DUPLICATE_ERROR',
-  
+
   // 서비스 관련
   SERVICE_CONTROL_ERROR: 'SERVICE_CONTROL_ERROR',
   SERVICE_NOT_FOUND: 'SERVICE_NOT_FOUND',
   SERVICE_ALREADY_RUNNING: 'SERVICE_ALREADY_RUNNING',
   SERVICE_NOT_RUNNING: 'SERVICE_NOT_RUNNING',
-  
+
   // 디바이스 및 프로토콜 관련 에러 코드들
   DEVICE_NOT_FOUND: 'DEVICE_NOT_FOUND',
   DEVICE_NAME_CONFLICT: 'DEVICE_NAME_CONFLICT',
@@ -851,7 +900,7 @@ export const ERROR_CODES = {
   INVALID_PROTOCOL_ID: 'INVALID_PROTOCOL_ID',            // 새로 추가
   PROTOCOL_ID_NOT_FOUND: 'PROTOCOL_ID_NOT_FOUND',        // 새로 추가
   UNSUPPORTED_PROTOCOL: 'UNSUPPORTED_PROTOCOL',
-  
+
   // RTU 관련 에러 코드들
   RTU_NETWORK_ERROR: 'RTU_NETWORK_ERROR',
   RTU_MASTER_NOT_FOUND: 'RTU_MASTER_NOT_FOUND',
@@ -862,7 +911,7 @@ export const ERROR_CODES = {
   RTU_BAUD_RATE_ERROR: 'RTU_BAUD_RATE_ERROR',
   RTU_SLAVE_ID_CONFLICT: 'RTU_SLAVE_ID_CONFLICT',
   RTU_NETWORK_STATUS_ERROR: 'RTU_NETWORK_STATUS_ERROR',
-  
+
   // 알람 관련 에러 코드들
   ALARM_NOT_FOUND: 'ALARM_NOT_FOUND',
   ALARM_RULE_NOT_FOUND: 'ALARM_RULE_NOT_FOUND',
@@ -895,7 +944,7 @@ export const ERROR_CODES = {
   CATEGORY_TEMPLATES_ERROR: 'CATEGORY_TEMPLATES_ERROR',
   TAG_TEMPLATES_ERROR: 'TAG_TEMPLATES_ERROR',
   TEST_ERROR: 'TEST_ERROR',
-  
+
   // 서버 관련
   INTERNAL_SERVER_ERROR: 'INTERNAL_SERVER_ERROR',
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE'
@@ -909,19 +958,19 @@ export const ALARM_CONSTANTS = {
   TARGET_TYPES: ['device', 'data_point', 'virtual_point'] as const,
   TEMPLATE_CATEGORIES: ['general', 'temperature', 'pressure', 'flow', 'level', 'vibration', 'electrical', 'safety'] as const,
   DATA_TYPES: ['number', 'boolean', 'string', 'object'] as const,
-  
+
   DEFAULT_CATEGORIES: [
-    'temperature',   'pressure',      'flow',          'level',
-    'vibration',     'electrical',    'safety',        'general'
+    'temperature', 'pressure', 'flow', 'level',
+    'vibration', 'electrical', 'safety', 'general'
   ] as const,
-  
+
   COMMON_TAGS: [
-    'critical',      'maintenance',   'production',    'quality',
-    'energy',        'efficiency',    'compliance',    'monitoring'
+    'critical', 'maintenance', 'production', 'quality',
+    'energy', 'efficiency', 'compliance', 'monitoring'
   ] as const,
-  
+
   UPDATE_TYPES: [
-    'toggle',        'settings',      'name',          'severity'
+    'toggle', 'settings', 'name', 'severity'
   ] as const
 } as const;
 

@@ -30,10 +30,10 @@ class TenantQueries {
     // 기본 조회 쿼리들
     // ==========================================================================
 
-    /**
-     * 모든 테넌트 조회
-     */
-    static findAll() {
+    static findAll(options = {}) {
+        const { onlyDeleted = false } = options;
+        const deletedFilter = onlyDeleted ? 'is_deleted = 1' : 'is_deleted = 0';
+
         return `
             SELECT 
                 id, company_name, company_code, domain,
@@ -43,6 +43,7 @@ class TenantQueries {
                 is_active, trial_end_date,
                 created_at, updated_at
             FROM tenants 
+            WHERE ${deletedFilter}
             ORDER BY company_name
         `;
     }
@@ -252,9 +253,23 @@ class TenantQueries {
     }
 
     /**
-     * 테넌트 삭제
+     * 테넌트 삭제 (소프트 삭제)
      */
-    static delete() {
+    static softDelete() {
+        return 'UPDATE tenants SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
+    }
+
+    /**
+     * 테넌트 복구
+     */
+    static restore() {
+        return 'UPDATE tenants SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
+    }
+
+    /**
+     * 테넌트 완전 삭제
+     */
+    static permanentDelete() {
         return 'DELETE FROM tenants WHERE id = ?';
     }
 

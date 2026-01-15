@@ -161,6 +161,11 @@ size_t RedisDataWriter::SaveFullDataFormat(const Structs::DeviceDataMessage& mes
     
     std::string key = "device:full:" + ExtractDeviceNumber(message.device_id);
     redis_client_->setex(key, full_data.dump(), 3600);
+    
+    // 🔧 E2E 스크립트 호환성: current_values:{id} 키에도 동일한 JSON 저장
+    std::string cv_key = "current_values:" + ExtractDeviceNumber(message.device_id);
+    redis_client_->setex(cv_key, full_data.dump(), 3600);
+    
     return 1;
 }
 
@@ -256,6 +261,9 @@ bool RedisDataWriter::PublishAlarmEvent(const BackendFormat::AlarmEventData& ala
         if (alarm_data.state == "active" || alarm_data.state == "ACTIVE") {
             std::string active_key = "alarm:active:" + std::to_string(alarm_data.rule_id);
             redis_client_->setex(active_key, json_str, 7200); // 2시간 TTL
+        } else if (alarm_data.state == "cleared" || alarm_data.state == "CLEARED") {
+            std::string active_key = "alarm:active:" + std::to_string(alarm_data.rule_id);
+            redis_client_->del(active_key);
         }
 
         // 2.5 History List 저장 (테스트 및 감사용) - Added

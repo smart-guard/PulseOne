@@ -13,6 +13,7 @@
 #include <sstream>
 #include <iomanip>
 #include <thread>
+#include <iostream>
 #include "Database/RepositoryFactory.h"
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Entities/DataPointEntity.h"
@@ -140,6 +141,39 @@ BaseDeviceWorker::BaseDeviceWorker(const PulseOne::Structs::DeviceInfo& device_i
     worker_id_ = ss.str();
     
     LogMessage(LogLevel::INFO, "BaseDeviceWorker 생성됨 (Worker ID: " + worker_id_ + ")");
+
+    // 🔥 재연결 설정 초기화 (DeviceInfo 및 properties 맵 기반)
+    {
+        std::lock_guard<std::mutex> lock(settings_mutex_);
+        
+        // 1. DeviceInfo 전전용 필드 우선 적용
+        reconnection_settings_.retry_interval_ms = device_info_.retry_interval_ms;
+        reconnection_settings_.max_retries_per_cycle = device_info_.max_retry_count;
+        reconnection_settings_.wait_time_after_max_retries_ms = device_info_.backoff_time_ms;
+        reconnection_settings_.keep_alive_enabled = device_info_.is_keep_alive_enabled;
+        reconnection_settings_.keep_alive_interval_seconds = device_info_.keep_alive_interval_s;
+        
+        if (device_info_.connection_timeout_ms.has_value()) {
+            reconnection_settings_.connection_timeout_seconds = device_info_.connection_timeout_ms.value() / 1000;
+        }
+
+        // 2. properties 맵(config JSON)에서 추가/덮어쓰기 지원 (MasterModelModal 호환)
+        if (HasProperty("retry_interval_ms")) 
+            reconnection_settings_.retry_interval_ms = std::stoi(GetProperty("retry_interval_ms"));
+        if (HasProperty("max_retry_count")) 
+            reconnection_settings_.max_retries_per_cycle = std::stoi(GetProperty("max_retry_count"));
+        if (HasProperty("backoff_time_ms"))
+            reconnection_settings_.wait_time_after_max_retries_ms = std::stoi(GetProperty("backoff_time_ms"));
+        if (HasProperty("is_keep_alive_enabled"))
+            reconnection_settings_.keep_alive_enabled = (GetProperty("is_keep_alive_enabled") == "1" || GetProperty("is_keep_alive_enabled") == "true");
+        if (HasProperty("keep_alive_interval_s"))
+            reconnection_settings_.keep_alive_interval_seconds = std::stoi(GetProperty("keep_alive_interval_s"));
+            
+        LogMessage(LogLevel::DEBUG_LEVEL, "Initial Reconnection Settings: Interval=" + 
+                  std::to_string(reconnection_settings_.retry_interval_ms) + "ms, MaxRetries=" + 
+                  std::to_string(reconnection_settings_.max_retries_per_cycle) + ", Cool-down=" + 
+                  std::to_string(reconnection_settings_.wait_time_after_max_retries_ms) + "ms");
+    }
 
     // 통계 초기화
     reconnection_stats_.first_connection_time = system_clock::now();
@@ -395,39 +429,88 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
     
     while (thread_running_.load()) {
         try {
-            WorkerState current_state = current_state_.load();
-            
-            // 실행 중이고 연결이 끊어진 경우만 재연결 시도
-            if ((current_state == WorkerState::RUNNING || current_state == WorkerState::RECONNECTING) &&
-                !is_connected_.load()) {
+            // 1. Keep-alive 처리 (연결된 경우에만)
+            if (is_connected_.load()) {
+                HandleKeepAlive();
+            }
+
+            // 2. 대기 사이클(Cool-down) 처리
+            if (in_wait_cycle_.load()) {
+                if (HandleWaitCycle()) {
+                    // 대기 종료됨
+                    continue; 
+                }
+            } else {
+                WorkerState current_state = current_state_.load();
                 
-                LogMessage(LogLevel::DEBUG_LEVEL, "재연결 시도");
-                
-                if (AttemptReconnection()) {
-                    LogMessage(LogLevel::INFO, "재연결 성공");
-                    if (current_state == WorkerState::RECONNECTING) {
-                        ChangeState(WorkerState::RUNNING);
+                // 3. 실행 중이고 연결이 끊어진 경우만 재연결 시도
+                if ((current_state == WorkerState::RUNNING || current_state == WorkerState::RECONNECTING || current_state == WorkerState::WORKER_ERROR) &&
+                    !is_connected_.load()) {
+                    
+                    // 최대 재시도 횟수 도달 확인
+                    if (current_retry_count_.load() >= reconnection_settings_.max_retries_per_cycle) {
+                        LogMessage(LogLevel::WARN, "최대 재시도 횟수 도달 (" + 
+                                  std::to_string(reconnection_settings_.max_retries_per_cycle) + "). 대기 사이클 진입.");
+                        
+                        in_wait_cycle_.store(true);
+                        wait_start_time_ = system_clock::now();
+                        reconnection_stats_.wait_cycles.fetch_add(1);
+                        ChangeState(WorkerState::WAITING_RETRY);
+                        continue;
                     }
-                } else {
-                    LogMessage(LogLevel::DEBUG_LEVEL, "재연결 실패, 5초 후 재시도");
+
+                    LogMessage(LogLevel::DEBUG_LEVEL, "재연결 시도 (" + 
+                              std::to_string(current_retry_count_.load() + 1) + "/" + 
+                              std::to_string(reconnection_settings_.max_retries_per_cycle) + ")");
+                    
+                    if (AttemptReconnection()) {
+                        LogMessage(LogLevel::INFO, "재연결 성공");
+                        current_retry_count_.store(0);
+                        UpdateReconnectionStats(true);
+                        
+                        if (current_state == WorkerState::RECONNECTING || current_state == WorkerState::WAITING_RETRY) {
+                            ChangeState(WorkerState::RUNNING);
+                        }
+                    } else {
+                        current_retry_count_.fetch_add(1);
+                        UpdateReconnectionStats(false);
+                        LogMessage(LogLevel::DEBUG_LEVEL, "재연결 실패. 다음 시도 대기...");
+                    }
                 }
             }
             
-            // 5초마다 재연결 시도 (스레드 종료 체크를 더 세밀하게)
-            for (int i = 0; i < 50 && thread_running_.load(); ++i) {
+            // 4. 설정된 간격만큼 대기 (100ms 단위로 끊어서 종료 체크)
+            int interval_ms = reconnection_settings_.retry_interval_ms;
+            if (interval_ms < 100) interval_ms = 1000; // 최소 100ms
+            
+            for (int i = 0; i < (interval_ms / 100) && thread_running_.load(); ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             
         } catch (const std::exception& e) {
             LogMessage(LogLevel::LOG_ERROR, "재연결 스레드 예외: " + std::string(e.what()));
-            // 예외 발생시 더 긴 대기 후 재시도
-            for (int i = 0; i < 100 && thread_running_.load(); ++i) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
+            std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
     
     LogMessage(LogLevel::INFO, "재연결 관리 스레드 종료됨");
+}
+
+bool BaseDeviceWorker::HandleWaitCycle() {
+    auto now = system_clock::now();
+    auto elapsed_ms = duration_cast<milliseconds>(now - wait_start_time_).count();
+    
+    if (elapsed_ms >= reconnection_settings_.wait_time_after_max_retries_ms) {
+        LogMessage(LogLevel::INFO, "대기 사이클(Cool-down) 종료. 재연결 재개.");
+        in_wait_cycle_.store(false);
+        current_retry_count_.store(0);
+        reconnection_stats_.reconnection_cycles.fetch_add(1);
+        ChangeState(WorkerState::RECONNECTING);
+        return true;
+    }
+    
+    // 아직 대기 중
+    return false;
 }
 
 bool BaseDeviceWorker::AttemptReconnection() {
@@ -566,6 +649,7 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         message.type = "device_data";
         message.device_id = device_info_.id;
         message.protocol = device_info_.GetProtocolName();
+        message.device_type = device_info_.device_type;  // 🔥 Hybrid Data Strategy: 디바이스 타입 전달
         message.timestamp = std::chrono::system_clock::now();
         message.points = values;
         message.priority = priority;
@@ -664,7 +748,7 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         message.UpdateDeviceStatus(thresholds);
         
         // PipelineManager로 전송
-        bool success = pipeline_manager.SendDeviceData(message);
+        bool success = pipeline_manager.PushMessage(message);
 
         if (success) {
             LogMessage(LogLevel::DEBUG_LEVEL, 
@@ -684,6 +768,7 @@ bool BaseDeviceWorker::SendDataToPipeline(const std::vector<PulseOne::Structs::T
         }
         
         total_attempts_++;
+        std::cout << "[BaseDeviceWorker] SendDataToPipeline returning " << success << std::endl << std::flush;
         return success;
         
     } catch (const std::exception& e) {

@@ -47,10 +47,70 @@ BIN_DIR := bin
 DIST_DIR := dist
 TARGET := pulseone-collector
 
+# =============================================================================
+# 라이브러리 및 Include 경로 설정 (통합)
+# =============================================================================
+
 # Shared 라이브러리 경로
-SHARED_BASE_DIR := /app/core/shared
+SHARED_BASE_DIR := ../shared
 SHARED_INCLUDE_DIR := $(SHARED_BASE_DIR)/include
 SHARED_LIB_DIR := $(SHARED_BASE_DIR)/lib
+
+# 동적 라이브러리 감지
+HAS_SHARED := $(shell [ -d "$(SHARED_INCLUDE_DIR)" ] && echo "1" || echo "0")
+HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_QUICKJS := $(shell [ -f "/usr/local/include/quickjs/quickjs.h" ] || [ -f "/usr/include/quickjs/quickjs.h" ] || [ -f "/usr/local/include/quickjs.h" ] || [ -f "/usr/include/quickjs.h" ] && echo "1" || echo "0")
+HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
+
+# 프로토콜 라이브러리 감지
+HAS_MODBUS := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_BACNET := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
+
+# Collector 전용 Include 경로
+INCLUDES := -I$(INCLUDE_DIR) \
+            -I$(INCLUDE_DIR)/Config \
+            -I$(INCLUDE_DIR)/Alarm \
+            -I$(INCLUDE_DIR)/Workers \
+            -I$(INCLUDE_DIR)/Workers/Base \
+            -I$(INCLUDE_DIR)/Workers/Protocol \
+            -I$(INCLUDE_DIR)/Workers/Components \
+            -I$(INCLUDE_DIR)/Drivers \
+            -I$(INCLUDE_DIR)/Drivers/Common \
+            -I$(INCLUDE_DIR)/Pipeline \
+            -I$(INCLUDE_DIR)/Storage \
+            -I$(INCLUDE_DIR)/VirtualPoint \
+            -I$(INCLUDE_DIR)/Scripting \
+            -I$(INCLUDE_DIR)/Network \
+            -I$(INCLUDE_DIR)/Api \
+            -I$(INCLUDE_DIR)/Drivers/OPCUA
+
+# Shared 라이브러리 Include
+ifeq ($(HAS_SHARED),1)
+INCLUDES += -I$(SHARED_INCLUDE_DIR) \
+            -I$(SHARED_INCLUDE_DIR)/Platform \
+            -I$(SHARED_INCLUDE_DIR)/Common \
+            -I$(SHARED_INCLUDE_DIR)/Utils \
+            -I$(SHARED_INCLUDE_DIR)/Database \
+            -I$(SHARED_INCLUDE_DIR)/Database/Entities \
+            -I$(SHARED_INCLUDE_DIR)/Database/Repositories \
+            -I$(SHARED_INCLUDE_DIR)/Data \
+            -I$(SHARED_INCLUDE_DIR)/Alarm \
+            -I$(SHARED_INCLUDE_DIR)/Export \
+            -I$(SHARED_INCLUDE_DIR)/Security \
+            -I$(SHARED_INCLUDE_DIR)/Client \
+            -I$(SHARED_BASE_DIR)/modules/DbLib/include \
+            -I$(SHARED_BASE_DIR)/modules/LogLib/include
+endif
+
+# 외부 라이브러리 Include
+INCLUDES += -I/usr/local/include
+ifeq ($(HAS_QUICKJS),1)
+INCLUDES += -I/usr/local/include/quickjs -I/usr/include/quickjs
+endif
 
 # =============================================================================
 # 컴파일러 및 플래그 설정
@@ -79,9 +139,13 @@ else
 LDFLAGS := -Wl,--gc-sections -static
 endif
 else
-CXXFLAGS += -DPULSEONE_WINDOWS=0 -DPULSEONE_LINUX=1
-CXXFLAGS += -march=native -mtune=native
-LDFLAGS := -Wl,--gc-sections
+    CXXFLAGS += -DPULSEONE_WINDOWS=0 -DPULSEONE_LINUX=1
+    CXXFLAGS += -march=native -mtune=native
+    ifeq ($(UNAME_S),Darwin)
+        LDFLAGS := -Wl,-dead_strip
+    else
+        LDFLAGS := -Wl,--gc-sections
+    endif
 endif
 
 # 디버그/릴리즈 플래그
@@ -90,74 +154,6 @@ CXXFLAGS += -DDEBUG -g -O0 -fno-omit-frame-pointer
 else
 CXXFLAGS += -DNDEBUG -O3 -flto
 endif
-
-# =============================================================================
-# Include 경로 설정
-# =============================================================================
-
-# Shared 라이브러리 Include 확인
-HAS_SHARED := $(shell [ -d "$(SHARED_INCLUDE_DIR)" ] && echo "1" || echo "0")
-
-# Collector 전용 Include 경로
-INCLUDES := -I$(INCLUDE_DIR)
-INCLUDES += -I$(INCLUDE_DIR)/Config
-INCLUDES += -I$(INCLUDE_DIR)/Alarm
-INCLUDES += -I$(INCLUDE_DIR)/Workers
-INCLUDES += -I$(INCLUDE_DIR)/Workers/Base
-INCLUDES += -I$(INCLUDE_DIR)/Workers/Protocol
-INCLUDES += -I$(INCLUDE_DIR)/Workers/Components
-INCLUDES += -I$(INCLUDE_DIR)/Drivers
-INCLUDES += -I$(INCLUDE_DIR)/Drivers/Common
-INCLUDES += -I$(INCLUDE_DIR)/Pipeline
-INCLUDES += -I$(INCLUDE_DIR)/Storage
-INCLUDES += -I$(INCLUDE_DIR)/VirtualPoint
-INCLUDES += -I$(INCLUDE_DIR)/Scripting
-INCLUDES += -I$(INCLUDE_DIR)/Network
-INCLUDES += -I$(INCLUDE_DIR)/Api
-
-# Shared 라이브러리 Include
-ifeq ($(HAS_SHARED),1)
-INCLUDES := -I$(SHARED_INCLUDE_DIR) $(INCLUDES)
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Platform
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Common
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Utils
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Database
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Database/Entities
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Database/Repositories
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Data
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Alarm
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Export
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Security
-INCLUDES += -I$(SHARED_INCLUDE_DIR)/Client
-INCLUDES += -I$(SHARED_BASE_DIR)/modules/DbLib/include
-INCLUDES += -I$(SHARED_BASE_DIR)/modules/LogLib/include
-endif
-
-# 외부 라이브러리 Include
-INCLUDES += -I/usr/local/include
-INCLUDES += -I/usr/local/include/quickjs
-
-# Windows 크로스 컴파일용 Include
-ifeq ($(CROSS_COMPILE_WINDOWS),1)
-INCLUDES += -I$(MINGW_PREFIX)/include
-endif
-
-# =============================================================================
-# 라이브러리 감지 및 설정
-# =============================================================================
-
-# 동적 라이브러리 감지
-HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_QUICKJS := 1
-HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
-
-# 프로토콜 라이브러리 감지
-HAS_MODBUS := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_BACNET := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
 
 # =============================================================================
 # 라이브러리 링킹 설정
@@ -169,7 +165,7 @@ BASIC_LIBS := -lpthread -lstdc++ -lm -lsqlite3
 PLATFORM_LIBS := -lws2_32 -lwsock32 -liphlpapi -lrpcrt4 -luuid
 PLATFORM_LIBS += -lwinmm -lkernel32 -luser32 -ladvapi32
 else
-BASIC_LIBS := -lpthread -lsqlite3 -lm -ldl
+BASIC_LIBS := -lpthread -lsqlite3 -lm -ldl -lpqxx -lpq -lmysqlclient
 PLATFORM_LIBS :=
 endif
 
@@ -183,6 +179,7 @@ SHARED_LIBS += -lpulseone-database
 SHARED_LIBS += -lpulseone-client
 SHARED_LIBS += -lpulseone-common
 SHARED_LIBS += -lpulseone-security
+SHARED_LIBS += -lpulseone-dblib
 CXXFLAGS += -DHAS_SHARED_LIBS=1
 else
 SHARED_LIBS :=
@@ -219,6 +216,8 @@ endif
 
 ifeq ($(HAS_HTTPLIB),1)
 CXXFLAGS += -DHAVE_HTTPLIB=1
+else
+CXXFLAGS += -DHAVE_HTTPLIB=0
 endif
 
 ifeq ($(HAS_QUICKJS),1)
@@ -255,7 +254,7 @@ ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 
 # Workers 소스
 WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp)
-WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp)
+WORKERS_SOURCES += $(filter-out $(SRC_DIR)/Workers/Protocol/BleBeaconWorker.cpp, $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp))
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Components/*.cpp)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/*.cpp)
 
@@ -284,6 +283,13 @@ ifeq ($(HAS_BACNET),1)
 DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
 endif
 
+# 추가 드라이버 (항시 포함)
+# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.c)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp)
+
 # 네트워크 및 API
 ifeq ($(HAS_HTTPLIB),1)
 NETWORK_SOURCES := $(wildcard $(SRC_DIR)/Network/*.cpp)
@@ -299,8 +305,9 @@ ALL_SOURCES += $(WORKERS_SOURCES) $(DRIVERS_SOURCES) $(PIPELINE_SOURCES)
 ALL_SOURCES += $(STORAGE_SOURCES) $(VIRTUALPOINT_SOURCES) $(SCRIPTING_SOURCES)
 ALL_SOURCES += $(NETWORK_SOURCES) $(API_SOURCES)
 
-# 오브젝트 파일
-ALL_OBJECTS := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(ALL_SOURCES))
+# 오브젝트 파일 (cpp -> o, c -> o 자동 변환)
+ALL_OBJECTS := $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(filter %.cpp,$(ALL_SOURCES)))
+ALL_OBJECTS += $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(filter %.c,$(ALL_SOURCES)))
 MAIN_OBJECT := $(BUILD_DIR)/main.o
 
 # =============================================================================
@@ -312,6 +319,7 @@ BUILD_SUBDIRS += $(BUILD_DIR)/Workers $(BUILD_DIR)/Workers/Base
 BUILD_SUBDIRS += $(BUILD_DIR)/Workers/Protocol $(BUILD_DIR)/Workers/Components
 BUILD_SUBDIRS += $(BUILD_DIR)/Drivers $(BUILD_DIR)/Drivers/Common
 BUILD_SUBDIRS += $(BUILD_DIR)/Drivers/Modbus $(BUILD_DIR)/Drivers/Mqtt $(BUILD_DIR)/Drivers/Bacnet
+BUILD_SUBDIRS += $(BUILD_DIR)/Drivers/Ble $(BUILD_DIR)/Drivers/OPCUA $(BUILD_DIR)/Drivers/HttpRest $(BUILD_DIR)/Drivers/Ros
 BUILD_SUBDIRS += $(BUILD_DIR)/Pipeline $(BUILD_DIR)/Storage
 BUILD_SUBDIRS += $(BUILD_DIR)/VirtualPoint $(BUILD_DIR)/Scripting $(BUILD_DIR)/Network $(BUILD_DIR)/Api
 
@@ -367,10 +375,16 @@ $(TARGET): $(ALL_OBJECTS) $(MAIN_OBJECT) | $(BIN_DIR)
 	@echo -e "$(GREEN)✅ $(TARGET) built successfully!$(NC)"
 	@echo -e "Size: $(CYAN)$(shell du -h $(BIN_DIR)/$(TARGET) 2>/dev/null | cut -f1 || echo 'N/A')$(NC)"
 
+# 컴파일 규칙 (.c 추가)
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | create-dirs
 	@mkdir -p $(dir $@)
 	@echo -e "$(YELLOW)⚙️ Compiling $<$(NC)"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | create-dirs
+	@mkdir -p $(dir $@)
+	@echo -e "$(YELLOW)⚙️ Compiling $< (C source)$(NC)"
+	gcc -O2 -fPIC $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/main.o: $(SRC_DIR)/main.cpp | create-dirs
 	@mkdir -p $(dir $@)

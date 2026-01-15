@@ -16,6 +16,7 @@
 #include <string>
 #include <chrono>
 #include <variant>
+#include <type_traits>
 #include <vector>
 #include <map>
 #include <memory>
