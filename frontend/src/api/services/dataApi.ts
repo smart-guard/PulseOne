@@ -491,6 +491,18 @@ export class DataApiService {
     return this.httpClient.get<any>(`/api/data/devices/${deviceId}/current-values`, params);
   }
 
+  /**
+   * 여러 디바이스의 상태 및 Redis 데이터 존재 여부 일괄 조회 (추가됨)
+   */
+  static async getBulkDeviceStatus(deviceIds: number[]): Promise<ApiResponse<Record<number, {
+    connection_status: string;
+    hasRedisData: boolean;
+    last_seen?: string;
+  }>>> {
+    console.log('⚡ 디바이스 상태 일괄 조회:', deviceIds);
+    return this.httpClient.post<any>('/api/data/devices/status', { device_ids: deviceIds });
+  }
+
   // ========================================================================
   // 📊 이력 데이터 조회
   // ========================================================================

@@ -56,19 +56,20 @@ SHARED_BASE_DIR := ../shared
 SHARED_INCLUDE_DIR := $(SHARED_BASE_DIR)/include
 SHARED_LIB_DIR := $(SHARED_BASE_DIR)/lib
 
-# 동적 라이브러리 감지
-HAS_SHARED := $(shell [ -d "$(SHARED_INCLUDE_DIR)" ] && echo "1" || echo "0")
-HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_QUICKJS := $(shell [ -f "/usr/local/include/quickjs/quickjs.h" ] || [ -f "/usr/include/quickjs/quickjs.h" ] || [ -f "/usr/local/include/quickjs.h" ] || [ -f "/usr/include/quickjs.h" ] && echo "1" || echo "0")
-HAS_CURL := $(shell pkg-config --exists libcurl && echo "1" || echo "0")
+# 동적 라이브러리 감지 (강제 활성화)
+HAS_SHARED := 1
+HAS_NLOHMANN_JSON := 1
+HAS_HIREDIS := 1
+HAS_HTTPLIB := 0
+# QuickJS 강제 활성화
+HAS_QUICKJS := 1
+HAS_CURL := 1
 
-# 프로토콜 라이브러리 감지
-HAS_MODBUS := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_MQTT_C := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqtt3c >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_MQTT_CPP := $(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lpaho-mqttpp3 >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_BACNET := $(shell [ -f "/usr/local/lib/libbacnet.a" ] && echo "1" || echo "0")
+# 프로토콜 라이브러리 감지 (강제 활성화)
+HAS_MODBUS := 1
+HAS_MQTT_C := 1
+HAS_MQTT_CPP := 1
+HAS_BACNET := 1
 
 # Collector 전용 Include 경로
 INCLUDES := -I$(INCLUDE_DIR) \
@@ -127,6 +128,8 @@ endif
 CXXFLAGS := -std=c++17 -Wall -Wextra -O2 -fPIC
 CXXFLAGS += -Wno-unused-parameter -Wno-unused-variable
 CXXFLAGS += -fdiagnostics-color=always
+CXXFLAGS += -DHAS_NLOHMANN_JSON=$(HAS_NLOHMANN_JSON)
+CXXFLAGS += -DHAS_HTTPLIB=$(HAS_HTTPLIB)
 
 # 플랫폼별 플래그
 ifeq ($(IS_WINDOWS),1)
@@ -141,10 +144,11 @@ endif
 else
     CXXFLAGS += -DPULSEONE_WINDOWS=0 -DPULSEONE_LINUX=1
     CXXFLAGS += -march=native -mtune=native
+    LDFLAGS += -L/usr/local/lib
     ifeq ($(UNAME_S),Darwin)
-        LDFLAGS := -Wl,-dead_strip
+        LDFLAGS += -Wl,-dead_strip
     else
-        LDFLAGS := -Wl,--gc-sections
+        LDFLAGS += -Wl,--gc-sections
     endif
 endif
 
@@ -165,7 +169,7 @@ BASIC_LIBS := -lpthread -lstdc++ -lm -lsqlite3
 PLATFORM_LIBS := -lws2_32 -lwsock32 -liphlpapi -lrpcrt4 -luuid
 PLATFORM_LIBS += -lwinmm -lkernel32 -luser32 -ladvapi32
 else
-BASIC_LIBS := -lpthread -lsqlite3 -lm -ldl -lpqxx -lpq -lmysqlclient
+BASIC_LIBS := -lpthread -lsqlite3 -lm -ldl
 PLATFORM_LIBS :=
 endif
 
@@ -189,22 +193,28 @@ endif
 PROTOCOL_LIBS :=
 ifeq ($(HAS_MODBUS),1)
 PROTOCOL_LIBS += -lmodbus
-CXXFLAGS += -DHAVE_MODBUS=1
-endif
-
-ifeq ($(HAS_MQTT_C),1)
-PROTOCOL_LIBS += -lpaho-mqtt3c
-CXXFLAGS += -DHAVE_MQTT=1
+CXXFLAGS += -DHAS_MODBUS=1
 endif
 
 ifeq ($(HAS_MQTT_CPP),1)
 PROTOCOL_LIBS += -lpaho-mqttpp3
-CXXFLAGS += -DHAVE_MQTT_CPP=1
+CXXFLAGS += -DHAS_MQTT_CPP=1
+endif
+
+ifeq ($(HAS_MQTT_C),1)
+PROTOCOL_LIBS += -lpaho-mqtt3c
+CXXFLAGS += -DHAS_MQTT=1
 endif
 
 ifeq ($(HAS_BACNET),1)
 PROTOCOL_LIBS += -lbacnet
-CXXFLAGS += -DHAVE_BACNET=1
+CXXFLAGS += -DHAS_BACNET=1
+endif
+
+# BLE for Linux (BlueZ) - Disabled due to missing headers in container
+ifeq ($(IS_LINUX),1)
+# PROTOCOL_LIBS += -lbluetooth
+# CXXFLAGS += -DHAS_BLUETOOTH=1
 endif
 
 # 유틸리티 라이브러리
@@ -228,7 +238,7 @@ else
 QUICKJS_LIBS := $(shell pkg-config --libs quickjs 2>/dev/null || echo "-lquickjs")
 UTILITY_LIBS += $(QUICKJS_LIBS)
 endif
-CXXFLAGS += -DHAVE_QUICKJS=1
+CXXFLAGS += -DHAS_QUICKJS=1
 endif
 
 ifeq ($(HAS_CURL),1)
@@ -237,7 +247,7 @@ CXXFLAGS += -DHAVE_CURL=1
 endif
 
 # 최종 라이브러리 링킹 순서
-LIBS := $(SHARED_LIBS) $(PROTOCOL_LIBS) $(UTILITY_LIBS) $(BASIC_LIBS) $(PLATFORM_LIBS)
+LIBS := $(SHARED_LIBS) $(PROTOCOL_LIBS) $(UTILITY_LIBS) -lpqxx -lpq -lmysqlclient $(BASIC_LIBS) $(PLATFORM_LIBS)
 
 # =============================================================================
 # 소스 파일 수집
@@ -254,7 +264,7 @@ ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 
 # Workers 소스
 WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp)
-WORKERS_SOURCES += $(filter-out $(SRC_DIR)/Workers/Protocol/BleBeaconWorker.cpp, $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp))
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Components/*.cpp)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/*.cpp)
 
@@ -284,7 +294,7 @@ DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
 endif
 
 # 추가 드라이버 (항시 포함)
-# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
 DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
 DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.c)
 DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp)

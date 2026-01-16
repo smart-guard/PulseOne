@@ -1,51 +1,20 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   RealtimeApiService,
-  RealtimeValue,
-  CurrentValuesResponse
+  RealtimeValue
 } from '../api/services/realtimeApi';
 import {
-  DeviceApiService,
-  Device
+  DeviceApiService
 } from '../api/services/deviceApi';
-import { Pagination } from '../components/common/Pagination';
+import DataApiService from '../api/services/dataApi';
 import { useDataExplorerPagination } from '../hooks/usePagination';
 import '../styles/data-explorer.css';
 
-// ============================================================================
-// 인터페이스 - 트리 확장 상태 관리 추가
-// ============================================================================
-
-interface TreeNode {
-  id: string;
-  label: string;
-  type: 'tenant' | 'site' | 'device' | 'master' | 'slave' | 'datapoint' | 'search';
-  level: number;
-  children?: TreeNode[];
-  child_count?: number;
-  point_count?: number;
-  device_info?: {
-    device_id: string;
-    device_name: string;
-    device_type?: string;
-    protocol_type?: string;
-    endpoint?: string;
-    connection_status?: string;
-    status?: string;
-    last_seen?: string;
-    is_enabled?: boolean;
-  };
-  connection_status?: 'connected' | 'disconnected' | 'error';
-  rtu_info?: any;
-  data_points?: any[];
-  value?: any;
-  unit?: string;
-  quality?: string;
-  timestamp?: string;
-  // 트리 확장 상태 관리
-  isExpanded?: boolean;
-  hasRedisData?: boolean;
-}
+// 모듈화된 컴포넌트 임포트
+import ExplorerHeader from '../components/explorer/ExplorerHeader';
+import DeviceTree, { TreeNode } from '../components/explorer/DeviceTree';
+import TrendChart from '../components/explorer/TrendChart';
+import RealtimeDataTable from '../components/explorer/RealtimeDataTable';
 
 interface FilterState {
   search: string;
@@ -74,54 +43,59 @@ const DataExplorer: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(10);
   const [showChart, setShowChart] = useState(false);
+  const [historicalData, setHistoricalData] = useState<any[]>([]);
+  const [timeRange, setTimeRange] = useState('1h');
+  const [isChartLoading, setIsChartLoading] = useState(false);
 
   // 트리 확장 상태와 Redis 데이터 상태 분리 관리
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['root-system', 'tenant-1']));
-  const [redisDeviceStatuses, setRedisDeviceStatuses] = useState<Map<string, string>>(new Map());
+  const [redisDeviceStatuses, setRedisDeviceStatuses] = useState<Map<string, { connection_status: string; hasRedisData: boolean }>>(new Map());
 
   const pagination = useDataExplorerPagination(0);
 
   // ========================================================================
-  // Redis 연결 상태 체크하는 함수
+  // 🚀 Bulk 상태 체크 함수 (N+1 문제 해결)
   // ========================================================================
-  const checkDeviceRedisStatus = useCallback(async (deviceId: string): Promise<string | null> => {
+  const checkBulkDeviceStatus = useCallback(async (deviceIds: number[]) => {
+    if (deviceIds.length === 0) return;
+
     try {
-      const response = await RealtimeApiService.getDeviceValues(deviceId);
-      // Redis에 데이터가 있으면 connection_status 반환 (보통 connected/disconnected)
+      const response = await DataApiService.getBulkDeviceStatus(deviceIds);
       if (response.success && response.data) {
-        return response.data.connection_status || 'connected';
+        setRedisDeviceStatuses(prev => {
+          const next = new Map(prev);
+          Object.entries(response.data).forEach(([id, status]) => {
+            next.set(id, status as any);
+          });
+          return next;
+        });
       }
-      return null; // Redis에 아예 정보가 없음
-    } catch (error) {
-      return null;
+    } catch (err) {
+      console.warn('Bulk status check failed:', err);
     }
   }, []);
 
   // ========================================================================
   // 트리 노드에 Redis 상태 업데이트
   // ========================================================================
-  const updateTreeWithRedisStatus = useCallback((nodes: TreeNode[], statusesMap?: Map<string, string>): TreeNode[] => {
+  const updateTreeWithRedisStatus = useCallback((nodes: TreeNode[], statusesMap?: Map<string, { connection_status: string; hasRedisData: boolean }>): TreeNode[] => {
     const currentStatusesMap = statusesMap || redisDeviceStatuses;
     return nodes.map(node => {
       const updatedNode = { ...node };
-
-      // Backend에서 실제 장치는 'master' 타입으로 제공됨
       const isDevice = node.type === 'master' || node.id.startsWith('dev-');
+
       if (isDevice && node.device_info?.device_id) {
         const deviceId = node.device_info.device_id.toString();
         const status = currentStatusesMap.get(deviceId);
 
         if (status) {
-          updatedNode.hasRedisData = true;
-          updatedNode.connection_status = status as any;
+          updatedNode.hasRedisData = status.hasRedisData;
+          updatedNode.connection_status = status.connection_status;
         } else {
           updatedNode.hasRedisData = false;
           updatedNode.connection_status = undefined;
         }
       }
-
-      // 확장 상태 유지
-      updatedNode.isExpanded = expandedNodes.has(node.id);
 
       if (node.children) {
         updatedNode.children = updateTreeWithRedisStatus(node.children, currentStatusesMap);
@@ -129,910 +103,322 @@ const DataExplorer: React.FC = () => {
 
       return updatedNode;
     });
-  }, [redisDeviceStatuses, expandedNodes]);
+  }, [redisDeviceStatuses]);
 
   // ========================================================================
-  // 수정된 트리 데이터 로드 - Redis 상태 체크 추가
+  // 트리 데이터 로드
   // ========================================================================
   const loadTreeStructure = useCallback(async () => {
-    try {
-      console.log('트리 구조 로드 시작...');
-      setIsLoading(true);
-      setConnectionStatus('connecting');
+    setIsLoading(true);
+    setConnectionStatus('connecting');
+    setError(null);
 
-      const response = await DeviceApiService.getDeviceTreeStructure({
-        include_realtime: true,
-        include_data_points: false
-      });
+    try {
+      const response = await DeviceApiService.getDeviceTreeStructure();
 
       if (response.success && response.data) {
-        console.log('트리 구조 로드 완료:', response.data.statistics);
+        const rawTree = response.data.tree || [];
+        setStatistics(response.data.statistics || {});
 
-        // 수집기(Collector) 노드를 건너뛰고 자식(장치)을 사이트 바로 아래로 붙이는 함수
-        // Backend: Collector id = "collector-X", Device id = "dev-X"
-        const flattenCollectorHierarchy = (nodes: any[]): any[] => {
-          let result: any[] = [];
-          nodes.forEach(node => {
-            // 데이터포인트는 트리에서 숨김
-            if (node.type === 'datapoint') return;
-
-            // id가 collector-로 시작하거나 type이 device인 경우 (수집기)
-            if (node.id.startsWith('collector-') || (node.type === 'device' && !node.device_info)) {
-              // 수집기면 그 자식들(장치)만 결과에 직접 추가
-              if (node.children && node.children.length > 0) {
-                result = result.concat(flattenCollectorHierarchy(node.children));
-              }
-            } else {
-              const newNode = { ...node };
-              if (node.children && node.children.length > 0) {
-                newNode.children = flattenCollectorHierarchy(node.children);
-              }
-              result.push(newNode);
+        // 장치 ID들 추출하여 일괄 상태 체크 시동
+        const deviceIds: number[] = [];
+        const findDevices = (nodes: any[]) => {
+          nodes.forEach(n => {
+            if ((n.type === 'master' || n.id?.startsWith('dev-')) && n.device_info?.device_id) {
+              deviceIds.push(Number(n.device_info.device_id));
             }
+            if (n.children) findDevices(n.children);
           });
-          return result;
         };
+        // 트리 데이터가 객체인 경우 배열로 변환하여 장치 검색 및 상태 저장
+        const processedTree = Array.isArray(rawTree) ? rawTree : [rawTree];
+        findDevices(processedTree);
 
-        const processTreeNode = (node: any): TreeNode => ({
-          ...node,
-          isExpanded: expandedNodes.has(node.id),
-          hasRedisData: false // 기본값, Redis 체크 후 업데이트
-        });
+        // Bulk 갱신 시작
+        await checkBulkDeviceStatus(deviceIds);
 
-        const rawTree = response.data.tree;
-        const flattenedNodes = flattenCollectorHierarchy([rawTree]);
-        const processedTree = processTreeNode(flattenedNodes[0]);
-
-        // 자식 노드들도 처리
-        if (processedTree.children) {
-          processedTree.children = processedTree.children.map(processTreeNode);
-        }
-
-        setTreeData([processedTree]);
-        setStatistics(response.data.statistics);
+        setTreeData(processedTree);
         setConnectionStatus('connected');
-        setError(null);
-
-        const allNodeIds = new Set<string>();
-        const collectAllNodeIds = (node: TreeNode) => {
-          if (['tenant', 'site', 'device', 'master', 'slave'].includes(node.type)) {
-            allNodeIds.add(node.id);
-          }
-          if (node.children) {
-            node.children.forEach(collectAllNodeIds);
-          }
-        };
-        collectAllNodeIds(processedTree);
-
-        console.log(`모든 노드 자동 확장: ${allNodeIds.size}개`);
-        setExpandedNodes(allNodeIds);
-
-        // Redis 연결 상태 체크
-        checkAllDevicesRedisStatus(processedTree);
-
       } else {
-        throw new Error(response.error || '트리 구조 로드 실패');
+        throw new Error(response.message || '네트워크 구조를 불러오지 못했습니다.');
       }
-    } catch (error: any) {
-      console.error('트리 구조 로드 실패:', error);
-      setError(`트리 구조 로드 실패: ${error.message}`);
+    } catch (err: any) {
+      setError(err.message);
       setConnectionStatus('disconnected');
-      setTreeData([{
-        id: 'error-1',
-        label: 'PulseOne Factory (연결 실패)',
-        type: 'tenant',
-        level: 0,
-        children: [],
-        isExpanded: false,
-        hasRedisData: false
-      }]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [checkBulkDeviceStatus]);
 
-  // ========================================================================
-  // 모든 디바이스의 Redis 상태 체크
-  // ========================================================================
-  const checkAllDevicesRedisStatus = useCallback(async (rootNode: TreeNode) => {
-    const deviceIds: string[] = [];
-
-    // 트리에서 모든 디바이스 ID 추출
-    const extractDeviceIds = (node: TreeNode) => {
-      const isDevice = node.type === 'master' || node.id.startsWith('dev-');
-      if (isDevice && node.device_info?.device_id) {
-        deviceIds.push(node.device_info.device_id.toString());
-      }
-      if (node.children) {
-        node.children.forEach(extractDeviceIds);
-      }
-    };
-
-    extractDeviceIds(rootNode);
-    console.log(`Redis 상태 체크 대상: ${deviceIds.length}개 디바이스`);
-
-    // 각 디바이스의 Redis 상태 확인
-    const deviceStatuses = new Map<string, string>();
-    for (const deviceId of deviceIds) {
-      const status = await checkDeviceRedisStatus(deviceId);
-      if (status) {
-        deviceStatuses.set(deviceId, status);
-        console.log(`디바이스 ${deviceId}: Redis 상태 [${status}]`);
-      }
-    }
-
-    setRedisDeviceStatuses(deviceStatuses);
-    console.log(`Redis 상태 체크 완료: ${deviceStatuses.size}/${deviceIds.length}개 Redis 존재`);
-
-    // 트리 데이터 업데이트 (Stale state 방지를 위해 new map 전달)
-    setTreeData(prev => updateTreeWithRedisStatus(prev, deviceStatuses));
-  }, [checkDeviceRedisStatus, updateTreeWithRedisStatus]);
-
-  // ========================================================================
-  // 디바이스 세부 데이터 로드
-  // ========================================================================
+  // 장치 상세 데이터 로드
   const loadDeviceData = useCallback(async (deviceId: string) => {
     try {
-      console.log(`디바이스 ${deviceId} Redis 데이터 확인...`);
       const response = await RealtimeApiService.getDeviceValues(deviceId);
-      if (response.success && response.data?.data_points) {
-        const dataPoints: RealtimeValue[] = response.data.data_points;
-        console.log(`디바이스 ${deviceId}: Redis에서 ${dataPoints.length}개 포인트 발견`);
-        return dataPoints;
-      } else {
-        console.warn(`디바이스 ${deviceId} Redis에 데이터 없음`);
-        return [];
+      if (response.success && response.data) {
+        const mappedData = response.data.data_points.map(dp => ({
+          ...dp,
+          key: dp.key || `point:${dp.point_id}`,
+          point_name: dp.point_name || `Point ${dp.point_id}`,
+          device_name: response.data.device_name
+        }));
+        return mappedData;
       }
-    } catch (error: any) {
-      console.error(`디바이스 ${deviceId} Redis 확인 실패:`, error);
+      return [];
+    } catch (err) {
+      console.error('Failed to load device data:', err);
       return [];
     }
   }, []);
 
-  // ========================================================================
-  // 트리 노드 확장 로직
-  // ========================================================================
-  const loadDeviceChildren = useCallback(async (deviceNode: TreeNode) => {
-    if (!['device', 'master'].includes(deviceNode.type)) return;
+  // 이력 데이터 조회 (차트용)
+  const fetchHistoricalData = useCallback(async (pointIds: number[]) => {
+    if (pointIds.length === 0) {
+      setHistoricalData([]);
+      return;
+    }
 
-    const deviceId = deviceNode.device_info?.device_id;
-    if (!deviceId) return;
-
-    console.log(`디바이스 ${deviceId} 자식 노드 로드...`);
-
+    setIsChartLoading(true);
     try {
-      const dataPoints = await loadDeviceData(deviceId);
-      if (dataPoints.length === 0) {
-        console.log(`디바이스 ${deviceId}: Redis에 데이터 없음`);
-        return;
+      const now = new Date();
+      let startTime = new Date();
+      let interval = '1m';
+
+      switch (timeRange) {
+        case '1h': startTime.setHours(now.getHours() - 1); interval = '1m'; break;
+        case '6h': startTime.setHours(now.getHours() - 6); interval = '5m'; break;
+        case '12h': startTime.setHours(now.getHours() - 12); interval = '10m'; break;
+        case '24h': startTime.setHours(now.getHours() - 24); interval = '15m'; break;
       }
 
-      const pointNodes: TreeNode[] = dataPoints.map((point: any) => ({
-        id: `${deviceNode.id}-point-${point.point_id}`,
-        label: point.point_name,
-        type: 'datapoint',
-        level: deviceNode.level + 1,
-        value: point.value,
-        unit: point.unit,
-        quality: point.quality,
-        timestamp: point.timestamp,
-        isExpanded: false,
-        hasRedisData: true
-      }));
+      const response = await DataApiService.getHistoricalData({
+        point_ids: pointIds,
+        start_time: startTime.toISOString(),
+        end_time: now.toISOString(),
+        interval,
+        aggregation: 'mean'
+      });
 
-      // 트리 데이터 업데이트
-      setTreeData(prev => updateTreeNode(prev, deviceNode.id, {
-        children: pointNodes,
-        child_count: pointNodes.length
-      }));
+      if (response.success && response.data) {
+        const groupedData = response.data.historical_data.reduce((acc: any, curr: any) => {
+          const time = new Date(curr.time).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' });
+          if (!acc[time]) acc[time] = { time };
+          acc[time][`p_${curr.point_id}`] = Number(curr.value.toFixed(2));
+          return acc;
+        }, {});
 
-      console.log(`디바이스 ${deviceId} 자식 노드 ${pointNodes.length}개 로드 완료`);
-    } catch (error) {
-      console.error(`디바이스 ${deviceId} 자식 노드 로드 실패:`, error);
-    }
-  }, [loadDeviceData]);
+        const sortedData = Object.values(groupedData).sort((a: any, b: any) => {
+          const [aH, aM] = a.time.split(':').map(Number);
+          const [bH, bM] = b.time.split(':').map(Number);
+          return (aH * 60 + aM) - (bH * 60 + bM);
+        });
 
-  // ========================================================================
-  // 유틸리티 함수들
-  // ========================================================================
-  const updateTreeNode = (nodes: TreeNode[], nodeId: string, updates: Partial<TreeNode>): TreeNode[] => {
-    return nodes.map(node => {
-      if (node.id === nodeId) {
-        return { ...node, ...updates };
+        setHistoricalData(sortedData);
       }
-      if (node.children) {
-        return { ...node, children: updateTreeNode(node.children, nodeId, updates) };
-      }
-      return node;
-    });
-  };
-
-  const renderEmptyDeviceMessage = (selectedNode: TreeNode | null) => {
-    if (!selectedNode || !['device', 'master'].includes(selectedNode.type)) return null;
-
-    const device = selectedNode.device_info;
-
-    return (
-      <div className="empty-state">
-        <div style={{ fontSize: '48px', marginBottom: '16px' }}>
-          {selectedNode.hasRedisData ? '🔍' : '🔴'}
-        </div>
-        <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', color: '#374151' }}>
-          {device?.device_name} {selectedNode.hasRedisData ? '데이터 없음' : '연결 안됨'}
-        </h3>
-        <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>
-          {selectedNode.hasRedisData ?
-            '이 디바이스에는 현재 표시할 데이터포인트가 없습니다.' :
-            '이 디바이스는 현재 Redis에 실시간 데이터가 없습니다.'
-          }
-        </p>
-        <div style={{
-          marginTop: '16px',
-          padding: '12px 16px',
-          backgroundColor: '#f3f4f6',
-          borderRadius: '6px',
-          fontSize: '12px'
-        }}>
-          <div><strong>디바이스 정보:</strong></div>
-          <div>타입: {device?.device_type || 'Unknown'}</div>
-          <div>프로토콜: {device?.protocol_type || 'Unknown'}</div>
-          <div>마지막 연결: {device?.last_seen || '없음'}</div>
-        </div>
-        <div style={{
-          marginTop: '16px',
-          fontSize: '12px',
-          color: '#9ca3af'
-        }}>
-          {selectedNode.hasRedisData ?
-            '데이터포인트를 추가하거나 설정을 확인해보세요.' :
-            '연결이 복구되면 실시간 데이터가 표시됩니다.'
-          }
-        </div>
-      </div>
-    );
-  };
-
-  // ========================================================================
-  // 필터링된 데이터
-  // ========================================================================
-  const filteredDataPoints = useMemo(() => {
-    if (selectedNode && ['device', 'master'].includes(selectedNode.type) && !selectedNode.hasRedisData) {
-      console.log('필터링: 연결 안된 디바이스/수집기 선택됨 - 빈 배열 반환');
-      return [];
+    } catch (err) {
+      console.error('Historical data fetch failed:', err);
+    } finally {
+      setIsChartLoading(false);
     }
+  }, [timeRange]);
 
-    let points = selectedDataPoints.length > 0 ? selectedDataPoints : realtimeData;
-
-    if (filters.search) {
-      const searchTerm = filters.search.toLowerCase();
-      points = points.filter((dp: RealtimeValue) =>
-        (dp.point_name && dp.point_name.toLowerCase().includes(searchTerm)) ||
-        (dp.device_name && dp.device_name.toLowerCase().includes(searchTerm)) ||
-        (dp.key && dp.key.toLowerCase().includes(searchTerm))
-      );
-    }
-
-    if (filters.dataType !== 'all') {
-      points = points.filter((dp: RealtimeValue) => dp.data_type === filters.dataType);
-    }
-
-    if (filters.quality !== 'all') {
-      points = points.filter((dp: RealtimeValue) => dp.quality === filters.quality);
-    }
-
-    return points;
-  }, [selectedDataPoints, realtimeData, filters, selectedNode]);
-
-  const paginatedDataPoints = useMemo(() => {
-    const startIndex = (pagination.currentPage - 1) * pagination.pageSize;
-    const endIndex = startIndex + pagination.pageSize;
-    return filteredDataPoints.slice(startIndex, endIndex);
-  }, [filteredDataPoints, pagination.currentPage, pagination.pageSize]);
-
+  // 초기 로드
   useEffect(() => {
-    pagination.updateTotalCount(filteredDataPoints.length);
-  }, [filteredDataPoints.length, pagination.updateTotalCount]);
-
-  // ========================================================================
-  // 이벤트 핸들러들
-  // ========================================================================
-  const handleToggleSelectAll = useCallback(() => {
-    if (selectedDataPoints.length === filteredDataPoints.length && filteredDataPoints.length > 0) {
-      setSelectedDataPoints([]);
-    } else {
-      setSelectedDataPoints(filteredDataPoints);
-    }
-  }, [filteredDataPoints, selectedDataPoints]);
-
-  const handleDataPointSelect = useCallback((dataPoint: RealtimeValue) => {
-    setSelectedDataPoints(prev => {
-      const exists = prev.find((dp: RealtimeValue) => dp.key === dataPoint.key);
-      if (exists) {
-        return prev.filter((dp: RealtimeValue) => dp.key !== dataPoint.key);
-      } else {
-        return [...prev, dataPoint];
-      }
-    });
-  }, []);
-
-  const handleRefresh = useCallback(() => {
-    console.log('수동 새로고침 시작...');
-    setLastRefresh(new Date());
     loadTreeStructure();
   }, [loadTreeStructure]);
 
-  const [showExportModal, setShowExportModal] = useState(false);
-  const handleExportData = useCallback(() => {
-    console.log('CSV 데이터 내보내기 시작...');
-    if (filteredDataPoints.length === 0) {
-      console.warn('내보낼 데이터가 없습니다.');
-      alert('내보낼 데이터가 없습니다.');
-      return;
+  // 차트 데이터 갱신
+  useEffect(() => {
+    if (showChart && selectedDataPoints.length > 0) {
+      const ids = selectedDataPoints.map(p => p.point_id).filter((id): id is number => !!id);
+      fetchHistoricalData(ids);
     }
+  }, [showChart, selectedDataPoints, timeRange, fetchHistoricalData]);
 
-    // 커스텀 모달 표시
-    setShowExportModal(true);
-  }, [filteredDataPoints]);
+  // 자동 새로고침
+  useEffect(() => {
+    if (!autoRefresh || refreshInterval <= 0) return;
+    const interval = setInterval(() => handleRefresh(), refreshInterval * 1000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval]);
 
-  const confirmExport = useCallback(() => {
-    const csvHeaders = [
-      'Device Name (디바이스명)',
-      'Point Name (포인트명)',
-      'Point ID (포인트 ID)',
-      'Current Value (현재값)',
-      'Unit (단위)',
-      'Data Type (데이터타입)',
-      'Quality (품질)',
-      'Timestamp (시간)'
-    ];
+  const handleRefresh = useCallback(async () => {
+    setLastRefresh(new Date());
+    await loadTreeStructure();
 
-    const csvRows = filteredDataPoints.map((dp) => {
-      return [
-        `"${dp.device_name || 'Unknown'}"`,
-        `"${dp.point_name || 'Unknown'}"`,
-        `"${dp.point_id || ''}"`,
-        `"${dp.value !== undefined && dp.value !== null ? dp.value : ''}"`,
-        `"${dp.unit || ''}"`,
-        `"${dp.data_type || 'unknown'}"`,
-        `"${dp.quality || 'unknown'}"`,
-        `"${dp.timestamp ? new Date(dp.timestamp).toLocaleString('ko-KR') : ''}"`
-      ].join(',');
-    });
+    if (selectedNode && (selectedNode.type === 'master' || selectedNode.id.startsWith('dev-'))) {
+      const deviceId = selectedNode.device_info?.device_id || selectedNode.id.replace('dev-', '');
+      if (deviceId) {
+        const data = await loadDeviceData(deviceId.toString());
+        setRealtimeData(data);
+      }
+    }
+  }, [loadTreeStructure, selectedNode, loadDeviceData]);
 
-    const csvContent = '\uFEFF' + [csvHeaders.join(','), ...csvRows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `pulseone_realtime_data_${new Date().toISOString().split('T')[0]}.csv`;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    setShowExportModal(false);
-    console.log(`${filteredDataPoints.length}개 데이터 CSV 내보내기 완료`);
-  }, [filteredDataPoints]);
-
-  const clearSelection = useCallback(() => {
-    console.log('선택 초기화');
-    setSelectedDataPoints([]);
-    setSelectedNode(null);
-  }, []);
-
-  const handleNodeClick = useCallback((node: TreeNode) => {
-    console.log(`클릭된 노드: ${node.label} (${node.type})`);
+  const handleNodeClick = useCallback(async (node: TreeNode) => {
+    if (node.children && node.children.length > 0) {
+      setExpandedNodes(prev => {
+        const next = new Set(prev);
+        if (next.has(node.id)) next.delete(node.id);
+        else next.add(node.id);
+        return next;
+      });
+    }
 
     setSelectedNode(node);
 
-    if (node.type === 'datapoint') {
-      // 이제 트리에서 datapoint는 보이지 않지만, 만약 클릭된다면
-      return;
-    } else if (node.type === 'master' || node.id.startsWith('dev-')) {
-      // 'device'는 수집기, 'master'는 실제 디바이스
-      const deviceId = node.device_info?.device_id || (node.type === 'master' ? node.id.replace('dev-', '') : null);
-
-      if (!deviceId) {
-        console.log('디바이스/수집기 ID가 없음');
-        setSelectedDataPoints([]);
-        return;
-      }
-
-      // 디바이스 클릭 시 즉시 Redis에서 데이터 로드
-      console.log(`디바이스 ${deviceId} 실시간 데이터 로드 중...`);
-      loadDeviceData(deviceId.toString()).then(dataPoints => {
-        if (dataPoints && dataPoints.length > 0) {
-          console.log(`디바이스 ${deviceId}: ${dataPoints.length}개 포인트 표시`);
-          setSelectedDataPoints(dataPoints);
-          setRealtimeData(dataPoints);
-        } else {
-          console.log(`디바이스 ${deviceId}: 표시할 데이터 없음`);
-          setSelectedDataPoints([]);
-        }
-      });
-
-      // 자식 노드 로드 (데이터포인트)
-      //if (node.type === 'master' && (!node.children || node.children.length === 0)) {
-      //  loadDeviceChildren(node);
-      //}
-    }
-
-    // 트리 확장/접기 처리
-    if (['tenant', 'site', 'device', 'master'].includes(node.type)) {
-      const isExpandable = (node.children && node.children.length > 0) ||
-        (node.child_count && node.child_count > 0) ||
-        (node.type === 'master');
-
-      if (isExpandable) {
-        const newExpandedNodes = new Set(expandedNodes);
-        if (expandedNodes.has(node.id)) {
-          newExpandedNodes.delete(node.id);
-          console.log(`노드 접기: ${node.label}`);
-        } else {
-          newExpandedNodes.add(node.id);
-          console.log(`노드 펼치기: ${node.label}`);
-        }
-        setExpandedNodes(newExpandedNodes);
-
-        // 트리 데이터에 확장 상태 반영
-        setTreeData(prev => updateTreeWithRedisStatus(prev));
+    if (node.type === 'master' || node.id.startsWith('dev-')) {
+      const deviceId = node.device_info?.device_id || node.id.replace('dev-', '');
+      if (deviceId) {
+        setIsLoading(true);
+        const dataPoints = await loadDeviceData(deviceId.toString());
+        setRealtimeData(dataPoints);
+        setSelectedDataPoints(dataPoints);
+        setIsLoading(false);
+        pagination.updateTotalCount(dataPoints.length);
+        pagination.goToFirst();
       }
     }
-  }, [expandedNodes, loadDeviceChildren, loadDeviceData, updateTreeWithRedisStatus]);
+  }, [loadDeviceData, pagination]);
 
-  // ========================================================================
-  // 초기화 및 자동 새로고침
-  // ========================================================================
-  useEffect(() => {
-    loadTreeStructure();
-  }, []);
+  // 필터링 및 페이징 로직
+  const filteredDataPoints = useMemo(() => {
+    return realtimeData.filter(dp => {
+      const matchesSearch = filters.search === '' ||
+        dp.point_name.toLowerCase().includes(filters.search.toLowerCase()) ||
+        dp.key.toLowerCase().includes(filters.search.toLowerCase());
+      const matchesType = filters.dataType === 'all' || dp.data_type === filters.dataType;
+      const matchesQuality = filters.quality === 'all' || dp.quality === filters.quality;
+      return matchesSearch && matchesType && matchesQuality;
+    });
+  }, [realtimeData, filters]);
 
-  useEffect(() => {
-    if (!autoRefresh || refreshInterval <= 0) return;
+  const paginatedDataPoints = useMemo(() => {
+    const start = (pagination.currentPage - 1) * pagination.pageSize;
+    return filteredDataPoints.slice(start, start + pagination.pageSize);
+  }, [filteredDataPoints, pagination]);
 
-    const interval = setInterval(() => {
-      setLastRefresh(new Date());
-      loadTreeStructure();
-    }, refreshInterval * 1000);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval, loadTreeStructure]);
-
-  // ========================================================================
-  // 수정된 렌더링 함수 - 확장 상태와 연결 상태 정확히 표시
-  // ========================================================================
-  const renderTreeNode = (node: TreeNode): React.ReactNode => {
-    const hasChildren = (node.children && node.children.length > 0) || (node.child_count && node.child_count > 0);
-    const isExpanded = expandedNodes.has(node.id) && node.children && node.children.length > 0;
-
-    return (
-      <div key={node.id} className="tree-node">
-        <div
-          className={`tree-node-content ${selectedNode?.id === node.id ? 'selected' : ''}`}
-          onClick={() => handleNodeClick(node)}
-        >
-          {hasChildren && (
-            <span className="tree-expand-icon">
-              {isExpanded ? '▼' : '▶'}
-            </span>
-          )}
-          <span className="tree-node-icon">
-            {node.type === 'tenant' && '🏢'}
-            {node.type === 'site' && '🏭'}
-            {(node.type === 'master' || node.id.startsWith('dev-')) && '🔌'}
-            {node.type === 'device' && '📊'}
-            {node.type === 'datapoint' && '📈'}
-          </span>
-          <span className="tree-node-label">
-            {node.label}
-          </span>
-          {node.type === 'datapoint' && (
-            <div className="data-point-preview">
-              <span className={`data-value ${node.quality || 'unknown'}`}>
-                {node.value}
-                {node.unit && ` ${node.unit}`}
-              </span>
-            </div>
-          )}
-          {(node.type === 'master' || node.id.startsWith('dev-')) && (
-            <span className={`connection-badge ${!node.hasRedisData ? 'none' : node.connection_status === 'connected' ? 'connected' : 'disconnected'}`}>
-              {!node.hasRedisData ? '⚪' : node.connection_status === 'connected' ? '🟢' : '🔴'}
-            </span>
-          )}
-        </div>
-        {isExpanded && node.children && (
-          <div className="tree-children">
-            {node.children.map(child => renderTreeNode(child))}
-          </div>
-        )}
-      </div>
-    );
+  const handleToggleSelectAll = () => {
+    if (selectedDataPoints.length === filteredDataPoints.length) setSelectedDataPoints([]);
+    else setSelectedDataPoints(filteredDataPoints);
   };
 
-  // ========================================================================
-  // 메인 렌더링
-  // ========================================================================
+  const handleDataPointSelect = (dp: RealtimeValue) => {
+    setSelectedDataPoints(prev => {
+      const exists = prev.find(p => p.key === dp.key);
+      if (exists) return prev.filter(p => p.key !== dp.key);
+      return [...prev, dp];
+    });
+  };
+
+  const handleExportData = () => {
+    const headers = ['Point Name', 'Device', 'Value', 'Unit', 'Quality', 'Type', 'Timestamp'];
+    const rows = filteredDataPoints.map(dp => [
+      dp.point_name,
+      dp.device_name,
+      dp.value,
+      dp.unit || '',
+      dp.quality,
+      dp.data_type,
+      dp.timestamp
+    ]);
+    const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `pulseone_data_${new Date().getTime()}.csv`);
+    link.click();
+  };
+
+  const processedTreeData = useMemo(() => updateTreeWithRedisStatus(treeData), [treeData, updateTreeWithRedisStatus]);
+
   return (
     <div className="data-explorer-container">
-      {/* 페이지 헤더 */}
-      <div className="page-header">
-        <div className="header-left">
-          <h1 className="page-title">
-            📊 PulseOne Data Explorer
-          </h1>
-          <div className="header-meta">
-            <div className={`connection-status status-${connectionStatus}`}>
-              <span>
-                {connectionStatus === 'connected' && '✅'}
-                {connectionStatus === 'connecting' && '🔄'}
-                {connectionStatus === 'disconnected' && '❌'}
-              </span>
-              <span>
-                {connectionStatus === 'connected' && 'API 연결됨'}
-                {connectionStatus === 'connecting' && 'API 연결중'}
-                {connectionStatus === 'disconnected' && 'API 연결 끊김'}
-              </span>
-              <span>
-                ({statistics.total_devices || 0}개 디바이스, {redisDeviceStatuses.size}개 활성)
-              </span>
-            </div>
-            <div>
-              마지막 업데이트: {lastRefresh.toLocaleTimeString()}
-            </div>
-            {/* 수정: 0이 출력되지 않도록 조건부 렌더링 수정 (!! 추가) */}
-            {!!statistics.rtu_masters && (
-              <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                RTU: 마스터 {statistics.rtu_masters}개, 슬레이브 {statistics.rtu_slaves}개
-              </div>
-            )}
-          </div>
-        </div>
+      <ExplorerHeader
+        connectionStatus={connectionStatus}
+        statistics={statistics}
+        activeDevicesCount={redisDeviceStatuses.size}
+        lastRefresh={lastRefresh}
+        autoRefresh={autoRefresh}
+        setAutoRefresh={setAutoRefresh}
+        refreshInterval={refreshInterval}
+        setRefreshInterval={setRefreshInterval}
+        handleRefresh={handleRefresh}
+        handleExportData={handleExportData}
+        isLoading={isLoading}
+        exportDisabled={filteredDataPoints.length === 0}
+      />
 
-        <div className="page-actions">
-          <div className="auto-refresh-control">
-            <label className="refresh-toggle">
-              <input
-                type="checkbox"
-                checked={autoRefresh}
-                onChange={(e) => setAutoRefresh(e.target.checked)}
-              />
-              자동 새로고침
-            </label>
-            {autoRefresh && (
-              <select
-                value={refreshInterval}
-                onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                className="refresh-interval"
-              >
-                <option value={5}>5초</option>
-                <option value={10}>10초</option>
-                <option value={30}>30초</option>
-                <option value={60}>1분</option>
-              </select>
-            )}
-          </div>
+      {error && <div className="error-banner"><div className="error-content"><span>⚠️ {error}</span></div></div>}
 
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="btn btn-outline"
-          >
-            <span style={{ transform: isLoading ? 'rotate(360deg)' : 'none', transition: 'transform 1s linear' }}>🔄</span>
-            새로고침
-          </button>
-
-          <button
-            onClick={handleExportData}
-            disabled={filteredDataPoints.length === 0}
-            className="btn btn-primary"
-          >
-            📥 데이터 내보내기
-          </button>
-        </div>
-      </div>
-
-      {/* 에러 배너 */}
-      {error && (
-        <div className="error-banner">
-          <div className="error-content">
-            <div className="error-message">
-              <span>⚠️</span>
-              <span>{error}</span>
-            </div>
-            <button
-              onClick={() => setError(null)}
-              className="error-retry"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
-      {/* 내보내기 확인 모달 - DataExplorer 전용 스타일 */}
-      {showExportModal && (
-        <div className="data-explorer-modal-overlay">
-          <div className="data-explorer-modal-content">
-            <div className="data-explorer-modal-header">
-              <div className="data-explorer-modal-icon info">
-                <i className="fas fa-download"></i>
-              </div>
-              <h3>데이터 내보내기</h3>
-            </div>
-            <div className="data-explorer-modal-body">
-              {filteredDataPoints.length}개의 실시간 데이터를 CSV 파일로 내보내시겠습니까?
-
-              파일명: pulseone_realtime_data_{new Date().toISOString().split('T')[0]}.csv
-            </div>
-            <div className="data-explorer-modal-footer">
-              <button
-                onClick={() => setShowExportModal(false)}
-                className="data-explorer-modal-btn data-explorer-modal-btn-cancel"
-              >
-                취소
-              </button>
-              <button
-                onClick={confirmExport}
-                className="data-explorer-modal-btn data-explorer-modal-btn-confirm data-explorer-modal-btn-info"
-              >
-                내보내기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 메인 레이아웃 */}
       <div className="explorer-layout">
-        {/* 왼쪽: 트리 패널 */}
         <div className="tree-panel">
           <div className="tree-header">
             <h3>📋 장치 계층 구조</h3>
             <div className="search-container">
-              <div className="search-input-wrapper">
-                <input
-                  type="text"
-                  placeholder="검색..."
-                  value={filters.search}
-                  onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                  className="search-input"
-                />
-                <span className="search-icon">🔍</span>
-              </div>
+              <input
+                type="text" placeholder="트리 검색..."
+                value={filters.search}
+                onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
+                className="search-input"
+              />
             </div>
           </div>
-
-          <div className="tree-content">
-            {isLoading ? (
-              <div className="loading-container">
-                <div className="loading-spinner"></div>
-                <div className="loading-text">RTU 네트워크 구조 로드 중...</div>
-              </div>
-            ) : treeData.length === 0 ? (
-              <div className="empty-state">
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
-                <h3 style={{ margin: '0 0 8px 0', fontSize: '16px' }}>데이터가 없습니다</h3>
-                <p style={{ margin: 0, fontSize: '14px', textAlign: 'center' }}>
-                  API 연결을 확인하고 새로고침해보세요
-                </p>
-              </div>
-            ) : (
-              treeData.map(node => renderTreeNode(node))
-            )}
-          </div>
+          <DeviceTree
+            treeData={processedTreeData}
+            expandedNodes={expandedNodes}
+            selectedNode={selectedNode}
+            onNodeClick={handleNodeClick}
+            isLoading={isLoading}
+            searchTerm={filters.search}
+          />
         </div>
 
-        {/* 오른쪽: 상세 정보 패널 */}
         <div className="details-panel">
           <div className="details-header">
-            <h3>
-              📊 실시간 데이터
-              {selectedNode && ` - ${selectedNode.label}`}
-            </h3>
-            <div className="details-controls">
-              <div className="filter-controls">
-                <select
-                  value={filters.dataType}
-                  onChange={(e) => setFilters(prev => ({ ...prev, dataType: e.target.value }))}
-                  className="filter-select"
-                >
-                  <option value="all">모든 타입</option>
-                  <option value="number">숫자</option>
-                  <option value="boolean">불린</option>
-                  <option value="string">문자열</option>
-                  <option value="integer">정수</option>
-                </select>
-
-                <select
-                  value={filters.quality}
-                  onChange={(e) => setFilters(prev => ({ ...prev, quality: e.target.value }))}
-                  className="filter-select"
-                >
-                  <option value="all">모든 품질</option>
-                  <option value="good">Good</option>
-                  <option value="uncertain">Uncertain</option>
-                  <option value="bad">Bad</option>
-                  <option value="comm_failure">Comm Failure</option>
-                  <option value="last_known">Last Known</option>
-                </select>
-              </div>
-
-              <div className="view-controls">
-                <button
-                  onClick={() => setShowChart(!showChart)}
-                  className={`btn btn-sm ${showChart ? 'btn-primary' : 'btn-outline'}`}
-                >
-                  📈 차트 {showChart ? '숨기기' : '보기'}
-                </button>
-                {selectedDataPoints.length > 0 && (
-                  <button
-                    onClick={clearSelection}
-                    className="btn btn-sm btn-outline"
-                  >
-                    선택 해제 ({selectedDataPoints.length})
-                  </button>
-                )}
-              </div>
+            <h3>📊 실시간 데이터 {selectedNode && ` - ${selectedNode.label}`}</h3>
+            <div className="view-controls">
+              <button
+                onClick={() => setShowChart(!showChart)}
+                className={`btn btn-sm ${showChart ? 'btn-primary' : 'btn-outline'}`}
+              >
+                📈 차트 {showChart ? '숨기기' : '보기'}
+              </button>
             </div>
           </div>
 
           <div className="details-content">
-            {/* 차트 영역 */}
             {showChart && selectedDataPoints.length > 0 && (
-              <div style={{
-                marginBottom: '20px',
-                padding: '16px',
-                border: '1px solid #e5e7eb',
-                borderRadius: '6px',
-                backgroundColor: '#f9fafb'
-              }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600 }}>📈 실시간 트렌드</h4>
-                <div style={{
-                  height: '200px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: '#ffffff',
-                  border: '2px dashed #d1d5db',
-                  borderRadius: '6px',
-                  color: '#6b7280'
-                }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <p style={{ margin: '0 0 8px 0' }}>InfluxDB 연동 차트가 여기에 표시됩니다</p>
-                    <p style={{ margin: 0, fontSize: '12px' }}>선택된 {selectedDataPoints.length}개 포인트의 트렌드</p>
-                  </div>
-                </div>
-              </div>
+              <TrendChart
+                historicalData={historicalData}
+                selectedDataPoints={selectedDataPoints}
+                timeRange={timeRange}
+                setTimeRange={setTimeRange}
+                isChartLoading={isChartLoading}
+              />
             )}
 
-            {/* 실시간 데이터 테이블 */}
-            <div className="realtime-data">
-              <h4>
-                ⚡ 실시간 데이터 ({filteredDataPoints.length}개)
-              </h4>
-
-              {filteredDataPoints.length === 0 ? (
-                selectedNode && ['device', 'master', 'slave'].includes(selectedNode.type) ?
-                  renderEmptyDeviceMessage(selectedNode) : (
-                    <div className="empty-state">
-                      <p style={{ margin: '0 0 8px 0' }}>표시할 데이터가 없습니다</p>
-                      <small>왼쪽 트리에서 디바이스를 선택하거나 필터를 조정해보세요</small>
-                      {realtimeData.length > 0 && (
-                        <div style={{ marginTop: '10px', fontSize: '12px', color: '#6c757d' }}>
-                          <p style={{ margin: 0 }}>원본 데이터는 {realtimeData.length}개가 있지만 필터 조건에 맞지 않습니다.</p>
-                        </div>
-                      )}
-                    </div>
-                  )
-              ) : (
-                <div className="data-table-container">
-                  {/* 테이블 헤더 */}
-                  <div className="data-table-header">
-                    <div className="header-cell cell-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={filteredDataPoints.length > 0 && selectedDataPoints.length === filteredDataPoints.length}
-                        onChange={handleToggleSelectAll}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    </div>
-                    <div className="header-cell">포인트명</div>
-                    <div className="header-cell">디바이스</div>
-                    <div className="header-cell">현재값</div>
-                    <div className="header-cell">품질</div>
-                    <div className="header-cell">타입</div>
-                    <div className="header-cell">시간</div>
-                  </div>
-
-                  {/* 테이블 바디 */}
-                  <div className="data-table-body">
-                    {paginatedDataPoints.map((dataPoint: RealtimeValue, index: number) => (
-                      <div key={dataPoint.key || `row-${index}`} className="data-table-row">
-                        <div className="table-cell cell-checkbox" data-label="선택">
-                          <input
-                            type="checkbox"
-                            checked={selectedDataPoints.some((dp: RealtimeValue) => dp.key === dataPoint.key)}
-                            onChange={() => handleDataPointSelect(dataPoint)}
-                          />
-                        </div>
-
-                        <div className="table-cell cell-point" data-label="포인트명">
-                          <div className="point-info">
-                            <div className="point-name">
-                              {dataPoint.point_name || '[포인트명 없음]'}
-                            </div>
-                            <div className="point-key">
-                              {(dataPoint.key || '').replace('device:', '').replace(/:/g, '/')}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="table-cell cell-device" data-label="디바이스">
-                          <div className="device-name">
-                            {(dataPoint.device_name || '').replace('-CTRL-', '').replace('-01', '')}
-                          </div>
-                        </div>
-
-                        <div className="table-cell cell-value" data-label="현재값">
-                          <div className="value-display">
-                            <span className={`value ${dataPoint.quality || 'unknown'}`}>
-                              {String(dataPoint.value || '—')}
-                              {dataPoint.unit && <span className="unit">{dataPoint.unit}</span>}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="table-cell cell-quality" data-label="품질">
-                          <span className={`quality-badge ${dataPoint.quality || 'unknown'}`}>
-                            {dataPoint.quality === 'good' ? 'OK' :
-                              dataPoint.quality === 'comm_failure' ? 'ERR' :
-                                dataPoint.quality === 'last_known' ? 'OLD' :
-                                  dataPoint.quality === 'uncertain' ? '?' :
-                                    dataPoint.quality || '—'}
-                          </span>
-                        </div>
-
-                        <div className="table-cell cell-type" data-label="타입">
-                          <span className="data-type">
-                            {dataPoint.data_type === 'number' ? 'NUM' :
-                              dataPoint.data_type === 'boolean' ? 'BOOL' :
-                                dataPoint.data_type === 'integer' ? 'INT' :
-                                  dataPoint.data_type === 'string' ? 'STR' : 'UNK'}
-                          </span>
-                        </div>
-
-                        <div className="table-cell cell-time" data-label="업데이트">
-                          <span className="timestamp">
-                            {dataPoint.timestamp ?
-                              new Date(dataPoint.timestamp).toLocaleTimeString('ko-KR', {
-                                hour12: false,
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit'
-                              }) + '.' + String(new Date(dataPoint.timestamp).getMilliseconds()).padStart(3, '0') : '—'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* 페이징 컴포넌트 */}
-                  {filteredDataPoints.length > 0 && (
-                    <Pagination
-                      current={pagination.currentPage}
-                      total={pagination.totalCount}
-                      pageSize={pagination.pageSize}
-                      pageSizeOptions={pagination.pageSizeOptions}
-                      showSizeChanger={true}
-                      showTotal={true}
-                      onChange={(page) => pagination.goToPage(page)}
-                      onShowSizeChange={(page, pageSize) => pagination.changePageSize(pageSize)}
-                      className="pagination-wrapper"
-                    />
-                  )}
+            <RealtimeDataTable
+              filteredDataPoints={filteredDataPoints}
+              selectedDataPoints={selectedDataPoints}
+              paginatedDataPoints={paginatedDataPoints}
+              handleToggleSelectAll={handleToggleSelectAll}
+              handleDataPointSelect={handleDataPointSelect}
+              pagination={{
+                currentPage: pagination.currentPage,
+                totalCount: filteredDataPoints.length,
+                pageSize: pagination.pageSize,
+                pageSizeOptions: [10, 20, 50, 100],
+                goToPage: pagination.goToPage,
+                changePageSize: pagination.changePageSize
+              }}
+              selectedNode={selectedNode}
+              renderEmptyDeviceMessage={(node) => (
+                <div className="empty-state">
+                  <p>{node.label}에 연결된 포인트가 없거나 데이터를 불러올 수 없습니다.</p>
                 </div>
               )}
-            </div>
+            />
           </div>
         </div>
       </div>

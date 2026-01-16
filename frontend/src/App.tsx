@@ -31,7 +31,8 @@ import ManufacturerManagementPage from './pages/ManufacturerManagementPage';
 import TenantManagementPage from './pages/TenantManagementPage';
 import SiteManagementPage from './pages/SiteManagementPage';
 import AuditLogPage from './pages/AuditLogPage';
-
+import DatabaseExplorerPage from './pages/DatabaseExplorer';
+import ConfigEditorPage from './pages/ConfigEditor';
 const App: React.FC = () => {
   // 🛠️ 개발 환경 초기화: 더미 토큰 설정
   React.useEffect(() => {
@@ -97,6 +98,8 @@ const App: React.FC = () => {
                   <Route path="tenants" element={<TenantManagementPage />} />
                   <Route path="permissions" element={<PermissionManagement />} />
                   <Route path="backup" element={<BackupRestore />} />
+                  <Route path="database" element={<DatabaseExplorerPage />} />
+                  <Route path="config" element={<ConfigEditorPage />} />
                   {/* 시스템 하위 경로 기본값 */}
                   <Route index element={<Navigate to="status" replace />} />
                 </Route>

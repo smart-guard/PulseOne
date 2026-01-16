@@ -5,6 +5,9 @@
 
 const BaseService = require('./BaseService');
 const RepositoryFactory = require('../database/repositories/RepositoryFactory');
+const timeSeriesManager = require('../connection/timeseries');
+const ConfigManager = require('../config/ConfigManager');
+const config = ConfigManager.getInstance();
 
 class DataService extends BaseService {
     constructor() {
@@ -124,6 +127,117 @@ class DataService extends BaseService {
                 total_points: currentValues.length
             };
         }, 'DataService.getDeviceCurrentValues');
+    }
+
+    /**
+     * 여러 디바이스의 상태 및 Redis 데이터 존재 여부 일괄 조회
+     */
+    async getBulkDeviceStatus(deviceIds, tenantId) {
+        return await this.handleRequest(async () => {
+            if (!deviceIds) {
+                throw new Error('deviceIds is required');
+            }
+
+            const ids = Array.isArray(deviceIds) ? deviceIds : String(deviceIds).split(',').map(id => parseInt(id.trim()));
+            const results = {};
+
+            for (const id of ids) {
+                try {
+                    const device = await this.deviceRepo.findById(id, tenantId);
+
+                    if (device) {
+                        const hasValues = await this.deviceRepo.hasCurrentValues(id, tenantId);
+                        results[id] = {
+                            connection_status: device.connection_status,
+                            hasRedisData: hasValues,
+                            last_seen: device.last_seen || device.last_communication
+                        };
+                    }
+                } catch (error) {
+                    this.logger?.warn(`디바이스 ${id} 상태 조회 실패:`, error.message);
+                }
+            }
+
+            return results;
+        }, 'DataService.getBulkDeviceStatus');
+    }
+
+    /**
+     * 이력 데이터 조회 (InfluxDB)
+     */
+    async getHistoricalData(params, tenantId) {
+        return await this.handleRequest(async () => {
+            const { point_ids, start_time, end_time, interval = '1m', aggregation = 'mean' } = params;
+
+            if (!point_ids) throw new Error('point_ids is required');
+
+            const ids = Array.isArray(point_ids) ? point_ids : String(point_ids).split(',').map(id => parseInt(id.trim()));
+
+            // 포인트 메타데이터 조회
+            const pointDetails = [];
+            for (const id of ids) {
+                try {
+                    const result = await this.getDataPointDetail(id);
+                    if (result.success && result.data) {
+                        pointDetails.push(result.data);
+                    }
+                } catch (error) {
+                    this.logger?.warn(`포인트 ${id} 상세 정보 조회 실패:`, error.message);
+                }
+            }
+
+            const bucket = config.get('INFLUXDB_BUCKET', 'history');
+
+            // Flux 쿼리 생성
+            let fluxQuery = `from(bucket: "${bucket}")
+                |> range(start: ${start_time}, stop: ${end_time})
+                |> filter(fn: (r) => r._measurement == "device_telemetry" or r._measurement == "robot_state")
+            `;
+
+            if (ids.length > 0) {
+                const pointFilters = ids.map(id => `r.point_id == "${id}"`).join(' or ');
+                fluxQuery += `|> filter(fn: (r) => ${pointFilters})\n`;
+            }
+
+            // 필드 필터링 (p_ID 형식)
+            const fieldFilters = ids.map(id => `r._field == "p_${id}"`).join(' or ');
+            if (fieldFilters) {
+                fluxQuery += `|> filter(fn: (r) => ${fieldFilters})\n`;
+            }
+
+            if (interval && interval !== 'none') {
+                fluxQuery += `|> aggregateWindow(every: ${interval}, fn: ${aggregation}, createEmpty: false)\n`;
+            }
+
+            fluxQuery += `|> yield(name: "${aggregation}")`;
+
+            const rawData = await timeSeriesManager.queryData(fluxQuery);
+
+            const historical_data = rawData.map(row => ({
+                time: row._time,
+                point_id: parseInt(row.point_id),
+                value: row._value,
+                quality: 'good'
+            }));
+
+            return {
+                data_points: pointDetails.map(p => ({
+                    point_id: p.id,
+                    point_name: p.name,
+                    device_name: p.device_info?.name || 'Unknown',
+                    data_type: p.data_type,
+                    unit: p.unit
+                })),
+                historical_data,
+                query_info: {
+                    start_time,
+                    end_time,
+                    interval,
+                    aggregation,
+                    total_points: historical_data.length
+                }
+            };
+        }, 'DataService.getHistoricalData');
     }
 
     /**

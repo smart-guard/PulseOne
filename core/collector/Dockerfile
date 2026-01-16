@@ -271,24 +271,13 @@ ENV CC=gcc CXX=g++
 ENV CFLAGS="-std=c11 -Wall -Wextra"
 ENV CXXFLAGS="-std=c++17 -Wall -Wextra"
 
-COPY core/shared /app/shared
-COPY core/collector /app/collector
-WORKDIR /app/collector
+# 소스 코드 복사 (core 폴더 전체를 복사하여 상대 경로 유지)
+WORKDIR /app
+COPY core /app/core
 
-# 최종 확인 (httplib 포함)
-RUN echo "Docker 이미지 빌드 완료!" && \
-    echo "최종 확인:" && \
-    echo "  httplib 헤더:" && \
-    ls -la /usr/local/include/httplib.h 2>/dev/null && \
-    echo "  BACnet 라이브러리:" && \
-    ls -la /usr/local/lib/libbacnet.a 2>/dev/null && \
-    echo "  hiredis 라이브러리:" && \
-    ls -la /usr/local/lib/libhiredis* 2>/dev/null | head -1 && \
-    echo "  QuickJS 라이브러리:" && \
-    ls -la /usr/local/lib/libquickjs* 2>/dev/null && \
-    echo "모든 라이브러리 설치 완료!"
+# 빌드 수행
+RUN cd /app/core/shared && make all -j$(nproc)
+RUN cd /app/core/collector && make all -j$(nproc)
 
-RUN cd /app/shared && make clean && make all -j$(nproc)
-RUN cd /app/collector && make clean && make all -j$(nproc)
-
-CMD ["/app/collector/bin/pulseone-collector"]
+WORKDIR /app/core/collector
+CMD ["/app/core/collector/bin/pulseone-collector"]

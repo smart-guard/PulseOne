@@ -6,12 +6,12 @@ const env = require('../config/ConfigManager');
 
 class InfluxDBManager {
     constructor() {
-        this.url = env.INFLUXDB_HOST 
-            ? `http://${env.INFLUXDB_HOST}:${env.INFLUXDB_PORT || 8086}`
-            : 'http://localhost:8086';
-        this.token = env.INFLUXDB_TOKEN || 'mytoken';
-        this.org = env.INFLUXDB_ORG || 'pulseone';
-        this.bucket = env.INFLUXDB_BUCKET || 'metrics';
+        const host = env.get('INFLUXDB_HOST', 'localhost');
+        const port = env.get('INFLUXDB_PORT', '8086');
+        this.url = `http://${host}:${port}`;
+        this.token = env.get('INFLUXDB_TOKEN', 'mytoken');
+        this.org = env.get('INFLUXDB_ORG', 'pulseone');
+        this.bucket = env.get('INFLUXDB_BUCKET', 'metrics');
 
         this.client = new InfluxDB({ url: this.url, token: this.token });
         this.writeApi = this.client.getWriteApi(this.org, this.bucket);
@@ -19,14 +19,14 @@ class InfluxDBManager {
 
         // 배치 설정
         this.writeApi.useDefaultTags({ source: 'pulseone-backend' });
-    
+
         console.log(`✅ InfluxDB 클라이언트 초기화: ${this.url}`);
     }
 
     // 포인트 생성 헬퍼
     createPoint(measurement, tags = {}, fields = {}, timestamp = new Date()) {
         const point = new Point(measurement);
-    
+
         Object.entries(tags).forEach(([key, value]) => {
             point.tag(key, String(value));
         });

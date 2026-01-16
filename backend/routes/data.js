@@ -43,7 +43,7 @@ function createResponse(success, data, message, error_code) {
 router.get('/points', async (req, res) => {
     try {
         const result = await DataService.searchPoints(req.query, req.tenantId);
-        res.json(createResponse(true, result));
+        res.json(result);
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'DATA_POINTS_SEARCH_ERROR'));
     }
@@ -57,7 +57,7 @@ router.get('/points/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const result = await DataService.getDataPointDetail(id);
-        res.json(createResponse(true, result));
+        res.json(result);
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'DATA_POINT_DETAIL_ERROR'));
     }
@@ -99,9 +99,27 @@ router.get('/current-values', async (req, res) => {
 router.get('/device/:id/current-values', async (req, res) => {
     try {
         const result = await DataService.getDeviceCurrentValues(req.params.id, req.tenantId);
-        res.json(createResponse(true, result));
+        res.json(result);
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'DEVICE_CURRENT_VALUES_ERROR'));
+    }
+});
+
+/**
+ * POST /api/data/devices/status
+ * 여러 디바이스의 상태 일괄 조회 (Bulk Status)
+ */
+router.post('/devices/status', async (req, res) => {
+    try {
+        const { device_ids } = req.body;
+        if (!device_ids) {
+            return res.status(400).json(createResponse(false, null, 'device_ids is required', 'VALIDATION_ERROR'));
+        }
+
+        const result = await DataService.getBulkDeviceStatus(device_ids, req.tenantId);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'BULK_STATUS_ERROR'));
     }
 });
 
@@ -115,14 +133,13 @@ router.get('/device/:id/current-values', async (req, res) => {
  */
 router.get('/historical', async (req, res) => {
     try {
-        const { point_ids, start_time, end_time, interval = '1m' } = req.query;
+        const { point_ids, start_time, end_time, interval, aggregation } = req.query;
         if (!point_ids || !start_time || !end_time) {
             return res.status(400).json(createResponse(false, null, 'point_ids, start_time, and end_time are required', 'VALIDATION_ERROR'));
         }
 
-        // InfluxDB logic should ideally be in a service, for now we keep it simple
-        // If influx is not available, return empty or mock
-        res.json(createResponse(true, { message: 'Historical data retrieval integrated', points: point_ids.split(',') }));
+        const result = await DataService.getHistoricalData(req.query, req.tenantId);
+        res.json(result);
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'HISTORICAL_DATA_ERROR'));
     }
@@ -139,7 +156,7 @@ router.get('/historical', async (req, res) => {
 router.get('/statistics', async (req, res) => {
     try {
         const result = await DataService.getStatistics(req.query, req.tenantId);
-        res.json(createResponse(true, result));
+        res.json(result);
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'DATA_STATISTICS_ERROR'));
     }

@@ -163,5 +163,21 @@ test-results/
 # docs/*.pdf
 
 # =============================================================================
-# 설정 파일 (선택적)
 # =============================================================================
+# 파편화된 루트 파일 및 임시 파일
+# =============================================================================
+curl_output.json
+sim_pids.txt
+collector_debug.log
+modbus_sim.log
+mqtt_sim.log
+test_*.js
+next
+architecture.txt
+configs.txt
+schema.txt
+project-filetree.sh
+temp_fix.sh
+*.backup
+*.bak
+*.tmp

@@ -27,7 +27,7 @@
 using nlohmann::json;
 
 // 🔥 조건부 httplib 포함 (기존 패턴 100% 준수)
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
 #include <httplib.h>
 #endif
 
@@ -39,7 +39,7 @@ using namespace std::chrono;
 // =============================================================================
 
 RestApiServer::RestApiServer(int port) : port_(port), running_(false) {
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
   server_ = std::make_unique<httplib::Server>();
   SetupRoutes();
 #else
@@ -55,7 +55,7 @@ RestApiServer::~RestApiServer() { Stop(); }
 // =============================================================================
 
 bool RestApiServer::Start() {
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
   if (running_) {
     return true;
   }
@@ -80,7 +80,7 @@ bool RestApiServer::Start() {
 }
 
 void RestApiServer::Stop() {
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
   if (!running_) {
     return;
   }
@@ -107,7 +107,7 @@ bool RestApiServer::IsRunning() const { return running_; }
 // =============================================================================
 
 void RestApiServer::SetupRoutes() {
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
   auto *httplib_server = static_cast<httplib::Server *>(server_.get());
 
   // CORS 미들웨어
@@ -328,7 +328,7 @@ void RestApiServer::SetNetworkScanCallback(NetworkScanCallback callback) {
   network_scan_callback_ = callback;
 }
 
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
 void RestApiServer::HandlePostNetworkScan(const httplib::Request &req,
                                           httplib::Response &res) {
   try {

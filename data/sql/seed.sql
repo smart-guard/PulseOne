@@ -395,9 +395,9 @@ INSERT OR IGNORE INTO current_values (
 INSERT OR IGNORE INTO device_settings (
     device_id, polling_interval_ms, connection_timeout_ms, read_timeout_ms, write_timeout_ms,
     max_retry_count, retry_interval_ms, backoff_multiplier, backoff_time_ms, max_backoff_time_ms,
-    is_keep_alive_enabled, keep_alive_interval_s, keep_alive_timeout_s,
-    is_data_validation_enabled, is_outlier_detection_enabled, is_deadband_enabled,
-    is_detailed_logging_enabled, is_performance_monitoring_enabled, is_diagnostic_mode_enabled,
+    keep_alive_enabled, keep_alive_interval_s, keep_alive_timeout_s,
+    data_validation_enabled, outlier_detection_enabled, deadband_enabled,
+    detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled,
     read_buffer_size, write_buffer_size, queue_size
 ) VALUES 
 -- PLC-001 설정

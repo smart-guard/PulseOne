@@ -608,9 +608,11 @@ void DataProcessingService::ProcessBatch(
         } catch (...) {
         }
 
+        /*
         if (dev_id_int >= 1 && dev_id_int <= 20) {
           continue;
         }
+        */
 
         // Initialize Context
         PipelineContext context(message);
@@ -1611,30 +1613,9 @@ DataProcessingService::ConvertToCurrentValueEntity(
     entity.setCurrentValue(value_json.dump());
     entity.setRawValue(value_json.dump());
 
-    // 타입 설정
-    std::visit(
-        [&entity](const auto &value) {
-          using T = std::decay_t<decltype(value)>;
-
-          if constexpr (std::is_same_v<T, bool>) {
-            entity.setValueType("BOOL");
-          } else if constexpr (std::is_same_v<T, int16_t>) {
-            entity.setValueType("INT16");
-          } else if constexpr (std::is_same_v<T, uint16_t>) {
-            entity.setValueType("UINT16");
-          } else if constexpr (std::is_same_v<T, int32_t>) {
-            entity.setValueType("INT32");
-          } else if constexpr (std::is_same_v<T, uint32_t>) {
-            entity.setValueType("UINT32");
-          } else if constexpr (std::is_same_v<T, float>) {
-            entity.setValueType("FLOAT32");
-          } else if constexpr (std::is_same_v<T, double>) {
-            entity.setValueType("FLOAT64");
-          } else if constexpr (std::is_same_v<T, std::string>) {
-            entity.setValueType("STRING");
-          }
-        },
-        point.value);
+    // 타입 설정 (int64_t 등 모든 DataVariant 타입 자동 지원)
+    entity.setValueType(
+        PulseOne::BasicTypes::GetDataVariantTypeName(point.value));
 
     auto now = std::chrono::system_clock::now();
     entity.setLastReadTime(now);

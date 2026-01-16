@@ -157,52 +157,52 @@ const DeviceList: React.FC = () => {
 
   const loadDevices = useCallback(async (isBackground = false) => {
     try {
-      if (!hasInitialLoad) {
+      if (!isBackground && !hasInitialLoad) {
         setIsInitialLoading(true);
       }
 
       setError(null);
 
       const apiParams = {
-        page: 1,
-        limit: 1000,
+        page: currentPage,
+        limit: pageSize,
         protocol_type: protocolFilter !== 'all' ? protocolFilter : undefined,
+        connection_status: connectionFilter !== 'all' ? connectionFilter : undefined,
         search: searchTerm || undefined,
         sort_by: sortField,
         sort_order: sortOrder,
         include_collector_status: true,
         device_group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
-        onlyDeleted: includeDeleted
+        onlyDeleted: includeDeleted,
+        includeCount: true // backend standard for returning total
       };
 
       const response = await DeviceApiService.getDevices(apiParams);
 
       if (response.success && response.data) {
-        let allDevices = response.data.items || [];
+        // 백엔드에서 페이징 처리된 결과를 반환함
+        const { items, pagination } = response.data;
 
-        // 클라이언트 사이드 필터링 (상태 필터링)
-        let filteredDevices = allDevices;
+        let processedItems = items || [];
 
+        // collector_status 필터링 (아직 백엔드에서 지원하지 않는 경우 클라이언트에서 수행)
+        // 만약 데이터가 너무 많다면 이 부분도 백엔드 필터 레이어로 옮겨야 함
         if (statusFilter !== 'all') {
-          filteredDevices = filteredDevices.filter(device => {
+          processedItems = processedItems.filter(device => {
             const statusValue = (device.collector_status?.status || 'unknown').toLowerCase();
             return statusValue === statusFilter;
           });
         }
 
-        if (connectionFilter !== 'all') {
-          filteredDevices = filteredDevices.filter(device => {
-            return device.connection_status === connectionFilter;
-          });
+        setDevices(processedItems);
+
+        if (pagination) {
+          setTotalCount(pagination.total || 0);
+        } else {
+          // Fallback if pagination object is missing
+          setTotalCount(processedItems.length);
         }
 
-        const totalFiltered = filteredDevices.length;
-        const startIndex = (currentPage - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
-        const paginatedDevices = filteredDevices.slice(startIndex, endIndex);
-
-        setDevices(paginatedDevices);
-        setTotalCount(totalFiltered);
         setRenderKey(prev => prev + 1);
 
         if (!hasInitialLoad) {

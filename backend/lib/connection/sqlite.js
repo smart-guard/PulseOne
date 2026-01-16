@@ -149,23 +149,24 @@ class SQLiteConnection {
         }
 
         return new Promise((resolve, reject) => {
-            // SELECT 쿼리
-            if (sql.trim().toUpperCase().startsWith('SELECT')) {
+            const sqlTrimmed = sql.trim().toUpperCase();
+            // SELECT 또는 PRAGMA 쿼리 (결과가 있는 쿼리)
+            if (sqlTrimmed.startsWith('SELECT') || sqlTrimmed.startsWith('PRAGMA')) {
                 this.connection.all(sql, params, (err, rows) => {
                     if (err) {
-                        console.error('❌ SQLite SELECT 오류:', err.message);
+                        console.error('❌ SQLite SELECT/PRAGMA 오류:', err.message);
                         console.error('   쿼리:', sql);
                         console.error('   파라미터:', params);
                         reject(err);
                     } else {
                         resolve({
                             rows: rows,
-                            rowCount: rows.length
+                            rowCount: rows ? rows.length : 0
                         });
                     }
                 });
             }
-            // INSERT, UPDATE, DELETE 쿼리
+            // INSERT, UPDATE, DELETE 쿼리 (결과가 없는 쿼리)
             else {
                 this.connection.run(sql, params, function (err) {
                     if (err) {

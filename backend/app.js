@@ -799,6 +799,24 @@ try {
     logger.system('WARN', 'Protocol 라우트 로드 실패', { error: error.message });
 }
 
+// 데이터베이스 탐색기 라우트 (관리자 전용)
+try {
+    const databaseRoutes = require('./routes/database');
+    app.use('/api/database', databaseRoutes);
+    logger.system('INFO', 'Database Explorer API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Database Explorer 라우트 로드 실패', { error: error.message });
+}
+
+// 시스템 설정 편집 라우트 (관리자 전용)
+try {
+    const configRoutes = require('./routes/config');
+    app.use('/api/config', configRoutes);
+    logger.system('INFO', 'Config Editor API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Config Editor 라우트 로드 실패', { error: error.message });
+}
+
 // 알람 관리 라우트 (중요)
 try {
     const alarmRoutes = require('./routes/alarms');

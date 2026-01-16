@@ -62,6 +62,9 @@ DatabaseAbstractionLayer::detectStatementType(const std::string &query) {
 std::vector<std::map<std::string, std::string>>
 DatabaseAbstractionLayer::executeQuery(const std::string &query) {
   try {
+    // 🔥 DEBUG: Log the original query
+    db_manager_->log(0, "🔍 [DEBUG] Original query: " + query);
+
     std::string adapted_query = adaptQuery(query);
     std::vector<std::string> column_names = extractColumnsFromQuery(query);
 
@@ -86,17 +89,35 @@ DatabaseAbstractionLayer::executeQuery(const std::string &query) {
     }
 
     std::vector<std::vector<std::string>> raw_results;
+
+    // 🔥 DEBUG: Log the actual query being executed
+    db_manager_->log(0, "🔍 [DEBUG] Executing query: " + adapted_query);
+    db_manager_->log(0, "🔍 [DEBUG] Column names extracted: " +
+                            std::to_string(column_names.size()));
+
     bool success = db_manager_->executeQuery(adapted_query, raw_results);
 
+    // 🔥 DEBUG: Log the results
+    db_manager_->log(0, "🔍 [DEBUG] Query success: " +
+                            std::string(success ? "true" : "false"));
+    db_manager_->log(0, "🔍 [DEBUG] Raw results count: " +
+                            std::to_string(raw_results.size()));
+
     if (!success) {
+      db_manager_->log(3, "Query execution failed");
       return {};
     }
 
     if (raw_results.empty()) {
+      db_manager_->log(0, "🔍 [DEBUG] Query returned 0 rows");
       return {};
     }
 
-    return convertToMapResults(raw_results, column_names);
+    auto map_results = convertToMapResults(raw_results, column_names);
+    db_manager_->log(0, "🔍 [DEBUG] Converted to " +
+                            std::to_string(map_results.size()) +
+                            " map results");
+    return map_results;
 
   } catch (const std::exception &e) {
     db_manager_->log(3, "executeQuery failed: " + std::string(e.what()));

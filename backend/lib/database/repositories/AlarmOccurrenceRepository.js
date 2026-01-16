@@ -28,6 +28,10 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .leftJoin('sites as s', 'd.site_id', 's.id')
                 .leftJoin('data_points as dp', 'ao.point_id', 'dp.id')
                 .leftJoin('virtual_points as vp', 'ao.point_id', 'vp.id')
+                .leftJoin('users as u_ack', 'ao.acknowledged_by', 'u_ack.id')
+                .leftJoin('users as u_clr', 'ao.cleared_by', 'u_clr.id')
+                .leftJoin('tenants as t_ack', 'u_ack.tenant_id', 't_ack.id')
+                .leftJoin('tenants as t_clr', 'u_clr.tenant_id', 't_clr.id')
                 .select(
                     'ao.*',
                     'ar.name as rule_name',
@@ -47,7 +51,11 @@ class AlarmOccurrenceRepository extends BaseRepository {
                     's.name as site_name',
                     's.location as site_location',
                     'vp.name as virtual_point_name',
-                    'vp.description as virtual_point_description'
+                    'vp.description as virtual_point_description',
+                    'u_ack.full_name as acknowledged_by_name',
+                    'u_clr.full_name as cleared_by_name',
+                    't_ack.company_name as acknowledged_by_company',
+                    't_clr.company_name as cleared_by_company'
                 );
 
             // 테넌트 격리
@@ -55,11 +63,28 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
             // 필터 조건 추가
             if (filters.state && filters.state !== 'all') {
-                query.where('ao.state', filters.state);
+                let states = [];
+                if (Array.isArray(filters.state)) {
+                    states = filters.state;
+                } else if (typeof filters.state === 'string') {
+                    states = filters.state.split(',').map(s => s.trim());
+                } else {
+                    states = [filters.state];
+                }
+
+                // 대소문자 모두 포함하도록 확장
+                const expandedStates = [];
+                states.forEach(s => {
+                    const ls = s.toLowerCase();
+                    expandedStates.push(ls);
+                    expandedStates.push(ls.toUpperCase());
+                });
+                query.whereIn('ao.state', expandedStates);
             }
 
             if (filters.severity && filters.severity !== 'all') {
-                query.where('ao.severity', filters.severity);
+                const sev = filters.severity.toLowerCase();
+                query.whereIn('ao.severity', [sev, sev.toUpperCase()]);
             }
 
             if (filters.ruleId) {
@@ -697,10 +722,10 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .where('tenant_id', tenantId || 1)
                 .select([
                     this.knex.raw('COUNT(*) as total_occurrences'),
-                    this.knex.raw("SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as active_alarms"),
-                    this.knex.raw('SUM(CASE WHEN acknowledged_time IS NULL THEN 1 ELSE 0 END) as unacknowledged_alarms'),
-                    this.knex.raw('SUM(CASE WHEN acknowledged_time IS NOT NULL THEN 1 ELSE 0 END) as acknowledged_alarms'),
-                    this.knex.raw('SUM(CASE WHEN cleared_time IS NOT NULL THEN 1 ELSE 0 END) as cleared_alarms')
+                    this.knex.raw("SUM(CASE WHEN LOWER(state) IN ('active', 'acknowledged') THEN 1 ELSE 0 END) as active_alarms"),
+                    this.knex.raw("SUM(CASE WHEN acknowledged_time IS NULL AND LOWER(state) = 'active' THEN 1 ELSE 0 END) as unacknowledged_alarms"),
+                    this.knex.raw("SUM(CASE WHEN LOWER(state) = 'acknowledged' THEN 1 ELSE 0 END) as acknowledged_alarms"),
+                    this.knex.raw("SUM(CASE WHEN LOWER(state) = 'cleared' THEN 1 ELSE 0 END) as cleared_alarms")
                 ])
                 .first();
 
