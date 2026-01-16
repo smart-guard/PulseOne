@@ -58,25 +58,25 @@
 /* =============================================================================
    페이지 헤더 - 컴팩트 버전
    ============================================================================= */
-   .data-explorer-container .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: var(--table-padding);
-    background: #ffffff;
-    /* 변경: 하단 보더만 있던 것을 전체 보더와 라운딩으로 변경하여 패널들과 통일감 부여 */
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    /* 변경: 좌우 너비를 아래 패널 영역과 맞추기 위해 여백 및 최대 너비 설정 */
-    margin: 16px auto 8px; 
-    width: calc(100% - (var(--table-padding) * 2));
-    max-width: 1600px; 
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-    flex-wrap: wrap;
-    gap: 16px;
-    min-height: var(--explorer-header-height);
-    flex-shrink: 0;
-  }
+.data-explorer-container .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: var(--table-padding);
+  background: #ffffff;
+  /* 변경: 하단 보더만 있던 것을 전체 보더와 라운딩으로 변경하여 패널들과 통일감 부여 */
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  /* 변경: 좌우 너비를 아래 패널 영역과 맞추기 위해 여백 및 최대 너비 설정 */
+  margin: 16px auto 8px;
+  width: calc(100% - (var(--table-padding) * 2));
+  max-width: 1600px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  flex-wrap: wrap;
+  gap: 16px;
+  min-height: var(--explorer-header-height);
+  flex-shrink: 0;
+}
 
 .data-explorer-container .header-left {
   display: flex;
@@ -182,21 +182,21 @@
 /* =============================================================================
    메인 레이아웃 - 컴팩트 버전
    ============================================================================= */
-   .explorer-layout {
-    display: grid;
-    grid-template-columns: 350px 1fr;
-    gap: var(--table-gap);
-    /* 수정: 헤더가 차지하는 공간과 여백을 고려하여 높이 계산 */
-    height: calc(100vh - var(--explorer-header-height) - 40px);
-    min-height: var(--min-content-height);
-    padding: 8px var(--table-padding) var(--explorer-footer-space);
-    /* 변경: 헤더와 동일한 최대 너비 및 중앙 정렬 적용 */
-    max-width: 1600px;
-    margin: 0 auto;
-    width: 100%;
-    overflow: hidden;
-    flex: 1;
-  }
+.explorer-layout {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: var(--table-gap);
+  /* 수정: 헤더가 차지하는 공간과 여백을 고려하여 높이 계산 */
+  height: calc(100vh - var(--explorer-header-height) - 40px);
+  min-height: var(--min-content-height);
+  padding: 8px var(--table-padding) var(--explorer-footer-space);
+  /* 변경: 헤더와 동일한 최대 너비 및 중앙 정렬 적용 */
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+  overflow: hidden;
+  flex: 1;
+}
 
 /* =============================================================================
    트리 패널 (왼쪽) - 컴팩트 버전
@@ -1230,30 +1230,27 @@
    트리 노드 스타일 - 컴팩트
    ============================================================================= */
 .tree-node {
-  padding: 6px 10px;
-  /* 줄임: 8px 12px → 6px 10px */
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-radius: 3px;
-  /* 줄임: 4px → 3px */
-  margin: 0 6px;
-  /* 줄임: 8px → 6px */
-}
-
-.tree-node:hover {
-  background: #f3f4f6;
-}
-
-.tree-node.selected {
-  background: #dbeafe;
-  color: #1d4ed8;
+  margin: 1px 0;
 }
 
 .tree-node-content {
   display: flex;
   align-items: center;
   gap: 6px;
-  /* 줄임: 8px → 6px */
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  margin: 0 6px;
+}
+
+.tree-node-content:hover {
+  background: #f3f4f6;
+}
+
+.tree-node-content.selected {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .tree-expand-icon {
@@ -2427,28 +2424,9 @@
 /* =============================================================================
    트리 노드 스타일
    ============================================================================= */
-.tree-node {
-  padding: 8px 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-radius: 4px;
-  margin: 0 8px;
-}
+/* 중복 제거됨 */
 
-.tree-node:hover {
-  background: #f3f4f6;
-}
-
-.tree-node.selected {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.tree-node-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+/* 중복 제거됨 */
 
 .tree-expand-icon {
   width: 12px;
@@ -2684,4 +2662,68 @@
 .data-explorer-container .data-explorer-modal-btn-danger:hover {
   background: #b91c1c;
   border-color: #b91c1c;
+}
+
+/* =============================================================================
+   📈 Trend Chart Styles
+   ============================================================================= */
+.chart-container-wrapper {
+  animation: slideDown 0.3s ease-out;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.time-range-selector {
+  display: flex;
+  background: #f3f4f6;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.time-range-selector .btn {
+  border: none;
+  background: transparent;
+  color: #6b7280;
+}
+
+.time-range-selector .btn-primary {
+  background: #ffffff;
+  color: #3b82f6;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* 🔄 Loading Spinner Small */
+.loading-spinner-small {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #f3f4f6;
+  border-top: 2px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-xs {
+  padding: 2px 8px;
+  font-size: 11px;
 }

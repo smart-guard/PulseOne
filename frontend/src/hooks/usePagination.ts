@@ -4,8 +4,8 @@
 // ============================================================================
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { 
-  PaginationHookReturn, 
+import {
+  PaginationHookReturn,
   PaginationHookState
 } from '../types/common';
 import { DEFAULT_PAGINATION_CONFIG } from '../constants/pagination';
@@ -57,16 +57,16 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
 
   const getStoredPagination = useCallback((): PaginationStorage | null => {
     if (!enableLocalStorage || typeof window === 'undefined') return null;
-    
+
     try {
       const stored = localStorage.getItem(storageKey);
       if (!stored) return null;
-      
+
       const parsed = JSON.parse(stored) as PaginationStorage;
-      
+
       // 24시간 이내 데이터만 유효
       const isValid = (Date.now() - parsed.timestamp) < 24 * 60 * 60 * 1000;
-      
+
       return isValid ? parsed : null;
     } catch {
       return null;
@@ -75,14 +75,14 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
 
   const savePaginationToStorage = useCallback((page: number, size: number) => {
     if (!enableLocalStorage || typeof window === 'undefined') return;
-    
+
     try {
       const data: PaginationStorage = {
         currentPage: page,
         pageSize: size,
         timestamp: Date.now()
       };
-      
+
       localStorage.setItem(storageKey, JSON.stringify(data));
     } catch {
       // 로컬 스토리지 저장 실패 시 무시
@@ -94,7 +94,7 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
   // ==========================================================================
 
   const storedData = getStoredPagination();
-  
+
   const [currentPage, setCurrentPage] = useState<number>(
     storedData?.currentPage ?? initialPage
   );
@@ -109,7 +109,7 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
 
   const state: PaginationHookState = useMemo(() => {
     const totalPages = Math.ceil(totalCountState / pageSize) || 1;
-    
+
     return {
       currentPage: Math.min(Math.max(currentPage, 1), totalPages),
       pageSize,
@@ -142,9 +142,9 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
 
   const getPageNumbers = useCallback((maxVisible: number = maxVisiblePages): number[] => {
     const { currentPage, totalPages } = state;
-    
+
     if (totalPages <= 1) return [1];
-    
+
     if (totalPages <= maxVisible) {
       return Array.from({ length: totalPages }, (_, i) => i + 1);
     }
@@ -165,10 +165,10 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
   const getPageInfo = useCallback(() => {
     const { currentPage, totalPages } = state;
     const pageNumbers = getPageNumbers();
-    
+
     const showFirstEllipsis = pageNumbers[0] > 2;
     const showLastEllipsis = pageNumbers[pageNumbers.length - 1] < totalPages - 1;
-    
+
     return {
       pages: pageNumbers,
       showFirstEllipsis,
@@ -184,9 +184,9 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
 
   const goToPage = useCallback((page: number) => {
     const validPage = Math.max(1, Math.min(page, state.totalPages));
-    
+
     if (validPage === currentPage) return;
-    
+
     setCurrentPage(validPage);
     savePaginationToStorage(validPage, pageSize);
     onPageChange?.(validPage, pageSize);
@@ -195,14 +195,14 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
   const changePageSize = useCallback((size: number) => {
     // 페이지 크기 유효성 검사
     const validSize = Math.max(1, Math.min(size, 1000));
-    
+
     if (validSize === pageSize) return;
-    
+
     // 현재 항목의 인덱스를 유지하면서 페이지 이동
     const currentItemIndex = (currentPage - 1) * pageSize;
     const newPage = Math.floor(currentItemIndex / validSize) + 1;
     const finalPage = Math.max(1, Math.min(newPage, Math.ceil(totalCountState / validSize) || 1));
-    
+
     setPageSize(validSize);
     setCurrentPage(finalPage);
     savePaginationToStorage(finalPage, validSize);
@@ -213,7 +213,7 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
   const updateTotalCount = useCallback((newTotal: number) => {
     const validTotal = Math.max(0, newTotal);
     setTotalCountState(validTotal);
-    
+
     // totalCount 변경으로 인해 현재 페이지가 범위를 벗어나는 경우 조정
     const newTotalPages = Math.ceil(validTotal / pageSize) || 1;
     if (currentPage > newTotalPages) {
@@ -248,7 +248,7 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
     setCurrentPage(initialPage);
     setPageSize(initialPageSize);
     setTotalCountState(totalCount);
-    
+
     // 로컬 스토리지도 초기화
     if (enableLocalStorage && typeof window !== 'undefined') {
       try {
@@ -257,7 +257,7 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
         // 무시
       }
     }
-    
+
     onPageChange?.(initialPage, initialPageSize);
   }, [initialPage, initialPageSize, totalCount, enableLocalStorage, storageKey, onPageChange]);
 
@@ -268,20 +268,22 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
   // URL 동기화 (옵션)
   useEffect(() => {
     if (!enableUrlSync || typeof window === 'undefined') return;
-    
+
     const url = new URL(window.location.href);
     url.searchParams.set('page', currentPage.toString());
     url.searchParams.set('pageSize', pageSize.toString());
-    
+
     window.history.replaceState({}, '', url.toString());
   }, [enableUrlSync, currentPage, pageSize]);
 
-  // totalCount 초기값 변경 감지
+  // totalCount 초기값 변경 감지 - 제거 (updateTotalCount가 주된 업데이트 수단임)
+  /*
   useEffect(() => {
     if (totalCount !== totalCountState) {
       updateTotalCount(totalCount);
     }
   }, [totalCount, totalCountState, updateTotalCount]);
+  */
 
   // ==========================================================================
   // 📤 반환값 (확장된 버전)
@@ -290,13 +292,13 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
   return {
     // 기본 상태
     ...state,
-    
+
     // 계산된 값들
     hasNext,
     hasPrev,
     startIndex,
     endIndex,
-    
+
     // 기본 액션들
     goToPage,
     changePageSize,
@@ -306,18 +308,18 @@ export const usePagination = (options: UsePaginationOptions = {}): PaginationHoo
     goToNext,
     goToPrev,
     reset,
-    
+
     // 고급 기능들
     getPageNumbers,
     getPageInfo,
-    
+
     // 메타 정보
     isEmpty: state.totalCount === 0,
     isFirstPage: state.currentPage === 1,
     isLastPage: state.currentPage === state.totalPages,
-    
+
     // 설정값들
-    pageSizeOptions,
+    pageSizeOptions: pageSizeOptions as number[],
     maxVisiblePages
   };
 };
@@ -367,6 +369,7 @@ export const useDataExplorerPagination = (totalCount: number = 0) => {
     storageKey: 'data-explorer-pagination'
   });
 };
+
 
 /**
  * 사용자 관리 전용 페이징 훅

@@ -22,7 +22,7 @@ export default defineConfig({
           });
         }
       },
-      
+
       // WebSocket 프록시 추가 (Socket.IO용)
       '/socket.io': {
         target: 'http://backend:3000',
@@ -51,9 +51,13 @@ export default defineConfig({
           });
         }
       }
+    },
+    watch: {
+      usePolling: true,
+      interval: 100
     }
   },
-  
+
   // 빌드 설정
   build: {
     outDir: 'dist',
@@ -66,13 +70,13 @@ export default defineConfig({
       }
     }
   },
-  
+
   // 환경변수 설정 (Docker용)
   define: {
     __API_URL__: JSON.stringify(process.env.VITE_API_URL || 'http://localhost:3000'),
     __WS_URL__: JSON.stringify(process.env.VITE_WEBSOCKET_URL || 'ws://localhost:3000')
   },
-  
+
   // 개발 서버 최적화
   optimizeDeps: {
     include: ['socket.io-client']

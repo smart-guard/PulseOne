@@ -18,7 +18,7 @@
 #include "Utils/ConfigManager.h"
 #include "Workers/WorkerManager.h"
 
-#ifdef HAVE_HTTPLIB
+#if HAS_HTTPLIB
 #include "Api/ConfigApiCallbacks.h"
 #include "Api/DeviceApiCallbacks.h"
 #include "Api/HardwareApiCallbacks.h"
@@ -419,7 +419,7 @@ void CollectorApplication::MainLoop() {
                       ? "Ready"
                       : "Not Ready"));
 
-#ifdef HAVE_HTTPLIB
+#if HAS_HTTPLIB
           // API 서버 상태
           LogManager::getInstance().Info(
               "  REST API: " +
@@ -471,7 +471,7 @@ void CollectorApplication::Cleanup() {
     is_running_.store(false);
 
     // 1. REST API 서버 정리
-#ifdef HAVE_HTTPLIB
+#if HAS_HTTPLIB
     if (api_server_) {
       LogManager::getInstance().Info("Step 1/3: Stopping REST API server...");
       api_server_->Stop();
@@ -522,7 +522,7 @@ void CollectorApplication::Cleanup() {
 }
 
 bool CollectorApplication::InitializeRestApiServer() {
-#ifdef HAVE_HTTPLIB
+#if HAS_HTTPLIB
   try {
     // ConfigManager에서 API 포트 읽기
     int api_port = 8080; // 기본값
@@ -577,7 +577,7 @@ bool CollectorApplication::InitializeRestApiServer() {
   LogManager::getInstance().Info(
       "REST API Server disabled - HTTP library not available");
   LogManager::getInstance().Info("To enable REST API, compile with "
-                                 "-DHAVE_HTTPLIB and link against httplib");
+                                 "-DHAS_HTTPLIB and link against httplib");
   return true;
 #endif
 }

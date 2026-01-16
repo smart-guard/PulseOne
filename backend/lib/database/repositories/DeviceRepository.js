@@ -1,5 +1,6 @@
 const BaseRepository = require('./BaseRepository');
 const DeviceQueries = require('../queries/DeviceQueries');
+const redis = require('../../connection/redis');
 
 /**
  * DeviceRepository class
@@ -42,58 +43,8 @@ class DeviceRepository extends BaseRepository {
                 )
                 .groupBy('d.id');
 
-            if (tenantId) {
-                query.where('d.tenant_id', tenantId);
-            }
-
-            // [Soft Delete] 
-            const includeDeleted = options.includeDeleted === true || options.includeDeleted === 'true';
-            const onlyDeleted = options.onlyDeleted === true || options.onlyDeleted === 'true';
-
-            if (onlyDeleted) {
-                query.where('d.is_deleted', 1);
-            } else if (!includeDeleted) {
-                query.where(builder => {
-                    builder.where('d.is_deleted', 0).orWhereNull('d.is_deleted');
-                });
-            }
-
-            if (options.siteId || options.site_id) {
-                query.where('d.site_id', options.siteId || options.site_id);
-            }
-
-            if (options.groupId) {
-                const groupIds = Array.isArray(options.groupId) ? options.groupId : [options.groupId];
-                query.where(builder => {
-                    builder.whereIn('d.device_group_id', groupIds)
-                        .orWhereExists(function () {
-                            this.select('*')
-                                .from('device_group_assignments')
-                                .whereRaw('device_group_assignments.device_id = d.id')
-                                .whereIn('device_group_assignments.group_id', groupIds);
-                        });
-                });
-            }
-
-            if (options.edgeServerId) {
-                query.where('d.edge_server_id', options.edgeServerId);
-            }
-
-            if (options.tag) {
-                query.where('d.tags', 'like', `%${options.tag}%`);
-            }
-
-            if (options.search) {
-                query.where(builder => {
-                    builder.where('d.name', 'like', `%${options.search}%`)
-                        .orWhere('d.description', 'like', `%${options.search}%`)
-                        .orWhere('d.endpoint', 'like', `%${options.search}%`);
-                });
-            }
-
-            if (options.endpoint) {
-                query.where('d.endpoint', options.endpoint);
-            }
+            // Apply common filters
+            this._applyFilters(query, tenantId, options);
 
             // Pagination & Sorting
             const page = parseInt(options.page) || 1;
@@ -120,29 +71,7 @@ class DeviceRepository extends BaseRepository {
             let total = 0;
             if (options.includeCount) {
                 const countQuery = this.query('d');
-                if (tenantId) countQuery.where('d.tenant_id', tenantId);
-                if (options.siteId) countQuery.where('d.site_id', options.siteId);
-                if (options.groupId) {
-                    const groupIds = Array.isArray(options.groupId) ? options.groupId : [options.groupId];
-                    countQuery.where(builder => {
-                        builder.whereIn('d.device_group_id', groupIds)
-                            .orWhereExists(function () {
-                                this.select('*')
-                                    .from('device_group_assignments')
-                                    .whereRaw('device_group_assignments.device_id = d.id')
-                                    .whereIn('device_group_assignments.group_id', groupIds);
-                            });
-                    });
-                }
-                if (options.edgeServerId) countQuery.where('d.edge_server_id', options.edgeServerId);
-                if (options.tag) countQuery.where('d.tags', 'like', `%${options.tag}%`);
-                if (options.search) {
-                    countQuery.where(builder => {
-                        builder.where('d.name', 'like', `%${options.search}%`)
-                            .orWhere('d.description', 'like', `%${options.search}%`)
-                            .orWhere('d.endpoint', 'like', `%${options.search}%`);
-                    });
-                }
+                this._applyFilters(countQuery, tenantId, options);
 
                 const countResult = await countQuery.count('d.id as total').first();
                 total = countResult ? (countResult.total || 0) : 0;
@@ -325,7 +254,6 @@ class DeviceRepository extends BaseRepository {
                     initialSettings.polling_interval_ms = deviceData.polling_interval || 1000;
                 }
 
-
                 // Boolean fields to integer (0/1)
                 const booleanFields = [
                     'is_keep_alive_enabled', 'is_data_validation_enabled',
@@ -479,7 +407,6 @@ class DeviceRepository extends BaseRepository {
             });
         } catch (error) {
             this.logger.error(`❌ [DeviceRepository] update failure for ${id}:`, error.message);
-            if (error.stack) this.logger.error(error.stack);
             throw error;
         }
     }
@@ -615,6 +542,19 @@ class DeviceRepository extends BaseRepository {
         } catch (error) {
             this.logger.error(`DeviceRepository.getCurrentValuesByDevice 실패 (DeviceID: ${deviceId}):`, error);
             throw error;
+        }
+    }
+
+    /**
+     * 특정 디바이스의 실시간 데이터(Redis) 존재 여부 확인
+     */
+    async hasCurrentValues(deviceId, tenantId = null) {
+        try {
+            const exists = await redis.exists(`current_values:${deviceId}`);
+            return exists === 1 || exists === true;
+        } catch (error) {
+            this.logger.error(`DeviceRepository.hasCurrentValues 실패 (DeviceID: ${deviceId}):`, error.message);
+            return false;
         }
     }
 
@@ -863,6 +803,85 @@ class DeviceRepository extends BaseRepository {
         } catch (error) {
             this.logger.error('DeviceRepository.getStatistics 오류:', error);
             throw error;
+        }
+    }
+
+    /**
+     * 공통 필터 적용 (findAll 및 countQuery에서 공유)
+     * @private
+     */
+    _applyFilters(query, tenantId, options) {
+        if (tenantId) {
+            query.where('d.tenant_id', tenantId);
+        }
+
+        // [Soft Delete] 
+        const includeDeleted = options.includeDeleted === true || options.includeDeleted === 'true';
+        const onlyDeleted = options.onlyDeleted === true || options.onlyDeleted === 'true';
+
+        if (onlyDeleted) {
+            query.where('d.is_deleted', 1);
+        } else if (!includeDeleted) {
+            query.where(builder => {
+                builder.where('d.is_deleted', 0).orWhereNull('d.is_deleted');
+            });
+        }
+
+        if (options.siteId || options.site_id) {
+            query.where('d.site_id', options.siteId || options.site_id);
+        }
+
+        if (options.groupId) {
+            const groupIds = Array.isArray(options.groupId) ? options.groupId : [options.groupId];
+            query.where(builder => {
+                builder.whereIn('d.device_group_id', groupIds)
+                    .orWhereExists(function () {
+                        this.select('*')
+                            .from('device_group_assignments')
+                            .whereRaw('device_group_assignments.device_id = d.id')
+                            .whereIn('device_group_assignments.group_id', groupIds);
+                    });
+            });
+        }
+
+        if (options.edgeServerId) {
+            query.where('d.edge_server_id', options.edgeServerId);
+        }
+
+        if (options.tag) {
+            query.where('d.tags', 'like', `%${options.tag}%`);
+        }
+
+        if (options.search) {
+            query.where(builder => {
+                builder.where('d.name', 'like', `%${options.search}%`)
+                    .orWhere('d.description', 'like', `%${options.search}%`)
+                    .orWhere('d.endpoint', 'like', `%${options.search}%`);
+            });
+        }
+
+        if (options.endpoint) {
+            query.where('d.endpoint', options.endpoint);
+        }
+
+        // 필터 추가: 프로토콜 타입
+        if (options.protocol_type && options.protocol_type !== 'all') {
+            query.whereExists(function () {
+                this.select('*')
+                    .from('protocols')
+                    .whereRaw('protocols.id = d.protocol_id')
+                    .where('protocols.protocol_type', options.protocol_type);
+            });
+        }
+
+        // 필터 추가: 통신 상태
+        if (options.connection_status && options.connection_status !== 'all') {
+            query.whereExists(function () {
+                this.select('*')
+                    .from('device_status')
+                    .whereRaw('device_status.device_id = d.id')
+                    .where('device_status.connection_status', options.connection_status);
+            });
         }
     }
 }

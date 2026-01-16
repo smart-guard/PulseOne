@@ -4,17 +4,17 @@
 // =============================================================================
 
 #include "Drivers/Modbus/ModbusDriver.h"
-#include "Drivers/Modbus/ModbusDiagnostics.h"
 #include "Drivers/Common/DriverFactory.h"
 #include "Drivers/Modbus/ModbusConnectionPool.h"
+#include "Drivers/Modbus/ModbusDiagnostics.h"
 #include "Drivers/Modbus/ModbusFailover.h"
 #include "Drivers/Modbus/ModbusPerformance.h"
 #include "Logging/LogManager.h"
-#include <chrono>
-#include <thread>
-#include <iostream>
 #include <algorithm>
+#include <chrono>
+#include <iostream>
 #include <sstream>
+#include <thread>
 
 namespace PulseOne {
 namespace Drivers {
@@ -27,15 +27,15 @@ using TimestampedValue = PulseOne::Structs::TimestampedValue;
 // =============================================================================
 // 1:N 시리얼 포트 공유를 위한 정적 뮤텍스 레지스트리
 // =============================================================================
-std::mutex& ModbusDriver::GetSerialMutex(const std::string& endpoint) {
-    static std::mutex registry_mutex;
-    static std::map<std::string, std::unique_ptr<std::mutex>> mutex_registry;
-    
-    std::lock_guard<std::mutex> lock(registry_mutex);
-    if (mutex_registry.find(endpoint) == mutex_registry.end()) {
-        mutex_registry[endpoint] = std::make_unique<std::mutex>();
-    }
-    return *mutex_registry[endpoint];
+std::mutex &ModbusDriver::GetSerialMutex(const std::string &endpoint) {
+  static std::mutex registry_mutex;
+  static std::map<std::string, std::unique_ptr<std::mutex>> mutex_registry;
+
+  std::lock_guard<std::mutex> lock(registry_mutex);
+  if (mutex_registry.find(endpoint) == mutex_registry.end()) {
+    mutex_registry[endpoint] = std::make_unique<std::mutex>();
+  }
+  return *mutex_registry[endpoint];
 }
 
 // =============================================================================
@@ -43,999 +43,1127 @@ std::mutex& ModbusDriver::GetSerialMutex(const std::string& endpoint) {
 // =============================================================================
 
 ModbusDriver::ModbusDriver()
-    : modbus_ctx_(nullptr)
-    , driver_statistics_("MODBUS")
-    , is_connected_(false)
-    , current_slave_id_(-1)
-    , diagnostics_(nullptr)
-    , connection_pool_(nullptr)
-    , failover_(nullptr)
-    , performance_(nullptr)
-{
-        // LogManager 초기화
-    logger_ = &LogManager::getInstance();
-    
-    // 드라이버 상태 초기화
-    status_ = Enums::ConnectionStatus::DISCONNECTED;
-    
-    logger_->Info("ModbusDriver 생성됨: " + config_.name);
+    : modbus_ctx_(nullptr), driver_statistics_("MODBUS"), is_connected_(false),
+      current_slave_id_(-1), diagnostics_(nullptr), connection_pool_(nullptr),
+      failover_(nullptr), performance_(nullptr) {
+  // LogManager 초기화
+  logger_ = &LogManager::getInstance();
+
+  // 드라이버 상태 초기화
+  status_ = Enums::ConnectionStatus::DISCONNECTED;
+
+  logger_->Info("ModbusDriver 생성됨: " + config_.name);
 }
 
 ModbusDriver::~ModbusDriver() {
-    Disconnect();
-    CleanupConnection();
+  Disconnect();
+  CleanupConnection();
 
-    logger_->Info("ModbusDriver 소멸됨: " + config_.name);
+  logger_->Info("ModbusDriver 소멸됨: " + config_.name);
 }
 
 // =============================================================================
 // IProtocolDriver 인터페이스 구현 (Core 기능)
 // =============================================================================
 
-bool ModbusDriver::Initialize(const DriverConfig& config) {
-    std::lock_guard<std::mutex> lock(connection_mutex_);
-    
-    config_ = config;
-    
-    // 🔥 DriverConfig에서 직접 설정 가져오기
-    logger_->Info("🔧 Initializing ModbusDriver with DriverConfig data:");
-    logger_->Info("  - Received Config Properties Size: " + std::to_string(config.properties.size()));
-    logger_->Info("  - Stored Config_ Properties Size: " + std::to_string(config_.properties.size()));
-    logger_->Info("  - Endpoint: " + config_.endpoint);
-    logger_->Info("  - Timeout: " + std::to_string(config_.timeout_ms) + "ms");
-    logger_->Info("  - Retry Count: " + std::to_string(config_.retry_count));
-    logger_->Info("  - Polling Interval: " + std::to_string(config_.polling_interval_ms) + "ms");
-    
-    // 🔥 기본 Slave ID 설정 (properties에서)
-    if (config_.properties.count("slave_id")) {
-        try {
-            current_slave_id_ = std::stoi(config_.properties.at("slave_id"));
-            logger_->Info("  - Default Slave ID: " + std::to_string(current_slave_id_));
-        } catch (const std::exception& e) {
-            logger_->Warn("  - Invalid slave_id format: " + config_.properties.at("slave_id") + ". Using default: " + std::to_string(current_slave_id_));
-        }
-    }
-    
-    // 🔥 디버그 모드 설정 (properties에서)
-    if (config_.properties.count("debug_enabled") && 
-        config_.properties.at("debug_enabled") == "true") {
-        logger_->Info("  - Debug mode requested");
-    }
+bool ModbusDriver::Initialize(const DriverConfig &config) {
+  std::lock_guard<std::mutex> lock(connection_mutex_);
 
-    // Modbus 컨텍스트 설정
-    if (!SetupModbusConnection()) {
-        SetError(Structs::ErrorCode::CONFIGURATION_ERROR, "Failed to setup Modbus connection");
-        return false;
-    }
+  config_ = config;
 
-    if (config_.properties.count("debug_enabled") && 
-        config_.properties.at("debug_enabled") == "true") {
-        modbus_set_debug(modbus_ctx_, TRUE);
-        logger_->Info("  - Debug mode enabled on context");
+  // 🔥 DriverConfig에서 직접 설정 가져오기
+  logger_->Info("🔧 Initializing ModbusDriver with DriverConfig data:");
+  logger_->Info("  - Received Config Properties Size: " +
+                std::to_string(config.properties.size()));
+  logger_->Info("  - Stored Config_ Properties Size: " +
+                std::to_string(config_.properties.size()));
+  logger_->Info("  - Endpoint: " + config_.endpoint);
+  logger_->Info("  - Timeout: " + std::to_string(config_.timeout_ms) + "ms");
+  logger_->Info("  - Retry Count: " + std::to_string(config_.retry_count));
+  logger_->Info("  - Polling Interval: " +
+                std::to_string(config_.polling_interval_ms) + "ms");
+
+  // 🔥 기본 Slave ID 설정 (properties에서)
+  if (config_.properties.count("slave_id")) {
+    try {
+      current_slave_id_ = std::stoi(config_.properties.at("slave_id"));
+      logger_->Info("  - Default Slave ID: " +
+                    std::to_string(current_slave_id_));
+    } catch (const std::exception &e) {
+      logger_->Warn(
+          "  - Invalid slave_id format: " + config_.properties.at("slave_id") +
+          ". Using default: " + std::to_string(current_slave_id_));
     }
-    
-    // 🔥 DriverConfig의 timeout_ms 직접 사용
-    uint32_t timeout_ms = config_.timeout_ms;
-    uint32_t timeout_sec = timeout_ms / 1000;
-    uint32_t timeout_usec = (timeout_ms % 1000) * 1000;
-    
-    modbus_set_response_timeout(modbus_ctx_, timeout_sec, timeout_usec);
-    
-    // 🔥 byte timeout도 DriverConfig 기반으로 설정
-    uint32_t byte_timeout_ms = timeout_ms / 2; // 기본값: response timeout의 절반
-    if (config_.properties.count("byte_timeout_ms")) {
-        byte_timeout_ms = std::stoi(config_.properties.at("byte_timeout_ms"));
-    }
-    uint32_t byte_timeout_usec = (byte_timeout_ms % 1000) * 1000;
-    modbus_set_byte_timeout(modbus_ctx_, 0, byte_timeout_usec);
-    
-    logger_->Info("✅ ModbusDriver initialization completed");
-    return true;
+  }
+
+  // 🔥 디버그 모드 설정 (properties에서)
+  if (config_.properties.count("debug_enabled") &&
+      config_.properties.at("debug_enabled") == "true") {
+    logger_->Info("  - Debug mode requested");
+  }
+
+  // Modbus 컨텍스트 설정
+  if (!SetupModbusConnection()) {
+    SetError(Structs::ErrorCode::CONFIGURATION_ERROR,
+             "Failed to setup Modbus connection");
+    return false;
+  }
+
+  if (config_.properties.count("debug_enabled") &&
+      config_.properties.at("debug_enabled") == "true") {
+    modbus_set_debug(modbus_ctx_, TRUE);
+    logger_->Info("  - Debug mode enabled on context");
+  }
+
+  // 🔥 DriverConfig의 timeout_ms 직접 사용
+  uint32_t timeout_ms = config_.timeout_ms;
+  uint32_t timeout_sec = timeout_ms / 1000;
+  uint32_t timeout_usec = (timeout_ms % 1000) * 1000;
+
+  modbus_set_response_timeout(modbus_ctx_, timeout_sec, timeout_usec);
+
+  // 🔥 byte timeout도 DriverConfig 기반으로 설정
+  uint32_t byte_timeout_ms = timeout_ms / 2; // 기본값: response timeout의 절반
+  if (config_.properties.count("byte_timeout_ms")) {
+    byte_timeout_ms = std::stoi(config_.properties.at("byte_timeout_ms"));
+  }
+  uint32_t byte_timeout_usec = (byte_timeout_ms % 1000) * 1000;
+  modbus_set_byte_timeout(modbus_ctx_, 0, byte_timeout_usec);
+
+  logger_->Info("✅ ModbusDriver initialization completed");
+  return true;
 }
 
 bool ModbusDriver::Connect() {
-    std::lock_guard<std::mutex> lock(connection_mutex_);
-    
-    if (is_connected_.load()) {
-        return true;
-    }
-    
-    if (!modbus_ctx_) {
-        SetError(Structs::ErrorCode::CONNECTION_FAILED, "Modbus context not initialized");
-        return false;
-    }
-    
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    // 🔥 DriverConfig의 retry_count 사용
-    uint32_t max_retries = config_.retry_count;
-    
-    for (uint32_t attempt = 0; attempt <= max_retries; ++attempt) {
-        int result = modbus_connect(modbus_ctx_);
-        if (result != -1) {
-            is_connected_.store(true);
-            
-            auto end_time = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-            UpdateStats(true, duration.count(), "connect");
-            
-            logger_->Info("✅ Modbus connection established to " + config_.endpoint + 
-                         " (attempt " + std::to_string(attempt + 1) + "/" + std::to_string(max_retries + 1) + ")");
-            return true;
-        }
-        
-        // 마지막 시도가 아니면 재시도
-        if (attempt < max_retries) {
-            // 🔥 DriverConfig 기반 백오프 계산
-            uint32_t retry_delay = 100 * (attempt + 1); // 기본 백오프
-            if (config_.properties.count("retry_delay_ms")) {
-                retry_delay = std::stoi(config_.properties.at("retry_delay_ms")) * (attempt + 1);
-            }
-            
-            logger_->Warn("Connection attempt " + std::to_string(attempt + 1) + " failed, retrying in " + 
-                         std::to_string(retry_delay) + "ms...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(retry_delay));
-        }
-    }
-    
-    // 모든 시도 실패
-    auto error_msg = std::string("Connection failed after ") + std::to_string(max_retries + 1) + 
-                    " attempts: " + modbus_strerror(errno);
-    SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
-    
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    UpdateStats(false, duration.count(), "connect");
-    
+  std::lock_guard<std::mutex> lock(connection_mutex_);
+
+  if (is_connected_.load()) {
+    return true;
+  }
+
+  if (!modbus_ctx_) {
+    SetError(Structs::ErrorCode::CONNECTION_FAILED,
+             "Modbus context not initialized");
     return false;
+  }
+
+  auto start_time = std::chrono::high_resolution_clock::now();
+
+  // 🔥 DriverConfig의 retry_count 사용
+  uint32_t max_retries = config_.retry_count;
+
+  for (uint32_t attempt = 0; attempt <= max_retries; ++attempt) {
+    int result = modbus_connect(modbus_ctx_);
+    if (result != -1) {
+      is_connected_.store(true);
+
+      auto end_time = std::chrono::high_resolution_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+          end_time - start_time);
+      UpdateStats(true, duration.count(), "connect");
+
+      logger_->Info("✅ Modbus connection established to " + config_.endpoint +
+                    " (attempt " + std::to_string(attempt + 1) + "/" +
+                    std::to_string(max_retries + 1) + ")");
+      return true;
+    }
+
+    // 마지막 시도가 아니면 재시도
+    if (attempt < max_retries) {
+      // 🔥 DriverConfig 기반 백오프 계산
+      uint32_t retry_delay = 100 * (attempt + 1); // 기본 백오프
+      if (config_.properties.count("retry_delay_ms")) {
+        retry_delay =
+            std::stoi(config_.properties.at("retry_delay_ms")) * (attempt + 1);
+      }
+
+      logger_->Warn("Connection attempt " + std::to_string(attempt + 1) +
+                    " failed, retrying in " + std::to_string(retry_delay) +
+                    "ms...");
+      std::this_thread::sleep_for(std::chrono::milliseconds(retry_delay));
+    }
+  }
+
+  // 모든 시도 실패
+  auto error_msg = std::string("Connection failed after ") +
+                   std::to_string(max_retries + 1) +
+                   " attempts: " + modbus_strerror(errno);
+  SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end_time - start_time);
+  UpdateStats(false, duration.count(), "connect");
+
+  return false;
 }
 
 bool ModbusDriver::Disconnect() {
-    std::lock_guard<std::mutex> lock(connection_mutex_);
-    
-    if (!is_connected_.load()) {
-        return true;
-    }
-    
-    if (modbus_ctx_) {
-        modbus_close(modbus_ctx_);
-    }
-    
-    is_connected_.store(false);
-    logger_->Info("🔌 Modbus connection closed for " + config_.endpoint);
+  std::lock_guard<std::mutex> lock(connection_mutex_);
+
+  if (!is_connected_.load()) {
     return true;
+  }
+
+  if (modbus_ctx_) {
+    modbus_close(modbus_ctx_);
+  }
+
+  is_connected_.store(false);
+  logger_->Info("🔌 Modbus connection closed for " + config_.endpoint);
+  return true;
 }
 
-bool ModbusDriver::IsConnected() const {
-    return is_connected_.load();
-}
+bool ModbusDriver::IsConnected() const { return is_connected_.load(); }
 
-bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint>& points, 
-                              std::vector<Structs::TimestampedValue>& values) {
-    // 🔍 1:N 시리얼 포트 공유 또는 동시 접근 제어를 위한 엔드포인트 잠금
-    logger_->Debug("[ModbusDriver] Entering ReadValues for endpoint: " + config_.endpoint + " (Points: " + std::to_string(points.size()) + ")");
-    std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
-    logger_->Debug("[ModbusDriver] Acquired port_lock for endpoint: " + config_.endpoint);
-    
-    // 연결 풀링 활성화 시
-    if (connection_pool_ && IsConnectionPoolingEnabled()) {
-        return PerformReadWithConnectionPool(points, values);
-    }
-    
-    values.clear();
-    values.reserve(points.size());
-    
-    // 1. Group points by Slave ID and Register Type
-    struct PointGroup {
-        int slave_id;
-        std::string func_type; 
-        std::vector<const Structs::DataPoint*> points;
-    };
-    
-    std::map<std::pair<int, std::string>, PointGroup> groups;
-    
-    for (const auto& point : points) {
-        int slave_id = current_slave_id_;
-        if (point.protocol_params.count("slave_id")) {
-            try { slave_id = std::stoi(point.protocol_params.at("slave_id")); } catch (...) {}
-        }
-        
-        std::string func_type = point.data_type; // Default to data_type mapping
-        if (point.protocol_params.count("function_code")) {
-            try {
-                int fc = std::stoi(point.protocol_params.at("function_code"));
-                switch (fc) {
-                    case 1: func_type = "COIL"; break;
-                    case 2: func_type = "DISCRETE_INPUT"; break;
-                    case 3: func_type = "HOLDING_REGISTER"; break;
-                    case 4: func_type = "INPUT_REGISTER"; break;
-                    default: func_type = point.data_type; break;
-                }
-            } catch (...) {
-                func_type = point.data_type;
-            }
-        } else {
-             // Fallback mapping if no function code
-             // (Simple heuristic or default to HOLDING)
-             if (func_type != "COIL" && func_type != "DISCRETE_INPUT") func_type = "HOLDING_REGISTER";
-        }
-        
-        groups[{slave_id, func_type}].slave_id = slave_id;
-        groups[{slave_id, func_type}].func_type = func_type;
-        groups[{slave_id, func_type}].points.push_back(&point);
-    }
-    
-    bool any_success = false;
-    
-    // 2. Process each group
-    for (auto& [key, group] : groups) {
-        // Sort by address
-        std::sort(group.points.begin(), group.points.end(), [](const Structs::DataPoint* a, const Structs::DataPoint* b) {
-            return a->address < b->address;
-        });
-        
-        logger_->Debug("[ModbusDriver] Processing Group - Slave: " + std::to_string(group.slave_id) + ", Func: " + group.func_type);
-        SetSlaveId(group.slave_id);
-        
-        // Chunking
-        size_t current_idx = 0;
-        while (current_idx < group.points.size()) {
-            uint16_t start_addr = group.points[current_idx]->address;
-            uint16_t current_addr = start_addr;
-            uint16_t max_count = 120; // Safe Modbus limit
-            
-            std::vector<const Structs::DataPoint*> chunk_points;
-            
-            // Collect points for this chunk
-            size_t next_idx = current_idx;
-            uint16_t end_addr = start_addr;
-            
-            while (next_idx < group.points.size()) {
-                const auto* p = group.points[next_idx];
-                uint16_t p_addr = p->address;
-                
-                // Determine register consumption
-                uint16_t reg_count = 1;
-                if (group.func_type == "HOLDING_REGISTER" || group.func_type == "INPUT_REGISTER") {
-                     if (p->data_type == "FLOAT32" || p->data_type == "INT32" || p->data_type == "UINT32") reg_count = 2;
-                }
-                
-                // Check continuity and size limit
-                if (p_addr > end_addr + 10) break; // Gap limit (optimize excessive gaps)
-                if ( (p_addr + reg_count) - start_addr > max_count) break;
-                
-                chunk_points.push_back(p);
-                end_addr = std::max<uint16_t>(end_addr, p_addr + reg_count);
-                next_idx++;
-            }
-            
-            uint16_t total_count = end_addr - start_addr;
-            if (total_count == 0) total_count = 1; // Minimal safety
-            
-            // Perform Read
-            bool success = false;
-            std::vector<uint16_t> reg_buffers;
-            std::vector<uint8_t> coil_buffers;
-            
-            auto start_time = std::chrono::high_resolution_clock::now();
-            
-            if (group.func_type == "HOLDING_REGISTER") {
-                success = ReadHoldingRegisters(group.slave_id, start_addr, total_count, reg_buffers);
-                driver_statistics_.IncrementProtocolCounter("register_reads");
-            } else if (group.func_type == "INPUT_REGISTER") {
-                success = ReadInputRegisters(group.slave_id, start_addr, total_count, reg_buffers);
-                driver_statistics_.IncrementProtocolCounter("register_reads");
-            } else if (group.func_type == "COIL") {
-                success = ReadCoils(group.slave_id, start_addr, total_count, coil_buffers);
-                driver_statistics_.IncrementProtocolCounter("coil_reads");
-            } else if (group.func_type == "DISCRETE_INPUT") {
-                success = ReadDiscreteInputs(group.slave_id, start_addr, total_count, coil_buffers);
-                driver_statistics_.IncrementProtocolCounter("coil_reads");
-            }
-            
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::high_resolution_clock::now() - start_time).count();
-            
-            UpdateStats(success, duration, "read_batch");
-            
-            // Extract Values
-            for (const auto* p : chunk_points) {
-                Structs::TimestampedValue tv;
-                try {
-                    tv.point_id = std::stoi(p->id);
-                } catch (...) {
-                    tv.point_id = 0; // Use 0 for points without numeric IDs (like keep-alive)
-                }
-                tv.source = p->name; // Set semantic name for Hybrid Strategy
-                tv.timestamp = std::chrono::system_clock::now();
-                
-                if (success) {
-                    tv.quality = Structs::DataQuality::GOOD;
-                    uint16_t offset = p->address - start_addr;
-                    
-                    if (group.func_type == "HOLDING_REGISTER" || group.func_type == "INPUT_REGISTER") {
-                        if (offset < reg_buffers.size()) {
-                            // Reconstruct value from registers
-                            // Note: ConvertModbusValue expects raw register value, 
-                            // but here we might have multi-register values (float/int32).
-                            // ConvertModbusValue implementation needs to handle this or be adapted.
-                            // Assuming ConvertModbusValue handles it if we pass the first register? 
-                            // Wait, ConvertModbusValue signature: (point, raw_value). It takes uint16_t.
-                            // If it's float, it needs 2 registers.
-                            // We need to fetch the correct registers.
-                            
-                           tv.value = ExtractValueFromBuffer(reg_buffers, offset, *p);
-                        }
-                    } else { // Coils
-                         if (offset < coil_buffers.size()) {
-                             tv.value = (coil_buffers[offset] != 0);
-                         }
-                    }
-                    any_success = true;
-                } else {
-                    tv.quality = Structs::DataQuality::BAD;
-                }
-                values.push_back(tv);
-            }
-            
-            current_idx = next_idx;
-        }
-    }
-    
-    return any_success;
-}
+bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint> &points,
+                              std::vector<Structs::TimestampedValue> &values) {
+  // 🔍 1:N 시리얼 포트 공유 또는 동시 접근 제어를 위한 엔드포인트 잠금
+  logger_->Debug(
+      "[ModbusDriver] Entering ReadValues for endpoint: " + config_.endpoint +
+      " (Points: " + std::to_string(points.size()) + ")");
+  std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
+  logger_->Debug("[ModbusDriver] Acquired port_lock for endpoint: " +
+                 config_.endpoint);
 
-bool ModbusDriver::WriteValue(const Structs::DataPoint& point, 
-                              const Structs::DataValue& value) {
-    // 🔍 엔드포인트 잠금
-    std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
+  // 연결 풀링 활성화 시
+  if (connection_pool_ && IsConnectionPoolingEnabled()) {
+    return PerformReadWithConnectionPool(points, values);
+  }
 
-    // 연결 풀링이 활성화된 경우 해당 방식 사용
-    if (connection_pool_ && IsConnectionPoolingEnabled()) {
-        return PerformWriteWithConnectionPool(point, value);
-    }
-    
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    // 🔥 포인트별 Slave ID 가져오기
-    int slave_id = current_slave_id_; // DriverConfig에서 설정된 기본값
+  values.clear();
+  values.reserve(points.size());
+
+  // 1. Group points by Slave ID and Register Type
+  struct PointGroup {
+    int slave_id;
+    std::string func_type;
+    std::vector<const Structs::DataPoint *> points;
+  };
+
+  std::map<std::pair<int, std::string>, PointGroup> groups;
+
+  for (const auto &point : points) {
+    int slave_id = current_slave_id_;
     if (point.protocol_params.count("slave_id")) {
+      try {
         slave_id = std::stoi(point.protocol_params.at("slave_id"));
+      } catch (...) {
+      }
     }
-    SetSlaveId(slave_id);
-    
-    bool success = false;
-    uint16_t modbus_value;
-    
-    // 데이터 변환
-    if (!ConvertToModbusValue(value, point, modbus_value)) {
-        SetError(Structs::ErrorCode::DATA_CONVERSION_ERROR, "Failed to convert value to Modbus format");
-        return false;
-    }
-    
-    // 🔥 포인트별 function_code 확인
-    std::string function_type = point.data_type; // 기본값
+
+    std::string func_type = point.data_type; // Default to data_type mapping
     if (point.protocol_params.count("function_code")) {
-        int func_code = std::stoi(point.protocol_params.at("function_code"));
-        switch (func_code) {
-            case 5: function_type = "COIL"; break;
-            case 6: 
-            case 16: function_type = "HOLDING_REGISTER"; break;
-            default: function_type = point.data_type; break;
+      try {
+        int fc = std::stoi(point.protocol_params.at("function_code"));
+        switch (fc) {
+        case 1:
+          func_type = "COIL";
+          break;
+        case 2:
+          func_type = "DISCRETE_INPUT";
+          break;
+        case 3:
+          func_type = "HOLDING_REGISTER";
+          break;
+        case 4:
+          func_type = "INPUT_REGISTER";
+          break;
+        default:
+          func_type = point.data_type;
+          break;
         }
-    }
-    
-    // 데이터 타입에 따라 쓰기
-    if (function_type == "HOLDING_REGISTER") {
-        success = WriteHoldingRegister(slave_id, point.address, modbus_value);
-        driver_statistics_.IncrementProtocolCounter("register_writes");
-        RecordRegisterAccess(point.address, false, true);
-    } else if (function_type == "COIL") {
-        success = WriteCoil(slave_id, point.address, modbus_value != 0);
-        driver_statistics_.IncrementProtocolCounter("coil_writes");
+      } catch (...) {
+        func_type = point.data_type;
+      }
     } else {
-        SetError(Structs::ErrorCode::UNSUPPORTED_FUNCTION, 
-                "Write operation not supported for this data type: " + function_type);
-        return false;
+      // Fallback mapping if no function code
+      // (Simple heuristic or default to HOLDING)
+      if (func_type != "COIL" && func_type != "DISCRETE_INPUT")
+        func_type = "HOLDING_REGISTER";
     }
-    
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    
-    UpdateStats(success, duration.count(), "write");
-    RecordResponseTime(slave_id, duration.count());
-    RecordSlaveRequest(slave_id, success, duration.count());
-    
-    return success;
+
+    groups[{slave_id, func_type}].slave_id = slave_id;
+    groups[{slave_id, func_type}].func_type = func_type;
+    groups[{slave_id, func_type}].points.push_back(&point);
+  }
+
+  bool any_success = false;
+
+  // 2. Process each group
+  for (auto &[key, group] : groups) {
+    // Sort by address
+    std::sort(group.points.begin(), group.points.end(),
+              [](const Structs::DataPoint *a, const Structs::DataPoint *b) {
+                return a->address < b->address;
+              });
+
+    logger_->Debug("[ModbusDriver] Processing Group - Slave: " +
+                   std::to_string(group.slave_id) +
+                   ", Func: " + group.func_type);
+    SetSlaveId(group.slave_id);
+
+    // Chunking
+    size_t current_idx = 0;
+    while (current_idx < group.points.size()) {
+      uint16_t start_addr = group.points[current_idx]->address;
+      uint16_t current_addr = start_addr;
+      uint16_t max_count = 120; // Safe Modbus limit
+
+      std::vector<const Structs::DataPoint *> chunk_points;
+
+      // Collect points for this chunk
+      size_t next_idx = current_idx;
+      uint16_t end_addr = start_addr;
+
+      while (next_idx < group.points.size()) {
+        const auto *p = group.points[next_idx];
+        uint16_t p_addr = p->address;
+
+        // Determine register consumption
+        uint16_t reg_count = 1;
+        if (group.func_type == "HOLDING_REGISTER" ||
+            group.func_type == "INPUT_REGISTER") {
+          if (p->data_type == "FLOAT32" || p->data_type == "INT32" ||
+              p->data_type == "UINT32")
+            reg_count = 2;
+        }
+
+        // Check continuity and size limit
+        if (p_addr > end_addr + 10)
+          break; // Gap limit (optimize excessive gaps)
+        if ((p_addr + reg_count) - start_addr > max_count)
+          break;
+
+        chunk_points.push_back(p);
+        end_addr = std::max<uint16_t>(end_addr, p_addr + reg_count);
+        next_idx++;
+      }
+
+      uint16_t total_count = end_addr - start_addr;
+      if (total_count == 0)
+        total_count = 1; // Minimal safety
+
+      // Perform Read
+      bool success = false;
+      std::vector<uint16_t> reg_buffers;
+      std::vector<uint8_t> coil_buffers;
+
+      auto start_time = std::chrono::high_resolution_clock::now();
+
+      if (group.func_type == "HOLDING_REGISTER") {
+        success = ReadHoldingRegisters(group.slave_id, start_addr, total_count,
+                                       reg_buffers);
+        if (success) {
+          std::string raw_values_str;
+          for (size_t i = 0; i < reg_buffers.size(); ++i) {
+            raw_values_str += std::to_string(reg_buffers[i]);
+            if (i < reg_buffers.size() - 1) {
+              raw_values_str += ", ";
+            }
+          }
+          logger_->Info(
+              "[ModbusDriver] Raw Holding Register values read for addr " +
+              std::to_string(start_addr) + " (count: " +
+              std::to_string(total_count) + "): [" + raw_values_str + "]");
+        }
+        driver_statistics_.IncrementProtocolCounter("register_reads");
+      } else if (group.func_type == "INPUT_REGISTER") {
+        success = ReadInputRegisters(group.slave_id, start_addr, total_count,
+                                     reg_buffers);
+        if (success) {
+          std::string raw_values_str;
+          for (size_t i = 0; i < reg_buffers.size(); ++i) {
+            raw_values_str += std::to_string(reg_buffers[i]);
+            if (i < reg_buffers.size() - 1) {
+              raw_values_str += ", ";
+            }
+          }
+          logger_->Info(
+              "[ModbusDriver] Raw Input Register values read for addr " +
+              std::to_string(start_addr) + " (count: " +
+              std::to_string(total_count) + "): [" + raw_values_str + "]");
+        }
+        driver_statistics_.IncrementProtocolCounter("register_reads");
+      } else if (group.func_type == "COIL") {
+        success =
+            ReadCoils(group.slave_id, start_addr, total_count, coil_buffers);
+        driver_statistics_.IncrementProtocolCounter("coil_reads");
+      } else if (group.func_type == "DISCRETE_INPUT") {
+        success = ReadDiscreteInputs(group.slave_id, start_addr, total_count,
+                                     coil_buffers);
+        driver_statistics_.IncrementProtocolCounter("coil_reads");
+      }
+
+      auto duration =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::high_resolution_clock::now() - start_time)
+              .count();
+
+      UpdateStats(success, duration, "read_batch");
+
+      // Extract Values
+      for (const auto *p : chunk_points) {
+        Structs::TimestampedValue tv;
+        try {
+          tv.point_id = std::stoi(p->id);
+        } catch (...) {
+          tv.point_id =
+              0; // Use 0 for points without numeric IDs (like keep-alive)
+        }
+        tv.source = p->name; // Set semantic name for Hybrid Strategy
+        tv.timestamp = std::chrono::system_clock::now();
+
+        if (success) {
+          tv.quality = Structs::DataQuality::GOOD;
+          uint16_t offset = p->address - start_addr;
+
+          if (group.func_type == "HOLDING_REGISTER" ||
+              group.func_type == "INPUT_REGISTER") {
+            if (offset < reg_buffers.size()) {
+              tv.value = ExtractValueFromBuffer(reg_buffers, offset, *p);
+            }
+          } else { // Coils
+            if (offset < coil_buffers.size()) {
+              tv.value = (coil_buffers[offset] != 0);
+            }
+          }
+
+          std::string val_str;
+          std::visit(
+              [&val_str](auto &&v) {
+                std::ostringstream oss;
+                using T = std::decay_t<decltype(v)>;
+                if constexpr (std::is_same_v<T, bool>) {
+                  oss << (v ? "true" : "false");
+                } else {
+                  oss << v;
+                }
+                val_str = oss.str();
+              },
+              tv.value);
+          logger_->log("worker", PulseOne::Enums::LogLevel::DEBUG,
+                       "[ModbusDriver] Read Point " + p->id + " (" + p->name +
+                           ") Addr: " + std::to_string(p->address) +
+                           " -> Value: " + val_str + " (Quality: GOOD)");
+
+          any_success = true;
+        } else {
+          tv.quality = Structs::DataQuality::BAD;
+          logger_->Warn("[ModbusDriver] Read Point " + p->id + " (" + p->name +
+                        ") Addr: " + std::to_string(p->address) +
+                        " -> FAILED (Quality: BAD)");
+        }
+        values.push_back(tv);
+      }
+
+      current_idx = next_idx;
+    }
+  }
+
+  return any_success;
 }
 
-const DriverStatistics& ModbusDriver::GetStatistics() const {
-    return driver_statistics_;
+bool ModbusDriver::WriteValue(const Structs::DataPoint &point,
+                              const Structs::DataValue &value) {
+  // 🔍 엔드포인트 잠금
+  std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
+
+  // 연결 풀링이 활성화된 경우 해당 방식 사용
+  if (connection_pool_ && IsConnectionPoolingEnabled()) {
+    return PerformWriteWithConnectionPool(point, value);
+  }
+
+  auto start_time = std::chrono::high_resolution_clock::now();
+
+  // 🔥 포인트별 Slave ID 가져오기
+  int slave_id = current_slave_id_; // DriverConfig에서 설정된 기본값
+  if (point.protocol_params.count("slave_id")) {
+    slave_id = std::stoi(point.protocol_params.at("slave_id"));
+  }
+  SetSlaveId(slave_id);
+
+  bool success = false;
+  uint16_t modbus_value;
+
+  // 데이터 변환
+  if (!ConvertToModbusValue(value, point, modbus_value)) {
+    SetError(Structs::ErrorCode::DATA_CONVERSION_ERROR,
+             "Failed to convert value to Modbus format");
+    return false;
+  }
+
+  // 🔥 포인트별 function_code 확인
+  std::string function_type = point.data_type; // 기본값
+  if (point.protocol_params.count("function_code")) {
+    int func_code = std::stoi(point.protocol_params.at("function_code"));
+    switch (func_code) {
+    case 5:
+      function_type = "COIL";
+      break;
+    case 6:
+    case 16:
+      function_type = "HOLDING_REGISTER";
+      break;
+    default:
+      function_type = point.data_type;
+      break;
+    }
+  }
+
+  // 데이터 타입에 따라 쓰기
+  if (function_type == "HOLDING_REGISTER") {
+    success = WriteHoldingRegister(slave_id, point.address, modbus_value);
+    driver_statistics_.IncrementProtocolCounter("register_writes");
+    RecordRegisterAccess(point.address, false, true);
+  } else if (function_type == "COIL") {
+    success = WriteCoil(slave_id, point.address, modbus_value != 0);
+    driver_statistics_.IncrementProtocolCounter("coil_writes");
+  } else {
+    SetError(Structs::ErrorCode::UNSUPPORTED_FUNCTION,
+             "Write operation not supported for this data type: " +
+                 function_type);
+    return false;
+  }
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end_time - start_time);
+
+  UpdateStats(success, duration.count(), "write");
+  RecordResponseTime(slave_id, duration.count());
+  RecordSlaveRequest(slave_id, success, duration.count());
+
+  return success;
+}
+
+const DriverStatistics &ModbusDriver::GetStatistics() const {
+  return driver_statistics_;
 }
 
 void ModbusDriver::ResetStatistics() {
-    driver_statistics_.total_reads.store(0);
-    driver_statistics_.successful_reads.store(0);
-    driver_statistics_.failed_reads.store(0);
-    driver_statistics_.total_writes.store(0);
-    driver_statistics_.successful_writes.store(0);
-    driver_statistics_.failed_writes.store(0);
-    driver_statistics_.average_response_time = std::chrono::milliseconds(0);
+  driver_statistics_.total_reads.store(0);
+  driver_statistics_.successful_reads.store(0);
+  driver_statistics_.failed_reads.store(0);
+  driver_statistics_.total_writes.store(0);
+  driver_statistics_.successful_writes.store(0);
+  driver_statistics_.failed_writes.store(0);
+  driver_statistics_.average_response_time = std::chrono::milliseconds(0);
 }
 
 ProtocolType ModbusDriver::GetProtocolType() const {
-    if (config_.endpoint.find('/') != std::string::npos || config_.endpoint.find("COM") != std::string::npos) {
-        return ProtocolType::MODBUS_RTU;
-    }
-    return ProtocolType::MODBUS_TCP;
+  if (config_.endpoint.find('/') != std::string::npos ||
+      config_.endpoint.find("COM") != std::string::npos) {
+    return ProtocolType::MODBUS_RTU;
+  }
+  return ProtocolType::MODBUS_TCP;
 }
 
 Enums::DriverStatus ModbusDriver::GetStatus() const {
-    // 1. 먼저 모듈러스 컨텍스트 확인
-    if (!modbus_ctx_) {
-        return Enums::DriverStatus::UNINITIALIZED;
+  // 1. 먼저 모듈러스 컨텍스트 확인
+  if (!modbus_ctx_) {
+    return Enums::DriverStatus::UNINITIALIZED;
+  }
+
+  // 2. ConnectionStatus를 DriverStatus로 변환 (ERROR 매크로 회피)
+  auto connection_status = status_; // 직접 접근 (atomic 아님)
+
+  // 🔥 숫자 값으로 비교해서 Windows ERROR 매크로 회피
+  auto status_value = static_cast<uint8_t>(connection_status);
+
+  switch (status_value) {
+  case 0: // DISCONNECTED = 0
+    return Enums::DriverStatus::STOPPED;
+
+  case 1: // CONNECTING = 1
+    return Enums::DriverStatus::STARTING;
+
+  case 2: // CONNECTED = 2
+    // 연결되어 있으면 실제 연결 상태도 확인
+    if (IsConnected()) {
+      return Enums::DriverStatus::RUNNING;
+    } else {
+      return Enums::DriverStatus::DRIVER_ERROR; // 연결 상태 불일치
     }
-    
-    // 2. ConnectionStatus를 DriverStatus로 변환 (ERROR 매크로 회피)
-    auto connection_status = status_;  // 직접 접근 (atomic 아님)
-    
-    // 🔥 숫자 값으로 비교해서 Windows ERROR 매크로 회피
-    auto status_value = static_cast<uint8_t>(connection_status);
-    
-    switch (status_value) {
-        case 0:  // DISCONNECTED = 0
-            return Enums::DriverStatus::STOPPED;
-            
-        case 1:  // CONNECTING = 1
-            return Enums::DriverStatus::STARTING;
-            
-        case 2:  // CONNECTED = 2
-            // 연결되어 있으면 실제 연결 상태도 확인
-            if (IsConnected()) {
-                return Enums::DriverStatus::RUNNING;
-            } else {
-                return Enums::DriverStatus::DRIVER_ERROR;  // 연결 상태 불일치
-            }
-            
-        case 3:  // RECONNECTING = 3
-            return Enums::DriverStatus::STARTING;
-            
-        case 4:  // DISCONNECTING = 4
-            return Enums::DriverStatus::STOPPING;
-            
-        case 5:  // ERROR = 5 (숫자로 비교해서 매크로 충돌 회피)
-            return Enums::DriverStatus::DRIVER_ERROR;
-            
-        case 6:  // TIMEOUT = 6
-            return Enums::DriverStatus::DRIVER_ERROR;
-            
-        case 7:  // MAINTENANCE = 7
-            return Enums::DriverStatus::MAINTENANCE;
-            
-        default:
-            return Enums::DriverStatus::UNINITIALIZED;
-    }
+
+  case 3: // RECONNECTING = 3
+    return Enums::DriverStatus::STARTING;
+
+  case 4: // DISCONNECTING = 4
+    return Enums::DriverStatus::STOPPING;
+
+  case 5: // ERROR = 5 (숫자로 비교해서 매크로 충돌 회피)
+    return Enums::DriverStatus::DRIVER_ERROR;
+
+  case 6: // TIMEOUT = 6
+    return Enums::DriverStatus::DRIVER_ERROR;
+
+  case 7: // MAINTENANCE = 7
+    return Enums::DriverStatus::MAINTENANCE;
+
+  default:
+    return Enums::DriverStatus::UNINITIALIZED;
+  }
 }
 
-ErrorInfo ModbusDriver::GetLastError() const {
-    return last_error_;
-}
+ErrorInfo ModbusDriver::GetLastError() const { return last_error_; }
 
 // =============================================================================
 // 기본 Modbus 통신 (Core 기능) - 에러 처리 강화
 // =============================================================================
 
-bool ModbusDriver::ReadHoldingRegisters(int slave_id, uint16_t start_addr, uint16_t count, 
-                                         std::vector<uint16_t>& values) {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!EnsureConnection()) {
-        return false;
+bool ModbusDriver::ReadHoldingRegisters(int slave_id, uint16_t start_addr,
+                                        uint16_t count,
+                                        std::vector<uint16_t> &values) {
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!EnsureConnection()) {
+    return false;
+  }
+
+  SetSlaveId(slave_id);
+
+  values.resize(count);
+  logger_->Debug("[ModbusDriver] Calling modbus_read_registers - Slave: " +
+                 std::to_string(slave_id) +
+                 ", Addr: " + std::to_string(start_addr) +
+                 ", Count: " + std::to_string(count));
+  int result =
+      modbus_read_registers(modbus_ctx_, start_addr, count, values.data());
+  logger_->Debug("[ModbusDriver] modbus_read_registers result: " +
+                 std::to_string(result));
+
+  if (result == -1) {
+    auto error_msg =
+        std::string("Read holding registers failed: ") + modbus_strerror(errno);
+
+    // errno에 따라 적절한 에러 코드 분류
+    if (errno == ETIMEDOUT || errno == EAGAIN) {
+      SetError(Structs::ErrorCode::IO_TIMEOUT, error_msg);
+    } else if (errno == ECONNRESET || errno == ECONNABORTED || errno == EPIPE) {
+      SetError(Structs::ErrorCode::CONNECTION_LOST, error_msg);
+    } else if (errno == ECONNREFUSED || errno == EHOSTUNREACH) {
+      SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
+    } else if (errno == EINVAL || errno == ERANGE) {
+      SetError(Structs::ErrorCode::INVALID_PARAMETER, error_msg);
+    } else {
+      SetError(Structs::ErrorCode::READ_FAILED, error_msg);
     }
-    
-    SetSlaveId(slave_id);
-    
-    values.resize(count);
-    logger_->Debug("[ModbusDriver] Calling modbus_read_registers - Slave: " + std::to_string(slave_id) + ", Addr: " + std::to_string(start_addr) + ", Count: " + std::to_string(count));
-    int result = modbus_read_registers(modbus_ctx_, start_addr, count, values.data());
-    logger_->Debug("[ModbusDriver] modbus_read_registers result: " + std::to_string(result));
-    
-    if (result == -1) {
-        auto error_msg = std::string("Read holding registers failed: ") + modbus_strerror(errno);
-        
-        // errno에 따라 적절한 에러 코드 분류
-        if (errno == ETIMEDOUT || errno == EAGAIN) {
-            SetError(Structs::ErrorCode::IO_TIMEOUT, error_msg);
-        } else if (errno == ECONNRESET || errno == ECONNABORTED || errno == EPIPE) {
-            SetError(Structs::ErrorCode::CONNECTION_LOST, error_msg);
-        } else if (errno == ECONNREFUSED || errno == EHOSTUNREACH) {
-            SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
-        } else if (errno == EINVAL || errno == ERANGE) {
-            SetError(Structs::ErrorCode::INVALID_PARAMETER, error_msg);
-        } else {
-            SetError(Structs::ErrorCode::READ_FAILED, error_msg);
-        }
-        
-        // Modbus 예외 코드 기록
-        if (errno > 0 && errno < 255) {
-            RecordExceptionCode(static_cast<uint8_t>(errno));
-            
-            if (errno >= 1 && errno <= 8) {
-                SetError(Structs::ErrorCode::PROTOCOL_ERROR, 
-                        "Modbus exception code " + std::to_string(errno) + ": " + error_msg);
-            }
-        }
-        
-        return false;
+
+    // Modbus 예외 코드 기록
+    if (errno > 0 && errno < 255) {
+      RecordExceptionCode(static_cast<uint8_t>(errno));
+
+      if (errno >= 1 && errno <= 8) {
+        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
+                                                         std::to_string(errno) +
+                                                         ": " + error_msg);
+      }
     }
-    
-    driver_statistics_.IncrementProtocolCounter("register_reads");
-    return true;
+
+    return false;
+  }
+
+  driver_statistics_.IncrementProtocolCounter("register_reads");
+  return true;
 }
 
-bool ModbusDriver::ReadInputRegisters(int slave_id, uint16_t start_addr, uint16_t count, 
-                                      std::vector<uint16_t>& values) {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!EnsureConnection()) {
-        return false;
+bool ModbusDriver::ReadInputRegisters(int slave_id, uint16_t start_addr,
+                                      uint16_t count,
+                                      std::vector<uint16_t> &values) {
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!EnsureConnection()) {
+    return false;
+  }
+
+  SetSlaveId(slave_id);
+
+  values.resize(count);
+  int result = modbus_read_input_registers(modbus_ctx_, start_addr, count,
+                                           values.data());
+
+  if (result == -1) {
+    auto error_msg =
+        std::string("Read input registers failed: ") + modbus_strerror(errno);
+
+    if (errno == ETIMEDOUT || errno == EAGAIN) {
+      SetError(Structs::ErrorCode::IO_TIMEOUT, error_msg);
+    } else if (errno == ECONNRESET || errno == ECONNABORTED || errno == EPIPE) {
+      SetError(Structs::ErrorCode::CONNECTION_LOST, error_msg);
+    } else if (errno == ECONNREFUSED || errno == EHOSTUNREACH) {
+      SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
+    } else if (errno == EINVAL || errno == ERANGE) {
+      SetError(Structs::ErrorCode::INVALID_PARAMETER, error_msg);
+    } else {
+      SetError(Structs::ErrorCode::READ_FAILED, error_msg);
     }
-    
-    SetSlaveId(slave_id);
-    
-    values.resize(count);
-    int result = modbus_read_input_registers(modbus_ctx_, start_addr, count, values.data());
-    
-    if (result == -1) {
-        auto error_msg = std::string("Read input registers failed: ") + modbus_strerror(errno);
-        
-        if (errno == ETIMEDOUT || errno == EAGAIN) {
-            SetError(Structs::ErrorCode::IO_TIMEOUT, error_msg);
-        } else if (errno == ECONNRESET || errno == ECONNABORTED || errno == EPIPE) {
-            SetError(Structs::ErrorCode::CONNECTION_LOST, error_msg);
-        } else if (errno == ECONNREFUSED || errno == EHOSTUNREACH) {
-            SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
-        } else if (errno == EINVAL || errno == ERANGE) {
-            SetError(Structs::ErrorCode::INVALID_PARAMETER, error_msg);
-        } else {
-            SetError(Structs::ErrorCode::READ_FAILED, error_msg);
-        }
-        
-        if (errno > 0 && errno < 255) {
-            RecordExceptionCode(static_cast<uint8_t>(errno));
-            if (errno >= 1 && errno <= 8) {
-                SetError(Structs::ErrorCode::PROTOCOL_ERROR, 
-                        "Modbus exception code " + std::to_string(errno) + ": " + error_msg);
-            }
-        }
-        
-        return false;
+
+    if (errno > 0 && errno < 255) {
+      RecordExceptionCode(static_cast<uint8_t>(errno));
+      if (errno >= 1 && errno <= 8) {
+        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
+                                                         std::to_string(errno) +
+                                                         ": " + error_msg);
+      }
     }
-    
-    driver_statistics_.IncrementProtocolCounter("register_reads");
-    return true;
+
+    return false;
+  }
+
+  driver_statistics_.IncrementProtocolCounter("register_reads");
+  return true;
 }
 
-bool ModbusDriver::ReadCoils(int slave_id, uint16_t start_addr, uint16_t count, 
-                             std::vector<uint8_t>& values) {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!EnsureConnection()) {
-        return false;
+bool ModbusDriver::ReadCoils(int slave_id, uint16_t start_addr, uint16_t count,
+                             std::vector<uint8_t> &values) {
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!EnsureConnection()) {
+    return false;
+  }
+
+  SetSlaveId(slave_id);
+
+  values.resize(count);
+  int result = modbus_read_bits(modbus_ctx_, start_addr, count, values.data());
+
+  if (result == -1) {
+    auto error_msg =
+        std::string("Read coils failed: ") + modbus_strerror(errno);
+    SetError(Structs::ErrorCode::READ_FAILED, error_msg);
+
+    if (errno > 0 && errno < 255) {
+      RecordExceptionCode(static_cast<uint8_t>(errno));
     }
-    
-    SetSlaveId(slave_id);
-    
-    values.resize(count);
-    int result = modbus_read_bits(modbus_ctx_, start_addr, count, values.data());
-    
-    if (result == -1) {
-        auto error_msg = std::string("Read coils failed: ") + modbus_strerror(errno);
-        SetError(Structs::ErrorCode::READ_FAILED, error_msg);
-        
-        if (errno > 0 && errno < 255) {
-            RecordExceptionCode(static_cast<uint8_t>(errno));
-        }
-        
-        return false;
-    }
-    
-    driver_statistics_.IncrementProtocolCounter("coil_reads");
-    return true;
+
+    return false;
+  }
+
+  driver_statistics_.IncrementProtocolCounter("coil_reads");
+  return true;
 }
 
-bool ModbusDriver::ReadDiscreteInputs(int slave_id, uint16_t start_addr, uint16_t count, 
-                                      std::vector<uint8_t>& values) {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!EnsureConnection()) {
-        return false;
+bool ModbusDriver::ReadDiscreteInputs(int slave_id, uint16_t start_addr,
+                                      uint16_t count,
+                                      std::vector<uint8_t> &values) {
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!EnsureConnection()) {
+    return false;
+  }
+
+  SetSlaveId(slave_id);
+
+  values.resize(count);
+  int result =
+      modbus_read_input_bits(modbus_ctx_, start_addr, count, values.data());
+
+  if (result == -1) {
+    auto error_msg =
+        std::string("Read discrete inputs failed: ") + modbus_strerror(errno);
+    SetError(Structs::ErrorCode::READ_FAILED, error_msg);
+
+    if (errno > 0 && errno < 255) {
+      RecordExceptionCode(static_cast<uint8_t>(errno));
     }
-    
-    SetSlaveId(slave_id);
-    
-    values.resize(count);
-    int result = modbus_read_input_bits(modbus_ctx_, start_addr, count, values.data());
-    
-    if (result == -1) {
-        auto error_msg = std::string("Read discrete inputs failed: ") + modbus_strerror(errno);
-        SetError(Structs::ErrorCode::READ_FAILED, error_msg);
-        
-        if (errno > 0 && errno < 255) {
-            RecordExceptionCode(static_cast<uint8_t>(errno));
-        }
-        
-        return false;
-    }
-    
-    driver_statistics_.IncrementProtocolCounter("coil_reads");
-    return true;
+
+    return false;
+  }
+
+  driver_statistics_.IncrementProtocolCounter("coil_reads");
+  return true;
 }
 
-bool ModbusDriver::WriteHoldingRegister(int slave_id, uint16_t address, uint16_t value) {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!EnsureConnection()) {
-        return false;
+bool ModbusDriver::WriteHoldingRegister(int slave_id, uint16_t address,
+                                        uint16_t value) {
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!EnsureConnection()) {
+    return false;
+  }
+
+  SetSlaveId(slave_id);
+
+  int result = modbus_write_register(modbus_ctx_, address, value);
+
+  if (result == -1) {
+    auto error_msg =
+        std::string("Write holding register failed: ") + modbus_strerror(errno);
+
+    if (errno == ETIMEDOUT || errno == EAGAIN) {
+      SetError(Structs::ErrorCode::IO_TIMEOUT, error_msg);
+    } else if (errno == ECONNRESET || errno == ECONNABORTED || errno == EPIPE) {
+      SetError(Structs::ErrorCode::CONNECTION_LOST, error_msg);
+    } else if (errno == ECONNREFUSED || errno == EHOSTUNREACH) {
+      SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
+    } else if (errno == EINVAL || errno == ERANGE) {
+      SetError(Structs::ErrorCode::INVALID_PARAMETER, error_msg);
+    } else {
+      SetError(Structs::ErrorCode::WRITE_FAILED, error_msg);
     }
-    
-    SetSlaveId(slave_id);
-    
-    int result = modbus_write_register(modbus_ctx_, address, value);
-    
-    if (result == -1) {
-        auto error_msg = std::string("Write holding register failed: ") + modbus_strerror(errno);
-        
-        if (errno == ETIMEDOUT || errno == EAGAIN) {
-            SetError(Structs::ErrorCode::IO_TIMEOUT, error_msg);
-        } else if (errno == ECONNRESET || errno == ECONNABORTED || errno == EPIPE) {
-            SetError(Structs::ErrorCode::CONNECTION_LOST, error_msg);
-        } else if (errno == ECONNREFUSED || errno == EHOSTUNREACH) {
-            SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
-        } else if (errno == EINVAL || errno == ERANGE) {
-            SetError(Structs::ErrorCode::INVALID_PARAMETER, error_msg);
-        } else {
-            SetError(Structs::ErrorCode::WRITE_FAILED, error_msg);
-        }
-        
-        if (errno > 0 && errno < 255) {
-            RecordExceptionCode(static_cast<uint8_t>(errno));
-            if (errno >= 1 && errno <= 8) {
-                SetError(Structs::ErrorCode::PROTOCOL_ERROR, 
-                        "Modbus exception code " + std::to_string(errno) + ": " + error_msg);
-            }
-        }
-        
-        return false;
+
+    if (errno > 0 && errno < 255) {
+      RecordExceptionCode(static_cast<uint8_t>(errno));
+      if (errno >= 1 && errno <= 8) {
+        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
+                                                         std::to_string(errno) +
+                                                         ": " + error_msg);
+      }
     }
-    
-    driver_statistics_.IncrementProtocolCounter("register_writes");
-    return true;
+
+    return false;
+  }
+
+  driver_statistics_.IncrementProtocolCounter("register_writes");
+  return true;
 }
 
-bool ModbusDriver::WriteHoldingRegisters(int slave_id, uint16_t start_addr, 
-                                         const std::vector<uint16_t>& values) {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!EnsureConnection()) {
-        return false;
+bool ModbusDriver::WriteHoldingRegisters(int slave_id, uint16_t start_addr,
+                                         const std::vector<uint16_t> &values) {
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!EnsureConnection()) {
+    return false;
+  }
+
+  SetSlaveId(slave_id);
+
+  int result = modbus_write_registers(modbus_ctx_, start_addr, values.size(),
+                                      values.data());
+
+  if (result == -1) {
+    auto error_msg = std::string("Write holding registers failed: ") +
+                     modbus_strerror(errno);
+
+    if (errno == ETIMEDOUT || errno == EAGAIN) {
+      SetError(Structs::ErrorCode::IO_TIMEOUT, error_msg);
+    } else if (errno == ECONNRESET || errno == ECONNABORTED || errno == EPIPE) {
+      SetError(Structs::ErrorCode::CONNECTION_LOST, error_msg);
+    } else if (errno == ECONNREFUSED || errno == EHOSTUNREACH) {
+      SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
+    } else if (errno == EINVAL || errno == ERANGE) {
+      SetError(Structs::ErrorCode::INVALID_PARAMETER, error_msg);
+    } else {
+      SetError(Structs::ErrorCode::WRITE_FAILED, error_msg);
     }
-    
-    SetSlaveId(slave_id);
-    
-    int result = modbus_write_registers(modbus_ctx_, start_addr, values.size(), values.data());
-    
-    if (result == -1) {
-        auto error_msg = std::string("Write holding registers failed: ") + modbus_strerror(errno);
-        
-        if (errno == ETIMEDOUT || errno == EAGAIN) {
-            SetError(Structs::ErrorCode::IO_TIMEOUT, error_msg);
-        } else if (errno == ECONNRESET || errno == ECONNABORTED || errno == EPIPE) {
-            SetError(Structs::ErrorCode::CONNECTION_LOST, error_msg);
-        } else if (errno == ECONNREFUSED || errno == EHOSTUNREACH) {
-            SetError(Structs::ErrorCode::CONNECTION_FAILED, error_msg);
-        } else if (errno == EINVAL || errno == ERANGE) {
-            SetError(Structs::ErrorCode::INVALID_PARAMETER, error_msg);
-        } else {
-            SetError(Structs::ErrorCode::WRITE_FAILED, error_msg);
-        }
-        
-        if (errno > 0 && errno < 255) {
-            RecordExceptionCode(static_cast<uint8_t>(errno));
-            if (errno >= 1 && errno <= 8) {
-                SetError(Structs::ErrorCode::PROTOCOL_ERROR, 
-                        "Modbus exception code " + std::to_string(errno) + ": " + error_msg);
-            }
-        }
-        
-        return false;
+
+    if (errno > 0 && errno < 255) {
+      RecordExceptionCode(static_cast<uint8_t>(errno));
+      if (errno >= 1 && errno <= 8) {
+        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
+                                                         std::to_string(errno) +
+                                                         ": " + error_msg);
+      }
     }
-    
-    driver_statistics_.IncrementProtocolCounter("register_writes", values.size());
-    return true;
+
+    return false;
+  }
+
+  driver_statistics_.IncrementProtocolCounter("register_writes", values.size());
+  return true;
 }
 
 bool ModbusDriver::WriteCoil(int slave_id, uint16_t address, bool value) {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!EnsureConnection()) {
-        return false;
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!EnsureConnection()) {
+    return false;
+  }
+
+  SetSlaveId(slave_id);
+
+  int result = modbus_write_bit(modbus_ctx_, address, value ? 1 : 0);
+
+  if (result == -1) {
+    auto error_msg =
+        std::string("Write coil failed: ") + modbus_strerror(errno);
+    SetError(Structs::ErrorCode::PROTOCOL_ERROR, error_msg);
+
+    if (errno > 0 && errno < 255) {
+      RecordExceptionCode(static_cast<uint8_t>(errno));
+      if (errno >= 1 && errno <= 8) {
+        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
+                                                         std::to_string(errno) +
+                                                         ": " + error_msg);
+      }
     }
-    
-    SetSlaveId(slave_id);
-    
-    int result = modbus_write_bit(modbus_ctx_, address, value ? 1 : 0);
-    
-    if (result == -1) {
-        auto error_msg = std::string("Write coil failed: ") + modbus_strerror(errno);
-        SetError(Structs::ErrorCode::PROTOCOL_ERROR, error_msg);
-        
-        if (errno > 0 && errno < 255) {
-            RecordExceptionCode(static_cast<uint8_t>(errno));
-            if (errno >= 1 && errno <= 8) {
-                SetError(Structs::ErrorCode::PROTOCOL_ERROR, 
-                        "Modbus exception code " + std::to_string(errno) + ": " + error_msg);
-            }
-        }
-        
-        return false;
-    }
-    
-    driver_statistics_.IncrementProtocolCounter("coil_writes");
-    return true;
+
+    return false;
+  }
+
+  driver_statistics_.IncrementProtocolCounter("coil_writes");
+  return true;
 }
 
-bool ModbusDriver::WriteCoils(int slave_id, uint16_t start_addr, 
-                              const std::vector<uint8_t>& values) {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!EnsureConnection()) {
-        return false;
+bool ModbusDriver::WriteCoils(int slave_id, uint16_t start_addr,
+                              const std::vector<uint8_t> &values) {
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!EnsureConnection()) {
+    return false;
+  }
+
+  SetSlaveId(slave_id);
+
+  int result =
+      modbus_write_bits(modbus_ctx_, start_addr, values.size(), values.data());
+
+  if (result == -1) {
+    auto error_msg =
+        std::string("Write coils failed: ") + modbus_strerror(errno);
+    SetError(Structs::ErrorCode::PROTOCOL_ERROR, error_msg);
+
+    if (errno > 0 && errno < 255) {
+      RecordExceptionCode(static_cast<uint8_t>(errno));
+      if (errno >= 1 && errno <= 8) {
+        SetError(Structs::ErrorCode::PROTOCOL_ERROR, "Modbus exception code " +
+                                                         std::to_string(errno) +
+                                                         ": " + error_msg);
+      }
     }
-    
-    SetSlaveId(slave_id);
-    
-    int result = modbus_write_bits(modbus_ctx_, start_addr, values.size(), values.data());
-    
-    if (result == -1) {
-        auto error_msg = std::string("Write coils failed: ") + modbus_strerror(errno);
-        SetError(Structs::ErrorCode::PROTOCOL_ERROR, error_msg);
-        
-        if (errno > 0 && errno < 255) {
-            RecordExceptionCode(static_cast<uint8_t>(errno));
-            if (errno >= 1 && errno <= 8) {
-                SetError(Structs::ErrorCode::PROTOCOL_ERROR, 
-                        "Modbus exception code " + std::to_string(errno) + ": " + error_msg);
-            }
-        }
-        
-        return false;
-    }
-    
-    driver_statistics_.IncrementProtocolCounter("coil_writes", values.size());
-    return true;
+
+    return false;
+  }
+
+  driver_statistics_.IncrementProtocolCounter("coil_writes", values.size());
+  return true;
 }
 
-bool ModbusDriver::MaskWriteRegister(int slave_id, uint16_t address, uint16_t and_mask, uint16_t or_mask) {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!EnsureConnection()) {
-        return false;
-    }
-    
-    SetSlaveId(slave_id);
-    
-    int result = modbus_mask_write_register(modbus_ctx_, address, and_mask, or_mask);
-    
-    if (result == -1) {
-        auto error_msg = std::string("Mask write register failed: ") + modbus_strerror(errno);
-        SetError(Structs::ErrorCode::PROTOCOL_ERROR, error_msg);
-        return false;
-    }
-    
-    driver_statistics_.IncrementProtocolCounter("register_writes");
-    return true;
+bool ModbusDriver::MaskWriteRegister(int slave_id, uint16_t address,
+                                     uint16_t and_mask, uint16_t or_mask) {
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!EnsureConnection()) {
+    return false;
+  }
+
+  SetSlaveId(slave_id);
+
+  int result =
+      modbus_mask_write_register(modbus_ctx_, address, and_mask, or_mask);
+
+  if (result == -1) {
+    auto error_msg =
+        std::string("Mask write register failed: ") + modbus_strerror(errno);
+    SetError(Structs::ErrorCode::PROTOCOL_ERROR, error_msg);
+    return false;
+  }
+
+  driver_statistics_.IncrementProtocolCounter("register_writes");
+  return true;
 }
 
 void ModbusDriver::SetSlaveId(int slave_id) {
-    if (modbus_ctx_ && current_slave_id_ != slave_id) {
-        modbus_set_slave(modbus_ctx_, slave_id);
-        current_slave_id_ = slave_id;
-    }
+  if (modbus_ctx_ && current_slave_id_ != slave_id) {
+    modbus_set_slave(modbus_ctx_, slave_id);
+    current_slave_id_ = slave_id;
+  }
 }
 
-int ModbusDriver::GetSlaveId() const {
-    return current_slave_id_;
-}
+int ModbusDriver::GetSlaveId() const { return current_slave_id_; }
 
 // =============================================================================
 // 내부 메서드 (Core 기능)
 // =============================================================================
 
 bool ModbusDriver::SetupModbusConnection() {
-    CleanupConnection();
-    
-    // 🔥 DriverConfig의 endpoint 분석하여 TCP/RTU 자동 판단
-    if (config_.endpoint.find(':') != std::string::npos) {
-        // TCP 방식 - IP:PORT 형태
-        auto pos = config_.endpoint.find(':');
-        std::string host = config_.endpoint.substr(0, pos);
-        int port = std::stoi(config_.endpoint.substr(pos + 1));
-        
-        modbus_ctx_ = modbus_new_tcp(host.c_str(), port);
-        logger_->Info("🔗 Setting up Modbus TCP connection to " + host + ":" + std::to_string(port));
-    } else {
-        // RTU 방식 - 시리얼 포트
-        // 🔥 RTU 설정은 properties에서 가져오기
-        int baud_rate = 9600; // 기본값
-        char parity = 'N';
-        int data_bits = 8;
-        int stop_bits = 1;
-        
-        if (config_.properties.count("baud_rate")) {
-            baud_rate = std::stoi(config_.properties.at("baud_rate"));
-        }
-        if (config_.properties.count("parity")) {
-            parity = config_.properties.at("parity")[0];
-        }
-        if (config_.properties.count("data_bits")) {
-            data_bits = std::stoi(config_.properties.at("data_bits"));
-        }
-        if (config_.properties.count("stop_bits")) {
-            stop_bits = std::stoi(config_.properties.at("stop_bits"));
-        }
-        
-        modbus_ctx_ = modbus_new_rtu(config_.endpoint.c_str(), baud_rate, parity, data_bits, stop_bits);
-        logger_->Info("🔗 Setting up Modbus RTU connection to " + config_.endpoint + 
-                     " (" + std::to_string(baud_rate) + " baud)");
+  CleanupConnection();
+
+  // 🔥 DriverConfig의 endpoint 분석하여 TCP/RTU 자동 판단
+  if (config_.endpoint.find(':') != std::string::npos) {
+    // TCP 방식 - IP:PORT 형태
+    auto pos = config_.endpoint.find(':');
+    std::string host = config_.endpoint.substr(0, pos);
+    int port = std::stoi(config_.endpoint.substr(pos + 1));
+
+    modbus_ctx_ = modbus_new_tcp(host.c_str(), port);
+    logger_->Info("🔗 Setting up Modbus TCP connection to " + host + ":" +
+                  std::to_string(port));
+  } else {
+    // RTU 방식 - 시리얼 포트
+    // 🔥 RTU 설정은 properties에서 가져오기
+    int baud_rate = 9600; // 기본값
+    char parity = 'N';
+    int data_bits = 8;
+    int stop_bits = 1;
+
+    if (config_.properties.count("baud_rate")) {
+      baud_rate = std::stoi(config_.properties.at("baud_rate"));
     }
-    
-    bool success = modbus_ctx_ != nullptr;
-    if (success && current_slave_id_ != -1) {
-        modbus_set_slave(modbus_ctx_, current_slave_id_);
+    if (config_.properties.count("parity")) {
+      parity = config_.properties.at("parity")[0];
     }
-    
-    logger_->Info("SetupModbusConnection result: " + std::string(success ? "SUCCESS" : "FAILED"));
-    return success;
+    if (config_.properties.count("data_bits")) {
+      data_bits = std::stoi(config_.properties.at("data_bits"));
+    }
+    if (config_.properties.count("stop_bits")) {
+      stop_bits = std::stoi(config_.properties.at("stop_bits"));
+    }
+
+    modbus_ctx_ = modbus_new_rtu(config_.endpoint.c_str(), baud_rate, parity,
+                                 data_bits, stop_bits);
+    logger_->Info("🔗 Setting up Modbus RTU connection to " + config_.endpoint +
+                  " (" + std::to_string(baud_rate) + " baud)");
+  }
+
+  bool success = modbus_ctx_ != nullptr;
+  if (success && current_slave_id_ != -1) {
+    modbus_set_slave(modbus_ctx_, current_slave_id_);
+  }
+
+  logger_->Info("SetupModbusConnection result: " +
+                std::string(success ? "SUCCESS" : "FAILED"));
+  return success;
 }
 
 void ModbusDriver::CleanupConnection() {
-    if (modbus_ctx_) {
-        modbus_close(modbus_ctx_);
-        modbus_free(modbus_ctx_);
-        modbus_ctx_ = nullptr;
-    }
+  if (modbus_ctx_) {
+    modbus_close(modbus_ctx_);
+    modbus_free(modbus_ctx_);
+    modbus_ctx_ = nullptr;
+  }
 }
 
 bool ModbusDriver::EnsureConnection() {
-    if (!IsConnected()) {
-        return Connect();
-    }
-    return true;
+  if (!IsConnected()) {
+    return Connect();
+  }
+  return true;
 }
 
 bool ModbusDriver::ReconnectWithRetry(int max_retries) {
-    for (int i = 0; i < max_retries; ++i) {
-        Disconnect();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100 * (i + 1))); // 백오프
-        
-        if (Connect()) {
-            return true;
-        }
+  for (int i = 0; i < max_retries; ++i) {
+    Disconnect();
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(100 * (i + 1))); // 백오프
+
+    if (Connect()) {
+      return true;
     }
+  }
+  return false;
+}
+
+void ModbusDriver::UpdateStats(bool success, double response_time_ms,
+                               const std::string &operation) {
+  if (operation == "read") {
+    driver_statistics_.total_reads.fetch_add(1);
+    if (success) {
+      driver_statistics_.successful_reads.fetch_add(1);
+    } else {
+      driver_statistics_.failed_reads.fetch_add(1);
+    }
+  } else if (operation == "write") {
+    driver_statistics_.total_writes.fetch_add(1);
+    if (success) {
+      driver_statistics_.successful_writes.fetch_add(1);
+    } else {
+      driver_statistics_.failed_writes.fetch_add(1);
+    }
+  }
+
+  // 응답 시간 업데이트 (간단한 이동 평균)
+  auto current_avg = driver_statistics_.average_response_time.count();
+  auto new_avg = static_cast<long>((current_avg + response_time_ms) / 2.0);
+  driver_statistics_.average_response_time = std::chrono::milliseconds(new_avg);
+}
+
+void ModbusDriver::SetError(Structs::ErrorCode code,
+                            const std::string &message) {
+  last_error_.code = code;
+  last_error_.message = message;
+
+  // 🔥 통신 중대한 에러 발생 시 연결 상태를 false로 변경하여 재연결 유도
+  if (code == Structs::ErrorCode::CONNECTION_LOST ||
+      code == Structs::ErrorCode::CONNECTION_FAILED ||
+      code == Structs::ErrorCode::READ_FAILED ||
+      code == Structs::ErrorCode::WRITE_FAILED) {
+
+    if (is_connected_.load()) {
+      is_connected_.store(false);
+      logger_->Warn("ModbusDriver: Connection flagged as LOST due to error: " +
+                    message);
+    }
+  }
+}
+
+Structs::DataValue
+ModbusDriver::ConvertModbusValue(const Structs::DataPoint &point,
+                                 uint16_t raw_value) const {
+  Structs::DataValue result;
+
+  // 🔥 DataPoint의 scaling_factor와 scaling_offset 활용
+  double scaled_value = static_cast<double>(raw_value) * point.scaling_factor +
+                        point.scaling_offset;
+
+  // data_type 문자열을 기반으로 변환
+  if (point.data_type == "INT16") {
+    result = static_cast<int16_t>(scaled_value);
+  } else if (point.data_type == "UINT16") {
+    result = static_cast<uint16_t>(scaled_value);
+  } else if (point.data_type == "FLOAT") {
+    result = static_cast<float>(scaled_value);
+  } else if (point.data_type == "DOUBLE") {
+    result = scaled_value;
+  } else if (point.data_type == "BOOL" || point.data_type == "COIL") {
+    result = (raw_value != 0);
+  } else {
+    // 기본값으로 스케일링된 unsigned int 사용
+    result = static_cast<unsigned int>(scaled_value);
+  }
+
+  return result;
+}
+
+bool ModbusDriver::ConvertToModbusValue(const Structs::DataValue &value,
+                                        const Structs::DataPoint &point,
+                                        uint16_t &modbus_value) const {
+  // 🔥 역스케일링 적용
+  auto apply_reverse_scaling = [&](double val) -> uint16_t {
+    double reverse_scaled = (val - point.scaling_offset) / point.scaling_factor;
+    return static_cast<uint16_t>(
+        std::max(0.0, std::min(65535.0, reverse_scaled)));
+  };
+
+  // data_type 문자열을 기반으로 변환
+  if (point.data_type == "INT16") {
+    if (std::holds_alternative<int16_t>(value)) {
+      modbus_value = apply_reverse_scaling(std::get<int16_t>(value));
+    } else if (std::holds_alternative<int>(value)) {
+      modbus_value = apply_reverse_scaling(std::get<int>(value));
+    } else {
+      return false;
+    }
+  } else if (point.data_type == "UINT16") {
+    if (std::holds_alternative<unsigned int>(value)) {
+      modbus_value = apply_reverse_scaling(std::get<unsigned int>(value));
+    } else if (std::holds_alternative<int>(value)) {
+      modbus_value = apply_reverse_scaling(std::get<int>(value));
+    } else {
+      return false;
+    }
+  } else if (point.data_type == "FLOAT") {
+    float float_val = 0.0f;
+    if (std::holds_alternative<float>(value)) {
+      float_val = std::get<float>(value);
+    } else if (std::holds_alternative<double>(value)) {
+      float_val = static_cast<float>(std::get<double>(value));
+    } else {
+      return false;
+    }
+    modbus_value = apply_reverse_scaling(float_val);
+  } else if (point.data_type == "BOOL" || point.data_type == "COIL") {
+    if (std::holds_alternative<bool>(value)) {
+      modbus_value = std::get<bool>(value) ? 1 : 0;
+    } else {
+      return false;
+    }
+  } else {
     return false;
-}
+  }
 
-void ModbusDriver::UpdateStats(bool success, double response_time_ms, const std::string& operation) {
-    if (operation == "read") {
-        driver_statistics_.total_reads.fetch_add(1);
-        if (success) {
-            driver_statistics_.successful_reads.fetch_add(1);
-        } else {
-            driver_statistics_.failed_reads.fetch_add(1);
-        }
-    } else if (operation == "write") {
-        driver_statistics_.total_writes.fetch_add(1);
-        if (success) {
-            driver_statistics_.successful_writes.fetch_add(1);
-        } else {
-            driver_statistics_.failed_writes.fetch_add(1);
-        }
-    }
-    
-    // 응답 시간 업데이트 (간단한 이동 평균)
-    auto current_avg = driver_statistics_.average_response_time.count();
-    auto new_avg = static_cast<long>((current_avg + response_time_ms) / 2.0);
-    driver_statistics_.average_response_time = std::chrono::milliseconds(new_avg);
-}
-
-void ModbusDriver::SetError(Structs::ErrorCode code, const std::string& message) {
-    last_error_.code = code;
-    last_error_.message = message;
-    
-    // 🔥 통신 중대한 에러 발생 시 연결 상태를 false로 변경하여 재연결 유도
-    if (code == Structs::ErrorCode::CONNECTION_LOST || 
-        code == Structs::ErrorCode::CONNECTION_FAILED ||
-        code == Structs::ErrorCode::READ_FAILED ||
-        code == Structs::ErrorCode::WRITE_FAILED) {
-        
-        if (is_connected_.load()) {
-            is_connected_.store(false);
-            logger_->Warn("ModbusDriver: Connection flagged as LOST due to error: " + message);
-        }
-    }
-}
-
-Structs::DataValue ModbusDriver::ConvertModbusValue(const Structs::DataPoint& point, uint16_t raw_value) const {
-    Structs::DataValue result;
-    
-    // 🔥 DataPoint의 scaling_factor와 scaling_offset 활용
-    double scaled_value = static_cast<double>(raw_value) * point.scaling_factor + point.scaling_offset;
-    
-    // data_type 문자열을 기반으로 변환
-    if (point.data_type == "INT16") {
-        result = static_cast<int16_t>(scaled_value);
-    } else if (point.data_type == "UINT16") {
-        result = static_cast<uint16_t>(scaled_value);
-    } else if (point.data_type == "FLOAT") {
-        result = static_cast<float>(scaled_value);
-    } else if (point.data_type == "DOUBLE") {
-        result = scaled_value;
-    } else if (point.data_type == "BOOL" || point.data_type == "COIL") {
-        result = (raw_value != 0);
-    } else {
-        // 기본값으로 스케일링된 unsigned int 사용
-        result = static_cast<unsigned int>(scaled_value);
-    }
-    
-    return result;
-}
-
-bool ModbusDriver::ConvertToModbusValue(const Structs::DataValue& value, const Structs::DataPoint& point, uint16_t& modbus_value) const {
-    // 🔥 역스케일링 적용
-    auto apply_reverse_scaling = [&](double val) -> uint16_t {
-        double reverse_scaled = (val - point.scaling_offset) / point.scaling_factor;
-        return static_cast<uint16_t>(std::max(0.0, std::min(65535.0, reverse_scaled)));
-    };
-    
-    // data_type 문자열을 기반으로 변환
-    if (point.data_type == "INT16") {
-        if (std::holds_alternative<int16_t>(value)) {
-            modbus_value = apply_reverse_scaling(std::get<int16_t>(value));
-        } else if (std::holds_alternative<int>(value)) {
-            modbus_value = apply_reverse_scaling(std::get<int>(value));
-        } else {
-            return false;
-        }
-    } else if (point.data_type == "UINT16") {
-        if (std::holds_alternative<unsigned int>(value)) {
-            modbus_value = apply_reverse_scaling(std::get<unsigned int>(value));
-        } else if (std::holds_alternative<int>(value)) {
-            modbus_value = apply_reverse_scaling(std::get<int>(value));
-        } else {
-            return false;
-        }
-    } else if (point.data_type == "FLOAT") {
-        float float_val = 0.0f;
-        if (std::holds_alternative<float>(value)) {
-            float_val = std::get<float>(value);
-        } else if (std::holds_alternative<double>(value)) {
-            float_val = static_cast<float>(std::get<double>(value));
-        } else {
-            return false;
-        }
-        modbus_value = apply_reverse_scaling(float_val);
-    } else if (point.data_type == "BOOL" || point.data_type == "COIL") {
-        if (std::holds_alternative<bool>(value)) {
-            modbus_value = std::get<bool>(value) ? 1 : 0;
-        } else {
-            return false;
-        }
-    } else {
-        return false;
-    }
-    
-    return true;
+  return true;
 }
 
 // =============================================================================
@@ -1043,87 +1171,91 @@ bool ModbusDriver::ConvertToModbusValue(const Structs::DataValue& value, const S
 // =============================================================================
 
 bool ModbusDriver::Start() {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (is_started_) {
-        if (logger_) {
-            logger_->Debug("ModbusDriver already started for endpoint: " + config_.endpoint);
-        }
-        return true;
-    }
-    
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (is_started_) {
     if (logger_) {
-        logger_->Info("🚀 Starting ModbusDriver for endpoint: " + config_.endpoint);
+      logger_->Debug("ModbusDriver already started for endpoint: " +
+                     config_.endpoint);
     }
-    
-    try {
-        // 연결 상태 확인 및 연결 시도
-        if (!IsConnected()) {
-            if (!Connect()) {
-                if (logger_) {
-                    logger_->Error("Failed to connect during ModbusDriver::Start()");
-                }
-                return false;
-            }
-        }
-        
-        // 시작 상태로 변경
-        is_started_ = true;
-        status_ = PulseOne::Enums::ConnectionStatus::CONNECTED;
-        
-        // 통계 시작 시간 기록
-        driver_statistics_.start_time = std::chrono::system_clock::now();
-        
+    return true;
+  }
+
+  if (logger_) {
+    logger_->Info("🚀 Starting ModbusDriver for endpoint: " + config_.endpoint);
+  }
+
+  try {
+    // 연결 상태 확인 및 연결 시도
+    if (!IsConnected()) {
+      if (!Connect()) {
         if (logger_) {
-            logger_->Info("✅ ModbusDriver started successfully");
-        }
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("Exception in ModbusDriver::Start(): " + std::string(e.what()));
+          logger_->Error("Failed to connect during ModbusDriver::Start()");
         }
         return false;
+      }
     }
+
+    // 시작 상태로 변경
+    is_started_ = true;
+    status_ = PulseOne::Enums::ConnectionStatus::CONNECTED;
+
+    // 통계 시작 시간 기록
+    driver_statistics_.start_time = std::chrono::system_clock::now();
+
+    if (logger_) {
+      logger_->Info("✅ ModbusDriver started successfully");
+    }
+
+    return true;
+
+  } catch (const std::exception &e) {
+    if (logger_) {
+      logger_->Error("Exception in ModbusDriver::Start(): " +
+                     std::string(e.what()));
+    }
+    return false;
+  }
 }
 
 bool ModbusDriver::Stop() {
-    std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
-    
-    if (!is_started_) {
-        if (logger_) {
-            logger_->Debug("ModbusDriver already stopped for endpoint: " + config_.endpoint);
-        }
-        return true;
-    }
-    
+  std::lock_guard<std::recursive_mutex> lock(driver_mutex_);
+
+  if (!is_started_) {
     if (logger_) {
-        logger_->Info("🛑 Stopping ModbusDriver for endpoint: " + config_.endpoint);
+      logger_->Debug("ModbusDriver already stopped for endpoint: " +
+                     config_.endpoint);
     }
-    
-    try {
-        // 연결 해제
-        if (IsConnected()) {
-            Disconnect();
-        }
-        
-        // 중지 상태로 변경
-        is_started_ = false;
-        status_ = PulseOne::Enums::ConnectionStatus::DISCONNECTED;
-        
-        if (logger_) {
-            logger_->Info("✅ ModbusDriver stopped successfully");
-        }
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        if (logger_) {
-            logger_->Error("Exception in ModbusDriver::Stop(): " + std::string(e.what()));
-        }
-        return false;
+    return true;
+  }
+
+  if (logger_) {
+    logger_->Info("🛑 Stopping ModbusDriver for endpoint: " + config_.endpoint);
+  }
+
+  try {
+    // 연결 해제
+    if (IsConnected()) {
+      Disconnect();
     }
+
+    // 중지 상태로 변경
+    is_started_ = false;
+    status_ = PulseOne::Enums::ConnectionStatus::DISCONNECTED;
+
+    if (logger_) {
+      logger_->Info("✅ ModbusDriver stopped successfully");
+    }
+
+    return true;
+
+  } catch (const std::exception &e) {
+    if (logger_) {
+      logger_->Error("Exception in ModbusDriver::Stop(): " +
+                     std::string(e.what()));
+    }
+    return false;
+  }
 }
 
 // =============================================================================
@@ -1131,114 +1263,114 @@ bool ModbusDriver::Stop() {
 // =============================================================================
 
 bool ModbusDriver::EnableDiagnostics(bool packet_logging, bool console_output) {
+  if (!diagnostics_) {
+    diagnostics_ = std::make_unique<ModbusDiagnostics>(this);
     if (!diagnostics_) {
-        diagnostics_ = std::make_unique<ModbusDiagnostics>(this);
-        if (!diagnostics_) {
-            return false;
-        }
+      return false;
     }
-    
-    diagnostics_->EnablePacketLogging(packet_logging);
-    diagnostics_->EnableConsoleOutput(console_output);
-    return true;
+  }
+
+  diagnostics_->EnablePacketLogging(packet_logging);
+  diagnostics_->EnableConsoleOutput(console_output);
+  return true;
 }
 
-void ModbusDriver::DisableDiagnostics() {
-    diagnostics_.reset();
-}
+void ModbusDriver::DisableDiagnostics() { diagnostics_.reset(); }
 
 bool ModbusDriver::IsDiagnosticsEnabled() const {
-    return diagnostics_ != nullptr;
+  return diagnostics_ != nullptr;
 }
 
 std::string ModbusDriver::GetDiagnosticsJSON() const {
-    if (diagnostics_) {
-        return diagnostics_->GetDiagnosticsJSON();
-    }
-    
-    // 기본 정보만 반환
-    std::ostringstream oss;
-    oss << "{"
-        << "\"diagnostics\":\"disabled\","
-        << "\"basic_stats\":{"
-        << "\"total_reads\":" << driver_statistics_.total_reads.load() << ","
-        << "\"successful_reads\":" << driver_statistics_.successful_reads.load() << ","
-        << "\"failed_reads\":" << driver_statistics_.failed_reads.load() << ","
-        << "\"total_writes\":" << driver_statistics_.total_writes.load() << ","
-        << "\"successful_writes\":" << driver_statistics_.successful_writes.load() << ","
-        << "\"failed_writes\":" << driver_statistics_.failed_writes.load()
-        << "}}";
-    
-    return oss.str();
+  if (diagnostics_) {
+    return diagnostics_->GetDiagnosticsJSON();
+  }
+
+  // 기본 정보만 반환
+  std::ostringstream oss;
+  oss << "{"
+      << "\"diagnostics\":\"disabled\","
+      << "\"basic_stats\":{"
+      << "\"total_reads\":" << driver_statistics_.total_reads.load() << ","
+      << "\"successful_reads\":" << driver_statistics_.successful_reads.load()
+      << ","
+      << "\"failed_reads\":" << driver_statistics_.failed_reads.load() << ","
+      << "\"total_writes\":" << driver_statistics_.total_writes.load() << ","
+      << "\"successful_writes\":" << driver_statistics_.successful_writes.load()
+      << ","
+      << "\"failed_writes\":" << driver_statistics_.failed_writes.load()
+      << "}}";
+
+  return oss.str();
 }
 
 std::map<std::string, std::string> ModbusDriver::GetDiagnostics() const {
-    if (diagnostics_) {
-        return diagnostics_->GetDiagnostics();
-    }
-    
-    return {{"status", "disabled"}};
+  if (diagnostics_) {
+    return diagnostics_->GetDiagnostics();
+  }
+
+  return {{"status", "disabled"}};
 }
 
 std::vector<uint64_t> ModbusDriver::GetResponseTimeHistogram() const {
-    if (diagnostics_) {
-        return diagnostics_->GetResponseTimeHistogram();
-    }
-    
-    return {};
+  if (diagnostics_) {
+    return diagnostics_->GetResponseTimeHistogram();
+  }
+
+  return {};
 }
 
 double ModbusDriver::GetCrcErrorRate() const {
-    if (diagnostics_) {
-        return diagnostics_->GetCrcErrorRate();
-    }
-    
-    return 0.0;
+  if (diagnostics_) {
+    return diagnostics_->GetCrcErrorRate();
+  }
+
+  return 0.0;
 }
 
 // =============================================================================
 // 연결 풀링 관련 메서드들
 // =============================================================================
 
-bool ModbusDriver::EnableConnectionPooling(size_t pool_size, int timeout_seconds) {
+bool ModbusDriver::EnableConnectionPooling(size_t pool_size,
+                                           int timeout_seconds) {
+  if (!connection_pool_) {
+    connection_pool_ = std::make_unique<ModbusConnectionPool>(this);
     if (!connection_pool_) {
-        connection_pool_ = std::make_unique<ModbusConnectionPool>(this);
-        if (!connection_pool_) {
-            return false;
-        }
+      return false;
     }
-    
-    return connection_pool_->EnableConnectionPooling(pool_size, timeout_seconds);
+  }
+
+  return connection_pool_->EnableConnectionPooling(pool_size, timeout_seconds);
 }
 
-void ModbusDriver::DisableConnectionPooling() {
-    connection_pool_.reset();
-}
+void ModbusDriver::DisableConnectionPooling() { connection_pool_.reset(); }
 
 bool ModbusDriver::IsConnectionPoolingEnabled() const {
-    return connection_pool_ != nullptr && connection_pool_->IsEnabled();
+  return connection_pool_ != nullptr && connection_pool_->IsEnabled();
 }
 
-bool ModbusDriver::EnableAutoScaling(double load_threshold, size_t max_connections) {
-    if (!connection_pool_) {
-        EnableConnectionPooling(); // 먼저 풀링 활성화
-    }
-    
-    return connection_pool_->EnableAutoScaling(load_threshold, max_connections);
+bool ModbusDriver::EnableAutoScaling(double load_threshold,
+                                     size_t max_connections) {
+  if (!connection_pool_) {
+    EnableConnectionPooling(); // 먼저 풀링 활성화
+  }
+
+  return connection_pool_->EnableAutoScaling(load_threshold, max_connections);
 }
 
 void ModbusDriver::DisableAutoScaling() {
-    if (connection_pool_) {
-        connection_pool_->DisableAutoScaling();
-    }
+  if (connection_pool_) {
+    connection_pool_->DisableAutoScaling();
+  }
 }
 
 ConnectionPoolStats ModbusDriver::GetConnectionPoolStats() const {
-    if (connection_pool_ && IsConnectionPoolingEnabled()) {
-        return connection_pool_->GetConnectionPoolStats();
-    }
-    
-    return ConnectionPoolStats{};
+  if (connection_pool_ && IsConnectionPoolingEnabled()) {
+    return connection_pool_->GetConnectionPoolStats();
+  }
+
+  return ConnectionPoolStats{};
 }
 
 // =============================================================================
@@ -1246,207 +1378,216 @@ ConnectionPoolStats ModbusDriver::GetConnectionPoolStats() const {
 // =============================================================================
 
 void ModbusDriver::RecordExceptionCode(uint8_t exception_code) {
-    driver_statistics_.IncrementProtocolCounter("exception_codes");
-    
-    if (diagnostics_) {
-        diagnostics_->RecordExceptionCode(exception_code);
-    }
+  driver_statistics_.IncrementProtocolCounter("exception_codes");
+
+  if (diagnostics_) {
+    diagnostics_->RecordExceptionCode(exception_code);
+  }
 }
 
 void ModbusDriver::RecordCrcCheck(bool crc_valid) {
-    if (!crc_valid) {
-        driver_statistics_.IncrementProtocolCounter("crc_errors");
-    }
-    
-    if (diagnostics_) {
-        diagnostics_->RecordCrcCheck(crc_valid);
-    }
+  if (!crc_valid) {
+    driver_statistics_.IncrementProtocolCounter("crc_errors");
+  }
+
+  if (diagnostics_) {
+    diagnostics_->RecordCrcCheck(crc_valid);
+  }
 }
 
 void ModbusDriver::RecordResponseTime(int slave_id, uint32_t response_time_ms) {
-    if (diagnostics_) {
-        diagnostics_->RecordResponseTime(slave_id, response_time_ms);
-    }
+  if (diagnostics_) {
+    diagnostics_->RecordResponseTime(slave_id, response_time_ms);
+  }
 }
 
-void ModbusDriver::RecordRegisterAccess(uint16_t address, bool is_read, bool is_write) {
-    if (diagnostics_) {
-        diagnostics_->RecordRegisterAccess(address, is_read, is_write);
-    }
+void ModbusDriver::RecordRegisterAccess(uint16_t address, bool is_read,
+                                        bool is_write) {
+  if (diagnostics_) {
+    diagnostics_->RecordRegisterAccess(address, is_read, is_write);
+  }
 }
 
-void ModbusDriver::RecordSlaveRequest(int slave_id, bool success, uint32_t response_time_ms) {
-    if (diagnostics_) {
-        diagnostics_->RecordSlaveRequest(slave_id, success, response_time_ms);
-    }
+void ModbusDriver::RecordSlaveRequest(int slave_id, bool success,
+                                      uint32_t response_time_ms) {
+  if (diagnostics_) {
+    diagnostics_->RecordSlaveRequest(slave_id, success, response_time_ms);
+  }
 }
 
-bool ModbusDriver::PerformReadWithConnectionPool(const std::vector<Structs::DataPoint>& points,
-                                                 std::vector<Structs::TimestampedValue>& values) {
-    if (connection_pool_) {
-        return connection_pool_->PerformBatchRead(points, values);
-    }
-    
-    // 풀이 없으면 일반 방식으로 fallback
-    return ReadValues(points, values);
+bool ModbusDriver::PerformReadWithConnectionPool(
+    const std::vector<Structs::DataPoint> &points,
+    std::vector<Structs::TimestampedValue> &values) {
+  if (connection_pool_) {
+    return connection_pool_->PerformBatchRead(points, values);
+  }
+
+  // 풀이 없으면 일반 방식으로 fallback
+  return ReadValues(points, values);
 }
 
-bool ModbusDriver::PerformWriteWithConnectionPool(const Structs::DataPoint& point,
-                                                  const Structs::DataValue& value) {
-    if (connection_pool_) {
-        return connection_pool_->PerformWrite(point, value);
-    }
-    
-    // 풀이 없으면 일반 방식으로 fallback
-    return WriteValue(point, value);
+bool ModbusDriver::PerformWriteWithConnectionPool(
+    const Structs::DataPoint &point, const Structs::DataValue &value) {
+  if (connection_pool_) {
+    return connection_pool_->PerformWrite(point, value);
+  }
+
+  // 풀이 없으면 일반 방식으로 fallback
+  return WriteValue(point, value);
 }
 
 bool ModbusDriver::SwitchToBackupEndpoint() {
-    if (failover_) {
-        return failover_->SwitchToBackup();
-    }
-    
-    return false;
+  if (failover_) {
+    return failover_->SwitchToBackup();
+  }
+
+  return false;
 }
 
 bool ModbusDriver::CheckPrimaryEndpointRecovery() {
-    if (failover_) {
-        return failover_->CheckPrimaryRecovery();
-    }
-    
-    return false;
+  if (failover_) {
+    return failover_->CheckPrimaryRecovery();
+  }
+
+  return false;
 }
 
 // =============================================================================
 // 나머지 고급 기능 스텁들 (향후 구현 예정)
 // =============================================================================
 
-bool ModbusDriver::EnableFailover(int failure_threshold, int recovery_check_interval) {
-    (void)failure_threshold;
-    (void)recovery_check_interval;
-    return false;
+bool ModbusDriver::EnableFailover(int failure_threshold,
+                                  int recovery_check_interval) {
+  (void)failure_threshold;
+  (void)recovery_check_interval;
+  return false;
 }
 
-void ModbusDriver::DisableFailover() {
-    failover_.reset();
+void ModbusDriver::DisableFailover() { failover_.reset(); }
+
+bool ModbusDriver::IsFailoverEnabled() const { return failover_ != nullptr; }
+
+bool ModbusDriver::AddBackupEndpoint(const std::string &endpoint) {
+  if (failover_) {
+    return failover_->AddBackupEndpoint(endpoint);
+  }
+  return false;
 }
 
-bool ModbusDriver::IsFailoverEnabled() const {
-    return failover_ != nullptr;
-}
-
-bool ModbusDriver::AddBackupEndpoint(const std::string& endpoint) {
-    if (failover_) {
-        return failover_->AddBackupEndpoint(endpoint);
-    }
-    return false;
-}
-
-void ModbusDriver::RemoveBackupEndpoint(const std::string& endpoint) {
-    if (failover_) {
-        failover_->RemoveBackupEndpoint(endpoint);
-    }
+void ModbusDriver::RemoveBackupEndpoint(const std::string &endpoint) {
+  if (failover_) {
+    failover_->RemoveBackupEndpoint(endpoint);
+  }
 }
 
 std::vector<std::string> ModbusDriver::GetActiveEndpoints() const {
-    if (failover_) {
-        return failover_->GetActiveEndpoints();
-    }
-    return {config_.endpoint};
+  if (failover_) {
+    return failover_->GetActiveEndpoints();
+  }
+  return {config_.endpoint};
 }
 
-bool ModbusDriver::EnablePerformanceMode() {
-    return false;
-}
+bool ModbusDriver::EnablePerformanceMode() { return false; }
 
-void ModbusDriver::DisablePerformanceMode() {
-    performance_.reset();
-}
+void ModbusDriver::DisablePerformanceMode() { performance_.reset(); }
 
 bool ModbusDriver::IsPerformanceModeEnabled() const {
-    return performance_ != nullptr;
+  return performance_ != nullptr;
 }
 
 void ModbusDriver::SetReadBatchSize(size_t batch_size) {
-    if (performance_) {
-        performance_->SetReadBatchSize(batch_size);
-    }
+  if (performance_) {
+    performance_->SetReadBatchSize(batch_size);
+  }
 }
 
 void ModbusDriver::SetWriteBatchSize(size_t batch_size) {
-    if (performance_) {
-        performance_->SetWriteBatchSize(batch_size);
-    }
+  if (performance_) {
+    performance_->SetWriteBatchSize(batch_size);
+  }
 }
 
 int ModbusDriver::TestConnectionQuality() {
-    if (performance_) {
-        return performance_->TestConnectionQuality();
-    }
-    return -1;
+  if (performance_) {
+    return performance_->TestConnectionQuality();
+  }
+  return -1;
 }
 
 bool ModbusDriver::StartRealtimeMonitoring(int interval_seconds) {
-    if (performance_) {
-        return performance_->StartRealtimeMonitoring(interval_seconds);
-    }
-    return false;
+  if (performance_) {
+    return performance_->StartRealtimeMonitoring(interval_seconds);
+  }
+  return false;
 }
 
 void ModbusDriver::StopRealtimeMonitoring() {
-    if (performance_) {
-        performance_->StopRealtimeMonitoring();
-    }
+  if (performance_) {
+    performance_->StopRealtimeMonitoring();
+  }
 }
 
+// Core Modbus methods - REMOVED (implemented earlier)
+// ErrorInfo ModbusDriver::GetLastError() const { return ErrorInfo(); }
+// ... duplicate stubs removed ...
 
-    // Core Modbus methods - REMOVED (implemented earlier)
-    // ErrorInfo ModbusDriver::GetLastError() const { return ErrorInfo(); }
-    // ... duplicate stubs removed ...
-    
+Structs::DataValue
+ModbusDriver::ExtractValueFromBuffer(const std::vector<uint16_t> &buffer,
+                                     size_t offset,
+                                     const Structs::DataPoint &point) {
+  if (offset >= buffer.size())
+    return Structs::DataValue{};
 
-Structs::DataValue ModbusDriver::ExtractValueFromBuffer(const std::vector<uint16_t>& buffer, size_t offset, const Structs::DataPoint& point) {
-    if (offset >= buffer.size()) return Structs::DataValue{};
+  // Byte Order
+  std::string byte_order = "big_endian";
+  if (config_.properties.count("byte_order"))
+    byte_order = config_.properties.at("byte_order");
+  if (point.protocol_params.count("byte_order"))
+    byte_order = point.protocol_params.at("byte_order");
 
-    // Byte Order
-    std::string byte_order = "big_endian";
-    if (config_.properties.count("byte_order")) byte_order = config_.properties.at("byte_order");
-    if (point.protocol_params.count("byte_order")) byte_order = point.protocol_params.at("byte_order");
+  // 2-Register Types (32-bit)
+  if (point.data_type == "FLOAT32" || point.data_type == "INT32" ||
+      point.data_type == "UINT32") {
+    if (offset + 1 >= buffer.size())
+      return Structs::DataValue{};
 
-    // 2-Register Types (32-bit)
-    if (point.data_type == "FLOAT32" || point.data_type == "INT32" || point.data_type == "UINT32") {
-        if (offset + 1 >= buffer.size()) return Structs::DataValue{};
-        
-        uint32_t combined;
-        // Handle swap
-        if (byte_order == "swapped" || byte_order == "big_endian_swapped" || byte_order == "little_endian") {
-            combined = (static_cast<uint32_t>(buffer[offset + 1]) << 16) | buffer[offset];
-        } else {
-            combined = (static_cast<uint32_t>(buffer[offset]) << 16) | buffer[offset + 1];
-        }
-
-        if (point.data_type == "FLOAT32") {
-            float f; std::memcpy(&f, &combined, sizeof(f));
-            return static_cast<double>(f);
-        } else if (point.data_type == "INT32") {
-            return static_cast<double>(static_cast<int32_t>(combined));
-        } else { // UINT32
-            return static_cast<double>(combined);
-        }
-    } 
-    // 1-Register Types
-    else {
-        uint16_t reg = buffer[offset];
-        // INT16 check
-        if (point.data_type == "INT16") {
-            return static_cast<double>(static_cast<int16_t>(reg));
-        }
-        return static_cast<double>(reg);
+    uint32_t combined;
+    // Handle swap
+    if (byte_order == "swapped" || byte_order == "big_endian_swapped" ||
+        byte_order == "little_endian") {
+      combined =
+          (static_cast<uint32_t>(buffer[offset + 1]) << 16) | buffer[offset];
+    } else {
+      combined =
+          (static_cast<uint32_t>(buffer[offset]) << 16) | buffer[offset + 1];
     }
+
+    if (point.data_type == "FLOAT32") {
+      float f;
+      std::memcpy(&f, &combined, sizeof(f));
+      return static_cast<double>(f);
+    } else if (point.data_type == "INT32") {
+      return static_cast<double>(static_cast<int32_t>(combined));
+    } else { // UINT32
+      return static_cast<double>(combined);
+    }
+  }
+  uint16_t reg = buffer[offset];
+
+  double scaled_value;
+  // INT16 check
+  if (point.data_type == "INT16") {
+    scaled_value = static_cast<double>(static_cast<int16_t>(reg));
+  } else {
+    scaled_value = static_cast<double>(reg);
+  }
+
+  // 🔥 Apply Scaling
+  return scaled_value * point.scaling_factor + point.scaling_offset;
 }
-    
-    // Advanced feature stubs - REMOVED (implemented in helper classes)
-    
+
+// Advanced feature stubs - REMOVED (implemented in helper classes)
+
 } // namespace Drivers
 } // namespace PulseOne
 
@@ -1455,22 +1596,22 @@ Structs::DataValue ModbusDriver::ExtractValueFromBuffer(const std::vector<uint16
 // =============================================================================
 #ifndef TEST_BUILD
 extern "C" {
-    void RegisterModbusDriver() {
-        // 일반 MODBUS 드라이버 등록 (설정에 따라 TCP/RTU 결정)
-        PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver("MODBUS", []() {
-            return std::make_unique<PulseOne::Drivers::ModbusDriver>();
-        });
+void RegisterModbusDriver() {
+  // 일반 MODBUS 드라이버 등록 (설정에 따라 TCP/RTU 결정)
+  PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
+      "MODBUS",
+      []() { return std::make_unique<PulseOne::Drivers::ModbusDriver>(); });
 
-        // TCP 드라이버 등록
-        PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver("MODBUS_TCP", []() {
-            return std::make_unique<PulseOne::Drivers::ModbusDriver>();
-        });
-        
-        // RTU 드라이버 등록
-        PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver("MODBUS_RTU", []() {
-            return std::make_unique<PulseOne::Drivers::ModbusDriver>();
-        });
-        std::cout << "[ModbusDriver] Plugin Registered Successfully" << std::endl;
-    }
+  // TCP 드라이버 등록
+  PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
+      "MODBUS_TCP",
+      []() { return std::make_unique<PulseOne::Drivers::ModbusDriver>(); });
+
+  // RTU 드라이버 등록
+  PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
+      "MODBUS_RTU",
+      []() { return std::make_unique<PulseOne::Drivers::ModbusDriver>(); });
+  std::cout << "[ModbusDriver] Plugin Registered Successfully" << std::endl;
+}
 }
 #endif

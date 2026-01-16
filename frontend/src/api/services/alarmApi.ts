@@ -4,16 +4,16 @@ import { ENDPOINTS } from '../endpoints';
 export interface AlarmRule {
   id: number;
   tenant_id: number;
-  
+
   // 기본 정보
   name: string;
   description?: string;
-  
+
   // 타겟 정보 (실제 스키마)
   target_type: string;          // 'data_point', 'device', 'virtual_point'
   target_id?: number;
   target_group?: string;
-  
+
   // JOIN으로 가져오는 정보들
   device_name?: string;
   device_type?: string;
@@ -22,24 +22,24 @@ export interface AlarmRule {
   site_name?: string;
   site_location?: string;
   site_description?: string;
-  
+
   data_point_name?: string;
   data_point_description?: string;
   unit?: string;
   data_type?: string;
-  
+
   virtual_point_name?: string;
   virtual_point_description?: string;
   calculation_formula?: string;
-  
+
   target_display?: string;      // 백엔드에서 계산된 필드
   condition_display?: string;   // 백엔드에서 계산된 필드
-  
+
   // 알람 타입 및 조건 (실제 스키마)
   alarm_type: string;           // 'analog', 'digital', 'script'
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
   priority?: number;
-  
+
   // 개별 임계값들 (실제 스키마)
   high_high_limit?: number;
   high_limit?: number;
@@ -47,50 +47,50 @@ export interface AlarmRule {
   low_low_limit?: number;
   deadband?: number;
   rate_of_change?: number;
-  
+
   // 디지털 알람 조건
   trigger_condition?: string;
-  
+
   // 스크립트 관련
   condition_script?: string;
   message_script?: string;
-  
+
   // 메시지 관련
   message_config?: any;
   message_template?: string;
-  
+
   // 동작 설정들
   auto_acknowledge?: boolean;
   acknowledge_timeout_min?: number;
   auto_clear?: boolean;
   suppression_rules?: any;
-  
+
   // 알림 설정들
   notification_enabled?: boolean;
   notification_delay_sec?: number;
   notification_repeat_interval_min?: number;
   notification_channels?: any;
   notification_recipients?: any;
-  
+
   // 상태 및 제어
   is_enabled: boolean;
   is_latched?: boolean;
-  
+
   // 템플릿 관련
   template_id?: number;
   rule_group?: string;
   created_by_template?: boolean;
   last_template_update?: string;
-  
+
   // 고급 기능 - 에스컬레이션 추가
   escalation_enabled?: boolean;
   escalation_max_level?: number;
   escalation_rules?: any;
-  
+
   // 카테고리 및 태그 (새로 추가)
   category?: string;
   tags?: any[];
-  
+
   // 메타데이터
   created_by?: number;
   created_at: string;
@@ -101,13 +101,13 @@ export interface AlarmOccurrence {
   id: number;
   rule_id: number;
   tenant_id: number;
-  
+
   // 규칙 정보
   rule_name?: string;
   rule_severity?: string;
   target_type?: string;
   target_id?: number;
-  
+
   // 대상 정보 (백엔드 실제 컬럼명)
   device_id?: number;
   point_id?: number;  // data_point_id 대신 point_id 사용
@@ -115,7 +115,7 @@ export interface AlarmOccurrence {
   data_point_name?: string;
   virtual_point_name?: string;
   site_location?: string;
-  
+
   // 발생 정보
   occurrence_time: string;
   trigger_value?: string;
@@ -123,32 +123,37 @@ export interface AlarmOccurrence {
   alarm_message: string;
   severity: string;
   state: 'active' | 'acknowledged' | 'cleared';
-  
+
   // 확인 정보 (백엔드 실제 컬럼명)
   acknowledged_time?: string;
   acknowledged_by?: number;
+  acknowledged_by_name?: string;
+  acknowledged_by_company?: string;
   acknowledge_comment?: string;
-  
+
   // 해제 정보 (백엔드 실제 컬럼명)
   cleared_time?: string;
   cleared_value?: string;
+  cleared_by?: number | string;
+  cleared_by_name?: string;
+  cleared_by_company?: string;
   clear_comment?: string;
-  
+
   // 알림 정보
   notification_sent?: boolean;
   notification_time?: string;
   notification_count?: number;
   notification_result?: any;
-  
+
   // 컨텍스트 정보
   context_data?: any;
   source_name?: string;
   location?: string;
-  
+
   // 카테고리 및 태그 (새로 추가)
   category?: string;
   tags?: any[];
-  
+
   // 메타데이터
   created_at: string;
   updated_at: string;
@@ -175,10 +180,10 @@ export interface AlarmTemplate {
   usage_count: number;
   is_active: boolean;
   is_system_template?: boolean;
-  
+
   // 태그 (새로 추가)
   tags?: any[];
-  
+
   created_by?: number;
   created_at: string;
   updated_at: string;
@@ -192,9 +197,9 @@ export interface AlarmStatistics {
     unacknowledged_alarms: number;
     acknowledged_alarms: number;
     cleared_alarms: number;
-    by_category?: Array<{category: string; count: number; active_count: number}>; // 새로 추가
+    by_category?: Array<{ category: string; count: number; active_count: number }>; // 새로 추가
   };
-  
+
   // 규칙 통계
   rules: {
     total_rules: number;
@@ -204,9 +209,9 @@ export interface AlarmStatistics {
     target_types: number;
     categories: number;  // 새로 추가
     rules_with_tags: number;  // 새로 추가
-    by_category?: Array<{category: string; count: number; enabled_count: number}>; // 새로 추가
+    by_category?: Array<{ category: string; count: number; enabled_count: number }>; // 새로 추가
   };
-  
+
   // 대시보드 요약
   dashboard_summary: {
     total_active: number;
@@ -226,7 +231,7 @@ export interface AlarmRuleCreateData {
   target_id?: number;
   target_group?: string;
   alarm_type: string;
-  
+
   // 개별 임계값들
   high_high_limit?: number;
   high_limit?: number;
@@ -234,46 +239,46 @@ export interface AlarmRuleCreateData {
   low_low_limit?: number;
   deadband?: number;
   rate_of_change?: number;
-  
+
   trigger_condition?: string;
   condition_script?: string;
   message_script?: string;
   message_config?: any;
   message_template?: string;
-  
+
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
   priority?: number;
-  
+
   auto_acknowledge?: boolean;
   acknowledge_timeout_min?: number;
   auto_clear?: boolean;
   suppression_rules?: any;
-  
+
   notification_enabled?: boolean;
   notification_delay_sec?: number;
   notification_repeat_interval_min?: number;
   notification_channels?: any;
   notification_recipients?: any;
-  
+
   is_enabled?: boolean;
   is_latched?: boolean;
-  
+
   template_id?: number;
   rule_group?: string;
   created_by_template?: boolean;
   last_template_update?: string;
-  
+
   // 에스컬레이션 관련 (새로 추가)
   escalation_enabled?: boolean;
   escalation_max_level?: number;
   escalation_rules?: any;
-  
+
   // 카테고리 및 태그 (새로 추가)
   category?: string;
   tags?: any[];
 }
 
-export interface AlarmRuleUpdateData extends Partial<AlarmRuleCreateData> {}
+export interface AlarmRuleUpdateData extends Partial<AlarmRuleCreateData> { }
 
 // 간단한 설정 업데이트 인터페이스 (NEW!)
 export interface AlarmRuleSettingsUpdate {
@@ -302,7 +307,7 @@ export interface AlarmTemplateCreateData {
   auto_clear?: boolean;
   is_active?: boolean;
   is_system_template?: boolean;
-  
+
   // 태그 (새로 추가)
   tags?: any[];
 }
@@ -359,7 +364,7 @@ class HttpClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     try {
       console.log(`API 요청: ${options.method || 'GET'} ${endpoint}`);
-      
+
       const response = await fetch(endpoint, {
         headers: {
           'Content-Type': 'application/json',
@@ -369,7 +374,7 @@ class HttpClient {
       });
 
       const responseText = await response.text();
-      
+
       if (!responseText || responseText.trim() === '') {
         console.warn('빈 응답 수신');
         return {
@@ -386,7 +391,7 @@ class HttpClient {
         data = JSON.parse(responseText);
       } catch (parseError) {
         console.error('JSON 파싱 실패:', parseError);
-        
+
         if (responseText.includes('<html>') || responseText.includes('<!DOCTYPE')) {
           return {
             success: false,
@@ -396,7 +401,7 @@ class HttpClient {
             timestamp: new Date().toISOString()
           };
         }
-        
+
         return {
           success: false,
           data: null,
@@ -405,7 +410,7 @@ class HttpClient {
           timestamp: new Date().toISOString()
         };
       }
-      
+
       if (!response.ok) {
         console.error(`HTTP 에러 ${response.status}:`, data);
         return {
@@ -433,7 +438,7 @@ class HttpClient {
 
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
     const queryParams = new URLSearchParams();
-    
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -441,10 +446,10 @@ class HttpClient {
         }
       });
     }
-    
-    const url = params && queryParams.toString() ? 
+
+    const url = params && queryParams.toString() ?
       `${endpoint}?${queryParams.toString()}` : endpoint;
-    
+
     return this.request<T>(url, { method: 'GET' });
   }
 
@@ -490,10 +495,10 @@ export class AlarmApiService {
     is_enabled: boolean;
   }>> {
     console.log(`알람 규칙 ${id} 토글: ${isEnabled ? '활성화' : '비활성화'}`);
-    
+
     const url = ENDPOINTS.ALARM_RULE_TOGGLE(id);
     console.log('생성된 토글 URL:', url);
-    
+
     return this.httpClient.patch(url, {
       is_enabled: isEnabled
     });
@@ -534,12 +539,12 @@ export class AlarmApiService {
   static async getActiveAlarms(params?: AlarmListParams): Promise<ApiResponse<PaginatedResponse<AlarmOccurrence>>> {
     try {
       console.log('활성 알람 목록 조회:', params);
-      
+
       const response = await this.httpClient.get<PaginatedResponse<AlarmOccurrence>>(
-        ENDPOINTS.ALARMS_ACTIVE, 
+        ENDPOINTS.ALARMS_ACTIVE,
         params
       );
-      
+
       return response;
     } catch (error) {
       console.error('활성 알람 조회 실패:', error);
@@ -581,7 +586,7 @@ export class AlarmApiService {
   static async getAlarmRules(params?: AlarmListParams): Promise<ApiResponse<PaginatedResponse<AlarmRule>>> {
     try {
       console.log('알람 규칙 목록 조회:', params);
-      
+
       // 백엔드 파라미터 매핑
       const backendParams: any = {};
       if (params?.page) backendParams.page = params.page;
@@ -595,12 +600,12 @@ export class AlarmApiService {
       if (params?.device_id) backendParams.device_id = params.device_id;
       if (params?.category) backendParams.category = params.category;
       if (params?.tag) backendParams.tag = params.tag;
-      
+
       const response = await this.httpClient.get<PaginatedResponse<AlarmRule>>(
-        ENDPOINTS.ALARM_RULES, 
+        ENDPOINTS.ALARM_RULES,
         backendParams
       );
-      
+
       return response;
     } catch (error) {
       console.error('알람 규칙 조회 실패:', error);
@@ -702,7 +707,7 @@ export class AlarmApiService {
   static async getAlarmTemplate(id: number): Promise<ApiResponse<AlarmTemplate>> {
     console.log('알람 템플릿 상세 조회:', id);
     const response = await this.httpClient.get<AlarmTemplate>(ENDPOINTS.ALARM_TEMPLATE_BY_ID(id));
-    
+
     if (response.success && response.data) {
       // JSON 필드 파싱
       if (typeof response.data.default_config === 'string') {
@@ -718,7 +723,7 @@ export class AlarmApiService {
         response.data.tags = JSON.parse(response.data.tags);
       }
     }
-    
+
     return response;
   }
 
@@ -759,7 +764,7 @@ export class AlarmApiService {
   }
 
   static async applyTemplate(
-    templateId: number, 
+    templateId: number,
     data: {
       target_ids: number[];  // data_point_ids에서 변경
       target_type?: string;  // 새로 추가
@@ -797,11 +802,11 @@ export class AlarmApiService {
     return this.httpClient.patch<AlarmRule>(ENDPOINTS.ALARM_RULE_SETTINGS(id), settings);
   }
 
-  // API 테스트
-  static async testAlarmApi(): Promise<ApiResponse<any>> {
-    console.log('알람 API 테스트');
-    return this.httpClient.get<any>(ENDPOINTS.ALARM_TEST);
-  }
+  // ========================================================================
+  // 🛠️ 유틸리티 메서드 (UI 지원)
+  // ========================================================================
+
+
 
   // ========================================================================
   // 🔧 유틸리티 메서드들 (기존 유지)
@@ -851,7 +856,7 @@ export class AlarmApiService {
     const start = new Date(startTime).getTime();
     const end = endTime ? new Date(endTime).getTime() : Date.now();
     const durationMs = end - start;
-    
+
     const seconds = Math.floor(durationMs / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -870,7 +875,7 @@ export class AlarmApiService {
 
   // 필터링 및 정렬 - category, tag 지원
   static filterAlarms(
-    alarms: AlarmOccurrence[], 
+    alarms: AlarmOccurrence[],
     filters: {
       search?: string;
       severity?: string;
@@ -883,13 +888,13 @@ export class AlarmApiService {
     return alarms.filter(alarm => {
       if (filters.search) {
         const search = filters.search.toLowerCase();
-        const matchesSearch = 
+        const matchesSearch =
           alarm.rule_name?.toLowerCase().includes(search) ||
           alarm.alarm_message.toLowerCase().includes(search) ||
           alarm.device_name?.toLowerCase().includes(search) ||
           alarm.data_point_name?.toLowerCase().includes(search) ||
           alarm.category?.toLowerCase().includes(search);
-        
+
         if (!matchesSearch) return false;
       }
 
@@ -911,7 +916,7 @@ export class AlarmApiService {
 
       if (filters.tag) {
         if (!alarm.tags || !Array.isArray(alarm.tags)) return false;
-        const hasTag = alarm.tags.some(tag => 
+        const hasTag = alarm.tags.some(tag =>
           String(tag).toLowerCase().includes(filters.tag!.toLowerCase())
         );
         if (!hasTag) return false;
@@ -922,7 +927,7 @@ export class AlarmApiService {
   }
 
   static sortAlarms(
-    alarms: AlarmOccurrence[], 
+    alarms: AlarmOccurrence[],
     sortBy: keyof AlarmOccurrence = 'occurrence_time',
     sortOrder: 'ASC' | 'DESC' = 'DESC'
   ): AlarmOccurrence[] {
@@ -935,8 +940,8 @@ export class AlarmApiService {
           break;
         case 'severity':
           const severityOrder = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
-          comparison = (severityOrder[a.severity as keyof typeof severityOrder] || 0) - 
-                      (severityOrder[b.severity as keyof typeof severityOrder] || 0);
+          comparison = (severityOrder[a.severity as keyof typeof severityOrder] || 0) -
+            (severityOrder[b.severity as keyof typeof severityOrder] || 0);
           break;
         case 'rule_name':
           comparison = (a.rule_name || '').localeCompare(b.rule_name || '');

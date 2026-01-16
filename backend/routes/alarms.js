@@ -57,7 +57,7 @@ router.get('/active', async (req, res) => {
     try {
         const filters = {
             tenantId: req.tenantId,
-            state: 'active',
+            state: req.query.state || ['active', 'acknowledged', 'ACTIVE', 'ACKNOWLEDGED'],
             page: parseInt(req.query.page) || 1,
             limit: parseInt(req.query.limit) || 50,
             severity: req.query.severity,

@@ -10,10 +10,10 @@ class TimeSeriesManager {
         // ConfigManager에서 설정 로드
         this.influxEnabled = config.getBoolean('USE_INFLUXDB', true);
         this.redisEnabled = config.getBoolean('REDIS_PRIMARY_ENABLED', true);
-        
+
         this.influxDB = null;
         this.redisClient = null;
-        
+
         console.log(`📋 TimeSeries 설정:
    InfluxDB 사용: ${this.influxEnabled}
    Redis 사용: ${this.redisEnabled}`);
@@ -24,14 +24,14 @@ class TimeSeriesManager {
             // InfluxDB 초기화
             if (this.influxEnabled) {
                 const { InfluxDB } = require('@influxdata/influxdb-client');
-                
+
                 const host = config.get('INFLUXDB_HOST', 'localhost');
                 const port = config.get('INFLUXDB_PORT', '8086');
                 const url = host.includes('http') ? host : `http://${host}:${port}`;
                 const token = config.get('INFLUXDB_TOKEN', 'mytoken');
                 const org = config.get('INFLUXDB_ORG', 'pulseone');
                 const bucket = config.get('INFLUXDB_BUCKET', 'metrics');
-                
+
                 this.influxDB = {
                     client: new InfluxDB({ url, token }),
                     org,
@@ -39,10 +39,10 @@ class TimeSeriesManager {
                     writeApi: null,
                     queryApi: null
                 };
-                
+
                 this.influxDB.writeApi = this.influxDB.client.getWriteApi(org, bucket);
                 this.influxDB.queryApi = this.influxDB.client.getQueryApi(org);
-                
+
                 console.log('✅ InfluxDB TimeSeries 초기화 성공');
             }
 
@@ -75,14 +75,14 @@ class TimeSeriesManager {
             try {
                 const { Point } = require('@influxdata/influxdb-client');
                 const point = new Point(measurement);
-                
+
                 // tags 추가
                 if (tags) {
                     Object.entries(tags).forEach(([key, value]) => {
                         point.tag(key, value);
                     });
                 }
-                
+
                 // fields 추가
                 if (fields) {
                     Object.entries(fields).forEach(([key, value]) => {
@@ -95,15 +95,15 @@ class TimeSeriesManager {
                         }
                     });
                 }
-                
+
                 // timestamp 추가
                 if (timestamp) {
                     point.timestamp(new Date(timestamp));
                 }
-                
+
                 this.influxDB.writeApi.writePoint(point);
                 results.influx = true;
-                
+
             } catch (error) {
                 console.error('❌ InfluxDB 쓰기 실패:', error.message);
             }
@@ -119,11 +119,11 @@ class TimeSeriesManager {
                     fields,
                     timestamp: timestamp || new Date().toISOString()
                 };
-                
+
                 // 5분간 캐시
                 await this.redisClient.setEx(cacheKey, 300, JSON.stringify(cacheData));
                 results.redis = true;
-                
+
             } catch (error) {
                 console.error('❌ Redis 캐시 쓰기 실패:', error.message);
             }
@@ -141,17 +141,7 @@ class TimeSeriesManager {
         }
 
         try {
-            const results = [];
-            await this.influxDB.queryApi.queryRows(fluxQuery, {
-                next(row, tableMeta) {
-                    const o = tableMeta.toObject(row);
-                    results.push(o);
-                },
-                error(error) {
-                    console.error('❌ InfluxDB 쿼리 오류:', error);
-                }
-            });
-            return results;
+            return await this.influxDB.queryApi.collectRows(fluxQuery);
         } catch (error) {
             console.error('❌ InfluxDB 쿼리 실패:', error.message);
             return [];
@@ -169,7 +159,7 @@ class TimeSeriesManager {
         try {
             const cacheKey = `timeseries:${measurement}:${Object.values(tags).join(':')}`;
             const cached = await this.redisClient.get(cacheKey);
-            
+
             if (cached) {
                 return JSON.parse(cached);
             }
@@ -191,7 +181,7 @@ class TimeSeriesManager {
                 |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
                 |> yield(name: "mean")
         `;
-        
+
         return await this.queryData(fluxQuery);
     }
 

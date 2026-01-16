@@ -115,13 +115,19 @@ class DeviceService extends BaseService {
                 active_devices: allDevices.filter(d => d.is_enabled === 1).length
             };
 
-            // 5. 최종 구조 반환 (프론트엔드 DataExplorer.tsx의 기대 형식에 맞춤)
-            const rootLabel = isSystemAdmin ? 'System Overview' : (relevantTenants[0]?.company_name || relevantTenants[0]?.name || 'PulseOne Factory');
+            // 5. 최종 구조 반환
+            // 시스템 관리자가 아니면 테넌트 노드를 루트로 사용하도록 변경 (중첩 방지)
+            if (!isSystemAdmin && tenantNodes.length > 0) {
+                return {
+                    tree: tenantNodes[0],
+                    statistics: stats
+                };
+            }
 
             return {
                 tree: {
                     id: 'root-system',
-                    label: rootLabel,
+                    label: isSystemAdmin ? 'System Overview' : 'PulseOne Factory',
                     type: 'tenant',
                     level: 0,
                     children: tenantNodes
@@ -135,10 +141,10 @@ class DeviceService extends BaseService {
         // Site별로 그룹화
         const sitesMap = new Map();
 
-        // 모든 수집기를 Site에 먼저 배치
-        collectors.forEach(collector => {
-            const siteId = collector.site_id || 0;
-            const siteName = collector.site_name || 'Unassigned Site';
+        // 디바이스를 Site 하위로 직접 배치 (수집기 레이어 제거)
+        devices.forEach(device => {
+            const siteId = device.site_id || 0;
+            const siteName = device.site_name || 'Unassigned Site';
 
             if (!sitesMap.has(siteId)) {
                 sitesMap.set(siteId, {
@@ -151,65 +157,29 @@ class DeviceService extends BaseService {
             }
 
             const siteNode = sitesMap.get(siteId);
-            siteNode.children.push({
-                id: `collector-${collector.id}`,
-                label: collector.name,
-                type: 'device', // DataExplorer에서 'device' 타입이 아이콘 표시됨 (추후 프론트에서 타입 확장 예정)
-                level: 2,
-                collector_info: collector,
-                children: []
-            });
+
+            // 이미 추가되었는지 확인 (중복 방지)
+            const deviceNodeId = `dev-${device.id}`;
+            if (!siteNode.children.find(d => d.id === deviceNodeId)) {
+                siteNode.children.push({
+                    id: deviceNodeId,
+                    label: device.name,
+                    type: 'master', // RTU 등 구분 위해 'master' 타입 사용
+                    level: 2, // Site(1) -> Device(2)
+                    device_info: {
+                        device_id: device.id.toString(),
+                        device_name: device.name,
+                        device_type: device.device_type,
+                        protocol_type: device.protocol_type,
+                        status: device.connection_status,
+                        is_enabled: device.is_enabled
+                    },
+                    children: []
+                });
+            }
         });
 
-        // 디바이스를 수집기 하위로 배치
-        devices.forEach(device => {
-            const siteId = device.site_id || 0;
-            const collectorId = device.edge_server_id;
-
-            let siteNode = sitesMap.get(siteId);
-            if (!siteNode) {
-                // 사이트가 없으면 생성 (수집기 없는 사이트의 디바이스 대비)
-                siteNode = {
-                    id: `site-${siteId}`,
-                    label: device.site_name || 'Unassigned Site',
-                    type: 'site',
-                    level: 1,
-                    children: []
-                };
-                sitesMap.set(siteId, siteNode);
-            }
-
-            // 수집기 노드 찾기
-            let collectorNode = siteNode.children.find(c => c.id === `collector-${collectorId}`);
-
-            if (!collectorNode) {
-                // 수집기 정보가 DB에 없거나 비정상적인 경우 'Unknown Collector' 생성
-                collectorNode = {
-                    id: `collector-${collectorId || 'unknown'}`,
-                    label: collectorId ? `Collector ${collectorId}` : 'Unassigned Collector',
-                    type: 'device',
-                    level: 2,
-                    children: []
-                };
-                siteNode.children.push(collectorNode);
-            }
-
-            collectorNode.children.push({
-                id: `dev-${device.id}`,
-                label: device.name,
-                type: 'master', // RTU 등 구분 위해 'master' 타입 사용
-                level: 3,
-                device_info: {
-                    device_id: device.id.toString(),
-                    device_name: device.name,
-                    device_type: device.device_type,
-                    protocol_type: device.protocol_type,
-                    status: device.connection_status,
-                    is_enabled: device.is_enabled
-                },
-                children: []
-            });
-        });
+        // 수집기 정보가 필요하다면 (예: 통계용) 별도로 처리할 수 있지만, 트리에서는 제거됨
 
         // 단일 루트 노드(Tenant)로 감싸서 반환
         return {

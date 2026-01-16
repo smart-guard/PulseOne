@@ -1,0 +1,113 @@
+# =============================================================================
+# Antigravity Ignore List
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Database Files
+# -----------------------------------------------------------------------------
+# Most DB files are large or binary, but the core DB is needed.
+*.db
+*.sqlite
+*.sqlite3
+data/db/
+data/backup/
+data/temp/
+*.db-journal
+*.db-wal
+*.db-shm
+*.sql.backup
+*_backup_*.db
+*.dump
+test_*.db
+*_test.db
+
+# [EXCEPTION] Explicitly allow the core database
+!data/db/pulseone.db
+
+# -----------------------------------------------------------------------------
+# Temporary & Debug Files (Root)
+# -----------------------------------------------------------------------------
+curl_output.json
+sim_pids.txt
+collector_debug.log
+modbus_sim.log
+mqtt_sim.log
+test_output.log
+test_*.js
+next
+architecture.txt
+configs.txt
+schema.txt
+project-filetree.sh
+temp_fix.sh
+*.backup
+*.bak
+*.tmp
+
+# -----------------------------------------------------------------------------
+# Large Folders & External Dependencies
+# -----------------------------------------------------------------------------
+node_modules/
+dist/
+build/
+.git/
+.vscode/
+.idea/
+.vs/
+
+# -----------------------------------------------------------------------------
+# Build Artifacts & Binaries
+# -----------------------------------------------------------------------------
+core/*/build/
+core/*/bin/
+core/*/lib/
+core/collector/tests/bin/
+Debug/
+Release/
+x64/
+x86/
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.lib
+*.obj
+*.pdb
+*.ilk
+*.d
+
+# -----------------------------------------------------------------------------
+# Logs & Temporary Files
+# -----------------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+/tmp/test_*
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.coverage
+coverage/
+test-results/
+
+# -----------------------------------------------------------------------------
+# OS Specific Files
+# -----------------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# -----------------------------------------------------------------------------
+# Archives & Lock Files
+# -----------------------------------------------------------------------------
+*.tar.gz
+*.zip
+*.rar
+*.7z
+package-lock.json
+yarn.lock

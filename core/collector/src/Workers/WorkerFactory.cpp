@@ -6,11 +6,11 @@
 
 // Worker 구현체들
 #include "Workers/Protocol/BACnetWorker.h"
+#include "Workers/Protocol/BleBeaconWorker.h"
+#include "Workers/Protocol/HttpRestWorker.h"
 #include "Workers/Protocol/MQTTWorker.h"
 #include "Workers/Protocol/ModbusWorker.h"
 #include "Workers/Protocol/OPCUAWorker.h"
-// #include "Workers/Protocol/BleBeaconWorker.h"
-#include "Workers/Protocol/HttpRestWorker.h"
 #include "Workers/Protocol/ROSWorker.h"
 
 // Database
@@ -169,7 +169,7 @@ WorkerFactory::LoadDeviceDataPoints(int device_id) {
 
     // DataPointRepository::getDataPointsWithCurrentValues 사용
     points = datapoint_repo->getDataPointsWithCurrentValues(
-        device_id, true); // enabled_only=true
+        device_id, false); // enabled_only=false - 모든 포인트 로드
 
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("LoadDeviceDataPoints 예외: " +
@@ -253,7 +253,8 @@ std::string WorkerFactory::GetProtocolTypeById(int protocol_id) {
     return "BACNET";
   case 5:
     return "OPC_UA";
-  // case 6: return "BLE_BEACON";
+  case 6:
+    return "BLE_BEACON";
   case 7:
     return "ROS";
   case 8:
@@ -613,10 +614,14 @@ WorkerFactory::LoadProtocolCreators() const {
       return std::make_unique<OPCUAWorker>(info);
     };
 
-    // creators["BLE_BEACON"] = [](const PulseOne::Structs::DeviceInfo& info) ->
-    // std::unique_ptr<BaseDeviceWorker> {
+    // creators["BLE_BEACON"] = [](const PulseOne::Structs::DeviceInfo& info)
+    // -> std::unique_ptr<BaseDeviceWorker> {
     //     return std::make_unique<BleBeaconWorker>(info);
     // };
+    creators["BLE_BEACON"] = [](const PulseOne::Structs::DeviceInfo &info)
+        -> std::unique_ptr<BaseDeviceWorker> {
+      return std::make_unique<BleBeaconWorker>(info);
+    };
 
     creators["HTTP_REST"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {

@@ -413,9 +413,13 @@ class ConfigManager {
      */
     getDatabaseConfig() {
         // SQLite 경로를 플랫폼별로 자동 처리
+        // Default to absolute path based on process.cwd() (project root in non-docker, /app/backend in Docker)
+        // In Docker: /app/backend -> ../data -> /app/data
+        const defaultPath = path.resolve(process.cwd(), '../data/db/pulseone.db');
+
         const sqlitePath = this.getSmartPath('SQLITE_PATH',
             this.get('SQLITE_DB_PATH',
-                this.get('DB_PATH', './data/db/pulseone.db')
+                this.get('DB_PATH', defaultPath)
             )
         );
         const backupPath = this.getSmartPath('SQLITE_BACKUP_PATH', './data/backup');

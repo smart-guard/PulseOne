@@ -816,6 +816,7 @@ CREATE TABLE IF NOT EXISTS data_points (
     -- 🔥 주소 정보 (Struct DataPoint와 완전 일치)
     address INTEGER NOT NULL,                           -- uint32_t address
     address_string VARCHAR(255),                        -- std::string address_string (별칭)
+    mapping_key VARCHAR(255),                           -- std::string mapping_key
     
     -- 🔥 데이터 타입 및 접근성 (Struct DataPoint와 완전 일치)
     data_type VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',   -- std::string data_type
@@ -915,10 +916,11 @@ CREATE TABLE IF NOT EXISTS current_values (
     
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     
-    -- 🔥 제약조건
-    CONSTRAINT chk_value_type CHECK (value_type IN ('bool', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float', 'double', 'string')),
-    CONSTRAINT chk_quality CHECK (quality IN ('good', 'bad', 'uncertain', 'not_connected', 'device_failure', 'sensor_failure', 'comm_failure', 'out_of_service')),
-    CONSTRAINT chk_alarm_state CHECK (alarm_state IN ('normal', 'high', 'low', 'critical', 'warning'))
+    -- 🔥 제약조건 (대소문자 구분 없이 처리하도록 LOWER() 사용 및 FLOAT32/64 추가)
+    CONSTRAINT chk_value_type CHECK (LOWER(value_type) IN ('bool', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float', 'double', 'string', 'float32', 'float64', 'json')),
+    CONSTRAINT chk_quality CHECK (LOWER(quality) IN ('good', 'bad', 'uncertain', 'not_connected', 'device_failure', 'sensor_failure', 'comm_failure', 'out_of_service', 'unknown', 'manual', 'simulated', 'stale')),
+    CONSTRAINT chk_alarm_state CHECK (LOWER(alarm_state) IN ('normal', 'high', 'low', 'critical', 'warning', 'active', 'cleared', 'acknowledged'))
+
 );
 
 -- =============================================================================

@@ -375,6 +375,28 @@ export const MainLayout: React.FC = () => {
             </li>
             <li className="menu-item">
               <Link
+                to="/system/database"
+                className={`menu-link ${isActiveSubMenu('/system/database') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-table"></i>
+                </div>
+                <span className="menu-title">DB 데이터 관리</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link
+                to="/system/config"
+                className={`menu-link ${isActiveSubMenu('/system/config') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-cogs"></i>
+                </div>
+                <span className="menu-title">시스템 설정 편집</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link
                 to="/system/audit-logs"
                 className={`menu-link ${isActiveSubMenu('/system/audit-logs') ? 'active' : ''}`}
               >
