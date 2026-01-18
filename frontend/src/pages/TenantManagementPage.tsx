@@ -193,7 +193,7 @@ const TenantManagementPage: React.FC = () => {
                                             {t.company_name}
                                         </div>
                                     </td>
-                                    <td><code>{t.company_code}</code></td>
+                                    <td><div style={{ fontWeight: '500', color: 'var(--neutral-700)' }}>{t.company_code}</div></td>
                                     <td>{t.domain || '-'}</td>
                                     <td>
                                         <span className={`badge ${t.subscription_plan === 'enterprise' ? 'primary' : 'neutral'}`}>

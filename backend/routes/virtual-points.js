@@ -92,6 +92,7 @@ router.get('/', async (req, res) => {
             category: req.query.category,
             calculation_trigger: req.query.calculation_trigger,
             search: req.query.search,
+            include_deleted: req.query.include_deleted === 'true',
             limit: parseInt(req.query.limit) || 50,
             page: parseInt(req.query.page) || 1
         };
@@ -135,6 +136,19 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
+ * GET /api/virtual-points/:id/logs
+ */
+router.get('/:id/logs', async (req, res) => {
+    try {
+        const result = await VirtualPointService.getHistory(req.params.id, req.tenantId);
+        res.json(result);
+    } catch (error) {
+        const status = error.message.includes('찾을 수 없습니다') ? 404 : 500;
+        res.status(status).json(createResponse(false, null, error.message, 'FETCH_LOGS_ERROR'));
+    }
+});
+
+/**
  * PUT /api/virtual-points/:id
  */
 router.put('/:id', async (req, res) => {
@@ -156,6 +170,18 @@ router.delete('/:id', async (req, res) => {
         res.json(result);
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'DELETE_ERROR'));
+    }
+});
+
+/**
+ * PATCH /api/virtual-points/:id/restore
+ */
+router.patch('/:id/restore', async (req, res) => {
+    try {
+        const result = await VirtualPointService.restore(req.params.id, req.tenantId);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'RESTORE_ERROR'));
     }
 });
 

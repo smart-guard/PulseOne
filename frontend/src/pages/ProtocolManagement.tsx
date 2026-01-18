@@ -294,7 +294,7 @@ const ProtocolManagement: React.FC = () => {
                       </span>
                     </td>
                     <td>
-                      <span style={{ fontFamily: 'monospace', fontWeight: '500' }}>
+                      <span style={{ fontWeight: '500' }}>
                         {protocol.default_port || '-'}
                       </span>
                     </td>

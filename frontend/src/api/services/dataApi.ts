@@ -399,28 +399,35 @@ export class DataApiService {
     });
 
     if (response.success && response.data) {
-      const { items = [], pagination } = response.data;
-
-      return {
-        points: items,
-        totalCount: pagination?.total || items.length,
-        pagination: {
-          page: pagination?.page || 1,
-          limit: pagination?.limit || 1000,
-          hasNext: pagination?.hasNext || false,
-          hasPrev: pagination?.hasPrev || false,
-          total: pagination?.total || items.length,
-          totalPages: pagination?.totalPages || 1
-        },
-        transformationInfo: {
-          types_converted: true,
-          original_count: items.length,
-          filtered_count: items.length
-        }
-      };
-    } else {
-      throw new Error(response.message || 'API 응답 처리 실패');
+      // 1. { data: { items: [], pagination: {} } } 형태 처리
+      if (response.data.items && Array.isArray(response.data.items)) {
+        const { items, pagination } = response.data;
+        return {
+          points: items,
+          totalCount: pagination?.total || items.length,
+          pagination: {
+            page: pagination?.page || 1,
+            limit: pagination?.limit || 1000,
+            hasNext: pagination?.hasNext || false,
+            hasPrev: pagination?.hasPrev || false,
+            total: pagination?.total || items.length,
+            totalPages: pagination?.totalPages || 1
+          }
+        };
+      }
+      // 2. { data: [] } (배열 직접 반환) 형태 처리
+      else if (Array.isArray(response.data)) {
+        return {
+          points: response.data,
+          totalCount: response.data.length,
+          pagination: {
+            page: 1, limit: 1000, hasNext: false, hasPrev: false, total: response.data.length, totalPages: 1
+          }
+        };
+      }
     }
+
+    throw new Error(response.message || 'API 응답 처리 실패');
   }
 
   /**

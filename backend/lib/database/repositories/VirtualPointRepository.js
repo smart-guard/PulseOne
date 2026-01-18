@@ -100,6 +100,13 @@ class VirtualPointRepository extends BaseRepository {
                 });
             }
 
+            // Soft delete filter
+            if (filters.include_deleted || filters.includeDeleted) {
+                query.where('is_deleted', 1);
+            } else {
+                query.where('is_deleted', 0);
+            }
+
             // Pagination
             const limit = parseInt(filters.limit) || 25;
             const page = parseInt(filters.page) || 1;
@@ -150,7 +157,7 @@ class VirtualPointRepository extends BaseRepository {
                 calculation_trigger: virtualPointData.calculation_trigger || 'timer',
                 is_enabled: virtualPointData.is_enabled !== false ? 1 : 0,
                 category: virtualPointData.category || 'calculation',
-                scope_type: virtualPointData.scope_type || 'system',
+                scope_type: virtualPointData.scope_type || 'tenant',
                 site_id: virtualPointData.site_id || null,
                 device_id: virtualPointData.device_id || null,
                 tags: virtualPointData.tags ? (typeof virtualPointData.tags === 'string' ? virtualPointData.tags : JSON.stringify(virtualPointData.tags)) : null,
@@ -164,7 +171,7 @@ class VirtualPointRepository extends BaseRepository {
             await trx('virtual_point_values').insert({
                 virtual_point_id: virtualPointId,
                 value: null,
-                quality: 'initialization',
+                quality: 'uncertain',
                 last_calculated: this.knex.fn.now(),
                 calculation_duration_ms: 0,
                 is_stale: 1
@@ -307,9 +314,49 @@ class VirtualPointRepository extends BaseRepository {
     }
 
     /**
-     * 삭제 (관련 데이터 모두 삭제)
+     * 소프트 삭제
      */
     async deleteById(id, tenantId = null) {
+        try {
+            const query = this.knex('virtual_points').where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            const updatedRows = await query.update({
+                is_deleted: 1,
+                updated_at: this.knex.fn.now()
+            });
+
+            return updatedRows > 0;
+        } catch (error) {
+            this.logger.error(`VirtualPointRepository.deleteById 실패 (ID: ${id}):`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * 복원
+     */
+    async restoreById(id, tenantId = null) {
+        try {
+            const query = this.knex('virtual_points').where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            const updatedRows = await query.update({
+                is_deleted: 0,
+                updated_at: this.knex.fn.now()
+            });
+
+            return updatedRows > 0;
+        } catch (error) {
+            this.logger.error(`VirtualPointRepository.restoreById 실패 (ID: ${id}):`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * 영구 삭제 (필요한 경우 호출)
+     */
+    async hardDeleteById(id, tenantId = null) {
         return await this.transaction(async (trx) => {
             const query = trx('virtual_points').where('id', id);
             if (tenantId) query.where('tenant_id', tenantId);
@@ -389,6 +436,7 @@ class VirtualPointRepository extends BaseRepository {
     async getStatsByCategory(tenantId) {
         return this.query()
             .where('tenant_id', tenantId)
+            .where('is_deleted', 0)
             .select('category')
             .count('* as count')
             .sum('is_enabled as enabled_count')
@@ -399,6 +447,7 @@ class VirtualPointRepository extends BaseRepository {
     async getPerformanceStats(tenantId) {
         const result = await this.query()
             .where('tenant_id', tenantId)
+            .where('is_deleted', 0)
             .count('* as total_points')
             .sum('is_enabled as enabled_points')
             .first();
@@ -426,6 +475,42 @@ class VirtualPointRepository extends BaseRepository {
 
             return results;
         });
+    }
+
+    // ==========================================================================
+    // 로그 메소드
+    // ==========================================================================
+
+    /**
+     * 감사 로그 생성
+     */
+    async createLog(logData, trx = null) {
+        try {
+            const dataToInsert = {
+                point_id: logData.point_id,
+                action: logData.action,
+                previous_state: logData.previous_state,
+                new_state: logData.new_state,
+                user_id: logData.user_id,
+                details: logData.details,
+                created_at: this.knex.fn.now()
+            };
+
+            return await (trx || this.knex)('virtual_point_logs').insert(dataToInsert);
+        } catch (error) {
+            this.logger.error('VirtualPointRepository.createLog 실패:', error);
+            // 로그 실패는 메인 로직에 영향 주지 않음 (여기서 throw 하지 않음)
+        }
+    }
+
+    /**
+     * 감사 로그 조회
+     */
+    async getLogs(pointId, limit = 50) {
+        return this.knex('virtual_point_logs')
+            .where('point_id', pointId)
+            .orderBy('created_at', 'desc')
+            .limit(limit);
     }
 
     // ==========================================================================

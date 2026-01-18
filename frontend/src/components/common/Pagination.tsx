@@ -26,7 +26,7 @@ export const Pagination: React.FC<PaginationProps> = ({
   // 페이지 번호 생성 로직
   const getPageNumbers = (): number[] => {
     const maxVisible = 5;
-    
+
     if (totalPages <= maxVisible) {
       return Array.from({ length: totalPages }, (_, i) => i + 1);
     }
@@ -50,6 +50,7 @@ export const Pagination: React.FC<PaginationProps> = ({
 
   const handleSizeChange = (newSize: number) => {
     onShowSizeChange?.(1, newSize);
+    onChange?.(1, newSize);
   };
 
   const pageNumbers = getPageNumbers();

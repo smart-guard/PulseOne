@@ -347,9 +347,9 @@ export const useDevicePagination = (totalCount: number = 0) => {
  */
 export const useAlarmPagination = (totalCount: number = 0) => {
   return usePagination({
-    initialPageSize: 20,
+    initialPageSize: 10,
     totalCount,
-    pageSizeOptions: [10, 20, 50, 100],
+    pageSizeOptions: [10, 25, 50, 100],
     maxVisiblePages: 5,
     enableLocalStorage: true,
     storageKey: 'alarm-pagination'

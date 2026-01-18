@@ -1,0 +1,38 @@
+/* 📐 Ultra-Compact Limits Grid (6-Column Row) */
+.limits-grid {
+    display: grid !important;
+    grid-template-columns: repeat(6, 1fr) !important;
+    gap: var(--space-2) !important;
+    grid-column: 1 / -1 !important;
+    background: #fbfcfe !important;
+    /* Smidge cleaner white-blue */
+    padding: 20px !important;
+    border-radius: 12px !important;
+    border: 1px dashed #ced4da !important;
+    margin-top: 16px !important;
+}
+
+.limits-grid .form-group {
+    margin-bottom: 0 !important;
+}
+
+.limits-grid .form-label {
+    font-size: 10px !important;
+    text-transform: uppercase !important;
+    color: var(--neutral-500) !important;
+    margin-bottom: 4px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+}
+
+.limits-grid .form-input {
+    height: 32px !important;
+    padding: 0 var(--space-2) !important;
+    font-size: var(--text-sm) !important;
+    text-align: center !important;
+}
+
+.secondary-grid {
+    display: none !important;
+    /* Cleanup old grid if any */
+}

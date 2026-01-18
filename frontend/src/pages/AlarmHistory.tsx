@@ -12,8 +12,11 @@ import { StatCard } from '../components/common/StatCard';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
 import { useAlarmContext } from '../contexts/AlarmContext';
 import { usePagination } from '../hooks/usePagination';
+import { FilterBar } from '../components/common/FilterBar';
 import '../styles/management.css';
-import '../styles/alarm-history.css';
+import '../styles/pagination.css';
+import AlarmActionModal from '../components/modals/AlarmActionModal';
+import AlarmHistoryDetailModal from '../components/modals/AlarmHistoryDetailModal';
 
 // 필터 옵션 인터페이스
 interface FilterOptions {
@@ -42,6 +45,10 @@ const AlarmHistory: React.FC = () => {
   // UI 상태
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [actionType, setActionType] = useState<'acknowledge' | 'clear'>('acknowledge');
+  const [targetAlarmId, setTargetAlarmId] = useState<number | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const [activeRowId, setActiveRowId] = useState<number | null>(null);
 
   // 필터 상태
@@ -71,99 +78,6 @@ const AlarmHistory: React.FC = () => {
   // 원본 인라인 스타일 객체들 (중요한 레이아웃 유지)
   // =============================================================================
 
-  const containerStyle = {
-    width: '100%',
-    background: '#f8fafc',
-    minHeight: 'calc(100vh - 64px)',
-    padding: '0'
-  };
-
-  const sectionStyle = {
-    margin: '0 24px 24px 24px',
-    background: 'white',
-    borderRadius: '8px',
-    boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
-    border: '1px solid #e2e8f0'
-  };
-
-  const headerStyle = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '24px',
-    padding: '24px 0 16px 0', // 패딩 제거하고 마진과 정렬
-    margin: '0 24px', // 섹션들과 동일한 마진 적용
-    borderBottom: '1px solid #e2e8f0',
-    background: '#f8fafc' // 배경색을 컨테이너와 동일하게 변경하여 경계 제거
-  };
-
-  const summaryPanelStyle = {
-    ...sectionStyle,
-    padding: '24px',
-    display: 'grid',
-    gridTemplateColumns: 'repeat(5, 1fr)',
-    gap: '16px'
-  };
-
-  const filterPanelStyle = {
-    ...sectionStyle,
-    padding: '24px',
-    display: 'flex',
-    gap: '12px',
-    alignItems: 'end'
-  };
-
-  const resultInfoStyle = {
-    ...sectionStyle,
-    padding: '24px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  };
-
-  const tableContainerStyle = {
-    ...sectionStyle,
-    padding: '0',
-    overflow: 'hidden',
-    height: '600px',
-    display: 'flex',
-    flexDirection: 'column' as const
-  };
-
-  const tableWrapperStyle = {
-    flex: 1,
-    overflowY: 'auto' as const,
-    overflowX: 'auto' as const,
-    scrollbarWidth: 'thin' as const,
-    msOverflowStyle: 'scrollbar' as const
-  };
-
-  const gridContainerStyle = {
-    display: 'grid',
-    gridTemplateColumns: '0.6fr 0.8fr 1fr 1.8fr 0.6fr 0.8fr 0.6fr 0.8fr',
-    gap: '0',
-    minWidth: '1000px',
-    fontSize: '14px'
-  };
-
-  const gridItemStyle = {
-    padding: '16px 12px',
-    borderBottom: '1px solid #f1f5f9',
-    display: 'flex',
-    alignItems: 'center',
-    minHeight: '56px'
-  };
-
-  const thStyle = {
-    padding: '24px 20px',
-    textAlign: 'left' as const,
-    fontWeight: 600,
-    color: '#334155',
-    borderBottom: '2px solid #e2e8f0',
-    background: '#f8fafc',
-    fontSize: '16px',
-    whiteSpace: 'nowrap' as const
-  };
 
   // =============================================================================
   // API 호출 및 이벤트 핸들러들 (기존 코드 유지)
@@ -289,6 +203,9 @@ const AlarmHistory: React.FC = () => {
 
   const handleViewDetails = useCallback((event: AlarmOccurrence) => {
     setSelectedEvent(event);
+    // Modal state is controlled by whether selectedEvent is non-null in the new component pattern, 
+    // but here we keep showDetailsModal for explicit control if needed, or simplify.
+    // The current pattern uses showDetailsModal boolean.
     setShowDetailsModal(true);
   }, []);
 
@@ -368,105 +285,52 @@ const AlarmHistory: React.FC = () => {
   }, [statistics, alarmEvents, pagination.totalCount]);
 
   // 알람 처리 핸들러
-  const handleAcknowledge = async (id: number) => {
-    const isConfirmed = await confirm({
-      title: '알람 확인 처리',
-      message: '해당 알람을 확인 처리하시겠습니까?',
-      confirmText: '확인',
-      cancelText: '취소',
-      confirmButtonType: 'warning'
-    });
+  const handleAcknowledge = (id: number) => {
+    const event = alarmEvents.find(e => e.id === id);
+    if (!event) return;
 
-    if (!isConfirmed) return;
-
-    try {
-      const response = await AlarmApiService.acknowledgeAlarm(id, { comment: 'System Admin acknowledged' });
-      if (response.success) {
-        await confirm({
-          title: '처리 완료',
-          message: '알람이 확인 처리되었습니다.',
-          confirmText: '확인',
-          showCancelButton: false,
-          confirmButtonType: 'success'
-        });
-
-        // 알람 컨텍스트의 활성 알람 개수 명시적 감소
-        decrementAlarmCount();
-
-        // 데이터 새로고침 (리스트 및 통계 카드)
-        await Promise.all([
-          fetchAlarmHistory(),
-          fetchStatistics()
-        ]);
-      } else {
-        await confirm({
-          title: '처리 실패',
-          message: '알람 확인 실패: ' + (response.message || 'Unknown error'),
-          confirmText: '확인',
-          showCancelButton: false,
-          confirmButtonType: 'danger'
-        });
-      }
-    } catch (error) {
-      console.error('Error acknowledging alarm:', error);
-      await confirm({
-        title: '오류 발생',
-        message: '알람 확인 중 오류가 발생했습니다.',
-        confirmText: '확인',
-        showCancelButton: false,
-        confirmButtonType: 'danger'
-      });
-    }
+    setTargetAlarmId(id);
+    setActionType('acknowledge');
+    setSelectedEvent(event);
+    setShowActionModal(true);
   };
 
-  const handleClear = async (id: number) => {
-    const isConfirmed = await confirm({
-      title: '알람 해제 처리',
-      message: '해당 알람을 해제 처리하시겠습니까?',
-      confirmText: '해제',
-      cancelText: '취소',
-      confirmButtonType: 'danger'
-    });
+  const handleClear = (id: number) => {
+    const event = alarmEvents.find(e => e.id === id);
+    if (!event) return;
 
-    if (!isConfirmed) return;
+    setTargetAlarmId(id);
+    setActionType('clear');
+    setSelectedEvent(event);
+    setShowActionModal(true);
+  };
 
+  const onConfirmAction = async (comment: string) => {
+    if (!targetAlarmId) return;
+
+    setActionLoading(true);
     try {
-      const response = await AlarmApiService.clearAlarm(id, { comment: 'System Admin cleared' });
+      let response;
+      if (actionType === 'acknowledge') {
+        response = await AlarmApiService.acknowledgeAlarm(targetAlarmId, { comment });
+      } else {
+        response = await AlarmApiService.clearAlarm(targetAlarmId, { comment });
+      }
+
       if (response.success) {
-        await confirm({
-          title: '처리 완료',
-          message: '알람이 해제 처리되었습니다.',
-          confirmText: '확인',
-          showCancelButton: false,
-          confirmButtonType: 'success'
-        });
-
-        // 알람 컨텍스트의 활성 알람 개수 명시적 감소
         decrementAlarmCount();
-
-        // 데이터 새로고침 (리스트 및 통계 카드)
         await Promise.all([
           fetchAlarmHistory(),
           fetchStatistics()
         ]);
+        setShowActionModal(false);
       } else {
-        await confirm({
-          title: '처리 실패',
-          message: '알람 해제 실패: ' + (response.message || 'Unknown error'),
-          confirmText: '확인',
-          showCancelButton: false,
-          confirmButtonType: 'danger'
-        });
+        alert(`${actionType === 'acknowledge' ? '확인' : '해제'} 처리 실패: ${response.message}`);
       }
-    } catch (error) {
-      console.error('Error clearing alarm:', error);
-      await confirm({
-        title: '오류 발생',
-        message: '알람 해제 중 오류가 발생했습니다.',
-        confirmText: '확인',
-        showCancelButton: false,
-        confirmButtonType: 'danger'
-      });
+    } catch (err) {
+      alert(`${actionType === 'acknowledge' ? '확인' : '해제'} 처리 중 오류가 발생했습니다.`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -559,46 +423,6 @@ const AlarmHistory: React.FC = () => {
 
   return (
     <ManagementLayout>
-      <style>{`
-        .hover-row.active td {
-          background-color: #f0f9ff !important;
-        }
-        .hover-row:hover td {
-          background-color: #f8fafc !important;
-        }
-        .mgmt-stats-panel {
-          margin-bottom: 12px !important;
-          gap: 12px !important;
-          display: grid !important;
-          grid-template-columns: repeat(5, 1fr) !important;
-          align-items: stretch !important;
-        }
-        .mgmt-stats-panel .mgmt-stat-card {
-          padding: 16px 20px !important;
-          height: 100% !important;
-          margin: 0 !important;
-        }
-        .mgmt-header-info p {
-          display: block !important;
-          font-size: 14px !important;
-          color: #64748b !important;
-          margin-top: 4px !important;
-        }
-        .mgmt-filter-bar {
-          padding: 12px 24px !important;
-          margin-bottom: 12px !important;
-          overflow: visible !important;
-        }
-        .mgmt-filter-bar .mgmt-input, .mgmt-filter-bar .mgmt-select {
-          border-color: #e2e8f0;
-          height: 38px !important;
-        }
-        .table-container {
-          padding: 0 !important;
-          margin-top: 0 !important;
-          border-radius: 12px !important;
-        }
-      `}</style>
       <PageHeader
         title="알람 이력"
         description="시스템에서 발생한 모든 알람의 이력을 확인하고 분석할 수 있습니다."
@@ -626,121 +450,109 @@ const AlarmHistory: React.FC = () => {
       />
 
       {/* 통계 카드 */}
-      {statistics && (
-        <div className="mgmt-stats-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', alignItems: 'stretch' }}>
-          <StatCard
-            title="총 이벤트"
-            value={computedStats.total}
-            icon="fas fa-list-alt"
-            type="primary"
-          />
-          <StatCard
-            title="활성 알람"
-            value={computedStats.active}
-            icon="fas fa-exclamation-triangle"
-            type="error"
-          />
-          <StatCard
-            title="미확인"
-            value={computedStats.unacknowledged}
-            icon="fas fa-bell"
-            type="warning"
-          />
-          <StatCard
-            title="확인됨"
-            value={computedStats.acknowledged}
-            icon="fas fa-check-circle"
-            type="warning"
-          />
-          <StatCard
-            title="해제됨"
-            value={computedStats.cleared}
-            icon="fas fa-check-double"
-            type="success"
-          />
-        </div>
-      )}
+      <div className="mgmt-stats-panel" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', alignItems: 'stretch' }}>
+        <StatCard
+          title="총 이벤트"
+          value={computedStats.total}
+          icon="fas fa-list-alt"
+          type="primary"
+        />
+        <StatCard
+          title="활성 알람"
+          value={computedStats.active}
+          icon="fas fa-exclamation-triangle"
+          type="error"
+        />
+        <StatCard
+          title="미확인"
+          value={computedStats.unacknowledged}
+          icon="fas fa-bell"
+          type="warning"
+        />
+        <StatCard
+          title="확인됨"
+          value={computedStats.acknowledged}
+          icon="fas fa-check-circle"
+          type="warning"
+        />
+        <StatCard
+          title="해제됨"
+          value={computedStats.cleared}
+          icon="fas fa-check-double"
+          type="success"
+        />
+      </div>
 
-      {/* 필터 및 검색 바 (한 줄 레이아웃) */}
-      <div className="mgmt-filter-bar" style={{ display: 'flex', alignItems: 'center', gap: '24px', background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-        {/* 날짜 범위 선택 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-          <label style={{ fontWeight: 600, fontSize: '14px', color: '#475569', whiteSpace: 'nowrap' }}>기간</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <input
-              type="datetime-local"
-              className="mgmt-input"
-              style={{ width: '280px' }}
-              value={formatDateForInput(filters.dateRange.start)}
-              onChange={(e) => handleDateChange('start', e.target.value)}
-            />
-            <span style={{ color: '#94a3b8' }}>~</span>
-            <input
-              type="datetime-local"
-              className="mgmt-input"
-              style={{ width: '280px' }}
-              value={formatDateForInput(filters.dateRange.end)}
-              onChange={(e) => handleDateChange('end', e.target.value)}
-            />
+      <FilterBar
+        searchTerm={filters.searchTerm}
+        onSearchChange={(v) => handleFilterChange({ searchTerm: v })}
+        activeFilterCount={(filters.severity !== 'all' ? 1 : 0) + (filters.state !== 'all' ? 1 : 0) + (filters.searchTerm ? 1 : 0)}
+        onReset={() => setFilters({
+          dateRange: {
+            start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+            end: new Date()
+          },
+          severity: 'all',
+          state: 'all',
+          searchTerm: ''
+        })}
+        filters={[
+          {
+            label: '심각도',
+            value: filters.severity,
+            onChange: (v) => handleFilterChange({ severity: v }),
+            options: [
+              { label: '전체', value: 'all' },
+              { label: 'CRITICAL', value: 'critical' },
+              { label: 'HIGH', value: 'high' },
+              { label: 'MEDIUM', value: 'medium' },
+              { label: 'LOW', value: 'low' }
+            ]
+          },
+          {
+            label: '상태',
+            value: filters.state,
+            onChange: (v) => handleFilterChange({ state: v }),
+            options: [
+              { label: '전체', value: 'all' },
+              { label: '활성', value: 'active' },
+              { label: '확인됨', value: 'acknowledged' },
+              { label: '해제됨', value: 'cleared' }
+            ]
+          }
+        ]}
+        leftActions={
+          <div className="mgmt-filter-group">
+            <label>기간 설정</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="datetime-local"
+                className="mgmt-input"
+                style={{ width: '230px' }}
+                value={formatDateForInput(filters.dateRange.start)}
+                onChange={(e) => handleDateChange('start', e.target.value)}
+              />
+              <span style={{ color: 'var(--neutral-400)' }}>~</span>
+              <input
+                type="datetime-local"
+                className="mgmt-input"
+                style={{ width: '230px' }}
+                value={formatDateForInput(filters.dateRange.end)}
+                onChange={(e) => handleDateChange('end', e.target.value)}
+              />
+            </div>
           </div>
-        </div>
-
-        {/* 심각도 필터 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <label style={{ fontWeight: 600, fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' }}>심각도</label>
-          <select
-            className="mgmt-select sm"
-            style={{ width: '110px' }}
-            value={filters.severity}
-            onChange={(e) => handleFilterChange({ severity: e.target.value })}
-          >
-            <option value="all">전체</option>
-            <option value="critical">CRITICAL</option>
-            <option value="high">HIGH</option>
-            <option value="medium">MEDIUM</option>
-            <option value="low">LOW</option>
-          </select>
-        </div>
-
-        {/* 상태 필터 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <label style={{ fontWeight: 600, fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' }}>상태</label>
-          <select
-            className="mgmt-select sm"
-            style={{ width: '110px' }}
-            value={filters.state}
-            onChange={(e) => handleFilterChange({ state: e.target.value })}
-          >
-            <option value="all">전체</option>
-            <option value="active">활성</option>
-            <option value="acknowledged">확인됨</option>
-            <option value="cleared">해제됨</option>
-          </select>
-        </div>
-
-        {/* 검색 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-          <div className="mgmt-search-wrapper" style={{ position: 'relative', flex: 1 }}>
-            <i className="fas fa-search mgmt-search-icon" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}></i>
-            <input
-              type="text"
-              className="mgmt-input"
-              style={{ width: '100%', paddingLeft: '36px' }}
-              placeholder="알람명, 디바이스명으로 검색..."
-              value={filters.searchTerm}
-              onChange={(e) => handleFilterChange({ searchTerm: e.target.value })}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            />
-          </div>
+        }
+        rightActions={
           <button
             className="btn-primary"
             onClick={handleSearch}
-            style={{ height: '38px', padding: '0 24px', whiteSpace: 'nowrap', flexShrink: 0 }}
+            style={{ height: '36px' }}
           >
-            검색
+            조회
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* 에러 메시지 */}
       {error && (
@@ -751,166 +563,144 @@ const AlarmHistory: React.FC = () => {
       )}
 
       {/* 메인 컨텐츠 영역 */}
-      <div className="mgmt-card table-container" ref={containerRef}>
+      <div className="mgmt-card table-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '500px' }}>
         {/* 탭/뷰 모드 전환 */}
-        <div className="mgmt-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <i className="fas fa-list" style={{ color: '#3b82f6' }}></i>
-            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>이력 목록 ({computedStats.total})</h3>
+        <div className="mgmt-header" style={{ border: 'none', background: 'transparent' }}>
+          <div className="mgmt-header-info">
+            <h3 className="mgmt-title" style={{ fontSize: '18px' }}>
+              <i className="fas fa-list-ul" style={{ color: 'var(--primary-500)' }}></i>
+              이력 내역 ({computedStats.total})
+            </h3>
           </div>
-          <div className="btn-group">
+          <div className="view-toggle">
             <button
-              className={`btn-outline ${viewMode === 'list' ? 'active' : ''}`}
+              className={`btn-icon ${viewMode === 'list' ? 'active' : ''}`}
               onClick={() => setViewMode('list')}
-              style={{ padding: '6px 12px' }}
+              title="목록 보기"
             >
-              <i className="fas fa-list" style={{ marginRight: '6px' }}></i>
-              목록
+              <i className="fas fa-list"></i>
             </button>
             <button
-              className={`btn-outline ${viewMode === 'timeline' ? 'active' : ''}`}
+              className={`btn-icon ${viewMode === 'timeline' ? 'active' : ''}`}
               onClick={() => setViewMode('timeline')}
-              style={{ padding: '6px 12px' }}
+              title="타임라인 보기"
             >
-              <i className="fas fa-stream" style={{ marginRight: '6px' }}></i>
-              타임라인
+              <i className="fas fa-stream"></i>
             </button>
           </div>
         </div>
 
         {isInitialLoading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '400px', color: '#64748b' }}>
-            <i className="fas fa-spinner fa-spin" style={{ fontSize: '32px', marginBottom: '16px', color: '#3b82f6' }}></i>
-            <div>데이터를 불러오는 중입니다...</div>
+          <div className="mgmt-loading">
+            <i className="fas fa-spinner fa-spin"></i>
+            <p>데이터를 불러오는 중입니다...</p>
           </div>
         ) : (
           <>
-            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div className="mgmt-table-wrapper" ref={containerRef} style={{ flex: 1 }}>
               {viewMode === 'list' ? (
-                <div style={{ overflowX: 'auto', overflowY: 'auto' }}>
-                  <table className="mgmt-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '60px' }}>ID</th>
-                        <th style={{ width: '100px' }}>심각도</th>
-                        <th style={{ width: '180px' }}>디바이스 / 포인트</th>
-                        <th>메시지</th>
-                        <th style={{ width: '100px' }}>상태</th>
-                        <th style={{ width: '160px' }}>발생시간</th>
-                        <th style={{ width: '120px' }}>지속시간</th>
-                        <th style={{ width: '80px', textAlign: 'center' }}>액션</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(!alarmEvents || alarmEvents.length === 0) ? (
-                        <tr>
-                          <td colSpan={8} style={{ textAlign: 'center', padding: '64px 0', color: '#64748b' }}>
-                            <i className="fas fa-inbox" style={{ fontSize: '48px', marginBottom: '16px', color: '#cbd5e1' }}></i>
-                            <div style={{ fontSize: '16px' }}>검색 결과가 없습니다.</div>
-                          </td>
-                        </tr>
-                      ) : (
-                        alarmEvents.map((event) => {
-                          if (!event) return null;
-                          const occurrenceTime = event.occurrence_time || new Date().toISOString();
-                          const severityClass = (event.severity || '').toLowerCase() === 'critical' ? 'critical' :
-                            (event.severity || '').toLowerCase() === 'high' ? 'high' :
-                              (event.severity || '').toLowerCase() === 'medium' ? 'medium' : 'low';
-                          const state = (event.state || 'active').toLowerCase();
-
-                          return (
-                            <tr
-                              key={event.id}
-                              className={`hover-row ${activeRowId === event.id ? 'active' : ''}`}
-                              onClick={() => setActiveRowId(event.id)}
-                              style={{ cursor: 'pointer' }}
-                            >
-                              <td style={{
-                                position: 'relative',
-                                borderLeft: '4px solid #3b82f6',
-                                paddingLeft: '24px',
-                                fontWeight: 600,
-                                color: activeRowId === event.id ? '#3b82f6' : '#1e293b'
-                              }}>
-                                # {event.id}
-                              </td>
-                              <td>
-                                <span className={`status-pill ${severityClass}`}>
-                                  {(event.severity || 'UNKNOWN').toUpperCase()}
-                                </span>
-                              </td>
-                              <td>
-                                <div style={{ fontWeight: 600, color: '#1e293b' }}>{event.device_name || 'N/A'}</div>
-                                <div style={{ fontSize: '12px', color: '#64748b' }}>{event.data_point_name || event.rule_name || 'N/A'}</div>
-                              </td>
-                              <td>
-                                <div style={{ color: '#334155' }}>{event.alarm_message || 'No description'}</div>
-                                <div className="text-monospace" style={{ fontSize: '11px', color: '#3b82f6', marginTop: '4px' }}>
-                                  값: {formatValue(event.trigger_value)}
-                                </div>
-                              </td>
-                              <td>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <i
-                                    className={`fas ${state === 'active' ? 'fa-exclamation-circle' : 'fa-check-circle'}`}
-                                    style={{ color: state === 'active' ? '#ef4444' : '#22c55e' }}
-                                  ></i>
-                                  <span style={{ fontWeight: 500 }}>{getStatusText(event.state)}</span>
-                                </div>
-                              </td>
-                              <td className="text-monospace">
-                                {new Date(occurrenceTime).toLocaleString('ko-KR')}
-                              </td>
-                              <td className="text-monospace">
-                                {formatDuration(occurrenceTime, event.cleared_time || event.acknowledged_time)}
-                              </td>
-                              <td style={{ textAlign: 'center' }}>
-                                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                                  {state === 'active' && (
-                                    <button
-                                      className="btn-icon"
-                                      style={{ color: '#f59e0b', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', width: '32px', height: '32px' }}
-                                      onClick={(e) => { e.stopPropagation(); handleAcknowledge(event.id); }}
-                                      title="알람 확인 (확인 후 해제 가능)"
-                                    >
-                                      <i className="fas fa-check"></i>
-                                    </button>
-                                  )}
-                                  {state === 'acknowledged' && (
-                                    <button
-                                      className="btn-icon"
-                                      style={{ color: '#ef4444', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '6px', width: '32px', height: '32px' }}
-                                      onClick={(e) => { e.stopPropagation(); handleClear(event.id); }}
-                                      title="알람 해제"
-                                    >
-                                      <i className="fas fa-times-circle"></i>
-                                    </button>
-                                  )}
-                                  <button
-                                    className="btn-icon"
-                                    style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', width: '32px', height: '32px' }}
-                                    onClick={(e) => { e.stopPropagation(); handleViewDetails(event); }}
-                                    title="상세 보기"
-                                  >
-                                    <i className="fas fa-eye"></i>
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                /* 타임라인 뷰 리포매팅 */
-                <div style={{ padding: '24px', maxHeight: '600px', overflowY: 'auto' }}>
-                  <div style={{ position: 'relative', borderLeft: '2px solid #e2e8f0', marginLeft: '16px', paddingLeft: '24px' }}>
+                <table className="mgmt-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '100px' }}>ID</th>
+                      <th style={{ width: '120px' }}>심각도</th>
+                      <th style={{ width: '220px' }}>디바이스 / 포인트</th>
+                      <th>메시지</th>
+                      <th style={{ width: '120px' }}>상태</th>
+                      <th style={{ width: '180px' }}>발생시간</th>
+                      <th style={{ width: '150px' }}>지속시간</th>
+                      <th style={{ width: '100px', textAlign: 'center' }}>액션</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {(!alarmEvents || alarmEvents.length === 0) ? (
-                      <div style={{ textAlign: 'center', padding: '48px 0', color: '#64748b' }}>
-                        검색 결과가 없습니다.
-                      </div>
+                      <tr>
+                        <td colSpan={8} className="text-center" style={{ padding: '80px 0' }}>
+                          <div className="text-muted">
+                            <i className="fas fa-inbox" style={{ fontSize: '48px', marginBottom: '16px', display: 'block', opacity: 0.3 }}></i>
+                            검색 결과가 없습니다.
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      alarmEvents.map((event) => {
+                        if (!event) return null;
+                        const occurrenceTime = event.occurrence_time || new Date().toISOString();
+                        const severityClass = (event.severity || '').toLowerCase();
+                        const state = (event.state || 'active').toLowerCase();
+
+                        return (
+                          <tr key={event.id} className={activeRowId === event.id ? 'active' : ''} onClick={() => setActiveRowId(event.id)}>
+                            <td className="font-bold text-primary" style={{ whiteSpace: 'nowrap' }}># {event.id}</td>
+                            <td>
+                              <span className={`status-pill ${severityClass}`}>
+                                {(event.severity || 'UNKNOWN').toUpperCase()}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="font-semibold text-neutral-900">{event.device_name || 'N/A'}</div>
+                              <div className="text-xs text-neutral-500">{event.data_point_name || event.rule_name || 'N/A'}</div>
+                            </td>
+                            <td>
+                              <div className="text-neutral-800">{event.alarm_message || '메시지 없음'}</div>
+                              {event.trigger_value !== undefined && (
+                                <div className="text-xs text-primary-600 font-medium" style={{ marginTop: '2px' }}>
+                                  현재값: {formatValue(event.trigger_value)}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <div className="flex items-center gap-2">
+                                <i className={getStatusIcon(state)} style={{ color: getStatusColor(state), fontSize: '14px' }}></i>
+                                <span className="font-medium">{getStatusText(state)}</span>
+                              </div>
+                            </td>
+                            <td className="text-neutral-600">
+                              {new Date(occurrenceTime).toLocaleString('ko-KR')}
+                            </td>
+                            <td className="text-neutral-600">
+                              {formatDuration(occurrenceTime, event.cleared_time || event.acknowledged_time)}
+                            </td>
+                            <td className="text-center">
+                              <div className="flex justify-center gap-2">
+                                {state === 'active' && (
+                                  <button
+                                    className="btn-icon warning"
+                                    onClick={(e) => { e.stopPropagation(); handleAcknowledge(event.id); }}
+                                    title="알람 확인"
+                                  >
+                                    <i className="fas fa-check"></i>
+                                  </button>
+                                )}
+                                {state === 'acknowledged' && (
+                                  <button
+                                    className="btn-icon error"
+                                    onClick={(e) => { e.stopPropagation(); handleClear(event.id); }}
+                                    title="알람 해제"
+                                  >
+                                    <i className="fas fa-times"></i>
+                                  </button>
+                                )}
+                                <button
+                                  className="btn-icon"
+                                  onClick={(e) => { e.stopPropagation(); handleViewDetails(event); }}
+                                  title="상세 보기"
+                                >
+                                  <i className="fas fa-info-circle"></i>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ padding: '32px', overflowY: 'auto' }}>
+                  <div style={{ position: 'relative', borderLeft: '2px solid var(--neutral-200)', marginLeft: '16px', paddingLeft: '32px' }}>
+                    {(!alarmEvents || alarmEvents.length === 0) ? (
+                      <div className="text-center text-muted" style={{ padding: '40px' }}>검색 결과가 없습니다.</div>
                     ) : (
                       alarmEvents.map((event) => {
                         if (!event) return null;
@@ -922,35 +712,31 @@ const AlarmHistory: React.FC = () => {
                           <div key={event.id} style={{ marginBottom: '32px', position: 'relative' }}>
                             <div style={{
                               position: 'absolute',
-                              left: '-33px',
+                              left: '-41px',
                               top: '0',
                               width: '16px',
                               height: '16px',
                               borderRadius: '50%',
-                              background: severity === 'CRITICAL' ? '#ef4444' : state === 'active' ? '#3b82f6' : '#cbd5e1',
+                              background: severity === 'CRITICAL' ? 'var(--error-500)' : state === 'active' ? 'var(--primary-500)' : 'var(--neutral-300)',
                               border: '4px solid white',
-                              boxShadow: '0 0 0 1px #e2e8f0'
+                              boxShadow: '0 0 0 1px var(--neutral-200)'
                             }}></div>
-                            <div style={{ background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+                            <div className="mgmt-card" style={{ padding: '20px', borderRadius: '12px' }}>
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="text-xs font-semibold text-neutral-500">
                                   {new Date(occurrenceTime).toLocaleString('ko-KR')}
                                 </span>
                                 <span className={`status-pill ${severity.toLowerCase()}`}>
                                   {severity}
                                 </span>
                               </div>
-                              <div style={{ fontWeight: 600, fontSize: '16px', marginBottom: '4px' }}>{event.alarm_message || 'No message'}</div>
-                              <div style={{ fontSize: '13px', color: '#64748b' }}>
-                                {event.device_name || 'Unknown Device'} &bull; {event.rule_name || 'Unknown Rule'}
+                              <div className="font-bold text-lg mb-1">{event.alarm_message || '메시지 없음'}</div>
+                              <div className="text-sm text-neutral-600">
+                                {event.device_name || '디바이스 정보 없음'} &bull; {event.rule_name || '규칙 정보 없음'}
                               </div>
-                              <div style={{ marginTop: '12px', textAlign: 'right' }}>
-                                <button
-                                  className="btn-link"
-                                  onClick={() => handleViewDetails(event)}
-                                  style={{ fontSize: '12px' }}
-                                >
-                                  상세 보기 <i className="fas fa-chevron-right" style={{ fontSize: '10px' }}></i>
+                              <div className="flex justify-end mt-4">
+                                <button className="btn-link" onClick={() => handleViewDetails(event)}>
+                                  상세 내용 보기 <i className="fas fa-chevron-right"></i>
                                 </button>
                               </div>
                             </div>
@@ -963,127 +749,48 @@ const AlarmHistory: React.FC = () => {
               )}
             </div>
 
-            {/* 페이지네이션 (전체 뷰 공통) */}
-            {Array.isArray(alarmEvents) && alarmEvents.length > 0 && (
-              <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: 'white' }}>
-                <Pagination
-                  current={pagination.currentPage}
-                  total={pagination.totalCount}
-                  pageSize={pagination.pageSize}
-                  onChange={(page, size) => {
-                    pagination.goToPage(page);
-                    if (size && size !== pagination.pageSize) {
-                      pagination.changePageSize(size);
-                    }
-                  }}
-                  showSizeChanger={true}
-                />
-              </div>
-            )}
+            {/* 페이지네이션 */}
+            <div className="mgmt-footer" style={{ padding: '16px 24px', borderTop: '1px solid var(--neutral-200)', background: 'white' }}>
+              <Pagination
+                current={pagination.currentPage}
+                total={pagination.totalCount}
+                pageSize={pagination.pageSize}
+                onChange={(page, size) => {
+                  pagination.goToPage(page);
+                  if (size && size !== pagination.pageSize) {
+                    pagination.changePageSize(size);
+                  }
+                }}
+                showSizeChanger={true}
+              />
+            </div>
           </>
         )}
       </div>
 
       {/* 상세 보기 모달 */}
+      {/* 상세 보기 모달 - Premium Layout */}
       {showDetailsModal && selectedEvent && (
-        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-content" style={{ background: 'white', borderRadius: '12px', width: '90%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <div className="modal-header" style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>이력 상세 정보</h3>
-              <button onClick={() => setShowDetailsModal(false)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>&times;</button>
-            </div>
-
-            <div className="modal-body" style={{ padding: '20px' }}>
-              <div style={{ marginBottom: '20px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600, color: '#3b82f6', borderLeft: '3px solid #3b82f6', paddingLeft: '8px' }}>기본 정보</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>알람 ID</label>
-                    <div style={{ fontWeight: 600 }}>#{selectedEvent.id}</div>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>심각도</label>
-                    <span className={`status-pill ${selectedEvent.severity === 'critical' || selectedEvent.severity === 'high' ? 'error' : 'warning'}`} style={{ display: 'inline-block' }}>
-                      {selectedEvent.severity?.toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>디바이스 / 규칙</label>
-                    <div style={{ fontWeight: 500 }}>
-                      <strong style={{ color: '#1e293b' }}>{selectedEvent.device_name}</strong>
-                      <span style={{ margin: '0 8px', color: '#cbd5e1' }}>/</span>
-                      <span style={{ color: '#475569' }}>{selectedEvent.rule_name}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 600, color: '#3b82f6', borderLeft: '3px solid #3b82f6', paddingLeft: '8px' }}>발생 및 조치 이력</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <div style={{ minWidth: '60px', fontSize: '13px', color: '#64748b', paddingTop: '2px' }}>발생</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>{new Date(selectedEvent.occurrence_time).toLocaleString('ko-KR')}</div>
-                      <div style={{ fontSize: '13px', color: '#475569', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                        {selectedEvent.alarm_message}
-                        {selectedEvent.trigger_value && <div style={{ marginTop: '4px', fontSize: '12px', color: '#64748b' }}>값: {selectedEvent.trigger_value}</div>}
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedEvent.acknowledged_time && (
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <div style={{ minWidth: '60px', fontSize: '13px', color: '#64748b', paddingTop: '2px' }}>확인</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>
-                          {new Date(selectedEvent.acknowledged_time).toLocaleString('ko-KR')}
-                        </div>
-                        <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
-                          확인자: {selectedEvent.acknowledged_by_company ? `${selectedEvent.acknowledged_by_company} / ` : ''}{selectedEvent.acknowledged_by_name || selectedEvent.acknowledged_by || '-'}
-                        </div>
-                        {selectedEvent.acknowledge_comment && (
-                          <div style={{ fontSize: '13px', color: '#475569', background: '#fffbeb', padding: '8px 12px', borderRadius: '6px', border: '1px solid #fcd34d', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                            확인 메모: {selectedEvent.acknowledge_comment}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedEvent.cleared_time && (
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <div style={{ minWidth: '60px', fontSize: '13px', color: '#64748b', paddingTop: '2px' }}>해제</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>
-                          {new Date(selectedEvent.cleared_time).toLocaleString('ko-KR')}
-                        </div>
-                        <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
-                          해제자: {selectedEvent.cleared_by_company ? `${selectedEvent.cleared_by_company} / ` : ''}{selectedEvent.cleared_by_name || selectedEvent.cleared_by || '-'}
-                        </div>
-                        {selectedEvent.clear_comment && (
-                          <div style={{ fontSize: '13px', color: '#475569', background: '#f0fdf4', padding: '8px 12px', borderRadius: '6px', border: '1px solid #86efac', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                            해제 메모: {selectedEvent.clear_comment}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer" style={{ padding: '16px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', background: '#f8fafc', borderRadius: '0 0 12px 12px' }}>
-              <button
-                onClick={() => setShowDetailsModal(false)}
-                style={{ padding: '8px 16px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 500, color: '#475569' }}
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
+        <AlarmHistoryDetailModal
+          event={selectedEvent}
+          onClose={() => setShowDetailsModal(false)}
+          onAcknowledge={handleAcknowledge}
+          onClear={handleClear}
+        />
       )}
+      {/* 알람 처리 모달 (확인/해제) */}
+      <AlarmActionModal
+        isOpen={showActionModal}
+        type={actionType}
+        alarmData={{
+          rule_name: selectedEvent?.rule_name,
+          alarm_message: selectedEvent?.alarm_message,
+          severity: selectedEvent?.severity
+        }}
+        onConfirm={onConfirmAction}
+        onCancel={() => setShowActionModal(false)}
+        loading={actionLoading}
+      />
     </ManagementLayout>
   );
 };

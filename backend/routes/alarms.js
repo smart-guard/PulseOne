@@ -177,6 +177,68 @@ router.post('/occurrences/:id/clear', async (req, res) => {
 });
 
 /**
+ * POST /api/alarms/occurrences/bulk-acknowledge
+ * 알람 일괄 확인 처리
+ */
+router.post('/occurrences/bulk-acknowledge', async (req, res) => {
+    try {
+        const { ids, comment } = req.body;
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json(createResponse(false, null, 'IDs array is required', 'INVALID_PARAMS'));
+        }
+        const result = await AlarmOccurrenceService.acknowledgeBulk(ids, req.user.id, comment, req.tenantId);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'BULK_ACKNOWLEDGE_ERROR'));
+    }
+});
+
+/**
+ * POST /api/alarms/occurrences/bulk-clear
+ * 알람 일괄 해제 처리
+ */
+router.post('/occurrences/bulk-clear', async (req, res) => {
+    try {
+        const { ids, cleared_value, comment } = req.body;
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json(createResponse(false, null, 'IDs array is required', 'INVALID_PARAMS'));
+        }
+        const result = await AlarmOccurrenceService.clearBulk(ids, req.user.id, cleared_value, comment, req.tenantId);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'BULK_CLEAR_ERROR'));
+    }
+});
+
+/**
+ * POST /api/alarms/occurrences/acknowledge-all
+ * 모든 활성 미확인 알람 일괄 확인 처리
+ */
+router.post('/occurrences/acknowledge-all', async (req, res) => {
+    try {
+        const { comment } = req.body;
+        const result = await AlarmOccurrenceService.acknowledgeAll(req.tenantId, req.user.id, comment);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'ACKNOWLEDGE_ALL_ERROR'));
+    }
+});
+
+/**
+ * POST /api/alarms/occurrences/clear-all
+ * 모든 활성/확인됨 알람 일괄 해제 처리
+ */
+router.post('/occurrences/clear-all', async (req, res) => {
+    try {
+        const { cleared_value, comment } = req.body;
+        const result = await AlarmOccurrenceService.clearAll(req.tenantId, req.user.id, cleared_value, comment);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'CLEAR_ALL_ERROR'));
+    }
+});
+
+/**
  * GET /api/alarms/user/:userId/cleared
  * 특정 사용자가 해제한 알람들 조회
  */
@@ -467,7 +529,8 @@ router.get('/rules', async (req, res) => {
             targetId: req.query.target_id,
             category: req.query.category,
             tag: req.query.tag,
-            search: req.query.search
+            search: req.query.search,
+            deleted: req.query.deleted
         };
 
         const result = await AlarmRuleService.getAlarmRules(filters);
@@ -537,6 +600,19 @@ router.delete('/rules/:id', async (req, res) => {
         res.json(result);
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_DELETE_ERROR'));
+    }
+});
+
+/**
+ * PATCH /api/alarms/rules/:id/restore
+ * 알람 규칙 복원
+ */
+router.patch('/rules/:id/restore', async (req, res) => {
+    try {
+        const result = await AlarmRuleService.restoreAlarmRule(parseInt(req.params.id), req.tenantId);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_RESTORE_ERROR'));
     }
 });
 
@@ -690,10 +766,20 @@ router.get('/templates/data-type/:dataType', async (req, res) => {
  */
 router.post('/templates/:id/apply', async (req, res) => {
     try {
-        // 이 부분은 비즈니스 로직이 크므로 나중에 서비스로 이동할 수도 있지만
-        // 일단 리포지토리 호출만 바꿉니다.
-        // TODO: Move complex apply logic to Service
-        res.status(500).json(createResponse(false, null, 'Template apply logic migration in progress', 'NOT_IMPLEMENTED'));
+        const { data_point_ids, custom_configs, rule_group_name } = req.body;
+
+        if (!data_point_ids || !Array.isArray(data_point_ids) || data_point_ids.length === 0) {
+            return res.status(400).json(createResponse(false, null, 'data_point_ids array is required', 'INVALID_PARAMS'));
+        }
+
+        const result = await AlarmTemplateService.applyTemplate(
+            parseInt(req.params.id),
+            { data_point_ids, custom_configs, rule_group_name },
+            req.tenantId,
+            req.user.id
+        );
+
+        res.json(result);
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'TEMPLATE_APPLY_ERROR'));
     }

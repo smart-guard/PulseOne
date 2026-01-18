@@ -95,6 +95,7 @@ export interface AlarmRule {
   created_by?: number;
   created_at: string;
   updated_at: string;
+  is_deleted?: boolean;
 }
 
 export interface AlarmOccurrence {
@@ -221,6 +222,24 @@ export interface AlarmStatistics {
     categories: number;  // 새로 추가
     rules_with_tags: number;  // 새로 추가
   };
+
+
+  // 규칙별 상세 통계 (AlarmSettingsModal에서 사용)
+  occurrence_summary?: {
+    total: number;
+    total_occurrences: number;
+    last_occurrence: string;
+    avg_duration: number;
+    max_duration: number;
+  };
+  performance_metrics?: {
+    reliability: number;
+    mtbf: number;
+    mttf: number;
+    mttr: number;
+    avg_response_time_minutes: number;
+    last_triggered: string;
+  };
 }
 
 // 백엔드 CREATE 스키마와 정확히 일치
@@ -281,11 +300,35 @@ export interface AlarmRuleCreateData {
 export interface AlarmRuleUpdateData extends Partial<AlarmRuleCreateData> { }
 
 // 간단한 설정 업데이트 인터페이스 (NEW!)
-export interface AlarmRuleSettingsUpdate {
+export interface AlarmRuleSettings {
   is_enabled?: boolean;
+  isEnabled?: boolean;
   notification_enabled?: boolean;
   auto_acknowledge?: boolean;
+  autoAcknowledge?: boolean;
   auto_clear?: boolean;
+  autoReset?: boolean;
+  priority?: string;
+  severity?: string | number;
+  suppressDuration?: number;
+  escalationTime?: number;
+  schedule?: any;
+  highHighLimit?: number;
+  highLimit?: number;
+  lowLimit?: number;
+  lowLowLimit?: number;
+  deadband?: number;
+  maxOccurrences?: number;
+  soundEnabled?: boolean;
+  popupEnabled?: boolean;
+  webhookEnabled?: boolean;
+  webhookUrl?: string;
+  emailEnabled?: boolean;
+  emailRecipients?: string[];
+  emailTemplate?: string;
+  smsEnabled?: boolean;
+  smsRecipients?: string[];
+  messageTemplate?: string;
 }
 
 // 백엔드 CREATE 스키마와 정확히 일치
@@ -331,6 +374,7 @@ export interface AlarmListParams {
   target_id?: number;    // 새로 추가
   category?: string;     // 새로 추가
   tag?: string;          // 새로 추가
+  deleted?: boolean;
 }
 
 export interface AcknowledgeAlarmRequest {
@@ -507,9 +551,9 @@ export class AlarmApiService {
   /**
    * 알람 규칙 설정만 업데이트 (name 건드리지 않음)
    */
-  static async updateAlarmSettings(id: number, settings: AlarmRuleSettingsUpdate): Promise<ApiResponse<{
+  static async updateAlarmSettings(id: number, settings: AlarmRuleSettings): Promise<ApiResponse<{
     id: number;
-    updated_settings: AlarmRuleSettingsUpdate;
+    updated_settings: AlarmRuleSettings;
   }>> {
     console.log(`알람 규칙 ${id} 설정 업데이트:`, settings);
     return this.httpClient.patch(`/api/alarms/rules/${id}/settings`, settings);
@@ -600,6 +644,7 @@ export class AlarmApiService {
       if (params?.device_id) backendParams.device_id = params.device_id;
       if (params?.category) backendParams.category = params.category;
       if (params?.tag) backendParams.tag = params.tag;
+      if (params?.deleted !== undefined) backendParams.deleted = params.deleted;
 
       const response = await this.httpClient.get<PaginatedResponse<AlarmRule>>(
         ENDPOINTS.ALARM_RULES,
@@ -649,6 +694,12 @@ export class AlarmApiService {
     return this.httpClient.delete<{ deleted: boolean }>(ENDPOINTS.ALARM_RULE_BY_ID(id));
   }
 
+  // 알람 규칙 복원
+  static async restoreAlarmRule(id: number): Promise<ApiResponse<{ restored: boolean }>> {
+    console.log('알람 규칙 복원:', id);
+    return this.httpClient.patch<{ restored: boolean }>(`/api/alarms/rules/${id}/restore`);
+  }
+
   // 알람 확인 처리
   static async acknowledgeAlarm(id: number, data?: AcknowledgeAlarmRequest): Promise<ApiResponse<AlarmOccurrence>> {
     console.log('알람 확인 처리:', id, data);
@@ -659,6 +710,30 @@ export class AlarmApiService {
   static async clearAlarm(id: number, data?: ClearAlarmRequest): Promise<ApiResponse<AlarmOccurrence>> {
     console.log('알람 해제 처리:', id, data);
     return this.httpClient.post<AlarmOccurrence>(ENDPOINTS.ALARMS_OCCURRENCE_CLEAR(id), data);
+  }
+
+  // 알람 일괄 확인 처리
+  static async acknowledgeAlarmsBulk(ids: number[], data?: AcknowledgeAlarmRequest): Promise<ApiResponse<number>> {
+    console.log('알람 일괄 확인 처리:', ids, data);
+    return this.httpClient.post<number>(ENDPOINTS.ALARMS_BULK_ACKNOWLEDGE, { ids, ...data });
+  }
+
+  // 알람 일괄 해제 처리
+  static async clearAlarmsBulk(ids: number[], data?: ClearAlarmRequest): Promise<ApiResponse<number>> {
+    console.log('알람 일괄 해제 처리:', ids, data);
+    return this.httpClient.post<number>(ENDPOINTS.ALARMS_BULK_CLEAR, { ids, ...data });
+  }
+
+  // 모든 알람 일괄 확인 처리
+  static async acknowledgeAllAlarms(data?: AcknowledgeAlarmRequest): Promise<ApiResponse<number>> {
+    console.log('전체 알람 일괄 확인 처리:', data);
+    return this.httpClient.post<number>(ENDPOINTS.ALARMS_ACKNOWLEDGE_ALL, data);
+  }
+
+  // 모든 알람 일괄 해제 처리
+  static async clearAllAlarms(data?: ClearAlarmRequest): Promise<ApiResponse<number>> {
+    console.log('전체 알람 일괄 해제 처리:', data);
+    return this.httpClient.post<number>(ENDPOINTS.ALARMS_CLEAR_ALL, data);
   }
 
   // 미확인 알람 조회

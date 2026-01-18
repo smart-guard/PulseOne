@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AlarmRuleSettings } from '../../api/services/alarmApi';
-import '../styles/alarm-settings.css';
+import '../../styles/alarm-settings.css';
 
 interface AlarmRule {
   id: number;
@@ -55,14 +55,14 @@ const AlarmBulkUpdateModal: React.FC<AlarmBulkUpdateModalProps> = ({
       alert('변경할 설정을 선택해주세요.');
       return;
     }
-    
+
     const settingsToUpdate: Partial<AlarmRuleSettings> = {};
     selectedFields.forEach(field => {
       if (updateSettings[field as keyof AlarmRuleSettings] !== undefined) {
-        settingsToUpdate[field as keyof AlarmRuleSettings] = updateSettings[field as keyof AlarmRuleSettings];
+        (settingsToUpdate as any)[field] = (updateSettings as any)[field];
       }
     });
-    
+
     onUpdate(settingsToUpdate);
   };
 
@@ -430,7 +430,7 @@ const getFieldDisplayName = (field: string): string => {
 
 const formatFieldValue = (field: string, value: any): string => {
   if (value === undefined || value === null) return 'N/A';
-  
+
   switch (field) {
     case 'priority':
       return value.toString().toUpperCase();

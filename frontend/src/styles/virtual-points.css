@@ -3,6 +3,80 @@
    가상포인트 페이지 스타일
    ============================================================================ */
 
+/* Blueprint 테마 색상 (알람 템플릿과 일관성) */
+:root {
+  --blueprint-50: #f0f9ff;
+  --blueprint-100: #e0f2fe;
+  --blueprint-200: #bae6fd;
+  --blueprint-300: #7dd3fc;
+  --blueprint-400: #38bdf8;
+  --blueprint-500: #0ea5e9;
+  --blueprint-600: #0284c7;
+  --blueprint-700: #0369a1;
+  --blueprint-800: #075985;
+  --blueprint-900: #0c4a6e;
+
+  --blueprint-glass-bg: rgba(14, 165, 233, 0.03);
+  --blueprint-border: rgba(14, 165, 233, 0.15);
+  --blueprint-glow: 0 0 20px rgba(14, 165, 233, 0.1);
+}
+
+/* 탭 네비게이션 (알람 템플릿 스타일) */
+.tab-navigation {
+  display: flex;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  padding: 6px;
+  margin: 0 24px 24px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.tab-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  justify-content: center;
+}
+
+.tab-button:hover {
+  color: #374151;
+  background: #f9fafb;
+}
+
+.tab-button.active {
+  background: #3b82f6;
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.tab-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 20px;
+  text-align: center;
+}
+
+.tab-button:not(.active) .tab-badge {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
 .virtual-points-container {
   width: 100%;
   max-width: 1400px;
@@ -676,27 +750,27 @@
   .virtual-points-container {
     padding: 16px;
   }
-  
+
   .page-header {
     flex-direction: column;
     gap: 16px;
     align-items: stretch;
     padding: 24px;
   }
-  
+
   .header-actions {
     justify-content: stretch;
   }
-  
+
   .filter-row {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .points-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .stats-panel {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
@@ -706,12 +780,12 @@
   .page-title {
     font-size: 24px;
   }
-  
+
   .point-header {
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .point-actions {
     align-self: flex-end;
   }
@@ -719,19 +793,23 @@
 
 .virtual-points-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); /* 400px → 320px로 줄임 */
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /* 400px → 320px로 줄임 */
   gap: 24px;
-  padding: 20px 0; /* 위아래 여백 추가 */
+  padding: 20px 0;
+  /* 위아래 여백 추가 */
 }
 
 .virtual-point-card {
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 20px; /* 24px → 20px로 줄임 */
+  padding: 20px;
+  /* 24px → 20px로 줄임 */
   transition: all 0.2s;
   background: white;
   position: relative;
-  height: fit-content; /* 높이를 내용에 맞게 조절 */
+  height: fit-content;
+  /* 높이를 내용에 맞게 조절 */
 }
 
 /* 메타데이터 레이아웃도 추가로 수정 */
@@ -770,4 +848,183 @@
 .metadata-value {
   color: #374151;
   text-align: right;
+}
+/* ============================================================================
+ * Premium Card Design - Refined
+ * ============================================================================ */
+.premium-point-card {
+  position: relative;
+  background: white;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg, 12px);
+  padding: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+  cursor: pointer;
+}
+
+.premium-point-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--blueprint-600);
+  z-index: 1;
+}
+
+.premium-point-card.status-error::before { background: var(--error-500, #ef4444); }
+.premium-point-card.status-disabled::before { background: var(--neutral-400, #9ca3af); }
+
+.premium-point-card:hover {
+  border-color: var(--blueprint-500);
+  box-shadow: 0 12px 20px -5px rgba(14, 165, 233, 0.15);
+  transform: translateY(-4px);
+}
+
+.premium-point-card .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.premium-point-card .formula-preview {
+  background: #1e1e2e;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 12px 0;
+  border-left: 4px solid var(--blueprint-500);
+}
+
+.premium-point-card .formula-preview code {
+  color: #a78bfa !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.premium-point-card .current-value-box {
+  background: var(--blueprint-50);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--blueprint-100);
+  margin-bottom: 12px;
+}
+
+.premium-point-card .value-label {
+  font-size: 11px;
+  color: var(--blueprint-600);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.premium-point-card .value-display {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--blueprint-900);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.premium-point-card .card-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  background: #f8fafc;
+  padding: 10px;
+  border-radius: 6px;
+  margin-top: auto;
+}
+
+.premium-point-card .meta-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.premium-point-card .meta-item .label { color: #64748b; }
+.premium-point-card .meta-item .value { color: #1e293b; font-weight: 600; }
+
+.premium-point-card .card-footer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.premium-point-card .btn-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.premium-point-card .btn-toggle.enabled { color: #10b981; }
+.premium-point-card .btn-toggle.disabled { color: #94a3b8; }
+
+.premium-point-card .footer-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-icon-sm {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-icon-sm:hover:not(:disabled) {
+  background: #f8fafc;
+  color: var(--blueprint-600);
+  border-color: var(--blueprint-300);
+}
+
+.btn-icon-sm.btn-danger:hover {
+  color: #ef4444;
+  border-color: #fecaca;
+}
+
+.card-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: inherit;
+}
+
+.mgmt-history-section {
+  padding: 48px;
+  text-align: center;
+  background: white;
+  border-radius: 12px;
+  border: 1px dashed #cbd5e1;
+}
+
+.empty-state-notice i {
+  font-size: 48px;
+  color: #94a3b8;
+  margin-bottom: 24px;
 }

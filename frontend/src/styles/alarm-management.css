@@ -1,0 +1,255 @@
+/* 🏷️ Alarm Management Enhancements (White Box / Pro-Engineer) */
+
+/* Management Card Grid refinements */
+.mgmt-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)) !important;
+    gap: var(--space-4) !important;
+}
+
+.alarm-rule-card {
+    transition: transform 0.2s, box-shadow 0.2s !important;
+    border: 1px solid var(--neutral-200) !important;
+    background: white !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+}
+
+.alarm-rule-card:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: var(--shadow-md) !important;
+    border-color: var(--primary-300) !important;
+}
+
+.alarm-rule-card .card-title h4 {
+    font-size: 1.1rem !important;
+    color: var(--neutral-900) !important;
+    margin: 0 !important;
+    font-weight: 700 !important;
+}
+
+.alarm-rule-card .card-desc {
+    font-size: 13px !important;
+    color: var(--neutral-500) !important;
+    margin: var(--space-3) 0 !important;
+    line-height: 1.6 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    height: 3.2em !important;
+    /* Fixed height for 2 lines */
+}
+
+.alarm-rule-card .card-meta {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: var(--space-3) !important;
+    padding-top: var(--space-2) !important;
+    border-top: 1px solid var(--neutral-100) !important;
+    margin-top: auto !important;
+}
+
+.alarm-rule-card .card-meta span {
+    font-size: 12px !important;
+    color: var(--neutral-500) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+}
+
+.alarm-rule-card .card-meta i {
+    font-size: 11px !important;
+    color: var(--primary-400) !important;
+}
+
+.alarm-rule-card .card-actions {
+    display: flex !important;
+    gap: var(--space-2) !important;
+    width: 100% !important;
+}
+
+.alarm-rule-card .card-actions button {
+    flex: 1 !important;
+}
+
+/* 🚦 Status Indicator & Dot */
+.status-indicator {
+    display: flex !important;
+    align-items: center !important;
+    gap: var(--space-2) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+}
+
+.status-dot {
+    width: 8px !important;
+    height: 8px !important;
+    border-radius: 50% !important;
+}
+
+.status-dot.active {
+    background: var(--success-500) !important;
+    box-shadow: 0 0 0 3px var(--success-50) !important;
+}
+
+.status-dot.inactive {
+    background: var(--neutral-300) !important;
+}
+
+/* 🏁 Modal Footer Refinements */
+.modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    border-top: 1px solid var(--neutral-200);
+    background: white;
+    gap: 12px;
+}
+
+.footer-left {
+    display: flex;
+    gap: 8px;
+}
+
+.footer-right {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+/* Standardized Button Sizing in Footer */
+.modal-footer .btn {
+    min-width: 90px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    border-radius: 6px;
+}
+
+.btn-danger-outline {
+    background: white;
+    color: var(--neutral-600);
+    border: 1px solid var(--neutral-200);
+}
+
+.btn-danger-outline:hover {
+    background: var(--danger-50);
+    color: var(--danger-600);
+    border-color: var(--danger-200);
+}
+
+.btn-danger {
+    background: #ef4444 !important;
+    /* Solid Red */
+    color: white !important;
+    border: 1px solid #dc2626 !important;
+}
+
+.btn-danger:hover {
+    background: #dc2626 !important;
+    border-color: #b91c1c !important;
+}
+
+/* 🏔️ Precision Modal Headers (Vertical Bar) */
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--neutral-800);
+    margin-bottom: 20px;
+}
+
+.section-title::before {
+    content: '';
+    display: block;
+    width: 3px;
+    height: 18px;
+    background: var(--primary-500);
+    border-radius: 2px;
+}
+
+/* 📝 Dark Themed Sentence Builder Bar */
+.sentence-builder-bar {
+    background: #0f3456 !important;
+    /* Specific matching dark blue */
+    color: white !important;
+    padding: 12px 24px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 16px !important;
+    margin-top: auto !important;
+    font-size: 14px !important;
+}
+
+.sentence-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.sentence-content {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.sentence-pill {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.sentence-pill.highlight {
+    background: var(--primary-500);
+    color: white;
+}
+
+/* 🎫 Badge Overrides for Pro Look */
+.badge {
+    padding: 2px 8px !important;
+    border-radius: var(--radius-sm) !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.02em !important;
+}
+
+/* 📋 Detail View Restored and Fixed */
+.modal-detail-view {
+    padding: 0;
+}
+
+.detail-section {
+    padding: 24px;
+}
+
+.detail-item {
+    margin-bottom: 20px;
+}
+
+.detail-label {
+    font-size: 12px;
+    color: var(--neutral-500);
+    margin-bottom: 4px;
+}
+
+.detail-value {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--neutral-800);
+}

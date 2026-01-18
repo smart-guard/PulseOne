@@ -220,15 +220,17 @@ const ManufacturerManagementPage: React.FC = () => {
                 }}
                 activeFilterCount={(searchTerm ? 1 : 0) + (selectedStatus !== 'all' ? 1 : 0) + (includeDeleted ? 1 : 0)}
                 rightActions={
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', cursor: 'pointer', whiteSpace: 'nowrap', color: 'var(--neutral-600)' }}>
-                            <input
-                                type="checkbox"
-                                checked={includeDeleted}
-                                onChange={(e) => setIncludeDeleted(e.target.checked)}
-                            />
-                            삭제된 제조사 보기
-                        </label>
+                    <>
+                        <div style={{ display: 'flex', alignItems: 'center', height: '32px' }}>
+                            <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '500', cursor: 'pointer', whiteSpace: 'nowrap', color: 'var(--neutral-600)', margin: 0 }}>
+                                <input
+                                    type="checkbox"
+                                    checked={includeDeleted}
+                                    onChange={(e) => setIncludeDeleted(e.target.checked)}
+                                />
+                                삭제된 제조사 보기
+                            </label>
+                        </div>
                         <div className="view-toggle">
                             <button
                                 className={`btn-icon ${viewMode === 'card' ? 'active' : ''}`}
@@ -245,7 +247,7 @@ const ManufacturerManagementPage: React.FC = () => {
                                 <i className="fas fa-list"></i>
                             </button>
                         </div>
-                    </div>
+                    </>
                 }
             />
 
