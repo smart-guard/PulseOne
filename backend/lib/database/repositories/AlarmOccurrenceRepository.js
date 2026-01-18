@@ -662,6 +662,55 @@ class AlarmOccurrenceRepository extends BaseRepository {
         }
     }
 
+    async acknowledgeBulk(ids, userId, comment = '', tenantId = null) {
+        try {
+            this.logger?.info(`AlarmOccurrenceRepository.acknowledgeBulk called: IDs ${ids.join(',')}, userId=${userId}`);
+
+            const result = await this.knex(this.tableName)
+                .whereIn('id', ids)
+                .where('tenant_id', tenantId || 1)
+                .update({
+                    acknowledged_time: this.knex.fn.now(),
+                    acknowledged_by: userId,
+                    acknowledge_comment: comment,
+                    state: 'acknowledged',
+                    updated_at: this.knex.fn.now()
+                });
+
+            this.logger?.info(`✅ ${result} Alarms acknowledged bulk`);
+            return result;
+
+        } catch (error) {
+            this.logger?.error('AlarmOccurrenceRepository.acknowledgeBulk failed:', error.message);
+            throw error;
+        }
+    }
+
+    async acknowledgeAll(tenantId, userId, comment = '') {
+        try {
+            this.logger?.info(`AlarmOccurrenceRepository.acknowledgeAll called: tenantId=${tenantId}, userId=${userId}`);
+
+            const result = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .whereNull('acknowledged_time')
+                .where('state', 'active')
+                .update({
+                    acknowledged_time: this.knex.fn.now(),
+                    acknowledged_by: userId,
+                    acknowledge_comment: comment,
+                    state: 'acknowledged',
+                    updated_at: this.knex.fn.now()
+                });
+
+            this.logger?.info(`✅ ${result} Alarms acknowledged (All)`);
+            return result;
+
+        } catch (error) {
+            this.logger?.error('AlarmOccurrenceRepository.acknowledgeAll failed:', error.message);
+            throw error;
+        }
+    }
+
     async clear(id, userId, clearedValue, comment = '', tenantId = null) {
         try {
             this.logger?.info(`AlarmOccurrenceRepository.clear called: ID ${id}, userId=${userId}`);
@@ -687,6 +736,56 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
         } catch (error) {
             this.logger?.error('AlarmOccurrenceRepository.clear failed:', error.message);
+            throw error;
+        }
+    }
+
+    async clearBulk(ids, userId, clearedValue, comment = '', tenantId = null) {
+        try {
+            this.logger?.info(`AlarmOccurrenceRepository.clearBulk called: IDs ${ids.join(',')}, userId=${userId}`);
+
+            const result = await this.knex(this.tableName)
+                .whereIn('id', ids)
+                .where('tenant_id', tenantId || 1)
+                .update({
+                    cleared_time: this.knex.fn.now(),
+                    cleared_value: clearedValue ? JSON.stringify(clearedValue) : null,
+                    clear_comment: comment,
+                    cleared_by: userId,
+                    state: 'cleared',
+                    updated_at: this.knex.fn.now()
+                });
+
+            this.logger?.info(`✅ ${result} Alarms cleared bulk`);
+            return result;
+
+        } catch (error) {
+            this.logger?.error('AlarmOccurrenceRepository.clearBulk failed:', error.message);
+            throw error;
+        }
+    }
+
+    async clearAll(tenantId, userId, clearedValue, comment = '') {
+        try {
+            this.logger?.info(`AlarmOccurrenceRepository.clearAll called: tenantId=${tenantId}, userId=${userId}`);
+
+            const result = await this.knex(this.tableName)
+                .where('tenant_id', tenantId || 1)
+                .where('state', 'acknowledged')
+                .update({
+                    cleared_time: this.knex.fn.now(),
+                    cleared_value: clearedValue ? JSON.stringify(clearedValue) : null,
+                    clear_comment: comment,
+                    cleared_by: userId,
+                    state: 'cleared',
+                    updated_at: this.knex.fn.now()
+                });
+
+            this.logger?.info(`✅ ${result} Alarms cleared (All)`);
+            return result;
+
+        } catch (error) {
+            this.logger?.error('AlarmOccurrenceRepository.clearAll failed:', error.message);
             throw error;
         }
     }

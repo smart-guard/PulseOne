@@ -16,18 +16,21 @@
 
   --success-50: #f0fdf4;
   --success-100: #dcfce7;
+  --success-200: #bbf7d0;
   --success-500: #22c55e;
   --success-600: #16a34a;
   --success-700: #15803d;
 
   --warning-50: #fffbeb;
   --warning-100: #fef3c7;
+  --warning-200: #fde68a;
   --warning-500: #f59e0b;
   --warning-600: #d97706;
   --warning-700: #b45309;
 
   --error-50: #fef2f2;
   --error-100: #fee2e2;
+  --error-200: #fecaca;
   --error-500: #ef4444;
   --error-600: #dc2626;
   --error-700: #b91c1c;
@@ -370,10 +373,7 @@ body {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  background: var(--success-50);
-  border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  color: var(--success-700);
 }
 
 .status-text {
@@ -1234,6 +1234,7 @@ input[type="checkbox"]:disabled {
     justify-content: center;
   }
 }
+
 /* ============================================
    Management Page Standardized Layout
    ============================================ */
@@ -1419,12 +1420,12 @@ input[type="checkbox"]:disabled {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .filter-bar {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .search-input-wrapper {
     width: 100%;
   }

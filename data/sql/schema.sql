@@ -1108,6 +1108,8 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
     category VARCHAR(50) DEFAULT NULL,              -- 'process', 'system', 'safety', 'custom', 'general'
     tags TEXT DEFAULT NULL,                         -- JSON 배열 형태 ['tag1', 'tag2', 'tag3']
     
+    is_deleted BOOLEAN DEFAULT 0,
+    
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
@@ -1183,6 +1185,7 @@ CREATE TABLE IF NOT EXISTS alarm_rule_templates (
     category VARCHAR(50),                           -- 'temperature', 'pressure', 'flow' 등
     
     -- 템플릿 조건 설정
+    template_type VARCHAR(20) DEFAULT 'simple',     -- 'simple', 'advanced', 'script'
     condition_type VARCHAR(50) NOT NULL,            -- 'threshold', 'range', 'digital' 등
     condition_template TEXT NOT NULL,               -- "> {threshold}°C" 형태의 템플릿
     default_config TEXT NOT NULL,                   -- JSON 형태의 기본 설정값
@@ -1451,6 +1454,8 @@ CREATE TABLE IF NOT EXISTS virtual_points (
     high_limit REAL,
     low_limit REAL,
     deadband REAL DEFAULT 0.0,
+    
+    is_deleted BOOLEAN DEFAULT 0,
     
     -- 🔥 감사 필드
     created_by INTEGER,
@@ -2768,3 +2773,21 @@ BEGIN
     WHERE id = OLD.profile_id;
 END;
 
+
+-- =============================================================================
+-- Virtual Point Audit Logs
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS virtual_point_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    point_id INTEGER NOT NULL,
+    action VARCHAR(50) NOT NULL,          -- CREATE, UPDATE, DELETE, RESTORE, EXECUTE, TOGGLE
+    previous_state TEXT,                  -- JSON string of previous state
+    new_state TEXT,                       -- JSON string of new state (if applicable)
+    user_id INTEGER,                      -- Optional: ID of the user performing the action
+    details TEXT,                         -- Optional: detailed message or reason
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_virtual_point_logs_point_id ON virtual_point_logs(point_id);
+CREATE INDEX IF NOT EXISTS idx_virtual_point_logs_created_at ON virtual_point_logs(created_at);

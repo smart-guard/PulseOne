@@ -1,16 +1,17 @@
 // ============================================================================
-// InputVariableEditor.tsx - 최소 수정 버전 (기존 UI 유지)
-// 변경사항: 저장/삭제 확인팝업 + 저장후 모달유지 + onMoveToFormulaTab 추가
+// InputVariableEditor.tsx - Clarity & Guidance Focused Version
 // ============================================================================
 
 import React, { useState, useCallback } from 'react';
 import { VirtualPointInput } from '../../../types/virtualPoints';
 import InputVariableSourceSelector from './InputVariableSourceSelector';
+import { useConfirmContext } from '../../common/ConfirmProvider';
+import './VirtualPointModal.css';
 
 interface InputVariableEditorProps {
   variables: VirtualPointInput[];
   onChange: (variables: VirtualPointInput[]) => void;
-  onMoveToFormulaTab?: () => void; // 수식 탭 이동 콜백 추가
+  onMoveToFormulaTab?: () => void;
 }
 
 const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
@@ -18,27 +19,24 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
   onChange,
   onMoveToFormulaTab
 }) => {
+  const { confirm } = useConfirmContext();
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [formData, setFormData] = useState<Partial<VirtualPointInput>>({
-    variable_name: '',
+    input_name: '',
     source_type: 'data_point',
     source_id: undefined,
-    data_type: 'number',
+    data_type: undefined,
     description: '',
     is_required: true
   });
 
-  // ========================================================================
-  // 이벤트 핸들러
-  // ========================================================================
-  
   const handleAddVariable = useCallback(() => {
     setFormData({
-      variable_name: '',
+      input_name: '',
       source_type: 'data_point',
       source_id: undefined,
-      data_type: 'number',
+      data_type: undefined,
       description: '',
       is_required: true
     });
@@ -52,53 +50,47 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
     setShowAddModal(true);
   }, [variables]);
 
-  // 삭제 확인 팝업 추가
-  const handleDeleteVariable = useCallback((index: number) => {
+  const handleDeleteVariable = useCallback(async (index: number) => {
     const variable = variables[index];
-    const confirmMessage = `입력 변수를 삭제하시겠습니까?\n\n변수명: ${variable.variable_name}\n소스: ${variable.source_name || variable.source_id}`;
-    
-    if (window.confirm(confirmMessage)) {
+
+    const isConfirmed = await confirm({
+      title: '입력 변수 삭제',
+      message: `입력 변수 "${variable.input_name}"을(를) 정말 삭제하시겠습니까?`,
+      confirmText: '삭제하기',
+      cancelText: '취소',
+      confirmButtonType: 'danger'
+    });
+
+    if (isConfirmed) {
       const newVariables = variables.filter((_, i) => i !== index);
       onChange(newVariables);
     }
-  }, [variables, onChange]);
+  }, [variables, onChange, confirm]);
 
-  // 저장 확인 팝업 추가 + 저장 후 모달 유지
-  const handleSaveVariable = useCallback(() => {
-    if (!formData.variable_name?.trim()) {
-      alert('변수명을 입력해주세요.');
+  const handleSaveVariable = useCallback(async () => {
+    if (!formData.input_name?.trim()) {
+      await confirm({ title: '입력 오류', message: '변수명을 입력해주세요.', showCancelButton: false });
       return;
     }
 
     if (formData.source_type !== 'constant' && !formData.source_id) {
-      alert('데이터 소스를 선택해주세요.');
-      return;
-    }
-
-    if (formData.source_type === 'constant' && formData.constant_value === undefined) {
-      alert('상수값을 입력해주세요.');
+      await confirm({ title: '입력 오류', message: '데이터 소스를 선택해주세요.', showCancelButton: false });
       return;
     }
 
     const newVariable: VirtualPointInput = {
       id: editingIndex !== null ? variables[editingIndex].id : Date.now(),
-      variable_name: formData.variable_name!,
+      virtual_point_id: editingIndex !== null ? variables[editingIndex].virtual_point_id : 0,
+      input_name: formData.input_name!,
       source_type: formData.source_type!,
       source_id: formData.source_id,
       constant_value: formData.constant_value,
       data_type: formData.data_type!,
       description: formData.description || '',
       is_required: formData.is_required ?? true,
-      source_name: formData.source_name
+      source_name: formData.source_name,
+      created_at: editingIndex !== null ? variables[editingIndex].created_at : new Date().toISOString()
     };
-
-    // 저장 확인 팝업
-    const action = editingIndex !== null ? '수정' : '추가';
-    const confirmMessage = `입력 변수를 ${action}하시겠습니까?\n\n변수명: ${newVariable.variable_name}\n소스: ${newVariable.source_name || newVariable.source_id}\n타입: ${newVariable.data_type}`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
 
     let newVariables: VirtualPointInput[];
     if (editingIndex !== null) {
@@ -110,21 +102,20 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
     }
 
     onChange(newVariables);
-    
-    // 저장 후 모달 닫기 (기존 동작 유지)
     setShowAddModal(false);
     setEditingIndex(null);
 
-    // 수식 탭 이동 여부 확인
-    if (onMoveToFormulaTab) {
-      const moveToFormula = window.confirm('수식 편집 탭으로 이동하시겠습니까?');
-      if (moveToFormula) {
-        onMoveToFormulaTab();
-      }
+    if (onMoveToFormulaTab && editingIndex === null) {
+      const moveToFormula = await confirm({
+        title: '탭 이동 안내',
+        message: '변수가 추가되었습니다. 수식 작성 단계로 이동할까요?',
+        confirmText: '이동하기',
+        cancelText: '더 추가하기'
+      });
+      if (moveToFormula) onMoveToFormulaTab();
     }
-  }, [formData, editingIndex, variables, onChange, onMoveToFormulaTab]);
+  }, [formData, editingIndex, variables, onChange, onMoveToFormulaTab, confirm]);
 
-  // 소스 선택 핸들러 (변경 없음)
   const handleSourceSelect = useCallback((id: number, source: any) => {
     setFormData(prev => ({
       ...prev,
@@ -138,494 +129,172 @@ const InputVariableEditor: React.FC<InputVariableEditorProps> = ({
   const validateVariableName = (name: string): string | null => {
     if (!name.trim()) return '변수명은 필수입니다';
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-      return '변수명은 문자, 숫자, 언더스코어만 사용 가능하며 문자로 시작해야 합니다';
+      return '문자와 숫자, 언더스코어(_)만 가능하며 문자로 시작해야 합니다';
     }
-    if (variables.some((v, i) => v.variable_name === name && i !== editingIndex)) {
+    if (variables.some((v, i) => v.input_name === name && i !== editingIndex)) {
       return '이미 사용 중인 변수명입니다';
     }
     return null;
   };
 
-  // ========================================================================
-  // 렌더링 (기존 UI 그대로 유지)
-  // ========================================================================
-  
   return (
-    <div style={{ padding: '20px' }}>
-      
-      {/* 헤더 */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'flex-start',
-        marginBottom: '20px',
-        paddingBottom: '16px',
-        borderBottom: '1px solid #e9ecef'
-      }}>
-        <div>
-          <h3 style={{ 
-            margin: '0 0 8px 0',
-            color: '#495057',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <i className="fas fa-plug" style={{ color: '#007bff' }}></i>
-            입력 변수 설정
-          </h3>
-          <p style={{ margin: 0, color: '#6c757d', fontSize: '14px' }}>
-            가상포인트 계산에 사용할 데이터 소스를 설정합니다.
-          </p>
-        </div>
-        
-        <button
-          onClick={handleAddVariable}
-          style={{
-            padding: '8px 16px',
-            background: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-        >
-          <i className="fas fa-plus"></i>
-          변수 추가
-        </button>
-      </div>
+    <div className="wizard-slide-active" style={{ width: '100%' }}>
+      <div className="formula-grid-v3">
 
-      {/* 변수 목록 (기존 UI 그대로) */}
-      {variables.length === 0 ? (
-        <div style={{
-          textAlign: 'center',
-          padding: '60px 20px',
-          background: '#f8f9fa',
-          borderRadius: '8px',
-          color: '#6c757d'
-        }}>
-          <i className="fas fa-info-circle" style={{ fontSize: '48px', marginBottom: '16px', color: '#dee2e6' }}></i>
-          <h4 style={{ margin: '0 0 8px 0', color: '#495057' }}>입력 변수가 없습니다</h4>
-          <p style={{ margin: '0 0 20px 0' }}>가상포인트 계산에 사용할 데이터 소스를 추가하세요.</p>
-          <button
-            onClick={handleAddVariable}
-            style={{
-              padding: '10px 20px',
-              background: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            <i className="fas fa-plus" style={{ marginRight: '6px' }}></i>
-            첫 번째 변수 추가
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {variables.map((variable, index) => (
-            <div key={variable.id} style={{
-              background: 'white',
-              border: '1px solid #e9ecef',
-              borderRadius: '8px',
-              padding: '16px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                
-                {/* 변수 정보 (기존 디자인 유지) */}
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                    <code style={{ 
-                      background: '#e3f2fd',
-                      color: '#1565c0',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontWeight: 'bold',
-                      fontSize: '14px'
-                    }}>
-                      {variable.variable_name}
-                    </code>
-                    
-                    <span style={{
-                      background: variable.source_type === 'data_point' ? '#e8f5e8' : 
-                                variable.source_type === 'virtual_point' ? '#f3e5f5' : '#fff3cd',
-                      color: variable.source_type === 'data_point' ? '#155724' : 
-                             variable.source_type === 'virtual_point' ? '#6f42c1' : '#856404',
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: 'bold'
-                    }}>
-                      {variable.source_type === 'data_point' ? '데이터포인트' : 
-                       variable.source_type === 'virtual_point' ? '가상포인트' : '상수'}
-                    </span>
-                    
-                    <span style={{
-                      background: '#f8f9fa',
-                      color: '#495057',
-                      padding: '2px 6px',
-                      borderRadius: '8px',
-                      fontSize: '11px'
-                    }}>
-                      {variable.data_type}
-                    </span>
-                    
-                    {variable.is_required && (
-                      <span style={{
-                        background: '#dc3545',
-                        color: 'white',
-                        padding: '2px 6px',
-                        borderRadius: '8px',
-                        fontSize: '10px'
-                      }}>
-                        필수
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div style={{ marginBottom: '8px' }}>
-                    <div style={{ fontSize: '14px', color: '#495057', marginBottom: '4px' }}>
-                      <strong>소스:</strong> {variable.source_name || `ID ${variable.source_id}`}
-                      {variable.source_type === 'constant' && ` = ${variable.constant_value}`}
-                    </div>
-                    {variable.description && (
-                      <div style={{ fontSize: '13px', color: '#6c757d' }}>
-                        <strong>설명:</strong> {variable.description}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {variable.current_value !== undefined && (
-                    <div style={{
-                      display: 'inline-block',
-                      background: '#e8f5e8',
-                      color: '#155724',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      fontWeight: 'bold'
-                    }}>
-                      현재값: {variable.current_value}
-                    </div>
-                  )}
-                </div>
-                
-                {/* 액션 버튼 */}
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button
-                    onClick={() => handleEditVariable(index)}
-                    style={{
-                      padding: '6px 10px',
-                      background: '#17a2b8',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
-                    title="편집"
-                  >
-                    <i className="fas fa-edit"></i>
-                  </button>
-                  <button
-                    onClick={() => handleDeleteVariable(index)}
-                    style={{
-                      padding: '6px 10px',
-                      background: '#dc3545',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '12px'
-                    }}
-                    title="삭제"
-                  >
-                    <i className="fas fa-trash"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* 추가/편집 모달 (기존 UI 그대로 유지) */}
-      {showAddModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
+        {/* Column 1: Variable Identity & Config (The "Form") */}
+        <div className="vp-popup-column" style={{
+          background: '#f8fafc',
+          borderRadius: '16px',
+          border: '1px solid #e2e8f0',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
+          flexDirection: 'column',
+          height: 'fit-content' /* Grow with content */
         }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '8px',
-            width: '90%',
-            maxWidth: '800px',
-            maxHeight: '90vh',
-            overflow: 'auto',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-          }}>
-            
-            {/* 모달 헤더 */}
-            <div style={{
-              padding: '20px',
-              borderBottom: '1px solid #e9ecef',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <h3 style={{ margin: 0 }}>
-                <i className="fas fa-plug" style={{ marginRight: '8px', color: '#007bff' }}></i>
-                {editingIndex !== null ? '입력 변수 편집' : '새 입력 변수 추가'}
-              </h3>
-              <button
-                onClick={() => setShowAddModal(false)}
-                style={{
-                  padding: '6px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '18px',
-                  color: '#6c757d'
-                }}
-              >
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-            
-            {/* 모달 내용 (기존 폼 그대로) */}
-            <div style={{ padding: '20px' }}>
-              
-              {/* 변수명 입력 */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
-                  변수명 <span style={{ color: '#dc3545' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.variable_name || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, variable_name: e.target.value }))}
-                  placeholder="예: temperature, pressure"
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #dee2e6',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}
-                />
-                {formData.variable_name && (
-                  <small style={{ 
-                    color: validateVariableName(formData.variable_name) ? '#dc3545' : '#28a745',
-                    fontSize: '12px',
-                    marginTop: '4px',
-                    display: 'block'
-                  }}>
-                    {validateVariableName(formData.variable_name) || '✓ 사용 가능한 변수명입니다'}
-                  </small>
-                )}
-              </div>
+          {/* Header */}
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: 'white', borderTopLeftRadius: '16px', borderTopRightRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: '#334155' }}>
+              {editingIndex !== null ? '변수 속성 수정' : '새 변수 정보 입력'}
+            </span>
+          </div>
 
-              {/* 소스 타입 선택 */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
-                  데이터 소스 타입 <span style={{ color: '#dc3545' }}>*</span>
-                </label>
-                <select
-                  value={formData.source_type || 'data_point'}
-                  onChange={(e) => setFormData(prev => ({ 
-                    ...prev, 
-                    source_type: e.target.value as any,
-                    source_id: undefined,
-                    source_name: undefined
-                  }))}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #dee2e6',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}
-                >
-                  <option value="data_point">데이터포인트 (센서, PLC 등)</option>
-                  <option value="virtual_point">가상포인트 (계산된 값)</option>
-                  <option value="constant">상수값 (고정된 값)</option>
-                </select>
-              </div>
-
-              {/* 상수값 입력 */}
-              {formData.source_type === 'constant' && (
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
-                    상수값 <span style={{ color: '#dc3545' }}>*</span>
-                  </label>
-                  <input
-                    type={formData.data_type === 'number' ? 'number' : 'text'}
-                    value={formData.constant_value || ''}
-                    onChange={(e) => {
-                      const value = formData.data_type === 'number' ? 
-                        (e.target.value ? Number(e.target.value) : undefined) : 
-                        e.target.value;
-                      setFormData(prev => ({ ...prev, constant_value: value }));
-                    }}
-                    placeholder={formData.data_type === 'number' ? '예: 25.5' : '예: "정상"'}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      border: '1px solid #dee2e6',
-                      borderRadius: '6px',
-                      fontSize: '14px'
-                    }}
-                  />
+          {/* Form Body - Flat Flow */}
+          <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div className="vp-vertical-group">
+              <div className="label">변수 ID</div>
+              <input
+                type="text"
+                className="form-input"
+                style={{ height: '40px' }}
+                value={formData.input_name || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, input_name: e.target.value }))}
+                placeholder="예: inlet_temp"
+              />
+              {formData.input_name && validateVariableName(formData.input_name) && (
+                <div style={{ color: '#e11d48', fontSize: '11px', marginTop: '4px', fontWeight: 600 }}>
+                  <i className="fas fa-exclamation-circle"></i> {validateVariableName(formData.input_name)}
                 </div>
               )}
+            </div>
 
-              {/* 데이터 타입 */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
-                  데이터 타입
-                </label>
-                <select
-                  value={formData.data_type || 'number'}
-                  onChange={(e) => setFormData(prev => ({ ...prev, data_type: e.target.value as any }))}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #dee2e6',
-                    borderRadius: '6px',
-                    fontSize: '14px'
-                  }}
-                >
-                  <option value="number">숫자</option>
-                  <option value="boolean">참/거짓</option>
-                  <option value="string">문자열</option>
-                </select>
-              </div>
-
-              {/* 소스 선택기 */}
-              {formData.source_type !== 'constant' && (
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
-                    데이터 소스 선택 <span style={{ color: '#dc3545' }}>*</span>
-                  </label>
-                  <div style={{
-                    border: '1px solid #dee2e6',
-                    borderRadius: '6px',
-                    padding: '12px',
-                    background: '#fafbfc'
-                  }}>
-                    <InputVariableSourceSelector
-                      sourceType={formData.source_type!}
-                      selectedId={formData.source_id}
-                      onSelect={handleSourceSelect}
-                      dataType={formData.data_type}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* 설명 */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>
-                  설명
-                </label>
-                <textarea
-                  value={formData.description || ''}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="이 변수에 대한 설명을 입력하세요"
-                  rows={3}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #dee2e6',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    resize: 'vertical'
-                  }}
-                />
-              </div>
-
-              {/* 필수 여부 */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  cursor: 'pointer'
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.is_required ?? true}
-                    onChange={(e) => setFormData(prev => ({ ...prev, is_required: e.target.checked }))}
-                  />
-                  필수 변수로 설정
-                </label>
-                <small style={{ color: '#6c757d', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                  필수 변수가 없으면 가상포인트 계산이 실행되지 않습니다
-                </small>
+            <div className="vp-vertical-group">
+              <div className="label">데이터 소스 형식</div>
+              <div className="choice-group-v3">
+                <button className={`choice-btn-v3 ${formData.source_type === 'data_point' ? 'active' : ''}`} onClick={() => setFormData(p => ({ ...p, source_type: 'data_point', source_id: undefined }))}>
+                  <i className="fas fa-broadcast-tower"></i> 센서
+                </button>
+                <button className={`choice-btn-v3 ${formData.source_type === 'constant' ? 'active' : ''}`} onClick={() => setFormData(p => ({ ...p, source_type: 'constant', source_id: undefined }))}>
+                  <i className="fas fa-equals"></i> 상수
+                </button>
               </div>
             </div>
-            
-            {/* 모달 푸터 */}
-            <div style={{
-              padding: '20px',
-              borderTop: '1px solid #e9ecef',
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '12px'
-            }}>
+
+            <div className="vp-vertical-group">
+              <div className="label">데이터 타입 (필터)</div>
+              <div className="choice-group-v3">
+                <button className={`choice-btn-v3 ${!formData.data_type ? 'active' : ''}`} onClick={() => setFormData(p => ({ ...p, data_type: undefined }))}>ALL</button>
+                <button className={`choice-btn-v3 ${formData.data_type === 'number' ? 'active' : ''}`} onClick={() => setFormData(p => ({ ...p, data_type: 'number' }))}>Number</button>
+                <button className={`choice-btn-v3 ${formData.data_type === 'boolean' ? 'active' : ''}`} onClick={() => setFormData(p => ({ ...p, data_type: 'boolean' }))}>Boolean</button>
+              </div>
+            </div>
+
+            <div className="vp-vertical-group">
+              <div className="label">추가 설명</div>
+              <textarea
+                value={formData.description || ''}
+                onChange={(e) => setFormData(p => ({ ...p, description: e.target.value }))}
+                className="form-textarea"
+                style={{ height: '80px' }}
+                placeholder="변수 역할 대략 기재..."
+              />
+            </div>
+
+            {/* Register Button */}
+            <div style={{ marginTop: '12px' }}>
               <button
-                onClick={() => setShowAddModal(false)}
-                style={{
-                  padding: '10px 20px',
-                  background: '#6c757d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
-              >
-                취소
-              </button>
-              <button
+                className="btn btn-primary"
                 onClick={handleSaveVariable}
-                disabled={!formData.variable_name?.trim() || 
-                         (formData.source_type !== 'constant' && !formData.source_id) ||
-                         (formData.source_type === 'constant' && formData.constant_value === undefined)}
-                style={{
-                  padding: '10px 20px',
-                  background: '#007bff',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  opacity: (!formData.variable_name?.trim() || 
-                           (formData.source_type !== 'constant' && !formData.source_id) ||
-                           (formData.source_type === 'constant' && formData.constant_value === undefined)) ? 0.6 : 1
-                }}
+                style={{ width: '100%', height: '50px', fontSize: '15px', fontWeight: 800, borderRadius: '12px', boxShadow: '0 4px 15px rgba(13, 148, 136, 0.2)' }}
+                disabled={!!(formData.input_name && validateVariableName(formData.input_name)) || !formData.input_name?.trim() || (formData.source_type !== 'constant' && (!formData.source_id || !formData.data_type))}
               >
-                <i className="fas fa-save" style={{ marginRight: '6px' }}></i>
-                {editingIndex !== null ? '저장' : '추가'}
+                <i className="fas fa-check" style={{ marginRight: '8px' }}></i>
+                {editingIndex !== null ? '수정 내용 저장' : '이 변수를 리스트에 등록 완료'}
               </button>
+              {editingIndex !== null && (
+                <button className="btn btn-ghost" style={{ width: '100%', marginTop: '8px', height: '36px', fontSize: '13px' }} onClick={() => { setEditingIndex(null); handleAddVariable(); }}>
+                  취소하고 신규 등록
+                </button>
+              )}
             </div>
           </div>
         </div>
-      )}
+
+        {/* Column 2: Source Explorer */}
+        <div className="vp-popup-column" style={{ minWidth: 0 }}>
+          <div className="vp-popup-column-title">데이터포인트 검색 (Source Explorer)</div>
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', minHeight: '500px' }}>
+            {formData.source_type === 'constant' ? (
+              <div className="concept-group-card" style={{ padding: '40px', textAlign: 'center' }}>
+                <i className="fas fa-equals" style={{ fontSize: '40px', color: '#e2e8f0', marginBottom: '16px' }}></i>
+                <div className="label">상수값 직접 입력</div>
+                <input type="text" className="form-input" style={{ fontSize: '20px', padding: '16px', textAlign: 'center' }} placeholder="수식에 사용될 고정값" value={formData.constant_value || ''} onChange={(e) => setFormData(p => ({ ...p, constant_value: e.target.value }))} />
+              </div>
+            ) : (
+              <InputVariableSourceSelector
+                sourceType={formData.source_type!}
+                selectedId={formData.source_id}
+                onSelect={handleSourceSelect}
+                dataType={formData.data_type}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Column 3: Variable List */}
+        <div className="vp-popup-column" style={{ minWidth: 0 }}>
+          <div className="vp-popup-column-title">등록된 변수 리스트 ({variables.length})</div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {variables.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #e2e8f0' }}>
+                <p style={{ color: '#94a3b8', fontSize: '13px' }}>리스트가 비어 있습니다.<br />왼쪽 폼에서 변수를 등록하세요.</p>
+              </div>
+            ) : (
+              variables.map((variable, index) => (
+                <div
+                  key={variable.id}
+                  className={`variable-premium-card ${editingIndex === index ? 'active' : ''}`}
+                  style={{
+                    padding: '16px',
+                    cursor: 'pointer',
+                    background: editingIndex === index ? '#f0f9ff' : 'white'
+                  }}
+                  onClick={() => handleEditVariable(index)}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span className="var-name-badge">{variable.input_name}</span>
+                    <button className="btn-icon danger sm" onClick={(e) => { e.stopPropagation(); handleDeleteVariable(index); }}><i className="fas fa-trash"></i></button>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>
+                    {variable.source_name || `상수: ${variable.constant_value}`}
+                  </div>
+                </div>
+              ))
+            )}
+
+            <div className="vp-popup-guide-panel" style={{ marginTop: '10px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: '#334155', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <i className="fas fa-lightbulb" style={{ color: '#f59e0b' }}></i> 사용 방법
+              </div>
+              <p style={{ fontSize: '12px', color: '#64748b', margin: 0, lineHeight: '1.5' }}>
+                1. 왼쪽에서 <strong>정보 입력</strong><br />
+                2. 리스트에 <strong>등록 완료</strong><br />
+                3. 마지막에 하단 <strong>[다음]</strong> 클릭
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 };

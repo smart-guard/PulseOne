@@ -9,12 +9,14 @@ export interface AlarmTemplate {
   description: string;
   category: string;
   template_type: 'simple' | 'advanced' | 'script';
-  condition_type: 'threshold' | 'range' | 'pattern' | 'script';
+  condition_type: 'threshold' | 'range' | 'pattern' | 'script' | 'digital';
+  trigger_condition?: string;
   default_config: any;
   severity: string;
   message_template: string;
   usage_count: number;
   is_active: boolean;
+  tags?: string[];
   supports_hh_ll: boolean;
   supports_script: boolean;
   applicable_data_types: string[];
@@ -48,6 +50,8 @@ export interface CreatedAlarmRule {
   site_name: string;
   severity: string;
   enabled: boolean;
+  is_enabled?: boolean; // For compatibility
+  target_id?: number;
   created_at: string;
   threshold_config: any;
 }
@@ -78,11 +82,11 @@ export interface ApplyTemplateResponse {
 }
 
 class AlarmTemplatesApi {
-  
+
   // 알람 템플릿 목록 조회
   async getTemplates(params?: TemplateListParams): Promise<any> {
     const queryParams = new URLSearchParams();
-    
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -90,9 +94,9 @@ class AlarmTemplatesApi {
         }
       });
     }
-    
+
     const url = `${BASE_URL}/alarms/templates${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    
+
     try {
       const response = await fetch(url, {
         headers: {
@@ -216,20 +220,20 @@ class AlarmTemplatesApi {
     if (value === null || value === undefined) {
       return 0;
     }
-    
+
     if (typeof value === 'number') {
       return value;
     }
-    
+
     if (typeof value === 'object' && value.value !== undefined) {
       return Number(value.value) || 0;
     }
-    
+
     if (typeof value === 'string') {
       const parsed = parseFloat(value);
       return isNaN(parsed) ? 0 : parsed;
     }
-    
+
     return 0;
   }
 
@@ -242,7 +246,7 @@ class AlarmTemplatesApi {
   }): Promise<DataPoint[]> {
     try {
       console.log('데이터포인트 조회 시작:', filters);
-      
+
       // 모든 디바이스에서 데이터포인트 수집하는 방법 사용 (안정적)
       return await this.getDataPointsFromDevices(filters);
 
@@ -261,7 +265,7 @@ class AlarmTemplatesApi {
   }): Promise<DataPoint[]> {
     try {
       console.log('디바이스 기반 데이터포인트 수집 시작');
-      
+
       // 1. 디바이스 목록 조회 - 실제 백엔드 API 사용
       const devicesResponse = await fetch(`${BASE_URL}/devices?limit=100`, {
         headers: {
@@ -276,7 +280,7 @@ class AlarmTemplatesApi {
 
       const devicesResult = await devicesResponse.json();
       let devices = [];
-      
+
       if (devicesResult.success && devicesResult.data) {
         devices = devicesResult.data.items || [];
       } else if (Array.isArray(devicesResult)) {
@@ -287,11 +291,11 @@ class AlarmTemplatesApi {
 
       // 2. 각 디바이스의 데이터포인트 조회
       const allDataPoints: DataPoint[] = [];
-      
+
       for (const device of devices) {
         try {
           console.log(`디바이스 ${device.name} (ID: ${device.id}) 데이터포인트 조회`);
-          
+
           const response = await fetch(`${BASE_URL}/devices/${device.id}/data-points?limit=100`, {
             headers: {
               'Content-Type': 'application/json',
@@ -302,19 +306,19 @@ class AlarmTemplatesApi {
           if (response.ok) {
             const result = await response.json();
             let deviceDataPoints = [];
-            
+
             if (result.success && result.data) {
               deviceDataPoints = result.data.items || [];
             } else if (Array.isArray(result)) {
               deviceDataPoints = result;
             }
-            
+
             console.log(`디바이스 ${device.name}에서 ${deviceDataPoints.length}개 데이터포인트 발견`);
-            
+
             // 데이터포인트에 디바이스 정보 추가 및 current_value 정규화
             deviceDataPoints.forEach((dp: any) => {
               const normalizedValue = this.normalizeCurrentValue(dp.current_value);
-              
+
               console.log(`값 변환: ${dp.name}`, {
                 원본: dp.current_value,
                 변환후: normalizedValue,
@@ -347,7 +351,7 @@ class AlarmTemplatesApi {
       }
 
       console.log(`총 수집된 데이터포인트 수: ${allDataPoints.length}`);
-      
+
       // 디버깅: 처음 몇 개 데이터포인트 상세 출력
       if (allDataPoints.length > 0) {
         console.log('샘플 데이터포인트들:', allDataPoints.slice(0, 3).map(dp => ({
@@ -381,7 +385,7 @@ class AlarmTemplatesApi {
 
       if (filters?.search) {
         const searchTerm = filters.search.toLowerCase();
-        filteredDataPoints = filteredDataPoints.filter(dp => 
+        filteredDataPoints = filteredDataPoints.filter(dp =>
           dp.name.toLowerCase().includes(searchTerm) ||
           dp.device_name.toLowerCase().includes(searchTerm) ||
           dp.site_name.toLowerCase().includes(searchTerm)
@@ -407,7 +411,7 @@ class AlarmTemplatesApi {
     enabled?: boolean;
   }): Promise<any> {
     const queryParams = new URLSearchParams();
-    
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -417,7 +421,7 @@ class AlarmTemplatesApi {
     }
 
     const url = `${BASE_URL}/alarms/rules${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    
+
     try {
       const response = await fetch(url, {
         headers: {

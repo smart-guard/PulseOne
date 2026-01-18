@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { AlarmRuleSettings, AlarmRuleStatistics } from '../../api/services/alarmApi';
-import '../styles/alarm-settings.css';
+import { AlarmRuleSettings, AlarmStatistics } from '../../api/services/alarmApi';
+import '../../styles/alarm-settings.css';
 
 interface AlarmRule {
   id: number;
@@ -18,7 +18,7 @@ interface AlarmRule {
 interface AlarmSettingsModalProps {
   rule: AlarmRule;
   currentSettings: AlarmRuleSettings;
-  statistics?: AlarmRuleStatistics;
+  statistics?: AlarmStatistics;
   onClose: () => void;
   onSave: (settings: Partial<AlarmRuleSettings>) => void;
   onSaveAndClose: (settings: Partial<AlarmRuleSettings>) => void;
@@ -105,8 +105,8 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                   </div>
                   <div className="readonly-item">
                     <label>마지막 발생</label>
-                    <span>{statistics.performance_metrics.last_triggered 
-                      ? new Date(statistics.performance_metrics.last_triggered).toLocaleString() 
+                    <span>{statistics.performance_metrics.last_triggered
+                      ? new Date(statistics.performance_metrics.last_triggered).toLocaleString()
                       : 'N/A'}</span>
                   </div>
                 </>
@@ -196,7 +196,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                     </div>
                   </div>
                 )}
-                
+
                 <div className="form-group">
                   <label className="form-label">히스테리시스 (Deadband)</label>
                   <input
@@ -259,7 +259,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                     />
                   </div>
                 </div>
-                
+
                 <div className="form-row">
                   <div className="form-group">
                     <label className="form-label">중복 억제 시간 (초)</label>
@@ -377,7 +377,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                     <input
                       type="text"
                       value={localSettings.emailRecipients.join(', ')}
-                      onChange={(e) => handleSettingChange('emailRecipients', 
+                      onChange={(e) => handleSettingChange('emailRecipients',
                         e.target.value.split(',').map(email => email.trim()).filter(email => email)
                       )}
                       className="form-input"
@@ -392,7 +392,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                     <input
                       type="text"
                       value={localSettings.smsRecipients.join(', ')}
-                      onChange={(e) => handleSettingChange('smsRecipients', 
+                      onChange={(e) => handleSettingChange('smsRecipients',
                         e.target.value.split(',').map(phone => phone.trim()).filter(phone => phone)
                       )}
                       className="form-input"
@@ -427,7 +427,7 @@ const AlarmSettingsModal: React.FC<AlarmSettingsModalProps> = ({
                     사용 가능한 변수: {'{sourceName}'}, {'{currentValue}'}, {'{threshold}'}, {'{severity}'}, {'{timestamp}'}
                   </small>
                 </div>
-                
+
                 {localSettings.emailEnabled && (
                   <div className="form-group">
                     <label className="form-label">이메일 메시지 템플릿</label>

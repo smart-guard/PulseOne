@@ -1,0 +1,624 @@
+/* ================================================================
+ * CLEAN DASHBOARD V3 - 3-Column Workstation Layout (Step 1)
+ * ================================================================ */
+
+.dashboard-grid-v3 {
+    display: grid;
+    grid-template-columns: 460px 340px 1fr;
+    /* Optimized: C1 based on category row | Expand C2 | Wide Guide */
+    gap: 32px;
+    height: 100%;
+}
+
+.dashboard-v3-column {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Refined Card for V3 density */
+.concept-group-card.v3-compact {
+    padding: 20px;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.concept-group-card.v3-compact .concept-title {
+    margin-bottom: 12px;
+    font-size: 13px;
+}
+
+/* Vertical form group for tight spaces */
+.v-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.v-form-group .label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #64748b;
+}
+
+/* Guidance Panel Style */
+.guidance-panel {
+    background: #fdfdfd;
+    border: 1px solid #f1f5f9;
+    border-radius: 16px;
+    padding: 24px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.guidance-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 800;
+    color: #1e2937;
+    font-size: 15px;
+    border-bottom: 2px solid #f1f5f9;
+    padding-bottom: 12px;
+}
+
+.guidance-step {
+    display: flex;
+    gap: 16px;
+}
+
+.guidance-num {
+    width: 24px;
+    height: 24px;
+    background: var(--blueprint-50);
+    color: var(--blueprint-600);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.guidance-text p {
+    margin: 0;
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+/* Sample Cases Widget */
+.guidance-samples {
+    margin-top: auto;
+    padding: 16px;
+    background: #fdfdfd;
+    border: 1px solid #e0f2fe;
+    border-radius: 12px;
+}
+
+.sample-case {
+    margin-top: 12px;
+    padding: 10px;
+    background: white;
+    border: 1px solid #f1f5f9;
+    border-radius: 8px;
+}
+
+.sample-case-title {
+    font-size: 12px;
+    font-weight: 800;
+    color: #334155;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sample-case-desc {
+    font-size: 11.5px;
+    color: #64748b;
+    line-height: 1.4;
+}
+
+.sample-tag {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-right: 4px;
+}
+
+.sample-tag.blue {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.sample-tag.green {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+/* Grouped Concept Card */
+.concept-group-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 24px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.concept-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 800;
+    color: #475569;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.concept-title i {
+    color: var(--blueprint-500);
+}
+
+/* ================================================================
+ * FORMULA STUDIO - Visual Logic Builder (Step 3)
+ * ================================================================ */
+
+.formula-grid-v3 {
+    display: grid;
+    grid-template-columns: 240px 1fr 300px;
+    /* Variables | Editor | Guide */
+    gap: 24px;
+    height: 100%;
+}
+
+/* Variable Palette Column */
+.variable-palette-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+}
+
+.palette-header {
+    padding: 12px 16px;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 11px;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.palette-content {
+    flex: 1;
+    padding: 12px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.palette-item-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+.palette-item-btn:hover {
+    border-color: var(--blueprint-500);
+    background: #f0f9ff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.palette-item-btn i {
+    font-size: 14px;
+    color: #94a3b8;
+}
+
+/* Operator & Function Blocks */
+.logic-palette-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #f1f5f9;
+    border-radius: 12px;
+}
+
+.logic-block-btn {
+    padding: 8px 14px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.logic-block-btn:hover {
+    background: var(--blueprint-500);
+    color: white;
+    border-color: var(--blueprint-500);
+}
+
+.logic-block-btn.function {
+    background: #fff;
+    border-color: #d8b4fe;
+    color: #7c3aed;
+}
+
+.logic-block-btn.function:hover {
+    background: #7c3aed;
+    color: white;
+}
+
+/* Formula Textarea Refinement */
+.formula-editor-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.formula-textarea-v3 {
+    flex: 1;
+    width: 100%;
+    padding: 24px;
+    border: none;
+    background: #fdfdfd;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 18px;
+    line-height: 1.6;
+    color: #1e2937;
+    resize: none;
+    outline: none;
+}
+
+.formula-footer {
+    padding: 16px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Clean Choice Group */
+.choice-group-v3 {
+    display: flex;
+    gap: 8px;
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 10px;
+    width: fit-content;
+}
+
+.choice-btn-v3 {
+    padding: 8px 16px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.choice-btn-v3.active {
+    background: white;
+    color: var(--blueprint-600);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+/* VP INNER POPUP SYSTEM (For Variables Step) */
+.vp-popup-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20000;
+    padding: 40px;
+}
+
+.vp-popup-box {
+    background: white;
+    border-radius: 24px;
+    box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    width: 100%;
+    max-width: 1200px;
+    min-height: 640px;
+    max-height: 90vh;
+    border: 1px solid #e2e8f0;
+    animation: vpPopupScaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes vpPopupScaleUp {
+    from {
+        opacity: 0;
+        transform: scale(0.98) translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.vp-popup-header {
+    padding: 24px 40px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff;
+}
+
+.vp-popup-close-btn {
+    background: #f1f5f9;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: #64748b;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.vp-popup-close-btn:hover {
+    background: #fee2e2;
+    color: #ef4444;
+}
+
+.vp-popup-content {
+    flex: 1;
+    padding: 32px 40px;
+    background: #fff;
+}
+
+.vp-popup-footer {
+    padding: 20px 40px;
+    border-top: 1px solid #f1f5f9;
+    background: #f8fafc;
+    display: flex;
+    justify-content: flex-end;
+    gap: 16px;
+}
+
+.vp-popup-dashboard-grid {
+    display: grid;
+    grid-template-columns: 320px 1fr 300px;
+    gap: 32px;
+    height: 100%;
+}
+
+.vp-popup-column {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.vp-popup-column-title {
+    font-size: 11px;
+    font-weight: 800;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 8px;
+}
+
+.vp-vertical-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.vp-vertical-group .label {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #334155;
+}
+
+.vp-popup-guide-panel {
+    background: #f8fafc;
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+    border: 1px solid #f1f5f9;
+}
+
+.vp-popup-guide-item {
+    display: flex;
+    gap: 10px;
+}
+
+.vp-popup-guide-item .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--blueprint-400);
+    margin-top: 7px;
+    flex-shrink: 0;
+}
+
+.vp-popup-guide-item p {
+    margin: 0;
+    font-size: 13px;
+    color: #475569;
+    line-height: 1.6;
+}
+
+/* Modal Centering & Overlay - Fixed for Deep Stacking */
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 40px;
+}
+
+.modal-container {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    width: 100%;
+    max-width: 960px;
+    min-height: 500px;
+    animation: modalScaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border: 1px solid #e2e8f0;
+}
+
+@keyframes modalScaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.98) translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.modal-header {
+    padding: 24px 32px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff;
+}
+
+.modal-close-btn {
+    background: #f1f5f9;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: #64748b;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.modal-close-btn:hover {
+    background: #e2e8f0;
+    color: #1e2937;
+}
+
+.modal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+    background: #fff;
+}
+
+.modal-footer {
+    padding: 24px 32px;
+    border-top: 1px solid #f1f5f9;
+    background: #f8fafc;
+    display: flex;
+    gap: 12px;
+}
+
+.modal-dashboard-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 32px;
+}
+
+.modal-guide-panel {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.modal-guide-item {
+    display: flex;
+    gap: 12px;
+}
+
+.modal-guide-item .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--blueprint-400);
+    margin-top: 6px;
+    flex-shrink: 0;
+}
+
+.modal-guide-item p {
+    margin: 0;
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.5;
+}

@@ -119,6 +119,42 @@ class AlarmOccurrenceService extends BaseService {
     }
 
     /**
+     * Acknowledge multiple alarm occurrences.
+     */
+    async acknowledgeBulk(ids, userId, comment, tenantId) {
+        return this.handleRequest(async () => {
+            return await this.repository.acknowledgeBulk(ids, userId, comment, tenantId);
+        });
+    }
+
+    /**
+     * Clear multiple alarm occurrences.
+     */
+    async clearBulk(ids, userId, clearedValue, comment, tenantId) {
+        return this.handleRequest(async () => {
+            return await this.repository.clearBulk(ids, userId, clearedValue, comment, tenantId);
+        });
+    }
+
+    /**
+     * Acknowledge all active unacknowledged alarm occurrences for a tenant.
+     */
+    async acknowledgeAll(tenantId, userId, comment) {
+        return this.handleRequest(async () => {
+            return await this.repository.acknowledgeAll(tenantId, userId, comment);
+        });
+    }
+
+    /**
+     * Clear all active/acknowledged alarm occurrences for a tenant.
+     */
+    async clearAll(tenantId, userId, clearedValue, comment) {
+        return this.handleRequest(async () => {
+            return await this.repository.clearAll(tenantId, userId, clearedValue, comment);
+        });
+    }
+
+    /**
      * Update the state of an alarm occurrence.
      */
     async updateState(id, state, tenantId) {

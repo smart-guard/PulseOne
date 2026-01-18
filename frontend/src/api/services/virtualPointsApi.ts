@@ -39,6 +39,7 @@ interface VirtualPointFilters {
   device_id?: number;
   scope_type?: string;
   is_enabled?: boolean;
+  include_deleted?: boolean;
   category?: string;
   calculation_trigger?: string;
   search?: string;
@@ -70,9 +71,9 @@ class VirtualPointsApiService {
    */
   async getVirtualPoints(filters: VirtualPointFilters = {}): Promise<any[]> {
     console.log('가상포인트 목록 조회:', { filters });
-    
+
     const queryParams = new URLSearchParams();
-    
+
     // 필터 추가
     Object.entries(filters).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
@@ -81,7 +82,7 @@ class VirtualPointsApiService {
     });
 
     const url = queryParams.toString() ? `${this.baseUrl}?${queryParams}` : this.baseUrl;
-    
+
     try {
       const response = await fetch(url, {
         method: 'GET',
@@ -147,7 +148,7 @@ class VirtualPointsApiService {
    * 가상포인트 생성
    */
   async createVirtualPoint(
-    formData: VirtualPointFormData, 
+    formData: VirtualPointFormData,
     inputs: VirtualPointInputFormData[] = []
   ): Promise<any> {
     console.log('가상포인트 생성:', { formData, inputsCount: inputs.length });
@@ -192,8 +193,8 @@ class VirtualPointsApiService {
    * 가상포인트 전체 업데이트 (기존 유지 - 전체 업데이트용)
    */
   async updateVirtualPoint(
-    id: number, 
-    data: Partial<VirtualPointFormData>, 
+    id: number,
+    data: Partial<VirtualPointFormData>,
     inputs?: VirtualPointInputFormData[]
   ): Promise<any> {
     console.log('가상포인트 전체 수정:', { id, data });
@@ -239,7 +240,7 @@ class VirtualPointsApiService {
    * 가상포인트 삭제
    */
   async deleteVirtualPoint(id: number): Promise<{ deleted: boolean }> {
-    console.log(`가상포인트 삭제: ID ${id}`);
+    console.log(`가상포인트 삭제 (Soft-delete): ID ${id}`);
 
     try {
       const response = await fetch(`${this.baseUrl}/${id}`, {
@@ -265,6 +266,39 @@ class VirtualPointsApiService {
 
     } catch (error) {
       console.error(`가상포인트 ${id} 삭제 실패:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 가상포인트 복원
+   */
+  async restoreVirtualPoint(id: number): Promise<{ restored: boolean }> {
+    console.log(`가상포인트 복원: ID ${id}`);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/${id}/restore`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorResult = await response.json().catch(() => null);
+        throw new Error(errorResult?.message || `HTTP ${response.status}: 가상포인트 복원 실패`);
+      }
+
+      const result: ApiResponse = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.message || '가상포인트 복원 실패');
+      }
+
+      return { restored: true };
+
+    } catch (error) {
+      console.error(`가상포인트 ${id} 복원 실패:`, error);
       throw error;
     }
   }
@@ -313,9 +347,9 @@ class VirtualPointsApiService {
    * 가상포인트 설정만 업데이트 (이름 등 필수 필드 건드리지 않음)
    */
   async updateVirtualPointSettings(
-    id: number, 
-    settings: Partial<Pick<VirtualPointFormData, 
-      'is_enabled' | 'calculation_interval' | 'calculation_trigger' | 
+    id: number,
+    settings: Partial<Pick<VirtualPointFormData,
+      'is_enabled' | 'calculation_interval' | 'calculation_trigger' |
       'priority' | 'description' | 'unit' | 'data_type' | 'category'>>
   ): Promise<any> {
     console.log(`가상포인트 ${id} 설정 업데이트:`, settings);
@@ -454,8 +488,8 @@ class VirtualPointsApiService {
         queryParams.append('tenant_id', String(tenantId));
       }
 
-      const url = queryParams.toString() ? 
-        `${this.baseUrl}/stats/category?${queryParams}` : 
+      const url = queryParams.toString() ?
+        `${this.baseUrl}/stats/category?${queryParams}` :
         `${this.baseUrl}/stats/category`;
 
       const response = await fetch(url, {
@@ -496,8 +530,8 @@ class VirtualPointsApiService {
         queryParams.append('tenant_id', String(tenantId));
       }
 
-      const url = queryParams.toString() ? 
-        `${this.baseUrl}/stats/performance?${queryParams}` : 
+      const url = queryParams.toString() ?
+        `${this.baseUrl}/stats/performance?${queryParams}` :
         `${this.baseUrl}/stats/performance`;
 
       const response = await fetch(url, {
@@ -538,8 +572,8 @@ class VirtualPointsApiService {
         queryParams.append('tenant_id', String(tenantId));
       }
 
-      const url = queryParams.toString() ? 
-        `${this.baseUrl}/stats/summary?${queryParams}` : 
+      const url = queryParams.toString() ?
+        `${this.baseUrl}/stats/summary?${queryParams}` :
         `${this.baseUrl}/stats/summary`;
 
       const response = await fetch(url, {
@@ -643,6 +677,24 @@ class VirtualPointsApiService {
       return await response.json();
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * 감사 로그 조회
+   */
+  async getLogs(pointId: number): Promise<any[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/${pointId}/logs`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) throw new Error('로그 조회 실패');
+      const result = await response.json();
+      return result.success ? result.data : [];
+    } catch (error) {
+      console.error('로그 조회 오류:', error);
+      return [];
     }
   }
 }

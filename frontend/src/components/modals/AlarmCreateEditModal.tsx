@@ -1,24 +1,53 @@
-import React, { useState, useEffect } from 'react';
-import { AlarmApiService, AlarmRule, AlarmRuleCreateData } from '../../api/services/alarmApi';
-import { ALARM_CONSTANTS } from '../../api/endpoints';
+import React, { useState, useEffect, useRef } from 'react';
+import { AlarmApiService, AlarmRule } from '../../api/services/alarmApi';
 import '../../styles/alarm-settings.css';
+import '../../styles/notification-grid.css';
+import '../../styles/script-patterns.css';
+import '../../styles/limits-grid.css';
 
-interface DataPoint {
-  id: number;
-  name: string;
-  device_id: number;
-  device_name: string;
-  data_type: string;
-  unit?: string;
-  address?: string;
-}
+// --- Constants ---
+const SCRIPT_PATTERNS = [
+  { id: 'threshold_above', label: '단순 상한값', icon: '📈', script: 'return value > 100;' },
+  { id: 'threshold_below', label: '단순 하한값', icon: '📉', script: 'return value < 0;' },
+  { id: 'moving_avg', label: '이동 평균', icon: '📊', script: '// moving average\nconst avg = (value + prev_value) / 2;\nreturn avg > 80;' },
+  { id: 'hysteresis', label: '히스테리시스', icon: '➰', script: 'if (!is_active) return value > 90;\nelse return value > 80;' },
+  { id: 'rate_of_change', label: '급격한 변화량', icon: '⚡', script: 'return Math.abs(value - prev_value) > 10;' }
+];
 
-interface Device {
-  id: number;
-  name: string;
-  device_type: string;
-  site_name?: string;
-}
+const ALARM_PRESETS = [
+  {
+    id: 'high_temp', icon: '🔥', title: '고온 경보', apply: {
+      name: '시스템 고온 경보', category: 'temperature', alarm_type: 'analog' as const, high_limit: '80', high_high_limit: '90', severity: 'high' as const,
+      tags: ['#high_temp', '#safety'], description: '냉각 시스템 이상 또는 부하 증가로 인한 내부 온도 상승을 감지합니다. 지속될 경우 하드웨어 손상이 발생할 수 있습니다.'
+    }
+  },
+  {
+    id: 'comm_loss', icon: '🔌', title: '통신 끊김', apply: {
+      name: '통신 끊김 감지', category: 'system', target_type: 'device' as const, alarm_type: 'digital' as const, trigger_condition: 'connection_lost', severity: 'critical' as const,
+      tags: ['#network', '#critical'], description: '디바이스와의 연결이 끊겼습니다. 네트워크 상태 또는 전원 공급 여부를 확인해야 합니다.'
+    }
+  },
+  {
+    id: 'delayed_trigger', icon: '⌛', title: '지연 발생', apply: {
+      name: '지연 발생 경보', category: 'general', alarm_type: 'analog' as const, high_limit: '100', deadband: '5.0', severity: 'medium' as const,
+      description: '일시적인 노이즈나 튀는 값에 의한 알람 오동작을 방지하기 위해 지연 시간을 적용한 경보입니다.'
+    }
+  },
+  {
+    id: 'complex_cond', icon: '🔴', title: '복합 조건', apply: {
+      name: '복합 조건 알람', category: 'safety', target_type: 'data_point' as const, alarm_type: 'script' as const, condition_script: 'return value > 50 && prev_value < 50;', severity: 'high' as const,
+      description: '단순 임계값만으로 설명하기 어려운 복잡한 로직(변화 감지 등)을 활용한 정밀 알람 설정입니다.'
+    }
+  }
+];
+
+const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
+  'temperature': '온도', 'pressure': '압력', 'flow': '유량', 'level': '레벨', 'vibration': '진동', 'electrical': '전기', 'safety': '안전', 'general': '일반'
+};
+
+// --- Interfaces ---
+interface DataPoint { id: number; name: string; device_id: number; device_name: string; unit?: string; address?: string; }
+interface Device { id: number; name: string; device_type: string; site_name?: string; }
 
 interface AlarmCreateEditModalProps {
   isOpen: boolean;
@@ -29,838 +58,439 @@ interface AlarmCreateEditModalProps {
   dataPoints: DataPoint[];
   devices: Device[];
   loadingTargetData: boolean;
+  onDelete?: (id: number, name: string) => void;
+  onRestore?: (id: number, name: string) => void;
+}
+
+interface AlarmRuleFormData {
+  name: string;
+  description: string;
+  target_type: 'data_point' | 'device' | 'virtual_point';
+  target_id: string;
+  selected_device_id: string;
+  target_group: string;
+  alarm_type: 'analog' | 'digital' | 'script';
+  high_high_limit: string;
+  high_limit: string;
+  low_limit: string;
+  low_low_limit: string;
+  deadband: string;
+  rate_of_change: string;
+  trigger_condition: string;
+  condition_script: string;
+  message_template: string;
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
+  priority: number;
+  auto_acknowledge: boolean;
+  auto_clear: boolean;
+  is_enabled: boolean;
+  category: string;
+  tags: string[];
 }
 
 const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
-  isOpen,
-  mode,
-  rule,
-  onClose,
-  onSave,
-  dataPoints,
-  devices,
-  loadingTargetData
+  isOpen, mode, rule, onClose, onSave, onDelete, onRestore, dataPoints, devices
 }) => {
+  const tagInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    target_type: 'data_point' as const,
-    target_id: '',
-    selected_device_id: '',
-    target_group: '',
-    alarm_type: 'analog' as const,
-    high_high_limit: '',
-    high_limit: '',
-    low_limit: '',
-    low_low_limit: '',
-    deadband: '2.0',
-    rate_of_change: '',
-    trigger_condition: '',
-    condition_script: '',
-    message_template: '',
-    severity: 'medium' as const,
-    priority: 100,
-    auto_acknowledge: false,
-    auto_clear: true,
-    notification_enabled: true,
-    is_enabled: true,
-    escalation_enabled: false,
-    escalation_max_level: 3,
-    category: '',
-    tags: [] as string[]
+  const [formData, setFormData] = useState<AlarmRuleFormData>({
+    name: '', description: '', target_type: 'data_point', target_id: '', selected_device_id: '', target_group: '',
+    alarm_type: 'analog', high_high_limit: '', high_limit: '', low_limit: '', low_low_limit: '', deadband: '2.0',
+    rate_of_change: '', trigger_condition: '', condition_script: '', message_template: '', severity: 'medium',
+    priority: 100, auto_acknowledge: false, auto_clear: true, is_enabled: true, category: '', tags: []
   });
 
-  // 타겟 타입별 허용 알람 타입 - 핵심 수정사항
-  const getAllowedAlarmTypes = (targetType: string) => {
-    switch (targetType) {
-      case 'data_point':
-        return [
-          { value: 'analog', label: '아날로그', description: '수치 임계값 기반 알람' },
-          { value: 'digital', label: '디지털', description: '상태 변화 기반 알람' },
-          { value: 'script', label: '스크립트', description: '사용자 정의 조건 알람' }
-        ];
-      case 'device':
-        return [
-          { value: 'digital', label: '디바이스 상태', description: '연결/통신 상태 알람' },
-          { value: 'script', label: '스크립트', description: '복합 조건 알람' }
-        ];
-      case 'virtual_point':
-        return [
-          { value: 'analog', label: '아날로그', description: '계산된 수치 임계값 알람' },
-          { value: 'digital', label: '디지털', description: '계산된 상태 알람' },
-          { value: 'script', label: '스크립트', description: '사용자 정의 조건 알람' }
-        ];
-      default:
-        return [];
-    }
-  };
-
-  // 타겟 타입 변경 핸들러 - 핵심 수정사항
-  const handleTargetTypeChange = (targetType: string) => {
-    const allowedTypes = getAllowedAlarmTypes(targetType);
-    const defaultAlarmType = allowedTypes.length > 0 ? allowedTypes[0].value : 'digital';
-    
-    setFormData(prev => ({
-      ...prev,
-      target_type: targetType as any,
-      selected_device_id: '',
-      target_id: '',
-      alarm_type: defaultAlarmType as any,
-      // 임계값들 초기화
-      high_high_limit: '',
-      high_limit: '',
-      low_limit: '',
-      low_low_limit: '',
-      deadband: '2.0',
-      trigger_condition: '',
-      condition_script: ''
-    }));
-  };
-
-  // 편집 모드일 때 기존 데이터로 폼 초기화
   useEffect(() => {
-    if (mode === 'edit' && rule) {
+    if (isOpen && mode === 'edit' && rule) {
       setFormData({
-        name: rule.name,
-        description: rule.description || '',
-        target_type: rule.target_type as any,
-        target_id: rule.target_id?.toString() || '',
-        selected_device_id: '', // 편집 시에는 계층적 선택 비활성화
-        target_group: rule.target_group || '',
-        alarm_type: rule.alarm_type as any,
-        high_high_limit: rule.high_high_limit?.toString() || '',
-        high_limit: rule.high_limit?.toString() || '',
-        low_limit: rule.low_limit?.toString() || '',
-        low_low_limit: rule.low_low_limit?.toString() || '',
-        deadband: rule.deadband?.toString() || '2.0',
-        rate_of_change: rule.rate_of_change?.toString() || '',
-        trigger_condition: rule.trigger_condition || '',
-        condition_script: rule.condition_script || '',
-        message_template: rule.message_template || '',
-        severity: rule.severity as any,
-        priority: rule.priority || 100,
-        auto_acknowledge: rule.auto_acknowledge || false,
-        auto_clear: rule.auto_clear || true,
-        notification_enabled: rule.notification_enabled || true,
-        is_enabled: rule.is_enabled,
-        escalation_enabled: rule.escalation_enabled || false,
-        escalation_max_level: rule.escalation_max_level || 3,
-        category: rule.category || '',
-        tags: AlarmApiService.formatTags(rule.tags || [])
+        name: rule.name, description: rule.description || '', target_type: rule.target_type as any,
+        target_id: rule.target_id?.toString() || '', selected_device_id: (rule as any).device_id?.toString() || '',
+        target_group: rule.target_group || '', alarm_type: rule.alarm_type as any,
+        high_high_limit: rule.high_high_limit?.toString() || '', high_limit: rule.high_limit?.toString() || '',
+        low_limit: rule.low_limit?.toString() || '', low_low_limit: rule.low_low_limit?.toString() || '',
+        deadband: rule.deadband?.toString() || '2.0', rate_of_change: rule.rate_of_change?.toString() || '',
+        trigger_condition: rule.trigger_condition || '', condition_script: rule.condition_script || '',
+        message_template: rule.message_template || '', severity: rule.severity as any, priority: rule.priority || 100,
+        auto_acknowledge: rule.auto_acknowledge || false, auto_clear: rule.auto_clear || true, is_enabled: rule.is_enabled,
+        category: rule.category || '', tags: rule.tags || []
       });
-    } else if (mode === 'create') {
+    } else if (isOpen && mode === 'create') {
       resetForm();
     }
   }, [mode, rule, isOpen]);
 
   const resetForm = () => {
     setFormData({
-      name: '',
-      description: '',
-      target_type: 'data_point',
-      target_id: '',
-      selected_device_id: '',
-      target_group: '',
-      alarm_type: 'analog', // data_point의 기본값
-      high_high_limit: '',
-      high_limit: '',
-      low_limit: '',
-      low_low_limit: '',
-      deadband: '2.0',
-      rate_of_change: '',
-      trigger_condition: '',
-      condition_script: '',
-      message_template: '',
-      severity: 'medium',
-      priority: 100,
-      auto_acknowledge: false,
-      auto_clear: true,
-      notification_enabled: true,
-      is_enabled: true,
-      escalation_enabled: false,
-      escalation_max_level: 3,
-      category: '',
-      tags: []
+      name: '', description: '', target_type: 'data_point', target_id: '', selected_device_id: '', target_group: '',
+      alarm_type: 'analog', high_high_limit: '', high_limit: '', low_limit: '', low_low_limit: '', deadband: '2.0',
+      rate_of_change: '', trigger_condition: '', condition_script: '', message_template: '', severity: 'medium',
+      priority: 100, auto_acknowledge: false, auto_clear: true, is_enabled: true, category: '', tags: []
     });
   };
 
-  // 디바이스 선택 변경
+  const handleTargetTypeChange = (type: string) => {
+    setFormData(prev => ({ ...prev, target_type: type as any, target_id: '', selected_device_id: '', alarm_type: type === 'device' ? 'digital' : 'analog' }));
+  };
+
   const handleDeviceChange = (deviceId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      selected_device_id: deviceId,
-      target_id: ''
-    }));
+    setFormData(prev => ({ ...prev, selected_device_id: deviceId, target_id: '' }));
   };
 
-  // 디바이스 옵션 생성
-  const getDeviceOptions = () => {
-    if (!Array.isArray(devices)) return [];
-    
-    return devices
-      .sort((a, b) => a.id - b.id)
-      .map(device => ({
-        value: device.id.toString(),
-        label: `[${device.id}] ${device.name} (${device.device_type || 'Unknown'})`,
-        extra: device.site_name ? ` - ${device.site_name}` : ''
-      }));
-  };
+  const handleTargetChange = (targetId: string) => {
+    setFormData(prev => ({ ...prev, target_id: targetId }));
 
-  // 필터링된 데이터포인트
-  const getFilteredDataPoints = () => {
-    if (!formData.selected_device_id || !Array.isArray(dataPoints)) return [];
-    
-    const deviceId = parseInt(formData.selected_device_id);
-    return dataPoints
-      .filter(dp => dp.device_id === deviceId)
-      .sort((a, b) => a.id - b.id);
-  };
+    // 🧠 Premium Feature: Smart Target Inference
+    if (formData.target_type === 'data_point') {
+      const dp = dataPoints.find(p => p.id.toString() === targetId);
+      if (dp) {
+        const name = (dp.name || '').toLowerCase();
+        const unit = (dp.unit || '').toLowerCase();
 
-  // 데이터포인트 옵션 생성
-  const getDataPointOptions = () => {
-    const filteredPoints = getFilteredDataPoints();
-    
-    return filteredPoints.map(dp => ({
-      value: dp.id.toString(),
-      label: `[${dp.id}] ${dp.name}`,
-      extra: dp.unit ? ` (${dp.unit})` : (dp.data_type ? ` (${dp.data_type})` : ''),
-      address: dp.address ? ` - ${dp.address}` : ''
-    }));
-  };
-
-  // 전체 타겟 옵션 (편집 모드용)
-  const getAllTargetOptions = () => {
-    switch (formData.target_type) {
-      case 'data_point':
-        if (!Array.isArray(dataPoints)) return [];
-        return dataPoints
-          .sort((a, b) => a.id - b.id)
-          .map(dp => ({
-            value: dp.id.toString(),
-            label: `[${dp.id}] ${dp.name} (${getDeviceName(dp.device_id)})`,
-            extra: dp.unit ? ` - ${dp.unit}` : ''
+        // Temperature inference
+        if (unit.includes('c') || unit.includes('f') || name.includes('temp') || name.includes('온도')) {
+          setFormData(prev => ({
+            ...prev,
+            category: 'temperature',
+            alarm_type: 'analog',
+            description: prev.description || `[${dp.name}] 데이터포인트의 온도 이상을 감지하는 규칙입니다.`
           }));
-      case 'device':
-        return getDeviceOptions();
-      case 'virtual_point':
-        return [{ value: '', label: '가상포인트 API 구현 필요', extra: '' }];
-      default:
-        return [];
+        }
+        // Pressure inference
+        else if (unit.includes('bar') || unit.includes('pa') || name.includes('press') || name.includes('압력')) {
+          setFormData(prev => ({
+            ...prev,
+            category: 'pressure',
+            alarm_type: 'analog',
+            description: prev.description || `[${dp.name}] 데이터포인트의 압력 변화를 모니터링합니다.`
+          }));
+        }
+      }
     }
   };
 
-  const getDeviceName = (deviceId: number) => {
-    const device = devices.find(d => d.id === deviceId);
-    return device ? device.name : `Device #${deviceId}`;
+  const getDeviceOptions = () => devices.map(d => ({ value: d.id.toString(), label: d.name }));
+  const getDataPointOptions = () => dataPoints.filter(dp => dp.device_id.toString() === formData.selected_device_id).map(dp => ({ value: dp.id.toString(), label: dp.name }));
+
+  const getSelectedTargetName = () => {
+    if (formData.target_type === 'device') return devices.find(d => d.id.toString() === formData.target_id)?.name || '디바이스';
+    if (formData.target_type === 'data_point') return dataPoints.find(p => p.id.toString() === formData.target_id)?.name || '데이터포인트';
+    return '가상포인트';
   };
 
-  const getSelectedDeviceName = () => {
-    if (!formData.selected_device_id) return '';
-    const device = devices.find(d => d.id === parseInt(formData.selected_device_id));
-    return device ? device.name : '';
-  };
-
-  // 태그 관리
   const addTag = (tag: string) => {
     if (tag.trim() && !formData.tags.includes(tag.trim())) {
-      setFormData(prev => ({
-        ...prev,
-        tags: [...prev.tags, tag.trim()]
-      }));
+      setFormData(prev => ({ ...prev, tags: [...prev.tags, tag.trim()] }));
     }
   };
 
   const removeTag = (tagToRemove: string) => {
-    setFormData(prev => ({
-      ...prev,
-      tags: prev.tags.filter(tag => tag !== tagToRemove)
-    }));
+    setFormData(prev => ({ ...prev, tags: prev.tags.filter(tag => tag !== tagToRemove) }));
   };
 
-  // 저장 핸들러
+  const handlePresetSelect = (preset: any) => {
+    setFormData(prev => ({ ...prev, ...preset.apply }));
+  };
+
+  const handlePatternSelect = (pattern: typeof SCRIPT_PATTERNS[0]) => {
+    setFormData(prev => ({ ...prev, alarm_type: 'script', condition_script: pattern.script }));
+  };
+
   const handleSubmit = async () => {
+    if (!formData.name) { alert('규칙 이름을 입력하세요.'); return; }
+    if (!formData.target_id) { alert('타겟을 선택하세요.'); return; }
+
+    setLoading(true);
     try {
-      setLoading(true);
-      
       const submitData = {
-        name: formData.name,
-        description: formData.description,
-        target_type: formData.target_type,
-        target_id: formData.target_id ? parseInt(formData.target_id) : undefined,
-        target_group: formData.target_group || undefined,
-        alarm_type: formData.alarm_type,
-        
-        // 아날로그 알람에만 임계값 포함
-        ...(formData.alarm_type === 'analog' && {
-          high_high_limit: formData.high_high_limit ? parseFloat(formData.high_high_limit) : undefined,
-          high_limit: formData.high_limit ? parseFloat(formData.high_limit) : undefined,
-          low_limit: formData.low_limit ? parseFloat(formData.low_limit) : undefined,
-          low_low_limit: formData.low_low_limit ? parseFloat(formData.low_low_limit) : undefined,
-          deadband: formData.deadband ? parseFloat(formData.deadband) : undefined,
-          rate_of_change: formData.rate_of_change ? parseFloat(formData.rate_of_change) : undefined,
-        }),
-        
-        // 디지털 알람에만 트리거 조건 포함
-        ...(formData.alarm_type === 'digital' && {
-          trigger_condition: formData.trigger_condition || undefined,
-        }),
-        
-        // 스크립트 알람에만 스크립트 포함
-        ...(formData.alarm_type === 'script' && {
-          condition_script: formData.condition_script || undefined,
-        }),
-        
-        message_template: formData.message_template || `${formData.name} 알람이 발생했습니다`,
-        severity: formData.severity,
-        priority: formData.priority,
-        auto_acknowledge: formData.auto_acknowledge,
-        auto_clear: formData.auto_clear,
-        notification_enabled: formData.notification_enabled,
-        is_enabled: formData.is_enabled,
-        escalation_enabled: formData.escalation_enabled,
-        escalation_max_level: formData.escalation_max_level,
-        category: formData.category || undefined,
-        tags: formData.tags.length > 0 ? formData.tags : undefined
+        ...formData,
+        target_id: parseInt(formData.target_id),
+        high_high_limit: formData.high_high_limit ? parseFloat(formData.high_high_limit) : undefined,
+        high_limit: formData.high_limit ? parseFloat(formData.high_limit) : undefined,
+        low_limit: formData.low_limit ? parseFloat(formData.low_limit) : undefined,
+        low_low_limit: formData.low_low_limit ? parseFloat(formData.low_low_limit) : undefined,
+        deadband: formData.deadband ? parseFloat(formData.deadband) : undefined,
+        rate_of_change: formData.rate_of_change ? parseFloat(formData.rate_of_change) : undefined,
       };
-      
-      let response;
+
       if (mode === 'create') {
-        response = await AlarmApiService.createAlarmRule(submitData as AlarmRuleCreateData);
-      } else {
-        response = await AlarmApiService.updateAlarmRule(rule!.id, submitData);
+        await AlarmApiService.createAlarmRule(submitData as any);
+      } else if (rule) {
+        await AlarmApiService.updateAlarmRule(rule.id, submitData as any);
       }
-      
-      if (response.success) {
-        onSave();
-        onClose();
-        alert(mode === 'create' ? '알람 규칙이 성공적으로 생성되었습니다.' : '알람 규칙이 성공적으로 수정되었습니다.');
-      } else {
-        throw new Error(response.message || `알람 규칙 ${mode === 'create' ? '생성' : '수정'}에 실패했습니다.`);
-      }
+      onSave();
+      onClose();
     } catch (error) {
-      console.error(`알람 규칙 ${mode === 'create' ? '생성' : '수정'} 실패:`, error);
-      alert(error instanceof Error ? error.message : `알람 규칙 ${mode === 'create' ? '생성' : '수정'}에 실패했습니다.`);
+      console.error(error);
+      alert('저장에 실패했습니다.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isOpen) return null;
+  const generateSentence = () => {
+    const targetName = getSelectedTargetName();
+    const pills: { text: string; highlight?: boolean }[] = [];
+    pills.push({ text: "만약" });
+    pills.push({ text: `[${targetName}]`, highlight: true });
+    pills.push({ text: "의" });
+    pills.push({ text: formData.alarm_type === 'analog' ? '아날로그' : '상태', highlight: true });
+    pills.push({ text: "값이" });
 
-  const allowedAlarmTypes = getAllowedAlarmTypes(formData.target_type);
+    if (formData.alarm_type === 'analog') {
+      const val = formData.high_limit || formData.trigger_condition || "...";
+      pills.push({ text: `[${val}]`, highlight: true });
+    } else {
+      pills.push({ text: `[${formData.trigger_condition || '...'}]`, highlight: true });
+    }
+
+    pills.push({ text: "이면 알람을 발생합니다." });
+    return pills;
+  };
+
+  const renderSentencePills = (pills: { text: string; highlight?: boolean }[]) => (
+    <div className="sentence-content" style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+      {pills.map((pill, idx) => (
+        <span key={idx} className={`sentence-pill ${pill.highlight ? 'highlight' : ''}`} style={{
+          background: pill.highlight ? 'var(--primary-600)' : 'transparent',
+          padding: pill.highlight ? '2px 6px' : '0',
+          borderRadius: '4px',
+          color: '#fff'
+        }}>{pill.text}</span>
+      ))}
+    </div>
+  );
+
+  if (!isOpen) return null;
 
   return (
     <div className="modal-overlay">
-      <div className="modal">
+      <div className="modal modal-xl">
         <div className="modal-header">
-          <h2 className="modal-title">
-            {mode === 'create' ? '새 알람 규칙 추가' : `알람 규칙 수정: ${rule?.name}`}
-          </h2>
-          <button className="close-button" onClick={onClose}>
-            <i className="fas fa-times"></i>
-          </button>
+          <h2 className="modal-title">{mode === 'create' ? '새 알람 규칙 생성:' : `알람 규칙 수정: ${rule?.name}`}</h2>
+          <button className="close-button" onClick={onClose}><i className="fas fa-times"></i></button>
         </div>
-
         <div className="modal-content">
-          {/* 기본 정보 */}
-          <div className="form-section">
-            <div className="section-title">기본 정보</div>
-            
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">규칙 이름 *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="알람 규칙 이름을 입력하세요"
-                />
-              </div>
+          <div className="form-section-header" style={{ padding: '24px 32px 0 32px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--neutral-600)' }}>
+            <i className="fas fa-pencil-alt"></i> 빠른 시작 (프리셋 & 템플릿)
+          </div>
+          <div className="preset-horizontal-scroll-container" style={{ padding: '12px 32px 24px 32px' }}>
+            <div className="preset-horizontal-list">
+              {ALARM_PRESETS.map(p => (
+                <button key={p.id} type="button" className="preset-chip-btn preset-type" onClick={() => handlePresetSelect(p)}>
+                  <span className="preset-chip-icon">{p.icon}</span>
+                  <span className="preset-chip-title">{p.title}</span>
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">설명</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="알람 규칙에 대한 설명을 입력하세요"
-                />
-              </div>
-            </div>
+          <form onSubmit={e => e.preventDefault()} style={{ padding: '0 32px 32px 32px' }}>
+            <div className="modal-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px 48px' }}>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">카테고리</label>
-                <select
-                  className="form-select"
-                  value={formData.category}
-                  onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                >
-                  <option value="">선택하세요</option>
-                  {ALARM_CONSTANTS.DEFAULT_CATEGORIES.map(category => (
-                    <option key={category} value={category}>
-                      {AlarmApiService.getCategoryDisplayName(category)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">태그</label>
-                <div className="tags-input">
-                  <div className="tags-list">
-                    {formData.tags.map(tag => (
-                      <span key={tag} className="tag-item">
-                        {tag}
-                        <button type="button" onClick={() => removeTag(tag)}>×</button>
+              {/* --- Section 1: Basic Information --- */}
+              <div className="form-section">
+                <div className="form-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label className="form-label" style={{ marginBottom: 0 }}>규칙 이름 *</label>
+                    <label className="toggle-switch-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.is_enabled}
+                        onChange={e => setFormData(prev => ({ ...prev, is_enabled: e.target.checked }))}
+                        style={{ accentColor: 'var(--success-500)', transform: 'scale(1.2)' }}
+                      />
+                      <span style={{ color: formData.is_enabled ? 'var(--success-600)' : 'var(--neutral-400)' }}>
+                        {formData.is_enabled ? '활성화됨' : '비활성'}
+                      </span>
+                    </label>
+                  </div>
+                  <input type="text" className="form-input" placeholder="알람 규칙 이름을 입력하세요" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">카테고리</label>
+                  <select className="form-select" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
+                    <option value="">선택하세요</option>
+                    {Object.entries(CATEGORY_DISPLAY_NAMES).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">설명</label>
+                  <textarea className="form-input" placeholder="알람 규칙에 대한 설명을 입력하세요" rows={2} value={formData.description} onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">태그</label>
+                  <div className="tags-input" onClick={() => tagInputRef.current?.focus()}>
+                    {formData.tags.map(t => (
+                      <span key={t} className="tag-item">
+                        {t}
+                        <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(t); }}>
+                          <i className="fas fa-times"></i>
+                        </button>
                       </span>
                     ))}
-                  </div>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="태그를 입력하고 Enter를 누르세요"
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addTag(e.currentTarget.value);
-                        e.currentTarget.value = '';
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 타겟 설정 */}
-          <div className="form-section">
-            <div className="section-title">타겟 설정</div>
-            
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">타겟 타입 *</label>
-                <select
-                  className="form-select"
-                  value={formData.target_type}
-                  onChange={(e) => handleTargetTypeChange(e.target.value)}
-                  disabled={mode === 'edit'} // 편집 시 타겟 타입 변경 불가
-                >
-                  <option value="data_point">데이터포인트</option>
-                  <option value="device">디바이스</option>
-                  <option value="virtual_point">가상포인트</option>
-                </select>
-                {mode === 'edit' && (
-                  <small className="form-help">편집 시 타겟 타입은 변경할 수 없습니다</small>
-                )}
-              </div>
-            </div>
-
-            {/* 생성 모드 - 계층적 선택 */}
-            {mode === 'create' && formData.target_type === 'data_point' && (
-              <>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">디바이스 선택 *</label>
-                    {loadingTargetData ? (
-                      <div className="form-input loading-input">
-                        <i className="fas fa-spinner fa-spin"></i> 로딩 중...
-                      </div>
-                    ) : (
-                      <select
-                        className="form-select"
-                        value={formData.selected_device_id}
-                        onChange={(e) => handleDeviceChange(e.target.value)}
-                      >
-                        <option value="">디바이스를 선택하세요</option>
-                        {getDeviceOptions().map(option => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}{option.extra}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    <input
+                      ref={tagInputRef}
+                      type="text"
+                      className="tags-input-field"
+                      placeholder="태그 입력 후 Enter 또는 콤마 (예: #핵심)"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ',') {
+                          e.preventDefault();
+                          addTag(e.currentTarget.value);
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                    />
                   </div>
                 </div>
+              </div>
 
-                {formData.selected_device_id && (
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label className="form-label">데이터포인트 선택 *</label>
-                      <select
-                        className="form-select"
-                        value={formData.target_id}
-                        onChange={(e) => setFormData(prev => ({ ...prev, target_id: e.target.value }))}
-                      >
-                        <option value="">데이터포인트를 선택하세요</option>
-                        {getDataPointOptions().map(option => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}{option.extra}{option.address}
-                          </option>
-                        ))}
-                      </select>
-                      <small className="form-help">
-                        {getSelectedDeviceName()}의 데이터포인트들 (ID 순 정렬)
-                      </small>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* 생성 모드 - 디바이스 직접 선택 또는 편집 모드 */}
-            {((mode === 'create' && formData.target_type !== 'data_point') || mode === 'edit') && (
-              <div className="form-row">
+              {/* --- Section 2: Target Selection --- */}
+              <div className="form-section">
                 <div className="form-group">
-                  <label className="form-label">
-                    {formData.target_type === 'data_point' ? '데이터포인트' : 
-                     formData.target_type === 'device' ? '디바이스' : '가상포인트'} 선택 *
-                  </label>
-                  {loadingTargetData ? (
-                    <div className="form-input loading-input">
-                      <i className="fas fa-spinner fa-spin"></i> 로딩 중...
+                  <label className="form-label">타겟 타입 *</label>
+                  <div className="logic-pill-container" style={{ display: 'flex', gap: '8px' }}>
+                    {['data_point', 'device', 'virtual_point'].map(t => (
+                      <button key={t} type="button" className={`logic-pill ${formData.target_type === t ? 'active' : ''}`} onClick={() => handleTargetTypeChange(t)}>
+                        {t === 'data_point' ? '데이터포인트' : t === 'device' ? '디바이스' : '가상포인트'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">타겟 그룹</label>
+                  <input type="text" className="form-input" placeholder="타겟 그룹 (선택사항)" value={formData.target_group} onChange={e => setFormData(prev => ({ ...prev, target_group: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">디바이스 선택 *</label>
+                  <select className="form-select" value={formData.selected_device_id} onChange={e => handleDeviceChange(e.target.value)}>
+                    <option value="">디바이스를 선택하세요</option>
+                    {getDeviceOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">데이터포인트 선택 *</label>
+                  <select className="form-select" value={formData.target_id} onChange={e => handleTargetChange(e.target.value)} disabled={!formData.selected_device_id}>
+                    <option value="">데이터포인트를 선택하세요</option>
+                    {getDataPointOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* --- Section 3: Condition Settings --- */}
+              <div className="form-section">
+                <div className="section-title">조건 설정</div>
+                <div className="form-group">
+                  <div className="logic-pill-container" style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                    {['analog', 'digital', 'script'].map(t => (
+                      <button key={t} type="button" className={`logic-pill ${formData.alarm_type === t ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, alarm_type: t as any }))}>
+                        {t === 'analog' ? '아날로그' : t === 'digital' ? '디지털' : '스크립트'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {formData.alarm_type === 'analog' && (
+                  <div className="limits-grid">
+                    {['HH', 'H', 'L', 'LL'].map(l => (
+                      <div key={l} className="form-group">
+                        <label className="form-label">{l} LIMIT</label>
+                        <input type="number" className="form-input"
+                          value={(formData as any)[l === 'HH' ? 'high_high_limit' : l === 'H' ? 'high_limit' : l === 'L' ? 'low_limit' : 'low_low_limit']}
+                          onChange={e => setFormData(prev => ({ ...prev, [l === 'HH' ? 'high_high_limit' : l === 'H' ? 'high_limit' : l === 'L' ? 'low_limit' : 'low_low_limit']: e.target.value }))} />
+                      </div>
+                    ))}
+                    <div className="form-group">
+                      <label className="form-label">DEADBAND</label>
+                      <input type="number" className="form-input" value={formData.deadband} onChange={e => setFormData(prev => ({ ...prev, deadband: e.target.value }))} />
                     </div>
-                  ) : (
-                    <select
-                      className="form-select"
-                      value={formData.target_id}
-                      onChange={(e) => setFormData(prev => ({ ...prev, target_id: e.target.value }))}
-                    >
-                      <option value="">선택하세요</option>
-                      {getAllTargetOptions().map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}{option.extra}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">타겟 그룹</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.target_group}
-                  onChange={(e) => setFormData(prev => ({ ...prev, target_group: e.target.value }))}
-                  placeholder="타겟 그룹 (선택사항)"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* 조건 설정 */}
-          <div className="form-section">
-            <div className="section-title">조건 설정</div>
-            
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">알람 타입 *</label>
-                <select
-                  className="form-select"
-                  value={formData.alarm_type}
-                  onChange={(e) => setFormData(prev => ({ ...prev, alarm_type: e.target.value as any }))}
-                  disabled={mode === 'edit'} // 편집 시 알람 타입 변경 불가
-                >
-                  {allowedAlarmTypes.map(type => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-                <small className="form-help">
-                  {allowedAlarmTypes.find(t => t.value === formData.alarm_type)?.description || ''}
-                  {mode === 'edit' && ' (편집 시 변경 불가)'}
-                </small>
-              </div>
-              
-              <div className="form-group">
-                <label className="form-label">심각도 *</label>
-                <select
-                  className="form-select"
-                  value={formData.severity}
-                  onChange={(e) => setFormData(prev => ({ ...prev, severity: e.target.value as any }))}
-                >
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                  <option value="info">Info</option>
-                </select>
-              </div>
-            </div>
-
-            {/* 아날로그 알람 임계값 - 조건부 렌더링 */}
-            {formData.alarm_type === 'analog' && (
-              <div className="form-subsection">
-                <div className="subsection-title">아날로그 임계값</div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">HH (High High)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-input"
-                      value={formData.high_high_limit}
-                      onChange={(e) => setFormData(prev => ({ ...prev, high_high_limit: e.target.value }))}
-                      placeholder="최고 상한값"
-                    />
+                    <div className="form-group">
+                      <label className="form-label">ROC LIMIT</label>
+                      <input type="number" className="form-input" value={formData.rate_of_change} onChange={e => setFormData(prev => ({ ...prev, rate_of_change: e.target.value }))} />
+                    </div>
                   </div>
-                  
-                  <div className="form-group">
-                    <label className="form-label">H (High)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-input"
-                      value={formData.high_limit}
-                      onChange={(e) => setFormData(prev => ({ ...prev, high_limit: e.target.value }))}
-                      placeholder="상한값"
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label className="form-label">L (Low)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-input"
-                      value={formData.low_limit}
-                      onChange={(e) => setFormData(prev => ({ ...prev, low_limit: e.target.value }))}
-                      placeholder="하한값"
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label className="form-label">LL (Low Low)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-input"
-                      value={formData.low_low_limit}
-                      onChange={(e) => setFormData(prev => ({ ...prev, low_low_limit: e.target.value }))}
-                      placeholder="최저 하한값"
-                    />
-                  </div>
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">데드밴드</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      className="form-input"
-                      value={formData.deadband}
-                      onChange={(e) => setFormData(prev => ({ ...prev, deadband: e.target.value }))}
-                      placeholder="데드밴드 값 (0은 비활성화)"
-                      min="0"
-                    />
-                    <small className="form-help">알람 chattering 방지용 데드밴드 (0 = 비활성화)</small>
-                  </div>
-                  
-                  <div className="form-group">
-                    <label className="form-label">변화율</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-input"
-                      value={formData.rate_of_change}
-                      onChange={(e) => setFormData(prev => ({ ...prev, rate_of_change: e.target.value }))}
-                      placeholder="변화율 임계값"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 디지털 알람 조건 */}
-            {formData.alarm_type === 'digital' && (
-              <div className="form-subsection">
-                <div className="subsection-title">디지털 조건</div>
-                <div className="form-row">
+                )}
+                {formData.alarm_type === 'digital' && (
                   <div className="form-group">
                     <label className="form-label">트리거 조건</label>
-                    <select
-                      className="form-select"
-                      value={formData.trigger_condition}
-                      onChange={(e) => setFormData(prev => ({ ...prev, trigger_condition: e.target.value }))}
-                    >
-                      <option value="">선택하세요</option>
-                      <option value="on_true">True가 될 때</option>
-                      <option value="on_false">False가 될 때</option>
-                      <option value="on_change">값이 변경될 때</option>
-                      {formData.target_type === 'device' && (
-                        <>
-                          <option value="connection_lost">연결 끊김</option>
-                          <option value="communication_error">통신 오류</option>
-                          <option value="device_error">디바이스 에러</option>
-                        </>
-                      )}
+                    <select className="form-select" value={formData.trigger_condition} onChange={e => setFormData(prev => ({ ...prev, trigger_condition: e.target.value }))}>
+                      <option value="on_true">값이 True일 때 (1)</option>
+                      <option value="on_false">값이 False일 때 (0)</option>
+                      <option value="on_change">상태가 변할 때</option>
+                      <option value="connection_lost">연결 끊김</option>
                     </select>
-                    <small className="form-help">
-                      {formData.target_type === 'device' ? 
-                        '디바이스 상태 변화 또는 통신 문제를 감지합니다' : 
-                        '데이터포인트의 디지털 값 변화를 감지합니다'}
-                    </small>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* 스크립트 알람 조건 */}
-            {formData.alarm_type === 'script' && (
-              <div className="form-subsection">
-                <div className="subsection-title">스크립트 조건</div>
-                <div className="form-row">
+                )}
+                {formData.alarm_type === 'script' && (
                   <div className="form-group">
-                    <label className="form-label">조건 스크립트</label>
-                    <textarea
-                      className="form-textarea"
-                      value={formData.condition_script}
-                      onChange={(e) => setFormData(prev => ({ ...prev, condition_script: e.target.value }))}
-                      placeholder={formData.target_type === 'device' ? 
-                        "// 디바이스 복합 조건 예시\nreturn device.status === 'error' && device.errorCount > 5;" :
-                        "// JavaScript 조건식을 입력하세요\nreturn value > 100 && previousValue < 90;"}
-                      rows={4}
-                    />
-                    <small className="form-help">
-                      {formData.target_type === 'device' ? 
-                        '디바이스 객체와 관련 데이터포인트들을 활용한 복합 조건을 작성하세요' :
-                        'value, previousValue, timestamp 등의 변수를 사용할 수 있습니다'}
-                    </small>
+                    <div className="script-patterns-grid" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                      {SCRIPT_PATTERNS.map(p => (
+                        <button key={p.id} type="button" className={`pattern-chip ${formData.condition_script === p.script ? 'active' : ''}`} onClick={() => handlePatternSelect(p)}>
+                          {p.icon} {p.label}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea className="form-input script-editor" rows={6} value={formData.condition_script} onChange={e => setFormData(prev => ({ ...prev, condition_script: e.target.value }))} style={{ fontFamily: 'monospace', fontSize: '13px', background: 'var(--neutral-50)' }} />
+                  </div>
+                )}
+              </div>
+
+              {/* --- Section 4: Notifications & Actions --- */}
+              <div className="form-section">
+                <div className="section-title">알림 및 조치</div>
+                <div className="notification-grid">
+                  <div className="checkbox-group">
+                    <label className="checkbox-label">
+                      <input type="checkbox" checked={formData.auto_acknowledge} onChange={e => setFormData(prev => ({ ...prev, auto_acknowledge: e.target.checked }))} />
+                      자동 확인 (Auto Ack)
+                    </label>
+                  </div>
+                  <div className="checkbox-group">
+                    <label className="checkbox-label">
+                      <input type="checkbox" checked={formData.auto_clear} onChange={e => setFormData(prev => ({ ...prev, auto_clear: e.target.checked }))} />
+                      자동 해제 (Auto Clear)
+                    </label>
+                  </div>
+                  <div className="priority-group">
+                    <label className="form-label">우선순위 (1-1000)</label>
+                    <input type="number" className="form-input" value={formData.priority} onChange={e => setFormData(prev => ({ ...prev, priority: parseInt(e.target.value) || 100 }))} />
                   </div>
                 </div>
               </div>
-            )}
-
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">메시지 템플릿</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.message_template}
-                  onChange={(e) => setFormData(prev => ({ ...prev, message_template: e.target.value }))}
-                  placeholder="알람 메시지 템플릿"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* 동작 설정 */}
-          <div className="form-section">
-            <div className="section-title">동작 설정</div>
-            
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">우선순위</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={formData.priority}
-                  onChange={(e) => setFormData(prev => ({ ...prev, priority: parseInt(e.target.value) || 100 }))}
-                  min="1"
-                  max="999"
-                />
-              </div>
-            </div>
-            
-            <div className="checkbox-group">
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={formData.is_enabled}
-                onChange={(e) => setFormData(prev => ({ ...prev, is_enabled: e.target.checked }))}
-              />
-              <label className="checkbox-label">알람 규칙 활성화</label>
             </div>
 
-            <div className="checkbox-group">
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={formData.auto_clear}
-                onChange={(e) => setFormData(prev => ({ ...prev, auto_clear: e.target.checked }))}
-              />
-              <label className="checkbox-label">자동 해제</label>
+            <div className="sentence-builder-bar" style={{ marginTop: '32px', marginBottom: '12px', borderRadius: '8px' }}>
+              <i className="fas fa-robot"></i>
+              <div className="sentence-label" style={{ marginLeft: '12px' }}>Live Preview:</div>
+              {renderSentencePills(generateSentence())}
             </div>
-
-            <div className="checkbox-group">
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={formData.auto_acknowledge}
-                onChange={(e) => setFormData(prev => ({ ...prev, auto_acknowledge: e.target.checked }))}
-              />
-              <label className="checkbox-label">자동 확인</label>
-            </div>
-
-            <div className="checkbox-group">
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={formData.notification_enabled}
-                onChange={(e) => setFormData(prev => ({ ...prev, notification_enabled: e.target.checked }))}
-              />
-              <label className="checkbox-label">알림 활성화</label>
-            </div>
-
-            <div className="checkbox-group">
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={formData.escalation_enabled}
-                onChange={(e) => setFormData(prev => ({ ...prev, escalation_enabled: e.target.checked }))}
-              />
-              <label className="checkbox-label">에스컬레이션 활성화</label>
-            </div>
-
-            {formData.escalation_enabled && (
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">최대 에스컬레이션 레벨</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={formData.escalation_max_level}
-                    onChange={(e) => setFormData(prev => ({ ...prev, escalation_max_level: parseInt(e.target.value) || 3 }))}
-                    min="1"
-                    max="10"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
+          </form>
         </div>
-
-        <div className="modal-footer">
-          <button
-            className="btn btn-outline"
-            onClick={onClose}
-            disabled={loading}
-          >
-            취소
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={handleSubmit}
-            disabled={!formData.name || !formData.target_id || loading}
-          >
-            {loading ? <i className="fas fa-spinner fa-spin"></i> : 
-             mode === 'create' ? <i className="fas fa-plus"></i> : <i className="fas fa-save"></i>}
-            {mode === 'create' ? '생성' : '수정'}
-          </button>
+        <div className="modal-footer" style={{ borderTop: '1px solid var(--neutral-100)', padding: '20px 32px', display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+          <div className="footer-left" style={{ display: 'flex', gap: '8px', marginRight: 'auto' }}>
+            {mode === 'edit' && (
+              rule?.is_deleted ? (
+                onRestore && (
+                  <button type="button" className="btn btn-primary" onClick={() => onRestore(rule.id, rule.name)} style={{ backgroundColor: 'var(--primary-600)', borderColor: 'var(--primary-600)' }}>
+                    <i className="fas fa-undo"></i> 복원
+                  </button>
+                )
+              ) : (
+                onDelete && (
+                  <button type="button" className="btn btn-danger" onClick={() => onDelete(rule!.id, rule!.name)}>
+                    <i className="fas fa-trash-alt"></i> 삭제
+                  </button>
+                )
+              )
+            )}
+            {/* If there's nothing here, justify-between will push right section to the right. 
+                If delete button is here, it stays on the left. */}
+          </div>
+          <div className="footer-right" style={{ display: 'flex', gap: '12px' }}>
+            <button type="button" className="btn btn-secondary" style={{ minWidth: '100px' }} onClick={onClose}>취소</button>
+            <button type="button" className="btn btn-primary" style={{ minWidth: '100px' }} onClick={handleSubmit}>
+              {mode === 'create' ? '생성' : '수정'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

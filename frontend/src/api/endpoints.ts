@@ -162,6 +162,10 @@ export const ENDPOINTS = {
   ALARMS_HISTORY: `${API_BASE}/api/alarms/history`,
   ALARM_TODAY: `${API_BASE}/api/alarms/today`,
   ALARM_TODAY_STATISTICS: `${API_BASE}/api/alarms/statistics/today`,
+  ALARMS_BULK_ACKNOWLEDGE: `${API_BASE}/api/alarms/occurrences/bulk-acknowledge`,
+  ALARMS_BULK_CLEAR: `${API_BASE}/api/alarms/occurrences/bulk-clear`,
+  ALARMS_ACKNOWLEDGE_ALL: `${API_BASE}/api/alarms/occurrences/acknowledge-all`,
+  ALARMS_CLEAR_ALL: `${API_BASE}/api/alarms/occurrences/clear-all`,
 
   // ---- 카테고리/태그별 알람 발생 ----
   ALARMS_OCCURRENCES_CATEGORY: (category: string) => `${API_BASE}/api/alarms/occurrences/category/${category}`,
@@ -727,6 +731,10 @@ export const API_GROUPS = {
     OCCURRENCE_DETAIL: ENDPOINTS.ALARMS_OCCURRENCE_BY_ID,
     ACKNOWLEDGE: ENDPOINTS.ALARMS_OCCURRENCE_ACKNOWLEDGE,
     CLEAR: ENDPOINTS.ALARMS_OCCURRENCE_CLEAR,
+    BULK_ACKNOWLEDGE: ENDPOINTS.ALARMS_BULK_ACKNOWLEDGE,
+    BULK_CLEAR: ENDPOINTS.ALARMS_BULK_CLEAR,
+    ACKNOWLEDGE_ALL: ENDPOINTS.ALARMS_ACKNOWLEDGE_ALL,
+    CLEAR_ALL: ENDPOINTS.ALARMS_CLEAR_ALL,
     HISTORY: ENDPOINTS.ALARMS_HISTORY,
     UNACKNOWLEDGED: ENDPOINTS.ALARM_UNACKNOWLEDGED,
     RECENT: ENDPOINTS.ALARM_RECENT,

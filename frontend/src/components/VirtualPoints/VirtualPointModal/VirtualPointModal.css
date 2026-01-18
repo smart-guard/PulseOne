@@ -1,7 +1,6 @@
 /* ============================================================================
  * VirtualPointModal.css - 완전 반응형 모달 시스템
  * ============================================================================ */
-
 /* ================================================================
  * CSS 변수 정의 - 일관성 있는 스케일링
  * ================================================================ */
@@ -12,23 +11,23 @@
   --modal-width-tablet: 95vw;
   --modal-width-desktop: 90vw;
   --modal-width-wide: 85vw;
-  
+
   --modal-max-width-mobile: none;
   --modal-max-width-tablet: 800px;
   --modal-max-width-desktop: 1200px;
   --modal-max-width-wide: 1600px;
-  
+
   --modal-height-mobile: 100vh;
   --modal-height-tablet: 95vh;
   --modal-height-desktop: 90vh;
   --modal-height-wide: 85vh;
-  
+
   /* 패딩 변수 */
   --modal-padding-mobile: clamp(12px, 3vw, 16px);
   --modal-padding-tablet: clamp(16px, 2.5vw, 24px);
   --modal-padding-desktop: clamp(20px, 2vw, 32px);
   --modal-padding-wide: clamp(24px, 1.5vw, 40px);
-  
+
   /* 폰트 크기 변수 */
   --font-xs: clamp(10px, 2vw, 12px);
   --font-sm: clamp(12px, 2.2vw, 14px);
@@ -36,7 +35,7 @@
   --font-lg: clamp(16px, 3vw, 18px);
   --font-xl: clamp(18px, 3.5vw, 22px);
   --font-2xl: clamp(20px, 4vw, 28px);
-  
+
   /* 간격 변수 */
   --space-xs: clamp(4px, 1vw, 8px);
   --space-sm: clamp(8px, 1.5vw, 12px);
@@ -65,17 +64,20 @@
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  padding: 10px; /* 최소 패딩 */
+  padding: 10px;
+  /* 최소 패딩 */
 }
 
 .virtual-point-modal,
 .modal-container,
 div[class*="virtual-point-modal"],
 div[class*="modal-container"] {
-  width: 95vw !important;        /* 강제 적용 */
-  max-width: 1400px !important;  /* 최대 크기 확대 */
-  height: 90vh !important;       
-  max-height: 800px !important;  
+  width: 95vw !important;
+  /* 강제 적용 */
+  max-width: 1400px !important;
+  /* 최대 크기 확대 */
+  height: 90vh !important;
+  max-height: 800px !important;
   border-radius: 12px !important;
   overflow: hidden !important;
   background: white !important;
@@ -509,11 +511,30 @@ div[class*="modal-container"] {
   font-weight: 500;
 }
 
-.function-category.math { background: #dbeafe; color: #1e40af; }
-.function-category.logic { background: #dcfce7; color: #166534; }
-.function-category.time { background: #fef3c7; color: #92400e; }
-.function-category.string { background: #fce7f3; color: #be185d; }
-.function-category.conversion { background: #f3e8ff; color: #7c3aed; }
+.function-category.math {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.function-category.logic {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.function-category.time {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.function-category.string {
+  background: #fce7f3;
+  color: #be185d;
+}
+
+.function-category.conversion {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
 
 .function-syntax {
   background: #f1f5f9;
@@ -847,11 +868,30 @@ div[class*="modal-container"] {
   font-weight: 500;
 }
 
-.function-category.math { background: #dbeafe; color: #1e40af; }
-.function-category.logic { background: #dcfce7; color: #166534; }
-.function-category.time { background: #fef3c7; color: #92400e; }
-.function-category.string { background: #fce7f3; color: #be185d; }
-.function-category.conversion { background: #f3e8ff; color: #7c3aed; }
+.function-category.math {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.function-category.logic {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.function-category.time {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.function-category.string {
+  background: #fce7f3;
+  color: #be185d;
+}
+
+.function-category.conversion {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
 
 .function-syntax {
   background: #f1f5f9;
@@ -1209,22 +1249,24 @@ div[class*="modal-container"] {
 
 /* 와이드 데스크톱 (1400px 이상) */
 @media (min-width: 1400px) {
+
   .virtual-point-modal,
   .modal-container,
   div[class*="virtual-point-modal"] {
     width: 90vw !important;
-    max-width: 1600px !important;  /* 더 넓게 */
+    max-width: 1600px !important;
+    /* 더 넓게 */
     height: 85vh !important;
   }
-  
+
   .form-grid {
     grid-template-columns: repeat(3, 1fr);
   }
-  
+
   .function-panel {
     width: 420px;
   }
-  
+
   .input-grid {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -1232,18 +1274,20 @@ div[class*="modal-container"] {
 
 /* 데스크톱 (1024px - 1399px) */
 @media (min-width: 1024px) and (max-width: 1399px) {
+
   .virtual-point-modal,
   .modal-container,
   div[class*="virtual-point-modal"] {
     width: 95vw !important;
-    max-width: 1400px !important;  /* 기본보다 크게 */
+    max-width: 1400px !important;
+    /* 기본보다 크게 */
     height: 90vh !important;
   }
-  
+
   .function-panel {
     width: 350px;
   }
-  
+
   .form-grid {
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
@@ -1251,45 +1295,47 @@ div[class*="modal-container"] {
 
 /* 태블릿 (768px - 1023px) */
 @media (min-width: 768px) and (max-width: 1023px) {
+
   .virtual-point-modal,
   .modal-container,
   div[class*="virtual-point-modal"] {
     width: 98vw !important;
-    max-width: 900px !important;   /* 태블릿도 충분히 크게 */
+    max-width: 900px !important;
+    /* 태블릿도 충분히 크게 */
     height: 95vh !important;
   }
-  
+
   .editor-layout {
     flex-direction: column;
   }
-  
+
   .function-panel {
     width: 100%;
     max-height: 300px;
     border-right: none;
     border-bottom: 1px solid #e5e7eb;
   }
-  
+
   .form-grid,
   .input-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .tab-button {
     flex-shrink: 0;
     padding: 12px 20px;
   }
-  
+
   .modal-footer {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .footer-actions {
     width: 100%;
     justify-content: stretch;
   }
-  
+
   .footer-actions button {
     flex: 1;
   }
@@ -1303,60 +1349,1575 @@ div[class*="modal-container"] {
     height: var(--modal-height-mobile);
     border-radius: 0;
   }
-  
+
   .modal-overlay {
     padding: 0;
   }
-  
+
   .modal-tabs {
     overflow-x: auto;
   }
-  
+
   .tab-button {
     flex-shrink: 0;
     min-width: fit-content;
     padding: var(--modal-padding-mobile);
   }
-  
+
   .basic-info-form,
   .input-variable-editor,
   .validation-panel {
     padding: var(--modal-padding-mobile);
   }
-  
+
   .form-grid,
   .input-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .editor-layout {
     flex-direction: column;
   }
-  
+
   .function-panel {
     width: 100%;
     max-height: 250px;
     border-right: none;
     border-bottom: 1px solid #e5e7eb;
   }
-  
+
   .modal-footer {
     flex-direction: column;
     gap: var(--space-md);
     align-items: stretch;
   }
-  
+
   .footer-actions {
     width: 100%;
     justify-content: stretch;
   }
-  
+
   .footer-actions button {
     flex: 1;
     min-width: 0;
   }
-  
+
   .footer-left {
     justify-content: center;
   }
+}
+
+/* ================================================================
+ * Wizard Style - Alarm Template Reference
+ * ================================================================ */
+
+/* Blueprint theme colors */
+:root {
+  --blueprint-50: #f0f9ff;
+  --blueprint-100: #e0f2fe;
+  --blueprint-200: #bae6fd;
+  --blueprint-300: #7dd3fc;
+  --blueprint-400: #38bdf8;
+  --blueprint-500: #0ea5e9;
+  --blueprint-600: #0284c7;
+  --blueprint-700: #0369a1;
+  --blueprint-800: #075985;
+  --blueprint-900: #0c4a6e;
+}
+
+/* Wizard Steps Header - More compact */
+.wizard-steps-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 40px 16px 40px;
+  /* Reduced padding */
+  position: relative;
+  margin-bottom: 12px;
+  /* Reduced margin */
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.wizard-step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 2;
+  flex: 1;
+  position: relative;
+}
+
+.wizard-step-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: calc(50% + 25px);
+  width: calc(100% - 50px);
+  height: 2px;
+  background: #e2e8f0;
+  z-index: 1;
+}
+
+.wizard-step-item.completed:not(:last-child)::after {
+  background: var(--blueprint-500);
+}
+
+.step-number {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  border: 2px solid #e2e8f0;
+  transition: all 0.3s;
+}
+
+.wizard-step-item.active .step-number {
+  background: var(--blueprint-600);
+  color: white;
+  border-color: var(--blueprint-600);
+  box-shadow: 0 0 10px rgba(14, 165, 233, 0.4);
+}
+
+.wizard-step-item.completed .step-number {
+  background: white;
+  color: var(--blueprint-600);
+  border-color: var(--blueprint-600);
+}
+
+.wizard-step-item.completed .step-number::before {
+  content: '✓';
+}
+
+.step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  transition: all 0.3s;
+  text-align: center;
+}
+
+.wizard-step-item.active .step-label {
+  color: var(--blueprint-700);
+}
+
+.wizard-step-item.completed .step-label {
+  color: #64748b;
+}
+
+/* Wizard Content Area - No more vertical padding, max height */
+.wizard-content {
+  flex: 1;
+  padding: 24px 40px;
+  background: #fdfdfd;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  /* Restored scrollability */
+  position: relative;
+}
+
+/* Wizard Navigation */
+.wizard-navigation {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 40px;
+  border-top: 1px solid #e5e7eb;
+  background: #f8fafc;
+  gap: 16px;
+}
+
+.wizard-nav-btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wizard-nav-btn.btn-prev {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.wizard-nav-btn.btn-prev:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.wizard-nav-btn.btn-next,
+.wizard-nav-btn.btn-save {
+  background: var(--blueprint-600);
+  border: none;
+  color: white;
+}
+
+.wizard-nav-btn.btn-next:hover:not(:disabled),
+.wizard-nav-btn.btn-save:hover:not(:disabled) {
+  background: var(--blueprint-700);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.wizard-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Step Content Styles */
+.wizard-step-content {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.step-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.step-description {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 32px;
+}
+
+/* ================================================================
+ * Premium Wizard V2 Styles - Dashboard Layouts & Icons
+ * ================================================================ */
+
+.dashboard-grid-v2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  height: 100%;
+}
+
+.dashboard-left-panel,
+.dashboard-right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  height: 100%;
+  /* Ensure columns fill the height */
+}
+
+.premium-form-section {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.v-section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f3f4f6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.v-section-title i {
+  font-size: 16px;
+  color: var(--blueprint-500);
+}
+
+.premium-form-group {
+  margin-bottom: 16px;
+}
+
+.premium-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 8px;
+}
+
+.premium-label i {
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.premium-input-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* Variable Card Grid */
+.variable-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.variable-premium-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+
+.variable-premium-card:hover {
+  border-color: var(--blueprint-400);
+  box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.1);
+  transform: translateY(-4px);
+}
+
+.var-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.var-name-badge {
+  font-family: 'JetBrains Mono', monospace;
+  background: #f0f9ff;
+  color: #0369a1;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* Formula Result Display */
+.formula-result-premium {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1.5px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  margin-top: 16px;
+  position: relative;
+}
+
+.result-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.result-value-v2 {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 42px;
+  font-weight: 800;
+  color: var(--blueprint-600);
+  letter-spacing: -1.5px;
+  margin: 0;
+}
+
+/* Quick Presets & chiclets */
+.preset-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.preset-chip {
+  padding: 6px 14px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  font-size: 13px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.preset-chip:hover {
+  border-color: var(--blueprint-500);
+  background: #f0f9ff;
+  color: var(--blueprint-600);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.preset-chip.active {
+  background: var(--blueprint-500);
+  border-color: var(--blueprint-500);
+  color: white;
+}
+
+.preset-chip i {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.form-group-with-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.premium-choice-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.choice-item-v2 {
+  padding: 12px;
+  background: white;
+  border: 2px solid #f1f5f9;
+  border-radius: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.choice-item-v2:hover {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+}
+
+.choice-item-v2.active {
+  border-color: var(--blueprint-500);
+  background: #f0f9ff;
+  color: var(--blueprint-700);
+}
+
+.choice-item-v2 i {
+  display: block;
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.choice-label-v2 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Horizontal Form Layout V2 */
+.premium-form-group.horizontal {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.premium-form-group.horizontal .premium-label {
+  width: 180px;
+  min-width: 180px;
+  margin-bottom: 0;
+  color: #475569;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.premium-form-group.horizontal .form-input-container {
+  flex: 1;
+}
+
+/* Config Summary Widget */
+.config-summary-widget {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 24px;
+  margin-top: 24px;
+}
+
+.summary-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e2937;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-item .label {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.summary-item .value {
+  font-size: 13px;
+  color: #1e2937;
+  font-weight: 700;
+}
+
+.summary-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.summary-badge.active {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+
+/* ================================================================
+ * CLEAN DASHBOARD V3 - 3-Column Workstation Layout (Step 1)
+ * ================================================================ */
+
+.dashboard-grid-v3 {
+  display: grid;
+  grid-template-columns: 460px 340px 1fr;
+  /* Optimized: C1 based on category row | Expand C2 | Wide Guide */
+  gap: 32px;
+  height: 100%;
+}
+
+.dashboard-v3-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Refined Card for V3 density */
+.concept-group-card.v3-compact {
+  padding: 20px;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.concept-group-card.v3-compact .concept-title {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+/* Vertical form group for tight spaces */
+.v-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.v-form-group .label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+/* Guidance Panel Style */
+.guidance-panel {
+  background: #fdfdfd;
+  border: 1px solid #f1f5f9;
+  border-radius: 16px;
+  padding: 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.guidance-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 800;
+  color: #1e2937;
+  font-size: 15px;
+  border-bottom: 2px solid #f1f5f9;
+  padding-bottom: 12px;
+}
+
+.guidance-step {
+  display: flex;
+  gap: 16px;
+}
+
+.guidance-num {
+  width: 24px;
+  height: 24px;
+  background: var(--blueprint-50);
+  color: var(--blueprint-600);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.guidance-text p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+/* ============================================================================ 
+ * 🔍 VIRTUAL POINT DETAIL MODAL - COMPACT (vpd-)
+ * ============================================================================ */
+
+.vpd-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000;
+  animation: vpd-fade 0.3s ease-out;
+}
+
+.vpd-card {
+  background: #ffffff;
+  border-radius: 20px;
+  width: 90vw !important;
+  max-width: 1200px !important;
+  height: 85vh !important;
+  min-height: 600px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.3);
+  animation: vpd-slide 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vpd-header {
+  padding: 16px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vpd-header .title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vpd-header .icon-box {
+  width: 36px;
+  height: 36px;
+  background: #eff6ff;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3b82f6;
+  font-size: 18px;
+}
+
+.vpd-header h2 {
+  font-size: 16px;
+  font-weight: 800;
+  color: #1e293b;
+  margin: 0;
+}
+
+.vpd-header .close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: none;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.vpd-header .close-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.vpd-content {
+  padding: 0;
+  display: flex !important;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  background: #ffffff;
+}
+
+.vpd-overview-wrapper {
+  padding: 24px 32px;
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 24px;
+  height: min-content;
+  /* Ensure grid doesn't stretch weirdly if content is small */
+}
+
+
+
+.vpd-left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.vpd-right-column {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Identity Section */
+.vpd-identity h1 {
+  font-size: 26px;
+  font-weight: 900;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+  letter-spacing: -0.03em;
+}
+
+.vpd-identity p {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+.vpd-status-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.vpd-status-banner.active {
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #10b98122;
+}
+
+.vpd-status-banner.paused {
+  background: #f8fafc;
+  color: #94a3b8;
+  border: 1px solid #e2e8f0;
+}
+
+/* Stats Grid */
+.vpd-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.vpd-stat-card {
+  background: #f8fafc;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid #f1f5f9;
+}
+
+.vpd-stat-card label {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.vpd-stat-card .val {
+  font-size: 16px;
+  color: #1e293b;
+  font-weight: 700;
+}
+
+/* Current Result Card */
+.vpd-result-box {
+  background: #eff6ff;
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid #dbeafe;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vpd-result-box label {
+  font-size: 11px;
+  color: #3b82f6;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.vpd-result-box .main-val {
+  font-size: 28px;
+  /* Greatly reduced from 42px */
+  font-weight: 900;
+  color: #1e3a8a;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.vpd-result-box .timestamp {
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Logic Panel */
+.vpd-logic-panel {
+  background: #0f172a;
+  border-radius: 16px;
+  padding: 28px 20px 20px 20px;
+  height: 100%;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border: 1px solid #1e293b;
+}
+
+.vpd-logic-panel label {
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: #3b82f6;
+  color: white;
+  padding: 3px 12px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.vpd-logic-panel pre {
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  color: #7dd3fc;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+}
+
+/* Footer Actions */
+.vpd-footer {
+  padding: 16px 32px;
+  background: #f8fafc;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vpd-btn {
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.vpd-btn:active {
+  transform: scale(0.97);
+}
+
+.vpd-btn.primary {
+  background: #3b82f6 !important;
+  color: white !important;
+}
+
+.vpd-btn.secondary {
+  background: #ffffff !important;
+  color: #475569 !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.vpd-btn.danger {
+  background: #fee2e2 !important;
+  color: #ef4444 !important;
+}
+
+.vpd-btn.success {
+  background: #dcfce7 !important;
+  color: #16a34a !important;
+}
+
+@keyframes vpd-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes vpd-slide {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Sample Cases Widget */
+.guidance-samples {
+  margin-top: auto;
+  padding: 16px;
+  background: #fdfdfd;
+  border: 1px solid #e0f2fe;
+  border-radius: 12px;
+}
+
+.sample-case {
+  margin-top: 12px;
+  padding: 10px;
+  background: white;
+  border: 1px solid #f1f5f9;
+  border-radius: 8px;
+}
+
+.sample-case-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #334155;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sample-case-desc {
+  font-size: 11.5px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.sample-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.sample-tag.blue {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.sample-tag.green {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+/* Grouped Concept Card */
+.concept-group-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.concept-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #475569;
+  margin-bottom: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.concept-title i {
+  color: var(--blueprint-500);
+}
+
+/* ================================================================
+ * FORMULA STUDIO - Visual Logic Builder (Step 3)
+ * ================================================================ */
+
+.formula-grid-v3 {
+  display: grid;
+  grid-template-columns: 280px 1fr 300px;
+  gap: 24px;
+  height: 100%;
+  /* Force fill wizard-content */
+  min-height: 600px;
+  /* Ensure enough height for the workstation feel */
+  min-height: 0;
+  /* Allow shrinking */
+}
+
+/* Variable Palette Column */
+.variable-palette-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.palette-header {
+  padding: 12px 16px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 11px;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.palette-content {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.palette-item-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.palette-item-btn:hover {
+  border-color: var(--blueprint-500);
+  background: #f0f9ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.palette-item-btn i {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+/* Operator & Function Blocks */
+.logic-palette-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f1f5f9;
+  border-radius: 12px;
+}
+
+.logic-block-btn {
+  padding: 8px 14px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logic-block-btn:hover {
+  background: var(--blueprint-500);
+  color: white;
+  border-color: var(--blueprint-500);
+}
+
+.logic-block-btn.function {
+  background: #fff;
+  border-color: #d8b4fe;
+  color: #7c3aed;
+}
+
+.logic-block-btn.function:hover {
+  background: #7c3aed;
+  color: white;
+}
+
+/* Formula Textarea Refinement */
+.formula-editor-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.formula-textarea-v3 {
+  flex: 1;
+  width: 100%;
+  padding: 24px;
+  border: none;
+  background: #fdfdfd;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 18px;
+  line-height: 1.6;
+  color: #1e2937;
+  resize: none;
+  outline: none;
+}
+
+.formula-footer {
+  padding: 16px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Clean Choice Group */
+.choice-group-v3 {
+  display: flex;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 10px;
+  width: fit-content;
+}
+
+.choice-btn-v3 {
+  padding: 8px 16px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.choice-btn-v3.active {
+  background: white;
+  color: var(--blueprint-600);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+/* VP INNER POPUP SYSTEM (For Variables Step) */
+.vp-popup-overlay {
+  position: absolute;
+  /* Relative to wizard-content */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  /* Opaque white to cover the step below */
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  z-index: 1000;
+  padding: 0;
+  /* Full cover */
+}
+
+.vp-popup-box {
+  background: white;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.vp-popup-header {
+  padding: 16px 32px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+}
+
+.vp-popup-close-btn {
+  background: #f1f5f9;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #64748b;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.vp-popup-close-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.vp-popup-content {
+  flex: 1;
+  padding: 20px 32px;
+  background: #fff;
+  overflow-y: auto;
+  /* Ensure only content scrolls, keeping footer visible */
+}
+
+.vp-popup-footer {
+  padding: 12px 32px;
+  border-top: 1px solid #f1f5f9;
+  background: #f8fafc;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.vp-popup-footer button {
+  height: 38px;
+  /* Slightly more compact */
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.vp-popup-footer .btn-ghost {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+}
+
+.vp-popup-footer .btn-ghost:hover {
+  background: #f1f5f9;
+  color: #1e2937;
+}
+
+.vp-popup-dashboard-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr 260px;
+  /* Reduced side columns for density */
+  gap: 24px;
+}
+
+.vp-popup-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Denser vertical spacing */
+}
+
+.vp-popup-column-title {
+  font-size: 10px;
+  font-weight: 800;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.vp-vertical-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vp-vertical-group .label {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.vp-popup-guide-panel {
+  background: #f8fafc;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  border: 1px solid #f1f5f9;
+}
+
+.vp-popup-guide-item {
+  display: flex;
+  gap: 10px;
+}
+
+.vp-popup-guide-item .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blueprint-400);
+  margin-top: 7px;
+  flex-shrink: 0;
+}
+
+.vp-popup-guide-item p {
+  margin: 0;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.6;
+}
+
+/* Modal Centering & Overlay - Fixed for Deep Stacking */
+.modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 40px;
+}
+
+.modal-container {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 98%;
+  max-width: 1400px;
+  /* Wider for studio feel */
+  height: calc(100vh - 40px);
+  /* Fill the screen vertically */
+  min-height: 600px;
+  animation: modalScaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border: 1px solid #e2e8f0;
+}
+
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-header {
+  padding: 24px 32px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+}
+
+.modal-close-btn {
+  background: #f1f5f9;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #64748b;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.modal-close-btn:hover {
+  background: #e2e8f0;
+  color: #1e2937;
+}
+
+.modal-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px;
+  background: #fff;
+}
+
+.modal-footer {
+  padding: 24px 32px;
+  border-top: 1px solid #f1f5f9;
+  background: #f8fafc;
+  display: flex;
+  gap: 12px;
+}
+
+.modal-dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 32px;
+}
+
+.modal-guide-panel {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-guide-item {
+  display: flex;
+  gap: 12px;
+}
+
+.modal-guide-item .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--blueprint-400);
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.modal-guide-item p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+/* ================================================================
+ * Detail Modal Tabs
+ * ================================================================ */
+.vpd-tabs {
+  display: flex;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0 20px;
+  gap: 20px;
+}
+
+.vpd-tab {
+  background: none;
+  border: none;
+  padding: 12px 4px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.vpd-tab:hover {
+  color: #0f172a;
+}
+
+.vpd-tab.active {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.vpd-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: #2563eb;
 }

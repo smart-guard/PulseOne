@@ -11,6 +11,25 @@ class VirtualPointService extends BaseService {
         super(null);
     }
 
+    /**
+     * 감사 로그 기록 (내부 헬퍼)
+     */
+    async logAction(pointId, action, previousState, newState, userId = null, details = null) {
+        try {
+            await this.repository.createLog({
+                point_id: pointId,
+                action,
+                previous_state: previousState ? JSON.stringify(previousState) : null,
+                new_state: newState ? JSON.stringify(newState) : null,
+                user_id: userId,
+                details
+            });
+        } catch (error) {
+            this.logger.error(`감사 로그 기록 실패 [${action}]:`, error);
+            // 로그 실패가 메인 트랜잭션을 방해하지 않도록 예외 무시
+        }
+    }
+
     get repository() {
         if (!this._repository) {
             this._repository = RepositoryFactory.getInstance().getRepository('VirtualPointRepository');
@@ -47,7 +66,12 @@ class VirtualPointService extends BaseService {
             const existing = await this.repository.findByName(data.name, tenantId);
             if (existing) throw new Error('동일한 이름의 가상포인트가 이미 존재합니다.');
 
-            return await this.repository.createVirtualPoint(data, inputs, tenantId);
+            const newPoint = await this.repository.createVirtualPoint(data, inputs, tenantId);
+
+            // Audit Log
+            await this.logAction(newPoint.id, 'CREATE', null, newPoint, null, 'Virtual Point Created');
+
+            return newPoint;
         }, 'VirtualPointService.create');
     }
 
@@ -56,7 +80,14 @@ class VirtualPointService extends BaseService {
      */
     async update(id, data, inputs, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.repository.updateVirtualPoint(id, data, inputs, tenantId);
+            // 이전 상태 조회 (로그용)
+            const previousState = await this.repository.findById(id, tenantId);
+            const updatedPoint = await this.repository.updateVirtualPoint(id, data, inputs, tenantId);
+
+            // Audit Log
+            await this.logAction(id, 'UPDATE', previousState, updatedPoint, null, 'Virtual Point Updated');
+
+            return updatedPoint;
         }, 'VirtualPointService.update');
     }
 
@@ -65,10 +96,32 @@ class VirtualPointService extends BaseService {
      */
     async delete(id, tenantId) {
         return await this.handleRequest(async () => {
+            // 이전 상태 조회 (로그용)
+            const previousState = await this.repository.findById(id, tenantId);
+
             const success = await this.repository.deleteById(id, tenantId);
             if (!success) throw new Error('가상포인트 삭제 실패 (존재하지 않거나 권한 없음)');
-            return { id, success: true };
+
+            // Audit Log
+            await this.logAction(id, 'DELETE', previousState, { is_deleted: true }, null, 'Virtual Point Soft Deleted');
+
+            return { id, success: true, mode: 'soft-delete' };
         }, 'VirtualPointService.delete');
+    }
+
+    /**
+     * 가상포인트 복원
+     */
+    async restore(id, tenantId) {
+        return await this.handleRequest(async () => {
+            const success = await this.repository.restoreById(id, tenantId);
+            if (!success) throw new Error('가상포인트 복원 실패 (존재하지 않거나 권한 없음)');
+
+            // Audit Log
+            await this.logAction(id, 'RESTORE', { is_deleted: true }, { is_deleted: false }, null, 'Virtual Point Restored');
+
+            return { id, success: true };
+        }, 'VirtualPointService.restore');
     }
 
     /**
@@ -76,7 +129,12 @@ class VirtualPointService extends BaseService {
      */
     async toggleEnabled(id, isEnabled, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.repository.updateEnabledStatus(id, isEnabled, tenantId);
+            const result = await this.repository.updateEnabledStatus(id, isEnabled, tenantId);
+
+            // Audit Log
+            await this.logAction(id, isEnabled ? 'ENABLE' : 'DISABLE', null, { is_enabled: isEnabled }, null, `Virtual Point ${isEnabled ? 'Enabled' : 'Disabled'}`);
+
+            return result;
         }, 'VirtualPointService.toggleEnabled');
     }
 
@@ -105,6 +163,17 @@ class VirtualPointService extends BaseService {
         return await this.handleRequest(async () => {
             return await this.repository.cleanupOrphanedRecords();
         }, 'VirtualPointService.cleanupOrphaned');
+    }
+
+    /**
+     * 감사 로그 조회
+     */
+    async getHistory(pointId, tenantId) {
+        return await this.handleRequest(async () => {
+            // 포인트 존재 및 권한 확인
+            await this.findById(pointId, tenantId);
+            return await this.repository.getLogs(pointId);
+        }, 'VirtualPointService.getHistory');
     }
 }
 

@@ -71,6 +71,15 @@ class AlarmRuleService extends BaseService {
     }
 
     /**
+     * 알람 규칙 복원
+     */
+    async restoreAlarmRule(id, tenantId) {
+        return await this.handleRequest(async () => {
+            return await this.repository.restore(id, tenantId);
+        }, 'RestoreAlarmRule');
+    }
+
+    /**
      * 알람 규칙 활성화/비활성화 토글
      */
     async setRuleStatus(id, isEnabled, tenantId) {

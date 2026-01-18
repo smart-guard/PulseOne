@@ -52,6 +52,13 @@ class AlarmRuleRepository extends BaseRepository {
                 query.where('ar.tenant_id', filters.tenantId);
             }
 
+            // 삭제된 항목 필터링 (기본값: 삭제되지 않은 항목만)
+            if (filters.deleted === 'true' || filters.deleted === true) {
+                query.where('ar.is_deleted', 1);
+            } else {
+                query.where('ar.is_deleted', 0);
+            }
+
             if (filters.targetType && filters.targetType !== 'all') {
                 query.where('ar.target_type', filters.targetType);
             }
@@ -510,19 +517,46 @@ class AlarmRuleRepository extends BaseRepository {
 
     async delete(id, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.delete 호출 (Knex): ID ${id}`);
+            console.log(`AlarmRuleRepository.delete (Soft Delete) 호출 (Knex): ID ${id}`);
             let query = this.query().where('id', id);
             if (tenantId) query.where('tenant_id', tenantId);
 
-            const affected = await query.del();
+            const affected = await query.update({
+                is_deleted: 1,
+                updated_at: this.knex.fn.now()
+            });
+
             if (affected > 0) {
-                console.log(`✅ 알람 규칙 ID ${id} 삭제 완료`);
+                console.log(`✅ 알람 규칙 ID ${id} 삭제(Soft Delete) 완료`);
                 return true;
             } else {
                 return false;
             }
         } catch (error) {
             console.error('AlarmRuleRepository.delete 실패:', error.message);
+            throw error;
+        }
+    }
+
+    async restore(id, tenantId = null) {
+        try {
+            console.log(`AlarmRuleRepository.restore 호출 (Knex): ID ${id}`);
+            let query = this.query().where('id', id);
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            const affected = await query.update({
+                is_deleted: 0,
+                updated_at: this.knex.fn.now()
+            });
+
+            if (affected > 0) {
+                console.log(`✅ 알람 규칙 ID ${id} 복원 완료`);
+                return true;
+            } else {
+                return false;
+            }
+        } catch (error) {
+            console.error('AlarmRuleRepository.restore 실패:', error.message);
             throw error;
         }
     }
@@ -667,6 +701,7 @@ class AlarmRuleRepository extends BaseRepository {
             notification_enabled: Boolean(rule.notification_enabled),
             created_by_template: Boolean(rule.created_by_template),
             escalation_enabled: Boolean(rule.escalation_enabled),
+            is_deleted: Boolean(rule.is_deleted),
 
             // JSON 필드 파싱
             message_config: this.parseJsonField(rule.message_config),

@@ -9,7 +9,7 @@
   --font-size-base: clamp(10px, 0.9vw, 13px);
   --font-size-small: clamp(8px, 0.8vw, 11px);
   --font-size-title: clamp(18px, 2.5vw, 28px);
-  
+
   /* 색상 체계 통일 */
   --primary-50: #eff6ff;
   --primary-100: #dbeafe;
@@ -38,6 +38,23 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+
+  /* Blueprint 테마 전용 색상 (Premium Indigo/Blue) */
+  --blueprint-50: #f0f9ff;
+  --blueprint-100: #e0f2fe;
+  --blueprint-200: #bae6fd;
+  --blueprint-300: #7dd3fc;
+  --blueprint-400: #38bdf8;
+  --blueprint-500: #0ea5e9;
+  --blueprint-600: #0284c7;
+  --blueprint-700: #0369a1;
+  --blueprint-800: #075985;
+  --blueprint-900: #0c4a6e;
+
+  --blueprint-glass-bg: rgba(14, 165, 233, 0.03);
+  --blueprint-border: rgba(14, 165, 233, 0.15);
+  --blueprint-glow: 0 0 20px rgba(14, 165, 233, 0.1);
+  --blueprint-surface: #ffffff;
 }
 
 /* 컨테이너 - data-explorer와 동일 */
@@ -280,766 +297,2670 @@
   margin: 0 var(--table-padding) 32px var(--table-padding);
 }
 
-.template-card {
+.premium-template-card {
+  position: relative;
   background: white;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--neutral-200);
-  padding: 24px;
-  transition: all 0.2s ease;
-  box-shadow: var(--shadow-sm);
-}
-
-.template-card:hover {
-  border-color: var(--primary-300);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-
-.template-header {
-  margin-bottom: 16px;
-}
-
-.template-title {
-  margin-bottom: 12px;
-}
-
-.template-icon {
-  font-size: 20px;
-  min-width: 20px;
-}
-
-.template-name {
-  font-size: clamp(16px, 1.8vw, 18px);
-  font-weight: 600;
-  color: var(--neutral-800);
-  margin: 0;
-  line-height: 1.3;
-}
-
-.template-description {
-  font-size: var(--font-size-base);
-  color: var(--neutral-600);
-  margin: 0;
-  line-height: 1.5;
-}
-
-.template-badges {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
-
-.template-badge {
-  padding: 4px 10px;
-  font-size: var(--font-size-small);
-  font-weight: 500;
-  border-radius: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-}
-
-.template-badge.type-simple {
-  background: var(--primary-100);
-  color: var(--primary-700);
-}
-
-.template-badge.type-advanced {
-  background: #ea580c;  /* 진한 주황 배경 */
-  color: #ffffff;       /* 흰색 글씨 */
-}
-
-.template-badge.type-script {
-  background: #f3e8ff;
-  color: #7c3aed;
-}
-
-.template-badge.severity-low {
-  background: #22c55e;  /* 초록색 - 낮음 */
-  color: #ffffff;
-  border: none !important;
-}
-
-.template-badge.severity-medium {
- background: #fbbf24 !important; /* 노란색 배경 */
- color: #000000 !important; /* 검은색 글씨 */
- border: none !important;
-}
-
-.template-badge.severity-high {
-  background: #ea580c;  /* 주황색 - 높음 */
-  color: #ffffff;
-}
-
-.template-badge.severity-critical {
-  background: #dc2626;  /* 빨간색 - 가장 위험 */
-  color: #ffffff;
-}
-
-.template-badge.category {
-  background: var(--neutral-100);
-  color: var(--neutral-600);
-}
-
-.template-badge.enabled {
-  background: var(--success-50);
-  color: var(--success-600);
-}
-
-.template-badge.disabled {
-  background: var(--neutral-100);
-  color: var(--neutral-500);
-}
-
-/* 템플릿 설정 */
-.template-config {
-  margin-bottom: 16px;
-  padding: 12px;
-  background: var(--neutral-50);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--neutral-100);
-}
-
-.config-label {
-  font-size: var(--font-size-small);
-  font-weight: 600;
-  color: var(--neutral-600);
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-.config-value {
-  font-size: var(--font-size-base);
-  color: var(--neutral-700);
-  font-family: ui-monospace, 'Courier New', monospace;
-  line-height: 1.4;
-  word-break: break-word;
-}
-
-/* 템플릿 푸터 */
-.template-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.usage-count {
-  font-size: var(--font-size-small);
-  color: var(--neutral-500);
-}
-
-.usage-number {
-  font-weight: 600;
-  color: var(--neutral-700);
-}
-
-.apply-button {
-  padding: 8px 16px;
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  background: var(--primary-600);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.apply-button:hover:not(:disabled) {
-  background: var(--primary-700);
-  transform: translateY(-1px);
-}
-
-.apply-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* 통계 카드 */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  margin: 0 var(--table-padding) 24px var(--table-padding);
-}
-
-.stat-card {
-  background: white;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--neutral-200);
-  padding: 20px;
-  text-align: center;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s ease;
-}
-
-.stat-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-
-.stat-value {
-  font-size: clamp(24px, 3vw, 32px);
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.stat-value.enabled {
-  color: var(--success-600);
-}
-
-.stat-value.disabled {
-  color: var(--neutral-500);
-}
-
-.stat-value.critical {
-  color: var(--danger-500);
-}
-
-.stat-label {
-  font-size: var(--font-size-base);
-  color: var(--neutral-600);
-  font-weight: 500;
-}
-
-/* 규칙 그리드 */
-.rules-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-  gap: 20px;
-}
-
-.rule-card {
-  background: white;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--neutral-200);
-  padding: 20px;
-  transition: all 0.2s ease;
-  box-shadow: var(--shadow-sm);
-}
-
-.rule-card:hover {
-  border-color: var(--primary-300);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-
-.rule-card.disabled {
-  opacity: 0.7;
-  background: var(--neutral-50);
-}
-
-.rule-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.rule-select {
-  padding-top: 2px;
-}
-
-.rule-title {
-  flex: 1;
-}
-
-.rule-name {
-  font-size: clamp(14px, 1.5vw, 16px);
-  font-weight: 600;
-  color: var(--neutral-800);
-  margin: 0 0 4px 0;
-  line-height: 1.3;
-}
-
-.rule-template-name {
-  font-size: var(--font-size-small);
-  color: var(--neutral-500);
-  font-weight: 500;
-}
-
-.rule-content {
+  border: 1px solid var(--blueprint-border);
+  background-image:
+    linear-gradient(to bottom right, #ffffff, var(--blueprint-50));
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-.rule-location,
-.rule-datapoint,
-.rule-severity,
-.rule-created {
-  font-size: var(--font-size-base);
+.premium-template-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--blueprint-600);
+}
+
+.premium-template-card:hover {
+  border-color: var(--blueprint-500);
+  box-shadow: 0 12px 24px -10px rgba(124, 58, 237, 0.25);
+  transform: translateY(-4px);
+}
+
+.premium-template-card .card-header {
+  border-bottom: 1px solid var(--blueprint-100);
+  background: var(--blueprint-glass-bg);
+}
+
+.premium-template-card .clickable-name {
+  color: var(--blueprint-800);
+  transition: color 0.2s;
+}
+
+.premium-template-card:hover .clickable-name {
+  color: var(--blueprint-600);
+}
+
+
+/* --- Blueprint & Premium Enhancements --- */
+
+.premium-template-card {
+  position: relative;
+  background: white !important;
+  border: 1px solid var(--blueprint-border);
+  background-image:
+    linear-gradient(to bottom right, #ffffff, var(--blueprint-50)) !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  /* Subtle depth */
+  min-height: 220px;
+}
+
+.premium-template-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--blueprint-600);
+  z-index: 1;
+}
+
+.premium-template-card:hover {
+  border-color: var(--blueprint-500);
+  box-shadow: 0 20px 25px -5px rgba(124, 58, 237, 0.2), 0 10px 10px -5px rgba(124, 58, 237, 0.1);
+  transform: translateY(-6px);
+}
+
+.premium-template-card .card-header {
+  border-bottom: 1px solid var(--blueprint-100);
+  background: var(--blueprint-glass-bg);
+  margin: -16px -16px 8px -16px;
+  padding: 12px 16px;
+}
+
+.premium-template-card .clickable-name {
+  color: var(--blueprint-800);
+  transition: color 0.2s;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.premium-template-card:hover .clickable-name {
+  color: var(--blueprint-600);
+}
+
+.logic-preview-badge {
+  display: inline-block;
+  background: #1e1e2e;
+  /* Slate/Dark mode feel */
+  color: #a78bfa !important;
+  /* Light violet */
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  border-left: 4px solid var(--blueprint-500);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+  margin: 12px 0;
+  width: 100%;
+  box-sizing: border-box;
+  letter-spacing: 0.5px;
   line-height: 1.4;
 }
 
-.rule-label {
-  font-weight: 600;
-  color: var(--neutral-600);
-  margin-right: 8px;
+.logic-preview-badge code {
+  color: inherit !important;
+  background: transparent !important;
+  padding: 0 !important;
+  font-family: inherit !important;
 }
 
-/* 모달 */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+.premium-template-card .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.premium-template-card .card-desc {
+  color: var(--neutral-600);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 12px;
+  max-height: 4.5em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.premium-template-card .card-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 0.8rem;
+  color: var(--neutral-500);
+  margin-top: auto;
+  padding-bottom: 4px;
+}
+
+.premium-template-card .card-footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--neutral-100);
+  display: flex;
+  justify-content: flex-end;
+}
+
+
+/* --- Logic Builder & Token Styles --- */
+.logic-builder-container {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  margin-top: 12px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.token-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.token-chip {
+  padding: 8px 16px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.token-chip:hover {
+  border-color: var(--blueprint-500);
+  background: var(--blueprint-50);
+  color: var(--blueprint-600);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.token-chip.operator {
+  background: #f1f5f9;
+  border-color: #cbd5e0;
+}
+
+.token-chip.const {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #e11d48;
+}
+
+.expression-box {
+  background: #0f172a;
+  /* Deeper slate */
+  color: #38bdf8;
+  /* Brighter sky blue */
+  padding: 20px;
+  border-radius: 10px;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 16px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  border: 1px solid #1e293b;
+  box-shadow: inset 0 4px 6px rgba(0, 0, 0, 0.4);
+  letter-spacing: 0.5px;
+}
+
+/* --- Quick Start Preset Cards (Refined to be COMPACT) --- */
+.quick-start-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 40px;
+  padding: 0 4px;
+}
+
+.preset-card {
+  background: white;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px 20px;
+  /* Reduced padding */
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: row;
+  /* Horizontal layout for better density */
+  align-items: center;
+  text-align: left;
+  gap: 16px;
+  min-height: 80px;
+  /* Force consistent height */
+}
+
+.preset-card:hover {
+  border-color: var(--blueprint-400);
+  background: #fafcfe;
+  transform: translateY(-3px);
+  box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.1);
+}
+
+.preset-card.active {
+  border-color: var(--blueprint-600);
+  background: var(--blueprint-50);
+  box-shadow: 0 0 0 1px var(--blueprint-600);
+}
+
+.preset-icon {
+  font-size: 28px;
+  /* Slightly smaller */
+  background: #f8fafc;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  padding: 20px;
+  border-radius: 10px;
+  flex-shrink: 0;
 }
 
-.modal-container {
+.preset-card:hover .preset-icon {
   background: white;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xl);
-  width: 100%;
-  max-width: 1000px;
-  max-height: 90vh;
+}
+
+.preset-info {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
-.modal-header {
-  padding: 24px;
-  border-bottom: 1px solid var(--neutral-200);
-}
-
-.modal-title {
-  font-size: clamp(20px, 2.5vw, 24px);
+.preset-title {
+  font-size: 14px;
   font-weight: 700;
-  color: var(--neutral-800);
-  margin: 0 0 8px 0;
+  color: #1e293b;
 }
 
-.modal-subtitle {
-  font-size: var(--font-size-base);
-  color: var(--neutral-600);
-  margin: 0;
+.preset-desc {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
 }
 
-.modal-warning {
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--warning-50);
-  border: 1px solid #fbbf24;
-  border-radius: var(--radius-md);
+/* --- Modal Spacing Fixes --- */
+.modal-overlay {
+  padding: 40px;
 }
 
-.modal-warning-text {
-  font-size: var(--font-size-base);
-  color: #92400e;
+.modal-container.modal-xl {
+  max-width: 1200px;
 }
 
-.modal-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
+.modal-content-wrapper {
+  padding: 0 40px 40px 40px;
+  /* Ensure horizontal margins */
 }
 
-/* 계층 필터 */
-.hierarchy-filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-  padding: 20px;
-  background: var(--neutral-50);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--neutral-100);
-}
-
-.filter-step {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.filter-step-label {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--neutral-700);
-}
-
-.filter-step-select {
-  padding: 10px 12px;
-  border: 1px solid var(--neutral-200);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-base);
-  background: white;
-  cursor: pointer;
-  transition: border-color 0.2s ease;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  background-size: 12px;
-  padding-right: 32px;
-}
-
-.filter-step-select:focus {
-  outline: none;
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 1px var(--primary-500);
-}
-
-/* 호환성 정보 */
-.compatibility-info {
-  margin-bottom: 24px;
-  padding: 16px;
-  background: var(--primary-50);
-  border: 1px solid var(--primary-200);
-  border-radius: var(--radius-lg);
-}
-
-.compatibility-title {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--primary-700);
-  margin-bottom: 8px;
-}
-
-.compatibility-text {
-  font-size: var(--font-size-base);
-  color: var(--primary-600);
-  line-height: 1.5;
-}
-
-/* 데이터포인트 테이블 */
-.datapoints-table {
-  border: 1px solid var(--neutral-200);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  margin-bottom: 24px;
-  box-shadow: var(--shadow-sm);
-}
-
-.table-header {
-  display: grid;
-  grid-template-columns: 50px 1fr 150px 150px 120px;
-  background: var(--neutral-50);
-  border-bottom: 1px solid var(--neutral-200);
-  font-weight: 600;
-  font-size: var(--font-size-base);
-  color: var(--neutral-700);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.table-header > div {
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.table-row {
-  display: grid;
-  grid-template-columns: 50px 1fr 150px 150px 120px;
-  border-bottom: 1px solid var(--neutral-100);
-  transition: background-color 0.2s ease;
-  min-height: 60px;
-}
-
-.table-row:hover {
-  background: var(--neutral-50);
-}
-
-.table-row.selected {
-  background: var(--primary-50);
-  border-color: var(--primary-200);
-}
-
-.table-row.incompatible {
-  background: var(--neutral-100);
-  opacity: 0.6;
-}
-
-.table-row:last-child {
-  border-bottom: none;
-}
-
-.table-row > div {
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  min-height: 60px;
-}
-
-.table-checkbox {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--primary-600);
-  cursor: pointer;
-}
-
-.datapoint-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  overflow: hidden;
-}
-
-.datapoint-name {
-  font-weight: 500;
-  color: var(--neutral-800);
-  font-size: var(--font-size-base);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: 100%;
-}
-
-.datapoint-details {
-  font-size: var(--font-size-small);
-  color: var(--neutral-500);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: 100%;
-}
-
-.incompatible-label {
-  color: var(--danger-500);
-  font-weight: 600;
-  margin-left: 8px;
-}
-
-.table-cell {
-  font-size: var(--font-size-base);
-  color: var(--neutral-700);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: 100%;
-}
-
-.current-value {
-  font-family: ui-monospace, 'Courier New', monospace;
-  font-size: var(--font-size-small);
-  color: var(--neutral-800);
-  font-weight: 500;
-}
-
-/* 빈 상태 */
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--neutral-500);
-  font-size: var(--font-size-base);
-}
-
-/* 모달 푸터 */
-.modal-footer {
+/* === Real Wizard Header === */
+.wizard-steps-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 24px;
-  border-top: 1px solid var(--neutral-200);
-  background: var(--neutral-50);
-  flex-wrap: wrap;
-  gap: 12px;
+  padding: 0 40px 32px 40px;
+  position: relative;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
-.modal-actions {
+.wizard-step-item {
   display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 2;
+  flex: 1;
+  position: relative;
 }
 
-/* 반응형 디자인 - data-explorer와 동일한 패턴 */
-@media (max-width: 1400px) {
-  .table-header,
-  .table-row {
-    grid-template-columns: 50px 1fr 120px 100px 100px;
-  }
+.wizard-step-item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: calc(50% + 25px);
+  width: calc(100% - 50px);
+  height: 2px;
+  background: #e2e8f0;
+  z-index: 1;
 }
 
-@media (max-width: 1200px) {
-  .templates-grid {
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  }
-  
-  .rules-grid {
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  }
-  
-  .table-header,
-  .table-row {
-    grid-template-columns: 50px 1fr 120px 100px;
-  }
+.wizard-step-item.completed:not(:last-child)::after {
+  background: var(--blueprint-500);
 }
 
-@media (max-width: 1000px) {
-  .table-header,
-  .table-row {
-    grid-template-columns: 50px 1fr 100px;
-  }
+.step-number {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  border: 2px solid #e2e8f0;
+  transition: all 0.3s;
 }
 
-@media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: stretch;
-    padding: 16px;
-  }
-  
-  .page-actions {
-    justify-content: flex-start;
-    gap: 8px;
-  }
-  
-  .filter-row {
-    flex-direction: column;
-    gap: 16px;
-  }
-  
-  .filter-group {
-    min-width: auto;
-  }
-  
-  .filter-group.flex-1 {
-    min-width: auto;
-  }
-  
-  .templates-grid {
-    grid-template-columns: 1fr;
-    margin: 0 16px 32px 16px;
-  }
-  
-  .rules-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-    margin: 0 16px 24px 16px;
-  }
-  
-  .hierarchy-filters {
-    grid-template-columns: 1fr;
-  }
-  
-  .tab-navigation {
-    margin: 0 16px 24px 16px;
-  }
-  
-  .filter-panel {
-    margin: 0 16px 24px 16px;
-  }
-  
-  /* 모바일에서 테이블을 카드 형태로 변경 */
-  .table-header {
-    display: none;
-  }
-  
-  .table-row {
-    display: block;
-    padding: 16px;
-    border: 1px solid var(--neutral-200);
-    border-radius: var(--radius-md);
-    margin-bottom: 8px;
-    background: white;
-    box-shadow: var(--shadow-sm);
-  }
-  
-  .table-row > div {
-    display: block;
-    padding: 8px 0;
-    border-right: none;
-    border-bottom: 1px solid var(--neutral-100);
-    text-align: left;
-    min-height: auto;
-    justify-content: flex-start;
-  }
-  
-  .table-row > div:before {
-    content: attr(data-label);
-    font-weight: 600;
-    color: var(--neutral-600);
-    font-size: var(--font-size-small);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    display: block;
-    margin-bottom: 4px;
-  }
-  
-  .table-row > div:last-child {
-    border-bottom: none;
-  }
-  
-  .modal-container {
-    margin: 10px;
-    max-width: none;
-  }
-  
-  .modal-header,
-  .modal-content,
-  .modal-footer {
-    padding: 16px;
-  }
-  
-  .modal-actions {
-    width: 100%;
-    justify-content: stretch;
-  }
-  
-  .modal-actions .btn {
-    flex: 1;
-    justify-content: center;
-  }
+.wizard-step-item.active .step-number {
+  background: var(--blueprint-600);
+  color: white;
+  border-color: var(--blueprint-600);
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.4);
 }
 
-/* 애니메이션 */
-@keyframes slideIn {
+.wizard-step-item.completed .step-number {
+  background: white;
+  color: var(--blueprint-600);
+  border-color: var(--blueprint-600);
+}
+
+.step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  transition: all 0.3s;
+}
+
+.wizard-step-item.active .step-label {
+  color: var(--blueprint-700);
+}
+
+/* === Premium Intensity Cards (Severity) === */
+.severity-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.intensity-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.intensity-card i {
+  font-size: 20px;
+  opacity: 0.5;
+}
+
+.intensity-card span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.intensity-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: #cbd5e0;
+}
+
+.intensity-card.active.low {
+  border-color: #22c55e;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.intensity-card.active.medium {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.intensity-card.active.high {
+  border-color: #f97316;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.intensity-card.active.critical {
+  border-color: #ef4444;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.intensity-card.active i {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.intensity-card.active {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+/* === Wizard Content Animations === */
+.wizard-content-fade-in {
+  animation: wizard-fade-in 0.4s ease-out;
+}
+
+@keyframes wizard-fade-in {
   from {
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-.template-card,
-.rule-card,
-.stat-card {
-  animation: slideIn 0.3s ease-out;
+/* === Wizard Scroll Adjustment === */
+.modal-xl .modal-content {
+  max-height: calc(90vh - 250px);
+  overflow-y: auto;
 }
 
-/* 스크롤바 스타일링 - data-explorer와 동일 */
-.modal-content::-webkit-scrollbar,
-.datapoints-table::-webkit-scrollbar {
-  width: 6px;
+/* === Premium Tag Styling === */
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: white !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s;
 }
 
-.modal-content::-webkit-scrollbar-track,
-.datapoints-table::-webkit-scrollbar-track {
-  background: var(--neutral-50);
+.tag-chip:hover {
+  background: var(--blueprint-50) !important;
+  border-color: var(--blueprint-300) !important;
+  transform: scale(1.05);
 }
 
-.modal-content::-webkit-scrollbar-thumb,
-.datapoints-table::-webkit-scrollbar-thumb {
-  background: var(--neutral-300);
-  border-radius: 3px;
+/* === Enhanced Intensity Cards (Severity) === */
+.severity-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 10px;
 }
 
-.modal-content::-webkit-scrollbar-thumb:hover,
-.datapoints-table::-webkit-scrollbar-thumb:hover {
-  background: var(--neutral-400);
+.intensity-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.intensity-card i {
+  font-size: 24px;
+  transition: all 0.3s;
+  color: #94a3b8;
+}
+
+.intensity-card span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #64748b;
+}
+
+.intensity-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+  border-color: #cbd5e0;
+}
+
+/* Active State Colors */
+.intensity-card.active.low {
+  border-color: #22c55e;
+  background: #f0fdf4;
+  color: #166534;
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
+}
+
+.intensity-card.active.medium {
+  border-color: #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.2);
+}
+
+.intensity-card.active.high {
+  border-color: #f97316;
+  background: #fff7ed;
+  color: #9a3412;
+  box-shadow: 0 0 15px rgba(249, 115, 22, 0.2);
+}
+
+.intensity-card.active.critical {
+  border-color: #ef4444;
+  background: #fef2f2;
+  color: #991b1b;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+}
+
+.intensity-card.active i {
+  color: inherit;
+  transform: scale(1.1);
+}
+
+.intensity-card.active span {
+  color: inherit;
+}
+
+/* === Wizard Animation === */
+.wizard-slide-enter {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.wizard-slide-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: all 0.4s ease-out;
+}
+
+/* === Layout Adjustments === */
+.step-content-container {
+  min-height: 400px;
+}
+
+/* === Premium Wizard Overrides & Enhancements === */
+
+/* Step Header Enhancements */
+.wizard-steps-header {
+  padding: 30px 60px !important;
+  background: #f8fafc;
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+}
+
+.wizard-steps-header::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 60px;
+  right: 60px;
+  height: 2px;
+  background: #e2e8f0;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+.wizard-step-item {
+  position: relative;
+  z-index: 2;
+  background: #f8fafc;
+  padding: 0 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  transition: all 0.3s;
+  color: #94a3b8;
+}
+
+.wizard-step-item.active .step-number {
+  background: var(--blueprint-500);
+  border-color: var(--blueprint-500);
+  color: white;
+  box-shadow: 0 0 15px rgba(14, 165, 233, 0.3);
+  transform: scale(1.1);
+}
+
+.wizard-step-item.completed .step-number {
+  background: var(--success-500);
+  border-color: var(--success-500);
+  color: white;
+}
+
+.step-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #94a3b8;
+}
+
+.wizard-step-item.active .step-label {
+  color: var(--blueprint-600);
+}
+
+/* Complexity Cards */
+.complexity-selector-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.complexity-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.complexity-card:hover {
+  border-color: var(--blueprint-300);
+  background: #f0f9ff;
+}
+
+.complexity-card.active {
+  border-color: var(--blueprint-500);
+  background: #f0f9ff;
+  box-shadow: 0 0 0 1px var(--blueprint-500);
+}
+
+.complexity-card.active::after {
+  content: '\f058';
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  color: var(--blueprint-500);
+  font-size: 18px;
+}
+
+.card-title {
+  font-weight: 800;
+  font-size: 14px;
+  margin-bottom: 0;
+  color: #1e293b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.card-desc {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* Fix CSS warning for line-clamp */
+.card-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Section Titles with Blue Accents */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 900;
+  color: #334155;
+  margin-bottom: 24px;
+  padding: 0 0 10px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+/* Preset Cards - Fixed horizontal alignment */
+.preset-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  transition: all 0.3s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.preset-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+  border-color: var(--blueprint-300);
+}
+
+.preset-icon {
+  width: 44px;
+  height: 44px;
+  background: #f8fafc;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.preset-title {
+  font-weight: 800;
+  color: #1e293b;
+  font-size: 14px;
+}
+
+.preset-desc {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Form Styles */
+.form-label {
+  display: block;
+  font-weight: 700;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-label.required::after {
+  content: ' *';
+  color: #ef4444;
+}
+
+.form-input,
+.form-select {
+  height: 48px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0 16px;
+  font-size: 14px;
+  width: 100%;
+}
+
+.form-input:focus {
+  border-color: var(--blueprint-500);
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.1);
+}
+
+/* === Final Polishing for Wizard Header & Logic Box === */
+.wizard-steps-header {
+  padding: 30px 60px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  background: #f8fafc !important;
+}
+
+.expression-box {
+  background: #0f172a !important;
+  /* Deep dark for premium contrast */
+  color: #38bdf8 !important;
+  /* Cyber blue text */
+  font-family: 'Fira Code', 'Monaco', 'Cascadia Code', monospace;
+  padding: 30px !important;
+  border-radius: 12px !important;
+  border: 4px solid #1e293b !important;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+  line-height: 1.6;
+  font-weight: 600;
+}
+
+.token-chip.var {
+  border-left: 4px solid #3b82f6 !important;
+}
+
+.token-chip.operator {
+  border-left: 4px solid #94a3b8 !important;
+}
+
+.token-chip.const {
+  border-left: 4px solid #ef4444 !important;
+}
+
+/* Intensity Card Layout Adjustments */
+.severity-grid {
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 20px !important;
+}
+
+/* ============================================================================
+   Wizard Modal Refinements (User Feedback)
+   ============================================================================ */
+
+/* 1. Header: Fix spacing from top border */
+.wizard-modal-header {
+  height: auto !important;
+  min-height: 90px !important;
+  padding: 30px 48px 24px 48px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  display: flex !important;
+  align-items: center !important;
+  background: #ffffff !important;
+}
+
+.wizard-header-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--blueprint-500);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 20px;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+}
+
+.wizard-modal-header .modal-title {
+  font-size: 20px !important;
+  font-weight: 800 !important;
+  color: #1e293b !important;
+  margin: 0 0 4px 0 !important;
+  line-height: 1.2 !important;
+}
+
+.wizard-step-info {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.wizard-modal-header .modal-close {
+  font-size: 28px !important;
+  padding: 10px !important;
+  color: #94a3b8 !important;
+  opacity: 0.6 !important;
+  transition: all 0.2s !important;
+}
+
+.wizard-modal-header .modal-close:hover {
+  opacity: 1 !important;
+  background: #f1f5f9 !important;
+  border-radius: 50% !important;
+}
+
+/* 2. Wizard Track: Reduce vertical height */
+.wizard-steps-header {
+  padding: 18px 80px !important;
+  /* Significantly reduced */
+  background: #f8fafc !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+.wizard-steps-header::before {
+  top: 36px !important;
+  /* Centered relative to new padding */
+}
+
+/* 3. Section Titles: Larger font and better alignment */
+.section-title {
+  font-size: 18px !important;
+  font-weight: 800 !important;
+  color: #0f172a !important;
+  margin-bottom: 24px !important;
+  padding-bottom: 12px !important;
+  border-bottom: 2px solid #f1f5f9 !important;
+}
+
+.section-title i {
+  font-size: 18px !important;
+  margin-right: 12px !important;
+}
+
+/* 4. Form Layout: Balanced Margins */
+.form-section {
+  margin-bottom: 32px !important;
+}
+
+.form-label {
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  color: #475569 !important;
+  margin-bottom: 8px !important;
+}
+
+/* 5. Preset Cards: Minor adjustments for compactness */
+.quick-start-row {
+  gap: 16px !important;
+}
+
+.preset-card {
+  padding: 16px 20px !important;
+}
+
+.preset-icon {
+  width: 44px !important;
+  height: 44px !important;
+  font-size: 20px !important;
+}
+
+/* ============================================================================
+   ULTRA-COMPACT WIZARD LAYOUT (Feedback: Reducing Vertical Scrolling)
+   ============================================================================ */
+
+/* 1. Header & Track Compaction */
+.wizard-modal-header {
+  min-height: 60px !important;
+  padding: 12px 40px !important;
+  /* Reduced significantly */
+}
+
+.wizard-header-icon {
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 16px !important;
+}
+
+.wizard-modal-header .modal-title {
+  font-size: 18px !important;
+}
+
+.wizard-steps-header {
+  padding: 10px 80px !important;
+  /* Ultra thin track */
+}
+
+.wizard-steps-header::before {
+  top: 28px !important;
+  /* Re-centered for thinner padding */
+}
+
+.step-number {
+  width: 30px !important;
+  height: 30px !important;
+  font-size: 13px !important;
+}
+
+.step-label {
+  font-size: 9px !important;
+}
+
+/* 2. Content Spacing Compaction */
+.modal-content-wrapper {
+  padding: 20px 48px !important;
+  /* Reduced from 40px */
+}
+
+.form-section {
+  margin-bottom: 16px !important;
+  /* Tight sections */
+}
+
+.section-title {
+  font-size: 15px !important;
+  /* Slightly smaller, more professional */
+  margin-bottom: 12px !important;
+  padding-bottom: 8px !important;
+}
+
+.section-title i {
+  font-size: 15px !important;
+}
+
+.form-group {
+  margin-bottom: 8px !important;
+  /* Very tight form groups */
+}
+
+.form-label {
+  font-size: 12px !important;
+  margin-bottom: 4px !important;
+}
+
+.form-input,
+.form-select {
+  height: 40px !important;
+  /* Standard height */
+}
+
+/* 3. Card Compaction */
+.complexity-card {
+  padding: 10px 15px !important;
+}
+
+.card-title {
+  font-size: 13px !important;
+}
+
+.card-desc {
+  font-size: 11px !important;
+}
+
+.preset-card {
+  padding: 10px 15px !important;
+  gap: 12px !important;
+}
+
+.preset-icon {
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 18px !important;
+}
+
+.preset-title {
+  font-size: 13px !important;
+}
+
+.preset-desc {
+  font-size: 11px !important;
+}
+
+/* Severity Grid Compaction */
+.severity-grid {
+  gap: 12px !important;
+}
+
+.intensity-card {
+  padding: 12px !important;
+  min-height: 60px !important;
+}
+
+.intensity-card i {
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 18px !important;
+}
+
+/* Dropdown (Select) Styling with Chevron */
+.form-select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 14px center !important;
+  background-size: 12px !important;
+  padding-right: 40px !important;
+  cursor: pointer !important;
+}
+
+.form-select:hover {
+  border-color: var(--blueprint-400) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%230ea5e9' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E") !important;
+}
+
+/* ============================================================================
+   INTEGRATED MODERN LAYOUT (Feedback: Removal of Boxing)
+   ============================================================================ */
+
+/* Remove default form-section styling */
+.form-section {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  margin-bottom: 40px !important;
+}
+
+/* Modern Section Header */
+.section-title {
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  color: var(--blueprint-700) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin-bottom: 24px !important;
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, #e2e8f0, transparent);
+  margin-left: 10px;
+}
+
+.section-title i {
+  width: 32px;
+  height: 32px;
+  background: var(--blueprint-50);
+  color: var(--blueprint-500);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px !important;
+}
+
+/* Preset Gallery Shelf */
+.preset-gallery-container {
+  padding: 8px 0;
+}
+
+.quick-start-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+  gap: 16px !important;
+}
+
+.preset-card {
+  background: white !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+  cursor: pointer !important;
+}
+
+.preset-card:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 12px 20px -8px rgba(0, 0, 0, 0.1) !important;
+  border-color: var(--blueprint-400) !important;
+}
+
+.preset-icon {
+  width: 48px !important;
+  height: 48px !important;
+  background: #f8fafc !important;
+  border-radius: 12px !important;
+  font-size: 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+.preset-info {
+  flex: 1;
+}
+
+.preset-title {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  margin-bottom: 4px !important;
+}
+
+.preset-desc {
+  font-size: 11px !important;
+  color: #64748b !important;
+  line-height: 1.4 !important;
+}
+
+/* Category Dropdown Fix: ensure it looks like a real choice */
+.category-selector-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Complexity Cards Refinement */
+.complexity-selector-grid {
+  grid-template-columns: repeat(2, 1fr) !important;
+  /* Forces horizontal split */
+}
+
+@media (max-width: 800px) {
+  .complexity-selector-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ============================================================================
+   ULTRA-DENSE PRESET GALLERY (5 Items Per Row)
+   ============================================================================ */
+
+/* Reduced gap between title and content */
+.form-section .section-title {
+  margin-bottom: 12px !important;
+}
+
+.preset-gallery-container {
+  padding: 0 !important;
+}
+
+/* 5 Column Grid */
+.quick-start-row {
+  grid-template-columns: repeat(5, 1fr) !important;
+  gap: 12px !important;
+}
+
+/* More compact cards for 5-col layout */
+.preset-card {
+  padding: 12px !important;
+  gap: 10px !important;
+  border-radius: 10px !important;
+}
+
+.preset-icon {
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 18px !important;
+  border-radius: 8px !important;
+}
+
+.preset-title {
+  font-size: 12px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.preset-desc {
+  font-size: 10px !important;
+  display: none !important;
+  /* Hide desc in 5-col view to keep height consistent and clean */
+}
+
+/* Show plus icon more subtly */
+.preset-card .fa-plus {
+  font-size: 10px !important;
+}
+
+/* ============================================================================
+   REFINED GROUPED PRESET GALLERY (5-Col with Descriptions)
+   ============================================================================ */
+
+/* Restore Descriptions but keep them extremely compact */
+.preset-desc {
+  display: block !important;
+  font-size: 10px !important;
+  color: #94a3b8 !important;
+  line-height: 1.2 !important;
+  margin-top: 2px !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 1 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
+
+/* Group Header Styling */
+.preset-group-header {
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  color: #64748b !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  margin: 24px 0 12px 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.preset-group-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #f1f5f9;
+}
+
+/* Ensure cards handle 5-col well with text */
+.preset-card {
+  min-width: 0 !important;
+  /* Allow shrinking */
+  padding: 10px !important;
+}
+
+.preset-info {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.preset-title {
+  font-size: 11.5px !important;
+}
+
+/* --- ULTRA-COMPACT OVERRIDES FOR SINGLE SCREEN --- */
+
+.wizard-steps-header {
+  height: 70px !important;
+  padding: 10px 40px !important;
+}
+
+.step-number {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 11px !important;
+}
+
+.step-label {
+  font-size: 10px !important;
+  margin-top: 4px !important;
+}
+
+.modal-content-wrapper {
+  padding-top: 4px !important;
+}
+
+.form-section {
+  margin-bottom: 8px !important;
+}
+
+.section-title {
+  font-size: 13px !important;
+  padding-bottom: 6px !important;
+  margin-bottom: 8px !important;
+}
+
+.section-title i {
+  font-size: 12px !important;
+  width: 24px !important;
+  height: 24px !important;
+}
+
+.form-group {
+  margin-bottom: 8px !important;
+}
+
+.form-label {
+  font-size: 11px !important;
+  margin-bottom: 4px !important;
+}
+
+.form-input,
+.form-select {
+  height: 32px !important;
+  font-size: 12px !important;
+}
+
+/* Side-by-Side Complexity Cards */
+.complexity-selector-grid {
+  gap: 8px !important;
+}
+
+.complexity-card {
+  padding: 8px 12px !important;
+}
+
+.complexity-card .card-title {
+  font-size: 12px !important;
+}
+
+.complexity-card .card-desc {
+  font-size: 10px !important;
+}
+
+/* Preset Gallery Compaction */
+.preset-group-header {
+  margin: 12px 0 6px 0 !important;
+  font-size: 10.5px !important;
+}
+
+.quick-start-row {
+  grid-template-columns: repeat(5, 1fr) !important;
+  gap: 8px !important;
+}
+
+.preset-card {
+  padding: 8px !important;
+  gap: 8px !important;
+}
+
+.preset-icon {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 14px !important;
+}
+
+.preset-title {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+.preset-desc {
+  font-size: 9.5px !important;
+}
+
+/* Modal Footer */
+.modal-footer {
+  padding: 12px 24px !important;
+}
+
+.modal-footer button {
+  height: 36px !important;
+  font-size: 13px !important;
+}
+
+/* --- ULTRADENSE SINGLE-SCREEN ENGINE --- */
+
+/* 1. Global Space Efficiency */
+.wizard-modal-container {
+  padding: 0 !important;
+}
+
+.wizard-steps-header {
+  height: 54px !important;
+  padding: 0 40px !important;
+  min-height: auto !important;
+  margin-bottom: 0 !important;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.wizard-steps-header::before {
+  top: 24px !important;
+}
+
+.step-number {
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 10px !important;
+  margin-bottom: 2px !important;
+}
+
+.step-label {
+  font-size: 9px !important;
+  margin-top: 2px !important;
+}
+
+.modal-content-wrapper {
+  padding: 12px 24px !important;
+}
+
+/* 2. Top Identity Row */
+.form-section {
+  margin-bottom: 12px !important;
+}
+
+.section-title {
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  padding-bottom: 4px !important;
+  margin-bottom: 8px !important;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.section-title i {
+  font-size: 11px !important;
+  margin-right: 6px !important;
+}
+
+.form-group {
+  margin-bottom: 0px !important;
+}
+
+.form-label {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+  margin-bottom: 2px !important;
+}
+
+.form-input,
+.form-select {
+  height: 28px !important;
+  font-size: 11.5px !important;
+  padding: 0 8px !important;
+}
+
+/* 3. Complexity Cards */
+.complexity-selector-grid {
+  gap: 6px !important;
+  height: 28px !important;
+}
+
+.complexity-card {
+  padding: 0 10px !important;
+  height: 100% !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border-radius: 4px !important;
+}
+
+.complexity-card .card-title {
+  font-size: 10.5px !important;
+  margin-bottom: 0 !important;
+}
+
+.complexity-card .card-desc {
+  display: none !important;
+  /* Hide desc to fit in one row */
+}
+
+/* 4. Preset Gallery (The big space consumer) */
+.preset-group-header {
+  margin: 8px 0 4px 0 !important;
+  font-size: 10px !important;
+  letter-spacing: 0.5px !important;
+}
+
+.quick-start-row {
+  grid-template-columns: repeat(5, 1fr) !important;
+  gap: 6px !important;
+}
+
+.preset-card {
+  padding: 6px 10px !important;
+  gap: 6px !important;
+  border-radius: 6px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.preset-icon {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  font-size: 13px !important;
+  border-radius: 4px !important;
+}
+
+.preset-title {
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  color: #334155 !important;
+}
+
+.preset-desc {
+  font-size: 9px !important;
+  margin-top: 0px !important;
+  color: #94a3b8 !important;
+}
+
+.preset-card .fa-plus {
+  font-size: 9px !important;
+}
+
+/* 5. Footer Compaction */
+.modal-footer {
+  padding: 8px 24px !important;
+  height: 52px !important;
+  min-height: 52px !important;
+  background: #f8fafc !important;
+}
+
+.modal-footer button {
+  height: 28px !important;
+  padding: 0 16px !important;
+  font-size: 11.5px !important;
+  border-radius: 4px !important;
+}
+
+/* --- READABILITY UPGRADE (LEGIBLE + COMPACT) --- */
+
+.section-title {
+  font-size: 14px !important;
+  /* Increased for readability */
+  font-weight: 700 !important;
+}
+
+.form-label {
+  font-size: 12px !important;
+  /* Increased for readability */
+  color: #475569 !important;
+  /* Slightly darker for better contrast */
+}
+
+.form-input,
+.form-select {
+  font-size: 14px !important;
+  /* Standard readable size */
+  height: 32px !important;
+  /* Slightly taller for comfort */
+}
+
+.complexity-card .card-title {
+  font-size: 12px !important;
+  /* Larger text for the mode name */
+  font-weight: 700 !important;
+}
+
+.preset-title {
+  font-size: 13px !important;
+  /* Much more readable title */
+  font-weight: 700 !important;
+  color: #1e293b !important;
+}
+
+.preset-desc {
+  font-size: 11px !important;
+  /* Readable description */
+  color: #64748b !important;
+  white-space: normal !important;
+  /* Allow some wrap if needed */
+  -webkit-line-clamp: 2 !important;
+  /* Show up to 2 lines instead of 1 */
+}
+
+.preset-group-header {
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  color: #475569 !important;
+}
+
+.step-label {
+  font-size: 11px !important;
+  /* Make step names readable */
+}
+
+.step-number {
+  width: 24px !important;
+  height: 24px !important;
+  font-size: 12px !important;
+}
+
+/* Compensate for larger text by squeezing margins */
+.form-section {
+  margin-bottom: 4px !important;
+}
+
+.preset-card {
+  padding: 10px 12px !important;
+}
+
+.quick-start-row {
+  gap: 10px !important;
+}
+
+/* --- STEP 1: DUAL-COLUMN DASHBOARD LAYOUT --- */
+
+.step1-dashboard-container {
+  display: grid !important;
+  grid-template-columns: 320px 1fr !important;
+  gap: 32px !important;
+  height: 100% !important;
+}
+
+.dashboard-left-panel {
+  border-right: 1px solid #f1f5f9;
+  padding-right: 32px;
+}
+
+.dashboard-right-panel {
+  overflow-y: auto;
+  max-height: 480px;
+  /* Limit height to prevent scroll and keep it tight */
+  padding-right: 8px;
+}
+
+/* Custom Scrollbar for Right Panel */
+.dashboard-right-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dashboard-right-panel::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 10px;
+}
+
+/* Complexity Cards Redesign (Stacked in Left Panel) */
+.complexity-selector-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.complexity-card-v2 {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #f8fafc;
+}
+
+.complexity-card-v2.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+}
+
+.complexity-card-v2 .mode-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 14px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.complexity-card-v2.active .mode-icon {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.complexity-card-v2 .mode-info {
+  flex: 1;
+}
+
+.complexity-card-v2 .mode-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 2px;
+}
+
+.complexity-card-v2 .mode-desc {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* Preset Cards (Optimized for Right Panel) */
+.quick-start-row-v2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.preset-card-v2 {
+  padding: 12px !important;
+  border-radius: 12px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: #ffffff !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.preset-card-v2:hover {
+  transform: translateY(-2px);
+  border-color: #3b82f6 !important;
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.12) !important;
+}
+
+.preset-card-v2 .preset-icon {
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 16px !important;
+  margin-bottom: 0px !important;
+}
+
+/* --- DASHBOARD LAYOUT FINAL POLISH --- */
+
+.step1-dashboard-container {
+  display: grid !important;
+  grid-template-columns: 320px 1fr !important;
+  gap: 40px !important;
+  min-height: 480px;
+  align-items: start;
+}
+
+.dashboard-left-panel {
+  border-right: 1px solid #f1f5f9;
+  padding-right: 40px;
+  height: 100%;
+}
+
+.dashboard-right-panel {
+  padding-bottom: 20px;
+}
+
+.complexity-selector-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.complexity-card-v2 {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #ffffff;
+}
+
+.complexity-card-v2.active {
+  border-color: #3b82f6;
+  background: #f0f7ff;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.08);
+}
+
+.complexity-card-v2 .mode-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 16px;
+}
+
+.complexity-card-v2.active .mode-icon {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.complexity-card-v2 .mode-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.complexity-card-v2 .mode-desc {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.quick-start-row-v2 {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
+  gap: 16px !important;
+}
+
+/* Fix for the preset group headers in dashboard mode */
+.preset-group-header {
+  margin-top: 24px !important;
+  margin-bottom: 12px !important;
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+.preset-group-header:first-of-type {
+  margin-top: 12px !important;
+}
+
+/* --- MAX UI UTILITY & BALANCE FIX --- */
+
+.step1-dashboard-container {
+  grid-template-columns: 400px 1fr !important;
+  /* Widened left panel as requested */
+  gap: 48px !important;
+  min-height: 520px !important;
+  /* Stretch vertically */
+}
+
+.dashboard-left-panel {
+  padding-right: 48px !important;
+}
+
+.form-input,
+.form-select {
+  width: 100% !important;
+  /* Ensure they fill the now wider panel */
+}
+
+/* Complexity cards width adjustment */
+.complexity-card-v2 {
+  width: 100% !important;
+}
+
+/* Remove bottom gap under footer */
+.modal-footer {
+  padding-bottom: 24px !important;
+  /* Keep a comfortable hit area but remove perceived "extra" space if any */
+  margin-bottom: 0 !important;
+}
+
+/* Ensure the modal content wrapper uses full height */
+.modal-content-wrapper {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.wizard-slide-active {
+  flex: 1 !important;
+}
+
+/* Right panel preset grid optimization for wider space */
+.quick-start-row-v2 {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+}
+
+/* Modal container height adjustment to feel "fuller" */
+.modal-container.modal-xl {
+  min-height: 700px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.modal-content {
+  flex: 1 !important;
+}
+
+/* --- RADICAL SPACING & VISIBILITY FIX --- */
+
+/* Huge gap between Stepper and Content */
+.modal-content-wrapper {
+  padding-top: 100px !important;
+  padding-bottom: 40px !important;
+}
+
+/* Radical gap between Categorization and Mode Selection */
+.step1-dashboard-container .dashboard-left-panel .form-section:first-child {
+  margin-bottom: 120px !important;
+  /* Extremely large gap to be undeniable */
+}
+
+/* Ensure header description is visible and has space */
+.wizard-modal-header {
+  min-height: 100px !important;
+  padding-top: 20px !important;
+  padding-bottom: 20px !important;
+}
+
+.wizard-modal-header .modal-title {
+  font-size: 22px !important;
+  margin-bottom: 8px !important;
+}
+
+/* Make labels bigger to match the expansive feel */
+.form-label {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  margin-bottom: 10px !important;
+}
+
+/* Stretch the whole modal even more to accommodate huge gaps */
+.modal-container.modal-xl {
+  height: 85vh !important;
+  min-height: 800px !important;
+}
+
+/* --- BALANCED SPACING & FOOTER VISIBILITY FIX --- */
+
+/* Reset radical heights to fixed values that fit current screen */
+.modal-container.modal-xl {
+  height: 90vh !important;
+  max-height: 850px !important;
+  min-height: 700px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Make content area scrollable if internal gaps are large */
+.modal-content {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.modal-content-wrapper {
+  padding-top: 48px !important;
+  /* Balanced top gap */
+  padding-bottom: 24px !important;
+  height: auto !important;
+}
+
+/* Calibrate internal gaps */
+.step1-dashboard-container .dashboard-left-panel .form-section:first-child {
+  margin-bottom: 64px !important;
+  /* Balanced gap between identity and mode */
+}
+
+/* Ensure footer is ALWAYS pinned to the bottom of the container */
+.modal-footer {
+  position: sticky !important;
+  bottom: 0 !important;
+  background: #f8fafc !important;
+  z-index: 10 !important;
+  padding: 16px 40px !important;
+  margin-top: 0 !important;
+}
+
+/* Adjust the dashboard container to use full available height but allow scroll */
+.step1-dashboard-container {
+  min-height: auto !important;
+}
+
+/* --- FINAL STRUCTURAL & PROPORTION FIX --- */
+
+/* 1. Modal Container: Force full height and column layout */
+.modal-container.modal-xl {
+  height: 90vh !important;
+  max-height: 850px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+}
+
+/* 2. Stepper Area: Increase vertical prominence */
+.wizard-steps-header {
+  height: 100px !important;
+  /* Increased from ~60px */
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 40px !important;
+  background: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.wizard-step-item {
+  padding: 12px 0 !important;
+}
+
+/* 3. Content Area: Expand to fill remaining space */
+.modal-content {
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  background: white !important;
+}
+
+.modal-content-wrapper {
+  padding: 40px !important;
+  height: auto !important;
+  min-height: 100% !important;
+}
+
+/* 4. Footer: Pin to the absolute bottom of the modal container */
+.modal-footer {
+  flex: 0 0 auto !important;
+  padding: 24px 40px !important;
+  /* Richer footer padding */
+  background: #f8fafc !important;
+  border-top: 1px solid #f1f5f9 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+}
+
+/* Ensure buttons are at the very bottom */
+.modal-footer .btn {
+  height: 40px !important;
+  padding: 0 24px !important;
+}
+
+/* --- ANTI-SCROLL & COMPACT BALANCE FIX --- */
+
+/* 1. Prevent scrolling at the source */
+.modal-container.modal-xl {
+  overflow: hidden !important;
+}
+
+.modal-content {
+  overflow: hidden !important;
+  /* Force content to fit */
+}
+
+/* 2. Tighten Header & Stepper to save vertical space */
+.wizard-modal-header {
+  min-height: 80px !important;
+  padding: 12px 40px !important;
+}
+
+.wizard-steps-header {
+  height: 72px !important;
+  /* Optimized prominence */
+}
+
+/* 3. Reduce enormous padding in content area */
+.modal-content-wrapper {
+  padding: 24px 40px !important;
+  /* Striking a balance */
+}
+
+/* 4. Minimize gaps in the Identity panel */
+.step1-dashboard-container .dashboard-left-panel .form-section:first-child {
+  margin-bottom: 32px !important;
+  /* Half of previous gap */
+}
+
+/* 5. Compact Footer slightly */
+.modal-footer {
+  padding: 12px 40px !important;
+}
+
+/* 6. Ensure dashboard container doesn't force extra height */
+.step1-dashboard-container {
+  min-height: auto !important;
+  gap: 40px !important;
+}
+
+/* --- FOOTER CLIPPING & SAFE AREA FIX --- */
+
+/* 1. Ensure modal container has a clear boundary and doesn't clip */
+.modal-container.modal-xl {
+  overflow: hidden !important;
+  /* Remove any negative margin or weird positioning that might cause clipping */
+  margin: auto !important;
+  /* Slightly decrease max-height to ensure it doesn't hit screen edges in some browsers */
+  max-height: 840px !important;
+}
+
+/* 2. Footer Safety Zone: Add bottom padding to lift buttons above the rounded corner/border */
+.modal-footer {
+  padding-top: 20px !important;
+  padding-bottom: 24px !important;
+  /* Lifting buttons up */
+  background: #f8fafc !important;
+  border-top: 1px solid #e2e8f0 !important;
+  z-index: 100 !important;
+  height: auto !important;
+  min-height: 80px !important;
+  /* Ensure enough hit area */
+}
+
+/* 3. Ensure the buttons themselves are well-proportioned */
+.modal-footer .btn {
+  height: 42px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* 4. Fine-tune the content area to prevent pushing the footer down */
+.modal-content {
+  /* Slightly reduce complexity to save vertical space and prevent footer overflow */
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  /* Flexbox trick for scrollable content */
+}
+
+/* --- HEADER TEXT COLOR & VISIBILITY FINAL FIX --- */
+
+.wizard-modal-header {
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%) !important;
+  /* Rich blue background to make white text pop */
+  padding: 24px 40px !important;
+  min-height: 110px !important;
+}
+
+.wizard-modal-header .modal-title {
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.wizard-modal-header p {
+  color: rgba(255, 255, 255, 0.95) !important;
+  /* Nearly fully white for maximum contrast on blue */
+  font-weight: 500 !important;
+}
+
+.wizard-step-info {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* --- PREMIUM SLATE HEADER REFINE --- */
+
+.wizard-modal-header {
+  background: #0f172a !important;
+  /* Deep Slate 900 */
+  border-bottom: 1px solid #1e293b !important;
+  padding: 28px 40px !important;
+  min-height: 120px !important;
+  box-shadow: inset 0 -1px 0 0 rgba(255, 255, 255, 0.05);
+  /* Subtle inner highlight */
+}
+
+/* Redesign the icon box to be more modern */
+.wizard-header-icon {
+  width: 48px !important;
+  height: 48px !important;
+  background: rgba(59, 130, 246, 0.15) !important;
+  /* Extremely subtle blue tint */
+  border: 1px solid rgba(59, 130, 246, 0.3) !important;
+  border-radius: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #60a5fa !important;
+  /* Brighter accent blue for the icon itself */
+  font-size: 20px !important;
+}
+
+.wizard-modal-header .modal-title {
+  color: #f8fafc !important;
+  /* Pure Slate 50 */
+  font-size: 20px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.025em !important;
+  text-shadow: none !important;
+  /* Remove tacky shadows */
+}
+
+.wizard-modal-header p {
+  color: #94a3b8 !important;
+  /* Slate 400 - much more sophisticated secondary color */
+  font-weight: 400 !important;
+  font-size: 13px !important;
+  margin-top: 4px !important;
+}
+
+.wizard-step-info {
+  color: #3b82f6 !important;
+  /* Strong accent color for the step info */
+  text-transform: uppercase !important;
+  font-weight: 700 !important;
+  font-size: 11px !important;
+  letter-spacing: 0.1em !important;
+  margin-top: 8px !important;
+  opacity: 1 !important;
+}
+
+/* Close button refine */
+.modal-close {
+  background: rgba(255, 255, 255, 0.05) !important;
+  width: 32px !important;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 8px !important;
+  transition: all 0.2s !important;
+  top: 24px !important;
+  right: 24px !important;
+}
+
+.modal-close:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: white !important;
+}
+
+/* --- MODERN MINIMALIST GLASS HEADER --- */
+
+.wizard-modal-header {
+  background: linear-gradient(to right, #ffffff, #f8fafc) !important;
+  /* Clean Off-White */
+  border-bottom: 2px solid #f1f5f9 !important;
+  padding: 32px 40px !important;
+  min-height: 110px !important;
+  box-shadow: none !important;
+}
+
+/* Modern minimal icon container */
+.wizard-header-icon {
+  width: 48px !important;
+  height: 48px !important;
+  background: #eff6ff !important;
+  /* Soft Primary Blue Tint */
+  border-radius: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #3b82f6 !important;
+  /* Vibrant primary blue icon */
+  font-size: 20px !important;
+}
+
+.wizard-modal-header .modal-title {
+  color: #1e293b !important;
+  /* Deep Slate 800 - Clear & Modern */
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em !important;
+  text-shadow: none !important;
+  margin-bottom: 4px !important;
+}
+
+.wizard-modal-header p {
+  color: #64748b !important;
+  /* Balanced Slate 500 */
+  font-weight: 500 !important;
+  font-size: 13.5px !important;
+  margin-top: 2px !important;
+  opacity: 0.8 !important;
+}
+
+.wizard-step-info {
+  color: #2563eb !important;
+  /* Accent Blue */
+  text-transform: uppercase !important;
+  font-weight: 700 !important;
+  font-size: 11px !important;
+  letter-spacing: 0.12em !important;
+  margin-top: 10px !important;
+  display: block !important;
+}
+
+/* Close button - sleek and minimal */
+.modal-close {
+  background: #f1f5f9 !important;
+  color: #94a3b8 !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 18px !important;
+  top: 30px !important;
+  right: 30px !important;
+}
+
+.modal-close:hover {
+  background: #e2e8f0 !important;
+  color: #475569 !important;
+}
+
+/* --- PREMIUM SOFT SKY BLUE HEADER --- */
+
+.wizard-modal-header {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%) !important;
+  /* Extremely Light Sky Blue (Sky 50-100) */
+  border-bottom: 2px solid #bae6fd !important;
+  padding: 32px 40px !important;
+  min-height: 120px !important;
+  box-shadow: none !important;
+}
+
+/* Modern minimal icon container - slightly deeper blue to stand out */
+.wizard-header-icon {
+  width: 52px !important;
+  height: 52px !important;
+  background: #ffffff !important;
+  border: 1px solid #bae6fd !important;
+  border-radius: 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #0284c7 !important;
+  /* Sky 600 */
+  font-size: 22px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+.wizard-modal-header .modal-title {
+  color: #0c4a6e !important;
+  /* Sky 900 - Rich Deep Blue for readability */
+  font-size: 22px !important;
+  font-weight: 850 !important;
+  letter-spacing: -0.03em !important;
+  text-shadow: none !important;
+  margin-bottom: 6px !important;
+}
+
+.wizard-modal-header p {
+  color: #0369a1 !important;
+  /* Sky 700 - Slightly muted but clearly blue */
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  margin-top: 2px !important;
+  opacity: 0.8 !important;
+}
+
+.wizard-step-info {
+  color: #0ea5e9 !important;
+  /* Vibrant Sky 500 */
+  background: rgba(255, 255, 255, 0.5) !important;
+  padding: 4px 12px !important;
+  border-radius: 20px !important;
+  display: inline-block !important;
+  text-transform: uppercase !important;
+  font-weight: 800 !important;
+  font-size: 10px !important;
+  letter-spacing: 0.15em !important;
+  margin-top: 12px !important;
+  border: 1px solid rgba(14, 165, 233, 0.2) !important;
+}
+
+/* Close button - sleek and minimal matching sky theme */
+.modal-close {
+  background: rgba(255, 255, 255, 0.6) !important;
+  color: #0ea5e9 !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 18px !important;
+  top: 30px !important;
+  right: 30px !important;
+  border: 1px solid #bae6fd !important;
+}
+
+.modal-close:hover {
+  background: #ffffff !important;
+  color: #0284c7 !important;
+  transform: rotate(90deg) !important;
+}
+
+/* --- LOGIC BUILDER POLISH --- */
+
+.logic-builder-container {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  border-radius: 20px !important;
+  overflow: hidden;
+}
+
+.expression-box {
+  background: #1e293b !important;
+  /* Deep Slate background for "Code" feel */
+  color: #38bdf8 !important;
+  /* Sky blue text */
+  font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+  padding: 32px !important;
+  border-radius: 12px !important;
+  margin: 16px 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 120px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.05em !important;
+  position: relative;
+  border: 4px solid #334155 !important;
+}
+
+.expression-box::before {
+  content: 'LOGIC PREVIEW';
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 10px;
+  color: #64748b;
+  letter-spacing: 0.1em;
+}
+
+.token-chip {
+  padding: 10px 18px !important;
+  border-radius: 10px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border: 2px solid transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.token-chip.var {
+  background: #f0f9ff !important;
+  color: #0369a1 !important;
+  border-color: #bae6fd !important;
+}
+
+.token-chip.operator {
+  background: #f8fafc !important;
+  color: #475569 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.token-chip.const {
+  background: #fff1f2 !important;
+  color: #be123c !important;
+  border-color: #fecdd3 !important;
+}
+
+.token-chip:hover:not(:disabled) {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+}
+
+.token-chip:active:not(:disabled) {
+  transform: translateY(0) !important;
+}
+
+.token-chip:disabled {
+  opacity: 0.3 !important;
+  cursor: not-allowed !important;
+  grayscale: 1 !important;
+}
+
+.quick-logic-patterns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.pattern-btn {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+.pattern-btn:hover {
+  background: #f0f7ff;
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.pattern-btn .pattern-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pattern-btn .pattern-logic {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+  font-family: monospace;
+}
+
+/* --- STEP 4 PREMIUM REDESIGN --- */
+
+.step4-finalize-container {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 40px !important;
+  min-height: 400px;
+}
+
+/* Variable Chips for Message Template */
+.variable-chip-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.var-badge {
+  padding: 6px 12px;
+  background: #f0f7ff;
+  color: #3b82f6;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.var-badge:hover {
+  background: #3b82f6;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+/* Styled Textarea for Description */
+.description-composer {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  background: #ffffff;
+  font-size: 14px;
+  color: #1e293b;
+  resize: none;
+  transition: all 0.2s;
+}
+
+.description-composer:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  outline: none;
+}
+
+/* Tags Container Refine */
+.modern-tag-container {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 16px !important;
+  padding: 24px !important;
+  min-height: 180px;
+}
+
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 750;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.tag-badge .remove-tag {
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.tag-badge .remove-tag:hover {
+  color: #ef4444;
+}
+
+.tag-input-v2 {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid #e2e8f0;
+  padding: 8px 0;
+  margin-top: 16px;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.tag-input-v2:focus {
+  outline: none;
+  border-color: #3b82f6;
 }

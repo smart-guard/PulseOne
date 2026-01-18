@@ -6,7 +6,7 @@ interface StatCardProps {
     label?: string; // Compatibility
     value: string | number;
     icon?: string | React.ReactNode;
-    type?: 'primary' | 'success' | 'warning' | 'error' | 'neutral';
+    type?: 'primary' | 'success' | 'warning' | 'error' | 'neutral' | 'blueprint';
     color?: string; // Manual color override
     className?: string;
 }

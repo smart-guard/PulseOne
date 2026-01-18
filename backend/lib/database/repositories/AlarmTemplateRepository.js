@@ -143,7 +143,8 @@ class AlarmTemplateRepository extends BaseRepository {
             if (data.applicable_data_types && typeof data.applicable_data_types !== 'string') data.applicable_data_types = JSON.stringify(data.applicable_data_types);
             if (data.applicable_device_types && typeof data.applicable_device_types !== 'string') data.applicable_device_types = JSON.stringify(data.applicable_device_types);
 
-            const [newId] = await this.knex(this.tableName).insert(data);
+            const [result] = await this.knex(this.tableName).insert(data).returning('id');
+            const newId = result?.id || result;
 
             if (newId) {
                 this.logger?.info(`Alarm template created - ID: ${newId}`);

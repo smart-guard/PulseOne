@@ -297,7 +297,7 @@ export const MainLayout: React.FC = () => {
                 <div className="menu-icon">
                   <i className="fas fa-gavel"></i>
                 </div>
-                <span className="menu-title">알람 규칙</span>
+                <span className="menu-title">알람 템플릿 관리</span>
               </Link>
             </li>
 
