@@ -14,6 +14,7 @@ import { FilterBar } from '../components/common/FilterBar';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
 import { useAlarmContext } from '../contexts/AlarmContext';
 import { useAlarmPagination } from '../hooks/usePagination';
+import '../styles/active-alarms.css';
 import '../styles/management.css';
 import '../styles/pagination.css';
 import AlarmActionModal from '../components/modals/AlarmActionModal';
@@ -61,7 +62,7 @@ const ActiveAlarms: React.FC = () => {
 
   const pagination = useAlarmPagination();
 
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ status: 'connecting', timestamp: new Date().toISOString() });
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(alarmWebSocketService.getConnectionStatus());
 
   const fetchStatistics = useCallback(async () => {
     try {
@@ -241,22 +242,24 @@ const ActiveAlarms: React.FC = () => {
   };
 
   return (
-    <ManagementLayout>
+    <ManagementLayout className="page-active-alarms">
       <PageHeader
         title="활성 알람 모니터링"
         description="현재 발생 중인 알람을 실시간으로 확인하고 조치합니다."
         icon="fas fa-exclamation-triangle"
         actions={
-          <div className="connection-status">
-            <span className={`status-pill ${connectionStatus.status === 'connected' ? 'active' : 'error'}`}>
-              <i className={`fas ${connectionStatus.status === 'connected' ? 'fa-check-circle' : 'fa-exclamation-circle'}`} style={{ marginRight: '6px' }}></i>
-              {connectionStatus.status === 'connected' ? '실시간 연결됨' : connectionStatus.status === 'connecting' ? '연결 중...' : '연결 끊김'}
-            </span>
-          </div>
+          <span className={`mgmt-status-pill ${connectionStatus.status === 'connected' ? 'active' :
+            connectionStatus.status === 'connecting' ? 'warning' : 'error'
+            }`}>
+            <i className={`fas ${connectionStatus.status === 'connected' ? 'fa-check-circle' :
+              connectionStatus.status === 'connecting' ? 'fa-spinner fa-spin' : 'fa-exclamation-circle'
+              }`} style={{ marginRight: '6px' }}></i>
+            {connectionStatus.status === 'connected' ? '실시간 연결됨' : connectionStatus.status === 'connecting' ? '연결 중...' : '연결 끊김'}
+          </span>
         }
       />
 
-      <div className="mgmt-stats-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', alignItems: 'stretch', marginBottom: '12px' }}>
+      <div className="mgmt-stats-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', alignItems: 'stretch', marginBottom: '20px' }}>
         <StatCard title="전체 활성" value={computedStats.totalActive} icon="fas fa-bell" type="error" />
         <StatCard title="확인 대기" value={computedStats.unacknowledged} icon="fas fa-clock" type="error" />
         <StatCard title="확인됨" value={computedStats.acknowledged} icon="fas fa-check-circle" type="warning" />
@@ -271,59 +274,60 @@ const ActiveAlarms: React.FC = () => {
         </div>
       )}
 
-      <FilterBar
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        onReset={() => { setSearchTerm(''); setSeverityFilter('all'); setStateFilter('all'); }}
-        activeFilterCount={(searchTerm ? 1 : 0) + (severityFilter !== 'all' ? 1 : 0) + (stateFilter !== 'all' ? 1 : 0)}
-        filters={[
-          {
-            label: '심각도',
-            value: severityFilter,
-            onChange: setSeverityFilter,
-            options: [
-              { value: 'all', label: '전체' },
-              { value: 'critical', label: 'Critical' },
-              { value: 'high', label: 'High' },
-              { value: 'medium', label: 'Medium' },
-              { value: 'low', label: 'Low' }
-            ]
-          },
-          {
-            label: '상태',
-            value: stateFilter,
-            onChange: setStateFilter,
-            options: [
-              { value: 'all', label: '전체' },
-              { value: 'active', label: '확인 대기' },
-              { value: 'acknowledged', label: '확인됨' }
-            ]
+      <div style={{ marginBottom: '20px' }}>
+        <FilterBar
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          onReset={() => { setSearchTerm(''); setSeverityFilter('all'); setStateFilter('all'); }}
+          activeFilterCount={(searchTerm ? 1 : 0) + (severityFilter !== 'all' ? 1 : 0) + (stateFilter !== 'all' ? 1 : 0)}
+          filters={[
+            {
+              label: '심각도',
+              value: severityFilter,
+              onChange: setSeverityFilter,
+              options: [
+                { value: 'all', label: '전체' },
+                { value: 'critical', label: 'Critical' },
+                { value: 'high', label: 'High' },
+                { value: 'medium', label: 'Medium' },
+                { value: 'low', label: 'Low' }
+              ]
+            },
+            {
+              label: '상태',
+              value: stateFilter,
+              onChange: setStateFilter,
+              options: [
+                { value: 'all', label: '전체' },
+                { value: 'active', label: '확인 대기' },
+                { value: 'acknowledged', label: '확인됨' }
+              ]
+            }
+          ]}
+          rightActions={
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={handleBulkAcknowledge}
+                className="mgmt-btn mgmt-btn-primary"
+                disabled={computedStats.unacknowledged === 0}
+                title="현재 발생한 모든 미확인 알람을 일괄 확인 처리합니다."
+              >
+                <i className="fas fa-check-double" style={{ marginRight: '6px' }}></i>
+                일괄 확인 ({computedStats.unacknowledged})
+              </button>
+              <button
+                onClick={handleBulkClear}
+                className="mgmt-btn mgmt-btn-outline"
+                disabled={computedStats.acknowledged === 0}
+                title="현재 확인된 모든 알람을 일괄 해제 처리합니다."
+              >
+                <i className="fas fa-broom" style={{ marginRight: '6px' }}></i>
+                일괄 해제 ({computedStats.acknowledged})
+              </button>
+            </div>
           }
-        ]}
-        rightActions={
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={handleBulkAcknowledge}
-              className="btn-primary"
-              disabled={computedStats.unacknowledged === 0}
-              title="현재 발생한 모든 미확인 알람을 일괄 확인 처리합니다."
-            >
-              <i className="fas fa-check-double" style={{ marginRight: '6px' }}></i>
-              일괄 확인 ({computedStats.unacknowledged})
-            </button>
-            <button
-              onClick={handleBulkClear}
-              className="btn-outline"
-              disabled={computedStats.acknowledged === 0}
-              title="현재 확인된 모든 알람을 일괄 해제 처리합니다."
-              style={{ background: 'white' }}
-            >
-              <i className="fas fa-broom" style={{ marginRight: '6px' }}></i>
-              일괄 해제 ({computedStats.acknowledged})
-            </button>
-          </div>
-        }
-      />
+        />
+      </div>
 
       <div className="mgmt-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
         <div style={{ overflowX: 'auto', flex: '1 1 auto' }}>
@@ -345,7 +349,7 @@ const ActiveAlarms: React.FC = () => {
                 alarms.map(alarm => (
                   <tr key={alarm.id}>
                     <td>{new Date(alarm.triggered_at).toLocaleString()}</td>
-                    <td><span className={`status-pill ${alarm.severity}`}>{alarm.severity.toUpperCase()}</span></td>
+                    <td><span className={`mgmt-status-pill ${alarm.severity}`}>{alarm.severity.toUpperCase()}</span></td>
                     <td>
                       <div><strong>{alarm.device_name}</strong></div>
                       <div style={{ fontSize: '12px', color: '#64748b' }}>{alarm.rule_name}</div>
@@ -356,7 +360,11 @@ const ActiveAlarms: React.FC = () => {
                         {alarm.comment || '-'}
                       </div>
                     </td>
-                    <td>{alarm.state === 'active' ? '확인 대기' : '확인됨'}</td>
+                    <td>
+                      <span className={`mgmt-status-pill ${alarm.state === 'active' ? 'error' : 'active'}`}>
+                        {alarm.state === 'active' ? '확인 대기' : '확인됨'}
+                      </span>
+                    </td>
                     <td style={{ textAlign: 'center' }}>
                       <button
                         onClick={() => handleViewDetails(alarm)}
@@ -372,7 +380,7 @@ const ActiveAlarms: React.FC = () => {
                         {alarm.state === 'active' ? (
                           <button
                             onClick={() => handleAcknowledge(alarm.id)}
-                            className="btn-primary btn-action"
+                            className="mgmt-btn mgmt-btn-primary btn-action"
                             title="알람 확인 (확인 후 해제 가능)"
                           >
                             확인
@@ -380,7 +388,7 @@ const ActiveAlarms: React.FC = () => {
                         ) : (
                           <button
                             onClick={() => handleClear(alarm.id)}
-                            className="btn-outline btn-action"
+                            className="mgmt-btn mgmt-btn-outline btn-action"
                             title="알람 해제"
                           >
                             해제
@@ -402,10 +410,7 @@ const ActiveAlarms: React.FC = () => {
         </div>
 
         {/* 페이지네이션 - 명확히 분리된 하단 영역 */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: '13px', color: '#64748b' }}>
-            전체 <strong>{pagination.totalCount}</strong>개 중 {alarms.length}개 표시
-          </div>
+        <div style={{ padding: '8px 24px', borderTop: '1px solid #e2e8f0', background: 'white', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
           <Pagination
             current={pagination.currentPage}
             total={pagination.totalCount}

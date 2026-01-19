@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { TemplateApiService } from '../api/services/templateApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
+import { notification } from 'antd';
 import { StatCard } from '../components/common/StatCard';
 import { FilterBar } from '../components/common/FilterBar';
 import { Pagination } from '../components/common/Pagination';
@@ -43,7 +44,11 @@ const DeviceTemplatesPage: React.FC = () => {
 
     const handleDelete = async (template: DeviceTemplate) => {
         if ((template.device_count || 0) > 0) {
-            alert('사용 중인 마스터 모델은 삭제할 수 없습니다.');
+            notification.warning({
+                message: '삭제 불가',
+                description: '사용 중인 마스터 모델은 삭제할 수 없습니다.',
+                placement: 'topRight'
+            });
             return;
         }
 
@@ -52,13 +57,25 @@ const DeviceTemplatesPage: React.FC = () => {
                 setLoading(true);
                 const res = await TemplateApiService.deleteTemplate(template.id);
                 if (res.success) {
-                    alert('삭제되었습니다.');
+                    notification.success({
+                        message: '삭제 완료',
+                        description: '마스터 모델이 성공적으로 삭제되었습니다.',
+                        placement: 'topRight'
+                    });
                     loadTemplates();
                 } else {
-                    alert(res.message || '삭제에 실패했습니다.');
+                    notification.error({
+                        message: '삭제 실패',
+                        description: res.message || '삭제에 실패했습니다.',
+                        placement: 'topRight'
+                    });
                 }
             } catch (err) {
-                alert('삭제 중 오류가 발생했습니다.');
+                notification.error({
+                    message: '오류 발생',
+                    description: '삭제 중 오류가 발생했습니다.',
+                    placement: 'topRight'
+                });
             } finally {
                 setLoading(false);
             }
@@ -137,7 +154,7 @@ const DeviceTemplatesPage: React.FC = () => {
                 description="디바이스 모델을 등록하고 관리합니다. 등록된 모델을 기반으로 신규 디바이스를 신속하게 생성할 수 있습니다."
                 icon="fas fa-file-invoice"
                 actions={
-                    <button className="btn-primary" onClick={() => {
+                    <button className="mgmt-btn mgmt-btn-primary" onClick={() => {
                         setEditingTemplate(null);
                         setMasterModalOpen(true);
                     }}>
@@ -193,16 +210,16 @@ const DeviceTemplatesPage: React.FC = () => {
                 ]}
                 activeFilterCount={(searchTerm ? 1 : 0) + (selectedManufacturer ? 1 : 0) + (selectedProtocol ? 1 : 0) + (selectedUsage ? 1 : 0)}
                 rightActions={
-                    <div className="view-toggle">
+                    <div className="mgmt-view-toggle">
                         <button
-                            className={`btn-icon ${viewMode === 'card' ? 'active' : ''}`}
+                            className={`mgmt-btn-icon ${viewMode === 'card' ? 'active' : ''}`}
                             onClick={() => setViewMode('card')}
                             title="카드 보기"
                         >
                             <i className="fas fa-th-large"></i>
                         </button>
                         <button
-                            className={`btn-icon ${viewMode === 'table' ? 'active' : ''}`}
+                            className={`mgmt-btn-icon ${viewMode === 'table' ? 'active' : ''}`}
                             onClick={() => setViewMode('table')}
                             title="리스트 보기"
                         >
@@ -217,34 +234,34 @@ const DeviceTemplatesPage: React.FC = () => {
                     <div className="mgmt-grid">
                         {templates.map(template => (
                             <div key={template.id} className="mgmt-card">
-                                <div className="card-header">
-                                    <div className="card-title">
+                                <div className="mgmt-card-header">
+                                    <div className="mgmt-card-title">
                                         <h4>{template.name}</h4>
-                                        <span className="badge">{template.manufacturer_name} / {template.model_name}</span>
+                                        <span className="mgmt-badge">{template.manufacturer_name} / {template.model_name}</span>
                                     </div>
                                 </div>
-                                <div className="card-body">
+                                <div className="mgmt-card-body">
                                     <p>{template.description || '설명이 없습니다.'}</p>
-                                    <div className="card-meta">
+                                    <div className="mgmt-card-meta">
                                         <span><i className="fas fa-microchip"></i> {template.device_type}</span>
                                         <span><i className="fas fa-list-ul"></i> {template.point_count || template.data_points?.length || 0} Points</span>
                                         <span><i className="fas fa-network-wired"></i> {template.protocol_name}</span>
-                                        <span className={`badge ${(template.device_count || 0) > 0 ? 'success' : 'neutral'}`}>
+                                        <span className={`mgmt-badge ${(template.device_count || 0) > 0 ? 'success' : 'neutral'}`}>
                                             {(template.device_count || 0) > 0 ? '사용 중' : '미사용'}
                                         </span>
                                     </div>
                                 </div>
-                                <div className="card-footer">
-                                    <button className="btn-outline" onClick={() => handleViewDetail(template.id)}>상세보기</button>
+                                <div className="mgmt-card-footer">
+                                    <button className="mgmt-btn mgmt-btn-outline" onClick={() => handleViewDetail(template.id)}>상세보기</button>
                                     <div style={{ flex: 1 }}></div>
-                                    <div className="action-buttons">
-                                        <button className="btn-icon" title="수정" onClick={() => {
+                                    <div className="mgmt-card-actions">
+                                        <button className="mgmt-btn-icon" title="수정" onClick={() => {
                                             setEditingTemplate(template);
                                             setMasterModalOpen(true);
                                         }}><i className="fas fa-edit"></i></button>
-                                        <button className="btn-icon danger" title="삭제" onClick={() => handleDelete(template)}><i className="fas fa-trash"></i></button>
+                                        <button className="mgmt-btn-icon mgmt-btn-error" title="삭제" onClick={() => handleDelete(template)}><i className="fas fa-trash"></i></button>
                                     </div>
-                                    <button className="btn-primary" onClick={() => {
+                                    <button className="mgmt-btn mgmt-btn-primary" onClick={() => {
                                         setSelectedTemplateId(template.id);
                                         setWizardOpen(true);
                                     }}>디바이스 생성</button>
@@ -253,7 +270,7 @@ const DeviceTemplatesPage: React.FC = () => {
                         ))}
                     </div>
                 ) : (
-                    <div className="mgmt-table-wrapper">
+                    <div className="mgmt-table-container">
                         <table className="mgmt-table">
                             <thead>
                                 <tr>
@@ -292,11 +309,11 @@ const DeviceTemplatesPage: React.FC = () => {
                                             <div className="text-sm text-neutral-600">{template.manufacturer_name}</div>
                                             <div className="text-xs text-neutral-400">{template.model_name}</div>
                                         </td>
-                                        <td><span className="badge">{template.protocol_name}</span></td>
+                                        <td><span className="mgmt-badge">{template.protocol_name}</span></td>
                                         <td>{template.device_type}</td>
                                         <td>{template.point_count || template.data_points?.length || 0}</td>
                                         <td>
-                                            <span className={`badge ${template.is_public ? 'success' : 'neutral'}`}>
+                                            <span className={`mgmt-badge ${template.is_public ? 'success' : 'neutral'}`}>
                                                 {template.is_public ? '활성 (준비됨)' : '비활성 (연구용)'}
                                             </span>
                                             {(template.device_count || 0) > 0 && (
@@ -309,10 +326,10 @@ const DeviceTemplatesPage: React.FC = () => {
                                             {template.description || '-'}
                                         </td>
                                         <td>
-                                            <div className="action-buttons">
+                                            <div className="mgmt-card-actions">
                                                 {!!template.is_public && (
                                                     <button
-                                                        className="btn-icon primary"
+                                                        className="mgmt-btn-icon primary"
                                                         title="디바이스 생성"
                                                         onClick={() => {
                                                             setSelectedTemplateId(template.id);
@@ -376,7 +393,11 @@ const DeviceTemplatesPage: React.FC = () => {
                 onClose={() => setMasterModalOpen(false)}
                 onSuccess={() => {
                     loadTemplates();
-                    alert(editingTemplate ? '수정이 완료되었습니다.' : '등록이 완료되었습니다.');
+                    notification.success({
+                        message: editingTemplate ? '수정 완료' : '등록 완료',
+                        description: editingTemplate ? '수정이 완료되었습니다.' : '등록이 완료되었습니다.',
+                        placement: 'topRight'
+                    });
                 }}
                 template={editingTemplate}
                 onDelete={(t) => {

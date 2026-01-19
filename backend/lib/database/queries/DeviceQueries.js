@@ -388,44 +388,7 @@ class DeviceQueries {
   // 🔥 통계 및 모니터링 쿼리들 (connection_status로 수정)
   // =============================================================================
 
-  // 프로토콜별 디바이스 수
-  static getDeviceCountByProtocol() {
-    return `
-      SELECT 
-        p.protocol_type,
-        p.display_name,
-        COUNT(*) as total_count,
-        SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
-        SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
-      FROM devices d
-      JOIN protocols p ON p.id = d.protocol_id  -- 🔥 JOIN 추가
-      LEFT JOIN device_status dst ON d.id = dst.device_id
-      WHERE d.tenant_id = ?
-      GROUP BY p.id, p.protocol_type, p.display_name  -- 🔥 GROUP BY 수정
-      ORDER BY total_count DESC
-    `;
-  }
 
-  // 사이트별 디바이스 통계
-  static getDeviceStatsBySite() {
-    return `
-      SELECT 
-        s.id as site_id,
-        s.name as site_name,
-        COALESCE(s.code, 'SITE' || s.id) as site_code,  -- ✅ 안전한 fallback
-        COUNT(d.id) as device_count,
-        SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
-        SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count,
-        SUM(CASE WHEN dst.connection_status = 'disconnected' THEN 1 ELSE 0 END) as disconnected_count,
-        SUM(CASE WHEN dst.connection_status = 'error' THEN 1 ELSE 0 END) as error_count
-      FROM sites s
-      LEFT JOIN devices d ON s.id = d.site_id
-      LEFT JOIN device_status dst ON d.id = dst.device_id
-      WHERE s.tenant_id = ?
-      GROUP BY s.id, s.name
-      ORDER BY s.name
-    `;
-  }
 
   // 디바이스 타입별 통계
   static getDeviceCountByType() {
@@ -446,22 +409,22 @@ class DeviceQueries {
     return `
       SELECT 
         COUNT(d.id) as total_devices,
-        SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_devices,
+        SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as active_devices,
+        SUM(CASE WHEN d.is_enabled = 0 THEN 1 ELSE 0 END) as inactive_devices,
         SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_devices,
         SUM(CASE WHEN dst.connection_status = 'disconnected' THEN 1 ELSE 0 END) as disconnected_devices,
         SUM(CASE WHEN dst.connection_status = 'error' THEN 1 ELSE 0 END) as error_devices,
-        COUNT(DISTINCT p.protocol_type) as protocol_types,  -- 🔥 변경: JOIN 사용
+        COUNT(DISTINCT p.protocol_type) as protocol_types,
         COUNT(DISTINCT d.site_id) as sites_with_devices,
-        COUNT(dp.id) as total_data_points,
-        SUM(CASE WHEN dp.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_data_points
+        SUM(COALESCE(dp.point_count, 0)) as total_data_points,
+        SUM(COALESCE(dp.enabled_count, 0)) as enabled_data_points
     FROM devices d
-    LEFT JOIN (
-      SELECT device_id, connection_status FROM device_status
-    ) dst ON d.id = dst.device_id
+    LEFT JOIN device_status dst ON d.id = dst.device_id
     LEFT JOIN (
       SELECT device_id, COUNT(*) as point_count, SUM(CASE WHEN is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count 
       FROM data_points GROUP BY device_id
     ) dp ON d.id = dp.device_id
+    LEFT JOIN protocols p ON d.protocol_id = p.id
     WHERE d.tenant_id = ?
     GROUP BY d.tenant_id
     `;
@@ -724,7 +687,7 @@ class DeviceQueries {
       SELECT 
         p.protocol_type,
         p.display_name as protocol_name,
-        COUNT(d.id) as total_count,
+        COUNT(d.id) as device_count,
         SUM(CASE WHEN d.is_enabled = 1 THEN 1 ELSE 0 END) as enabled_count,
         SUM(CASE WHEN dst.connection_status = 'connected' THEN 1 ELSE 0 END) as connected_count
       FROM protocols p
@@ -732,7 +695,7 @@ class DeviceQueries {
       LEFT JOIN device_status dst ON dst.device_id = d.id
       WHERE p.is_enabled = 1
       GROUP BY p.id, p.protocol_type, p.display_name
-      ORDER BY total_count DESC, p.display_name
+      ORDER BY device_count DESC, p.display_name
     `;
   }
 

@@ -659,6 +659,91 @@ router.get('/templates/:id', async (req, res) => {
 });
 
 /**
+ * GET /api/alarms/templates/:id/stats
+ * 특정 알람 템플릿 통계 조회
+ */
+router.get('/templates/:id/stats', async (req, res) => {
+    try {
+        const result = await AlarmTemplateService.getTemplateStats(
+            parseInt(req.params.id),
+            req.tenantId
+        );
+        res.json(createResponse(true, result));
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'TEMPLATE_STATS_ERROR'));
+    }
+});
+
+/**
+ * GET /api/alarms/templates/:id/outdated-rules
+ * 템플릿 버전이 구버전인 적용 규칙 조회
+ */
+router.get('/templates/:id/outdated-rules', async (req, res) => {
+    try {
+        const result = await AlarmTemplateService.getOutdatedRules(
+            parseInt(req.params.id),
+            req.tenantId
+        );
+        res.json(createResponse(true, result));
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'OUTDATED_RULES_ERROR'));
+    }
+});
+
+/**
+ * POST /api/alarms/templates/:id/propagate
+ * 템플릿 변경사항 전파 (동기화)
+ */
+router.post('/templates/:id/propagate', async (req, res) => {
+    try {
+        const result = await AlarmTemplateService.propagateTemplate(
+            parseInt(req.params.id),
+            req.body,
+            req.tenantId,
+            req.user ? req.user.id : null
+        );
+        res.json(createResponse(true, result));
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'PROPAGATE_ERROR'));
+    }
+});
+
+/**
+ * POST /api/alarms/templates/:id/propagate
+ * 템플릿 변경사항 전파 (동기화)
+ */
+router.post('/templates/:id/propagate', async (req, res) => {
+    try {
+        const result = await AlarmTemplateService.propagateTemplate(
+            parseInt(req.params.id),
+            req.body,
+            req.tenantId,
+            req.user ? req.user.id : null
+        );
+        res.json(createResponse(true, result));
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'PROPAGATE_ERROR'));
+    }
+});
+
+/**
+ * POST /api/alarms/templates/:id/simulate
+ * 템플릿 적용 시뮬레이션
+ */
+router.post('/templates/:id/simulate', async (req, res) => {
+    try {
+        const result = await AlarmTemplateService.simulateTemplate(
+            parseInt(req.params.id),
+            req.body,
+            req.tenantId
+        );
+        res.json(createResponse(true, result));
+    } catch (error) {
+        res.status(500).json(createResponse(false, null, error.message, 'SIMULATION_ERROR'));
+    }
+});
+
+/**
  * POST /api/alarms/templates
  * 새 알람 템플릿 생성
  */

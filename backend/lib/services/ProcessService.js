@@ -82,6 +82,15 @@ class ProcessService extends BaseService {
                 if (action === 'start') return await crossPlatformManager.startCollector(collectorId);
                 if (action === 'stop') return await crossPlatformManager.stopCollector(collectorId);
                 if (action === 'restart') return await crossPlatformManager.restartCollector(collectorId);
+            } else if (lowerName === 'export-gateway' || lowerName.startsWith('export-gateway-')) {
+                let gatewayId = null;
+                if (lowerName.startsWith('export-gateway-')) {
+                    const idPart = lowerName.split('-')[2]; // export-gateway-id
+                    gatewayId = idPart === 'default' ? null : parseInt(idPart);
+                }
+                if (action === 'start') return await crossPlatformManager.startExportGateway(gatewayId);
+                if (action === 'stop') return await crossPlatformManager.stopExportGateway(gatewayId);
+                if (action === 'restart') return await crossPlatformManager.restartExportGateway(gatewayId);
             } else if (lowerName === 'redis') {
                 if (action === 'start') return await crossPlatformManager.startRedis();
                 if (action === 'stop') return await crossPlatformManager.stopRedis();

@@ -121,7 +121,7 @@ const TenantManagementPage: React.FC = () => {
                 description="멀티테넌트 환경의 고객사 정보를 관리합니다. 구독 플랜 및 사용량 제한을 설정할 수 있습니다."
                 icon="fas fa-building"
                 actions={
-                    <button className="btn btn-primary" onClick={handleCreate}>
+                    <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
                         <i className="fas fa-plus"></i> 새 고객사 등록
                     </button>
                 }
@@ -156,7 +156,7 @@ const TenantManagementPage: React.FC = () => {
                 activeFilterCount={(searchTerm ? 1 : 0) + (selectedStatus !== 'all' ? 1 : 0) + (includeDeleted ? 1 : 0)}
                 rightActions={
                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', cursor: 'pointer', whiteSpace: 'nowrap', color: 'var(--neutral-600)' }}>
+                        <label className="mgmt-checkbox-label">
                             <input
                                 type="checkbox"
                                 checked={includeDeleted}
@@ -186,7 +186,7 @@ const TenantManagementPage: React.FC = () => {
                                 <tr key={t.id} className={t.is_active ? '' : 'inactive-row'}>
                                     <td>
                                         <div
-                                            className="mgmt-table-id-link clickable-name"
+                                            className="mgmt-table-id-link mgmt-clickable-name"
                                             onClick={() => handleViewDetail(t.id)}
                                             style={{ fontWeight: '600' }}
                                         >
@@ -196,12 +196,12 @@ const TenantManagementPage: React.FC = () => {
                                     <td><div style={{ fontWeight: '500', color: 'var(--neutral-700)' }}>{t.company_code}</div></td>
                                     <td>{t.domain || '-'}</td>
                                     <td>
-                                        <span className={`badge ${t.subscription_plan === 'enterprise' ? 'primary' : 'neutral'}`}>
+                                        <span className={`mgmt-badge ${t.subscription_plan === 'enterprise' ? 'primary' : 'neutral'}`}>
                                             {t.subscription_plan.toUpperCase()}
                                         </span>
                                     </td>
                                     <td>
-                                        <span className={`badge ${t.subscription_status === 'active' ? 'success' : 'warning'}`}>
+                                        <span className={`mgmt-badge ${t.subscription_status === 'active' ? 'success' : 'warning'}`}>
                                             {t.subscription_status.toUpperCase()}
                                         </span>
                                     </td>

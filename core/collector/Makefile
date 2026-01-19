@@ -9,8 +9,9 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 # 플랫폼 감지
 UNAME_S := $(shell uname -s)
-NPROC := $(shell nproc 2>/dev/null || echo 4)
-MAKEFLAGS += -j$(NPROC)
+NPROC := 1
+MAKEFLAGS += -j1
+DEBUG := 1
 
 # 플랫폼별 설정
 ifeq ($(UNAME_S),Linux)
@@ -60,7 +61,7 @@ SHARED_LIB_DIR := $(SHARED_BASE_DIR)/lib
 HAS_SHARED := 1
 HAS_NLOHMANN_JSON := 1
 HAS_HIREDIS := 1
-HAS_HTTPLIB := 0
+HAS_HTTPLIB := 1
 # QuickJS 강제 활성화
 HAS_QUICKJS := 1
 HAS_CURL := 1
@@ -70,6 +71,10 @@ HAS_MODBUS := 1
 HAS_MQTT_C := 1
 HAS_MQTT_CPP := 1
 HAS_BACNET := 1
+HAS_BLE := 1
+HAS_OPCUA := 1
+HAS_ROS := 1
+HAS_HTTP_REST := 1
 
 # Collector 전용 Include 경로
 INCLUDES := -I$(INCLUDE_DIR) \
@@ -156,7 +161,7 @@ endif
 ifeq ($(DEBUG),1)
 CXXFLAGS += -DDEBUG -g -O0 -fno-omit-frame-pointer
 else
-CXXFLAGS += -DNDEBUG -O3 -flto
+CXXFLAGS += -DNDEBUG -O3
 endif
 
 # =============================================================================
@@ -211,10 +216,23 @@ PROTOCOL_LIBS += -lbacnet
 CXXFLAGS += -DHAS_BACNET=1
 endif
 
-# BLE for Linux (BlueZ) - Disabled due to missing headers in container
-ifeq ($(IS_LINUX),1)
-# PROTOCOL_LIBS += -lbluetooth
-# CXXFLAGS += -DHAS_BLUETOOTH=1
+# BLE for Linux (BlueZ)
+ifeq ($(HAS_BLE),1)
+PROTOCOL_LIBS += -lbluetooth
+CXXFLAGS += -DHAS_BLUETOOTH=1
+endif
+
+ifeq ($(HAS_OPCUA),1)
+PROTOCOL_LIBS += -lopen62541
+CXXFLAGS += -DHAS_OPCUA=1
+endif
+
+ifeq ($(HAS_ROS),1)
+CXXFLAGS += -DHAS_ROS=1
+endif
+
+ifeq ($(HAS_HTTP_REST),1)
+CXXFLAGS += -DHAS_HTTP_REST=1
 endif
 
 # 유틸리티 라이브러리
@@ -264,9 +282,41 @@ ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 
 # Workers 소스
 WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp)
-WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/*.cpp)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Components/*.cpp)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/*.cpp)
+
+# 프로토콜별 워커 필터링
+ifeq ($(HAS_MODBUS),1)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Modbus*.cpp)
+endif
+
+ifeq ($(HAS_BACNET),1)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/BACnet*.cpp)
+endif
+
+ifeq ($(HAS_MQTT_C),1)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Mqtt*.cpp)
+endif
+
+ifeq ($(HAS_MQTT_CPP),1)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Mqtt*.cpp)
+endif
+
+ifeq ($(HAS_OPCUA),1)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/OPC_UA*.cpp)
+endif
+
+ifeq ($(HAS_BLE),1)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Ble*.cpp)
+endif
+
+ifeq ($(HAS_ROS),1)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Ros*.cpp)
+endif
+
+ifeq ($(HAS_HTTP_REST),1)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Http*.cpp)
+endif
 
 # Pipeline 및 Storage
 PIPELINE_SOURCES = $(wildcard $(SRC_DIR)/Pipeline/*.cpp) $(wildcard $(SRC_DIR)/Pipeline/Stages/*.cpp)
@@ -294,11 +344,11 @@ DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
 endif
 
 # 추가 드라이버 (항시 포함)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.c)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp)
+# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
+# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
+# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.c)
+# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp)
+# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp)
 
 # 네트워크 및 API
 ifeq ($(HAS_HTTPLIB),1)

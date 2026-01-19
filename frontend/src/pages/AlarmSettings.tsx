@@ -192,7 +192,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         description="시스템 전반의 알람 발생 규칙을 설정하고 관리합니다. 한 눈에 파악하기 쉬운 콤팩트한 설정을 제공합니다."
         icon="fas fa-bell"
         actions={
-          <button className="btn-primary" onClick={handleCreateRule}>
+          <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateRule}>
             <i className="fas fa-plus"></i> 새 알람 규칙 추가
           </button>
         }
@@ -251,16 +251,16 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                 삭제된 규칙 보기
               </label>
             </div>
-            <div className="view-toggle">
+            <div className="mgmt-view-toggle">
               <button
-                className={`btn-icon ${viewType === 'card' ? 'active' : ''}`}
+                className={`mgmt-btn-icon ${viewType === 'card' ? 'active' : ''}`}
                 onClick={() => setViewType('card')}
                 title="카드 보기"
               >
                 <i className="fas fa-th-large"></i>
               </button>
               <button
-                className={`btn-icon ${viewType === 'table' ? 'active' : ''}`}
+                className={`mgmt-btn-icon ${viewType === 'table' ? 'active' : ''}`}
                 onClick={() => setViewType('table')}
                 title="테이블 보기"
               >
@@ -275,12 +275,12 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
         {viewType === 'card' ? (
           <div className="mgmt-grid">
             {alarmRules.map(rule => (
-              <div key={rule.id} className="mgmt-card alarm-rule-card">
-                <div className="card-header">
-                  <div className="card-title">
-                    <h4 className="clickable-name" onClick={() => handleShowDetail(rule)}>{rule.name}</h4>
+              <div key={rule.id} className="mgmt-card">
+                <div className="mgmt-card-header">
+                  <div className="mgmt-card-title">
+                    <h4 className="mgmt-card-name" onClick={() => handleShowDetail(rule)}>{rule.name}</h4>
                     <div style={{ display: 'flex', gap: '5px' }}>
-                      <span className={`badge ${getSeverityBadgeClass(rule.severity)}`}>
+                      <span className={`mgmt-badge ${getSeverityBadgeClass(rule.severity)}`}>
                         {getSeverityLabel(rule.severity)}
                       </span>
                       <button
@@ -288,7 +288,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                           e.stopPropagation();
                           handleToggleRule(rule.id, rule.is_enabled, rule.name);
                         }}
-                        className={`badge ${rule.is_enabled ? 'success' : 'neutral'}`}
+                        className={`mgmt-badge ${rule.is_enabled ? 'success' : 'neutral'}`}
                         style={{ cursor: 'pointer', border: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}
                       >
                         {rule.is_enabled ? 'ON' : 'OFF'}
@@ -297,9 +297,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     </div>
                   </div>
                 </div>
-                <div className="card-body">
-                  <p className="card-desc">{rule.description || '알람 설명이 없습니다.'}</p>
-                  <div className="card-meta">
+                <div className="mgmt-card-body">
+                  <p className="mgmt-card-desc">{rule.description || '알람 설명이 없습니다.'}</p>
+                  <div className="mgmt-card-meta">
                     <span><i className="fas fa-crosshairs"></i> {getTargetDisplay(rule)}</span>
                     <span><i className="fas fa-tag"></i> {rule.category || 'general'}</span>
                   </div>
@@ -309,10 +309,9 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     I'll keep Card actions safe for now, or maybe hide them.
                     But user said "Create/Edit doesn't have Enable toggle".
                     Let's update cards to be consistent. */}
-                <div className="card-footer">
-                  <div className="card-actions">
-                    <button onClick={() => handleEditRule(rule)} className="btn btn-outline btn-sm">수정</button>
-                    {/* Delete is in Edit modal too */}
+                <div className="mgmt-card-footer">
+                  <div className="mgmt-card-actions">
+                    <button onClick={() => handleEditRule(rule)} className="mgmt-btn mgmt-btn-outline mgmt-btn-sm">수정</button>
                   </div>
                 </div>
               </div>
@@ -342,7 +341,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
                     <td>{getTargetDisplay(rule)}</td>
                     <td>{rule.category || '-'}</td>
                     <td>
-                      <span className={`badge ${getSeverityBadgeClass(rule.severity)}`}>
+                      <span className={`mgmt-badge ${getSeverityBadgeClass(rule.severity)}`}>
                         {getSeverityLabel(rule.severity)}
                       </span>
                     </td>

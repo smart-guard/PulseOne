@@ -63,11 +63,11 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
     };
 
     return (
-        <div className="modal-overlay">
+        <div className="mgmt-modal-overlay">
             {/* Matches UserModal width (800px) */}
-            <div className="modal-container user-modal" style={{ maxWidth: '800px' }}>
-                <div className="modal-header">
-                    <div className="modal-title">
+            <div className="mgmt-modal-container user-modal" style={{ maxWidth: '800px' }}>
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-modal-title">
                         <div className="title-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div style={{
                                 width: '40px',
@@ -88,18 +88,18 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                             </div>
                         </div>
                     </div>
-                    <button className="close-btn" onClick={onClose}>
+                    <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body">
+                <div className="mgmt-modal-body">
                     {/* Balanced 2-Column Grid */}
-                    <div className="modal-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                    <div className="mgmt-modal-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
 
                         {/* LEFT COLUMN: Basic Info */}
                         <div className="left-col" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            <div className="modal-form-section" style={{ border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px', height: '100%' }}>
+                            <div className="mgmt-modal-form-section" style={{ border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px', height: '100%' }}>
                                 <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div className="detail-item">
@@ -134,7 +134,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                         {/* RIGHT COLUMN: Permissions & System Records */}
                         <div className="right-col" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             {/* Security & Permissions */}
-                            <div className="modal-form-section" style={{ border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px' }}>
+                            <div className="mgmt-modal-form-section" style={{ border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px' }}>
                                 <h3><i className="fas fa-shield-alt"></i> 보안 및 권한</h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div className="detail-item">
@@ -173,7 +173,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                             </div>
 
                             {/* System Records - Moved to Right Column */}
-                            <div className="modal-form-section" style={{ border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px', flex: 1 }}>
+                            <div className="mgmt-modal-form-section" style={{ border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '16px', flex: 1 }}>
                                 <h3><i className="fas fa-history"></i> 시스템 기록</h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     <div className="detail-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -201,7 +201,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                     </div>
                 </div>
 
-                <div className="modal-footer">
+                <div className="mgmt-modal-footer">
                     <div className="footer-left">
                         {!!user.is_deleted && (
                             <button className="btn btn-outline success" onClick={() => onRestore(user)}>

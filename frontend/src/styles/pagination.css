@@ -2,7 +2,7 @@
    pagination.css - Refactored with Design System Tokens
    ============================================================================ */
 
-.pagination-wrapper {
+.mgmt-pagination-wrapper {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -15,7 +15,7 @@
   min-height: 60px;
 }
 
-.pagination-info {
+.mgmt-pagination-info {
   flex: 1;
   text-align: left;
   color: var(--neutral-500);
@@ -23,14 +23,14 @@
   font-weight: 500;
 }
 
-.pagination-navigation {
+.mgmt-pagination-navigation {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: var(--space-1);
 }
 
-.pagination-button {
+.mgmt-pagination-button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -48,37 +48,37 @@
   user-select: none;
 }
 
-.pagination-button:hover:not(:disabled) {
+.mgmt-pagination-button:hover:not(:disabled) {
   background: var(--neutral-50);
   border-color: var(--neutral-400);
   color: var(--neutral-900);
 }
 
-.pagination-button:disabled {
+.mgmt-pagination-button:disabled {
   background: var(--neutral-25);
   color: var(--neutral-300);
   cursor: not-allowed;
   border-color: var(--neutral-100);
 }
 
-.pagination-button.active {
+.mgmt-pagination-button.active {
   background: var(--primary-500);
   border-color: var(--primary-500);
   color: white;
   font-weight: 600;
 }
 
-.pagination-button.active:hover {
+.mgmt-pagination-button.active:hover {
   background: var(--primary-600);
   border-color: var(--primary-600);
 }
 
-.pagination-size-selector {
+.mgmt-pagination-size-selector {
   flex: 1;
   text-align: right;
 }
 
-.page-size-select {
+.mgmt-page-size-select {
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--neutral-300);
   border-radius: var(--radius-md);
@@ -90,11 +90,11 @@
   min-width: 80px;
 }
 
-.page-size-select:hover {
+.mgmt-page-size-select:hover {
   border-color: var(--neutral-400);
 }
 
-.page-size-select:focus {
+.mgmt-page-size-select:focus {
   outline: none;
   border-color: var(--primary-500);
   box-shadow: 0 0 0 1px var(--primary-500);
@@ -102,7 +102,7 @@
 
 /* 반응형 디자인 */
 @media (max-width: 768px) {
-  .pagination-wrapper {
+  .mgmt-pagination-wrapper {
     flex-direction: column;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);

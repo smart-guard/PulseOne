@@ -142,26 +142,26 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
             <div className="device-list-actions-cell">
                 <div className="device-list-row-actions">
                     {isDeleted ? (
-                        <button className="btn-icon success" onClick={onRestore} title="디바이스 복구">
+                        <button className="mgmt-btn-icon success" onClick={onRestore} title="디바이스 복구">
                             <i className="fas fa-undo"></i>
                         </button>
                     ) : (
                         <>
-                            <button className="btn-icon" onClick={onMove} title="그룹 이동">
+                            <button className="mgmt-btn-icon" onClick={onMove} title="그룹 이동">
                                 <i className="fas fa-exchange-alt"></i>
                             </button>
 
                             {device.collector_status?.status === 'running' ? (
                                 <>
-                                    <button className="btn-icon error" onClick={onStopWorker} title="워커 정지">
+                                    <button className="mgmt-btn-icon error" onClick={onStopWorker} title="워커 정지">
                                         <i className="fas fa-stop"></i>
                                     </button>
-                                    <button className="btn-icon warning" onClick={onRestartWorker} title="워커 재시작">
+                                    <button className="mgmt-btn-icon warning" onClick={onRestartWorker} title="워커 재시작">
                                         <i className="fas fa-sync-alt"></i>
                                     </button>
                                 </>
                             ) : (
-                                <button className="btn-icon success" onClick={onStartWorker} title="워커 시작">
+                                <button className="mgmt-btn-icon success" onClick={onStartWorker} title="워커 시작">
                                     <i className="fas fa-play"></i>
                                 </button>
                             )}

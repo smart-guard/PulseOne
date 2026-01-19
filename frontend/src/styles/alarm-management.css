@@ -100,7 +100,7 @@
 }
 
 /* 🏁 Modal Footer Refinements */
-.modal-footer {
+.management-container .modal-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -110,19 +110,19 @@
     gap: 12px;
 }
 
-.footer-left {
+.management-container .footer-left {
     display: flex;
     gap: 8px;
 }
 
-.footer-right {
+.management-container .footer-right {
     display: flex;
     gap: 12px;
     justify-content: flex-end;
 }
 
 /* Standardized Button Sizing in Footer */
-.modal-footer .btn {
+.management-container .modal-footer .btn {
     min-width: 90px;
     height: 36px;
     display: flex;

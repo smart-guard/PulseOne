@@ -52,23 +52,23 @@ export const ProtocolDevicesModal: React.FC<ProtocolDevicesModalProps> = ({ isOp
     if (!isOpen || !protocol) return null;
 
     return createPortal(
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="mgmt-modal-overlay" onClick={onClose}>
             <div
-                className="modal-container"
+                className="mgmt-modal-container"
                 style={{ maxWidth: '800px', width: '90%' }}
                 onClick={e => e.stopPropagation()}
             >
-                <div className="modal-header">
-                    <div className="header-content">
-                        <i className="fas fa-network-wired header-icon"></i>
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-header-content">
+                        <i className="fas fa-network-wired mgmt-header-icon"></i>
                         <h3>{protocol.display_name} 사용 디바이스 목록</h3>
                     </div>
-                    <button className="close-btn" onClick={onClose} aria-label="닫기">
+                    <button className="mgmt-close-btn" onClick={onClose} aria-label="닫기">
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body" style={{ padding: '24px', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
+                <div className="mgmt-modal-body" style={{ padding: '24px', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
                     {loading ? (
                         <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--neutral-500)', flex: 1 }}>
                             <i className="fas fa-spinner fa-spin fa-3x"></i>
@@ -100,7 +100,7 @@ export const ProtocolDevicesModal: React.FC<ProtocolDevicesModalProps> = ({ isOp
                                                     {device.manufacturer || '-'} / {device.model || '-'}
                                                 </td>
                                                 <td>
-                                                    <span className="site-badge" style={{
+                                                    <span className="mgmt-site-badge" style={{
                                                         background: 'var(--primary-50)',
                                                         color: 'var(--primary-700)',
                                                         padding: '2px 8px',
@@ -115,7 +115,7 @@ export const ProtocolDevicesModal: React.FC<ProtocolDevicesModalProps> = ({ isOp
                                                     {device.endpoint}
                                                 </td>
                                                 <td>
-                                                    <span className={`badge ${device.is_enabled ? 'success' : 'neutral'}`}>
+                                                    <span className={`mgmt-badge ${device.is_enabled ? 'success' : 'neutral'}`}>
                                                         {device.is_enabled ? '활성' : '비활성'}
                                                     </span>
                                                 </td>
@@ -138,25 +138,25 @@ export const ProtocolDevicesModal: React.FC<ProtocolDevicesModalProps> = ({ isOp
                     )}
                 </div>
 
-                <div className="modal-footer" style={{ borderTop: '1px solid var(--neutral-100)', padding: '16px 24px', backgroundColor: 'var(--neutral-50)' }}>
-                    <button className="btn btn-secondary" onClick={onClose} style={{ minWidth: '100px' }}>닫기</button>
+                <div className="mgmt-modal-footer" style={{ borderTop: '1px solid var(--neutral-100)', padding: '16px 24px', backgroundColor: 'var(--neutral-50)' }}>
+                    <button className="mgmt-btn mgmt-btn-secondary" onClick={onClose} style={{ minWidth: '100px' }}>닫기</button>
                 </div>
             </div>
 
             <style>{`
-        .header-content {
+        .mgmt-header-content {
           display: flex;
           align-items: center;
           gap: 12px;
         }
-        .header-icon {
+        .mgmt-header-icon {
           font-size: 20px;
           color: var(--primary-500);
         }
-        .site-badge {
+        .mgmt-site-badge {
           display: inline-block;
         }
-        .modal-container {
+        .mgmt-modal-container {
           background: white;
           border-radius: 12px;
           box-shadow: var(--shadow-xl);

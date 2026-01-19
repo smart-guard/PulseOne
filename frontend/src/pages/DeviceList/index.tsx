@@ -606,20 +606,20 @@ const DeviceList: React.FC = () => {
 
   return (
     <>
-      <ManagementLayout>
+      <ManagementLayout className="page-devices">
         <PageHeader
           title="디바이스 관리"
           description="산업 현장의 디바이스를 마스터 모델 기반으로 관리하고 모니터링합니다."
           icon="fas fa-network-wired"
           actions={
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button className="btn-outline primary" onClick={() => setIsWizardOpen(true)} disabled={isProcessing}>
+              <button className="mgmt-btn mgmt-btn-outline primary" onClick={() => setIsWizardOpen(true)} disabled={isProcessing}>
                 <i className="fas fa-magic"></i> 마스터 모델로 추가
               </button>
-              <button className="btn-outline secondary" onClick={() => setIsScanModalOpen(true)} disabled={isProcessing}>
+              <button className="mgmt-btn mgmt-btn-outline" onClick={() => setIsScanModalOpen(true)} disabled={isProcessing}>
                 <i className="fas fa-search-location"></i> 네트워크 스캔
               </button>
-              <button className="btn-primary" onClick={handleCreateDevice} disabled={isProcessing}>
+              <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateDevice} disabled={isProcessing}>
                 <i className="fas fa-plus"></i> 수동 등록
               </button>
             </div>

@@ -3,28 +3,28 @@
     max-width: 900px !important;
 }
 
-.tenant-modal .modal-body {
+.tenant-modal .mgmt-modal-body {
     padding: 16px 20px;
     /* Reduced vertical padding */
     max-height: calc(90vh - 120px);
     overflow-y: auto;
 }
 
-.modal-form-grid {
+.mgmt-modal-form-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 16px;
     /* Reduced from 32px */
 }
 
-.modal-form-section {
+.mgmt-modal-form-section {
     display: flex;
     flex-direction: column;
     gap: 12px;
     /* Reduced from 20px */
 }
 
-.modal-form-section h3 {
+.mgmt-modal-form-section h3 {
     font-size: 14px;
     font-weight: 700;
     color: var(--neutral-800);
@@ -36,24 +36,24 @@
     border-bottom: 2px solid var(--primary-100);
 }
 
-.modal-form-group {
+.mgmt-modal-form-group {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
-.modal-form-group label {
+.mgmt-modal-form-group label {
     font-size: 13px;
     font-weight: 600;
     color: var(--neutral-700);
 }
 
-.modal-form-group label.required::after {
+.mgmt-modal-form-group label.required::after {
     content: ' *';
     color: var(--error-500);
 }
 
-.modal-form-group .form-control {
+.mgmt-modal-form-group .form-control {
     padding: 8px 12px;
     /* Reduced padding */
     border: 1px solid var(--neutral-200);
@@ -62,13 +62,13 @@
     transition: all 0.2s;
 }
 
-.modal-form-group .form-control:focus {
+.mgmt-modal-form-group .form-control:focus {
     border-color: var(--primary-500);
     box-shadow: 0 0 0 3px var(--primary-100);
     outline: none;
 }
 
-.modal-form-grid-inner {
+.mgmt-modal-form-grid-inner {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
@@ -90,28 +90,28 @@
     font-weight: 500;
 }
 
-.input-hint {
+.mgmt-modal-form-hint {
     font-size: 11px;
     color: var(--neutral-500);
     margin-top: 2px;
 }
 
 @media (max-width: 768px) {
-    .modal-form-grid {
+    .mgmt-modal-form-grid {
         grid-template-columns: 1fr;
     }
 }
 
-.span-full {
+.mgmt-span-full {
     grid-column: 1 / -1;
 }
 
-.modal-form-row {
+.mgmt-modal-form-row {
     display: flex;
     gap: 16px;
 }
 
-.modal-form-row>* {
+.mgmt-modal-form-row>* {
     flex: 1;
 }
 

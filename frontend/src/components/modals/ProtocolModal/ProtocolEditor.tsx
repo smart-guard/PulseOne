@@ -214,17 +214,17 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay">
+    <div className="mgmt-modal-overlay">
       <div
-        className="modal-container protocol-modal"
+        className="mgmt-modal-container mgmt-protocol-modal"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 모달 헤더 */}
-        <div className="modal-header">
-          <div className="modal-title">
+        <div className="mgmt-modal-header">
+          <div className="mgmt-modal-title">
             <h2>{title}</h2>
           </div>
-          <button className="close-btn" onClick={onCancel}>
+          <button className="mgmt-close-btn" onClick={onCancel}>
             <i className="fas fa-times"></i>
           </button>
         </div>
@@ -243,24 +243,24 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
         ) : (
           <>
             {error && (
-              <div className="alert alert-error" style={{ margin: '24px 24px 0 24px' }}>
+              <div className="mgmt-alert mgmt-alert-danger" style={{ margin: '24px 24px 0 24px' }}>
                 {error}
               </div>
             )}
 
-            <div className="modal-body">
+            <div className="mgmt-modal-body">
               <form id="protocol-form" onSubmit={handleSubmit}>
-                <div className="modal-form-grid">
+                <div className="mgmt-modal-form-grid">
                   {/* 기본 정보 */}
-                  <div className="modal-form-section">
+                  <div className="mgmt-modal-form-section">
                     <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
 
-                    <div className="modal-form-row">
-                      <div className="modal-form-group">
+                    <div className="mgmt-modal-form-row">
+                      <div className="mgmt-modal-form-group">
                         <label className="required">프로토콜 타입</label>
                         <input
                           type="text"
-                          className="form-control"
+                          className="mgmt-form-control"
                           value={protocol.protocol_type || ''}
                           onChange={(e) => handleInputChange('protocol_type', e.target.value)}
                           readOnly={isReadOnly || (mode === 'edit')}
@@ -268,11 +268,11 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                           required
                         />
                       </div>
-                      <div className="modal-form-group">
+                      <div className="mgmt-modal-form-group">
                         <label className="required">표시명</label>
                         <input
                           type="text"
-                          className="form-control"
+                          className="mgmt-form-control"
                           value={protocol.display_name || ''}
                           onChange={(e) => handleInputChange('display_name', e.target.value)}
                           readOnly={isReadOnly}
@@ -282,10 +282,10 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       </div>
                     </div>
 
-                    <div className="modal-form-group">
+                    <div className="mgmt-modal-form-group">
                       <label>설명</label>
                       <textarea
-                        className="form-control"
+                        className="mgmt-form-control"
                         value={protocol.description || ''}
                         onChange={(e) => handleInputChange('description', e.target.value)}
                         readOnly={isReadOnly}
@@ -294,11 +294,11 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       />
                     </div>
 
-                    <div className="modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-                      <div className="modal-form-group">
+                    <div className="mgmt-modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                      <div className="mgmt-modal-form-group">
                         <label>카테고리</label>
                         <select
-                          className="form-control"
+                          className="mgmt-form-control"
                           value={protocol.category || ''}
                           onChange={(e) => handleInputChange('category', e.target.value)}
                           disabled={isReadOnly}
@@ -310,33 +310,33 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                           <option value="web">웹</option>
                         </select>
                       </div>
-                      <div className="modal-form-group">
+                      <div className="mgmt-modal-form-group">
                         <label>기본 포트</label>
                         <input
                           type="number"
-                          className="form-control"
+                          className="mgmt-form-control"
                           value={protocol.default_port || ''}
                           onChange={(e) => handleInputChange('default_port', e.target.value ? parseInt(e.target.value) : null)}
                           readOnly={isReadOnly}
                           placeholder="예: 502"
                         />
                       </div>
-                      <div className="modal-form-group">
+                      <div className="mgmt-modal-form-group">
                         <label>제조사/벤더</label>
                         <input
                           type="text"
-                          className="form-control"
+                          className="mgmt-form-control"
                           value={protocol.vendor || ''}
                           onChange={(e) => handleInputChange('vendor', e.target.value)}
                           readOnly={isReadOnly}
                           placeholder="예: Modbus Org"
                         />
                       </div>
-                      <div className="modal-form-group">
+                      <div className="mgmt-modal-form-group">
                         <label>최소 펌웨어</label>
                         <input
                           type="text"
-                          className="form-control"
+                          className="mgmt-form-control"
                           value={protocol.min_firmware_version || ''}
                           onChange={(e) => handleInputChange('min_firmware_version', e.target.value)}
                           readOnly={isReadOnly}
@@ -347,37 +347,37 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                   </div>
 
                   {/* 기술 설정 */}
-                  <div className="modal-form-section">
+                  <div className="mgmt-modal-form-section">
                     <h3><i className="fas fa-cogs"></i> 기술 설정</h3>
 
-                    <div className="modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-                      <div className="modal-form-group">
+                    <div className="mgmt-modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                      <div className="mgmt-modal-form-group">
                         <label>기본 폴링 주기 (ms)</label>
                         <input
                           type="number"
-                          className="form-control"
+                          className="mgmt-form-control"
                           value={protocol.default_polling_interval || ''}
                           onChange={(e) => handleInputChange('default_polling_interval', e.target.value ? parseInt(e.target.value) : null)}
                           readOnly={isReadOnly}
                           placeholder="1000"
                         />
                       </div>
-                      <div className="modal-form-group">
+                      <div className="mgmt-modal-form-group">
                         <label>기본 타임아웃 (ms)</label>
                         <input
                           type="number"
-                          className="form-control"
+                          className="mgmt-form-control"
                           value={protocol.default_timeout || ''}
                           onChange={(e) => handleInputChange('default_timeout', e.target.value ? parseInt(e.target.value) : null)}
                           readOnly={isReadOnly}
                           placeholder="5000"
                         />
                       </div>
-                      <div className="modal-form-group">
+                      <div className="mgmt-modal-form-group">
                         <label>최대 동시 연결 수</label>
                         <input
                           type="number"
-                          className="form-control"
+                          className="mgmt-form-control"
                           value={protocol.max_concurrent_connections || ''}
                           onChange={(e) => handleInputChange('max_concurrent_connections', e.target.value ? parseInt(e.target.value) : null)}
                           readOnly={isReadOnly}
@@ -386,15 +386,15 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                       </div>
                     </div>
 
-                    <div className="modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-                      <div className="checkbox-group" style={{
+                    <div className="mgmt-modal-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                      <div className="mgmt-checkbox-group" style={{
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'flex-start',
                         gap: '4px',
                         opacity: (protocol.capabilities?.serial === 'unsupported') ? 0.6 : 1
                       }}>
-                        <label className="checkbox-label">
+                        <label className="mgmt-checkbox-label">
                           <input
                             type="checkbox"
                             checked={protocol.uses_serial || protocol.capabilities?.serial === 'required' || false}
@@ -409,14 +409,14 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                           {protocol.capabilities?.serial === 'required' && " (필수)"}
                         </small>
                       </div>
-                      <div className="checkbox-group" style={{
+                      <div className="mgmt-checkbox-group" style={{
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'flex-start',
                         gap: '4px',
                         opacity: (protocol.capabilities?.broker === 'unsupported') ? 0.6 : 1
                       }}>
-                        <label className="checkbox-label">
+                        <label className="mgmt-checkbox-label">
                           <input
                             type="checkbox"
                             checked={protocol.requires_broker || protocol.capabilities?.broker === 'required' || false}
@@ -431,8 +431,8 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                           {protocol.capabilities?.broker === 'required' && " (필수)"}
                         </small>
                       </div>
-                      <div className="checkbox-group">
-                        <label className="checkbox-label">
+                      <div className="mgmt-checkbox-group">
+                        <label className="mgmt-checkbox-label">
                           <input
                             type="checkbox"
                             checked={protocol.is_enabled || false}
@@ -442,8 +442,8 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                           활성화
                         </label>
                       </div>
-                      <div className="checkbox-group">
-                        <label className="checkbox-label">
+                      <div className="mgmt-checkbox-group">
+                        <label className="mgmt-checkbox-label">
                           <input
                             type="checkbox"
                             checked={protocol.is_deprecated || false}
@@ -457,37 +457,37 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                   </div>
 
                   {/* 3 & 4. 사이드-바이-사이드 도메인 레이아웃 */}
-                  <div className="modal-form-domains">
+                  <div className="mgmt-modal-form-domains">
                     {/* 드라이버 역량 (Capabilities) */}
-                    <div className="modal-form-domain">
-                      <div className="modal-form-section">
+                    <div className="mgmt-modal-form-domain">
+                      <div className="mgmt-modal-form-section">
                         <h3><i className="fas fa-microchip"></i> 드라이버 역량</h3>
-                        <div className="modal-form-group">
+                        <div className="mgmt-modal-form-group">
                           <label>지원 명령어 (쉼표로 구분)</label>
-                          <div className="capability-badge-container" style={{ marginBottom: '8px' }}>
+                          <div className="mgmt-capability-badge-container" style={{ marginBottom: '8px' }}>
                             {protocol.supported_operations?.map((op, i) => (
-                              <span key={i} className="capability-badge">{op}</span>
+                              <span key={i} className="mgmt-capability-badge">{op}</span>
                             ))}
                           </div>
                           <input
                             type="text"
-                            className="form-control"
+                            className="mgmt-form-control"
                             value={protocol.supported_operations?.join(', ') || ''}
                             onChange={(e) => handleArrayChange('supported_operations', e.target.value)}
                             readOnly={isReadOnly}
                             placeholder="예: read, write"
                           />
                         </div>
-                        <div className="modal-form-group" style={{ marginBottom: 0 }}>
+                        <div className="mgmt-modal-form-group" style={{ marginBottom: 0 }}>
                           <label>지원 데이터 타입 (쉼표로 구분)</label>
-                          <div className="capability-badge-container" style={{ marginBottom: '8px' }}>
+                          <div className="mgmt-capability-badge-container" style={{ marginBottom: '8px' }}>
                             {protocol.supported_data_types?.map((type, i) => (
-                              <span key={i} className="capability-badge">{type}</span>
+                              <span key={i} className="mgmt-capability-badge">{type}</span>
                             ))}
                           </div>
                           <input
                             type="text"
-                            className="form-control"
+                            className="mgmt-form-control"
                             value={protocol.supported_data_types?.join(', ') || ''}
                             onChange={(e) => handleArrayChange('supported_data_types', e.target.value)}
                             readOnly={isReadOnly}
@@ -498,13 +498,13 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                     </div>
 
                     {/* 연결 파라미터 (JSON) */}
-                    <div className="modal-form-domain">
-                      <div className="modal-form-section">
+                    <div className="mgmt-modal-form-domain">
+                      <div className="mgmt-modal-form-section">
                         <h3><i className="fas fa-code"></i> 연결 파라미터</h3>
-                        <div className="modal-form-group" style={{ marginBottom: 0 }}>
+                        <div className="mgmt-modal-form-group" style={{ marginBottom: 0 }}>
                           <label>JSON 설정</label>
                           <textarea
-                            className="form-control"
+                            className="mgmt-form-control"
                             value={JSON.stringify(protocol.connection_params || {}, null, 2)}
                             onChange={(e) => handleConnectionParamsChange(e.target.value)}
                             readOnly={isReadOnly}
@@ -528,22 +528,21 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
         )}
 
         {/* 모달 푸터 */}
-        <div className="modal-footer">
-          <div className="footer-right" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-            <button type="button" className="btn btn-outline" onClick={onCancel} disabled={saving}>
-              취소
+        <div className="mgmt-modal-footer">
+          <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ width: 'auto', minWidth: '100px' }} onClick={onCancel} disabled={saving}>
+            취소
+          </button>
+          {!isReadOnly && (
+            <button
+              type="submit"
+              form="protocol-form"
+              className="mgmt-btn mgmt-btn-primary"
+              style={{ width: 'auto', minWidth: '120px' }}
+              disabled={saving}
+            >
+              {saving ? '저장 중...' : mode === 'create' ? '등록하기' : '수정하기'}
             </button>
-            {!isReadOnly && (
-              <button
-                type="submit"
-                form="protocol-form"
-                className="btn btn-primary"
-                disabled={saving}
-              >
-                {saving ? '저장 중...' : mode === 'create' ? '등록하기' : '수정하기'}
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </div>

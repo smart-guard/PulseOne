@@ -114,7 +114,7 @@ const SiteManagementPage: React.FC = () => {
                 description="물리적 위치 및 설치 장소 정보를 관리합니다. 계층 구조(본사-지사-동/호 등)를 지원합니다."
                 icon="fas fa-map-marker-alt"
                 actions={
-                    <button className="btn btn-primary" onClick={handleCreate}>
+                    <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
                         <i className="fas fa-plus"></i> 새 사이트 등록
                     </button>
                 }
@@ -149,7 +149,7 @@ const SiteManagementPage: React.FC = () => {
                 activeFilterCount={(searchTerm ? 1 : 0) + (selectedStatus !== 'all' ? 1 : 0) + (includeDeleted ? 1 : 0)}
                 rightActions={
                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                        <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', cursor: 'pointer', whiteSpace: 'nowrap', color: 'var(--neutral-600)' }}>
+                        <label className="mgmt-checkbox-label">
                             <input
                                 type="checkbox"
                                 checked={includeDeleted}
@@ -179,7 +179,7 @@ const SiteManagementPage: React.FC = () => {
                                 <tr key={s.id} className={s.is_active ? '' : 'inactive-row'}>
                                     <td>
                                         <div
-                                            className="mgmt-table-id-link clickable-name"
+                                            className="mgmt-table-id-link mgmt-clickable-name"
                                             onClick={() => handleViewDetail(s.id)}
                                             style={{ fontWeight: '600' }}
                                         >
@@ -194,7 +194,7 @@ const SiteManagementPage: React.FC = () => {
                                         </div>
                                     </td>
                                     <td>
-                                        <span className={`badge ${s.is_active ? 'success' : 'neutral'}`}>
+                                        <span className={`mgmt-badge ${s.is_active ? 'success' : 'neutral'}`}>
                                             {s.is_active ? '활성' : '비활성'}
                                         </span>
                                     </td>

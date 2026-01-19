@@ -146,27 +146,27 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
     };
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-container manufacturer-modal">
-                <div className="modal-header">
-                    <div className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container manufacturer-modal">
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-modal-title">
                         <div className="title-row">
                             <h2>{manufacturer ? '제조사 정보 수정' : '새 제조사 등록'}</h2>
                         </div>
                     </div>
-                    <button className="close-btn" onClick={onClose}>
+                    <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body">
+                <div className="mgmt-modal-body">
                     {error && <div className="alert alert-danger">{error}</div>}
 
                     <form id="manufacturer-form" onSubmit={handleSubmit}>
-                        <div className="modal-form-grid">
-                            <div className="modal-form-section">
+                        <div className="mgmt-modal-form-grid">
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">제조사명</label>
                                     <input
                                         type="text"
@@ -178,7 +178,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                         required
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>설명</label>
                                     <textarea
                                         className="form-control"
@@ -191,9 +191,9 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                 </div>
                             </div>
 
-                            <div className="modal-form-section">
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-globe"></i> 상세 정보</h3>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">국가</label>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {!isManualCountry ? (
@@ -259,7 +259,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                         )}
                                     </div>
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>웹사이트</label>
                                     <input
                                         type="text"
@@ -285,7 +285,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                         </div>
                     </form>
                 </div>
-                <div className="modal-footer">
+                <div className="mgmt-modal-footer">
                     <div className="footer-right" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                         <button type="button" className="btn btn-outline" onClick={onClose} disabled={saving}>
                             취소

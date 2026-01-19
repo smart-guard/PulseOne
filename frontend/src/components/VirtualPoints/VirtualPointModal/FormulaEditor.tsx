@@ -21,6 +21,7 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
   expression,
   inputVariables = [],
   onChange,
+  validationResult,
   isValidating,
   simulationResult,
   isSimulating,
@@ -123,8 +124,16 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
               placeholder="왼쪽의 변수와 상단의 연산자를 클릭하여 수식을 빌드하세요..."
               value={expression}
               onChange={(e) => onChange(e.target.value)}
-              style={{ minHeight: '140px' }}
+              style={{ minHeight: '140px', borderBottom: validationResult && !validationResult.isValid ? '2px solid #ef4444' : undefined }}
             />
+
+            {/* Validation Errors Display */}
+            {validationResult && !validationResult.isValid && validationResult.errors.length > 0 && (
+              <div style={{ padding: '8px 20px', background: '#fff1f2', borderTop: '1px solid #fecdd3', color: '#be123c', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <i className="fas fa-exclamation-triangle"></i>
+                <span>{validationResult.errors[0].message}</span>
+              </div>
+            )}
 
             {/* Live Logic Preview (Interpreted) */}
             <div style={{ padding: '12px 20px', background: '#fff', borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9' }}>

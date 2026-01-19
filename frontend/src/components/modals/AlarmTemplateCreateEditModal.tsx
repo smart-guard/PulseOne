@@ -14,6 +14,7 @@ interface Props {
     onSuccess: () => void;
     mode: 'create' | 'edit';
     template?: AlarmTemplate | null;
+    onDelete?: (id: number, name: string) => void;
 }
 
 const LOGIC_TOKENS = [
@@ -45,7 +46,8 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
     onClose,
     onSuccess,
     mode,
-    template
+    template,
+    onDelete
 }) => {
     const { confirm } = useConfirmContext();
     const [step, setStep] = useState(1);
@@ -537,10 +539,16 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                     </div>
 
                     <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
-                        {step > 1 && (
+                        {step > 1 ? (
                             <button className="btn btn-outline" onClick={handleBack} style={{ width: '100px' }}>
                                 <i className="fas fa-arrow-left"></i> 이전
                             </button>
+                        ) : (
+                            mode === 'edit' && onDelete && (
+                                <button className="btn btn-outline-danger" onClick={() => onDelete(template!.id, template!.name)}>
+                                    <i className="fas fa-trash-alt"></i> 템플릿 삭제
+                                </button>
+                            )
                         )}
 
                         <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px' }}>

@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
     -- 분류 및 태깅 시스템
     category VARCHAR(50) DEFAULT NULL,              -- 'process', 'system', 'safety', 'custom', 'general'
     tags TEXT DEFAULT NULL,                         -- JSON 배열 형태 ['tag1', 'tag2', 'tag3']
-    
+    is_deleted INTEGER DEFAULT 0,
+
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
@@ -183,7 +184,8 @@ CREATE TABLE IF NOT EXISTS alarm_rule_templates (
     
     -- 태깅 시스템
     tags TEXT DEFAULT NULL,                         -- JSON 배열 형태
-    
+    is_deleted INTEGER DEFAULT 0,
+
     -- 타임스탬프
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

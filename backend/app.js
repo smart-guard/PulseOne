@@ -779,6 +779,15 @@ app.use('/api/models', modelRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 
+// 신규 추가: 게이트웨이(Edge Server) 관리
+// 2025-01-20 추가: Export Gateway 통합 관제
+const gatewayRoutes = require('./routes/gateways');
+app.use('/api/gateways', gatewayRoutes);
+
+// Export Config (Profiles/Targets)
+const exportConfigRoutes = require('./routes/export-config');
+app.use('/api/export', exportConfigRoutes);
+
 logger.system('INFO', '기본 시스템 라우트 등록 완료');
 
 // 장치 관리 라우트

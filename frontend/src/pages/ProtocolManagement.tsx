@@ -194,16 +194,16 @@ const ProtocolManagement: React.FC = () => {
           }
         ]}
         rightActions={
-          <div className="view-toggle">
+          <div className="mgmt-view-toggle">
             <button
-              className={`btn-icon ${viewMode === 'card' ? 'active' : ''}`}
+              className={`mgmt-btn-icon ${viewMode === 'card' ? 'active' : ''}`}
               onClick={() => setViewMode('card')}
               title="카드 보기"
             >
               <i className="fas fa-th-large"></i>
             </button>
             <button
-              className={`btn-icon ${viewMode === 'table' ? 'active' : ''}`}
+              className={`mgmt-btn-icon ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
               title="리스트 보기"
             >
@@ -217,25 +217,25 @@ const ProtocolManagement: React.FC = () => {
         {viewMode === 'card' ? (
           <div className="mgmt-grid">
             {protocols.map(protocol => (
-              <div key={protocol.id} className="mgmt-card protocol-card">
-                <div className="card-header">
-                  <div className="card-title">
+              <div key={protocol.id} className="mgmt-card">
+                <div className="mgmt-card-header">
+                  <div className="mgmt-card-title">
                     <h4
                       onClick={() => openDetail(protocol)}
-                      className="clickable-name"
+                      className="mgmt-card-name"
                     >
                       {protocol.display_name}
                     </h4>
-                    <span className="badge">{protocol.protocol_type}</span>
+                    <span className="mgmt-badge">{protocol.protocol_type}</span>
                   </div>
-                  <div className="card-actions">
-                    <button onClick={() => openDetail(protocol)} title="상세보기"><i className="fas fa-eye"></i></button>
-                    <button onClick={() => openEditor('edit', protocol.id)} title="편집"><i className="fas fa-edit"></i></button>
+                  <div className="mgmt-card-actions">
+                    <button className="mgmt-btn-icon" onClick={() => openDetail(protocol)} title="상세보기"><i className="fas fa-eye"></i></button>
+                    <button className="mgmt-btn-icon" onClick={() => openEditor('edit', protocol.id)} title="편집"><i className="fas fa-edit"></i></button>
                   </div>
                 </div>
-                <div className="card-body">
-                  <p>{protocol.description}</p>
-                  <div className="card-meta">
+                <div className="mgmt-card-body">
+                  <p className="mgmt-card-desc">{protocol.description}</p>
+                  <div className="mgmt-card-meta">
                     <span><i className="fas fa-layer-group"></i> {protocol.category}</span>
                     <span
                       className="mgmt-table-id-link"
@@ -245,15 +245,15 @@ const ProtocolManagement: React.FC = () => {
                     </span>
                   </div>
                 </div>
-                <div className="card-footer">
+                <div className="mgmt-card-footer">
                   <button
-                    className={protocol.is_enabled ? 'btn-status active' : 'btn-status disabled'}
+                    className={`mgmt-btn-status ${protocol.is_enabled ? 'active' : 'disabled'}`}
                     onClick={() => handleProtocolAction(protocol.is_enabled ? 'disable' : 'enable', protocol.id)}
                     disabled={processing === protocol.id}
                   >
                     {protocol.is_enabled ? '활성' : '비활성'}
                   </button>
-                  <button className="btn-outline" onClick={() => handleProtocolAction('test', protocol.id)} disabled={processing === protocol.id}>테스트</button>
+                  <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleProtocolAction('test', protocol.id)} disabled={processing === protocol.id}>테스트</button>
                 </div>
               </div>
             ))}
@@ -285,7 +285,7 @@ const ProtocolManagement: React.FC = () => {
                       </div>
                     </td>
                     <td>
-                      <span className="badge">{protocol.protocol_type}</span>
+                      <span className="mgmt-badge">{protocol.protocol_type}</span>
                     </td>
                     <td>{protocol.category}</td>
                     <td>
@@ -310,7 +310,7 @@ const ProtocolManagement: React.FC = () => {
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span className={`badge ${protocol.is_enabled ? 'success' : 'neutral'}`}>
+                        <span className={`mgmt-badge ${protocol.is_enabled ? 'success' : 'neutral'}`}>
                           {protocol.is_enabled ? '활성' : '비활성'}
                         </span>
                       </div>

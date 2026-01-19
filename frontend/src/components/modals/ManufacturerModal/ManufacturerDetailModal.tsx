@@ -195,10 +195,10 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
         if (isEditing) {
             return (
                 <form id="manufacturer-detail-form" onSubmit={handleSubmit}>
-                    <div className="modal-form-grid">
-                        <div className="modal-form-section">
+                    <div className="mgmt-modal-form-grid">
+                        <div className="mgmt-modal-form-section">
                             <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label className="required">제조사명</label>
                                 <input
                                     type="text"
@@ -209,7 +209,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                     required
                                 />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>설명</label>
                                 <textarea
                                     className="form-control"
@@ -221,9 +221,9 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                             </div>
                         </div>
 
-                        <div className="modal-form-section">
+                        <div className="mgmt-modal-form-section">
                             <h3><i className="fas fa-globe"></i> 상세 정보</h3>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label className="required">국가</label>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {!isManualCountry ? (
@@ -286,7 +286,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                     )}
                                 </div>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>웹사이트</label>
                                 <input
                                     type="text"
@@ -313,8 +313,8 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
         }
 
         return (
-            <div className="modal-form-grid">
-                <div className="modal-form-section">
+            <div className="mgmt-modal-form-grid">
+                <div className="mgmt-modal-form-section">
                     <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
                     <div className="detail-item">
                         <div className="detail-label">제조사명</div>
@@ -326,7 +326,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                     </div>
                 </div>
 
-                <div className="modal-form-section">
+                <div className="mgmt-modal-form-section">
                     <h3><i className="fas fa-globe"></i> 상세 정보</h3>
                     <div className="detail-item">
                         <div className="detail-label">국가</div>
@@ -358,25 +358,25 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-container manufacturer-modal">
-                <div className="modal-header">
-                    <div className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container manufacturer-modal">
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-modal-title">
                         <div className="title-row">
                             <h2>{isEditing ? '제조사 정보 수정' : '제조사 상세 정보'}</h2>
                         </div>
                     </div>
-                    <button className="close-btn" onClick={onClose}>
+                    <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body">
+                <div className="mgmt-modal-body">
                     {error && <div className="alert alert-danger">{error}</div>}
                     {renderContent()}
                 </div>
 
-                <div className="modal-footer">
+                <div className="mgmt-modal-footer">
                     {!isEditing ? (
                         <div className="footer-right" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                             <button className="btn btn-outline" onClick={onClose}>닫기</button>

@@ -5,13 +5,33 @@
 #include "Workers/WorkerFactory.h"
 
 // Worker 구현체들
+#ifdef HAS_BACNET
 #include "Workers/Protocol/BACnetWorker.h"
+#endif
+
+#ifdef HAS_BLUETOOTH
 #include "Workers/Protocol/BleBeaconWorker.h"
+#endif
+
+#ifdef HAS_HTTP_REST
 #include "Workers/Protocol/HttpRestWorker.h"
+#endif
+
+#ifdef HAS_MQTT
 #include "Workers/Protocol/MQTTWorker.h"
+#endif
+
+#ifdef HAS_MODBUS
 #include "Workers/Protocol/ModbusWorker.h"
+#endif
+
+#ifdef HAS_OPCUA
 #include "Workers/Protocol/OPCUAWorker.h"
+#endif
+
+#ifdef HAS_ROS
 #include "Workers/Protocol/ROSWorker.h"
+#endif
 
 // Database
 #include "Database/Entities/DeviceEntity.h"
@@ -589,6 +609,7 @@ WorkerFactory::LoadProtocolCreators() const {
 
   try {
     // 지원하는 프로토콜들 등록
+#ifdef HAS_MODBUS
     creators["MODBUS_TCP"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<ModbusWorker>(info);
@@ -598,52 +619,73 @@ WorkerFactory::LoadProtocolCreators() const {
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<ModbusWorker>(info);
     };
+#endif
 
+#ifdef HAS_MQTT
     creators["MQTT"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<MQTTWorker>(info);
     };
+#endif
 
+#ifdef HAS_BACNET
     creators["BACNET"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<BACnetWorker>(info);
     };
+#endif
 
+#ifdef HAS_OPCUA
     creators["OPC_UA"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<OPCUAWorker>(info);
     };
+#endif
 
-    // creators["BLE_BEACON"] = [](const PulseOne::Structs::DeviceInfo& info)
-    // -> std::unique_ptr<BaseDeviceWorker> {
-    //     return std::make_unique<BleBeaconWorker>(info);
-    // };
+#ifdef HAS_BLUETOOTH
     creators["BLE_BEACON"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<BleBeaconWorker>(info);
     };
+#endif
 
+#ifdef HAS_HTTP_REST
     creators["HTTP_REST"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<HttpRestWorker>(info);
     };
+#endif
 
+#ifdef HAS_ROS
     creators["ROS"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<ROSWorker>(info);
     };
+#endif
 
     // 별칭들 (Aliases)
+#ifdef HAS_MODBUS
     creators["modbus_tcp"] = creators["MODBUS_TCP"];
     creators["modbus_rtu"] = creators["MODBUS_RTU"];
+#endif
+#ifdef HAS_MQTT
     creators["mqtt"] = creators["MQTT"];
+#endif
+#ifdef HAS_BACNET
     creators["bacnet"] = creators["BACNET"];
+#endif
+#ifdef HAS_OPCUA
     creators["opc_ua"] = creators["OPC_UA"];
+#endif
+#ifdef HAS_ROS
     creators["ros"] = creators["ROS"];
+#endif
 
     // Database protocol_type mappings
+#ifdef HAS_MODBUS
     creators["tcp"] = creators["MODBUS_TCP"];
     creators["serial"] = creators["MODBUS_RTU"];
+#endif
 
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("LoadProtocolCreators 예외: " +

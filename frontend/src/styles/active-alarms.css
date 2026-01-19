@@ -10,27 +10,28 @@
  * ActiveAlarms 전용 컨테이너 - 모든 변수를 여기서 관리
  * ============================================================================ */
 
-.active-alarms-container {
+.page-active-alarms {
   /* 색상 변수들을 컨테이너 내부로 스코프 제한 */
   --active-critical-color: #dc2626;
   --active-critical-bg: #fef2f2;
   --active-critical-border: #fecaca;
-  
+
   --active-high-color: #ea580c;
   --active-high-bg: #fff7ed;
   --active-high-border: #fed7aa;
-  
-  --active-medium-color: #2563eb;  /* ActiveAlarms는 파란색 사용 */
+
+  --active-medium-color: #2563eb;
+  /* ActiveAlarms는 파란색 사용 */
   --active-medium-bg: #eff6ff;
   --active-medium-border: #bfdbfe;
-  
+
   --active-low-color: #059669;
   --active-low-bg: #ecfdf5;
   --active-low-border: #a7f3d0;
-  
+
   --active-acknowledged-color: #6b7280;
   --active-acknowledged-bg: #f9fafb;
-  
+
   /* 공통 간격 변수도 컨테이너 내부로 제한 */
   --active-space-1: 4px;
   --active-space-2: 8px;
@@ -38,17 +39,13 @@
   --active-space-4: 16px;
   --active-space-5: 20px;
   --active-space-6: 24px;
-  
+
   /* 폰트 */
   --active-font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-  
-  /* 기본 컨테이너 스타일 */
+
+  /* 기본 컨테이너 스타일 - 레이아웃 간섭 제거 */
   width: 100%;
   max-width: none;
-  padding: var(--active-space-6);
-  background: #f8fafc;
-  min-height: 100vh;
-  animation: activeAlarmsFadeIn 0.3s ease-out;
   font-family: var(--active-font-family);
 }
 
@@ -56,7 +53,7 @@
  * 페이지 헤더
  * ============================================================================ */
 
-.active-alarms-container .page-header {
+.page-active-alarms .page-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -68,7 +65,7 @@
   border: 1px solid #e5e7eb;
 }
 
-.active-alarms-container .header-left .page-title {
+.page-active-alarms .header-left .page-title {
   font-size: 2rem;
   font-weight: 700;
   color: #111827;
@@ -76,7 +73,7 @@
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .header-left .page-subtitle {
+.page-active-alarms .header-left .page-subtitle {
   font-size: 1rem;
   color: #6b7280;
   margin: 0;
@@ -86,14 +83,14 @@
   gap: var(--active-space-3);
 }
 
-.active-alarms-container .header-right {
+.page-active-alarms .header-right {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: var(--active-space-2);
 }
 
-.active-alarms-container .header-actions {
+.page-active-alarms .header-actions {
   display: flex;
   gap: var(--active-space-2);
   align-items: center;
@@ -104,7 +101,7 @@
  * 긴급 알람 배너
  * ============================================================================ */
 
-.active-alarms-container .emergency-banner {
+.page-active-alarms .emergency-banner {
   background: linear-gradient(135deg, #ef4444, #dc2626);
   color: white;
   padding: var(--active-space-4) var(--active-space-6);
@@ -117,27 +114,27 @@
   animation: activeAlarmsPulseError 2s infinite;
 }
 
-.active-alarms-container .emergency-banner.hidden {
+.page-active-alarms .emergency-banner.hidden {
   display: none;
 }
 
-.active-alarms-container .emergency-icon {
+.page-active-alarms .emergency-icon {
   font-size: 2rem;
   animation: activeAlarmsShake 0.5s infinite;
 }
 
-.active-alarms-container .emergency-content h2 {
+.page-active-alarms .emergency-content h2 {
   margin: 0 0 var(--active-space-1) 0;
   font-size: 1.25rem;
   font-weight: 700;
 }
 
-.active-alarms-container .emergency-content p {
+.page-active-alarms .emergency-content p {
   margin: 0;
   opacity: 0.9;
 }
 
-.active-alarms-container .emergency-actions {
+.page-active-alarms .emergency-actions {
   margin-left: auto;
   display: flex;
   gap: var(--active-space-2);
@@ -147,7 +144,7 @@
  * 알람 통계 패널 - 5열 그리드
  * ============================================================================ */
 
-.active-alarms-container .alarm-stats-panel {
+.page-active-alarms .alarm-stats-panel {
   background: white;
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
@@ -159,7 +156,7 @@
   gap: var(--active-space-4);
 }
 
-.active-alarms-container .alarm-stat-card {
+.page-active-alarms .alarm-stat-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -171,43 +168,43 @@
   min-height: 80px;
 }
 
-.active-alarms-container .alarm-stat-card.critical {
+.page-active-alarms .alarm-stat-card.critical {
   background: linear-gradient(135deg, var(--active-critical-bg), white);
   border-color: var(--active-critical-color);
 }
 
-.active-alarms-container .alarm-stat-card.high {
+.page-active-alarms .alarm-stat-card.high {
   background: linear-gradient(135deg, var(--active-high-bg), white);
   border-color: var(--active-high-color);
 }
 
-.active-alarms-container .alarm-stat-card.medium {
+.page-active-alarms .alarm-stat-card.medium {
   background: linear-gradient(135deg, var(--active-medium-bg), white);
   border-color: var(--active-medium-color);
 }
 
-.active-alarms-container .alarm-stat-card.low {
+.page-active-alarms .alarm-stat-card.low {
   background: linear-gradient(135deg, var(--active-low-bg), white);
   border-color: var(--active-low-color);
 }
 
-.active-alarms-container .alarm-stat-card.unack {
+.page-active-alarms .alarm-stat-card.unack {
   background: linear-gradient(135deg, #f3f4f6, white);
   border-color: #8b5cf6;
 }
 
-.active-alarms-container .alarm-stat-card.has-alarms {
+.page-active-alarms .alarm-stat-card.has-alarms {
   transform: scale(1.02);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.active-alarms-container .alarm-stat-left {
+.page-active-alarms .alarm-stat-left {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 
-.active-alarms-container .alarm-stat-label {
+.page-active-alarms .alarm-stat-label {
   font-size: 0.875rem;
   color: #6b7280;
   font-weight: 500;
@@ -215,14 +212,14 @@
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .alarm-stat-value {
+.page-active-alarms .alarm-stat-value {
   font-size: 2rem;
   font-weight: 700;
   color: #111827;
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .alarm-stat-icon {
+.page-active-alarms .alarm-stat-icon {
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -234,13 +231,27 @@
   flex-shrink: 0;
 }
 
-.active-alarms-container .alarm-stat-icon.critical { background: var(--active-critical-color); }
-.active-alarms-container .alarm-stat-icon.high { background: var(--active-high-color); }
-.active-alarms-container .alarm-stat-icon.medium { background: var(--active-medium-color); }
-.active-alarms-container .alarm-stat-icon.low { background: var(--active-low-color); }
-.active-alarms-container .alarm-stat-icon.unack { background: #8b5cf6; }
+.page-active-alarms .alarm-stat-icon.critical {
+  background: var(--active-critical-color);
+}
 
-.active-alarms-container .alarm-stat-badge {
+.page-active-alarms .alarm-stat-icon.high {
+  background: var(--active-high-color);
+}
+
+.page-active-alarms .alarm-stat-icon.medium {
+  background: var(--active-medium-color);
+}
+
+.page-active-alarms .alarm-stat-icon.low {
+  background: var(--active-low-color);
+}
+
+.page-active-alarms .alarm-stat-icon.unack {
+  background: #8b5cf6;
+}
+
+.page-active-alarms .alarm-stat-badge {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -256,7 +267,7 @@
  * 실시간 제어 패널 - 텍스트 겹침 수정
  * ============================================================================ */
 
-.active-alarms-container .realtime-controls {
+.page-active-alarms .realtime-controls {
   background: white;
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
@@ -271,7 +282,7 @@
   min-height: 60px;
 }
 
-.active-alarms-container .realtime-status {
+.page-active-alarms .realtime-status {
   display: flex;
   align-items: center;
   gap: var(--active-space-4);
@@ -279,7 +290,7 @@
   min-width: 280px;
 }
 
-.active-alarms-container .live-indicator {
+.page-active-alarms .live-indicator {
   display: flex;
   align-items: center;
   gap: var(--active-space-2);
@@ -289,11 +300,11 @@
   min-width: 140px;
 }
 
-.active-alarms-container .live-indicator.active {
+.page-active-alarms .live-indicator.active {
   color: #10b981;
 }
 
-.active-alarms-container .live-dot {
+.page-active-alarms .live-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -302,12 +313,12 @@
   flex-shrink: 0;
 }
 
-.active-alarms-container .live-indicator.active .live-dot {
+.page-active-alarms .live-indicator.active .live-dot {
   background: #10b981;
   animation: activeAlarmsPulseSuccess 2s infinite;
 }
 
-.active-alarms-container .live-text {
+.page-active-alarms .live-text {
   font-size: 0.875rem;
   font-weight: 600;
   font-family: var(--active-font-family);
@@ -316,7 +327,7 @@
   text-overflow: ellipsis;
 }
 
-.active-alarms-container .last-update {
+.page-active-alarms .last-update {
   font-size: 0.75rem;
   color: #9ca3af;
   white-space: nowrap;
@@ -325,13 +336,13 @@
   text-align: left;
 }
 
-.active-alarms-container .sound-controls {
+.page-active-alarms .sound-controls {
   display: flex;
   align-items: center;
   gap: var(--active-space-2);
 }
 
-.active-alarms-container .sound-toggle {
+.page-active-alarms .sound-toggle {
   display: flex;
   align-items: center;
   gap: var(--active-space-2);
@@ -343,17 +354,17 @@
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .sound-toggle.enabled {
+.page-active-alarms .sound-toggle.enabled {
   background: #ecfdf5;
   color: #10b981;
 }
 
-.active-alarms-container .sound-toggle.disabled {
+.page-active-alarms .sound-toggle.disabled {
   background: #fef2f2;
   color: #ef4444;
 }
 
-.active-alarms-container .control-actions {
+.page-active-alarms .control-actions {
   display: flex;
   gap: var(--active-space-2);
   align-items: center;
@@ -363,7 +374,7 @@
  * 개선된 알람 테이블 - 핵심 개선사항
  * ============================================================================ */
 
-.active-alarms-container .alarms-table-container {
+.page-active-alarms .alarms-table-container {
   background: white;
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
@@ -372,17 +383,17 @@
   margin-bottom: var(--active-space-6);
 }
 
-.active-alarms-container .alarms-table {
+.page-active-alarms .alarms-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.active-alarms-container .alarms-table thead {
+.page-active-alarms .alarms-table thead {
   background: #f9fafb;
   border-bottom: 2px solid #e5e7eb;
 }
 
-.active-alarms-container .alarms-table th {
+.page-active-alarms .alarms-table th {
   padding: var(--active-space-4) var(--active-space-6);
   text-align: left;
   font-size: 0.75rem;
@@ -397,7 +408,7 @@
   z-index: 10;
 }
 
-.active-alarms-container .alarms-table td {
+.page-active-alarms .alarms-table td {
   padding: var(--active-space-4) var(--active-space-6);
   border-bottom: 1px solid #f1f5f9;
   font-family: var(--active-font-family);
@@ -408,35 +419,35 @@
  * 핵심 개선: 부드러운 테이블 행 스타일
  * ============================================================================ */
 
-.active-alarms-container .alarms-table tbody tr {
+.page-active-alarms .alarms-table tbody tr {
   background: white;
   border-left: 4px solid transparent;
   transition: all 0.2s ease;
 }
 
-.active-alarms-container .alarms-table tbody tr:hover {
+.page-active-alarms .alarms-table tbody tr:hover {
   background: #f8fafc;
 }
 
-/* 심각도별 좌측 보더만 사용 - 배경색 제거 */
-.active-alarms-container .alarms-table tbody tr.severity-critical {
-  border-left-color: var(--active-critical-color);
+/* 심각도별 좌측 보더만 사용 */
+.page-active-alarms .alarms-table tbody tr.severity-critical {
+  border-left: 4px solid var(--active-critical-color) !important;
 }
 
-.active-alarms-container .alarms-table tbody tr.severity-high {
-  border-left-color: var(--active-high-color);
+.page-active-alarms .alarms-table tbody tr.severity-high {
+  border-left: 4px solid var(--active-high-color) !important;
 }
 
-.active-alarms-container .alarms-table tbody tr.severity-medium {
+.page-active-alarms .alarms-table tbody tr.severity-medium {
   border-left-color: var(--active-medium-color);
 }
 
-.active-alarms-container .alarms-table tbody tr.severity-low {
+.page-active-alarms .alarms-table tbody tr.severity-low {
   border-left-color: var(--active-low-color);
 }
 
 /* 새 알람 강조 - 부드러운 효과 */
-.active-alarms-container .alarms-table tbody tr.new-alarm-row {
+.page-active-alarms .alarms-table tbody tr.new-alarm-row {
   background: linear-gradient(90deg, #fefce8, transparent);
   border-left-color: #f59e0b;
   animation: activeAlarmsNewAlarmPulse 2s ease-in-out;
@@ -446,44 +457,66 @@
  * 부드러운 심각도 뱃지
  * ============================================================================ */
 
-.active-alarms-container .severity-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--active-space-2);
-  padding: var(--active-space-2) var(--active-space-3);
-  border-radius: 16px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  font-family: var(--active-font-family);
-  min-width: 90px;
-  justify-content: center;
+/* mgmt-status-pill 색상 복구 */
+.page-active-alarms .mgmt-status-pill.critical {
+  background: var(--active-critical-bg) !important;
+  color: var(--active-critical-color) !important;
+  border: 1px solid var(--active-critical-border) !important;
 }
 
-.active-alarms-container .severity-badge.severity-critical {
-  background: var(--active-critical-bg);
-  color: var(--active-critical-color);
-  border: 1px solid var(--active-critical-border);
+.page-active-alarms .mgmt-status-pill.high {
+  background: var(--active-high-bg) !important;
+  color: var(--active-high-color) !important;
+  border: 1px solid var(--active-high-border) !important;
 }
 
-.active-alarms-container .severity-badge.severity-high {
-  background: var(--active-high-bg);
-  color: var(--active-high-color);
-  border: 1px solid var(--active-high-border);
+.page-active-alarms .mgmt-status-pill.medium {
+  background: var(--active-medium-bg) !important;
+  color: var(--active-medium-color) !important;
+  border: 1px solid var(--active-medium-border) !important;
 }
 
-.active-alarms-container .severity-badge.severity-medium {
-  background: var(--active-medium-bg);
-  color: var(--active-medium-color);
-  border: 1px solid var(--active-medium-border);
+.page-active-alarms .mgmt-status-pill.low {
+  background: var(--active-low-bg) !important;
+  color: var(--active-low-color) !important;
+  border: 1px solid var(--active-low-border) !important;
 }
 
-.active-alarms-container .severity-badge.severity-low {
-  background: var(--active-low-bg);
-  color: var(--active-low-color);
-  border: 1px solid var(--active-low-border);
+/* Explicitly style Error (Active) and Active (Confirmed) states to match Severity badges */
+/* Explicitly style Error (Active) and Active (Confirmed) states to match Severity badges */
+.page-active-alarms .mgmt-status-pill.error {
+  background: var(--active-critical-bg) !important;
+  color: var(--active-critical-color) !important;
+  border: 1px solid var(--active-critical-border) !important;
+  padding: 2px 10px !important;
+  /* Force consistent size */
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  border-radius: 9999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 60px !important;
+  /* Ensure minimum width for balance */
 }
 
-.active-alarms-container .severity-badge .new-badge {
+.page-active-alarms .mgmt-status-pill.active {
+  background: var(--active-acknowledged-bg) !important;
+  color: #059669 !important;
+  /* Acknowledged/Greenish */
+  border: 1px solid #d1fae5 !important;
+  padding: 2px 10px !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  border-radius: 9999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 60px !important;
+  /* Ensure minimum width for balance */
+}
+
+.page-active-alarms .severity-badge .new-badge {
   background: #f59e0b;
   color: white;
   padding: 2px 6px;
@@ -498,7 +531,7 @@
  * 상태 뱃지
  * ============================================================================ */
 
-.active-alarms-container .state-badge {
+.page-active-alarms .state-badge {
   display: inline-flex;
   align-items: center;
   padding: var(--active-space-1) var(--active-space-3);
@@ -508,17 +541,17 @@
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .state-badge.state-active {
+.page-active-alarms .state-badge.state-active {
   background: var(--active-critical-bg);
   color: var(--active-critical-color);
 }
 
-.active-alarms-container .state-badge.state-acknowledged {
+.page-active-alarms .state-badge.state-acknowledged {
   background: var(--active-acknowledged-bg);
   color: var(--active-acknowledged-color);
 }
 
-.active-alarms-container .state-badge.state-cleared {
+.page-active-alarms .state-badge.state-cleared {
   background: #f3f4f6;
   color: #6b7280;
 }
@@ -527,7 +560,7 @@
  * 테이블 내용 스타일
  * ============================================================================ */
 
-.active-alarms-container .alarm-message .message-text {
+.page-active-alarms .alarm-message .message-text {
   font-size: 0.875rem;
   font-weight: 500;
   color: #111827;
@@ -535,13 +568,13 @@
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .alarm-message .message-description {
+.page-active-alarms .alarm-message .message-description {
   font-size: 0.75rem;
   color: #6b7280;
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .device-info .device-name {
+.page-active-alarms .device-info .device-name {
   font-size: 0.875rem;
   font-weight: 500;
   color: #111827;
@@ -549,31 +582,31 @@
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .device-info .data-point-name {
+.page-active-alarms .device-info .data-point-name {
   font-size: 0.75rem;
   color: #6b7280;
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .triggered-value {
+.page-active-alarms .triggered-value {
   font-size: 0.875rem;
   font-family: 'Courier New', monospace;
 }
 
-.active-alarms-container .timestamp {
+.page-active-alarms .timestamp {
   font-size: 0.875rem;
   color: #374151;
   font-family: 'Courier New', monospace;
 }
 
-.active-alarms-container .duration {
+.page-active-alarms .duration {
   font-size: 0.75rem;
   color: #6b7280;
   font-weight: 500;
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .ack-info {
+.page-active-alarms .ack-info {
   margin-top: var(--active-space-1);
   font-size: 0.75rem;
   color: #6b7280;
@@ -584,7 +617,7 @@
  * 실시간 상태 표시
  * ============================================================================ */
 
-.active-alarms-container .realtime-status {
+.page-active-alarms .realtime-status {
   display: inline-flex;
   align-items: center;
   gap: var(--active-space-2);
@@ -595,27 +628,60 @@
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .realtime-status.connected {
+.page-active-alarms .realtime-status.connected {
   background: #f0fdf4;
   color: #16a34a;
 }
 
-.active-alarms-container .realtime-status.connecting {
+.page-active-alarms .realtime-status.connecting {
   background: #fefce8;
   color: #ca8a04;
 }
 
-.active-alarms-container .realtime-status.error {
+.page-active-alarms .realtime-status.error {
   background: #fef2f2;
   color: #dc2626;
 }
 
-.active-alarms-container .realtime-status.disconnected {
+.page-active-alarms .realtime-status.disconnected {
   background: #f3f4f6;
   color: #6b7280;
 }
 
-.active-alarms-container .new-alarms-indicator {
+/* status-pill - ActiveAlarms.tsx 호환성 */
+.page-active-alarms .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--active-space-2);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--active-font-family);
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.page-active-alarms .status-pill.active {
+  background: #f0fdf4;
+  color: #16a34a;
+  border-color: #bbf7d0;
+}
+
+.page-active-alarms .status-pill.error {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.page-active-alarms .status-pill.connecting {
+  background: #fefce8;
+  color: #ca8a04;
+  border-color: #fef08a;
+  animation: activeAlarmsPulse 2s infinite;
+}
+
+.page-active-alarms .new-alarms-indicator {
   margin-left: var(--active-space-2);
   background: #f59e0b;
   color: white;
@@ -630,7 +696,7 @@
  * 버튼 스타일
  * ============================================================================ */
 
-.active-alarms-container .btn {
+.page-active-alarms .btn {
   display: inline-flex;
   align-items: center;
   gap: var(--active-space-2);
@@ -644,62 +710,62 @@
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .btn:disabled {
+.page-active-alarms .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.active-alarms-container .btn.btn-sm {
+.page-active-alarms .btn.btn-sm {
   padding: var(--active-space-1) var(--active-space-2);
   font-size: 0.75rem;
   border-radius: 6px;
 }
 
-.active-alarms-container .btn.btn-success {
+.page-active-alarms .btn.btn-success {
   background: #10b981;
   color: white;
   border: none;
 }
 
-.active-alarms-container .btn.btn-success:hover:not(:disabled) {
+.page-active-alarms .btn.btn-success:hover:not(:disabled) {
   background: #059669;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
-.active-alarms-container .btn.btn-warning {
+.page-active-alarms .btn.btn-warning {
   background: #f59e0b;
   color: white;
   border: none;
 }
 
-.active-alarms-container .btn.btn-warning:hover:not(:disabled) {
+.page-active-alarms .btn.btn-warning:hover:not(:disabled) {
   background: #d97706;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
 }
 
-.active-alarms-container .btn.btn-secondary {
+.page-active-alarms .btn.btn-secondary {
   background: #f3f4f6;
   color: #374151;
   border: 1px solid #d1d5db;
 }
 
-.active-alarms-container .btn.btn-secondary:hover:not(:disabled) {
+.page-active-alarms .btn.btn-secondary:hover:not(:disabled) {
   background: #e5e7eb;
 }
 
-.active-alarms-container .btn.btn-primary {
+.page-active-alarms .btn.btn-primary {
   background: #3b82f6;
   color: white;
   border: none;
 }
 
-.active-alarms-container .btn.btn-primary:hover:not(:disabled) {
+.page-active-alarms .btn.btn-primary:hover:not(:disabled) {
   background: #2563eb;
 }
 
-.active-alarms-container .btn-critical {
+.page-active-alarms .btn-critical {
   background: rgba(255, 255, 255, 0.2);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -709,133 +775,61 @@
   transition: all 0.2s;
 }
 
-.active-alarms-container .btn-critical:hover {
+.page-active-alarms .btn-critical:hover {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.active-alarms-container .alarm-actions {
+.page-active-alarms .alarm-actions {
   display: flex;
   gap: var(--active-space-1);
   align-items: center;
 }
 
-/* ============================================================================
- * 모달 스타일
- * ============================================================================ */
-
-.active-alarms-container .modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
+/* btn-action - 확인/해제 버튼 크기 축소 */
+.page-active-alarms .mgmt-btn.btn-action {
+  height: 24px !important;
+  line-height: 22px !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+  border-radius: 4px !important;
+  font-weight: 600 !important;
+  min-width: 44px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
-.active-alarms-container .modal-content {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  width: 100%;
-  max-width: 500px;
-  margin: var(--active-space-4);
+.page-active-alarms .mgmt-btn-primary.btn-action {
+  background: #3b82f6 !important;
+  color: white !important;
+  border: none !important;
 }
 
-.active-alarms-container .modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--active-space-6);
-  border-bottom: 1px solid #e5e7eb;
+.page-active-alarms .mgmt-btn-outline.btn-action {
+  background: white !important;
+  color: #3b82f6 !important;
+  border: 1px solid #3b82f6 !important;
 }
 
-.active-alarms-container .modal-header h3 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #111827;
-  font-family: var(--active-font-family);
+.page-active-alarms .mgmt-btn.btn-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
 }
 
-.active-alarms-container .modal-header button {
-  background: none;
-  border: none;
-  color: #6b7280;
-  cursor: pointer;
-  padding: var(--active-space-1);
-  border-radius: 4px;
-  transition: all 0.2s ease;
-}
 
-.active-alarms-container .modal-header button:hover {
-  background: #f3f4f6;
-  color: #374151;
-}
 
-.active-alarms-container .modal-body {
-  padding: var(--active-space-6);
-}
 
-.active-alarms-container .alarm-summary {
-  margin-bottom: var(--active-space-4);
-  padding: var(--active-space-4);
-  background: #f8fafc;
-  border-radius: 8px;
-}
-
-.active-alarms-container .form-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--active-space-2);
-}
-
-.active-alarms-container .form-group label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #374151;
-  font-family: var(--active-font-family);
-}
-
-.active-alarms-container .form-group textarea {
-  padding: var(--active-space-3);
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-family: var(--active-font-family);
-  resize: vertical;
-  min-height: 80px;
-  transition: border-color 0.2s ease;
-}
-
-.active-alarms-container .form-group textarea:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.active-alarms-container .modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--active-space-3);
-  padding: var(--active-space-6);
-  border-top: 1px solid #e5e7eb;
-}
 
 /* ============================================================================
  * 알람 목록 (카드뷰가 있는 경우)
  * ============================================================================ */
 
-.active-alarms-container .alarms-list {
+.page-active-alarms .alarms-list {
   max-height: 600px;
   overflow-y: auto;
 }
 
-.active-alarms-container .alarm-item {
+.page-active-alarms .alarm-item {
   background: white;
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
@@ -846,52 +840,52 @@
   transition: all 0.3s ease-out;
 }
 
-.active-alarms-container .alarm-item:last-child {
+.page-active-alarms .alarm-item:last-child {
   border-bottom: none;
 }
 
-.active-alarms-container .alarm-item:hover {
+.page-active-alarms .alarm-item:hover {
   background: #f9fafb;
 }
 
-.active-alarms-container .alarm-item.new {
+.page-active-alarms .alarm-item.new {
   background: linear-gradient(90deg, #fef3c7, transparent);
   border-left: 4px solid #f59e0b;
 }
 
-.active-alarms-container .alarm-item.acknowledged {
+.page-active-alarms .alarm-item.acknowledged {
   opacity: 0.7;
   background: #f3f4f6;
 }
 
-.active-alarms-container .alarm-item.critical {
+.page-active-alarms .alarm-item.critical {
   border-left: 4px solid var(--active-critical-color);
 }
 
-.active-alarms-container .alarm-item.high {
+.page-active-alarms .alarm-item.high {
   border-left: 4px solid var(--active-high-color);
 }
 
-.active-alarms-container .alarm-item.medium {
+.page-active-alarms .alarm-item.medium {
   border-left: 4px solid var(--active-medium-color);
 }
 
-.active-alarms-container .alarm-item.low {
+.page-active-alarms .alarm-item.low {
   border-left: 4px solid var(--active-low-color);
 }
 
-.active-alarms-container .alarm-checkbox {
+.page-active-alarms .alarm-checkbox {
   position: absolute;
   top: var(--active-space-4);
   left: var(--active-space-4);
 }
 
-.active-alarms-container .alarm-checkbox input {
+.page-active-alarms .alarm-checkbox input {
   width: 16px;
   height: 16px;
 }
 
-.active-alarms-container .alarm-header {
+.page-active-alarms .alarm-header {
   display: flex;
   align-items: flex-start;
   gap: var(--active-space-6);
@@ -899,14 +893,14 @@
   margin-left: 2rem;
 }
 
-.active-alarms-container .alarm-priority {
+.page-active-alarms .alarm-priority {
   display: flex;
   align-items: center;
   gap: var(--active-space-2);
   min-width: 100px;
 }
 
-.active-alarms-container .priority-indicator {
+.page-active-alarms .priority-indicator {
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -917,19 +911,19 @@
   font-size: 0.75rem;
 }
 
-.active-alarms-container .priority-text {
+.page-active-alarms .priority-text {
   font-size: 0.75rem;
   font-weight: 600;
   color: #374151;
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .alarm-source {
+.page-active-alarms .alarm-source {
   flex: 1;
   min-width: 0;
 }
 
-.active-alarms-container .source-name {
+.page-active-alarms .source-name {
   font-size: 1rem;
   font-weight: 600;
   color: #111827;
@@ -938,42 +932,42 @@
   word-break: break-word;
 }
 
-.active-alarms-container .source-location {
+.page-active-alarms .source-location {
   font-size: 0.875rem;
   color: #6b7280;
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .alarm-time {
+.page-active-alarms .alarm-time {
   text-align: right;
   min-width: 150px;
 }
 
-.active-alarms-container .triggered-time {
+.page-active-alarms .triggered-time {
   font-size: 0.875rem;
   color: #374151;
   margin-bottom: var(--active-space-1);
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .alarm-status {
+.page-active-alarms .alarm-status {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: var(--active-space-1);
 }
 
-.active-alarms-container .status-badge.active {
+.page-active-alarms .status-badge.active {
   background: var(--active-critical-bg);
   color: var(--active-critical-color);
 }
 
-.active-alarms-container .status-badge.acknowledged {
+.page-active-alarms .status-badge.acknowledged {
   background: #f0fdf4;
   color: #16a34a;
 }
 
-.active-alarms-container .new-badge {
+.page-active-alarms .new-badge {
   background: #fbbf24;
   color: white;
   padding: 2px 6px;
@@ -987,7 +981,7 @@
  * 상태바 및 기타
  * ============================================================================ */
 
-.active-alarms-container .status-bar {
+.page-active-alarms .status-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1001,20 +995,20 @@
   font-family: var(--active-font-family);
 }
 
-.active-alarms-container .status-info {
+.page-active-alarms .status-info {
   display: flex;
   align-items: center;
   gap: var(--active-space-4);
 }
 
-.active-alarms-container .processing-indicator {
+.page-active-alarms .processing-indicator {
   display: flex;
   align-items: center;
   gap: var(--active-space-1);
   color: #3b82f6;
 }
 
-.active-alarms-container .error-alert {
+.page-active-alarms .error-alert {
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #991b1b;
@@ -1026,7 +1020,7 @@
   gap: var(--active-space-3);
 }
 
-.active-alarms-container .error-alert button {
+.page-active-alarms .error-alert button {
   background: none;
   border: none;
   color: #991b1b;
@@ -1039,34 +1033,86 @@
  * ============================================================================ */
 
 @keyframes activeAlarmsPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
 }
 
 @keyframes activeAlarmsPulseError {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.8; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
 }
 
 @keyframes activeAlarmsPulseSuccess {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
 }
 
 @keyframes activeAlarmsFadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes activeAlarmsShake {
-  0%, 100% { transform: translateX(0); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
-  20%, 40%, 60%, 80% { transform: translateX(2px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-2px);
+  }
+
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(2px);
+  }
 }
 
 @keyframes activeAlarmsNewAlarmPulse {
-  0%, 100% { box-shadow: none; }
-  50% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.3); }
+
+  0%,
+  100% {
+    box-shadow: none;
+  }
+
+  50% {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+  }
 }
 
 /* ============================================================================
@@ -1074,82 +1120,82 @@
  * ============================================================================ */
 
 @media (max-width: 1400px) {
-  .active-alarms-container .alarm-stats-panel {
+  .page-active-alarms .alarm-stats-panel {
     grid-template-columns: repeat(4, 1fr);
   }
 }
 
 @media (max-width: 1200px) {
-  .active-alarms-container .alarm-stats-panel {
+  .page-active-alarms .alarm-stats-panel {
     grid-template-columns: repeat(3, 1fr);
   }
 }
 
 @media (max-width: 768px) {
-  .active-alarms-container {
+  .page-active-alarms {
     padding: var(--active-space-4);
   }
-  
-  .active-alarms-container .alarm-stats-panel {
+
+  .page-active-alarms .alarm-stats-panel {
     grid-template-columns: repeat(2, 1fr);
   }
-  
-  .active-alarms-container .page-header {
+
+  .page-active-alarms .page-header {
     flex-direction: column;
     gap: var(--active-space-4);
   }
-  
-  .active-alarms-container .header-actions {
+
+  .page-active-alarms .header-actions {
     align-self: stretch;
     justify-content: space-between;
   }
-  
-  .active-alarms-container .alarms-table th,
-  .active-alarms-container .alarms-table td {
+
+  .page-active-alarms .alarms-table th,
+  .page-active-alarms .alarms-table td {
     padding: var(--active-space-2) var(--active-space-3);
   }
-  
-  .active-alarms-container .alarm-stat-value {
+
+  .page-active-alarms .alarm-stat-value {
     font-size: 1.5rem;
   }
-  
-  .active-alarms-container .realtime-controls {
+
+  .page-active-alarms .realtime-controls {
     flex-direction: column;
     align-items: stretch;
     gap: var(--active-space-3);
   }
-  
-  .active-alarms-container .realtime-status {
+
+  .page-active-alarms .realtime-status {
     min-width: unset;
     justify-content: space-between;
   }
 }
 
 @media (max-width: 480px) {
-  .active-alarms-container .alarm-stats-panel {
+  .page-active-alarms .alarm-stats-panel {
     grid-template-columns: 1fr;
   }
-  
-  .active-alarms-container .header-actions {
+
+  .page-active-alarms .header-actions {
     flex-direction: column;
     gap: var(--active-space-2);
   }
-  
-  .active-alarms-container .alarms-table {
+
+  .page-active-alarms .alarms-table {
     font-size: 0.75rem;
   }
-  
-  .active-alarms-container .severity-badge {
+
+  .page-active-alarms .severity-badge {
     min-width: 70px;
     font-size: 0.625rem;
   }
-  
-  .active-alarms-container .live-indicator {
+
+  .page-active-alarms .live-indicator {
     min-width: unset;
     flex-wrap: wrap;
   }
-  
-  .active-alarms-container .last-update {
+
+  .page-active-alarms .last-update {
     min-width: unset;
     text-align: center;
   }

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { StatCard } from '../components/common/StatCard';
+import { Pagination } from '../components/common/Pagination';
 import '../styles/base.css';
 import '../styles/management.css';
 
@@ -313,19 +315,21 @@ const BackupRestore: React.FC = () => {
   ];
 
   return (
-    <div className="user-management-container">
+    <div className="management-container">
       {/* 페이지 헤더 */}
-      <div className="page-header">
-        <h1 className="page-title">백업 및 복원</h1>
-        <div className="page-actions">
+      <div className="mgmt-header">
+        <h1 className="mgmt-title">
+          <i className="fas fa-archive"></i> 백업 및 복원
+        </h1>
+        <div className="mgmt-header-actions">
           <button
-            className="btn btn-primary"
+            className="mgmt-btn mgmt-btn-primary"
             onClick={() => setShowBackupModal(true)}
           >
             <i className="fas fa-plus"></i>
             즉시 백업
           </button>
-          <button className="btn btn-outline">
+          <button className="mgmt-btn mgmt-btn-outline">
             <i className="fas fa-upload"></i>
             백업 업로드
           </button>
@@ -333,67 +337,41 @@ const BackupRestore: React.FC = () => {
       </div>
 
       {/* 백업 상태 요약 */}
-      <div className="user-stats-panel mb-6">
-        <div className="stat-card">
-          <div className="stat-icon">
-            <i className="fas fa-database text-primary-600"></i>
-          </div>
-          <div className="stat-value">{backupRecords.length}</div>
-          <div className="stat-label">총 백업</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <i className="fas fa-check-circle text-success-600"></i>
-          </div>
-          <div className="stat-value">{backupRecords.filter(b => b.status === 'completed').length}</div>
-          <div className="stat-label">성공</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <i className="fas fa-hdd text-warning-600"></i>
-          </div>
-          <div className="stat-value">
-            {formatBytes(backupRecords.reduce((sum, b) => sum + b.size, 0))}
-          </div>
-          <div className="stat-label">총 용량</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon">
-            <i className="fas fa-clock text-primary-600"></i>
-          </div>
-          <div className="stat-value">{scheduledBackups.filter(s => s.enabled).length}</div>
-          <div className="stat-label">예약된 백업</div>
-        </div>
+      <div className="mgmt-stats-panel mb-6">
+        <StatCard title="총 백업" value={backupRecords.length} icon="fas fa-database" type="primary" />
+        <StatCard title="성공" value={backupRecords.filter(b => b.status === 'completed').length} icon="fas fa-check-circle" type="success" />
+        <StatCard title="총 용량" value={formatBytes(backupRecords.reduce((sum, b) => sum + b.size, 0))} icon="fas fa-hdd" type="blueprint" />
+        <StatCard title="예약된 백업" value={scheduledBackups.filter(s => s.enabled).length} icon="fas fa-clock" type="primary" />
       </div>
 
       {/* 탭 네비게이션 */}
-      <div className="tab-navigation">
+      <div className="mgmt-tab-navigation">
         <button
-          className={`tab-button ${activeTab === 'backups' ? 'active' : ''}`}
+          className={`mgmt-tab-button ${activeTab === 'backups' ? 'active' : ''}`}
           onClick={() => setActiveTab('backups')}
         >
           <i className="fas fa-archive"></i>
           백업 목록
-          <span className="tab-badge">{backupRecords.length}</span>
+          <span className="mgmt-tab-badge">{backupRecords.length}</span>
         </button>
         <button
-          className={`tab-button ${activeTab === 'schedule' ? 'active' : ''}`}
+          className={`mgmt-tab-button ${activeTab === 'schedule' ? 'active' : ''}`}
           onClick={() => setActiveTab('schedule')}
         >
           <i className="fas fa-calendar-alt"></i>
           예약 백업
-          <span className="tab-badge">{scheduledBackups.length}</span>
+          <span className="mgmt-tab-badge">{scheduledBackups.length}</span>
         </button>
         <button
-          className={`tab-button ${activeTab === 'restore' ? 'active' : ''}`}
+          className={`mgmt-tab-button ${activeTab === 'restore' ? 'active' : ''}`}
           onClick={() => setActiveTab('restore')}
         >
           <i className="fas fa-undo"></i>
           복원 작업
-          <span className="tab-badge">{restoreJobs.length}</span>
+          <span className="mgmt-tab-badge">{restoreJobs.length}</span>
         </button>
         <button
-          className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`}
+          className={`mgmt-tab-button ${activeTab === 'settings' ? 'active' : ''}`}
           onClick={() => setActiveTab('settings')}
         >
           <i className="fas fa-cog"></i>
@@ -403,208 +381,163 @@ const BackupRestore: React.FC = () => {
 
       {/* 백업 목록 탭 */}
       {activeTab === 'backups' && (
-        <div className="users-management">
-          <div className="users-header">
-            <h2 className="users-title">백업 목록</h2>
-            <div className="users-actions">
+        <div className="mgmt-content-area">
+          <div className="mgmt-card-header">
+            <h2 className="mgmt-card-title">백업 목록</h2>
+            <div className="mgmt-card-actions">
               <span className="text-sm text-neutral-600">
                 총 {backupRecords.length}개 백업
               </span>
             </div>
           </div>
 
-          <div className="users-table">
-            <div className="table-header">
-              <div className="header-cell">백업명</div>
-              <div className="header-cell">타입</div>
-              <div className="header-cell">상태</div>
-              <div className="header-cell">크기</div>
-              <div className="header-cell">생성일</div>
-              <div className="header-cell">소요시간</div>
-              <div className="header-cell">위치</div>
-              <div className="header-cell">액션</div>
-            </div>
+          <div className="mgmt-table-container">
+            <table className="mgmt-table">
+              <thead>
+                <tr>
+                  <th>백업명</th>
+                  <th>타입</th>
+                  <th>상태</th>
+                  <th>크기</th>
+                  <th>생성일</th>
+                  <th>소요시간</th>
+                  <th>위치</th>
+                  <th>액션</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentBackups.map(backup => (
+                  <tr key={backup.id} className="mgmt-table-row">
+                    <td>
+                      <div className="mgmt-user-name" style={{ fontWeight: 600 }}>{backup.name}</div>
+                      <div className="mgmt-user-email" style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>{backup.description}</div>
+                      <div className="mgmt-user-id" style={{ fontSize: '11px', color: 'var(--neutral-400)' }}>
+                        {backup.includedComponents.join(', ')}
+                      </div>
+                    </td>
 
-            {currentBackups.map(backup => (
-              <div key={backup.id} className="table-row">
-                <div className="table-cell" data-label="백업명">
-                  <div className="user-name">{backup.name}</div>
-                  <div className="user-email">{backup.description}</div>
-                  <div className="user-id">
-                    {backup.includedComponents.join(', ')}
-                  </div>
-                </div>
+                    <td>
+                      <span className={`mgmt-badge ${backup.type === 'full' ? 'success' :
+                        backup.type === 'incremental' ? 'primary' : 'neutral'
+                        }`}>
+                        {backup.type === 'full' ? '전체' :
+                          backup.type === 'incremental' ? '증분' : '차등'}
+                      </span>
+                    </td>
 
-                <div className="table-cell" data-label="타입">
-                  <span className={`role-badge ${backup.type === 'full' ? 'role-admin' :
-                      backup.type === 'incremental' ? 'role-engineer' : 'role-manager'
-                    }`}>
-                    {backup.type === 'full' ? '전체' :
-                      backup.type === 'incremental' ? '증분' : '차등'}
-                  </span>
-                </div>
+                    <td>
+                      <div className="mgmt-status-indicator">
+                        <i className={`fas ${getStatusIcon(backup.status)}`}></i>
+                        <span className="mgmt-status-text">
+                          {backup.status === 'completed' ? '완료' :
+                            backup.status === 'running' ? '진행중' :
+                              backup.status === 'failed' ? '실패' : '예약됨'}
+                        </span>
+                      </div>
+                    </td>
 
-                <div className="table-cell" data-label="상태">
-                  <div className="status-indicator">
-                    <i className={`fas ${getStatusIcon(backup.status)}`}></i>
-                    <span className="status-text">
-                      {backup.status === 'completed' ? '완료' :
-                        backup.status === 'running' ? '진행중' :
-                          backup.status === 'failed' ? '실패' : '예약됨'}
-                    </span>
-                  </div>
-                </div>
+                    <td>
+                      <div className="text-neutral-700">{formatBytes(backup.size)}</div>
+                      <div className="text-xs text-neutral-500">
+                        {backup.compression && <span>압축됨</span>}
+                        {backup.encryption && <span> • 암호화됨</span>}
+                      </div>
+                    </td>
 
-                <div className="table-cell" data-label="크기">
-                  <div className="text-neutral-700">{formatBytes(backup.size)}</div>
-                  <div className="text-xs text-neutral-500">
-                    {backup.compression && <span>압축됨</span>}
-                    {backup.encryption && <span> • 암호화됨</span>}
-                  </div>
-                </div>
+                    <td>
+                      <div className="text-sm">
+                        {backup.createdAt.toLocaleString()}
+                      </div>
+                      <div className="text-xs text-neutral-400">
+                        by {backup.createdBy}
+                      </div>
+                    </td>
 
-                <div className="table-cell" data-label="생성일">
-                  <div className="last-login-time">
-                    {backup.createdAt.toLocaleString()}
-                  </div>
-                  <div className="login-count">
-                    by {backup.createdBy}
-                  </div>
-                </div>
+                    <td>
+                      <div className="text-neutral-700">
+                        {backup.duration ? formatDuration(backup.duration) : '-'}
+                      </div>
+                    </td>
 
-                <div className="table-cell" data-label="소요시간">
-                  <div className="text-neutral-700">
-                    {backup.duration ? formatDuration(backup.duration) : '-'}
-                  </div>
-                </div>
+                    <td>
+                      <div className="text-neutral-700 font-mono text-xs">
+                        {backup.location}
+                      </div>
+                    </td>
 
-                <div className="table-cell" data-label="위치">
-                  <div className="text-neutral-700 font-mono text-xs">
-                    {backup.location}
-                  </div>
-                </div>
-
-                <div className="table-cell action-cell" data-label="액션">
-                  <div className="action-buttons">
-                    {backup.status === 'completed' && (
-                      <button
-                        className="btn btn-sm btn-success"
-                        onClick={() => handleRestoreFromBackup(backup)}
-                        title="복원"
-                      >
-                        <i className="fas fa-undo"></i>
-                      </button>
-                    )}
-                    <button
-                      className="btn btn-sm btn-outline"
-                      onClick={() => {
-                        alert('백업 파일을 다운로드합니다.');
-                      }}
-                      title="다운로드"
-                    >
-                      <i className="fas fa-download"></i>
-                    </button>
-                    <button
-                      className="btn btn-sm btn-error"
-                      onClick={() => handleDeleteBackup(backup.id)}
-                      title="삭제"
-                    >
-                      <i className="fas fa-trash"></i>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+                    <td className="mgmt-action-cell">
+                      <div className="mgmt-card-actions">
+                        {backup.status === 'completed' && (
+                          <button
+                            className="mgmt-btn-icon"
+                            onClick={() => handleRestoreFromBackup(backup)}
+                            title="복원"
+                          >
+                            <i className="fas fa-undo"></i>
+                          </button>
+                        )}
+                        <button
+                          className="mgmt-btn-icon"
+                          onClick={() => {
+                            alert('백업 파일을 다운로드합니다.');
+                          }}
+                          title="다운로드"
+                        >
+                          <i className="fas fa-download"></i>
+                        </button>
+                        <button
+                          className="mgmt-btn-icon mgmt-btn-error"
+                          onClick={() => handleDeleteBackup(backup.id)}
+                          title="삭제"
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          {/* 페이지네이션 */}
-          {backupRecords.length > 0 && (
-            <div className="pagination-container">
-              <div className="pagination-info">
-                {startIndex + 1}-{Math.min(endIndex, backupRecords.length)} / {backupRecords.length} 항목
-              </div>
-
-              <div className="pagination-controls">
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="page-size-select"
-                >
-                  <option value={10}>10개씩</option>
-                  <option value={20}>20개씩</option>
-                  <option value={50}>50개씩</option>
-                </select>
-
-                <button
-                  className="btn btn-sm"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(1)}
-                >
-                  <i className="fas fa-angle-double-left"></i>
-                </button>
-                <button
-                  className="btn btn-sm"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(prev => prev - 1)}
-                >
-                  <i className="fas fa-angle-left"></i>
-                </button>
-
-                <span className="page-info">
-                  {currentPage} / {Math.ceil(backupRecords.length / pageSize)}
-                </span>
-
-                <button
-                  className="btn btn-sm"
-                  disabled={currentPage === Math.ceil(backupRecords.length / pageSize)}
-                  onClick={() => setCurrentPage(prev => prev + 1)}
-                >
-                  <i className="fas fa-angle-right"></i>
-                </button>
-                <button
-                  className="btn btn-sm"
-                  disabled={currentPage === Math.ceil(backupRecords.length / pageSize)}
-                  onClick={() => setCurrentPage(Math.ceil(backupRecords.length / pageSize))}
-                >
-                  <i className="fas fa-angle-double-right"></i>
-                </button>
-              </div>
-            </div>
-          )}
+          <Pagination
+            current={currentPage}
+            total={backupRecords.length}
+            pageSize={pageSize}
+            onChange={setCurrentPage}
+            onShowSizeChange={(_, size) => setPageSize(size)}
+          />
         </div>
       )}
 
       {/* 예약 백업 탭 */}
       {activeTab === 'schedule' && (
-        <div className="users-management">
-          <div className="users-header">
-            <h2 className="users-title">예약된 백업</h2>
-            <div className="users-actions">
-              <button className="btn btn-primary">
+        <div className="mgmt-content-area">
+          <div className="mgmt-card-header">
+            <h2 className="mgmt-card-title">예약된 백업</h2>
+            <div className="mgmt-card-actions">
+              <button className="mgmt-btn mgmt-btn-primary">
                 <i className="fas fa-plus"></i>
                 새 예약 백업
               </button>
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="mgmt-grid" style={{ gap: '1.5rem', marginTop: '1rem' }}>
             {scheduledBackups.map(schedule => (
-              <div key={schedule.id} className="bg-white rounded-lg shadow-sm border border-neutral-200 p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
-                      <i className="fas fa-calendar-alt text-primary-600"></i>
+              <div key={schedule.id} className="mgmt-card" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ width: '48px', height: '48px', background: 'var(--primary-50)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <i className="fas fa-calendar-alt" style={{ color: 'var(--primary-600)', fontSize: '1.25rem' }}></i>
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-neutral-800">{schedule.name}</h3>
-                      <div className="flex items-center gap-2">
-                        <span className={`role-badge ${schedule.type === 'full' ? 'role-admin' : 'role-engineer'}`}>
+                      <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--neutral-800)', margin: 0 }}>{schedule.name}</h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                        <span className={`mgmt-badge ${schedule.type === 'full' ? 'success' : 'primary'}`}>
                           {schedule.type === 'full' ? '전체' : '증분'}
                         </span>
-                        <span className="text-sm text-neutral-600">
+                        <span style={{ fontSize: '0.875rem', color: 'var(--neutral-600)' }}>
                           {schedule.schedule.frequency === 'daily' ? '매일' :
                             schedule.schedule.frequency === 'weekly' ? '매주' : '매월'}
                           {' '}{schedule.schedule.time}
@@ -612,50 +545,47 @@ const BackupRestore: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <label className="status-toggle">
-                      <input
-                        type="checkbox"
-                        checked={schedule.enabled}
-                        onChange={() => handleToggleScheduledBackup(schedule.id)}
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
-                    <button className="btn btn-sm btn-outline">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className="mgmt-status-indicator">
+                      <span style={{ fontSize: '0.875rem', fontWeight: 600, color: schedule.enabled ? 'var(--success-600)' : 'var(--neutral-400)' }}>
+                        {schedule.enabled ? '활성' : '비활성'}
+                      </span>
+                    </div>
+                    <button className="mgmt-btn mgmt-btn-outline" style={{ height: '32px', padding: '0 12px' }}>
                       <i className="fas fa-edit"></i>
                       편집
                     </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="mgmt-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', background: 'var(--neutral-50)', padding: '1rem', borderRadius: '8px' }}>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">다음 실행</label>
-                    <div className="text-sm text-neutral-800">
+                    <label style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--neutral-500)', display: 'block' }}>다음 실행</label>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--neutral-800)', marginTop: '2px' }}>
                       {schedule.nextRun.toLocaleString()}
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">마지막 실행</label>
-                    <div className="text-sm text-neutral-800">
+                    <label style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--neutral-500)', display: 'block' }}>마지막 실행</label>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--neutral-800)', marginTop: '2px' }}>
                       {schedule.lastRun?.toLocaleString() || 'N/A'}
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">보관 기간</label>
-                    <div className="text-sm text-neutral-800">{schedule.retention}일</div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--neutral-500)', display: 'block' }}>보관 기간</label>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--neutral-800)', marginTop: '2px' }}>{schedule.retention}일</div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-neutral-500">저장 위치</label>
-                    <div className="text-sm text-neutral-800 font-mono">{schedule.location}</div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--neutral-500)', display: 'block' }}>저장 위치</label>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--neutral-800)', marginTop: '2px', fontFamily: 'monospace' }}>{schedule.location}</div>
                   </div>
                 </div>
 
-                <div className="mt-4">
-                  <label className="text-xs font-medium text-neutral-500">포함 구성요소</label>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                <div style={{ marginTop: '1rem' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--neutral-500)', display: 'block' }}>포함 구성요소</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.5rem' }}>
                     {schedule.components.map(component => (
-                      <span key={component} className="permission-tag">
+                      <span key={component} className="mgmt-badge neutral">
                         {availableComponents.find(c => c.id === component)?.name || component}
                       </span>
                     ))}
@@ -669,10 +599,10 @@ const BackupRestore: React.FC = () => {
 
       {/* 복원 작업 탭 */}
       {activeTab === 'restore' && (
-        <div className="users-management">
-          <div className="users-header">
-            <h2 className="users-title">복원 작업</h2>
-            <div className="users-actions">
+        <div className="mgmt-content-area">
+          <div className="mgmt-card-header">
+            <h2 className="mgmt-card-title">복원 작업</h2>
+            <div className="mgmt-card-actions">
               <span className="text-sm text-neutral-600">
                 최근 복원 작업 목록
               </span>
@@ -680,28 +610,28 @@ const BackupRestore: React.FC = () => {
           </div>
 
           {restoreJobs.length > 0 ? (
-            <div className="space-y-4">
+            <div className="mgmt-grid" style={{ gap: '1.5rem', marginTop: '1rem' }}>
               {restoreJobs.map(job => (
-                <div key={job.id} className="bg-white rounded-lg shadow-sm border border-neutral-200 p-6">
-                  <div className="flex items-center justify-between mb-4">
+                <div key={job.id} className="mgmt-card" style={{ padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
                     <div>
-                      <h3 className="text-lg font-semibold text-neutral-800">
+                      <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--neutral-800)', margin: 0 }}>
                         {job.backupName} 복원
                       </h3>
-                      <div className="flex items-center gap-2">
+                      <div className="mgmt-status-indicator" style={{ marginTop: '0.25rem' }}>
                         <i className={`fas ${getStatusIcon(job.status)}`}></i>
-                        <span className="text-sm text-neutral-600">
+                        <span className="mgmt-status-text">
                           {job.status === 'completed' ? '완료' :
                             job.status === 'running' ? '진행중' : '실패'}
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm text-neutral-600">
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.875rem', color: 'var(--neutral-500)' }}>
                         시작: {job.startedAt.toLocaleString()}
                       </div>
                       {job.completedAt && (
-                        <div className="text-sm text-neutral-600">
+                        <div style={{ fontSize: '0.875rem', color: 'var(--neutral-500)' }}>
                           완료: {job.completedAt.toLocaleString()}
                         </div>
                       )}
@@ -709,26 +639,31 @@ const BackupRestore: React.FC = () => {
                   </div>
 
                   {job.status === 'running' && (
-                    <div className="mb-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm text-neutral-600">진행률</span>
-                        <span className="text-sm text-neutral-800">{job.progress}%</span>
+                    <div style={{ marginBottom: '1.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: '0.875rem', color: 'var(--neutral-500)' }}>진행률</span>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--neutral-800)' }}>{job.progress}%</span>
                       </div>
-                      <div className="w-full bg-neutral-200 rounded-full h-2">
+                      <div style={{ width: '100%', height: '8px', background: 'var(--neutral-100)', borderRadius: '4px' }}>
                         <div
-                          className="bg-primary-500 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${job.progress}%` }}
+                          style={{
+                            width: `${job.progress}%`,
+                            height: '100%',
+                            background: 'var(--primary-500)',
+                            borderRadius: '4px',
+                            transition: 'width 0.3s ease'
+                          }}
                         ></div>
                       </div>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="mgmt-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
                     <div>
-                      <label className="text-xs font-medium text-neutral-500">복원된 구성요소</label>
-                      <div className="flex flex-wrap gap-1 mt-1">
+                      <label style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--neutral-500)', display: 'block' }}>복원된 구성요소</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.5rem' }}>
                         {job.restoredComponents.map(component => (
-                          <span key={component} className="permission-tag">
+                          <span key={component} className="mgmt-badge neutral">
                             {availableComponents.find(c => c.id === component)?.name || component}
                           </span>
                         ))}
@@ -736,8 +671,8 @@ const BackupRestore: React.FC = () => {
                     </div>
                     {job.errors.length > 0 && (
                       <div>
-                        <label className="text-xs font-medium text-error-600">오류</label>
-                        <div className="text-sm text-error-700 mt-1">
+                        <label style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--error-600)', display: 'block' }}>오류</label>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--error-700)', marginTop: '0.25rem' }}>
                           {job.errors.join(', ')}
                         </div>
                       </div>
@@ -747,10 +682,10 @@ const BackupRestore: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="empty-state">
-              <i className="fas fa-undo empty-icon"></i>
-              <div className="empty-title">복원 작업이 없습니다</div>
-              <div className="empty-description">
+            <div className="mgmt-empty-state" style={{ padding: '4rem 2rem', textAlign: 'center', background: 'white', borderRadius: '12px', border: '1px dashed var(--neutral-300)' }}>
+              <i className="fas fa-undo" style={{ fontSize: '3rem', color: 'var(--neutral-200)', marginBottom: '1.5rem', display: 'block' }}></i>
+              <div style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--neutral-800)', marginBottom: '0.5rem' }}>복원 작업이 없습니다</div>
+              <div style={{ fontSize: '0.875rem', color: 'var(--neutral-500)' }}>
                 백업에서 데이터를 복원한 기록이 없습니다.
               </div>
             </div>
@@ -760,41 +695,41 @@ const BackupRestore: React.FC = () => {
 
       {/* 백업 설정 탭 */}
       {activeTab === 'settings' && (
-        <div className="users-management">
-          <div className="users-header">
-            <h2 className="users-title">백업 설정</h2>
+        <div className="mgmt-content-area">
+          <div className="mgmt-card-header">
+            <h2 className="mgmt-card-title">백업 설정</h2>
           </div>
 
-          <div className="space-y-6">
+          <div className="mgmt-grid" style={{ gap: '1.5rem', marginTop: '1rem' }}>
             {/* 기본 설정 */}
-            <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-6">
-              <h3 className="text-lg font-semibold text-neutral-800 mb-4">기본 설정</h3>
-              <div className="space-y-4">
-                <div className="form-group">
+            <div className="mgmt-card" style={{ padding: '1.5rem' }}>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--neutral-800)', marginBottom: '1.5rem', borderBottom: '1px solid var(--neutral-100)', paddingBottom: '0.75rem' }}>기본 설정</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div className="mgmt-filter-group">
                   <label>기본 백업 위치</label>
                   <input
                     type="text"
                     defaultValue="/backup"
-                    className="form-input"
+                    className="mgmt-input"
                   />
                 </div>
-                <div className="form-group">
+                <div className="mgmt-filter-group">
                   <label>기본 보관 기간 (일)</label>
                   <input
                     type="number"
                     defaultValue="30"
-                    className="form-input"
+                    className="mgmt-input"
                   />
                 </div>
-                <div className="checkbox-group">
-                  <div className="checkbox-item">
-                    <input type="checkbox" id="defaultEncryption" defaultChecked />
-                    <label htmlFor="defaultEncryption">기본적으로 암호화 사용</label>
-                  </div>
-                  <div className="checkbox-item">
-                    <input type="checkbox" id="defaultCompression" defaultChecked />
-                    <label htmlFor="defaultCompression">기본적으로 압축 사용</label>
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  <label className="mgmt-checkbox-label">
+                    <input type="checkbox" defaultChecked />
+                    기본적으로 암호화 사용
+                  </label>
+                  <label className="mgmt-checkbox-label">
+                    <input type="checkbox" defaultChecked />
+                    기본적으로 압축 사용
+                  </label>
                 </div>
               </div>
             </div>

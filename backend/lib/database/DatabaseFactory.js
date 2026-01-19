@@ -13,7 +13,19 @@ const MariaDBConnection = require('../connection/mariadb');
 
 class DatabaseFactory {
     constructor(config = null) {
-        this.config = config || this.loadConfig();
+        // config가 flat한 구조(database.type이 없는 경우)라면 database 객체로 감싸줌
+        if (config && !config.database) {
+            this.config = {
+                database: config,
+                sqlite: config.sqlite,
+                postgresql: config.postgresql,
+                mariadb: config.mariadb,
+                mssql: config.mssql
+            };
+        } else {
+            this.config = config || this.loadConfig();
+        }
+
         this.connections = new Map();
         this.queryAdapter = new QueryAdapter();
 
@@ -27,6 +39,20 @@ class DatabaseFactory {
             'mysql': MariaDBConnection,
             'redis': RedisConnection
         };
+
+        if (!DatabaseFactory.instance) {
+            DatabaseFactory.instance = this;
+        }
+    }
+
+    /**
+     * 싱글턴 인스턴스 반환
+     */
+    static getInstance(config = null) {
+        if (!DatabaseFactory.instance) {
+            DatabaseFactory.instance = new DatabaseFactory(config);
+        }
+        return DatabaseFactory.instance;
     }
 
     /**

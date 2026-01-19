@@ -143,16 +143,16 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
         }
 
         if (!tenant) {
-            return <div className="alert alert-error">고객사 정보를 불러오지 못했습니다.</div>;
+            return <div className="mgmt-alert mgmt-alert-danger">고객사 정보를 불러오지 못했습니다.</div>;
         }
 
         if (isEditing) {
             return (
                 <form id="tenant-detail-form" onSubmit={handleSubmit}>
-                    <div className="modal-form-grid">
-                        <div className="modal-form-section">
+                    <div className="mgmt-modal-form-grid">
+                        <div className="mgmt-modal-form-section">
                             <h3><i className="fas fa-building"></i> 기본 정보</h3>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label className="required">회사명</label>
                                 <input
                                     type="text"
@@ -162,7 +162,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                                     required
                                 />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>회사 코드</label>
                                 <input
                                     type="text"
@@ -172,7 +172,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                                     title="회사 코드는 변경할 수 없습니다."
                                 />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>도메인</label>
                                 <input
                                     type="text"
@@ -183,9 +183,9 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                             </div>
                         </div>
 
-                        <div className="modal-form-section">
+                        <div className="mgmt-modal-form-section">
                             <h3><i className="fas fa-user-tie"></i> 담당자 정보</h3>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>이름</label>
                                 <input
                                     type="text"
@@ -194,7 +194,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                                     onChange={e => setFormData({ ...formData, contact_name: e.target.value })}
                                 />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>이메일</label>
                                 <input
                                     type="email"
@@ -203,7 +203,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                                     onChange={e => setFormData({ ...formData, contact_email: e.target.value })}
                                 />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>연락처</label>
                                 <input
                                     type="text"
@@ -214,10 +214,10 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                             </div>
                         </div>
 
-                        <div className="modal-form-section span-full">
+                        <div className="mgmt-modal-form-section mgmt-span-full">
                             <h3><i className="fas fa-cog"></i> 설정 및 상태</h3>
-                            <div className="modal-form-row">
-                                <div className="modal-form-group">
+                            <div className="mgmt-modal-form-row">
+                                <div className="mgmt-modal-form-group">
                                     <label>구독 플랜</label>
                                     <select
                                         className="form-control"
@@ -288,8 +288,8 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
         }
 
         return (
-            <div className="modal-form-grid">
-                <div className="modal-form-section">
+            <div className="mgmt-modal-form-grid">
+                <div className="mgmt-modal-form-section">
                     <h3><i className="fas fa-building"></i> 기본 정보</h3>
                     <div className="detail-item">
                         <div className="detail-label">회사명</div>
@@ -305,7 +305,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                     </div>
                 </div>
 
-                <div className="modal-form-section">
+                <div className="mgmt-modal-form-section">
                     <h3><i className="fas fa-user-tie"></i> 담당자 정보</h3>
                     <div className="detail-item">
                         <div className="detail-label">이름</div>
@@ -321,7 +321,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                     </div>
                 </div>
 
-                <div className="modal-form-section span-full">
+                <div className="mgmt-modal-form-section mgmt-span-full">
                     <h3><i className="fas fa-chart-pie"></i> 구독 및 사용량</h3>
                     <div className="modal-form-grid-inner">
                         <div className="detail-item">
@@ -365,23 +365,23 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-container tenant-modal">
-                <div className="modal-header">
-                    <div className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container tenant-modal">
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-modal-title">
                         <h2>{isEditing ? '고객사 정보 수정' : '고객사 상세 정보'}</h2>
                     </div>
-                    <button className="close-btn" onClick={onClose}>
+                    <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body">
-                    {error && <div className="alert alert-danger">{error}</div>}
+                <div className="mgmt-modal-body">
+                    {error && <div className="mgmt-alert mgmt-alert-danger">{error}</div>}
                     {renderContent()}
                 </div>
 
-                <div className="modal-footer">
+                <div className="mgmt-modal-footer">
                     {!isEditing ? (
                         <div className="footer-right" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                             <button className="btn btn-outline" onClick={onClose}>닫기</button>

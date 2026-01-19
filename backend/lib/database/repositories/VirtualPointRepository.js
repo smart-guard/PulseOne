@@ -161,6 +161,7 @@ class VirtualPointRepository extends BaseRepository {
                 site_id: virtualPointData.site_id || null,
                 device_id: virtualPointData.device_id || null,
                 tags: virtualPointData.tags ? (typeof virtualPointData.tags === 'string' ? virtualPointData.tags : JSON.stringify(virtualPointData.tags)) : null,
+                dependencies: this.formatDependencies(inputs),
                 created_at: this.knex.fn.now(),
                 updated_at: this.knex.fn.now()
             };
@@ -235,7 +236,8 @@ class VirtualPointRepository extends BaseRepository {
                 scope_type: virtualPointData.scope_type,
                 site_id: virtualPointData.site_id,
                 device_id: virtualPointData.device_id,
-                tags: virtualPointData.tags ? (typeof virtualPointData.tags === 'string' ? virtualPointData.tags : JSON.stringify(virtualPointData.tags)) : undefined,
+                tags: virtualPointData.tags ? (typeof virtualPointData.tags === 'string' ? virtualPointData.tags : JSON.stringify(virtualPointData.tags)) : null,
+                dependencies: inputs ? this.formatDependencies(inputs) : undefined,
                 updated_at: this.knex.fn.now()
             };
 
@@ -273,7 +275,7 @@ class VirtualPointRepository extends BaseRepository {
             await trx('virtual_point_values')
                 .where('virtual_point_id', id)
                 .update({
-                    quality: 'pending_update',
+                    quality: 'uncertain',
                     is_stale: 1,
                     last_calculated: this.knex.fn.now()
                 });
@@ -516,6 +518,22 @@ class VirtualPointRepository extends BaseRepository {
     // ==========================================================================
     // 헬퍼 메소드들
     // ==========================================================================
+
+    /**
+     * 입력을 Collector용 dependencies JSON으로 변환
+     */
+    formatDependencies(inputs) {
+        if (!inputs || inputs.length === 0) return JSON.stringify({ inputs: [] });
+
+        const formattedInputs = inputs
+            .filter(input => input.source_type === 'data_point' || input.source_type === 'virtual_point')
+            .map(input => ({
+                variable: input.variable_name,
+                point_id: parseInt(input.source_id)
+            }));
+
+        return JSON.stringify({ inputs: formattedInputs });
+    }
 
     parseVirtualPoint(vp) {
         if (!vp) return null;
