@@ -93,6 +93,8 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
     validationResult,
     isValidating,
     validateScript,
+    testScript,
+    isTesting,
     loadFunctions
   } = useScriptEngine();
 
@@ -270,38 +272,35 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
     return { errors, warnings };
   }, [formData]);
 
-  const handleRunSimulation = useCallback((inputs?: Record<string, any>) => {
+  const handleRunSimulation = useCallback(async (inputs?: Record<string, any>) => {
     if (!formData.expression.trim()) return;
-    setIsSimulating(true);
 
-    setTimeout(() => {
-      let result: any = 0;
+    try {
+      const context: Record<string, any> = {};
+      // 폼에 정의된 변수들의 테스트 값을 컨텍스트로 구성
+      formData.input_variables.forEach(input => {
+        const val = inputs?.[input.variable_name] ?? (input.data_type === 'boolean' ? false : 0);
+        context[input.variable_name] = val;
+      });
 
-      if (inputs && Object.keys(inputs).length > 0) {
-        // More realistic calculation: Sum of numeric inputs or logical combination
-        const numericValues = Object.values(inputs).filter(v => typeof v === 'number');
-        if (numericValues.length > 0) {
-          result = numericValues.reduce((acc, curr) => acc + curr, 0);
-          // Add some spice based on expression length
-          result += (formData.expression.length % 10);
-        } else {
-          // Boolean logic if all are booleans
-          const booleanValues = Object.values(inputs).filter(v => typeof v === 'boolean');
-          result = booleanValues.every(v => v === true);
-        }
+      const response = await testScript(formData.expression, context);
+      console.log('시뮬레이션 결과:', response);
+
+      if (response && response.success) {
+        setSimulationResult(response.result);
       } else {
-        // Fallback to deterministic mock
-        let seed = 0;
-        for (let i = 0; i < formData.expression.length; i++) {
-          seed += formData.expression.charCodeAt(i);
-        }
-        result = (seed % 1000) / 10 + (formData.input_variables.length * 5);
+        setSimulationResult(null);
+        // 에러를 validationErrors에 표시할 수도 있음
+        setValidationErrors(prev => ({
+          ...prev,
+          expression: response?.error || '계산 오류가 발생했습니다.'
+        }));
       }
-
-      setSimulationResult(result);
-      setIsSimulating(false);
-    }, 600);
-  }, [formData.expression, formData.input_variables.length]);
+    } catch (error) {
+      console.error('시뮬레이션 중 오류:', error);
+      setSimulationResult(null);
+    }
+  }, [formData.expression, formData.input_variables, testScript]);
 
   const handleFormDataChange = useCallback((field: keyof FormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -378,6 +377,17 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
       return;
     }
 
+    // 서버 사이드 검증 결과 최종 확인
+    if (validationResult && !validationResult.isValid) {
+      await confirm({
+        title: '수식 문법 오류',
+        message: '수식에 오류가 있습니다. 3단계 또는 4단계에서 오류 내역을 확인하고 수정해 주세요.',
+        confirmText: '확인',
+        showCancelButton: false
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
       await onSave(formData);
@@ -433,7 +443,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
               validationResult={validationResult}
               isValidating={isValidating}
               simulationResult={simulationResult}
-              isSimulating={isSimulating}
+              isSimulating={isTesting}
               onRunSimulation={handleRunSimulation}
             />
           )}
@@ -446,7 +456,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
               errors={validationErrors}
               warnings={validationWarnings}
               simulationResult={simulationResult}
-              isSimulating={isSimulating}
+              isSimulating={isTesting}
               onRunSimulation={handleRunSimulation}
             />
           )}

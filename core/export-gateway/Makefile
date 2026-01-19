@@ -108,6 +108,7 @@ HAS_PAHO_MQTT := $(shell [ -f /usr/include/mqtt/async_client.h ] && echo "1" || 
 
 # 🔥 1순위: 로컬 include (export-gateway 자체)
 INCLUDES = -I$(INCLUDE_DIR)
+INCLUDES += -I$(PROJECT_ROOT)/core/collector/include
 
 # 🔥 2순위: Shared 라이브러리 include
 ifeq ($(HAS_SHARED),1)
@@ -123,6 +124,8 @@ ifeq ($(HAS_SHARED),1)
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Client
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Security
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Data
+    INCLUDES += -I$(SHARED_DIR)/modules/DbLib/include
+    INCLUDES += -I$(SHARED_DIR)/modules/LogLib/include
 endif
 
 # 🔥 3순위: 시스템 include
@@ -145,6 +148,7 @@ ifeq ($(HAS_SHARED),1)
     SHARED_LIBS += -lpulseone-export
     SHARED_LIBS += -lpulseone-data
     SHARED_LIBS += -lpulseone-database  
+    SHARED_LIBS += -lpulseone-dblib
     SHARED_LIBS += -lpulseone-client
     SHARED_LIBS += -lpulseone-common
     SHARED_LIBS += -lpulseone-security
@@ -225,6 +229,9 @@ ifeq ($(IS_WINDOWS),1)
     PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi
 else
     BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
+    ifeq ($(PLATFORM),Linux)
+        BASIC_LIBS += -lmysqlclient
+    endif
     PLATFORM_LIBS =
 endif
 

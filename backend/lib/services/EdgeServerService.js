@@ -1,5 +1,7 @@
 const BaseService = require('./BaseService');
 const RepositoryFactory = require('../database/repositories/RepositoryFactory');
+const redisClient = require('../connection/redis');
+const LogManager = require('../utils/LogManager'); // Assuming a LogManager exists, or use console
 
 /**
  * EdgeServerService class
@@ -8,6 +10,7 @@ const RepositoryFactory = require('../database/repositories/RepositoryFactory');
 class EdgeServerService extends BaseService {
     constructor() {
         super(null);
+        this.redis = redisClient;
     }
 
     get repository() {
@@ -22,7 +25,12 @@ class EdgeServerService extends BaseService {
      */
     async getAllEdgeServers(tenantId) {
         return await this.handleRequest(async () => {
-            return await this.repository.findAll(tenantId);
+            // DB 목록 가져오기
+            const servers = await this.repository.findAll(tenantId);
+
+            // Redis에서 실시간 상태 병합 (Optional)
+            // 성능을 위해 필요 시 별도 메서드로 분리 전권장
+            return servers;
         }, 'GetAllEdgeServers');
     }
 
@@ -33,6 +41,15 @@ class EdgeServerService extends BaseService {
         return await this.handleRequest(async () => {
             const server = await this.repository.findById(id, tenantId);
             if (!server) throw new Error('Server not found');
+
+            // 실시간 상태 조회 병합
+            try {
+                const liveStatus = await this.getLiveStatus(id);
+                if (liveStatus) {
+                    server.live_status = liveStatus;
+                }
+            } catch (ignored) { }
+
             return server;
         }, 'GetEdgeServerById');
     }
@@ -100,6 +117,63 @@ class EdgeServerService extends BaseService {
             if (!success) throw new Error('Server not found or delete failed');
             return { id, success: true };
         }, 'UnregisterEdgeServer');
+    }
+
+    // =========================================================================
+    // 📡 Gateway Command & Control (C2) Methods
+    // =========================================================================
+
+    /**
+     * 게이트웨이로 명령 전송 (Redis Pub/Sub)
+     * @param {number} serverId 
+     * @param {string} commandType 'config:reload', 'service:restart', etc
+     * @param {object} payload 
+     */
+    async sendCommand(serverId, commandType, payload = {}) {
+        return await this.handleRequest(async () => {
+            const channel = `cmd:gateway:${serverId}`; // 특정 게이트웨이 지정
+            // 또는 광역 채널 사용 시: `config:reload` (모든 게이트웨이가 구독 중인 채널)
+
+            // 현재 C++ 구현은 'config:reload' 채널을 구독하므로, 
+            // 개별 제어보다는 Broadcast 방식으로 구현되어 있음.
+            // 개별 제어를 위해서는 C++이 `cmd:gateway:{ID}`를 구독해야 함.
+            // 우선 계획된 'config:reload' 채널로 발행.
+
+            const targetChannel = commandType === 'config:reload' ? 'config:reload' : `cmd:gateway:${serverId}`;
+
+            const message = JSON.stringify({
+                command: commandType,
+                payload: payload,
+                timestamp: Date.now()
+            });
+
+            // RedisManager proxy handles async connection internally if using the direct proxy methods,
+            // but let's be explicit to ensure it works.
+            const client = await this.redis.getRedisClient();
+            if (!client) throw new Error('Redis client not available');
+
+            await client.publish(targetChannel, message);
+
+            return { success: true, channel: targetChannel, command: commandType };
+        }, 'SendCommand');
+    }
+
+    /**
+     * 게이트웨이 실시간 상태 조회 (Redis)
+     * @param {number} serverId 
+     */
+    async getLiveStatus(serverId) {
+        try {
+            const key = `gateway:status:${serverId}`;
+            const client = await this.redis.getRedisClient();
+            if (!client) return null;
+
+            const data = await client.get(key);
+            return data ? JSON.parse(data) : null;
+        } catch (error) {
+            console.error(`Failed to get live status for server ${serverId}:`, error);
+            return null;
+        }
     }
 }
 

@@ -69,6 +69,8 @@ const AlarmActionModal: React.FC<AlarmActionModalProps> = ({
             centered
             width={520}
             destroyOnClose
+            okButtonProps={{ style: { height: '32px', fontSize: '13px' } }}
+            cancelButtonProps={{ style: { height: '32px', fontSize: '13px' } }}
         >
             <div style={{ padding: '8px 0' }}>
                 <Descriptions bordered size="small" column={1}>

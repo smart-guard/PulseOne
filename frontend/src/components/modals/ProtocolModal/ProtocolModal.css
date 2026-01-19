@@ -1,20 +1,19 @@
-.protocol-modal {
+.mgmt-protocol-modal {
     max-width: 800px !important;
     width: 100%;
     margin: 0 auto;
-    /* Backup for centering */
 }
 
-.protocol-modal .modal-body {
+.mgmt-protocol-modal .mgmt-modal-body {
     padding: 24px;
 }
 
 /* Detail View Styles matching ManufacturerModal */
-.protocol-modal .detail-item {
+.mgmt-protocol-modal .mgmt-detail-item {
     margin-bottom: 24px;
 }
 
-.protocol-modal .detail-label {
+.mgmt-protocol-modal .mgmt-detail-label {
     display: block;
     font-size: 11px;
     font-weight: 700;
@@ -24,20 +23,20 @@
     margin-bottom: 6px;
 }
 
-.protocol-modal .detail-value {
+.mgmt-protocol-modal .mgmt-detail-value {
     font-size: 15px;
     font-weight: 500;
     color: var(--neutral-800);
     line-height: 1.5;
 }
 
-.protocol-modal .detail-value.highlight {
+.mgmt-protocol-modal .mgmt-detail-value.mgmt-highlight {
     font-size: 20px;
     font-weight: 700;
     color: var(--neutral-900);
 }
 
-.protocol-modal .form-control {
+.mgmt-protocol-modal .mgmt-form-control {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid var(--neutral-200);
@@ -47,31 +46,29 @@
     background: white;
 }
 
-.protocol-modal .modal-header {
+.mgmt-protocol-modal .mgmt-modal-header {
     padding: 1.25rem 1.5rem;
 }
 
-.protocol-modal .modal-footer {
+.mgmt-protocol-modal .mgmt-modal-footer {
     padding: 1.25rem 1.5rem;
     display: flex;
     justify-content: flex-end;
-    /* Global standard */
 }
 
-.protocol-modal .footer-right {
+.mgmt-protocol-modal .mgmt-footer-right {
     display: flex;
     justify-content: flex-end;
     gap: 12px;
-    width: 100%;
 }
 
 /* Ensure inner grids respect layout */
-.modal-form-grid-inner {
+.mgmt-modal-form-grid-inner {
     display: grid;
     gap: 16px;
 }
 
-.protocol-modal .checkbox-group {
+.mgmt-protocol-modal .mgmt-checkbox-group {
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -83,12 +80,12 @@
     transition: all 0.2s;
 }
 
-.protocol-modal .checkbox-group:hover {
+.mgmt-protocol-modal .mgmt-checkbox-group:hover {
     background: #f1f5f9;
     border-color: #cbd5e1;
 }
 
-.protocol-modal .checkbox-label {
+.mgmt-protocol-modal .mgmt-checkbox-label {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -98,20 +95,20 @@
     color: var(--neutral-700);
 }
 
-.physical-capability-item {
+.mgmt-physical-capability-item {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
 }
 
-.capability-badge-container {
+.mgmt-capability-badge-container {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
     margin-top: var(--space-2);
 }
 
-.capability-badge {
+.mgmt-capability-badge {
     display: inline-flex;
     align-items: center;
     padding: var(--space-1) var(--space-3);
@@ -124,32 +121,32 @@
     white-space: nowrap;
 }
 
-.capability-badge.data-type {
+.mgmt-capability-badge.mgmt-data-type {
     background: var(--neutral-100);
     color: var(--neutral-700);
     border: 1px solid var(--neutral-200);
 }
 
 /* Side-by-Side Domain Layout */
-.modal-form-domains {
+.mgmt-modal-form-domains {
     display: flex;
     gap: 24px;
     width: 100%;
     grid-column: 1 / -1;
 }
 
-.modal-form-domain {
+.mgmt-modal-form-domain {
     flex: 1;
     min-width: 0;
 }
 
-.modal-form-domain .modal-form-section {
+.mgmt-modal-form-domain .mgmt-modal-form-section {
     height: 100%;
     margin-bottom: 0;
 }
 
 @media (max-width: 800px) {
-    .modal-form-domains {
+    .mgmt-modal-form-domains {
         flex-direction: column;
         gap: 16px;
     }

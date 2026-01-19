@@ -72,6 +72,7 @@ public:
 
   void initialize() { doInitialize(); }
   void reload();
+  void load(const std::string &filepath) { loadConfigFile(filepath); }
   std::string get(const std::string &key) const;
   std::string getOrDefault(const std::string &key,
                            const std::string &defaultValue) const override;

@@ -82,13 +82,14 @@ services:
       - COLLECTOR_ID=1
       - LOG_LEVEL=debug
       - INFLUXDB_BUCKET=history
-    command: tail -f /dev/null
+    command: /bin/bash -c "make all && ./bin/pulseone-collector"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ../data:/app/data
       - ../config:/app/config
       - ../core:/app/core
+    tty: true
 
   simulator-modbus:
     image: node:20-slim
@@ -163,5 +164,35 @@ services:
       timeout: 5s
       retries: 3
 
+  export-gateway:
+    build:
+      context: ..
+      dockerfile: core/export-gateway/Dockerfile.dev
+    container_name: pulseone-export-gateway
+    restart: always
+    environment:
+      - REDIS_PRIMARY_HOST=redis
+      - REDIS_PRIMARY_PORT=6379
+      - DATABASE_TYPE=SQLITE
+      - SQLITE_PATH=/app/data/db/pulseone.db
+      - LOG_LEVEL=debug
+      - PULSEONE_CONFIG_DIR=/app/config
+      - PULSEONE_DATA_DIR=/app/data
+      - AUTO_RUN=true
+    volumes:
+      - ../core:/app/core
+      - ../config:/app/config
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - shared_libs:/app/core/shared/lib
+    command: /bin/bash -c "make -C core/shared clean && make -C core/shared -j4 && make -C core/export-gateway clean && make -C core/export-gateway -j4 && ./core/export-gateway/bin/export-gateway --id 1"
+    tty: true
+    depends_on:
+      redis:
+        condition: service_healthy
+
 volumes:
   influxdb_data:
+  shared_libs:
+
+

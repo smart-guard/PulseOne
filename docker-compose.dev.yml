@@ -1,390 +1,225 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  postgres:
-    image: postgres:15
-    container_name: pulseone-postgres
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+      args:
+        - VITE_API_URL=http://localhost:3000
+    restart: always
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-pulseone}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
-    ports:
-      - "5432:5432"
+      - DATABASE_TYPE=POSTGRESQL
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DATABASE=pulseone
+      - POSTGRES_USER=pulseone
+      - POSTGRES_PASSWORD=yourpassword
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./data/sql/init:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - ./frontend:/app
+      - /app/node_modules
+      - ./backend:/app/backend
+      - ./config:/app/config
+      - ./core:/app/core
+      - ./data:/app/data
     networks:
       - pulseone_network
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: pulseone-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - pulseone_network
-    restart: unless-stopped
-
-  influxdb:
-    image: influxdb:2.7
-    container_name: pulseone-influxdb
-    environment:
-      DOCKER_INFLUXDB_INIT_MODE: setup
-      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USERNAME:-admin}
-      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD:-influxpassword}
-      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:-pulseone}
-      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET:-timeseries}
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:-my-super-secret-auth-token}
-    ports:
-      - "8086:8086"
-    volumes:
-      - influxdb_data:/var/lib/influxdb2
-      - influxdb_config:/etc/influxdb2
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8086/ping" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - pulseone_network
-    restart: unless-stopped
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: pulseone-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rabbitmq}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq123}
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "check_port_connectivity" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - pulseone_network
-    restart: unless-stopped
-
-  mosquitto:
-    image: eclipse-mosquitto:2
-    container_name: pulseone-mosquitto
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
-    networks:
-      - pulseone_network
-    restart: unless-stopped
 
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile.dev
-    container_name: pulseone-backend-dev
-    working_dir: /app/backend
-    environment:
-      SKIP_COLLECTOR_CHECK: "true"
-      NODE_ENV: development
-      ENV_STAGE: ${ENV_STAGE:-dev}
-      BACKEND_PORT: 3000
-      DATABASE_TYPE: SQLITE
-      SQLITE_DB_PATH: /app/data/db/pulseone.db
-      COLLECTOR_HOST: collector
-      POSTGRES_HOST: postgres
-      REDIS_PRIMARY_HOST: redis
-      REDIS_PRIMARY_PORT: 6379
-      RABBITMQ_HOST: rabbitmq
-      INFLUX_HOST: influxdb
+    restart: always
     ports:
-      - "3000:3000"
-      - "50502:50502"
-      - "9229:9229"
-    volumes:
-      - ./backend:/app/backend
-      - ./config:/app/config
-      - ./data:/app/data
+      - "${BACKEND_PORT:-3000}:3000"
+    env_file:
+      - ./config/.env
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks:
-      - pulseone_network
-    restart: unless-stopped
-    command: >
-      sh -c '
-        echo "🚀 PulseOne Backend Starting..."
-        mkdir -p /app/data/db /app/data/backup /app/data/logs /app/data/temp
-        if [ ! -d node_modules ]; then npm install; fi
-        npm run dev
-      '
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    container_name: pulseone-frontend-dev
-    working_dir: /app
+      rabbitmq:
+        condition: service_started
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     environment:
-      NODE_ENV: development
-      ENV_STAGE: ${ENV_STAGE:-dev}
-      VITE_API_BASE_URL: http://localhost:3000/api
-      VITE_WEBSOCKET_URL: ws://localhost:3000
-      CHOKIDAR_USEPOLLING: "true"
-      VITE_HMR_HOST: 0.0.0.0
-    ports:
-      - "5173:5173"
+      - DATABASE_TYPE=SQLITE
+      - INFLUXDB_HOST=influxdb
+      - INFLUXDB_PORT=8086
+      - INFLUXDB_ORG=pulseone
+      - INFLUXDB_TOKEN=my-super-secret-auth-token
+      - INFLUXDB_BUCKET=history
+      - USE_INFLUXDB=true
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - backend
+      - ./backend:/app/backend
+      - ./config:/app/config
+      - ./core:/app/core
+      - ./data:/app/data
     networks:
       - pulseone_network
-    restart: unless-stopped
-    command: >
-      sh -c '
-        echo "🎨 PulseOne Frontend Starting..."
-        if [ ! -d node_modules ]; then npm install; fi
-        npm run dev -- --host 0.0.0.0
-      '
-
-  shared-libs:
-    build:
-      context: .
-      dockerfile: core/shared/Dockerfile.dev
-    container_name: pulseone-shared-libs
-    working_dir: /app/core/shared
-    volumes:
-      - ./core/shared:/app/core/shared
-      - shared_libs:/app/core/shared/lib
-    command: >
-      bash -c '
-        echo "📚 Building PulseOne Shared Libraries..."
-        make test-headers || true
-        make all || true
-        ls -la lib/ || true
-        tail -f /dev/null
-      '
-    networks:
-      - pulseone_network
-    restart: unless-stopped
 
   collector:
     build:
       context: .
-      dockerfile: core/collector/Dockerfile.dev
-    container_name: pulseone-collector-dev
-    tty: true
-    stdin_open: true
-    working_dir: /app/core/collector
-    environment:
-      BUILD_TYPE: Debug
-      LOG_LEVEL: debug
-      ENV_STAGE: ${ENV_STAGE:-dev}
-      AUTO_BUILD: "true"
-      AUTO_RUN: "true"
-      SHARED_LIB_DIR: /app/core/shared/lib
-      SHARED_INCLUDE_DIR: /app/core/shared/include
-      PULSEONE_CONFIG_DIR: /app/config
-      DATA_DIR: /app/data
-      PULSEONE_DATA_DIR: /app/data
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
-      POSTGRES_DB: ${POSTGRES_DB:-pulseone}
-      REDIS_PRIMARY_HOST: redis
-      REDIS_PRIMARY_PORT: 6379
-      SQLITE_PATH: /app/data/db/pulseone.db
-      DATABASE_TYPE: sqlite
-      INFLUXDB_HOST: influxdb
-      INFLUXDB_PORT: 8086
-      INFLUXDB_TOKEN: ${INFLUX_TOKEN:-my-super-secret-auth-token}
-      INFLUXDB_ORG: ${INFLUX_ORG:-pulseone}
-      INFLUXDB_BUCKET: ${INFLUX_BUCKET:-timeseries}
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USER: ${RABBITMQ_USER:-rabbitmq}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbitmq123}
-    volumes:
-      - ./core:/app/core
-      - ./config:/app/config
-      - ./secrets:/app/secrets
-      - ./logs:/app/logs
-      - ./data:/app/data
-      - shared_libs:/app/core/shared/lib
+      dockerfile: core/collector/Dockerfile
+    restart: always
+    hostname: docker-collector-1
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
     depends_on:
-      shared-libs:
+      rabbitmq:
         condition: service_started
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
-      influxdb:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PRIMARY_HOST=redis
+      - REDIS_PRIMARY_PORT=6379
+      - DATABASE_TYPE=SQLITE
+      - SQLITE_PATH=/app/data/db/pulseone.db
+      - RABBITMQ_HOST=rabbitmq
+      - COLLECTOR_ID=1
+      - LOG_LEVEL=debug
+      - INFLUXDB_BUCKET=history
+    command: /bin/bash -c "make all && ./bin/pulseone-collector"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./core:/app/core
+    tty: true
     networks:
       - pulseone_network
+
+  simulator-modbus:
+    image: node:20-slim
+    working_dir: /app/backend
+    environment:
+      - MODBUS_PORT=50502
+    volumes:
+      - ./backend:/app/backend
+    command: node scripts/modbus_simulator.js
     ports:
-      - "8080:8080"
-    restart: unless-stopped
-    command: >
-      bash -c '
-        echo "🔧 PulseOne Collector Development Environment"
-        if [ -f /app/secrets/anthropic_api_key ]; then
-          export ANTHROPIC_API_KEY=$$(cat /app/secrets/anthropic_api_key)
-        fi
-        create-build-dirs.sh
-        if [ ! -f "$$SQLITE_PATH" ]; then
-          mkdir -p $$(dirname "$$SQLITE_PATH")
-          touch "$$SQLITE_PATH"
-        fi
-        test-httplib.sh
-        check-deps.sh
-        if [ "$$AUTO_BUILD" = "true" ]; then
-          make clean 2>/dev/null || true
-          make debug SHARED_LIB_DIR=$$SHARED_LIB_DIR SHARED_INCLUDE_DIR=$$SHARED_INCLUDE_DIR || true
-        fi
-        if [ "$$AUTO_RUN" = "true" ]; then
-          mkdir -p bin
-          if [ -f "bin/pulseone-collector" ]; then
-            chmod +x bin/pulseone-collector
-            echo "🚀 Starting PulseOne Collector..."
-            ./bin/pulseone-collector
-          else
-            echo "⚠️ Binary not found, idling..."
-            tail -f /dev/null
-          fi
-        else
-          echo "🔧 PulseOne Collector Ready (Manual mode)!"
-          tail -f /dev/null
-        fi
-      '
+      - "50502:50502"
+    networks:
+      - pulseone_network
+
+  simulator-mqtt:
+    image: node:20-slim
+    working_dir: /app/backend
+    environment:
+      - MQTT_BROKER_URL=mqtt://rabbitmq:1883
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      - rabbitmq
+    command: node scripts/mqtt_simulator.js
+    networks:
+      - pulseone_network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: always
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+      - "1883:1883"
+    networks:
+      - pulseone_network
+
+  influxdb:
+    image: influxdb:2.7
+    restart: always
+    ports:
+      - "${INFLUXDB_PORT:-8086}:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: pulseone
+      DOCKER_INFLUXDB_INIT_PASSWORD: yourpassword
+      DOCKER_INFLUXDB_INIT_ORG: pulseone
+      DOCKER_INFLUXDB_INIT_BUCKET: history
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: my-super-secret-auth-token
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    networks:
+      - pulseone_network
+
+  postgres:
+    image: postgres:14
+    restart: always
+    environment:
+      POSTGRES_USER: pulseone
+      POSTGRES_PASSWORD: yourpassword
+      POSTGRES_DB: pulseone
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U pulseone" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./data/sql/schema_postgres_minimal.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - pulseone_network
+
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - pulseone_network
 
   export-gateway:
     build:
       context: .
       dockerfile: core/export-gateway/Dockerfile.dev
-    container_name: pulseone-export-gateway-dev
-    tty: true
-    stdin_open: true
-    working_dir: /app/core/export-gateway
+    container_name: pulseone-export-gateway
+    restart: always
     environment:
-      COLLECTOR_ID: "1"
-      BUILD_TYPE: Debug
-      LOG_LEVEL: debug
-      ENV_STAGE: ${ENV_STAGE:-dev}
-      AUTO_RUN: "true"
-      SHARED_LIB_DIR: /app/core/shared/lib
-      SHARED_INCLUDE_DIR: /app/core/shared/include
-      PULSEONE_CONFIG_DIR: /app/config
-      DATA_DIR: /app/data
-      PULSEONE_DATA_DIR: /app/data
-      SQLITE_DB_PATH: /app/data/db/pulseone.db
-      LOG_FILE_PATH: /app/logs
-      DATABASE_TYPE: SQLITE
-      REDIS_PRIMARY_ENABLED: "true"
-      REDIS_PRIMARY_HOST: redis
-      REDIS_PRIMARY_PORT: 6379
-      REDIS_PRIMARY_DB: 0
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
-      POSTGRES_DB: ${POSTGRES_DB:-pulseone}
-      CSP_GATEWAY_ENABLED: "true"
-      CSP_GATEWAY_DEBUG_MODE: "true"
-      CSP_GATEWAY_BUILDING_ID: "1001"
-      CSP_USE_DYNAMIC_TARGETS: "true"
-      CSP_BATCH_PROCESSING_ENABLED: "true"
-      CSP_BATCH_SIZE: "100"
-      EXPORT_MODE: development
-      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      - REDIS_PRIMARY_HOST=redis
+      - REDIS_PRIMARY_PORT=6379
+      - DATABASE_TYPE=SQLITE
+      - SQLITE_PATH=/app/data/db/pulseone.db
+      - LOG_LEVEL=debug
+      - PULSEONE_CONFIG_DIR=/app/config
+      - PULSEONE_DATA_DIR=/app/data
+      - AUTO_RUN=true
     volumes:
       - ./core:/app/core
       - ./config:/app/config
       - ./data:/app/data
       - ./logs:/app/logs
-      - ./secrets:/app/secrets
       - shared_libs:/app/core/shared/lib
-      - export_gateway_build:/app/core/export-gateway/build
-      - export_gateway_bin:/app/core/export-gateway/bin
+    command: /bin/bash -c "make -C core/shared clean && make -C core/shared -j4 && make -C core/export-gateway clean && make -C core/export-gateway -j4 && ./core/export-gateway/bin/export-gateway --id 1"
+    tty: true
     depends_on:
-      shared-libs:
-        condition: service_started
       redis:
-        condition: service_healthy
-      postgres:
         condition: service_healthy
     networks:
       - pulseone_network
-    ports:
-      - "8081:8081"
-      - "18080:18080"
-    restart: unless-stopped
-    command: >
-      bash -c '
-        echo "🌐 Export Gateway Starting..."
-        echo "Config: $$PULSEONE_CONFIG_DIR"
-        echo "Data: $$DATA_DIR"
-        echo "DB: $$SQLITE_DB_PATH"
-        ls -la /app/data/db/ || echo "No db directory"
-        ls -la /app/config/ || echo "No config directory"
-        mount | grep /app/data
-        if [ "$$AUTO_RUN" = "true" ]; then
-          mkdir -p bin
-          if [ -f "bin/pulseone-export-gateway" ]; then
-            chmod +x bin/pulseone-export-gateway
-            echo "🌐 Starting Export Gateway..."
-            ./bin/pulseone-export-gateway
-          else
-            echo "⚠️ Export Gateway binary not found, idling..."
-            tail -f /dev/null
-          fi
-        else
-          echo "🌐 Export Gateway Ready (Manual mode)!"
-          tail -f /dev/null
-        fi
-      '
-    healthcheck:
-      test: [ "CMD-SHELL", "test -d /app/data" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
 networks:
   pulseone_network:
     driver: bridge
 
 volumes:
-  postgres_data:
-  redis_data:
   influxdb_data:
-  influxdb_config:
-  rabbitmq_data:
   shared_libs:
-  export_gateway_build:
-  export_gateway_bin:

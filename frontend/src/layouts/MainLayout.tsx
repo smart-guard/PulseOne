@@ -145,6 +145,35 @@ export const MainLayout: React.FC = () => {
               </Link>
             </li>
 
+            {/* 외부 연결 (Export Gateway) */}
+            <li className="menu-item">
+              {!sidebarCollapsed && (
+                <div style={{
+                  padding: '16px 16px 8px 16px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: '#9ca3af',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  borderBottom: '1px solid #f1f5f9',
+                  marginBottom: '8px'
+                }}>
+                  외부 연결
+                </div>
+              )}
+            </li>
+            <li className="menu-item">
+              <Link
+                to="/system/export-gateways"
+                className={`menu-link ${isActiveMenu('/system/export-gateways') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-satellite-dish"></i>
+                </div>
+                <span className="menu-title">Export Gateway</span>
+              </Link>
+            </li>
+
             {/* 데이터 관리 */}
             <li className="menu-item">
               {!sidebarCollapsed && (
@@ -416,18 +445,17 @@ export const MainLayout: React.FC = () => {
         <div className="topbar">
           <div className="topbar-left">
             <div className="breadcrumb">
-              <span className="breadcrumb-item active">
-                {location.pathname === '/' || location.pathname === '/dashboard' ? '대시보드' :
-                  location.pathname === '/devices/manufacturers' ? '제조사 관리' : // 🆕 구체적인 경로 우선 매칭
-                    location.pathname === '/devices/templates' ? '디바이스 마스터 모델' : // 🆕 구체적인 경로 우선 매칭
-                      location.pathname === '/devices/sites' ? '사이트 관리' : // 🆕 구체적인 경로 우선 매칭
-                        location.pathname === '/system/tenants' ? '고객사 관리' : // 🆕 구체적인 경로 우선 매칭
+              {location.pathname === '/' || location.pathname === '/dashboard' ? '대시보드' :
+                location.pathname === '/devices/manufacturers' ? '제조사 관리' : // 🆕 구체적인 경로 우선 매칭
+                  location.pathname === '/devices/templates' ? '디바이스 마스터 모델' : // 🆕 구체적인 경로 우선 매칭
+                    location.pathname === '/devices/sites' ? '사이트 관리' : // 🆕 구체적인 경로 우선 매칭
+                      location.pathname === '/system/tenants' ? '고객사 관리' : // 🆕 구체적인 경로 우선 매칭
+                        location.pathname === '/system/export-gateways' ? '외부 연결 > Export Gateway' : // 🆕 외부 연결
                           location.pathname.startsWith('/devices') ? '디바이스 관리' :
                             location.pathname.includes('/protocols') ? '프로토콜 관리' :
                               location.pathname.includes('/data') ? '데이터 관리' :
                                 location.pathname.includes('/alarms') ? '알람 관리' :
                                   location.pathname.includes('/system') ? '시스템 관리' : '페이지'}
-              </span>
             </div>
           </div>
 

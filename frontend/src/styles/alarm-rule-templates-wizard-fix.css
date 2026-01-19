@@ -1,42 +1,45 @@
 /* === Wizard Layout & Spacing Refinements === */
 
 /* Header: Add top space to title */
-.modal-header {
+.alarm-rule-templates-container .modal-header {
     padding: 32px 40px 24px 40px !important;
     border-bottom: none !important;
 }
 
-.modal-header .modal-title {
+.alarm-rule-templates-container .modal-header .modal-title {
     font-size: 22px !important;
     font-weight: 800 !important;
     color: #1e293b !important;
 }
 
 /* Wizard Track: Reduce vertical height */
-.wizard-steps-header {
-    padding: 20px 80px !important; /* Reduced from 30-40px */
+.alarm-rule-templates-container .wizard-steps-header {
+    padding: 20px 80px !important;
+    /* Reduced from 30-40px */
     background: #f8fafc !important;
     border-bottom: 1px solid #f1f5f9 !important;
 }
 
-.wizard-steps-header::before {
-    top: 40px !important; /* Adjusted for reduced height */
+.alarm-rule-templates-container .wizard-steps-header::before {
+    top: 40px !important;
+    /* Adjusted for reduced height */
 }
 
-.step-number {
+.alarm-rule-templates-container .step-number {
     width: 36px !important;
     height: 36px !important;
     font-size: 14px !important;
 }
 
-.step-label {
+.alarm-rule-templates-container .step-label {
     font-size: 10px !important;
     letter-spacing: 1.2px !important;
 }
 
 /* Section Title: Increase visibility */
-.section-title {
-    font-size: 18px !important; /* Increased from 15px */
+.alarm-rule-templates-container .section-title {
+    font-size: 18px !important;
+    /* Increased from 15px */
     font-weight: 800 !important;
     color: #0f172a !important;
     margin-bottom: 28px !important;
@@ -47,11 +50,11 @@
     border-left: none !important;
 }
 
-.section-title i {
+.alarm-rule-templates-container .section-title i {
     font-size: 20px !important;
 }
 
-.section-title::before {
+.alarm-rule-templates-container .section-title::before {
     content: '';
     display: block;
     width: 4px;
@@ -61,15 +64,15 @@
 }
 
 /* Content Area Spacing */
-.modal-content-wrapper {
+.alarm-rule-templates-container .modal-content-wrapper {
     padding: 32px 48px !important;
 }
 
-.form-group {
+.alarm-rule-templates-container .form-group {
     margin-bottom: 24px !important;
 }
 
-.form-label {
+.alarm-rule-templates-container .form-label {
     font-size: 13px !important;
     font-weight: 800 !important;
     color: #475569 !important;
@@ -77,22 +80,22 @@
 }
 
 /* Step 3: Intensity Cards Size Adjustment */
-.severity-grid {
+.alarm-rule-templates-container .severity-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 16px !important;
 }
 
-.intensity-card {
+.alarm-rule-templates-container .intensity-card {
     padding: 20px !important;
     min-height: 80px !important;
 }
 
-.intensity-card i {
+.alarm-rule-templates-container .intensity-card i {
     width: 44px !important;
     height: 44px !important;
     font-size: 22px !important;
 }
 
-.intensity-card span {
+.alarm-rule-templates-container .intensity-card span {
     font-size: 13px !important;
 }

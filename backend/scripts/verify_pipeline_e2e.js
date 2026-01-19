@@ -14,7 +14,7 @@ async function run() {
         const vpRes = await axios.post(`${BASE_URL}/api/virtual-points`, {
             virtualPoint: {
                 name: vpName,
-                formula: 'return inputs.motor_current + 10;',
+                formula: 'motor_current + 10',
                 calculation_trigger: 'onchange',
                 scope_type: 'device',
                 site_id: 1,

@@ -72,6 +72,7 @@ class EdgeServerRepository extends BaseRepository {
                 port: serverData.port || 8080,
                 registration_token: serverData.registration_token || null,
                 status: serverData.status || 'pending',
+                server_type: serverData.server_type || 'collector',
                 config: typeof serverData.config === 'object' ? JSON.stringify(serverData.config) : (serverData.config || '{}'),
                 capabilities: typeof serverData.capabilities === 'object' ? JSON.stringify(serverData.capabilities) : (serverData.capabilities || '[]')
             };
@@ -95,7 +96,7 @@ class EdgeServerRepository extends BaseRepository {
 
             const allowedFields = [
                 'server_name', 'factory_name', 'location', 'ip_address', 'port',
-                'status', 'config', 'capabilities', 'last_seen', 'version',
+                'status', 'server_type', 'config', 'capabilities', 'last_seen', 'version',
                 'cpu_usage', 'memory_usage', 'disk_usage', 'uptime_seconds'
             ];
 

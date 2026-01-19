@@ -12,8 +12,9 @@ RUN apt-get update && apt-get install -y \
     curl git nodejs npm pkg-config \
     wget unzip vim nano \
     libssl-dev uuid-dev \
+    libbluetooth-dev \
+    libmbedtls-dev \
     autotools-dev autoconf automake libtool \
-    tree htop procps \
     tree htop procps \
     && rm -rf /var/lib/apt/lists/*
 
@@ -82,8 +83,6 @@ RUN echo "Installing QuickJS..." && \
     make && \
     make install PREFIX=/usr/local && \
     ldconfig && \
-    ([ -f /usr/local/lib/quickjs/libquickjs.a ] && mv /usr/local/lib/quickjs/libquickjs.a /usr/local/lib/ && rm -rf /usr/local/lib/quickjs || true) && \
-    ([ -d /usr/local/include/quickjs ] && cp /usr/local/include/quickjs/* /usr/local/include/ && rm -rf /usr/local/include/quickjs || true) && \
     cd / && rm -rf /tmp/quickjs && echo "QuickJS installed"
 
 # 6. spdlog 설치
@@ -105,6 +104,16 @@ RUN echo "Installing BACnet Stack..." && \
     ldconfig && \
     cd / && rm -rf /tmp/bacnet-stack && \
     echo "BACnet Stack installed"
+
+# 8. open62541 (OPC UA) 설치
+RUN echo "Installing open62541..." && \
+    cd /tmp && git clone --depth 1 --branch v1.3.9 https://github.com/open62541/open62541.git && \
+    cd open62541 && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DUA_ENABLE_AMALGAMATION=ON \
+    -DUA_ENABLE_ENCRYPTION=ON && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/open62541 && echo "open62541 installed"
 
 # pkg-config 파일들 생성 (기존과 동일)
 RUN mkdir -p /usr/local/lib/pkgconfig && \

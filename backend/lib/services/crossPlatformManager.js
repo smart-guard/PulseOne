@@ -79,6 +79,7 @@ class CrossPlatformManager {
                 win32: {
                     root: process.cwd(),
                     collector: customCollectorPath || path.resolve(process.cwd(), '..', 'collector.exe'),
+                    exportGateway: path.resolve(process.cwd(), '..', 'export-gateway.exe'),
                     redis: customRedisPath || path.resolve(process.cwd(), '..', 'redis-server.exe'),
                     config: path.join(process.cwd(), 'config'),
                     data: path.join(process.cwd(), 'data'),
@@ -89,6 +90,7 @@ class CrossPlatformManager {
                 linux: {
                     root: process.cwd(),
                     collector: customCollectorPath || path.resolve(process.cwd(), '..', 'core', 'collector', 'bin', 'pulseone-collector'),
+                    exportGateway: path.resolve(process.cwd(), '..', 'core', 'export-gateway', 'bin', 'export-gateway'),
                     redis: customRedisPath || '/usr/bin/redis-server',
                     config: path.join(process.cwd(), 'config'),
                     data: path.join(process.cwd(), 'data'),
@@ -99,6 +101,7 @@ class CrossPlatformManager {
                 darwin: {
                     root: process.cwd(),
                     collector: customCollectorPath || path.join(process.cwd(), '..', 'core', 'collector', 'bin', 'pulseone-collector'),
+                    exportGateway: path.join(process.cwd(), '..', 'core', 'export-gateway', 'bin', 'export-gateway'),
                     redis: customRedisPath || '/usr/local/bin/redis-server',
                     config: path.join(process.cwd(), 'config'),
                     data: path.join(process.cwd(), 'data'),
@@ -110,8 +113,8 @@ class CrossPlatformManager {
             production: {
                 win32: {
                     root: process.cwd(),
-                    // Windows 프로덕션에서 backend 폴더에서 실행되므로 상위 폴더 참조
                     collector: customCollectorPath || path.resolve(process.cwd(), '..', 'collector.exe'),
+                    exportGateway: path.resolve(process.cwd(), '..', 'export-gateway.exe'),
                     redis: customRedisPath || path.resolve(process.cwd(), '..', 'redis-server.exe'),
                     config: path.resolve(process.cwd(), '..', 'config'),
                     data: path.resolve(process.cwd(), '..', 'data'),
@@ -122,6 +125,7 @@ class CrossPlatformManager {
                 linux: {
                     root: process.cwd(),
                     collector: customCollectorPath || path.resolve(process.cwd(), '..', 'core', 'collector', 'bin', 'pulseone-collector'),
+                    exportGateway: path.resolve(process.cwd(), '..', 'core', 'export-gateway', 'bin', 'export-gateway'),
                     redis: customRedisPath || '/usr/bin/redis-server',
                     config: path.join(process.cwd(), 'config'),
                     data: path.join(process.cwd(), 'data'),
@@ -132,6 +136,7 @@ class CrossPlatformManager {
                 darwin: {
                     root: process.cwd(),
                     collector: customCollectorPath || path.join(process.cwd(), 'collector'),
+                    exportGateway: path.join(process.cwd(), 'export-gateway'),
                     redis: customRedisPath || '/usr/local/bin/redis-server',
                     config: path.join(process.cwd(), 'config'),
                     data: path.join(process.cwd(), 'data'),
@@ -185,7 +190,7 @@ class CrossPlatformManager {
             }
         } catch (error) {
             this.log('ERROR', 'getRunningProcesses 실패', { error: error.message });
-            return { backend: [], collector: [], redis: [] };
+            return { backend: [], collector: [], exportGateway: [], redis: [] };
         }
     }
 
@@ -197,7 +202,7 @@ class CrossPlatformManager {
             this.log('DEBUG', `tasklist 출력 길이: ${stdout.length} 문자`);
 
             const lines = stdout.split('\n').filter(line => line.trim());
-            const processes = { backend: [], collector: [], redis: [] };
+            const processes = { backend: [], collector: [], exportGateway: [], redis: [] };
 
             lines.forEach((line, index) => {
                 if (index === 0) return; // 헤더 스킵
@@ -233,12 +238,16 @@ class CrossPlatformManager {
                 } else if (lowerImageName.includes('redis-server.exe')) {
                     this.log('INFO', `Redis 프로세스 발견: PID ${pid}`);
                     processes.redis.push(processInfo);
+                } else if (lowerImageName.includes('export-gateway.exe')) {
+                    this.log('INFO', `Export Gateway 프로세스 발견: PID ${pid}`);
+                    processes.exportGateway.push(processInfo);
                 }
             });
 
             this.log('INFO', '프로세스 감지 완료', {
                 backend: processes.backend.length,
                 collector: processes.collector.length,
+                exportGateway: processes.exportGateway.length,
                 redis: processes.redis.length
             });
 
@@ -299,7 +308,7 @@ class CrossPlatformManager {
             const { stdout } = await this.execCommand(this.commands.processFind);
             const lines = stdout.split('\n').filter(line => line.trim());
 
-            const processes = { backend: [], collector: [], redis: [] };
+            const processes = { backend: [], collector: [], exportGateway: [], redis: [] };
 
             lines.forEach(line => {
                 const parts = line.trim().split(/\s+/);
@@ -327,6 +336,14 @@ class CrossPlatformManager {
                             this.log('DEBUG', `Collector ID 감지: ${processInfo.collectorId}`, { pid });
                         }
                         processes.collector.push(processInfo);
+                    } else if (command.includes('export-gateway')) {
+                        // ID 추출 시도 (--id <id> 또는 -i <id>)
+                        const idMatch = command.match(/(?:--id|-i)\s+(\d+)/);
+                        if (idMatch) {
+                            processInfo.gatewayId = parseInt(idMatch[1]);
+                            this.log('DEBUG', `Export Gateway ID 감지: ${processInfo.gatewayId}`, { pid });
+                        }
+                        processes.exportGateway.push(processInfo);
                     } else if (command.includes('redis-server')) {
                         processes.redis.push(processInfo);
                     }
@@ -336,7 +353,7 @@ class CrossPlatformManager {
             return processes;
         } catch (error) {
             this.log('ERROR', 'Unix 프로세스 감지 실패', { error: error.message });
-            return { backend: [], collector: [], redis: [] };
+            return { backend: [], collector: [], exportGateway: [], redis: [] };
         }
     }
 
@@ -434,6 +451,47 @@ class CrossPlatformManager {
                 port: config.getRedisConfig?.()?.port || 6379
             }
         ];
+
+        // Export Gateway Services
+        const exportGatewayExists = await this.fileExists(this.paths.exportGateway);
+        const exportGatewayServices = processes.exportGateway.map((proc, index) => ({
+            name: proc.gatewayId !== undefined ? `export-gateway-${proc.gatewayId}` : `export-gateway-${index}`,
+            displayName: proc.gatewayId !== undefined ? `Export Gateway (ID: ${proc.gatewayId})` : 'Export Gateway',
+            icon: 'fas fa-satellite-dish',
+            description: `데이터 내보내기 서비스 (${this.platform})`,
+            controllable: true,
+            status: 'running',
+            pid: proc.pid,
+            gatewayId: proc.gatewayId || null,
+            platform: this.platform,
+            executable: path.basename(this.paths.exportGateway),
+            uptime: this.calculateUptime(proc.startTime),
+            memoryUsage: proc.memory || 'N/A',
+            cpuUsage: proc.cpu || 'N/A',
+            executablePath: this.paths.exportGateway,
+            exists: exportGatewayExists
+        }));
+
+        if (exportGatewayServices.length === 0) {
+            exportGatewayServices.push({
+                name: 'export-gateway',
+                displayName: 'Export Gateway',
+                icon: 'fas fa-satellite-dish',
+                description: `데이터 내보내기 서비스 (${this.platform})`,
+                controllable: true,
+                status: 'stopped',
+                pid: null,
+                platform: this.platform,
+                executable: path.basename(this.paths.exportGateway),
+                uptime: 'N/A',
+                memoryUsage: 'N/A',
+                cpuUsage: 'N/A',
+                executablePath: this.paths.exportGateway,
+                exists: exportGatewayExists
+            });
+        }
+
+        services.push(...exportGatewayServices);
 
         // Redis 네트워크 헬스체크 (Docker 환경 대응)
         const redisService = services.find(s => s.name === 'redis');
@@ -754,6 +812,121 @@ class CrossPlatformManager {
         await this.sleep(2000);
 
         return await this.startCollector(collectorId);
+    }
+
+    // ========================================
+    // 📤 Export Gateway 서비스 제어
+    // ========================================
+
+    async startExportGateway(gatewayId = null) {
+        this.log('INFO', 'Export Gateway 시작 요청', {
+            platform: this.platform,
+            path: this.paths.exportGateway,
+            gatewayId
+        });
+
+        try {
+            const gatewayExists = await this.fileExists(this.paths.exportGateway);
+            if (!gatewayExists) {
+                return {
+                    success: false,
+                    error: `Export Gateway 실행파일을 찾을 수 없음: ${this.paths.exportGateway}`,
+                    platform: this.platform
+                };
+            }
+
+            const processes = await this.getRunningProcesses();
+            const existingGateway = gatewayId !== null
+                ? processes.exportGateway.find(p => p.gatewayId === gatewayId)
+                : processes.exportGateway[0];
+
+            if (existingGateway) {
+                return {
+                    success: false,
+                    error: `Export Gateway(ID: ${gatewayId || 'default'})가 이미 실행 중입니다`,
+                    pid: existingGateway.pid
+                };
+            }
+
+            await this.spawnExportGateway(gatewayId);
+            await this.sleep(3000);
+
+            const newProcesses = await this.getRunningProcesses();
+            const newGateway = gatewayId !== null
+                ? newProcesses.exportGateway.find(p => p.gatewayId === gatewayId)
+                : newProcesses.exportGateway[0];
+
+            if (newGateway) {
+                return {
+                    success: true,
+                    message: `Export Gateway(ID: ${gatewayId || 'default'}) 시작됨`,
+                    pid: newGateway.pid,
+                    gatewayId: gatewayId,
+                    platform: this.platform
+                };
+            } else {
+                return { success: false, error: 'Export Gateway 시작 실패', platform: this.platform };
+            }
+        } catch (error) {
+            this.log('ERROR', 'Export Gateway 시작 예외', { error: error.message });
+            return { success: false, error: error.message, platform: this.platform };
+        }
+    }
+
+    async spawnExportGateway(gatewayId = null) {
+        const absolutePath = path.resolve(this.paths.exportGateway);
+        const args = [];
+        if (gatewayId !== null) {
+            args.push('--id', gatewayId.toString());
+        }
+
+        this.log('DEBUG', 'Export Gateway spawn', { absolutePath, args });
+
+        if (this.isWindows) {
+            return spawn(absolutePath, args, {
+                cwd: path.dirname(absolutePath),
+                detached: true,
+                stdio: 'ignore'
+            });
+        } else {
+            return spawn(absolutePath, args, {
+                cwd: path.dirname(absolutePath),
+                detached: true,
+                stdio: 'ignore',
+                env: {
+                    ...process.env,
+                    LD_LIBRARY_PATH: '/usr/local/lib:/usr/lib'
+                }
+            });
+        }
+    }
+
+    async stopExportGateway(gatewayId = null) {
+        this.log('INFO', 'Export Gateway 중지 요청', { gatewayId });
+
+        try {
+            const processes = await this.getRunningProcesses();
+            const runningGateway = gatewayId !== null
+                ? processes.exportGateway.find(p => p.gatewayId === gatewayId)
+                : processes.exportGateway[0];
+
+            if (!runningGateway) {
+                return { success: false, error: '실행 중인 게이트웨이가 없습니다' };
+            }
+
+            await this.execCommand(this.commands.processKill(runningGateway.pid));
+            await this.sleep(2000);
+
+            return { success: true, message: 'Export Gateway 중지됨' };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    async restartExportGateway(gatewayId = null) {
+        await this.stopExportGateway(gatewayId);
+        await this.sleep(1000);
+        return await this.startExportGateway(gatewayId);
     }
 
     // ========================================

@@ -141,15 +141,15 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
 
     const renderContent = () => {
         if (loading) return <div className="loading-spinner"><i className="fas fa-spinner fa-spin"></i> 로딩 중...</div>;
-        if (!site) return <div className="alert alert-danger">사이트 정보를 불러오지 못했습니다.</div>;
+        if (!site) return <div className="mgmt-alert mgmt-alert-danger">사이트 정보를 불러오지 못했습니다.</div>;
 
         if (isEditing) {
             return (
                 <form id="site-detail-form" onSubmit={handleSubmit}>
-                    <div className="modal-form-grid">
-                        <div className="modal-form-section">
+                    <div className="mgmt-modal-form-grid">
+                        <div className="mgmt-modal-form-section">
                             <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label className="required">사이트명</label>
                                 <input
                                     type="text"
@@ -159,11 +159,11 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                                     required
                                 />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>사이트 코드</label>
                                 <input type="text" className="form-control" value={site.code} disabled />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>사이트 유형</label>
                                 <select
                                     className="form-control"
@@ -179,9 +179,9 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                                 </select>
                             </div>
                         </div>
-                        <div className="modal-form-section">
+                        <div className="mgmt-modal-form-section">
                             <h3><i className="fas fa-map-marker-alt"></i> 위치 정보</h3>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>상위 사이트</label>
                                 <select
                                     className="form-control"
@@ -192,7 +192,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                                     {allSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>주소</label>
                                 <input
                                     type="text"
@@ -208,8 +208,8 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
         }
 
         return (
-            <div className="modal-form-grid">
-                <div className="modal-form-section">
+            <div className="mgmt-modal-form-grid">
+                <div className="mgmt-modal-form-section">
                     <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
                     <div className="detail-item">
                         <div className="detail-label">사이트명</div>
@@ -224,7 +224,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                         <div className="detail-value">{site.site_type.toUpperCase()}</div>
                     </div>
                 </div>
-                <div className="modal-form-section">
+                <div className="mgmt-modal-form-section">
                     <h3><i className="fas fa-map-marker-alt"></i> 위치 정보</h3>
                     <div className="detail-item">
                         <div className="detail-label">상위 사이트</div>
@@ -246,23 +246,23 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-container site-modal">
-                <div className="modal-header">
-                    <div className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container site-modal">
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-modal-title">
                         <h2>{isEditing ? '사이트 정보 수정' : '사이트 상세 정보'}</h2>
                     </div>
-                    <button className="close-btn" onClick={onClose}>
+                    <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body">
-                    {error && <div className="alert alert-danger">{error}</div>}
+                <div className="mgmt-modal-body">
+                    {error && <div className="mgmt-alert mgmt-alert-danger">{error}</div>}
                     {renderContent()}
                 </div>
 
-                <div className="modal-footer">
+                <div className="mgmt-modal-footer">
                     {!isEditing ? (
                         <div className="footer-right" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                             <button className="btn btn-outline" onClick={onClose}>닫기</button>

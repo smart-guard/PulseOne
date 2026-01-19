@@ -31,17 +31,18 @@ class AlarmRuleRepository extends BaseRepository {
                     clause.on('ar.target_id', '=', 'dp.id').andOn('ar.target_type', '=', this.knex.raw("'data_point'"));
                 })
                 .leftJoin('devices as d2', 'dp.device_id', 'd2.id')
+                .leftJoin('sites as s2', 'd2.site_id', 's2.id')
                 .leftJoin('virtual_points as vp', (clause) => {
                     clause.on('ar.target_id', '=', 'vp.id').andOn('ar.target_type', '=', this.knex.raw("'virtual_point'"));
                 })
                 .select(
                     'ar.*',
-                    'd.name as device_name',
+                    this.knex.raw('COALESCE(d.name, d2.name) as device_name'),
                     'd.device_type',
                     'p.protocol_type',
                     'p.display_name as protocol_name',
-                    's.name as site_name',
-                    's.location as site_location',
+                    this.knex.raw('COALESCE(s.name, s2.name) as site_name'),
+                    this.knex.raw('COALESCE(s.location, s2.location) as site_location'),
                     'dp.name as data_point_name',
                     'dp.unit',
                     'vp.name as virtual_point_name'
@@ -143,17 +144,18 @@ class AlarmRuleRepository extends BaseRepository {
                     clause.on('ar.target_id', '=', 'dp.id').andOn('ar.target_type', '=', this.knex.raw("'data_point'"));
                 })
                 .leftJoin('devices as d2', 'dp.device_id', 'd2.id')
+                .leftJoin('sites as s2', 'd2.site_id', 's2.id')
                 .leftJoin('virtual_points as vp', (clause) => {
                     clause.on('ar.target_id', '=', 'vp.id').andOn('ar.target_type', '=', this.knex.raw("'virtual_point'"));
                 })
                 .select(
                     'ar.*',
-                    'd.name as device_name',
+                    this.knex.raw('COALESCE(d.name, d2.name) as device_name'),
                     'd.device_type',
                     'p.protocol_type',
                     'p.display_name as protocol_name',
-                    's.name as site_name',
-                    's.location as site_location',
+                    this.knex.raw('COALESCE(s.name, s2.name) as site_name'),
+                    this.knex.raw('COALESCE(s.location, s2.location) as site_location'),
                     'dp.name as data_point_name',
                     'dp.unit',
                     'vp.name as virtual_point_name'
@@ -342,6 +344,7 @@ class AlarmRuleRepository extends BaseRepository {
                 is_latched: ruleData.is_latched ? 1 : 0,
                 created_by: userId || ruleData.created_by,
                 template_id: ruleData.template_id || null,
+                template_version: ruleData.template_version || 1,
                 rule_group: ruleData.rule_group || null,
                 created_by_template: ruleData.created_by_template ? 1 : 0,
                 escalation_enabled: ruleData.escalation_enabled ? 1 : 0,
@@ -379,7 +382,7 @@ class AlarmRuleRepository extends BaseRepository {
                 'auto_acknowledge', 'acknowledge_timeout_min', 'auto_clear', 'suppression_rules',
                 'notification_enabled', 'notification_delay_sec', 'notification_repeat_interval_min',
                 'notification_channels', 'notification_recipients', 'is_enabled', 'is_latched',
-                'template_id', 'rule_group', 'created_by_template',
+                'template_id', 'template_version', 'rule_group', 'created_by_template',
                 'last_template_update', 'escalation_enabled', 'escalation_max_level', 'escalation_rules',
                 'category', 'tags'
             ];
@@ -682,6 +685,7 @@ class AlarmRuleRepository extends BaseRepository {
             notification_delay_sec: parseInt(rule.notification_delay_sec) || 0,
             notification_repeat_interval_min: parseInt(rule.notification_repeat_interval_min) || 0,
             template_id: rule.template_id ? parseInt(rule.template_id) : null,
+            template_version: rule.template_version ? parseInt(rule.template_version) : 1,
             created_by: rule.created_by ? parseInt(rule.created_by) : null,
             escalation_max_level: parseInt(rule.escalation_max_level) || 3,
 

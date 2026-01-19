@@ -601,15 +601,15 @@
 }
 
 /* --- Modal Spacing Fixes --- */
-.modal-overlay {
+.alarm-rule-templates-container .modal-overlay {
   padding: 40px;
 }
 
-.modal-container.modal-xl {
+.alarm-rule-templates-container .modal-container.modal-xl {
   max-width: 1200px;
 }
 
-.modal-content-wrapper {
+.alarm-rule-templates-container .modal-content-wrapper {
   padding: 0 40px 40px 40px;
   /* Ensure horizontal margins */
 }
@@ -777,7 +777,7 @@
 }
 
 /* === Wizard Scroll Adjustment === */
-.modal-xl .modal-content {
+.alarm-rule-templates-container .modal-xl .modal-content {
   max-height: calc(90vh - 250px);
   overflow-y: auto;
 }
@@ -1745,11 +1745,11 @@
 }
 
 /* Modal Footer */
-.modal-footer {
+.alarm-rule-templates-container .modal-footer {
   padding: 12px 24px !important;
 }
 
-.modal-footer button {
+.alarm-rule-templates-container .modal-footer button {
   height: 36px !important;
   font-size: 13px !important;
 }
@@ -1794,7 +1794,7 @@
   margin-bottom: 12px !important;
 }
 
-.section-title {
+.alarm-rule-templates-container .section-title {
   font-size: 11.5px !important;
   font-weight: 700 !important;
   padding-bottom: 4px !important;
@@ -1895,14 +1895,14 @@
 }
 
 /* 5. Footer Compaction */
-.modal-footer {
+.alarm-rule-templates-container .modal-footer {
   padding: 8px 24px !important;
   height: 52px !important;
   min-height: 52px !important;
   background: #f8fafc !important;
 }
 
-.modal-footer button {
+.alarm-rule-templates-container .modal-footer button {
   height: 28px !important;
   padding: 0 16px !important;
   font-size: 11.5px !important;
@@ -1911,7 +1911,7 @@
 
 /* --- READABILITY UPGRADE (LEGIBLE + COMPACT) --- */
 
-.section-title {
+.alarm-rule-templates-container .section-title {
   font-size: 14px !important;
   /* Increased for readability */
   font-weight: 700 !important;
@@ -2221,7 +2221,7 @@
 }
 
 /* Remove bottom gap under footer */
-.modal-footer {
+.alarm-rule-templates-container .modal-footer {
   padding-bottom: 24px !important;
   /* Keep a comfortable hit area but remove perceived "extra" space if any */
   margin-bottom: 0 !important;
@@ -2305,13 +2305,13 @@
 }
 
 /* Make content area scrollable if internal gaps are large */
-.modal-content {
+.alarm-rule-templates-container .modal-content {
   flex: 1 !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
 }
 
-.modal-content-wrapper {
+.alarm-rule-templates-container .modal-content-wrapper {
   padding-top: 48px !important;
   /* Balanced top gap */
   padding-bottom: 24px !important;
@@ -2325,7 +2325,7 @@
 }
 
 /* Ensure footer is ALWAYS pinned to the bottom of the container */
-.modal-footer {
+.alarm-rule-templates-container .modal-footer {
   position: sticky !important;
   bottom: 0 !important;
   background: #f8fafc !important;
@@ -2366,20 +2366,20 @@
 }
 
 /* 3. Content Area: Expand to fill remaining space */
-.modal-content {
+.alarm-rule-templates-container .modal-content {
   flex: 1 1 auto !important;
   overflow-y: auto !important;
   background: white !important;
 }
 
-.modal-content-wrapper {
+.alarm-rule-templates-container .modal-content-wrapper {
   padding: 40px !important;
   height: auto !important;
   min-height: 100% !important;
 }
 
 /* 4. Footer: Pin to the absolute bottom of the modal container */
-.modal-footer {
+.alarm-rule-templates-container .modal-footer {
   flex: 0 0 auto !important;
   padding: 24px 40px !important;
   /* Richer footer padding */
@@ -2392,7 +2392,7 @@
 }
 
 /* Ensure buttons are at the very bottom */
-.modal-footer .btn {
+.alarm-rule-templates-container .modal-footer .btn {
   height: 40px !important;
   padding: 0 24px !important;
 }
@@ -2400,11 +2400,11 @@
 /* --- ANTI-SCROLL & COMPACT BALANCE FIX --- */
 
 /* 1. Prevent scrolling at the source */
-.modal-container.modal-xl {
+.alarm-rule-templates-container .modal-container.modal-xl {
   overflow: hidden !important;
 }
 
-.modal-content {
+.alarm-rule-templates-container .modal-content {
   overflow: hidden !important;
   /* Force content to fit */
 }
@@ -2433,7 +2433,7 @@
 }
 
 /* 5. Compact Footer slightly */
-.modal-footer {
+.alarm-rule-templates-container .modal-footer {
   padding: 12px 40px !important;
 }
 
@@ -2446,7 +2446,7 @@
 /* --- FOOTER CLIPPING & SAFE AREA FIX --- */
 
 /* 1. Ensure modal container has a clear boundary and doesn't clip */
-.modal-container.modal-xl {
+.alarm-rule-templates-container .modal-container.modal-xl {
   overflow: hidden !important;
   /* Remove any negative margin or weird positioning that might cause clipping */
   margin: auto !important;
@@ -2455,7 +2455,7 @@
 }
 
 /* 2. Footer Safety Zone: Add bottom padding to lift buttons above the rounded corner/border */
-.modal-footer {
+.alarm-rule-templates-container .modal-footer {
   padding-top: 20px !important;
   padding-bottom: 24px !important;
   /* Lifting buttons up */
@@ -2468,7 +2468,7 @@
 }
 
 /* 3. Ensure the buttons themselves are well-proportioned */
-.modal-footer .btn {
+.alarm-rule-templates-container .modal-footer .btn {
   height: 42px !important;
   display: inline-flex !important;
   align-items: center !important;
@@ -2476,7 +2476,7 @@
 }
 
 /* 4. Fine-tune the content area to prevent pushing the footer down */
-.modal-content {
+.alarm-rule-templates-container .modal-content {
   /* Slightly reduce complexity to save vertical space and prevent footer overflow */
   flex: 1 1 0% !important;
   min-height: 0 !important;

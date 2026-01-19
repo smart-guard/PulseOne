@@ -11,6 +11,7 @@ import { StatCard } from '../components/common/StatCard';
 import { FilterBar } from '../components/common/FilterBar';
 import { Pagination } from '../components/common/Pagination';
 import AlarmTemplateCreateEditModal from '../components/modals/AlarmTemplateCreateEditModal';
+import AlarmTemplateDetailModal from '../components/modals/AlarmTemplateDetailModal';
 import TemplateApplyModal from '../components/modals/TemplateApplyModal';
 import '../styles/management.css';
 import '../styles/alarm-rule-templates.css';
@@ -28,6 +29,7 @@ const AlarmRuleTemplates: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'browse' | 'created'>('browse');
   const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
   const [showModal, setShowModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedTemplate, setSelectedTemplate] = useState<AlarmTemplate | null>(null);
@@ -117,7 +119,13 @@ const AlarmRuleTemplates: React.FC = () => {
   const handleEditTemplate = (template: AlarmTemplate) => {
     setSelectedTemplate(template);
     setModalMode('edit');
+    setShowDetailModal(false); // Close detail if editing
     setShowModal(true);
+  };
+
+  const handleViewTemplate = (template: AlarmTemplate) => {
+    setSelectedTemplate(template);
+    setShowDetailModal(true);
   };
 
   const handleApplyTemplate = (template: AlarmTemplate) => {
@@ -242,14 +250,14 @@ const AlarmRuleTemplates: React.FC = () => {
         description="전문가용 알람 템플릿을 생성하고 관리하며, 한 번의 클릭으로 장비에 적용합니다."
         icon="fas fa-magic"
         actions={
-          <div className="page-actions">
-            <button className="btn btn-outline" onClick={handleExportTemplates} title="템플릿 목록을 JSON 파일로 내보냅니다.">
+          <div className="mgmt-page-actions" style={{ display: 'flex', flexDirection: 'row', gap: '8px' }}>
+            <button className="mgmt-btn mgmt-btn-outline" onClick={handleExportTemplates} title="템플릿 목록을 JSON 파일로 내보냅니다.">
               <i className="fas fa-file-export"></i> 내보내기
             </button>
-            <button className="btn btn-outline" onClick={handleImportTemplates} title="JSON 파일을 통해 템플릿 목록을 가져옵니다.">
+            <button className="mgmt-btn mgmt-btn-outline" onClick={handleImportTemplates} title="JSON 파일을 통해 템플릿 목록을 가져옵니다.">
               <i className="fas fa-file-import"></i> 가져오기
             </button>
-            <button className="btn btn-primary" onClick={handleCreateTemplate}>
+            <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreateTemplate}>
               <i className="fas fa-plus"></i> 새 템플릿 생성
             </button>
           </div>
@@ -314,11 +322,11 @@ const AlarmRuleTemplates: React.FC = () => {
           }
         ] : []}
         rightActions={
-          <div className="view-toggle">
-            <button className={`btn-icon ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')}>
+          <div className="mgmt-view-toggle">
+            <button className={`mgmt-btn-icon ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')}>
               <i className="fas fa-th-large"></i>
             </button>
-            <button className={`btn-icon ${viewMode === 'table' ? 'active' : ''}`} onClick={() => setViewMode('table')}>
+            <button className={`mgmt-btn-icon ${viewMode === 'table' ? 'active' : ''}`} onClick={() => setViewMode('table')}>
               <i className="fas fa-list"></i>
             </button>
           </div>
@@ -330,34 +338,43 @@ const AlarmRuleTemplates: React.FC = () => {
           viewMode === 'card' ? (
             <div className="mgmt-grid">
               {templates.map(template => (
-                <div key={template.id} className="mgmt-card premium-template-card">
-                  <div className="card-body">
+                <div key={template.id} className="mgmt-card">
+                  <div className="mgmt-card-body">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                      <h4 className="clickable-name" onClick={() => handleEditTemplate(template)} style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
+                      <h4 className="mgmt-card-name" onClick={() => handleViewTemplate(template)} style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
                         {template.name}
                       </h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end', flexShrink: 0 }}>
-                        <span className={`badge ${getSeverityBadgeClass(template.severity)}`}>
+                        <span className={`mgmt-badge ${getSeverityBadgeClass(template.severity)}`}>
                           {template.severity.toUpperCase()}
                         </span>
-                        <span className="badge neutral">
+                        <span className="mgmt-badge neutral">
                           {template.category}
                         </span>
+                        {template.is_system_template && (
+                          <span className="mgmt-badge" style={{ backgroundColor: '#1e293b', color: '#f8fafc', border: '1px solid #334155' }}>SYSTEM</span>
+                        )}
                       </div>
                     </div>
-                    <p className="card-desc">{template.description || '템플릿 설명이 없습니다.'}</p>
-                    <div className="logic-preview-badge">
+                    <p className="mgmt-card-desc">{template.description || '템플릿 설명이 없습니다.'}</p>
+                    <div className="mgmt-card-logic-preview">
                       <code>{renderTemplateConfig(template)}</code>
                     </div>
-                    <div className="card-meta">
+                    <div className="mgmt-card-meta">
                       <span><i className="fas fa-code-branch"></i> {template.template_type}</span>
                       <span><i className="fas fa-history"></i> {template.usage_count || 0}회 적용됨</span>
                     </div>
                   </div>
-                  <div className="card-footer">
-                    <div className="card-actions">
-                      <button className="btn btn-primary btn-sm" onClick={() => handleApplyTemplate(template)}>적용하기</button>
-                      <button className="btn btn-outline btn-sm" onClick={() => handleEditTemplate(template)}>수정</button>
+                  <div className="mgmt-card-footer">
+                    <div className="mgmt-card-actions">
+                      <button className="mgmt-btn mgmt-btn-primary mgmt-btn-sm" onClick={() => handleApplyTemplate(template)}>적용하기</button>
+                      {template.is_system_template ? (
+                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" disabled style={{ opacity: 0.5, cursor: 'not-allowed' }} title="시스템 템플릿은 수정할 수 없습니다.">
+                          <i className="fas fa-lock" style={{ marginRight: '4px' }}></i>시스템
+                        </button>
+                      ) : (
+                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleEditTemplate(template)}>수정</button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -378,13 +395,13 @@ const AlarmRuleTemplates: React.FC = () => {
                 </thead>
                 <tbody>
                   {templates.map(template => (
-                    <tr key={template.id} onClick={() => handleEditTemplate(template)} style={{ cursor: 'pointer' }}>
+                    <tr key={template.id} onClick={() => handleViewTemplate(template)} style={{ cursor: 'pointer' }}>
                       <td className="clickable-name" style={{ fontWeight: 600 }}>{template.name}</td>
                       <td>{template.template_type}</td>
                       <td>{template.category}</td>
                       <td><code>{renderTemplateConfig(template)}</code></td>
                       <td>
-                        <span className={`badge ${getSeverityBadgeClass(template.severity)}`}>
+                        <span className={`mgmt-badge ${getSeverityBadgeClass(template.severity)}`}>
                           {template.severity.toUpperCase()}
                         </span>
                       </td>
@@ -411,10 +428,10 @@ const AlarmRuleTemplates: React.FC = () => {
                 {createdRules.map(rule => (
                   <tr key={rule.id}>
                     <td style={{ fontWeight: 600 }}>{rule.name}</td>
-                    <td><span className="badge neutral">{rule.template_name || '기본 템플릿'}</span></td>
+                    <td><span className="mgmt-badge neutral">{rule.template_name || '기본 템플릿'}</span></td>
                     <td>{rule.data_point_name || `Target #${rule.target_id}`}</td>
                     <td>
-                      <span className={`badge ${getSeverityBadgeClass(rule.severity)}`}>
+                      <span className={`mgmt-badge ${getSeverityBadgeClass(rule.severity)}`}>
                         {rule.severity.toUpperCase()}
                       </span>
                     </td>
@@ -441,11 +458,28 @@ const AlarmRuleTemplates: React.FC = () => {
       {showModal && (
         <AlarmTemplateCreateEditModal
           isOpen={showModal}
-          mode={modalMode}
-          template={selectedTemplate || undefined}
-          onClose={() => setShowModal(false)}
-          onSave={loadTemplates}
+          onClose={() => {
+            setShowModal(false);
+            setSelectedTemplate(null);
+          }}
+          onSuccess={() => {
+            loadTemplates();
+            setShowModal(false);
+            setSelectedTemplate(null);
+          }}
+          mode={selectedTemplate ? 'edit' : 'create'}
+          template={selectedTemplate}
           onDelete={handleDeleteTemplate}
+        />
+      )}
+
+      {showDetailModal && selectedTemplate && (
+        <AlarmTemplateDetailModal
+          isOpen={showDetailModal}
+          template={selectedTemplate}
+          onClose={() => setShowDetailModal(false)}
+          onEdit={handleEditTemplate}
+          onApply={handleApplyTemplate}
         />
       )}
 

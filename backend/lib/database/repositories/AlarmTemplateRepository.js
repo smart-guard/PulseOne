@@ -44,7 +44,8 @@ class AlarmTemplateRepository extends BaseRepository {
             is_system_template: 'boolean',
             created_by: 'int',
             created_at: 'timestamp',
-            updated_at: 'timestamp'
+            updated_at: 'timestamp',
+            version: 'int'
         };
 
         console.log('AlarmTemplateRepository 초기화 완료 (패턴 준수)');
@@ -131,7 +132,9 @@ class AlarmTemplateRepository extends BaseRepository {
                 ...templateData,
                 tenant_id: tenantId || templateData.tenant_id || 1,
                 created_at: this.knex.fn.now(),
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.fn.now(),
+                version: 1,
+                usage_count: 0
             };
 
             // 필수 필드 검증 (유지)
@@ -179,6 +182,7 @@ class AlarmTemplateRepository extends BaseRepository {
             const result = await this.knex(this.tableName)
                 .where('id', id)
                 .where('tenant_id', tenantId || 1)
+                .increment('version', 1)
                 .update(data);
 
             if (result > 0) {
@@ -418,6 +422,42 @@ class AlarmTemplateRepository extends BaseRepository {
         } catch (error) {
             this.logger?.error(`search("${searchTerm}") failed:`, error);
             throw error;
+        }
+    }
+
+    /**
+     * 특정 템플릿의 상세 통계 조회
+     */
+    async getTemplateStats(id, tenantId = null) {
+        try {
+            const template = await this.query()
+                .where('id', id)
+                .where('tenant_id', tenantId || 1)
+                .select('usage_count', 'updated_at')
+                .first();
+
+            if (!template) return null;
+
+            const activeRulesCount = await this.knex('alarm_rules')
+                .where('template_id', id)
+                .where('tenant_id', tenantId || 1)
+                .where('is_enabled', 1)
+                .count('* as count')
+                .first();
+
+            return {
+                usage_count: template.usage_count || 0,
+                active_rules: activeRulesCount ? activeRulesCount.count : 0,
+                last_used: template.updated_at
+            };
+
+        } catch (error) {
+            this.logger?.error(`getTemplateStats(${id}) failed:`, error);
+            return {
+                usage_count: 0,
+                active_rules: 0,
+                last_used: null
+            };
         }
     }
 

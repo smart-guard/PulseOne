@@ -21,6 +21,11 @@ const TemplateDataPointRepository = require('./TemplateDataPointRepository');
 const AuditLogRepository = require('./AuditLogRepository');
 const EdgeServerRepository = require('./EdgeServerRepository');
 const DeviceGroupRepository = require('./DeviceGroupRepository');
+const ExportProfileRepository = require('./ExportProfileRepository');
+const ExportTargetRepository = require('./ExportTargetRepository');
+const ExportGatewayRepository = require('./ExportGatewayRepository');
+const PayloadTemplateRepository = require('./PayloadTemplateRepository');
+const ExportTargetMappingRepository = require('./ExportTargetMappingRepository');
 
 // 기존 DatabaseFactory 사용
 const DatabaseFactory = require('../DatabaseFactory');
@@ -78,7 +83,7 @@ class RepositoryFactory {
             console.log('🔧 RepositoryFactory initializing...');
 
             // 기존 DatabaseFactory 사용 (생성자에서 자동 초기화됨)
-            this.dbManager = new DatabaseFactory(config.database);
+            this.dbManager = DatabaseFactory.getInstance(config.database);
 
             // 로거 설정 (간단한 콘솔 로거)
             this.logger = {
@@ -264,6 +269,41 @@ class RepositoryFactory {
         return this.getRepository('DeviceGroupRepository');
     }
 
+    /**
+     * ExportProfileRepository 반환
+     */
+    getExportProfileRepository() {
+        return this.getRepository('ExportProfileRepository');
+    }
+
+    /**
+     * ExportTargetRepository 반환
+     */
+    getExportTargetRepository() {
+        return this.getRepository('ExportTargetRepository');
+    }
+
+    /**
+     * ExportGatewayRepository 반환
+     */
+    getExportGatewayRepository() {
+        return this.getRepository('ExportGatewayRepository');
+    }
+
+    /**
+     * PayloadTemplateRepository 반환
+     */
+    getPayloadTemplateRepository() {
+        return this.getRepository('PayloadTemplateRepository');
+    }
+
+    /**
+     * ExportTargetMappingRepository 반환
+     */
+    getExportTargetMappingRepository() {
+        return this.getRepository('ExportTargetMappingRepository');
+    }
+
     // =========================================================================
     // 내부 구현 메서드들
     // =========================================================================
@@ -354,6 +394,26 @@ class RepositoryFactory {
 
                 case 'DeviceGroupRepository':
                     repository = new DeviceGroupRepository();
+                    break;
+
+                case 'ExportProfileRepository':
+                    repository = new ExportProfileRepository();
+                    break;
+
+                case 'ExportTargetRepository':
+                    repository = new ExportTargetRepository();
+                    break;
+
+                case 'ExportGatewayRepository':
+                    repository = new ExportGatewayRepository();
+                    break;
+
+                case 'PayloadTemplateRepository':
+                    repository = new PayloadTemplateRepository();
+                    break;
+
+                case 'ExportTargetMappingRepository':
+                    repository = new ExportTargetMappingRepository();
                     break;
 
                 default:

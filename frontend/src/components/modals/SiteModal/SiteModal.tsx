@@ -152,25 +152,25 @@ export const SiteModal: React.FC<SiteModalProps> = ({
     };
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-container site-modal">
-                <div className="modal-header">
-                    <div className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container site-modal">
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-modal-title">
                         <h2>{site ? '사이트 정보 수정' : '새 사이트 등록'}</h2>
                     </div>
-                    <button className="close-btn" onClick={onClose}>
+                    <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body">
-                    {error && <div className="alert alert-danger">{error}</div>}
+                <div className="mgmt-modal-body">
+                    {error && <div className="mgmt-alert mgmt-alert-danger">{error}</div>}
 
                     <form id="site-form" onSubmit={handleSubmit}>
-                        <div className="modal-form-grid">
-                            <div className="modal-form-section">
+                        <div className="mgmt-modal-form-grid">
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">사이트명</label>
                                     <input
                                         type="text"
@@ -182,7 +182,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                                         required
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">사이트 코드</label>
                                     <input
                                         type="text"
@@ -194,7 +194,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                                         required
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>사이트 유형</label>
                                     <select
                                         className="form-control"
@@ -212,9 +212,9 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                                 </div>
                             </div>
 
-                            <div className="modal-form-section">
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-sitemap"></i> 계층 및 위치</h3>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>상위 사이트</label>
                                     <select
                                         className="form-control"
@@ -228,7 +228,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                                         ))}
                                     </select>
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>주소</label>
                                     <input
                                         type="text"
@@ -239,7 +239,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                                         disabled={saving}
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>타임존</label>
                                     <select
                                         className="form-control"
@@ -269,7 +269,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                     </form>
                 </div>
 
-                <div className="modal-footer">
+                <div className="mgmt-modal-footer">
                     <button type="button" className="btn btn-outline" onClick={onClose} disabled={saving}>
                         취소
                     </button>

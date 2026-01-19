@@ -543,14 +543,14 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="modal-overlay">
-            <div className="modal-container" style={{ width: step >= 3 ? '1200px' : '800px', maxWidth: '95vw', transition: 'width 0.3s ease' }}>
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container" style={{ width: step >= 3 ? '1200px' : '800px', maxWidth: '95vw', transition: 'width 0.3s ease' }}>
 
-                <div className="modal-header">
-                    <h3 className="modal-title">
+                <div className="mgmt-modal-header">
+                    <h3 className="mgmt-modal-title">
                         <i className="fas fa-magic text-primary"></i> 마스터 모델로 디바이스 추가
                     </h3>
-                    <button className="close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
+                    <button className="mgmt-close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
 
                 <div className="wizard-steps-container">
@@ -576,7 +576,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                 </div>
 
 
-                <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
+                <div className="mgmt-modal-body" style={{ flex: 1, overflowY: 'auto', padding: '30px' }}>
                     {error && (
                         <div className="alert alert-error" style={{ marginBottom: '16px' }}>
                             <i className="fas fa-exclamation-circle"></i> {error}
@@ -586,8 +586,8 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                     {step === 1 && (
                         <div className="wizard-content">
                             <h4 className="wizard-title">1. 복제하여 사용할 마스터 모델(템플릿)을 선택하십시오.</h4>
-                            <div className="modal-form-grid" style={{ marginTop: '20px' }}>
-                                <div className="modal-form-group">
+                            <div className="mgmt-modal-form-grid" style={{ marginTop: '20px' }}>
+                                <div className="mgmt-modal-form-group">
                                     <label>제조사 (Manufacturer)</label>
                                     <select
                                         className="mgmt-select"
@@ -598,7 +598,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                         {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                     </select>
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>하드웨어 모델 (Model)</label>
                                     <select
                                         className="mgmt-select"
@@ -657,8 +657,8 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
 
                             <div className="wizard-section">
                                 <h5 className="wizard-section-title"><i className="fas fa-id-card"></i> 기본 식별 정보</h5>
-                                <div className="modal-form-grid">
-                                    <div className="modal-form-group span-full">
+                                <div className="mgmt-modal-form-grid">
+                                    <div className="mgmt-modal-form-group mgmt-span-full">
                                         <label>디바이스 이름 *</label>
                                         <input
                                             className="mgmt-input"
@@ -667,7 +667,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                             placeholder="예: 제1공장 인버터 #1"
                                         />
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>설치 사이트 *</label>
                                         <select
                                             className="mgmt-select"
@@ -678,7 +678,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                             {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                         </select>
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>담당 콜렉터 (Edge Server) *</label>
                                         <select
                                             className="mgmt-select"
@@ -701,7 +701,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                     <div className="setup-column-left">
                                         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '15px', marginBottom: portConflicts.length > 0 ? '15px' : '0' }}>
                                             {!selectedProtocol?.uses_serial ? (
-                                                <div className="modal-form-group">
+                                                <div className="mgmt-modal-form-group">
                                                     <label>IP 주소 및 포트 *</label>
                                                     <div className="ip-port-input-group">
                                                         <input
@@ -722,7 +722,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="modal-form-group">
+                                                <div className="mgmt-modal-form-group">
                                                     <label>시리얼 포트 경로 *</label>
                                                     <input
                                                         className="mgmt-input"
@@ -748,7 +748,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                                 const field = schema[mainKey];
 
                                                 return (
-                                                    <div className="modal-form-group">
+                                                    <div className="mgmt-modal-form-group">
                                                         <label>{field.label || mainKey} {field.required && '*'}</label>
                                                         <input
                                                             type="number"
@@ -785,7 +785,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
 
                                                             return (
                                                                 <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 12px', background: 'white', borderRadius: '8px', border: '1px solid #f1f5f9', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                                                                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: isMaster ? '#eff6ff' : '#f0fdf4', display: 'flex', alignItems: 'center', justifyCenter: 'center', color: isMaster ? '#2563eb' : '#16a34a', fontWeight: 700, fontSize: '12px' }}>
+                                                                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: isMaster ? '#eff6ff' : '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isMaster ? '#2563eb' : '#16a34a', fontWeight: 700, fontSize: '12px' }}>
                                                                         {sid}
                                                                     </div>
                                                                     <div style={{ flex: 1 }}>
@@ -832,7 +832,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                                 return Object.entries(schema)
                                                     .filter(([key]) => !mainIdKeys.includes(key.toLowerCase()))
                                                     .map(([key, field]: [string, any]) => (
-                                                        <div key={key} className="modal-form-group">
+                                                        <div key={key} className="mgmt-modal-form-group">
                                                             <label style={{ fontSize: '12px', color: '#64748b' }}>{field.label || key}</label>
                                                             {field.type === 'select' ? (
                                                                 <select
@@ -912,26 +912,26 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                     {/* Column 1: Core Parameters */}
                                     <section className="wizard-section">
                                         <h5 className="wizard-section-title"><i className="fas fa-cog"></i> 기본 운영 파라미터</h5>
-                                        <div className="modal-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                                            <div className="modal-form-group">
+                                        <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                                            <div className="mgmt-modal-form-group">
                                                 <label>폴링 간격 (ms) *</label>
                                                 <input type="number" className="mgmt-input" value={pollingInterval} onChange={e => setPollingInterval(Math.max(10, Number(e.target.value)))} />
                                             </div>
-                                            <div className="modal-form-group">
+                                            <div className="mgmt-modal-form-group">
                                                 <label>응답 타임아웃 (ms) *</label>
                                                 <input type="number" className="mgmt-input" value={timeout} onChange={e => setTimeoutVal(Math.max(100, Number(e.target.value)))} />
                                             </div>
-                                            <div className="modal-form-group">
+                                            <div className="mgmt-modal-form-group">
                                                 <label>최대 재시도 (Count) *</label>
                                                 <input type="number" className="mgmt-input" value={retryCount} onChange={e => setRetryCount(Math.max(0, Number(e.target.value)))} />
                                             </div>
-                                            <div className="modal-form-group">
+                                            <div className="mgmt-modal-form-group">
                                                 <label>재시도 간격 (ms)</label>
                                                 <input type="number" className="mgmt-input" value={retryInterval} onChange={e => setRetryInterval(Number(e.target.value))} />
                                             </div>
                                         </div>
 
-                                        <div className="modal-form-group" style={{ marginTop: '20px' }}>
+                                        <div className="mgmt-modal-form-group" style={{ marginTop: '20px' }}>
                                             <div className="st-field-toggle">
                                                 <div className="toggle-header" style={{ marginBottom: '10px' }}>
                                                     <label>Keep-Alive 세션 유지</label>
@@ -954,16 +954,16 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                     {/* Column 2: Error & Backoff */}
                                     <section className="wizard-section">
                                         <h5 className="wizard-section-title"><i className="fas fa-undo"></i> 에러 제어 및 지루 백오프</h5>
-                                        <div className="modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-                                            <div className="modal-form-group">
+                                        <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                                            <div className="mgmt-modal-form-group">
                                                 <label>초기 백오프 시간 (ms)</label>
                                                 <input type="number" className="mgmt-input" value={backoffTime} onChange={e => setBackoffTime(Number(e.target.value))} />
                                             </div>
-                                            <div className="modal-form-group">
+                                            <div className="mgmt-modal-form-group">
                                                 <label>최대 백오프 시간 (ms)</label>
                                                 <input type="number" className="mgmt-input" value={maxBackoffTime} onChange={e => setMaxBackoffTime(Number(e.target.value))} />
                                             </div>
-                                            <div className="modal-form-group">
+                                            <div className="mgmt-modal-form-group">
                                                 <label>지수 증폭 배율 (Multiplier)</label>
                                                 <input type="number" step="0.1" className="mgmt-input" value={backoffMultiplier} onChange={e => setBackoffMultiplier(Number(e.target.value))} />
                                             </div>
@@ -973,16 +973,16 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                     {/* Column 3: Advanced Buffer & Safety */}
                                     <section className="wizard-section">
                                         <h5 className="wizard-section-title"><i className="fas fa-microchip"></i> 리소스 및 데이터 안전</h5>
-                                        <div className="modal-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                                            <div className="modal-form-group">
+                                        <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                                            <div className="mgmt-modal-form-group">
                                                 <label>읽기 버퍼 크기</label>
                                                 <input type="number" className="mgmt-input" value={readBufferSize} onChange={e => setReadBufferSize(Number(e.target.value))} />
                                             </div>
-                                            <div className="modal-form-group">
+                                            <div className="mgmt-modal-form-group">
                                                 <label>쓰기 버퍼 크기</label>
                                                 <input type="number" className="mgmt-input" value={writeBufferSize} onChange={e => setWriteBufferSize(Number(e.target.value))} />
                                             </div>
-                                            <div className="modal-form-group">
+                                            <div className="mgmt-modal-form-group">
                                                 <label>큐 사이즈</label>
                                                 <input type="number" className="mgmt-input" value={queueSize} onChange={e => setQueueSize(Number(e.target.value))} />
                                             </div>
@@ -1004,7 +1004,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                                     <div style={{ gridColumn: 'span 3', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '30px', borderTop: '1px solid #f1f5f9', paddingTop: '30px' }}>
                                         <section className="wizard-section" style={{ margin: 0 }}>
                                             <h5 className="wizard-section-title"><i className="fas fa-shield-alt"></i> 로깅 및 진단</h5>
-                                            <div className="modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                                            <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
                                                 <div className="st-field-toggle">
                                                     <div className="toggle-header">
                                                         <label>성능 모니터링 활성화</label>
@@ -1037,17 +1037,17 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
 
                                         <section className="wizard-section" style={{ margin: 0 }}>
                                             <h5 className="wizard-section-title"><i className="fas fa-tags"></i> 분류 태그 및 시스템 메타데이터</h5>
-                                            <div className="modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
-                                                <div className="modal-form-group">
+                                            <div className="mgmt-modal-form-grid" style={{ gridTemplateColumns: '1fr' }}>
+                                                <div className="mgmt-modal-form-group">
                                                     <label>태그 (쉼표로 구분)</label>
                                                     <input type="text" className="mgmt-input" placeholder="Line1, Inverter, critical" value={deviceTags.join(', ')} onChange={e => setDeviceTags(e.target.value.split(',').map(s => s.trim()).filter(s => s))} />
                                                 </div>
                                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                                                    <div className="modal-form-group">
+                                                    <div className="mgmt-modal-form-group">
                                                         <label>메타데이터 (JSON)</label>
                                                         <textarea className="mgmt-input" style={{ height: '80px', fontSize: '12px', fontFamily: 'monospace' }} value={JSON.stringify(deviceMetadata, null, 2)} onChange={e => { try { setDeviceMetadata(JSON.parse(e.target.value)); } catch (err) { } }} />
                                                     </div>
-                                                    <div className="modal-form-group">
+                                                    <div className="mgmt-modal-form-group">
                                                         <label>커스텀 필드 (JSON)</label>
                                                         <textarea className="mgmt-input" style={{ height: '80px', fontSize: '12px', fontFamily: 'monospace' }} value={JSON.stringify(customFields, null, 2)} onChange={e => { try { setCustomFields(JSON.parse(e.target.value)); } catch (err) { } }} />
                                                     </div>
@@ -1067,7 +1067,7 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                 <div className="wizard-navigation-footer">
                     <div className="footer-left">
                         {step > 1 && (
-                            <button className="btn-outline btn-large" onClick={() => setStep(step - 1)}>
+                            <button className="mgmt-btn mgmt-btn-outline btn-large" onClick={() => setStep(step - 1)}>
                                 <i className="fas fa-arrow-left"></i> 이전 단계로
                             </button>
                         )}
@@ -1075,25 +1075,25 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
                     <div className="footer-right">
                         {step === 1 ? (
                             selectedTemplate && (
-                                <button className="btn-primary btn-large" onClick={() => setStep(2)}>
+                                <button className="mgmt-btn mgmt-btn-primary btn-large" onClick={() => setStep(2)}>
                                     다음: 접속 설정 진행 <i className="fas fa-arrow-right"></i>
                                 </button>
                             )
                         ) : step === 2 ? (
                             <button
-                                className="btn-primary btn-large"
+                                className="mgmt-btn mgmt-btn-primary btn-large"
                                 disabled={!deviceName || !selectedSite || (!endpoint && !ipAddress)}
                                 onClick={() => setStep(3)}
                             >
                                 다음: 데이터 포인트 매핑 <i className="fas fa-arrow-right"></i>
                             </button>
                         ) : step === 3 ? (
-                            <button className="btn-primary btn-large" onClick={() => setStep(4)}>
+                            <button className="mgmt-btn mgmt-btn-primary btn-large" onClick={() => setStep(4)}>
                                 다음: 고급 설정 완료 <i className="fas fa-arrow-right"></i>
                             </button>
                         ) : (
                             <button
-                                className="btn-primary btn-large"
+                                className="mgmt-btn mgmt-btn-primary btn-large"
                                 onClick={handleCreate}
                                 disabled={loading || !deviceName}
                             >
@@ -1106,12 +1106,12 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
             </div>
 
             <style>{`
-        .modal-overlay {
+        .mgmt-modal-overlay {
           position: fixed; top: 0; left: 0; right: 0; bottom: 0;
           background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000;
           backdrop-filter: blur(2px);
         }
-        .modal-container { background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); overflow: hidden; display: flex; flex-direction: column; height: 85vh; }
+        .mgmt-modal-container { background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); overflow: hidden; display: flex; flex-direction: column; height: 85vh; }
         
         .wizard-layout { display: flex; flex: 1; overflow: hidden; background: #f8fafc; }
         .wizard-main-content { flex: 1; padding: 30px; overflow-y: auto; background: white; position: relative; }
@@ -1164,11 +1164,11 @@ ${deviceTags.length > 0 ? `- 태그: ${deviceTags.join(', ')}\n` : ''}${Object.k
         .panel-header { background: #f1f5f9; padding: 10px 16px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #475569; }
         .panel-body { padding: 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
         
-        .modal-form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-        .modal-form-group.span-full { grid-column: 1 / -1; }
-        .modal-form-group.compact { grid-column: span 1; }
-        .modal-form-group label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 8px; }
-        .modal-form-group label .required { color: #ef4444; margin-left: 2px; }
+        .mgmt-modal-form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .mgmt-modal-form-group.mgmt-span-full { grid-column: 1 / -1; }
+        .mgmt-modal-form-group.compact { grid-column: span 1; }
+        .mgmt-modal-form-group label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 8px; }
+        .mgmt-modal-form-group label .required { color: #ef4444; margin-left: 2px; }
 
         .wizard-summary-box { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         .summary-title { font-size: 15px; font-weight: 700; color: #1e293b; background: #f1f5f9; padding: 15px 20px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 10px; }

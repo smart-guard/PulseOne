@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     curl git nodejs npm pkg-config \
     wget unzip vim nano \
     libssl-dev uuid-dev \
+    libbluetooth-dev \
+    libmbedtls-dev \
     autotools-dev autoconf automake libtool \
     tree htop procps \
     && rm -rf /var/lib/apt/lists/*
@@ -55,10 +57,10 @@ RUN echo "Installing Paho MQTT C++..." && \
     cd /tmp && git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
     cd paho.mqtt.cpp && mkdir -p build && cd build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
-             -DPAHO_WITH_SSL=TRUE \
-             -DPAHO_BUILD_DOCUMENTATION=FALSE \
-             -DPAHO_BUILD_SAMPLES=FALSE \
-             -DPAHO_BUILD_TESTS=FALSE && \
+    -DPAHO_WITH_SSL=TRUE \
+    -DPAHO_BUILD_DOCUMENTATION=FALSE \
+    -DPAHO_BUILD_SAMPLES=FALSE \
+    -DPAHO_BUILD_TESTS=FALSE && \
     make -j$(nproc) && make install && ldconfig && \
     cd / && rm -rf /tmp/paho.mqtt.cpp
 
@@ -97,6 +99,16 @@ RUN echo "Installing BACnet Stack..." && \
     cp -r src/bacnet /usr/local/include/ && \
     ldconfig && \
     cd / && rm -rf /tmp/bacnet-stack
+
+# 9. open62541 (OPC UA) 설치
+RUN echo "Installing open62541..." && \
+    cd /tmp && git clone --depth 1 --branch v1.3.9 https://github.com/open62541/open62541.git && \
+    cd open62541 && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DUA_ENABLE_AMALGAMATION=ON \
+    -DUA_ENABLE_ENCRYPTION=ON && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/open62541 && echo "open62541 installed"
 
 # pkg-config 파일들 생성
 RUN mkdir -p /usr/local/lib/pkgconfig

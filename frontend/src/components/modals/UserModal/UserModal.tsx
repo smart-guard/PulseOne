@@ -165,27 +165,27 @@ export const UserModal: React.FC<UserModalProps> = ({
         : sites;
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-container user-modal">
-                <div className="modal-header">
-                    <div className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container user-modal">
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-modal-title">
                         <h2>{user ? '사용자 정보 수정' : '새 사용자 등록'}</h2>
                     </div>
-                    <button className="close-btn" onClick={onClose} disabled={loading}>
+                    <button className="mgmt-close-btn" onClick={onClose} disabled={loading}>
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body">
+                <div className="mgmt-modal-body">
                     <form id="user-form" onSubmit={handleSubmit}>
-                        <div className="modal-form-grid">
+                        <div className="mgmt-modal-form-grid">
                             {/* Left Column: Basic Info */}
-                            <div className="modal-form-section">
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
 
                                 {/* Tenant Selection (Visible if multiple tenants available) */}
                                 {tenants.length > 1 && (
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label className="required">소속 회사 (Tenant)</label>
                                         <select
                                             className="form-control"
@@ -202,7 +202,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                     </div>
                                 )}
 
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">아이디</label>
                                     <input
                                         type="text"
@@ -214,7 +214,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                         disabled={!!user || loading}
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">성함</label>
                                     <input
                                         type="text"
@@ -226,7 +226,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                         disabled={loading}
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>휴대폰 번호</label>
                                     <input
                                         type="tel"
@@ -237,7 +237,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                         disabled={loading}
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">이메일</label>
                                     <input
                                         type="email"
@@ -249,7 +249,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                         disabled={loading}
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>부서</label>
                                     <input
                                         type="text"
@@ -263,9 +263,9 @@ export const UserModal: React.FC<UserModalProps> = ({
                             </div>
 
                             {/* Right Column: Roles & Permissions */}
-                            <div className="modal-form-section">
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-shield-alt"></i> 권한 및 계정 설정</h3>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">시스템 역할</label>
                                     <select
                                         className="form-control"
@@ -282,7 +282,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                     </select>
                                 </div>
 
-                                <div className="modal-form-group" style={{ marginTop: '12px' }}>
+                                <div className="mgmt-modal-form-group" style={{ marginTop: '12px' }}>
                                     <label>상세 권한 정책</label>
                                     <div className="permissions-grid" style={{ maxHeight: '150px', overflowY: 'auto' }}>
                                         {availablePermissions.length > 0 ? (
@@ -303,11 +303,11 @@ export const UserModal: React.FC<UserModalProps> = ({
                                             </div>
                                         )}
                                     </div>
-                                    <p className="modal-form-hint">역할에 포함되지 않은 추가 권한을 부여할 때 사용합니다.</p>
+                                    <p className="mgmt-modal-form-hint">역할에 포함되지 않은 추가 권한을 부여할 때 사용합니다.</p>
                                 </div>
 
                                 {/* Site Access Selection */}
-                                <div className="modal-form-group" style={{ marginTop: '12px' }}>
+                                <div className="mgmt-modal-form-group" style={{ marginTop: '12px' }}>
                                     <label>사이트 접근 권한 ({filteredSites.length})</label>
                                     <div className="permissions-grid" style={{ maxHeight: '100px', overflowY: 'auto' }}>
                                         {filteredSites.length === 0 ? (
@@ -328,7 +328,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                     </div>
                                 </div>
 
-                                <div className="modal-form-group" style={{ marginTop: 'auto' }}>
+                                <div className="mgmt-modal-form-group" style={{ marginTop: 'auto' }}>
                                     <div className="checkbox-group">
                                         <label className="checkbox-label">
                                             <input
@@ -339,7 +339,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                             />
                                             계정 활성화 상태
                                         </label>
-                                        <p className="modal-form-hint">
+                                        <p className="mgmt-modal-form-hint">
                                             비활성화 시 해당 사용자의 시스템 로그인이 즉시 차단됩니다.
                                         </p>
                                     </div>
@@ -349,7 +349,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                     </form>
                 </div>
 
-                <div className="modal-footer">
+                <div className="mgmt-modal-footer">
                     <div className="footer-left">
                         {user && !user.is_deleted && (
                             <button

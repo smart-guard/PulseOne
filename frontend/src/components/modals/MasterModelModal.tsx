@@ -445,14 +445,14 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="modal-overlay">
-            <div className="modal-container" style={{ width: '1250px', maxWidth: '98vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-                <div className="modal-header">
-                    <h3 className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container" style={{ width: '1250px', maxWidth: '98vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                <div className="mgmt-modal-header">
+                    <h3 className="mgmt-modal-title">
                         <i className={`fas ${isEdit ? 'fa-edit' : 'fa-plus-circle'} text-primary`}></i>
                         {isEdit ? '마스터 모델 수정' : '마스터 모델 등록'}
                     </h3>
-                    <button className="close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
+                    <button className="mgmt-close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
 
                 <div className="wizard-steps-container">
@@ -472,10 +472,10 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                     </div>
                 </div>
 
-                <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+                <div className="mgmt-modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
                     {step === 1 ? (
-                        <div className="modal-form-grid">
-                            <div className="modal-form-group span-full">
+                        <div className="mgmt-modal-form-grid">
+                            <div className="mgmt-modal-form-group mgmt-span-full">
                                 <label>마스터 모델 이름 *</label>
                                 <input
                                     className="mgmt-input"
@@ -484,7 +484,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                     placeholder="예: ACS880 Standard Template"
                                 />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>제조사 *</label>
                                 <select
                                     className="mgmt-select"
@@ -495,7 +495,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                     {propsManufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                 </select>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>모델명 *</label>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     <input
@@ -506,7 +506,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                         style={{ flex: 1 }}
                                     />
                                     <button
-                                        className="btn-outline"
+                                        className="mgmt-btn mgmt-btn-outline"
                                         onClick={() => {
                                             if (!modelName) {
                                                 confirm({
@@ -522,13 +522,13 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                             window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
                                         }}
                                         title="구글에서 매뉴얼 검색"
-                                        style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                        style={{ whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px', width: 'auto', flex: 'none' }}
                                     >
                                         <i className="fab fa-google"></i> 검색
                                     </button>
                                 </div>
                             </div>
-                            <div className="modal-form-group span-full">
+                            <div className="mgmt-modal-form-group mgmt-span-full">
                                 <label>참조 매뉴얼 URL</label>
                                 <input
                                     className="mgmt-input"
@@ -537,7 +537,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                     placeholder="검색된 매뉴얼의 URL을 복사하여 입력하세요 (예: https://...)"
                                 />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>디바이스 타입</label>
                                 <select
                                     className="mgmt-select"
@@ -551,7 +551,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                     <option value="GATEWAY">GATEWAY</option>
                                 </select>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>프로토콜 *</label>
                                 <select
                                     className="mgmt-select"
@@ -562,7 +562,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                     {propsProtocols.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
                                 </select>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>수집 주기 (ms)</label>
                                 <input
                                     type="number"
@@ -571,7 +571,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                     onChange={e => setFormData({ ...formData, polling_interval: Number(e.target.value) })}
                                 />
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>타임아웃 (ms)</label>
                                 <input
                                     type="number"
@@ -580,7 +580,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                     onChange={e => setFormData({ ...formData, timeout: Number(e.target.value) })}
                                 />
                             </div>
-                            <div className="modal-form-group span-full">
+                            <div className="mgmt-modal-form-group mgmt-span-full">
                                 <label>설명</label>
                                 <textarea
                                     className="mgmt-input"
@@ -595,10 +595,10 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                                 <h4 style={{ margin: 0 }}><i className="fas fa-list-ul"></i> 데이터 포인트 ({dataPoints.length})</h4>
                                 <div style={{ display: 'flex', gap: '8px' }}>
-                                    <button className="btn-outline btn-sm" onClick={() => setIsBulkModalOpen(true)}>
+                                    <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => setIsBulkModalOpen(true)}>
                                         <i className="fas fa-file-excel"></i> 엑셀 일괄 등록
                                     </button>
-                                    <button className="btn-primary btn-sm" onClick={addPoint}>
+                                    <button className="mgmt-btn mgmt-btn-primary mgmt-btn-sm" onClick={addPoint}>
                                         <i className="fas fa-plus"></i> 포인트 추가
                                     </button>
                                 </div>
@@ -717,7 +717,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                                         />
                                                     </td>
                                                     <td>
-                                                        <button className="btn-icon danger" onClick={() => removePoint(idx)}>
+                                                        <button className="mgmt-btn-icon mgmt-btn-error" onClick={() => removePoint(idx)}>
                                                             <i className="fas fa-trash"></i>
                                                         </button>
                                                     </td>
@@ -735,18 +735,18 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                 <i className="fas fa-microchip"></i> <strong>{propsProtocols.find(p => p.id === formData.protocol_id)?.display_name}</strong> 프로토콜에 필요한 속성값입니다. 필수 항목(*)을 확인해주세요.
                             </div>
 
-                            <div className="modal-form-grid">
+                            <div className="mgmt-modal-form-grid">
                                 {(() => {
                                     const selectedP = propsProtocols.find(p => p.id === formData.protocol_id);
                                     const schema = selectedP?.connection_params;
-                                    if (!selectedP || !schema) return <div className="span-full text-muted">이 프로토콜은 추가 설정이 필요하지 않습니다.</div>;
+                                    if (!selectedP || !schema) return <div className="mgmt-span-full text-muted">이 프로토콜은 추가 설정이 필요하지 않습니다.</div>;
 
                                     const schemaObj = typeof schema === 'string' ? JSON.parse(schema) : schema;
 
                                     return Object.keys(schemaObj).map(key => {
                                         const field = schemaObj[key];
                                         return (
-                                            <div key={key} className="modal-form-group">
+                                            <div key={key} className="mgmt-modal-form-group">
                                                 <label>{key.replace(/_/g, ' ').toUpperCase()}{field.required ? ' *' : ''}</label>
                                                 {field.type === 'integer' || field.type === 'number' ? (
                                                     <input
@@ -834,8 +834,8 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                         </select>
                                     </div>
                                 </div>
-                                <div className="modal-form-grid">
-                                    <div className="modal-form-group">
+                                <div className="mgmt-modal-form-grid">
+                                    <div className="mgmt-modal-form-group">
                                         <label>최대 재시도 횟수</label>
                                         <input
                                             type="number"
@@ -844,7 +844,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                             onChange={e => setProtocolConfig({ ...protocolConfig, max_retry_count: Number(e.target.value) })}
                                         />
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>재시도 간격 (ms)</label>
                                         <input
                                             type="number"
@@ -853,7 +853,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                             onChange={e => setProtocolConfig({ ...protocolConfig, retry_interval_ms: Number(e.target.value) })}
                                         />
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>복구 대기 시간 (ms)</label>
                                         <input
                                             type="number"
@@ -863,7 +863,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                             placeholder="모든 재시도 실패 후 대기 시간"
                                         />
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>Keep-alive 활성화</label>
                                         <select
                                             className="mgmt-select"
@@ -874,7 +874,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                             <option value={0}>비활성화</option>
                                         </select>
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>K-A 주기 (초)</label>
                                         <input
                                             type="number"
@@ -884,7 +884,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                                             disabled={!protocolConfig.is_keep_alive_enabled}
                                         />
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>K-A 타임아웃 (초)</label>
                                         <input
                                             type="number"
@@ -900,23 +900,24 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                     )}
                 </div>
 
-                <div className="modal-footer" style={{ borderTop: '1px solid #e2e8f0', padding: '16px 24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <div className="mgmt-modal-footer">
                     {isEdit && onDelete && (
-                        <button className="btn-outline danger" onClick={() => onDelete(template!)} title="삭제">
-                            <i className="fas fa-trash"></i> 삭제
-                        </button>
+                        <div style={{ marginRight: 'auto' }}>
+                            <button className="mgmt-btn mgmt-btn-outline mgmt-btn-error" onClick={() => onDelete(template!)} title="삭제">
+                                <i className="fas fa-trash"></i> 삭제
+                            </button>
+                        </div>
                     )}
-                    <div style={{ flex: 1 }}></div>
-                    <button className="btn-outline" onClick={onClose}>취소</button>
+                    <button className="mgmt-btn mgmt-btn-outline" style={{ width: 'auto', minWidth: '100px' }} onClick={onClose}>취소</button>
                     {step < 3 ? (
                         <>
-                            {step > 1 && <button className="btn-outline" onClick={() => setStep(step - 1)}><i className="fas fa-arrow-left"></i> 이전</button>}
-                            <button className="btn-primary" onClick={handleNext}>다음 단계 <i className="fas fa-arrow-right"></i></button>
+                            {step > 1 && <button className="mgmt-btn mgmt-btn-outline" style={{ width: 'auto', minWidth: '100px' }} onClick={() => setStep(step - 1)}><i className="fas fa-arrow-left"></i> 이전</button>}
+                            <button className="mgmt-btn mgmt-btn-primary" style={{ width: 'auto', minWidth: '120px' }} onClick={handleNext}>다음 단계 <i className="fas fa-arrow-right"></i></button>
                         </>
                     ) : (
                         <>
-                            <button className="btn-outline" onClick={() => setStep(2)}><i className="fas fa-arrow-left"></i> 이전</button>
-                            <button className="btn-primary" onClick={handleSave} disabled={loading}>
+                            <button className="mgmt-btn mgmt-btn-outline" style={{ width: 'auto', minWidth: '100px' }} onClick={() => setStep(2)}><i className="fas fa-arrow-left"></i> 이전</button>
+                            <button className="mgmt-btn mgmt-btn-primary" style={{ width: 'auto', minWidth: '120px' }} onClick={handleSave} disabled={loading}>
                                 {loading ? '저장 중...' : (isEdit ? '수정 완료' : '등록 완료')}
                             </button>
                         </>
@@ -925,11 +926,11 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
             </div>
 
             <style>{`
-                .modal-overlay {
+                .mgmt-modal-overlay {
                   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                   background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;
                 }
-                .modal-container { background: white; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+                .mgmt-modal-container { background: white; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
                 .wizard-steps-container {
                   display: flex; align-items: center; justify-content: center; padding: 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
                 }

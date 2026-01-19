@@ -509,6 +509,7 @@ CREATE TABLE IF NOT EXISTS manufacturers (
     website VARCHAR(255),
     logo_url VARCHAR(255),
     is_active INTEGER DEFAULT 1,
+    is_deleted INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -524,6 +525,7 @@ CREATE TABLE IF NOT EXISTS device_models (
     manual_url VARCHAR(255),
     metadata TEXT,                                       -- JSON 형태
     is_active INTEGER DEFAULT 1,
+    is_deleted INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE CASCADE,
@@ -3206,3 +3208,53 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)
 -- ============================================================================
 -- 끝
 -- ============================================================================
+-- ============================================================================
+-- 9. export_gateways (게이트웨이 관리)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS export_gateways (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    ip_address VARCHAR(50),
+    port INTEGER DEFAULT 8080,
+    
+    status VARCHAR(20) DEFAULT 'offline', -- online, offline, error
+    registration_token VARCHAR(255),
+    config TEXT, -- JSON string for gateway-specific settings
+    
+    is_deleted INTEGER DEFAULT 0,
+    last_seen DATETIME,
+    last_heartbeat DATETIME,
+    
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_export_gateways_tenant ON export_gateways(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_export_gateways_status ON export_gateways(status);
+
+-- ============================================================================
+-- 10. export_profile_assignments (프로파일-게이트웨이 할당)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS export_profile_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    gateway_id INTEGER NOT NULL,
+    is_active BOOLEAN DEFAULT 1,
+    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_id) REFERENCES export_gateways(id) ON DELETE CASCADE,
+    UNIQUE(profile_id, gateway_id)
+);
+
+
+CREATE INDEX IF NOT EXISTS idx_profile_assignments_gateway ON export_profile_assignments(gateway_id);
+CREATE INDEX IF NOT EXISTS idx_profile_assignments_profile ON export_profile_assignments(profile_id);
+

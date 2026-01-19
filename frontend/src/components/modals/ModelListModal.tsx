@@ -71,17 +71,17 @@ export const ModelListModal: React.FC<ModelListModalProps> = ({ isOpen, onClose,
     if (!isOpen || !manufacturer) return null;
 
     return createPortal(
-        <div className="modal-overlay" onClick={onClose}>
+        <div className="mgmt-modal-overlay" onClick={onClose}>
             <div
-                className="modal-container compact-modal"
+                className="mgmt-modal-container compact-modal"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="modal-header">
+                <div className="mgmt-modal-header">
                     <h3>{manufacturer.name} 모델 목록</h3>
-                    <button className="close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
+                    <button className="mgmt-close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
 
-                <div className="modal-body" style={{ padding: '16px 20px', minHeight: '320px', display: 'flex', flexDirection: 'column' }}>
+                <div className="mgmt-modal-body" style={{ padding: '16px 20px', minHeight: '320px', display: 'flex', flexDirection: 'column' }}>
                     {loading ? (
                         <div style={{ textAlign: 'center', padding: '60px 0', color: '#64748b', flex: 1 }}>
                             <i className="fas fa-spinner fa-spin fa-2x"></i>
@@ -153,7 +153,7 @@ export const ModelListModal: React.FC<ModelListModalProps> = ({ isOpen, onClose,
                     )}
                 </div>
 
-                <div className="modal-footer">
+                <div className="mgmt-modal-footer">
                     <button className="btn-secondary" onClick={onClose}>닫기</button>
                 </div>
 

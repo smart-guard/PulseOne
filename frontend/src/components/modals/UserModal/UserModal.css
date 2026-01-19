@@ -2,25 +2,25 @@
     max-width: 800px !important;
 }
 
-.user-modal .modal-body {
+.user-modal .mgmt-modal-body {
     padding: 16px 20px;
     max-height: calc(90vh - 120px);
     overflow-y: auto;
 }
 
-.user-modal .modal-form-grid {
+.user-modal .mgmt-modal-form-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 16px;
 }
 
-.user-modal .modal-form-section {
+.user-modal .mgmt-modal-form-section {
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
 
-.user-modal .modal-form-section h3 {
+.user-modal .mgmt-modal-form-section h3 {
     font-size: 14px;
     font-weight: 700;
     color: var(--neutral-800);
@@ -32,24 +32,24 @@
     border-bottom: 2px solid var(--primary-100);
 }
 
-.user-modal .modal-form-group {
+.user-modal .mgmt-modal-form-group {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
 
-.user-modal .modal-form-group label {
+.user-modal .mgmt-modal-form-group label {
     font-size: 13px;
     font-weight: 600;
     color: var(--neutral-700);
 }
 
-.user-modal .modal-form-group label.required::after {
+.user-modal .mgmt-modal-form-group label.required::after {
     content: ' *';
     color: var(--error-500);
 }
 
-.user-modal .modal-form-group .form-control {
+.user-modal .mgmt-modal-form-group .form-control {
     padding: 8px 12px;
     border: 1px solid var(--neutral-200);
     border-radius: 8px;
@@ -59,13 +59,13 @@
     box-sizing: border-box;
 }
 
-.user-modal .modal-form-group .form-control:focus {
+.user-modal .mgmt-modal-form-group .form-control:focus {
     border-color: var(--primary-500);
     box-shadow: 0 0 0 3px var(--primary-100);
     outline: none;
 }
 
-.user-modal .modal-form-group .form-control:disabled {
+.user-modal .mgmt-modal-form-group .form-control:disabled {
     background-color: var(--neutral-50);
     color: var(--neutral-500);
     cursor: not-allowed;
@@ -88,13 +88,13 @@
     margin: 0;
 }
 
-.user-modal .modal-form-hint {
+.user-modal .mgmt-modal-form-hint {
     font-size: 11px;
     color: var(--neutral-500);
     margin-top: 2px;
 }
 
-.user-modal .span-full {
+.user-modal .mgmt-span-full {
     grid-column: 1 / -1;
 }
 
@@ -125,7 +125,7 @@
 }
 
 @media (max-width: 768px) {
-    .user-modal .modal-form-grid {
+    .user-modal .mgmt-modal-form-grid {
         grid-template-columns: 1fr;
     }
 }

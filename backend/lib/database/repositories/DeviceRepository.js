@@ -595,6 +595,7 @@ class DeviceRepository extends BaseRepository {
         try {
             const sql = DeviceQueries.getSystemStatusSummary();
             const result = await this.executeQuerySingle(sql, [tenantId]);
+            this.logger.log(`📊 [DeviceRepository] systemSummary result for tenant ${tenantId}:`, result);
             return result || {
                 total_devices: 0,
                 active_devices: 0,

@@ -36,42 +36,42 @@ const DeviceTemplateDetailModal: React.FC<DeviceTemplateDetailModalProps> = ({
     const currentPoints = dataPoints.slice(offset, offset + pageSize);
 
     return createPortal(
-        <div className="modal-overlay">
-            <div className="modal-container" style={{ width: '1100px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-                <div className="modal-header">
-                    <h3 className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container" style={{ width: '1100px', maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+                <div className="mgmt-modal-header">
+                    <h3 className="mgmt-modal-title">
                         <i className="fas fa-file-invoice text-primary"></i> 마스터 모델 상세 정보
                     </h3>
-                    <button className="close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
+                    <button className="mgmt-close-btn" onClick={onClose}><i className="fas fa-times"></i></button>
                 </div>
 
-                <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+                <div className="mgmt-modal-body" style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
 
-                    <div className="modal-form-section">
+                    <div className="mgmt-modal-form-section">
                         <h3><i className="fas fa-info-circle"></i> 기본 정보</h3>
-                        <div className="modal-form-grid">
-                            <div className="modal-form-group">
+                        <div className="mgmt-modal-form-grid">
+                            <div className="mgmt-modal-form-group">
                                 <label>마스터 모델 이름</label>
                                 <div className="detail-value">{template.name}</div>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>타입</label>
                                 <div className="detail-value"><span className="badge">{template.device_type}</span></div>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>제조사</label>
                                 <div className="detail-value">{template.manufacturer_name}</div>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>모델</label>
                                 <div className="detail-value">{template.model_name}</div>
                             </div>
-                            <div className="modal-form-group span-full">
+                            <div className="mgmt-modal-form-group mgmt-span-full">
                                 <label>설명</label>
                                 <div className="detail-value">{template.description || '-'}</div>
                             </div>
                             {template.manual_url && (
-                                <div className="modal-form-group span-full">
+                                <div className="mgmt-modal-form-group mgmt-span-full">
                                     <label>참조 매뉴얼</label>
                                     <div className="detail-value">
                                         <a
@@ -88,29 +88,29 @@ const DeviceTemplateDetailModal: React.FC<DeviceTemplateDetailModalProps> = ({
                         </div>
                     </div>
 
-                    <div className="modal-form-section">
+                    <div className="mgmt-modal-form-section">
                         <h3><i className="fas fa-network-wired"></i> 통신 설정</h3>
-                        <div className="modal-form-grid">
-                            <div className="modal-form-group">
+                        <div className="mgmt-modal-form-grid">
+                            <div className="mgmt-modal-form-group">
                                 <label>프로토콜</label>
                                 <div className="detail-value">{template.protocol_name || (template.protocol_id === 1 ? 'Modbus TCP' : template.protocol_id === 2 ? 'Modbus RTU' : 'Other')}</div>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>수집 주기</label>
                                 <div className="detail-value">{template.polling_interval} ms</div>
                             </div>
-                            <div className="modal-form-group">
+                            <div className="mgmt-modal-form-group">
                                 <label>타임아웃</label>
                                 <div className="detail-value">{template.timeout} ms</div>
                             </div>
-                            <div className="modal-form-group span-full">
+                            <div className="mgmt-modal-form-group mgmt-span-full">
                                 <label>기본 설정 (Config)</label>
                                 <pre className="code-block">{typeof template.config === 'string' ? template.config : JSON.stringify(template.config, null, 2)}</pre>
                             </div>
                         </div>
                     </div>
 
-                    <div className="modal-form-section">
+                    <div className="mgmt-modal-form-section">
                         <h3><i className="fas fa-list-ul"></i> 데이터 포인트 ({template.data_points?.length || 0})</h3>
                         <div className="table-container">
                             <table className="mgmt-table">
@@ -169,20 +169,21 @@ const DeviceTemplateDetailModal: React.FC<DeviceTemplateDetailModalProps> = ({
 
                 </div>
 
-                <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <div className="mgmt-modal-footer">
                     {onDelete && (
-                        <button className="btn-outline danger" onClick={() => onDelete(template)} title="삭제">
-                            <i className="fas fa-trash"></i> 삭제
-                        </button>
+                        <div style={{ marginRight: 'auto' }}>
+                            <button className="mgmt-btn mgmt-btn-outline mgmt-btn-error" onClick={() => onDelete(template)} title="삭제">
+                                <i className="fas fa-trash"></i> 삭제
+                            </button>
+                        </div>
                     )}
-                    <div style={{ flex: 1 }}></div>
-                    <button className="btn-outline" onClick={onClose}>닫기</button>
+                    <button className="mgmt-btn mgmt-btn-outline" style={{ width: 'auto', minWidth: '100px' }} onClick={onClose}>닫기</button>
                     {onEdit && (
-                        <button className="btn-outline" onClick={() => onEdit(template)}>
+                        <button className="mgmt-btn mgmt-btn-outline" style={{ width: 'auto', minWidth: '100px' }} onClick={() => onEdit(template)}>
                             <i className="fas fa-edit"></i> 수정
                         </button>
                     )}
-                    <button className="btn-primary" onClick={() => onUseTemplate(template.id)}>
+                    <button className="mgmt-btn mgmt-btn-primary" style={{ width: 'auto', minWidth: '160px' }} onClick={() => onUseTemplate(template.id)}>
                         <i className="fas fa-magic"></i> 이 마스터 모델 사용
                     </button>
                 </div>

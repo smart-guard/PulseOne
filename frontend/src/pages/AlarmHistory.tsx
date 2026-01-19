@@ -430,7 +430,7 @@ const AlarmHistory: React.FC = () => {
         actions={
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
-              className="btn-outline"
+              className="mgmt-btn mgmt-btn-outline"
               onClick={handleRefresh}
               disabled={isInitialLoading}
             >
@@ -438,7 +438,7 @@ const AlarmHistory: React.FC = () => {
               새로고침
             </button>
             <button
-              className="btn-primary"
+              className="mgmt-btn mgmt-btn-primary"
               onClick={handleExportToCSV}
               disabled={!Array.isArray(alarmEvents) || alarmEvents.length === 0}
             >
@@ -545,7 +545,7 @@ const AlarmHistory: React.FC = () => {
         }
         rightActions={
           <button
-            className="btn-primary"
+            className="mgmt-btn mgmt-btn-primary"
             onClick={handleSearch}
             style={{ height: '36px' }}
           >
@@ -574,14 +574,14 @@ const AlarmHistory: React.FC = () => {
           </div>
           <div className="view-toggle">
             <button
-              className={`btn-icon ${viewMode === 'list' ? 'active' : ''}`}
+              className={`mgmt-btn-icon ${viewMode === 'list' ? 'active' : ''}`}
               onClick={() => setViewMode('list')}
               title="목록 보기"
             >
               <i className="fas fa-list"></i>
             </button>
             <button
-              className={`btn-icon ${viewMode === 'timeline' ? 'active' : ''}`}
+              className={`mgmt-btn-icon ${viewMode === 'timeline' ? 'active' : ''}`}
               onClick={() => setViewMode('timeline')}
               title="타임라인 보기"
             >
@@ -665,7 +665,7 @@ const AlarmHistory: React.FC = () => {
                               <div className="flex justify-center gap-2">
                                 {state === 'active' && (
                                   <button
-                                    className="btn-icon warning"
+                                    className="mgmt-btn-icon warning"
                                     onClick={(e) => { e.stopPropagation(); handleAcknowledge(event.id); }}
                                     title="알람 확인"
                                   >
@@ -674,7 +674,7 @@ const AlarmHistory: React.FC = () => {
                                 )}
                                 {state === 'acknowledged' && (
                                   <button
-                                    className="btn-icon error"
+                                    className="mgmt-btn-icon error"
                                     onClick={(e) => { e.stopPropagation(); handleClear(event.id); }}
                                     title="알람 해제"
                                   >
@@ -682,7 +682,7 @@ const AlarmHistory: React.FC = () => {
                                   </button>
                                 )}
                                 <button
-                                  className="btn-icon"
+                                  className="mgmt-btn-icon functional"
                                   onClick={(e) => { e.stopPropagation(); handleViewDetails(event); }}
                                   title="상세 보기"
                                 >
@@ -735,7 +735,7 @@ const AlarmHistory: React.FC = () => {
                                 {event.device_name || '디바이스 정보 없음'} &bull; {event.rule_name || '규칙 정보 없음'}
                               </div>
                               <div className="flex justify-end mt-4">
-                                <button className="btn-link" onClick={() => handleViewDetails(event)}>
+                                <button className="mgmt-btn-link" onClick={() => handleViewDetails(event)}>
                                   상세 내용 보기 <i className="fas fa-chevron-right"></i>
                                 </button>
                               </div>

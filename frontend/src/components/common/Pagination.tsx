@@ -56,19 +56,19 @@ export const Pagination: React.FC<PaginationProps> = ({
   const pageNumbers = getPageNumbers();
 
   return (
-    <div className={`pagination-wrapper ${className}`}>
+    <div className={`mgmt-pagination-wrapper ${className}`}>
       {/* 🔥 페이지 정보 - 왼쪽 정렬 */}
       {showTotal && (
-        <div className="pagination-info">
+        <div className="mgmt-pagination-info">
           <span>{startIndex}-{endIndex} / {total}개</span>
         </div>
       )}
 
       {/* 🔥 페이지 네비게이션 - 중앙 정렬 */}
-      <div className="pagination-navigation">
+      <div className="mgmt-pagination-navigation">
         {/* 맨 처음 */}
         <button
-          className="pagination-button"
+          className="mgmt-pagination-button"
           onClick={() => handlePageChange(1)}
           disabled={current === 1}
           title="맨 처음"
@@ -78,7 +78,7 @@ export const Pagination: React.FC<PaginationProps> = ({
 
         {/* 이전 */}
         <button
-          className="pagination-button"
+          className="mgmt-pagination-button"
           onClick={() => handlePageChange(current - 1)}
           disabled={current === 1}
           title="이전"
@@ -90,7 +90,7 @@ export const Pagination: React.FC<PaginationProps> = ({
         {pageNumbers.map(page => (
           <button
             key={page}
-            className={`pagination-button ${page === current ? 'active' : ''}`}
+            className={`mgmt-pagination-button ${page === current ? 'active' : ''}`}
             onClick={() => handlePageChange(page)}
           >
             {page}
@@ -99,7 +99,7 @@ export const Pagination: React.FC<PaginationProps> = ({
 
         {/* 다음 */}
         <button
-          className="pagination-button"
+          className="mgmt-pagination-button"
           onClick={() => handlePageChange(current + 1)}
           disabled={current === totalPages}
           title="다음"
@@ -109,7 +109,7 @@ export const Pagination: React.FC<PaginationProps> = ({
 
         {/* 맨 끝 */}
         <button
-          className="pagination-button"
+          className="mgmt-pagination-button"
           onClick={() => handlePageChange(totalPages)}
           disabled={current === totalPages}
           title="맨 끝"
@@ -120,11 +120,11 @@ export const Pagination: React.FC<PaginationProps> = ({
 
       {/* 🔥 페이지 크기 선택 - 오른쪽 정렬 */}
       {showSizeChanger && (
-        <div className="pagination-size-selector">
+        <div className="mgmt-pagination-size-selector">
           <select
             value={pageSize}
             onChange={(e) => handleSizeChange(Number(e.target.value))}
-            className="page-size-select"
+            className="mgmt-page-size-select"
           >
             {pageSizeOptions.map(size => (
               <option key={size} value={size}>

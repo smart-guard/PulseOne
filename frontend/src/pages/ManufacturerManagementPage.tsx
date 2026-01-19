@@ -186,7 +186,7 @@ const ManufacturerManagementPage: React.FC = () => {
                 description="하드웨어 제조사 정보를 관리합니다. 모델 상세 관리는 '디바이마스터 모델' 페이지에서 가능합니다."
                 icon="fas fa-industry"
                 actions={
-                    <button className="btn btn-primary" onClick={handleCreate}>
+                    <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
                         <i className="fas fa-plus"></i> 새 제조사 등록
                     </button>
                 }
@@ -231,16 +231,16 @@ const ManufacturerManagementPage: React.FC = () => {
                                 삭제된 제조사 보기
                             </label>
                         </div>
-                        <div className="view-toggle">
+                        <div className="mgmt-view-toggle">
                             <button
-                                className={`btn-icon ${viewMode === 'card' ? 'active' : ''}`}
+                                className={`mgmt-btn-icon ${viewMode === 'card' ? 'active' : ''}`}
                                 onClick={() => setViewMode('card')}
                                 title="카드 보기"
                             >
                                 <i className="fas fa-th-large"></i>
                             </button>
                             <button
-                                className={`btn-icon ${viewMode === 'table' ? 'active' : ''}`}
+                                className={`mgmt-btn-icon ${viewMode === 'table' ? 'active' : ''}`}
                                 onClick={() => setViewMode('table')}
                                 title="리스트 보기"
                             >
@@ -256,34 +256,34 @@ const ManufacturerManagementPage: React.FC = () => {
                     <div className="mgmt-grid">
                         {manufacturers.map(m => (
                             <div key={m.id} className={`mgmt-card ${m.is_deleted ? 'deleted-item' : ''}`} style={m.is_deleted ? { opacity: 0.6 } : undefined}>
-                                <div className="card-header">
-                                    <div className="card-title">
-                                        <h4 className="clickable-name" onClick={() => handleViewDetail(m.id)}>{m.name}</h4>
+                                <div className="mgmt-card-header">
+                                    <div className="mgmt-card-title">
+                                        <h4 className="mgmt-clickable-name" onClick={() => handleViewDetail(m.id)}>{m.name}</h4>
                                         <div style={{ display: 'flex', gap: '5px' }}>
-                                            {!!m.is_deleted && <span className="badge danger">삭제됨</span>}
-                                            <span className={`badge ${m.is_active ? 'success' : 'neutral'}`}>
+                                            {!!m.is_deleted && <span className="mgmt-badge danger">삭제됨</span>}
+                                            <span className={`mgmt-badge ${m.is_active ? 'success' : 'neutral'}`}>
                                                 {m.is_active ? '활성' : '비활성'}
                                             </span>
                                         </div>
                                     </div>
                                 </div>
-                                <div className="card-body">
+                                <div className="mgmt-card-body">
                                     <p>{m.description || '제조사 설명이 없습니다.'}</p>
-                                    <div className="card-meta">
-                                        <span className="clickable-name" onClick={() => handleOpenModels(m)}>
+                                    <div className="mgmt-card-meta">
+                                        <span className="mgmt-clickable-name" onClick={() => handleOpenModels(m)}>
                                             <i className="fas fa-microchip"></i> {m.model_count || 0} Models
                                         </span>
                                         {m.country && <span><i className="fas fa-globe"></i> {m.country}</span>}
                                     </div>
                                 </div>
-                                <div className="card-footer" style={{ justifyContent: 'flex-end' }}>
+                                <div className="mgmt-card-footer" style={{ justifyContent: 'flex-end' }}>
                                     <div className="card-actions">
                                         {m.is_deleted ? (
-                                            <button className="btn btn-outline btn-sm" onClick={() => handleRestore(m)}>
+                                            <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleRestore(m)}>
                                                 <i className="fas fa-undo"></i> 복구하기
                                             </button>
                                         ) : (
-                                            <button className="btn btn-outline btn-sm" onClick={() => handleViewDetail(m.id)}>
+                                            <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => handleViewDetail(m.id)}>
                                                 상세보기
                                             </button>
                                         )}
@@ -309,7 +309,7 @@ const ManufacturerManagementPage: React.FC = () => {
                                     <tr key={m.id} className={m.is_deleted ? 'deleted-row' : ''} style={m.is_deleted ? { opacity: 0.6, backgroundColor: 'var(--neutral-50)' } : undefined}>
                                         <td>
                                             <div
-                                                className="mgmt-table-id-link clickable-name"
+                                                className="mgmt-table-id-link mgmt-clickable-name"
                                                 onClick={() => handleViewDetail(m.id)}
                                                 style={{ fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
                                             >
@@ -330,7 +330,7 @@ const ManufacturerManagementPage: React.FC = () => {
                                         </td>
                                         <td>
                                             <button
-                                                className="btn-link"
+                                                className="mgmt-btn-link"
                                                 onClick={() => handleOpenModels(m)}
                                             >
                                                 <i className="fas fa-microchip"></i> {m.model_count || 0}
@@ -347,8 +347,8 @@ const ManufacturerManagementPage: React.FC = () => {
                                         </td>
                                         <td>
                                             <div style={{ display: 'flex', gap: '5px' }}>
-                                                {!!m.is_deleted && <span className="badge danger">삭제됨</span>}
-                                                <span className={`badge ${m.is_active ? 'success' : 'neutral'}`}>
+                                                {!!m.is_deleted && <span className="mgmt-badge danger">삭제됨</span>}
+                                                <span className={`mgmt-badge ${m.is_active ? 'success' : 'neutral'}`}>
                                                     {m.is_active ? '활성' : '비활성'}
                                                 </span>
                                             </div>

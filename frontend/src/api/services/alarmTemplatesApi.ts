@@ -22,6 +22,8 @@ export interface AlarmTemplate {
   applicable_data_types: string[];
   created_at: string;
   updated_at: string;
+  version: number;
+  is_system_template?: boolean;
 }
 
 export interface DataPoint {
@@ -212,6 +214,76 @@ class AlarmTemplatesApi {
     } catch (error) {
       console.error('적용된 규칙 조회 실패:', error);
       return [];
+    }
+  }
+
+  // 버전 불일치 규칙 조회
+  async getOutdatedRules(templateId: number): Promise<CreatedAlarmRule[]> {
+    try {
+      const response = await fetch(`${BASE_URL}/alarms/templates/${templateId}/outdated-rules`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': '1',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`동기화 대상 규칙 조회 실패: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return result.success ? result.data : [];
+    } catch (error) {
+      console.error('동기화 대상 규칙 조회 실패:', error);
+      return [];
+    }
+  }
+
+  // 템플릿 변경사항 전파 (동기화)
+  async propagateTemplate(templateId: number, ruleIds?: number[]): Promise<any> {
+    try {
+      const response = await fetch(`${BASE_URL}/alarms/templates/${templateId}/propagate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': '1',
+        },
+        body: JSON.stringify({ rule_ids: ruleIds }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`동기화 실패: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return result.success ? result.data : result;
+    } catch (error) {
+      console.error('동기화 실패:', error);
+      throw error;
+    }
+  }
+
+  // 템플릿 적용 시뮬레이션
+  async simulateTemplate(templateId: number, data: { data_point_ids: number[], duration_days?: number }): Promise<any> {
+    try {
+      const response = await fetch(`${BASE_URL}/alarms/templates/${templateId}/simulate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': '1',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        throw new Error(`시뮬레이션 실패: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return result.success ? result.data : result;
+    } catch (error) {
+      console.error('시뮬레이션 실패:', error);
+      throw error;
     }
   }
 

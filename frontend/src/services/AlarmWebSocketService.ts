@@ -58,7 +58,7 @@ export class AlarmWebSocketService {
   private connectionHandlers: Set<ConnectionHandler> = new Set();
   private errorHandlers: Set<ErrorHandler> = new Set();
 
-  constructor(private tenantId: number = 1) {}
+  constructor(private tenantId: number = 1) { }
 
   // =========================================================================
   // Hybrid 연결 방식 (Polling → WebSocket 자동 업그레이드)
@@ -84,26 +84,26 @@ export class AlarmWebSocketService {
   private performConnection(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.isConnecting = true;
-      
+
       console.log('🚀 WebSocket 연결 시작 (Hybrid 모드: Polling → WebSocket)...');
-      
+
       const backendUrl = 'http://localhost:3000';
       const socketOptions = {
         // Hybrid 방식: Polling으로 시작 후 WebSocket 업그레이드
         transports: ['polling', 'websocket'],
-        
+
         // 연결 설정
         timeout: 20000,
         autoConnect: true,
         forceNew: true,
         upgrade: true,
         rememberUpgrade: false,
-        
+
         // 쿼리 파라미터
         query: {
           tenant_id: this.tenantId
         },
-        
+
         // 재연결 설정 (수동 관리)
         reconnection: false
       };
@@ -116,7 +116,7 @@ export class AlarmWebSocketService {
 
       try {
         this.socket = io(backendUrl, socketOptions);
-        
+
         console.log('🔧 Socket.IO 클라이언트 생성 완료, 이벤트 핸들러 설정 중...');
 
         // 연결 성공 핸들러
@@ -125,19 +125,19 @@ export class AlarmWebSocketService {
           console.log('   Socket ID:', this.socket?.id);
           console.log('   Transport:', this.socket?.io.engine.transport.name);
           console.log('   연결 시간:', new Date().toISOString());
-          
+
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           this.connectionPromise = null;
-          
+
           // Transport 업그레이드 감지
           this.socket?.io.engine.on('upgrade', () => {
             console.log('🚀 Transport 업그레이드:', this.socket?.io.engine.transport.name);
           });
-          
+
           // 즉시 테넌트 룸 조인
           this.socket?.emit('join_tenant', this.tenantId);
-          
+
           this.notifyConnectionChange({
             status: 'connected',
             tenant_id: this.tenantId,
@@ -151,7 +151,7 @@ export class AlarmWebSocketService {
             timestamp: new Date().toISOString(),
             tenant_id: this.tenantId
           });
-          
+
           resolve();
         };
 
@@ -161,17 +161,17 @@ export class AlarmWebSocketService {
           console.error('   에러:', error.message);
           console.error('   URL:', backendUrl);
           console.error('   재시도 횟수:', this.reconnectAttempts);
-          
+
           this.isConnecting = false;
           this.connectionPromise = null;
           this.reconnectAttempts++;
-          
+
           this.notifyConnectionChange({
             status: 'error',
             timestamp: new Date().toISOString(),
             error: error.message
           });
-          
+
           this.notifyError(`WebSocket 연결 실패: ${error.message}`);
 
           // 초기 연결인 경우에만 reject
@@ -197,7 +197,7 @@ export class AlarmWebSocketService {
             status: 'disconnected',
             timestamp: new Date().toISOString()
           });
-          
+
           // 서버에서 의도적으로 끊은 경우가 아니면 재연결 시도
           if (reason !== 'io server disconnect' && reason !== 'io client disconnect') {
             if (this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -283,10 +283,10 @@ export class AlarmWebSocketService {
       this.socket.disconnect();
       this.socket = null;
     }
-    
+
     this.isConnecting = false;
     this.connectionPromise = null;
-    
+
     this.notifyConnectionChange({
       status: 'disconnected',
       timestamp: new Date().toISOString()
@@ -312,6 +312,27 @@ export class AlarmWebSocketService {
     return this.socket?.connected ?? false;
   }
 
+  getConnectionStatus(): ConnectionStatus {
+    if (this.socket && this.socket.connected) {
+      return {
+        status: 'connected',
+        tenant_id: this.tenantId,
+        socket_id: this.socket.id,
+        timestamp: new Date().toISOString()
+      };
+    }
+    if (this.isConnecting) {
+      return {
+        status: 'connecting',
+        timestamp: new Date().toISOString()
+      };
+    }
+    return {
+      status: 'disconnected',
+      timestamp: new Date().toISOString()
+    };
+  }
+
   // =========================================================================
   // 알람 관련 메서드들
   // =========================================================================
@@ -323,7 +344,7 @@ export class AlarmWebSocketService {
     }
 
     console.log('📝 알람 확인 전송:', { occurrenceId, userId, comment });
-    
+
     this.socket.emit('acknowledge_alarm', {
       occurrence_id: occurrenceId,
       user_id: userId,
@@ -342,11 +363,11 @@ export class AlarmWebSocketService {
           timestamp: new Date().toISOString()
         })
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      
+
       const result = await response.json();
       console.log('📧 테스트 알람 전송 성공:', result);
     } catch (error) {
@@ -365,6 +386,14 @@ export class AlarmWebSocketService {
 
   onConnectionChange(handler: ConnectionHandler): () => void {
     this.connectionHandlers.add(handler);
+
+    // 즉시 현재 상태 통지 (UI가 '연결 중...'에 멈추는 것 방지)
+    try {
+      handler(this.getConnectionStatus());
+    } catch (error) {
+      console.error('❌ 초기 연결 상태 통지 에러:', error);
+    }
+
     return () => this.connectionHandlers.delete(handler);
   }
 
@@ -379,7 +408,7 @@ export class AlarmWebSocketService {
       this.socket.on('alarm:acknowledged', handler);
       return () => this.socket?.off('alarm:acknowledged', handler);
     }
-    return () => {};
+    return () => { };
   }
 
   // =========================================================================
@@ -420,7 +449,7 @@ export class AlarmWebSocketService {
   // =========================================================================
   getConnectionInfo() {
     const actualTransport = this.socket?.io.engine.transport.name;
-    
+
     return {
       connected: this.isConnected(),
       socketId: this.socket?.id || null,
@@ -449,7 +478,7 @@ export class AlarmWebSocketService {
   checkConnection(): boolean {
     const connected = this.isConnected();
     const info = this.getConnectionInfo();
-    
+
     console.log('🔍 WebSocket 연결 상태 체크:', {
       connected,
       socketId: info.socketId,
@@ -457,7 +486,7 @@ export class AlarmWebSocketService {
       reconnectAttempts: info.reconnectAttempts,
       isConnecting: info.status.isConnecting
     });
-    
+
     return connected;
   }
 
@@ -472,7 +501,7 @@ export class AlarmWebSocketService {
   forceUpgrade(): void {
     if (this.socket?.io.engine) {
       console.log('🚀 WebSocket 업그레이드 강제 시도...');
-      this.socket.io.engine.upgrade();
+      (this.socket.io.engine as any).upgrade();
     } else {
       console.warn('⚠️ Socket이 연결되지 않아 업그레이드할 수 없습니다');
     }

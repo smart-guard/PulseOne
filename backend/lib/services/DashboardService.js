@@ -37,18 +37,20 @@ class DashboardService extends BaseService {
     async getOverviewData(tenantId) {
         return await this.handleRequest(async () => {
             // 1. 서비스 상태 및 시스템 메트릭 (병렬 조회)
-            const [servicesResult, systemInfo, systemMetrics, edgeServers] = await Promise.all([
+            const [servicesResult, systemInfo, systemMetrics, edgeServers, exportGateways] = await Promise.all([
                 CrossPlatformManager.getServicesForAPI(),
                 CrossPlatformManager.getSystemInfo(),
                 this._getProcessMetrics(),
-                this.deviceRepo.knex('edge_servers').where('tenant_id', tenantId).where('is_deleted', false).catch(() => [])
+                this.deviceRepo.knex('edge_servers').where('tenant_id', tenantId).where('is_deleted', false).catch(() => []),
+                this.deviceRepo.knex('export_gateways').where('tenant_id', tenantId).where('is_deleted', false).catch(() => [])
             ]);
 
             let services = servicesResult.data || [];
 
-            // 1a. Collector 인스턴스 병합 (DB에 등록된 모든 EdgeServer 표시)
+            // 1a. Collector & Export Gateway 인스턴스 병합
             const runningCollectors = services.filter(s => s.name.startsWith('collector'));
-            const otherServices = services.filter(s => !s.name.startsWith('collector'));
+            const runningGateways = services.filter(s => s.name.startsWith('export-gateway'));
+            const otherServices = services.filter(s => !s.name.startsWith('collector') && !s.name.startsWith('export-gateway'));
 
             const mergedCollectors = edgeServers.map(server => {
                 const running = runningCollectors.find(c => c.collectorId === server.id);
@@ -77,6 +79,31 @@ class DashboardService extends BaseService {
                 };
             });
 
+            const mergedGateways = exportGateways.map(gw => {
+                const running = runningGateways.find(c => c.gatewayId === gw.id);
+                if (running) {
+                    return {
+                        ...running,
+                        displayName: gw.name,
+                        description: `데이터 내보내기 서비스: ${gw.ip_address || 'local'}`,
+                        gatewayId: gw.id,
+                        exists: true
+                    };
+                }
+                return {
+                    name: `export-gateway-${gw.id}`,
+                    displayName: gw.name,
+                    icon: 'fas fa-satellite-dish',
+                    description: `데이터 내보내기 서비스: ${gw.ip_address || 'local'}`,
+                    controllable: true,
+                    status: 'stopped',
+                    pid: null,
+                    gatewayId: gw.id,
+                    exists: true,
+                    uptime: 'N/A'
+                };
+            });
+
             // 1b. 각 콜렉터에 할당된 디바이스 목록 상세 조회 (ID, 이름, 상태 포함)
             const collectorsWithDevices = await Promise.all(mergedCollectors.map(async (collector) => {
                 const devs = await this.deviceRepo.findAll(tenantId, {
@@ -98,13 +125,12 @@ class DashboardService extends BaseService {
             }));
 
             // 1c. 활성 상태 보정 (Local Process OR DB Heartbeat)
-            // 엣지 서버의 경우 로컬 프로세스 감지가 안 될 수 있으므로(Docker/Remote), last_seen을 함께 확인
+            // 엣지 서버 및 Export 게이트웨이의 경우 로컬 프로세스 감지가 안 될 수 있으므로(Docker/Remote), last_seen을 함께 확인
             const now = new Date();
             const finalizedCollectors = collectorsWithDevices.map(collector => {
                 const es = edgeServers.find(s => s.id === collector.collectorId);
                 let status = collector.status;
 
-                // 로컬 프로세스 감지가 안 됐더라도 DB last_seen이 최근(2분 이내로 완화)이면 running으로 침
                 if (status !== 'running' && es && es.last_seen) {
                     const lastSeen = new Date(es.last_seen);
                     const diff = (now - lastSeen) / 1000;
@@ -114,6 +140,21 @@ class DashboardService extends BaseService {
                 }
 
                 return { ...collector, status };
+            });
+
+            const finalizedGateways = mergedGateways.map(gateway => {
+                const gw = exportGateways.find(s => s.id === gateway.gatewayId);
+                let status = gateway.status;
+
+                if (status !== 'running' && gw && gw.last_seen) {
+                    const lastSeen = new Date(gw.last_seen);
+                    const diff = (now - lastSeen) / 1000;
+                    if (diff < 120) { // 2분
+                        status = 'running';
+                    }
+                }
+
+                return { ...gateway, status };
             });
 
             // 1d. 계층형 그룹화 (Site -> Collector -> Device)
@@ -150,7 +191,7 @@ class DashboardService extends BaseService {
                 }));
 
             // Dashboard UI 호환성을 위해 flat list와 hierarchy를 둘 다 제공
-            services = [...otherServices, ...finalizedCollectors, ...shadowCollectors];
+            services = [...otherServices, ...finalizedCollectors, ...finalizedGateways, ...shadowCollectors];
 
             // 2. 디바이스 및 사이트 통계
             const [protocolStats, siteStatsRaw, systemSummary, allDataPoints] = await Promise.all([

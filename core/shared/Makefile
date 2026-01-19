@@ -100,8 +100,9 @@ endif
 # 🔥 OpenSSL 컴파일 플래그 (가장 중요!)
 ifeq ($(HAS_OPENSSL),1)
     OPENSSL_LIBS := $(shell pkg-config --libs openssl 2>/dev/null)
+    OPENSSL_CFLAGS := $(shell pkg-config --cflags openssl 2>/dev/null)
     ifneq ($(OPENSSL_LIBS),)
-        CXXFLAGS += -DHAS_OPENSSL=1
+        CXXFLAGS += -DHAS_OPENSSL=1 $(OPENSSL_CFLAGS)
         LDFLAGS += $(OPENSSL_LIBS)
         $(info ✅ OpenSSL found via pkg-config)
     else

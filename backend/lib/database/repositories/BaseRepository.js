@@ -15,10 +15,16 @@ class BaseRepository {
         this.tableName = tableName;
         this.logger = console; // TODO: 실제 LogManager로 교체 예정
 
-        // DatabaseFactory 인스턴스 생성
-        this.dbFactory = new DatabaseFactory();
+        // RepositoryFactory를 통해 공유 DatabaseFactory 인스턴스 획득
+        const repoFactory = require('./RepositoryFactory').getInstance();
+        this.dbFactory = repoFactory.getDatabaseFactory() || DatabaseFactory.getInstance();
+
+        if (!this.dbFactory || !this.dbFactory.config || !this.dbFactory.config.database) {
+            throw new Error(`[${tableName}Repository] DatabaseFactory initialization failed`);
+        }
+
         this.dbType = this.dbFactory.config.database.type;
-        this.queryAdapter = this.dbFactory.getQueryAdapter();
+        this.queryAdapter = this.dbFactory.queryAdapter.getAdapter(this.dbType);
 
         // 캐시 설정 (C++ Repository 패턴과 동일)
         this.cacheEnabled = process.env.REPOSITORY_CACHE === 'true';

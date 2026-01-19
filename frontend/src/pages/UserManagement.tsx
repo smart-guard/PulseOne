@@ -116,7 +116,7 @@ const UserManagement: React.FC = () => {
         description="시스템 계정 및 권한을 관리합니다. 행을 클릭하여 상세 정보를 조회하거나 삭제된 계정을 복구할 수 있습니다."
         icon="fas fa-users-cog"
         actions={
-          <button className="btn btn-primary" onClick={handleCreate}>
+          <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
             <i className="fas fa-user-plus"></i> 새 사용자 등록
           </button>
         }
@@ -153,7 +153,7 @@ const UserManagement: React.FC = () => {
         activeFilterCount={(searchTerm ? 1 : 0) + (selectedRole !== 'all' ? 1 : 0) + (includeDeleted ? 1 : 0)}
         rightActions={
           <div className="filter-checkbox-group">
-            <label className="checkbox-label">
+            <label className="mgmt-checkbox-label">
               <input
                 type="checkbox"
                 checked={includeDeleted}
@@ -198,7 +198,7 @@ const UserManagement: React.FC = () => {
                     <span className="email text-neutral-500">{maskEmail(user.email)}</span>
                   </td>
                   <td>
-                    <span className={`role-badge role-${user.role}`}>
+                    <span className={`mgmt-role-badge role-${user.role}`}>
                       {getRoleLabel(user.role)}
                     </span>
                   </td>

@@ -139,25 +139,25 @@ export const TenantModal: React.FC<TenantModalProps> = ({
     };
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-container tenant-modal">
-                <div className="modal-header">
-                    <div className="modal-title">
+        <div className="mgmt-modal-overlay">
+            <div className="mgmt-modal-container tenant-modal">
+                <div className="mgmt-modal-header">
+                    <div className="mgmt-modal-title">
                         <h2>{tenant ? '고객사 정보 수정' : '새 고객사 등록'}</h2>
                     </div>
-                    <button className="close-btn" onClick={onClose}>
+                    <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div className="modal-body">
-                    {error && <div className="alert alert-error">{error}</div>}
+                <div className="mgmt-modal-body">
+                    {error && <div className="mgmt-alert mgmt-alert-danger">{error}</div>}
 
                     <form id="tenant-form" onSubmit={handleSubmit}>
-                        <div className="modal-form-grid">
-                            <div className="modal-form-section">
+                        <div className="mgmt-modal-form-grid">
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-building"></i> 기본 정보</h3>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">회사명</label>
                                     <input
                                         type="text"
@@ -169,7 +169,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                         required
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label className="required">회사 코드</label>
                                     <input
                                         type="text"
@@ -180,9 +180,9 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                         disabled={saving || !!tenant}
                                         required
                                     />
-                                    {tenant && <span className="input-hint">회사 코드는 변경할 수 없습니다.</span>}
+                                    {tenant && <span className="mgmt-modal-form-hint">회사 코드는 변경할 수 없습니다.</span>}
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>도메인</label>
                                     <input
                                         type="text"
@@ -195,9 +195,9 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                 </div>
                             </div>
 
-                            <div className="modal-form-section">
+                            <div className="mgmt-modal-form-section">
                                 <h3><i className="fas fa-user-tie"></i> 담당자 정보</h3>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>이름</label>
                                     <input
                                         type="text"
@@ -208,7 +208,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                         disabled={saving}
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>이메일</label>
                                     <input
                                         type="email"
@@ -219,7 +219,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                         disabled={saving}
                                     />
                                 </div>
-                                <div className="modal-form-group">
+                                <div className="mgmt-modal-form-group">
                                     <label>연락처</label>
                                     <input
                                         type="text"
@@ -232,10 +232,10 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                 </div>
                             </div>
 
-                            <div className="modal-form-section span-full">
+                            <div className="mgmt-modal-form-section mgmt-span-full">
                                 <h3><i className="fas fa-credit-card"></i> 구독 및 사용량</h3>
-                                <div className="modal-form-row">
-                                    <div className="modal-form-group">
+                                <div className="mgmt-modal-form-row">
+                                    <div className="mgmt-modal-form-group">
                                         <label>구독 플랜</label>
                                         <select
                                             className="form-control"
@@ -248,7 +248,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                             <option value="enterprise">엔터프라이즈 (Enterprise)</option>
                                         </select>
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>구독 상태</label>
                                         <select
                                             className="form-control"
@@ -262,7 +262,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                             <option value="cancelled">Cancelled</option>
                                         </select>
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>계정 상태</label>
                                         <div className="checkbox-group" style={{ height: '38px', display: 'flex', alignItems: 'center' }}>
                                             <label className="checkbox-label" style={{ margin: 0 }}>
@@ -278,8 +278,8 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                     </div>
                                 </div>
 
-                                <div className="modal-form-row" style={{ marginTop: '12px' }}>
-                                    <div className="modal-form-group">
+                                <div className="mgmt-modal-form-row" style={{ marginTop: '12px' }}>
+                                    <div className="mgmt-modal-form-group">
                                         <label>최대 에지 서버</label>
                                         <input
                                             type="number"
@@ -290,7 +290,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                                             min="1"
                                         />
                                     </div>
-                                    <div className="modal-form-group">
+                                    <div className="mgmt-modal-form-group">
                                         <label>최대 데이터 포인트</label>
                                         <input
                                             type="number"
@@ -307,7 +307,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                     </form>
                 </div>
 
-                <div className="modal-footer">
+                <div className="mgmt-modal-footer">
                     <button type="button" className="btn btn-outline" onClick={onClose} disabled={saving}>
                         취소
                     </button>
