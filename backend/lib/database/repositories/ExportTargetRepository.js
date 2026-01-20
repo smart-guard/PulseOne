@@ -18,7 +18,8 @@ class ExportTargetRepository extends BaseRepository {
             // if (tenantId) {
             //     query.where('tenant_id', tenantId);
             // }
-            return await query.orderBy('name', 'ASC');
+            const results = await query.orderBy('name', 'ASC');
+            return results.map(item => this._parseItem(item));
         } catch (error) {
             this.logger.error('ExportTargetRepository.findAll 오류:', error);
             throw error;
@@ -34,7 +35,8 @@ class ExportTargetRepository extends BaseRepository {
             // if (tenantId) {
             //     query.where('tenant_id', tenantId);
             // }
-            return await query.first();
+            const item = await query.first();
+            return this._parseItem(item);
         } catch (error) {
             this.logger.error('ExportTargetRepository.findById 오류:', error);
             throw error;
@@ -54,9 +56,25 @@ class ExportTargetRepository extends BaseRepository {
      * 활성화된 타겟 조회
      */
     async findActive(tenantId) {
-        return await this.query()
+        const results = await this.query()
             .where({ is_enabled: 1 })
             .orderBy('name', 'ASC');
+        return results.map(item => this._parseItem(item));
+    }
+
+    /**
+     * JSON 필드 파싱 헬퍼
+     */
+    _parseItem(item) {
+        if (!item) return null;
+        if (typeof item.config === 'string') {
+            try {
+                item.config = JSON.parse(item.config);
+            } catch (e) {
+                item.config = {};
+            }
+        }
+        return item;
     }
 
     /**

@@ -304,7 +304,8 @@ ${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editDat
               site_id: editData.site_id,
               retry_count: editData.retry_count,
               is_enabled: editData.is_enabled,
-              group_ids: editData.group_ids || (editData.device_group_id ? [editData.device_group_id] : [])
+              group_ids: editData.group_ids || (editData.device_group_id ? [editData.device_group_id] : []),
+              data_points: dataPoints // 🔥 NEW: 일괄 생성용 데이터포인트
             };
 
             const response = await DeviceApiService.createDevice(createData);
@@ -369,7 +370,8 @@ ${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editDat
               tags: editData.tags,
               metadata: editData.metadata,
               custom_fields: editData.custom_fields,
-              group_ids: editData.group_ids
+              group_ids: editData.group_ids,
+              data_points: dataPoints // 🔥 NEW: 일괄 업데이트용 데이터포인트
             };
 
             console.log('🚀 실제 전송할 데이터:', JSON.stringify(updateData, null, 2));
@@ -383,8 +385,10 @@ ${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editDat
               // 🔥 핵심 수정: 즉시 성공 처리 후 모달 닫기
               showCustomModal({
                 type: 'success',
-                title: '디바이스 수정 완료',
-                message: `"${savedDevice.name}" 디바이스가 성공적으로 수정되었습니다.\n\n${savedDevice.sync_warning ? `⚠️ 경고: 콜렉터 동기화 실패\n(${savedDevice.sync_warning})\n\n` : ''}변경사항이 서버에 저장되었습니다.`,
+                title: savedDevice.sync_warning ? '저장 완료 (동기화 경고)' : '디바이스 수정 완료',
+                message: savedDevice.sync_warning
+                  ? `✅ 설정이 데이터베이스에 안전하게 저장되었습니다.\n\n⚠️ 주의: 수집기 동기화에 실패했습니다.\n(${savedDevice.sync_warning})\n\n수집기가 꺼져있거나 네트워크 상태를 확인해주세요.`
+                  : `"${savedDevice.name}" 디바이스가 성공적으로 수정되었습니다.\n\n변경사항이 서버와 수집기에 모두 반영되었습니다.`,
                 confirmText: '확인',
                 showCancel: false,
                 onConfirm: () => {
@@ -425,7 +429,7 @@ ${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editDat
         }
       }
     });
-  }, [editData, mode, onSave, onClose]); // dependencies에 onSave, onClose 모두 포함
+  }, [editData, mode, onSave, onClose, dataPoints]); // dependencies에 dataPoints 추가
 
   // 🎨 예쁜 삭제 함수 (브라우저 기본 팝업 대신 커스텀 모달)
   const handleDelete = useCallback(async () => {

@@ -262,7 +262,7 @@ class DeviceQueries {
   static getDataPointsByDevice() {
     return `
       SELECT 
-        dp.id, dp.device_id, dp.name, dp.description,
+        dp.id, dp.device_id, d.name as device_name, dp.name, dp.description,
         dp.address, dp.address_string, dp.data_type, dp.access_mode,
         dp.is_enabled, dp.is_writable, dp.unit, dp.scaling_factor,
         dp.scaling_offset, dp.min_value, dp.max_value,
@@ -271,6 +271,7 @@ class DeviceQueries {
         dp.protocol_params, dp.created_at, dp.updated_at,
         cv.current_value, cv.raw_value, cv.quality, cv.value_timestamp as last_update
       FROM data_points dp
+      INNER JOIN devices d ON dp.device_id = d.id
       LEFT JOIN current_values cv ON dp.id = cv.point_id
       WHERE dp.device_id = ?
     `;
@@ -488,14 +489,14 @@ class DeviceQueries {
   // 고급 검색 및 필터링 쿼리들
   // =============================================================================
 
-  // 데이터 포인트 검색 (크로스 디바이스)
-  static searchDataPoints() {
+  static searchDataPoints(tenantId) {
+    let whereClause = tenantId ? 'd.tenant_id = ?' : '1=1';
     return `
       SELECT 
         dp.id,
         dp.device_id,
         d.name as device_name,
-        dp.name as point_name,
+        dp.name as name,
         dp.description,
         dp.data_type,
         dp.unit,
@@ -505,7 +506,7 @@ class DeviceQueries {
       FROM data_points dp
       INNER JOIN devices d ON dp.device_id = d.id
       LEFT JOIN current_values cv ON dp.id = cv.point_id
-      WHERE d.tenant_id = ? AND (
+      WHERE ${whereClause} AND (
         dp.name LIKE ? OR 
         dp.description LIKE ? OR 
         d.name LIKE ?

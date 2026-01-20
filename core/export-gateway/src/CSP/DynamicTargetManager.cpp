@@ -589,30 +589,141 @@ DynamicTargetManager::sendAlarmToTarget(const std::string &target_name,
   return result;
 }
 
-BatchTargetResult
-DynamicTargetManager::sendBatchAlarms(const std::vector<AlarmMessage> &alarms) {
+BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
+    const std::vector<AlarmMessage> &alarms,
+    const std::string &specific_target) {
   BatchTargetResult batch_result;
 
-  for (const auto &alarm : alarms) {
-    auto results = sendAlarmToTargets(alarm);
-
-    for (const auto &result : results) {
-      if (result.success) {
-        // 🔧 수정 7: success_count → successful_targets
-        batch_result.successful_targets++;
-      } else {
-        // 🔧 수정 7: failure_count → failed_targets
-        batch_result.failed_targets++;
-      }
-    }
-
-    // 🔧 수정 7: target_results → results
-    batch_result.results.insert(batch_result.results.end(), results.begin(),
-                                results.end());
+  if (alarms.empty()) {
+    return batch_result;
   }
 
-  // 🔧 수정 7: success_count, failure_count → successful_targets,
-  // failed_targets
+  // 1. Redis PUBLISH (개별 알람 발행 - 배치는 알람별로 루프 필요)
+  if (publish_client_ && publish_client_->isConnected()) {
+    for (const auto &alarm : alarms) {
+      try {
+        json alarm_json = alarm.to_json(); // helper or manual packing
+        publish_client_->publish("alarms:processed", alarm_json.dump());
+      } catch (...) {
+      }
+    }
+  }
+
+  // 2. 모든 활성 타겟에 대해 배치 전송 호출
+  std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+
+  for (size_t i = 0; i < targets_.size(); ++i) {
+    if (!targets_[i].enabled)
+      continue;
+
+    // 특정 타겟 필터링 (비어있지 않은 경우 전용)
+    if (!specific_target.empty() && targets_[i].name != specific_target) {
+      continue;
+    }
+
+    // export_mode 체크
+    std::string export_mode = "alarm";
+    if (targets_[i].config.contains("export_mode")) {
+      export_mode = targets_[i].config["export_mode"].get<std::string>();
+    }
+
+    if (export_mode != "alarm")
+      continue;
+
+    auto it_handler = handlers_.find(targets_[i].type);
+    if (it_handler == handlers_.end() || !it_handler->second) {
+      batch_result.failed_targets += alarms.size(); // 대략적인 실패 카운트
+      continue;
+    }
+
+    auto start_time = std::chrono::steady_clock::now();
+
+    // HANDLER에게 배치 위임 (S3는 파일 하나로 묶음, HTTP는 루프 등)
+    std::vector<TargetSendResult> results =
+        it_handler->second->sendAlarmBatch(alarms, targets_[i].config);
+
+    auto end_time = std::chrono::steady_clock::now();
+    // 배치 전체 처리 시간 (개별 결과에는 각각의 시간이 있을 수 있음)
+
+    for (const auto &res : results) {
+      if (res.success) {
+        batch_result.successful_targets++;
+        // 타겟 통계 업데이트 (성공)
+        targets_[i].success_count++;
+      } else {
+        batch_result.failed_targets++;
+        // 타겟 통계 업데이트 (실패)
+        targets_[i].failure_count++;
+      }
+      batch_result.results.push_back(res);
+    }
+  }
+
+  batch_result.total_targets =
+      batch_result.successful_targets + batch_result.failed_targets;
+
+  if (batch_result.successful_targets > 0) {
+    LogManager::getInstance().Info(
+        "배치 알람 전송 완료: 성공 " +
+        std::to_string(batch_result.successful_targets) + ", 실패 " +
+        std::to_string(batch_result.failed_targets));
+  }
+
+  return batch_result;
+}
+
+BatchTargetResult DynamicTargetManager::sendValueBatchToTargets(
+    const std::vector<PulseOne::CSP::ValueMessage> &values,
+    const std::string &type, const std::string &specific_target) {
+  BatchTargetResult batch_result;
+
+  if (values.empty()) {
+    return batch_result;
+  }
+
+  std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+
+  for (size_t i = 0; i < targets_.size(); ++i) {
+    if (!targets_[i].enabled)
+      continue;
+
+    // ✅ 특정 타겟 요청 시 필터링
+    if (!specific_target.empty() && targets_[i].name != specific_target) {
+      continue;
+    }
+
+    // export_mode 체크 (value 모드 확인)
+    std::string export_mode = "alarm";
+    if (targets_[i].config.contains("export_mode")) {
+      export_mode = targets_[i].config["export_mode"].get<std::string>();
+    }
+
+    // "value" 또는 "batch" 모드여야 함
+    if (export_mode != "value" && export_mode != "batch") {
+      continue;
+    }
+
+    auto it_handler = handlers_.find(targets_[i].type);
+    if (it_handler == handlers_.end() || !it_handler->second) {
+      continue;
+    }
+
+    // HANDLER에게 배치 위임
+    std::vector<TargetSendResult> results =
+        it_handler->second->sendValueBatch(values, targets_[i].config);
+
+    for (const auto &res : results) {
+      if (res.success) {
+        batch_result.successful_targets++;
+        targets_[i].success_count++;
+      } else {
+        batch_result.failed_targets++;
+        targets_[i].failure_count++;
+      }
+      batch_result.results.push_back(res);
+    }
+  }
+
   batch_result.total_targets =
       batch_result.successful_targets + batch_result.failed_targets;
 

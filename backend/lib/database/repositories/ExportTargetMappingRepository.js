@@ -14,9 +14,10 @@ class ExportTargetMappingRepository extends BaseRepository {
      */
     async findByTargetId(targetId) {
         try {
-            return await this.query()
+            const results = await this.query()
                 .where('target_id', targetId)
                 .orderBy('id', 'ASC');
+            return results.map(item => this._parseItem(item));
         } catch (error) {
             this.logger.error('ExportTargetMappingRepository.findByTargetId 오류:', error);
             throw error;
@@ -28,8 +29,9 @@ class ExportTargetMappingRepository extends BaseRepository {
      */
     async findByPointId(pointId) {
         try {
-            return await this.query()
+            const results = await this.query()
                 .where('point_id', pointId);
+            return results.map(item => this._parseItem(item));
         } catch (error) {
             this.logger.error('ExportTargetMappingRepository.findByPointId 오류:', error);
             throw error;
@@ -52,7 +54,8 @@ class ExportTargetMappingRepository extends BaseRepository {
             };
 
             const [id] = await this.knex(this.tableName).insert(dataToInsert);
-            return await this.query().where('id', id).first();
+            const item = await this.query().where('id', id).first();
+            return this._parseItem(item);
         } catch (error) {
             this.logger.error('ExportTargetMappingRepository.save 오류:', error);
             throw error;
@@ -78,11 +81,30 @@ class ExportTargetMappingRepository extends BaseRepository {
             });
 
             const affected = await this.query().where('id', id).update(dataToUpdate);
-            return affected > 0 ? await this.query().where('id', id).first() : null;
+            if (affected > 0) {
+                const item = await this.query().where('id', id).first();
+                return this._parseItem(item);
+            }
+            return null;
         } catch (error) {
             this.logger.error('ExportTargetMappingRepository.update 오류:', error);
             throw error;
         }
+    }
+
+    /**
+     * JSON 필드 파싱 헬퍼
+     */
+    _parseItem(item) {
+        if (!item) return null;
+        if (typeof item.conversion_config === 'string') {
+            try {
+                item.conversion_config = JSON.parse(item.conversion_config);
+            } catch (e) {
+                item.conversion_config = {};
+            }
+        }
+        return item;
     }
 
     /**

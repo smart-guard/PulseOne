@@ -3,20 +3,43 @@ const BaseRepository = require('./BaseRepository');
 /**
  * ExportGatewayRepository class
  * Handles database operations for export gateways.
+ * Now points to `edge_servers` with server_type='gateway' (Unified Schema)
  */
 class ExportGatewayRepository extends BaseRepository {
     constructor() {
-        super('export_gateways');
+        super('edge_servers'); // Changed from export_gateways
     }
 
-    async findAll(tenantId = null) {
+    async findAll(tenantId = null, page = 1, limit = 10) {
         try {
-            const query = this.query();
+            // Filter by server_type = 'gateway'
+            const query = this.query().where('is_deleted', 0).where('server_type', 'gateway');
             if (tenantId) {
                 query.where('tenant_id', tenantId);
             }
-            query.where('is_deleted', 0);
-            return await query.orderBy('name', 'ASC');
+
+            // Get total count
+            const countResult = await query.clone().clearSelect().clearOrder().count('id as total').first();
+            const total = parseInt(countResult?.total || 0);
+
+            // Fetch paginated items with alias for API compatibility
+            const offset = (page - 1) * limit;
+            const itemsRaw = await query.select('*', 'server_name as name')
+                .orderBy('server_name', 'ASC')
+                .offset(offset)
+                .limit(limit);
+
+            const items = itemsRaw.map(item => this._parseItem(item));
+
+            return {
+                items,
+                pagination: {
+                    current_page: parseInt(page),
+                    total_pages: Math.ceil(total / limit),
+                    total_count: total,
+                    items_per_page: parseInt(limit)
+                }
+            };
         } catch (error) {
             this.logger.error('ExportGatewayRepository.findAll 오류:', error);
             throw error;
@@ -25,11 +48,17 @@ class ExportGatewayRepository extends BaseRepository {
 
     async findById(id, tenantId = null) {
         try {
-            const query = this.query().where('id', id).where('is_deleted', 0);
+            const query = this.query()
+                .select('*', 'server_name as name')
+                .where('id', id)
+                .where('is_deleted', 0)
+                .where('server_type', 'gateway');
+
             if (tenantId) {
                 query.where('tenant_id', tenantId);
             }
-            return await query.first();
+            const item = await query.first();
+            return this._parseItem(item);
         } catch (error) {
             this.logger.error('ExportGatewayRepository.findById 오류:', error);
             throw error;
@@ -40,16 +69,16 @@ class ExportGatewayRepository extends BaseRepository {
         try {
             const dataToInsert = {
                 tenant_id: tenantId || data.tenant_id,
-                name: data.name || data.server_name,
+                server_name: data.name || data.server_name, // Map to server_name
+                server_type: 'gateway',                     // Force type
                 description: data.description || null,
                 ip_address: data.ip_address || null,
                 port: data.port || 8080,
                 status: data.status || 'pending',
-                version: data.version || null,
                 config: typeof data.config === 'object' ? JSON.stringify(data.config) : (data.config || '{}')
             };
 
-            const [id] = await this.knex('export_gateways').insert(dataToInsert);
+            const [id] = await this.knex('edge_servers').insert(dataToInsert);
             return await this.findById(id, tenantId);
         } catch (error) {
             this.logger.error('ExportGatewayRepository.create 오류:', error);
@@ -64,21 +93,24 @@ class ExportGatewayRepository extends BaseRepository {
             };
 
             const allowedFields = [
-                'name', 'description', 'ip_address', 'port',
-                'status', 'version', 'config', 'last_seen', 'last_heartbeat'
+                'name', 'server_name', 'description', 'ip_address', 'port',
+                'status', 'config', 'last_seen', 'last_heartbeat'
             ];
 
             allowedFields.forEach(field => {
                 if (updateData[field] !== undefined) {
+                    // Map name -> server_name
+                    const dbField = field === 'name' ? 'server_name' : field;
+
                     if (field === 'config' && typeof updateData[field] === 'object') {
-                        dataToUpdate[field] = JSON.stringify(updateData[field]);
+                        dataToUpdate[dbField] = JSON.stringify(updateData[field]);
                     } else {
-                        dataToUpdate[field] = updateData[field];
+                        dataToUpdate[dbField] = updateData[field];
                     }
                 }
             });
 
-            const query = this.query().where('id', id);
+            const query = this.query().where('id', id).where('server_type', 'gateway');
             if (tenantId) query.where('tenant_id', tenantId);
 
             const affected = await query.update(dataToUpdate);
@@ -89,10 +121,26 @@ class ExportGatewayRepository extends BaseRepository {
         }
     }
 
+    /**
+     * JSON 필드 파싱 헬퍼
+     */
+    _parseItem(item) {
+        if (!item) return null;
+        if (typeof item.config === 'string') {
+            try {
+                item.config = JSON.parse(item.config);
+            } catch (e) {
+                item.config = {};
+            }
+        }
+        return item;
+    }
+
     async updateHeartbeat(id) {
         try {
-            return await this.knex('export_gateways')
+            return await this.knex('edge_servers') // Changed from export_gateways
                 .where('id', id)
+                .where('server_type', 'gateway')
                 .update({
                     last_seen: this.knex.fn.now(),
                     last_heartbeat: this.knex.fn.now(),
@@ -107,7 +155,7 @@ class ExportGatewayRepository extends BaseRepository {
 
     async deleteById(id, tenantId = null) {
         try {
-            const query = this.query().where('id', id);
+            const query = this.query().where('id', id).where('server_type', 'gateway');
             if (tenantId) query.where('tenant_id', tenantId);
 
             const affected = await query.update({

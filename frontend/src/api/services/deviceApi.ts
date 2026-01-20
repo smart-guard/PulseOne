@@ -261,6 +261,7 @@ export interface CreateDeviceRequest {
   retry_count?: number;
   is_enabled: boolean;
   group_ids?: number[];
+  data_points?: any[]; // 🔥 NEW: 일괄 생성용 데이터포인트
 }
 
 export interface UpdateDeviceRequest {
@@ -300,6 +301,7 @@ export interface UpdateDeviceRequest {
     [key: string]: any; // 추가 설정 필드를 위한 인덱스 시그니처
   };
   group_ids?: number[];
+  data_points?: any[]; // 🔥 NEW: 일괄 업데이트용 데이터포인트
 }
 
 export interface GetDevicesParams {
@@ -677,10 +679,10 @@ export class DeviceApiService {
   }
 
   // 디바이스 삭제
-  static async deleteDevice(id: number, force?: boolean): Promise<ApiResponse<void>> {
+  static async deleteDevice(id: number, force?: boolean): Promise<ApiResponse<any>> {
     try {
       const endpoint = `${this.BASE_URL}/${id}` + (force ? '?force=true' : '');
-      return await apiClient.delete<void>(endpoint);
+      return await apiClient.delete<any>(endpoint);
     } catch (error) {
       console.error(`디바이스 ${id} 삭제 실패:`, error);
       throw error;

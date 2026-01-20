@@ -2293,14 +2293,29 @@ CREATE TABLE IF NOT EXISTS export_profiles (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_by VARCHAR(50),
     point_count INTEGER DEFAULT 0,
-    last_exported_at DATETIME
+    last_exported_at DATETIME,
+    data_points TEXT DEFAULT '[]'
 );
 
 CREATE INDEX IF NOT EXISTS idx_profiles_enabled ON export_profiles(is_enabled);
 CREATE INDEX IF NOT EXISTS idx_profiles_created ON export_profiles(created_at DESC);
 
 -- ============================================================================
--- 2. export_profile_points (프로파일에 포함할 포인트들)
+-- 2. export_profile_assignments (게이트웨이별 프로파일 배정)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS export_profile_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    gateway_id INTEGER NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_id) REFERENCES edge_servers(id) ON DELETE CASCADE
+);
+
+-- ============================================================================
+-- 3. export_profile_points (프로파일에 포함할 포인트들)
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS export_profile_points (

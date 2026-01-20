@@ -790,13 +790,21 @@ app.use('/api/export', exportConfigRoutes);
 
 logger.system('INFO', '기본 시스템 라우트 등록 완료');
 
-// 장치 관리 라우트
+// 장치 관리 라우트 (Device & DataPoint)
 try {
     const deviceRoutes = require('./routes/devices');
     app.use('/api/devices', deviceRoutes);
     logger.system('INFO', 'Device API 라우트 등록 완료');
 } catch (error) {
     logger.system('WARN', 'Device 라우트 로드 실패', { error: error.message });
+}
+
+try {
+    const dataPointRoutes = require('./routes/data-points');
+    app.use('/api/devices/:deviceId/data-points', dataPointRoutes);
+    logger.system('INFO', 'DataPoint API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'DataPoint 라우트 로드 실패', { error: error.message });
 }
 
 // 프로토콜 관리 라우트

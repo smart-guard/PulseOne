@@ -126,6 +126,49 @@ TargetSendResult HttpTargetHandler::sendAlarm(const AlarmMessage &alarm,
   return result;
 }
 
+std::vector<TargetSendResult> HttpTargetHandler::sendValueBatch(
+    const std::vector<PulseOne::CSP::ValueMessage> &values,
+    const json &config) {
+
+  std::vector<TargetSendResult> results;
+  if (values.empty())
+    return results;
+
+  try {
+    std::string url = extractUrl(config);
+    if (url.empty()) {
+      TargetSendResult res;
+      res.success = false;
+      res.error_message = "URL/Endpoint가 설정되지 않음";
+      results.push_back(res);
+      return results;
+    }
+
+    LogManager::getInstance().Info(
+        "HTTP 주기 데이터 배치 전송 시작: " + getTargetName(config) + " (" +
+        std::to_string(values.size()) + "개)");
+
+    // ✅ 재시도 로직으로 전송 (배치)
+    TargetSendResult batch_result = executeWithRetry(values, config, url);
+    results.push_back(batch_result);
+
+    if (batch_result.success) {
+      success_count_++;
+    } else {
+      failure_count_++;
+    }
+    request_count_++;
+
+  } catch (const std::exception &e) {
+    TargetSendResult err_res;
+    err_res.error_message = "HTTP 배치 전송 예외: " + std::string(e.what());
+    results.push_back(err_res);
+    failure_count_++;
+  }
+
+  return results;
+}
+
 bool HttpTargetHandler::testConnection(const json &config) {
   try {
     LogManager::getInstance().Info("HTTP 연결 테스트 시작");
@@ -360,6 +403,103 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
   }
 }
 
+TargetSendResult
+HttpTargetHandler::executeWithRetry(const std::vector<ValueMessage> &values,
+                                    const json &config,
+                                    const std::string &url) {
+
+  TargetSendResult result;
+  result.target_type = "HTTP";
+  result.target_name = getTargetName(config);
+  result.success = false;
+
+  RetryConfig retry_config;
+  if (config.contains("max_retry")) {
+    retry_config.max_attempts = config["max_retry"].get<int>();
+  }
+
+  auto start_time = std::chrono::steady_clock::now();
+
+  for (int attempt = 0; attempt <= retry_config.max_attempts; ++attempt) {
+    if (attempt > 0) {
+      uint32_t delay_ms = calculateBackoffDelay(attempt - 1, retry_config);
+      std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+    }
+
+    auto attempt_result = executeSingleRequest(values, config, url);
+
+    if (attempt_result.success) {
+      result = attempt_result;
+      auto end_time = std::chrono::steady_clock::now();
+      result.response_time =
+          std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
+                                                                start_time);
+      return result;
+    }
+
+    if (attempt_result.status_code >= 400 && attempt_result.status_code < 500) {
+      result = attempt_result;
+      break;
+    }
+    result = attempt_result;
+  }
+
+  auto end_time = std::chrono::steady_clock::now();
+  result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end_time - start_time);
+
+  return result;
+}
+
+TargetSendResult
+HttpTargetHandler::executeSingleRequest(const std::vector<ValueMessage> &values,
+                                        const json &config,
+                                        const std::string &url) {
+
+  TargetSendResult result;
+  result.target_type = "HTTP";
+  result.target_name = getTargetName(config);
+  result.success = false;
+
+  try {
+    auto client = getOrCreateClient(config, url);
+    if (!client) {
+      result.error_message = "HTTP 클라이언트 생성 실패";
+      return result;
+    }
+
+    std::string method = config.value("method", "POST");
+    std::string endpoint = config.value("endpoint", url);
+    auto headers = buildRequestHeaders(config);
+    std::string request_body = buildRequestBody(values, config);
+
+    Client::HttpResponse response;
+    if (method == "POST") {
+      response =
+          client->post(endpoint, request_body, "application/json", headers);
+    } else if (method == "PUT") {
+      response =
+          client->put(endpoint, request_body, "application/json", headers);
+    } else {
+      response = client->get(endpoint, headers);
+    }
+
+    result.success = response.isSuccess();
+    result.status_code = response.status_code;
+    result.response_body = response.body;
+
+    if (!result.success) {
+      result.error_message = "HTTP " + std::to_string(response.status_code) +
+                             ": " + response.body.substr(0, 200);
+    }
+
+    return result;
+  } catch (const std::exception &e) {
+    result.error_message = "HTTP 요청 예외: " + std::string(e.what());
+    return result;
+  }
+}
+
 std::unordered_map<std::string, std::string>
 HttpTargetHandler::buildRequestHeaders(const json &config) {
   std::unordered_map<std::string, std::string> headers;
@@ -418,6 +558,25 @@ std::string HttpTargetHandler::buildRequestBody(const AlarmMessage &alarm,
   request_body["al"] = alarm.al;
   request_body["st"] = alarm.st;
   request_body["des"] = alarm.des;
+
+  return request_body.dump();
+}
+
+std::string
+HttpTargetHandler::buildRequestBody(const std::vector<ValueMessage> &values,
+                                    const json &config) {
+  json request_body = json::array();
+
+  for (const auto &val : values) {
+    if (config.contains("body_template") &&
+        config["body_template"].is_object()) {
+      json item = config["body_template"];
+      expandTemplateVariables(item, val);
+      request_body.push_back(item);
+    } else {
+      request_body.push_back(val.to_json());
+    }
+  }
 
   return request_body.dump();
 }
@@ -485,6 +644,26 @@ void HttpTargetHandler::expandTemplateVariables(
 
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("PayloadTransformer 변환 실패: " +
+                                    std::string(e.what()));
+  }
+}
+
+void HttpTargetHandler::expandTemplateVariables(
+    json &template_json, const ValueMessage &value) const {
+  try {
+    std::string target_field_name = "";
+    std::string target_description = "";
+    std::string converted_value = value.vl;
+
+    auto &transformer =
+        ::PulseOne::Transform::PayloadTransformer::getInstance();
+    auto context = transformer.createContext(
+        value, target_field_name, target_description, converted_value);
+
+    template_json = transformer.transform(template_json, context);
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error("PayloadTransformer(Value) 변환 실패: " +
                                     std::string(e.what()));
   }
 }

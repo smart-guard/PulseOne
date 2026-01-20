@@ -286,6 +286,45 @@ class DeviceRepository extends BaseRepository {
                     await trx('device_group_assignments').insert(assignments);
                 }
 
+                // 🔥 NEW: Handle initial data points if provided
+                if (Array.isArray(deviceData.data_points) && deviceData.data_points.length > 0) {
+                    this.logger.log(`🛠️ [DeviceRepository] Inserting ${deviceData.data_points.length} initial data points for device ${id}...`);
+
+                    const pointsToInsert = deviceData.data_points.map(dp => {
+                        const point = {
+                            device_id: id,
+                            name: dp.name,
+                            description: dp.description || '',
+                            address: dp.address,
+                            address_string: dp.address_string || '',
+                            data_type: dp.data_type || 'uint16',
+                            access_mode: dp.access_mode || 'read',
+                            is_enabled: dp.is_enabled !== false ? 1 : 0,
+                            is_writable: dp.is_writable ? 1 : 0,
+                            unit: dp.unit || '',
+                            scaling_factor: dp.scaling_factor !== undefined ? dp.scaling_factor : 1.0,
+                            scaling_offset: dp.scaling_offset !== undefined ? dp.scaling_offset : 0.0,
+                            min_value: dp.min_value !== undefined ? dp.min_value : 0.0,
+                            max_value: dp.max_value !== undefined ? dp.max_value : 0.0,
+                            log_enabled: dp.is_log_enabled !== false ? 1 : 0,
+                            log_interval_ms: dp.log_interval_ms !== undefined ? dp.log_interval_ms : 0,
+                            log_deadband: dp.log_deadband !== undefined ? dp.log_deadband : 0.0,
+                            group_name: dp.group_name || '',
+                            created_at: this.knex.fn.now(),
+                            updated_at: this.knex.fn.now()
+                        };
+
+                        // JSON fields
+                        if (dp.tags) point.tags = typeof dp.tags === 'object' ? JSON.stringify(dp.tags) : dp.tags;
+                        if (dp.metadata) point.metadata = typeof dp.metadata === 'object' ? JSON.stringify(dp.metadata) : dp.metadata;
+                        if (dp.protocol_params) point.protocol_params = typeof dp.protocol_params === 'object' ? JSON.stringify(dp.protocol_params) : dp.protocol_params;
+
+                        return point;
+                    });
+
+                    await trx('data_points').insert(pointsToInsert);
+                }
+
                 return await this.findById(id, tenantId, trx);
             });
         } catch (error) {
@@ -399,6 +438,61 @@ class DeviceRepository extends BaseRepository {
                             is_primary: gid === (updateData.device_group_id || dataToUpdate.device_group_id) ? 1 : 0
                         }));
                         await trx('device_group_assignments').insert(assignments);
+                    }
+                }
+
+                // 🔥 NEW: Handle bulk data point replacement with Upsert logic
+                // Deleting all and re-inserting breaks foreign key relations (alarms, history)
+                if (updateData.data_points !== undefined) {
+                    this.logger.log(`🛠️ [DeviceRepository] Upserting data points for device ${id}...`);
+
+                    const newPoints = Array.isArray(updateData.data_points) ? updateData.data_points : [];
+
+                    // 1. Get existing points for this device to preserve metadata/types
+                    const existingPoints = await trx('data_points').where('device_id', id).select('*');
+                    const existingIds = existingPoints.map(p => p.id);
+                    const existingMap = new Map(existingPoints.map(p => [p.id, p]));
+
+                    // 2. Separate points into groups
+                    const toInsert = [];
+                    const toUpdate = [];
+                    const retainedIds = [];
+
+                    for (const dp of newPoints) {
+                        // We consider IDs > 2000000000 (Date.now()) or non-existent IDs as new
+                        const isNew = !dp.id || dp.id > 2000000000 || !existingIds.includes(Number(dp.id));
+
+                        const existingPoint = !isNew ? existingMap.get(Number(dp.id)) : null;
+                        const pointData = this._mapDataPointToDb(dp, id, existingPoint);
+
+                        if (isNew) {
+                            pointData.created_at = this.knex.fn.now();
+                            toInsert.push(pointData);
+                        } else {
+                            toUpdate.push({ id: Number(dp.id), data: pointData });
+                            retainedIds.push(Number(dp.id));
+                        }
+                    }
+
+                    // 3. Delete points not in the new list
+                    const idsToDelete = existingIds.filter(eid => !retainedIds.includes(eid));
+                    if (idsToDelete.length > 0) {
+                        await trx('data_points').whereIn('id', idsToDelete).del();
+                        this.logger.log(`🗑️ [DeviceRepository] Deleted ${idsToDelete.length} removed data points`);
+                    }
+
+                    // 4. Perform Updates
+                    for (const item of toUpdate) {
+                        await trx('data_points').where('id', item.id).update(item.data);
+                    }
+                    if (toUpdate.length > 0) {
+                        this.logger.log(`upd [DeviceRepository] Updated ${toUpdate.length} existing data points`);
+                    }
+
+                    // 5. Perform Inserts
+                    if (toInsert.length > 0) {
+                        await trx('data_points').insert(toInsert);
+                        this.logger.log(`➕ [DeviceRepository] Inserted ${toInsert.length} new data points`);
                     }
                 }
 
@@ -618,9 +712,10 @@ class DeviceRepository extends BaseRepository {
      */
     async searchDataPoints(tenantId, searchTerm = '') {
         try {
-            const sql = DeviceQueries.searchDataPoints();
+            const sql = DeviceQueries.searchDataPoints(tenantId);
             const term = `%${searchTerm}%`;
-            return await this.executeQuery(sql, [tenantId, term, term, term]);
+            const params = tenantId ? [tenantId, term, term, term] : [term, term, term];
+            return await this.executeQuery(sql, params);
         } catch (error) {
             this.logger.error('DeviceRepository.searchDataPoints 실패:', error);
             return [];
@@ -884,6 +979,71 @@ class DeviceRepository extends BaseRepository {
                     .where('device_status.connection_status', options.connection_status);
             });
         }
+    }
+
+    /**
+     * 필드 매핑 및 데이터 타입 변환을 처리하는 헬퍼 메서드
+     * @private
+     */
+    _mapDataPointToDb(dp, deviceId, existingPoint = null) {
+        const VALID_DB_TYPES = [
+            'BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32',
+            'INT64', 'UINT64', 'FLOAT32', 'FLOAT64', 'STRING', 'UNKNOWN'
+        ];
+
+        let dbDataType = 'UNKNOWN';
+        const incomingType = String(dp.data_type || '').toUpperCase();
+
+        // 1. 이미 유효한 DB 타입인 경우 (INT16, FLOAT32 등) 그대로 사용
+        if (VALID_DB_TYPES.includes(incomingType)) {
+            dbDataType = incomingType;
+        }
+        // 2. 단순화된 타입(number, boolean, string)인 경우
+        else {
+            const feType = String(dp.data_type || '').toLowerCase();
+
+            // 기존 포인트가 있다면 기존 타입을 최대한 유지 (가장 중요!)
+            if (existingPoint && VALID_DB_TYPES.includes(existingPoint.data_type)) {
+                dbDataType = existingPoint.data_type;
+            } else {
+                // 신규이거나 기존 타입이 없을 경우 매핑
+                if (feType === 'boolean') dbDataType = 'BOOL';
+                else if (feType === 'string') dbDataType = 'STRING';
+                else dbDataType = 'FLOAT32'; // number의 기본값으로 FLOAT64보다 안전한 FLOAT32 선택
+            }
+        }
+
+        const pointData = {
+            device_id: deviceId,
+            name: dp.name,
+            description: dp.description || '',
+            address: parseInt(dp.address, 10),
+            address_string: dp.address_string || String(dp.address),
+            data_type: dbDataType,
+            access_mode: dp.access_mode || 'read',
+            is_enabled: dp.is_enabled !== false ? 1 : 0,
+            is_writable: (dp.access_mode === 'write' || dp.access_mode === 'read_write') ? 1 : 0,
+            unit: dp.unit || '',
+            scaling_factor: dp.scaling_factor !== undefined ? dp.scaling_factor : 1.0,
+            scaling_offset: dp.scaling_offset !== undefined ? dp.scaling_offset : 0.0,
+            min_value: dp.min_value !== undefined ? dp.min_value : 0.0,
+            max_value: dp.max_value !== undefined ? dp.max_value : 0.0,
+            log_enabled: (dp.is_log_enabled !== false && dp.log_enabled !== false) ? 1 : 0,
+            log_interval_ms: dp.log_interval_ms !== undefined ? dp.log_interval_ms : 0,
+            // 알람 필드
+            alarm_enabled: (dp.is_alarm_enabled || dp.alarm_enabled) ? 1 : 0,
+            high_alarm_limit: dp.high_alarm_limit,
+            low_alarm_limit: dp.low_alarm_limit,
+            alarm_deadband: dp.alarm_deadband || 0.0,
+            updated_at: this.knex.fn.now()
+        };
+
+        // JSON fields
+        if (dp.tags) pointData.tags = typeof dp.tags === 'object' ? JSON.stringify(dp.tags) : dp.tags;
+        if (dp.metadata) pointData.metadata = typeof dp.metadata === 'object' ? JSON.stringify(dp.metadata) : dp.metadata;
+        if (dp.protocol_params) pointData.protocol_params = typeof dp.protocol_params === 'object' ? JSON.stringify(dp.protocol_params) : dp.protocol_params;
+
+        return pointData;
     }
 }
 

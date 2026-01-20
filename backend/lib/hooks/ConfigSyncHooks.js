@@ -19,8 +19,8 @@ class ConfigSyncHooks {
             // Critical operations (still default to throw if onSyncFailure is 'throw')
             criticalOperations: ['device_update', 'device_delete'],
 
-            // 재시도 설정
-            maxRetries: 2,
+            // 재시도 설정 (타임아웃 방지를 위해 0으로 조정)
+            maxRetries: 0,
             retryDelayMs: 1000
         };
 
@@ -53,20 +53,21 @@ class ConfigSyncHooks {
                     };
 
                     // 🔥 DEADLOCK PREVENTION: 
-                    // Circuit breaker가 열려있는 경우(통신 불가 상태)는 Critical 작업이라도 
-                    // 로그만 남기고 진행할 수 있도록 허용 (설정 수정을 통한 복구 기회 제공)
+                    // Circuit breaker가 열려있는 경우나 타임아웃 발생 시, 
+                    // DB 저장이 성공했다면 사용자에게 경고만 전달하고 진행 허용.
                     const isCircuitOpen = error.message.includes('Circuit breaker is OPEN');
+                    const isTimeout = error.message.includes('timeout');
 
                     // 에러 처리 정책에 따라 처리
-                    if ((this.errorPolicy.onSyncFailure === 'throw' || isCritical) && !isCircuitOpen) {
-                        // Critical 작업이거나 정책이 throw인 경우 예외 전파 (단, Circuit Open은 제외)
+                    if ((this.errorPolicy.onSyncFailure === 'throw' || isCritical) && !isCircuitOpen && !isTimeout) {
+                        // 진짜 치명적인 내부 오류인 경우에만 Throw
                         const syncError = new Error(`Sync failed: ${operationType} - ${error.message}`);
                         syncError.name = 'SyncError';
                         syncError.details = errorInfo;
                         throw syncError;
 
                     } else {
-                        // 'log' 또는 'ignore' 또는 Circuit Open인 경우
+                        // 타임아웃, Circuit Open, 또는 정책이 log/ignore인 경우
                         console.warn(`⚠️ Sync failed (${operationType}) but continuing: ${error.message}`);
                         return { success: false, error: errorInfo, continued: true };
                     }

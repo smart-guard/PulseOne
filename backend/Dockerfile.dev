@@ -23,7 +23,16 @@ RUN apt-get update && apt-get install -y \
     uuid-dev \
     libmodbus-dev \
     libhiredis-dev \
+    libmariadb-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# hiredis (Redis 클라이언트) 빌드 설치 (버전 호환성 보장)
+RUN cd /tmp && \
+    git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && \
+    cd hiredis && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_SSL=ON && \
+    make -j$(nproc) && make install && ldconfig && \
+    cd / && rm -rf /tmp/hiredis
 
 # 전역 개발 도구 설치
 RUN npm install -g \

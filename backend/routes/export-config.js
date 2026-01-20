@@ -240,6 +240,69 @@ router.delete('/templates/:id', async (req, res) => {
 });
 
 // =============================================================================
+// Export Schedules
+// =============================================================================
+
+/**
+ * @route GET /api/export/schedules
+ * @desc Export Schedule 목록 조회
+ */
+router.get('/schedules', async (req, res) => {
+    try {
+        const response = await ExportGatewayService.getAllSchedules();
+        res.json(response);
+    } catch (error) {
+        LogManager.api('ERROR', '스케줄 목록 조회 실패', { error: error.message });
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @route POST /api/export/schedules
+ * @desc 신규 Export Schedule 생성
+ */
+router.post('/schedules', async (req, res) => {
+    try {
+        const response = await ExportGatewayService.createSchedule(req.body);
+        LogManager.api('INFO', `스케줄 생성됨: ${req.body.schedule_name}`);
+        res.json(response);
+    } catch (error) {
+        LogManager.api('ERROR', '스케줄 생성 실패', { error: error.message });
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @route PUT /api/export/schedules/:id
+ * @desc Export Schedule 수정
+ */
+router.put('/schedules/:id', async (req, res) => {
+    try {
+        const response = await ExportGatewayService.updateSchedule(req.params.id, req.body);
+        LogManager.api('INFO', `스케줄 수정됨: ID ${req.params.id}`);
+        res.json(response);
+    } catch (error) {
+        LogManager.api('ERROR', `스케줄 수정 실패 (${req.params.id})`, { error: error.message });
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @route DELETE /api/export/schedules/:id
+ * @desc Export Schedule 삭제
+ */
+router.delete('/schedules/:id', async (req, res) => {
+    try {
+        const response = await ExportGatewayService.deleteSchedule(req.params.id);
+        LogManager.api('INFO', `스케줄 삭제됨: ID ${req.params.id}`);
+        res.json(response);
+    } catch (error) {
+        LogManager.api('ERROR', `스케줄 삭제 실패 (${req.params.id})`, { error: error.message });
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// =============================================================================
 // Target Mappings
 // =============================================================================
 
@@ -276,14 +339,12 @@ router.post('/targets/:targetId/mappings', async (req, res) => {
 // Export Gateway Management (Dedicated)
 // =============================================================================
 
-/**
- * @route GET /api/export/gateways
- * @desc Export Gateway 목록 조회
- */
 router.get('/gateways', async (req, res) => {
     try {
         const tenantId = req.user?.tenant_id || 1;
-        const response = await ExportGatewayService.getAllGateways(tenantId);
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 4; // Adjusted to 4 for easier testing vs Grid
+        const response = await ExportGatewayService.getAllGateways(tenantId, page, limit);
         res.json(response);
     } catch (error) {
         LogManager.api('ERROR', '게이트웨이 목록 조회 실패', { error: error.message });

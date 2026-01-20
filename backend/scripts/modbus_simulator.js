@@ -1,45 +1,45 @@
 // backend/scripts/modbus_simulator.js
 const ModbusRTU = require('modbus-serial');
 
-// 시뮬레이션 데이터 상태
+// 시뮬레이션 데이터 상태 (나이키빌딩 소방수신기 시뮬레이션)
 let simData = {
-    temp: 34.0,      // Address 1004 (Float)
-    current: 29.5,   // Address 1003 (Float)
+    // Digital (Coils)
+    pv: 0,   // WLS.PV (접점 감지)
+    srs: 0,  // WLS.SRS (인식 상태)
+    scs: 0,  // WLS.SCS (통신 상태)
+
+    // Analog (Holdings)
+    sss: 85, // WLS.SSS (신호 강도: -5 ~ 100)
+    sbv: 36, // WLS.SBV (배터리 전압: 20 ~ 100)
+
     direction: 1
 };
 
-// 주기적으로 데이터 업데이트 (알람 범위를 왔다갔다함)
+// 주기적으로 데이터 업데이트
 setInterval(() => {
-    simData.temp += 0.5 * simData.direction;
-    simData.current += 0.2 * simData.direction;
+    // 알람 시뮬레이션을 위해 10초마다 디지털 값 토글
+    if (Math.random() > 0.8) simData.pv = simData.pv === 0 ? 1 : 0;
 
-    if (simData.temp > 40 || simData.temp < 30) {
-        simData.direction *= -1;
-    }
+    // 아날로그 값 변동
+    simData.sss += 1 * simData.direction;
+    if (simData.sss > 95 || simData.sss < 30) simData.direction *= -1;
+
+    simData.sbv = 36 + Math.random(); // 배터리 전압은 비교적 일정하게 유지
 }, 2000);
 
 const vector = {
-    getInputRegister: (addr, unitID) => addr,
-    getHoldingRegister: (addr, unitID) => {
-        // [테스트용] 1003 (Current), 1004 (Temp) - FLOAT32 (2 registers each)
-        // FLOAT는 보통 2개의 레지스터를 차지하지만, 여기선 간단히 정수형으로 변환해 리턴하거나 
-        // 상위/하위 바이트 분할이 필요할 수 있음. 
-        // Collector의 FLOAT32 파싱 방식에 맞춰야 함. (Big Endian 가정)
-
-        if (addr === 1003) { // Sim_Current (Address 1 = 1003)
-            return Math.floor(simData.current * 10); // 295 -> 29.5 (Scaling factor 0.1 적용 가정)
-        }
-        if (addr === 1004) { // Sim_Temp (Address 2 = 1004)
-            return Math.floor(simData.temp * 10); // 340 -> 34.0 (Scaling factor 0.1 적용 가정)
-        }
-
-        // 구 버전 호환용 (0-9)
-        if (addr < 10) {
-            return Math.floor(Math.random() * 1000);
-        }
-        return addr;
+    getCoil: (addr, unitID) => {
+        if (addr === 100) return simData.pv === 1;
+        if (addr === 101) return simData.srs === 1;
+        if (addr === 102) return simData.scs === 1;
+        return false;
     },
-    getCoil: (addr, unitID) => (addr % 2 === 0),
+    getHoldingRegister: (addr, unitID) => {
+        if (addr === 200) return Math.floor(simData.sss);
+        if (addr === 201) return Math.floor(simData.sbv * 10); // 3.6V -> 36
+        return 0;
+    },
+    getInputRegister: (addr, unitID) => addr,
     setRegister: (addr, value, unitID) => {
         console.log(`[Modbus Simulator] Write Register: Addr=${addr}, Value=${value}`);
         return;
@@ -57,25 +57,13 @@ const serverTCP = new ModbusRTU.ServerTCP(vector, {
     unitID: 1
 });
 
-serverTCP.on('socketError', (err) => {
-    console.error('[Modbus Simulator Socket ERROR]', err);
-});
-
-serverTCP.on('error', (err) => {
-    console.error('[Modbus Simulator ERROR]', err);
-});
-
 serverTCP.on('initialized', () => {
-    console.log(`🚀 Modbus TCP Simulator initialized and listening on port ${parseInt(process.env.MODBUS_PORT) || 50502}`);
-});
-
-serverTCP.on('connection', (client) => {
-    // console.log(`[Modbus Simulator] New connection from ${client.remoteAddress}:${client.remotePort}`);
+    console.log(`🚀 Nike Building Modbus TCP Simulator initialized on port ${parseInt(process.env.MODBUS_PORT) || 50502}`);
 });
 
 console.log('🚀 Modbus TCP Simulator started');
-console.log('    - Slave ID: 1');
-console.log('    - Test Registers: 1003 (Current), 1004 (Temp)');
+console.log('    - Digital (Coils): 100(PV), 101(SRS), 102(SCS)');
+console.log('    - Analog (Holdings): 200(SSS), 201(SBV)');
 
 // Keep the process alive
 setInterval(() => { }, 10000);

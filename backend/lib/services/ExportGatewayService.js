@@ -30,6 +30,10 @@ class ExportGatewayService extends BaseService {
         return RepositoryFactory.getInstance().getExportTargetMappingRepository();
     }
 
+    get scheduleRepository() {
+        return RepositoryFactory.getInstance().getExportScheduleRepository();
+    }
+
     get db() {
         return RepositoryFactory.getInstance().getDatabaseFactory();
     }
@@ -54,7 +58,7 @@ class ExportGatewayService extends BaseService {
 
     async createProfile(data, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.profileRepository.create(data, tenantId);
+            return await this.profileRepository.save(data, tenantId);
         }, 'CreateProfile');
     }
 
@@ -141,6 +145,42 @@ class ExportGatewayService extends BaseService {
     }
 
     // =========================================================================
+    // Export Schedule Management
+    // =========================================================================
+
+    async getAllSchedules() {
+        return await this.handleRequest(async () => {
+            return await this.scheduleRepository.findAll();
+        }, 'GetAllSchedules');
+    }
+
+    async getScheduleById(id) {
+        return await this.handleRequest(async () => {
+            const schedule = await this.scheduleRepository.findById(id);
+            if (!schedule) throw new Error('Export Schedule not found');
+            return schedule;
+        }, 'GetScheduleById');
+    }
+
+    async createSchedule(data) {
+        return await this.handleRequest(async () => {
+            return await this.scheduleRepository.save(data);
+        }, 'CreateSchedule');
+    }
+
+    async updateSchedule(id, data) {
+        return await this.handleRequest(async () => {
+            return await this.scheduleRepository.update(id, data);
+        }, 'UpdateSchedule');
+    }
+
+    async deleteSchedule(id) {
+        return await this.handleRequest(async () => {
+            return await this.scheduleRepository.deleteById(id);
+        }, 'DeleteSchedule');
+    }
+
+    // =========================================================================
     // Target Mapping Management
     // =========================================================================
 
@@ -197,13 +237,13 @@ class ExportGatewayService extends BaseService {
             const existing = await this.db.executeQuery(checkQuery, [profileId, gatewayId]);
 
             if (existing && existing.length > 0) {
-                // 이미 존재하면 활성화만
+                // 이미 존재하면 활성화만 (ID 기반 업데이트로 안전성 확보)
                 await this.db.executeQuery(
                     `UPDATE export_profile_assignments SET is_active = 1 WHERE id = ?`,
                     [existing[0].id]
                 );
             } else {
-                // 신규 할당
+                // 신규 할당 (UNIQUE 인덱스가 있어도 애플리케이션 레벨에서 먼저 체크)
                 await this.db.executeQuery(
                     `INSERT INTO export_profile_assignments (profile_id, gateway_id, is_active) VALUES (?, ?, 1)`,
                     [profileId, gatewayId]
@@ -219,10 +259,9 @@ class ExportGatewayService extends BaseService {
      */
     async unassignProfile(profileId, gatewayId) {
         return await this.handleRequest(async () => {
-            await this.db.executeQuery(
-                `DELETE FROM export_profile_assignments WHERE profile_id = ? AND gateway_id = ?`,
-                [profileId, gatewayId]
-            );
+            // 현재 프론트엔드는 토글 방식을 사용하므로 데이터 정합성을 위해 삭제 처리
+            const query = `DELETE FROM export_profile_assignments WHERE profile_id = ? AND gateway_id = ?`;
+            await this.db.executeQuery(query, [profileId, gatewayId]);
             return { success: true };
         }, 'UnassignProfile');
     }
@@ -257,12 +296,14 @@ class ExportGatewayService extends BaseService {
     // Gateway Management (Direct Access)
     // =========================================================================
 
-    async getAllGateways(tenantId) {
+    async getAllGateways(tenantId, page = 1, limit = 10) {
         return await this.handleRequest(async () => {
-            const gateways = await this.gatewayRepository.findAll(tenantId);
+            const result = await this.gatewayRepository.findAll(tenantId, page, limit);
+            const items = result?.items || [];
+            const pagination = result?.pagination || { current_page: page, total_pages: 0, total_count: 0 };
 
             // 실시간 상태 및 프로세스 상태 병합
-            return await Promise.all(gateways.map(async (gw) => {
+            const enrichedItems = await Promise.all(items.map(async (gw) => {
                 const liveStatus = await EdgeServerService.getLiveStatus(gw.id);
 
                 // 프로세스 감지 (crossPlatformManager에서 감지된 정보 활용)
@@ -277,6 +318,11 @@ class ExportGatewayService extends BaseService {
                     processes: egProcesses
                 };
             }));
+
+            return {
+                items: enrichedItems,
+                pagination
+            };
         }, 'GetAllGateways');
     }
 

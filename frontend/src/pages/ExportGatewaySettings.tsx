@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Select, Tooltip, Tag, notification } from 'antd';
 import exportGatewayApi, { DataPoint, Gateway, ExportProfile, ExportTarget, Assignment, PayloadTemplate, ExportTargetMapping } from '../api/services/exportGatewayApi';
+import { DeviceApiService, Device } from '../api/services/deviceApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatCard } from '../components/common/StatCard';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
+import { Pagination } from '../components/common/Pagination';
 import '../styles/management.css';
+import '../styles/pagination.css';
 
 // =============================================================================
 // Helper Components & Types
@@ -66,16 +69,65 @@ const ExportTargetManager: React.FC = () => {
         try {
             const response = await exportGatewayApi.getTargetMappings(targetId);
             const data = response.data;
-            setTargetMappings(Array.isArray(data) ? data : (data && (data as any).rows ? (data as any).rows : []));
+            const existingMappings = Array.isArray(data) ? data : (data && (data as any).rows ? (data as any).rows : []);
+
+            // [Auto-Sync Logic] 만약 매핑 데이터가 전혀 없다면, 타겟에 지정된 프로파일에서 포인트를 가져와 초기화합니다.
+            if (existingMappings.length === 0) {
+                const target = targets.find(t => t.id === targetId);
+                if (target && target.profile_id) {
+                    const profile = profiles.find(p => p.id === target.profile_id);
+                    if (profile && Array.isArray(profile.data_points) && profile.data_points.length > 0) {
+                        const initialMappings = profile.data_points.map((p: any) => ({
+                            point_id: p.id,
+                            target_field_name: p.target_field_name || p.name,
+                            target_description: '',
+                            is_enabled: true,
+                            conversion_config: { scale: 1, offset: 0 }
+                        }));
+                        setTargetMappings(initialMappings);
+                        return;
+                    }
+                }
+            }
+
+            setTargetMappings(existingMappings);
         } catch (error) {
             console.error(error);
         }
     };
 
+    const handleCloseMapping = async () => {
+        if (targetMappings.length > 0 || pasteData.trim()) {
+            const confirmed = await confirm({
+                title: '변경사항 유실 주의',
+                message: '입력된 데이터가 있습니다. 저장하지 않고 닫으시면 모든 데이터가 사라집니다. 정말 닫으시겠습니까?',
+                confirmText: '닫기',
+                cancelText: '취소',
+                confirmButtonType: 'warning'
+            });
+            if (!confirmed) return;
+        }
+        setIsMappingModalOpen(false);
+        setPasteData('');
+        setTargetMappings([]);
+        setMappingTargetId(null);
+    };
+
     const handleSaveMappings = async () => {
         if (!mappingTargetId) return;
 
-        // Validation 1: Check for unapplied paste data
+        // 0. Empty check
+        if (targetMappings.length === 0) {
+            await confirm({
+                title: '데이터 없음',
+                message: '저장할 매핑 데이터가 없습니다. 한 개 이상의 포인트를 매핑하거나 엑셀 데이터를 붙여넣어주세요.',
+                showCancelButton: false,
+                confirmButtonType: 'warning'
+            });
+            return;
+        }
+
+        // 1. Check for unapplied paste data
         if (pasteData.trim()) {
             const confirmed = await confirm({
                 title: '적용되지 않은 데이터',
@@ -87,24 +139,84 @@ const ExportTargetManager: React.FC = () => {
             if (!confirmed) return;
         }
 
-        // Validation 2: Check for unmapped points
+        // 2. Check for unmapped points
         const invalidMappings = targetMappings.filter(m => !m.point_id);
         if (invalidMappings.length > 0) {
-            notification.warning({
-                message: '매핑 누락',
-                description: `매핑되지 않은 포인트가 ${invalidMappings.length}개 있습니다. 목록에서 빨간색으로 표시된 항목을 수정하거나 삭제해주세요.`,
-                placement: 'topRight'
+            await confirm({
+                title: '매핑 누락',
+                message: `매핑되지 않은 포인트가 ${invalidMappings.length}개 있습니다. 목록에서 빨간색으로 표시된 항목을 수정하거나 삭제해주세요.`,
+                showCancelButton: false,
+                confirmButtonType: 'warning'
             });
             return;
         }
 
+        // 3. Final Confirmation
+        const finalConfirm = await confirm({
+            title: '최종 저장 확인',
+            message: '현재 설정된 매핑 정보를 저장하시겠습니까?',
+            confirmText: '저장',
+            cancelText: '취소',
+            confirmButtonType: 'primary'
+        });
+        if (!finalConfirm) return;
+
         try {
-            // Clean up internal flags before sending
             const payload = targetMappings.map(({ _temp_name, ...rest }) => rest);
             await exportGatewayApi.saveTargetMappings(mappingTargetId, payload);
+
+            await confirm({
+                title: '저장 완료',
+                message: '매핑 정보가 성공적으로 저장되었습니다.',
+                showCancelButton: false,
+                confirmButtonType: 'success'
+            });
+
             setIsMappingModalOpen(false);
+            setPasteData('');
+            setTargetMappings([]);
+            setMappingTargetId(null);
         } catch (error) {
-            notification.error({ message: '저장 실패', description: '매핑 정보를 저장하는 중 오류가 발생했습니다.' });
+            await confirm({
+                title: '저장 실패',
+                message: '매핑 정보를 저장하는 중 오류가 발생했습니다.',
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
+        }
+    };
+
+    const handleImportFromProfile = async () => {
+        if (!mappingTargetId) return;
+        const target = targets.find(t => t.id === mappingTargetId);
+        if (!target || !target.profile_id) {
+            notification.warning({ message: '프로파일 없음', description: '이 타겟에 연결된 프로파일이 없습니다.' });
+            return;
+        }
+
+        const profile = profiles.find(p => p.id === target.profile_id);
+        if (!profile) return;
+
+        const confirmed = await confirm({
+            title: '프로파일 데이터 불러오기',
+            message: `현재 설정된 매핑 리스트를 삭제하고, 프로파일 "${profile.name}"의 모든 포인트를 불러오시겠습니까?`,
+            confirmText: '불러오기',
+            cancelText: '취소',
+            confirmButtonType: 'warning'
+        });
+
+        if (!confirmed) return;
+
+        if (Array.isArray(profile.data_points)) {
+            const initialMappings = profile.data_points.map((p: any) => ({
+                point_id: p.id,
+                target_field_name: p.target_field_name || p.name,
+                target_description: '',
+                is_enabled: true,
+                conversion_config: { scale: 1, offset: 0 }
+            }));
+            setTargetMappings(initialMappings);
+            notification.success({ message: '동기화 완료', description: '프로파일에서 포인트 목록을 성공적으로 가져왔습니다.' });
         }
     };
 
@@ -113,13 +225,20 @@ const ExportTargetManager: React.FC = () => {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
+            let response;
             if (editingTarget?.id) {
-                await exportGatewayApi.updateTarget(editingTarget.id, editingTarget);
+                response = await exportGatewayApi.updateTarget(editingTarget.id, editingTarget);
             } else {
-                await exportGatewayApi.createTarget(editingTarget!);
+                response = await exportGatewayApi.createTarget(editingTarget!);
             }
-            setIsModalOpen(false);
-            fetchData();
+
+            if (response.success) {
+                notification.success({ message: '저장 완료', description: '전송 타겟 정보가 성공적으로 저장되었습니다.' });
+                setIsModalOpen(false);
+                fetchData();
+            } else {
+                notification.error({ message: '저장 실패', description: response.message || '정보를 저장하는 중 오류가 발생했습니다.' });
+            }
         } catch (error) {
             notification.error({ message: '저장 실패', description: '전송 타겟 정보를 저장하는 중 오류가 발생했습니다.' });
         }
@@ -281,6 +400,48 @@ const ExportTargetManager: React.FC = () => {
                                             </select>
                                         </div>
                                         <div className="mgmt-modal-form-group">
+                                            <label>전송 모드 (Export Mode)</label>
+                                            <select
+                                                className="mgmt-select"
+                                                value={editingTarget?.export_mode || 'on_change'}
+                                                onChange={e => setEditingTarget({ ...editingTarget, export_mode: e.target.value })}
+                                            >
+                                                <option value="on_change">즉시 전송 (Event Triggered)</option>
+                                                <option value="batch">배치 전송 (Buffered Batch)</option>
+                                            </select>
+                                            <div className="mgmt-modal-form-hint">
+                                                {editingTarget?.export_mode === 'batch'
+                                                    ? '데이터를 버퍼에 모아서 일괄적으로 전송합니다. (데이터 효율 최적화)'
+                                                    : '데이터가 수집될 때마다 즉시 전송합니다. (실시간성 강조)'}
+                                            </div>
+                                        </div>
+                                        {editingTarget?.export_mode === 'batch' && (
+                                            <div className="mgmt-modal-form-group">
+                                                <label>배치 크기 (Batch Size)</label>
+                                                <input
+                                                    type="number"
+                                                    className="mgmt-input"
+                                                    value={editingTarget?.batch_size || 100}
+                                                    onChange={e => setEditingTarget({ ...editingTarget, batch_size: parseInt(e.target.value) })}
+                                                    min={1}
+                                                    max={5000}
+                                                />
+                                                <div className="mgmt-modal-form-hint">최대 몇 개의 메시지를 버퍼링한 후 전송할지 설정합니다.</div>
+                                            </div>
+                                        )}
+                                        <div className="mgmt-modal-form-group">
+                                            <label>최소 전송 간격 (Interval, ms) - 옵션</label>
+                                            <input
+                                                type="number"
+                                                className="mgmt-input"
+                                                value={editingTarget?.export_interval || 0}
+                                                onChange={e => setEditingTarget({ ...editingTarget, export_interval: parseInt(e.target.value) })}
+                                                min={0}
+                                                step={100}
+                                            />
+                                            <div className="mgmt-modal-form-hint">배치 모드에서 타임아웃으로도 사용됩니다. (0: 사용 안함)</div>
+                                        </div>
+                                        <div className="mgmt-modal-form-group">
                                             <label>페이로드 템플릿</label>
                                             <select
                                                 className="mgmt-select"
@@ -349,6 +510,32 @@ const ExportTargetManager: React.FC = () => {
                                                         }}
                                                     />
                                                     <div className="mgmt-modal-form-hint">필요한 경우 Bearer Token 등을 입력하세요.</div>
+                                                </div>
+                                                <div className="mgmt-modal-form-group">
+                                                    <label>X-API-KEY (전용 헤더)</label>
+                                                    <input
+                                                        type="text"
+                                                        className="mgmt-input"
+                                                        placeholder="API Gateway용 키를 입력하세요"
+                                                        value={(() => {
+                                                            try {
+                                                                const c = typeof editingTarget?.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget?.config || {});
+                                                                return c.auth?.apiKey || '';
+                                                            } catch { return ''; }
+                                                        })()}
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            let c: any = {};
+                                                            try {
+                                                                c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {});
+                                                            } catch { }
+
+                                                            const auth = { ...(c.auth || {}), type: 'x-api-key', apiKey: val };
+                                                            c = { ...c, auth };
+                                                            setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
+                                                        }}
+                                                    />
+                                                    <div className="mgmt-modal-form-hint">AWS API Gateway 등에서 사용하는 x-api-key 헤더로 전송됩니다.</div>
                                                 </div>
                                             </>
                                         ) : editingTarget?.target_type === 's3' ? (
@@ -490,211 +677,276 @@ const ExportTargetManager: React.FC = () => {
             )}
             {isMappingModalOpen && (
                 <div className="mgmt-modal-overlay">
-                    <div className="mgmt-modal-content" style={{ maxWidth: '98vw', width: '98%', height: '95vh', display: 'flex', flexDirection: 'column' }}>
+                    <div className="mgmt-modal-content wide-modal" style={{ display: 'flex', flexDirection: 'column' }}>
                         <div className="mgmt-modal-header">
                             <h3 className="mgmt-modal-title">데이터 포인트 매핑 설정</h3>
-                            <button className="mgmt-close-btn" onClick={() => setIsMappingModalOpen(false)}>&times;</button>
+                            <button className="mgmt-close-btn" onClick={handleCloseMapping}>&times;</button>
                         </div>
-                        <div className="mgmt-modal-body" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                            <div className="mgmt-alert info" style={{ marginBottom: '15px', flexShrink: 0 }}>
-                                <i className="fas fa-info-circle" /> 이 타겟으로 전송할 데이터 포인트와 전송될 필드명을 매핑합니다.
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, overflow: 'hidden', padding: '20px' }}>
+                            {/* 1. Guidance Section (Top) */}
+                            <div style={{
+                                background: 'var(--warning-50)',
+                                border: '1px solid var(--warning-100)',
+                                borderRadius: '8px',
+                                padding: '15px',
+                                flexShrink: 0
+                            }}>
+                                <div style={{ fontWeight: 600, color: 'var(--warning-700)', fontSize: '14px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <i className="fas fa-exchange-alt" /> 물리 전송 매핑 가이드
+                                </div>
+                                <div style={{ fontSize: '13px', color: 'var(--warning-600)', lineHeight: '1.6' }}>
+                                    실제 외부 시스템으로 전송할 때의 <strong>최종 설정</strong>입니다.
+                                    데이터 단위 변환(Scale, Offset)이 필요한 경우 테이블에서 설정하세요.
+                                    엑셀에서 [포인트명][탭][필드명][탭][설명] 순으로 복사해 아래 영역에 붙여넣으면 자동 매핑됩니다.
+                                </div>
                             </div>
 
-                            {/* Bulk Paste Section */}
-                            <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '4px', border: '1px solid #ddd' }}>
-                                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>📋 엑셀 붙여넣기 (일괄 등록)</h4>
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexDirection: 'column' }}>
-                                    <textarea
-                                        className="mgmt-input"
-                                        style={{ height: '200px', resize: 'vertical', width: '100%', fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.5' }}
-                                        placeholder={`엑셀 데이터 붙여넣기 예시:\n[PulseOne 포인트명] (탭) [외부 시스템 필드명] (탭) [설명]\n\nSensor_A_01\tFactory_Temp_01\t1공장 온도\nSensor_A_02\tFactory_Humid_01\t1공장 습도`}
-                                        value={pasteData}
-                                        onChange={(e) => setPasteData(e.target.value)}
-                                    />
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
-                                        <button
-                                            className="mgmt-btn mgmt-btn-primary mgmt-btn-sm"
-                                            onClick={() => {
-                                                if (!pasteData.trim()) {
-                                                    notification.info({ message: '데이터 없음', description: '붙여넣을 데이터가 없습니다.' });
-                                                    return;
-                                                }
+                            {/* 2. Excel Paste Section (Middle) */}
+                            <div style={{ padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', display: 'flex', flexDirection: 'column', gap: '10px', flexShrink: 0 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <h4 style={{ margin: 0, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <i className="fas fa-file-excel" style={{ color: '#1d6f42' }} /> 엑셀 붙여넣기 (일괄 등록)
+                                    </h4>
+                                    <button
+                                        className="mgmt-btn mgmt-btn-primary mgmt-btn-sm"
+                                        style={{ width: 'auto' }}
+                                        onClick={async () => {
+                                            if (!pasteData.trim()) {
+                                                await confirm({
+                                                    title: '데이터 없음',
+                                                    message: '붙여넣을 데이터가 없습니다.',
+                                                    showCancelButton: false,
+                                                    confirmButtonType: 'primary'
+                                                });
+                                                return;
+                                            }
 
-                                                const lines = pasteData.split(/\r?\n/);
-                                                let addedCount = 0;
-                                                let failedCount = 0;
-                                                const newMappings = [...targetMappings];
+                                            const lines = pasteData.split(/\r?\n/);
+                                            let addedCount = 0;
+                                            let failedCount = 0;
+                                            const newMappings = [...targetMappings];
 
-                                                lines.forEach(line => {
-                                                    if (!line.trim()) return;
-                                                    const parts = line.split('\t');
-                                                    const pointName = parts[0]?.trim();
-                                                    const targetField = parts[1]?.trim() || '';
-                                                    const desc = parts[2]?.trim() || '';
+                                            lines.forEach(line => {
+                                                if (!line.trim()) return;
+                                                const parts = line.split('\t');
+                                                const pointName = parts[0]?.trim();
+                                                const targetField = parts[1]?.trim() || '';
+                                                const desc = parts[2]?.trim() || '';
 
-                                                    if (pointName) {
-                                                        const point = allPoints.find(p => p.name.toLowerCase() === pointName.toLowerCase());
+                                                if (pointName) {
+                                                    const point = allPoints.find(p => p.name.toLowerCase() === pointName.toLowerCase());
+                                                    const isAlreadyMapped = newMappings.some(m => m.point_id && m.point_id === point?.id);
 
-                                                        // 중복 체크 (이미 등록된 포인트인지)
-                                                        const isAlreadyMapped = newMappings.some(m => m.point_id && m.point_id === point?.id);
-
-                                                        if (point && !isAlreadyMapped) {
-                                                            newMappings.push({
-                                                                point_id: point.id,
-                                                                target_field_name: targetField,
-                                                                target_description: desc,
-                                                                is_enabled: true
-                                                            });
-                                                            addedCount++;
-                                                        } else if (!point) {
-                                                            // 포인트가 없으면 에러 상태로 추가 (사용자가 수정하도록 유도)
-                                                            newMappings.push({
-                                                                point_id: undefined,
-                                                                target_field_name: targetField,
-                                                                target_description: desc,
-                                                                is_enabled: true,
-                                                                _temp_name: pointName // 원래 입력한 잘못된 이름 저장
-                                                            });
-                                                            failedCount++;
-                                                        }
+                                                    if (point && !isAlreadyMapped) {
+                                                        newMappings.push({
+                                                            point_id: point.id,
+                                                            target_field_name: targetField,
+                                                            target_description: desc,
+                                                            is_enabled: true
+                                                        });
+                                                        addedCount++;
+                                                    } else if (!point) {
+                                                        newMappings.push({
+                                                            point_id: undefined,
+                                                            target_field_name: targetField,
+                                                            target_description: desc,
+                                                            is_enabled: true,
+                                                            _temp_name: pointName
+                                                        });
+                                                        failedCount++;
                                                     }
-                                                });
-
-                                                if (addedCount > 0 || failedCount > 0) {
-                                                    setTargetMappings(newMappings);
-                                                    setPasteData(''); // Clear on success
                                                 }
+                                            });
 
-                                                let message = `결과 리포트:\n- 자동 매칭 성공: ${addedCount}개`;
-                                                if (failedCount > 0) {
-                                                    message += `\n- 매칭 실패 (확인 필요): ${failedCount}개\n\n매칭되지 않은 항목은 테이블에 빨간색으로 표시됩니다.\n드롭다운에서 올바른 포인트를 선택해주세요.`;
-                                                } else if (addedCount === 0) {
-                                                    message += `\n(추가된 항목이 없습니다)`;
-                                                }
+                                            if (addedCount > 0 || failedCount > 0) {
+                                                setTargetMappings(newMappings);
+                                                setPasteData('');
+                                            }
 
-                                                notification.success({
-                                                    message: '매핑 적용 결과',
-                                                    description: message,
-                                                    placement: 'topRight',
-                                                    duration: 6
-                                                });
-                                            }}
-                                        >
-                                            <i className="fas fa-magic" style={{ marginRight: '5px' }} />
-                                            매핑 적용 및 결과 확인
-                                        </button>
+                                            await confirm({
+                                                title: '매핑 적용 완료',
+                                                message: `성공: ${addedCount}개\n실패(확인 필요): ${failedCount}개`,
+                                                showCancelButton: false,
+                                                confirmButtonType: 'success'
+                                            });
+                                        }}
+                                    >
+                                        <i className="fas fa-magic" /> 매핑 적용하기
+                                    </button>
+                                    <button
+                                        className="mgmt-btn mgmt-btn-outline mgmt-btn-sm"
+                                        style={{ width: 'auto', borderColor: 'var(--primary-300)', color: 'var(--primary-600)' }}
+                                        onClick={handleImportFromProfile}
+                                    >
+                                        <i className="fas fa-sync-alt" /> 프로파일에서 불러오기
+                                    </button>
+                                </div>
+                                <textarea
+                                    className="mgmt-input"
+                                    style={{ height: '100px', resize: 'vertical', width: '100%', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.4' }}
+                                    placeholder={`[PulseOne 포인트명] (탭) [외부 시스템 필드명] (탭) [설명]\n\nSensor_A_01\tFactory_Temp_01\t1공장 온도`}
+                                    value={pasteData}
+                                    onChange={(e) => setPasteData(e.target.value)}
+                                />
+                            </div>
+
+                            {/* 3. Mapping List Section (Bottom) */}
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderTop: '1px solid #eee', paddingTop: '20px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#333' }}>
+                                        <i className="fas fa-list-ul" style={{ marginRight: '8px' }} /> 최종 매핑 리스트 ({targetMappings.length})
+                                    </h4>
+                                    <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" style={{ width: 'auto' }} onClick={() => {
+                                        setTargetMappings([...targetMappings, { point_id: undefined, target_field_name: '', target_description: '', is_enabled: true }]);
+                                    }}>
+                                        <i className="fas fa-plus" /> 1행 추가
+                                    </button>
+                                </div>
+
+                                <div className="mgmt-table-container" style={{ flex: 1, overflowY: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
+                                    <table className="mgmt-table">
+                                        <thead>
+                                            <tr>
+                                                <th style={{ width: '40%' }}>PulseOne 포인트 (소스)</th>
+                                                <th style={{ width: '25%' }}>외부 필드명 (Key)</th>
+                                                <th style={{ width: '100px', whiteSpace: 'nowrap' }}>Scale (x)</th>
+                                                <th style={{ width: '100px', whiteSpace: 'nowrap' }}>Offset (+)</th>
+                                                <th style={{ width: '25%' }}>상세 설명</th>
+                                                <th style={{ width: '70px', textAlign: 'center' }}>관리</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {targetMappings.map((mapping, idx) => {
+                                                // conversion_config 파싱 (없으면 기본값)
+                                                let config: any = {};
+                                                try {
+                                                    config = typeof mapping.conversion_config === 'string'
+                                                        ? JSON.parse(mapping.conversion_config)
+                                                        : (mapping.conversion_config || {});
+                                                } catch { }
+
+                                                return (
+                                                    <tr key={idx}>
+                                                        <td>
+                                                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                                <Select
+                                                                    showSearch
+                                                                    style={{ width: '100%' }}
+                                                                    placeholder={mapping._temp_name ? `찾을 수 없음: "${mapping._temp_name}"` : "포인트 선택"}
+                                                                    optionFilterProp="children"
+                                                                    filterOption={(input, option: any) =>
+                                                                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                                                                    }
+                                                                    value={mapping.point_id}
+                                                                    onChange={(val) => {
+                                                                        const newMappings = [...targetMappings];
+                                                                        newMappings[idx] = {
+                                                                            ...newMappings[idx],
+                                                                            point_id: val,
+                                                                            _temp_name: undefined
+                                                                        };
+                                                                        setTargetMappings(newMappings);
+                                                                    }}
+                                                                    status={!mapping.point_id ? 'error' : ''}
+                                                                    options={allPoints.map(p => ({
+                                                                        value: p.id,
+                                                                        label: `${p.name} [${p.address || '?'}] (${p.device_name})`
+                                                                    }))}
+                                                                />
+                                                            </div>
+                                                            {!mapping.point_id && mapping._temp_name && (
+                                                                <div style={{ color: '#ff4d4f', fontSize: '11px', marginTop: '2px' }}>
+                                                                    <i className="fas fa-exclamation-circle" /> 매칭 실패: "{mapping._temp_name}"
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="text"
+                                                                className="mgmt-input"
+                                                                value={mapping.target_field_name || ''}
+                                                                onChange={e => {
+                                                                    const newMappings = [...targetMappings];
+                                                                    newMappings[idx] = { ...newMappings[idx], target_field_name: e.target.value };
+                                                                    setTargetMappings(newMappings);
+                                                                }}
+                                                                placeholder="예: voltage_l1"
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="number"
+                                                                className="mgmt-input"
+                                                                step="0.01"
+                                                                value={config.scale !== undefined ? config.scale : 1}
+                                                                onChange={e => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    const newConfig = { ...config, scale: isNaN(val) ? 1 : val };
+                                                                    const newMappings = [...targetMappings];
+                                                                    newMappings[idx] = { ...newMappings[idx], conversion_config: newConfig };
+                                                                    setTargetMappings(newMappings);
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="number"
+                                                                className="mgmt-input"
+                                                                step="0.1"
+                                                                value={config.offset !== undefined ? config.offset : 0}
+                                                                onChange={e => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    const newConfig = { ...config, offset: isNaN(val) ? 0 : val };
+                                                                    const newMappings = [...targetMappings];
+                                                                    newMappings[idx] = { ...newMappings[idx], conversion_config: newConfig };
+                                                                    setTargetMappings(newMappings);
+                                                                }}
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="text"
+                                                                className="mgmt-input"
+                                                                value={mapping.target_description || ''}
+                                                                onChange={e => {
+                                                                    const newMappings = [...targetMappings];
+                                                                    newMappings[idx] = { ...newMappings[idx], target_description: e.target.value };
+                                                                    setTargetMappings(newMappings);
+                                                                }}
+                                                                placeholder="설명"
+                                                            />
+                                                        </td>
+                                                        <td style={{ textAlign: 'center' }}>
+                                                            <button
+                                                                className="btn btn-xs btn-outline btn-danger"
+                                                                style={{ width: 'auto', padding: '0 8px' }}
+                                                                onClick={() => {
+                                                                    const newMappings = targetMappings.filter((_, i) => i !== idx);
+                                                                    setTargetMappings(newMappings);
+                                                                }}
+                                                            >
+                                                                <i className="fas fa-trash" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="mgmt-modal-footer" style={{ marginTop: '20px', flexShrink: 0 }}>
+                                    <div className="mgmt-footer-right" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                        <button className="mgmt-btn mgmt-btn-outline" onClick={handleCloseMapping}>닫기</button>
+                                        <button className="mgmt-btn mgmt-btn-primary" onClick={handleSaveMappings}>저장하기</button>
                                     </div>
                                 </div>
-                                <p style={{ margin: '5px 0 0 0', fontSize: '12px', color: '#666' }}>
-                                    * <b>PulseOne 포인트명</b>은 시스템에 등록된 이름과 정확히 일치해야 합니다. (대소문자 구분 없음)
-                                </p>
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', marginTop: '10px' }}>
-                                <h4 style={{ margin: 0, fontSize: '14px', color: '#333' }}>📋 매핑 리스트 ({targetMappings.length})</h4>
-                                <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => {
-                                    setTargetMappings([...targetMappings, { point_id: undefined, target_field_name: '', target_description: '', is_enabled: true }]);
-                                }}>
-                                    <i className="fas fa-plus" /> 1행 추가
-                                </button>
-                            </div>
-
-                            <div className="mgmt-table-container" style={{ flex: 1, overflowY: 'auto', border: '1px solid #eee', borderRadius: '4px' }}>
-                                <table className="mgmt-table">
-                                    <thead>
-                                        <tr>
-                                            <th>PulseOne 포인트</th>
-                                            <th>외부 전송 필드명 (Target Key)</th>
-                                            <th>설명</th>
-                                            <th>관리</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {targetMappings.map((mapping, idx) => (
-                                            <tr key={idx}>
-                                                <td>
-                                                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                                                        <Select
-                                                            showSearch
-                                                            style={{ width: '100%' }}
-                                                            placeholder={mapping._temp_name ? `찾을 수 없음: "${mapping._temp_name}"` : "포인트 선택"}
-                                                            optionFilterProp="children"
-                                                            filterOption={(input, option: any) =>
-                                                                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                                                            }
-                                                            value={mapping.point_id}
-                                                            onChange={(val) => {
-                                                                const newMappings = [...targetMappings];
-                                                                newMappings[idx] = {
-                                                                    ...newMappings[idx],
-                                                                    point_id: val,
-                                                                    _temp_name: undefined // 수정했으므로 에러 임시값 제거
-                                                                };
-                                                                setTargetMappings(newMappings);
-                                                            }}
-                                                            status={!mapping.point_id ? 'error' : ''}
-                                                            options={allPoints.map(p => ({
-                                                                value: p.id,
-                                                                label: `${p.name} [${p.address || '?'}] (${p.device_name})`
-                                                            }))}
-                                                        />
-                                                    </div>
-                                                    {!mapping.point_id && mapping._temp_name && (
-                                                        <div style={{ color: '#ff4d4f', fontSize: '11px', marginTop: '2px' }}>
-                                                            <i className="fas fa-exclamation-circle" /> 매칭 실패: "{mapping._temp_name}"
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        type="text"
-                                                        className="mgmt-input"
-                                                        value={mapping.target_field_name || ''}
-                                                        onChange={e => {
-                                                            const newMappings = [...targetMappings];
-                                                            newMappings[idx] = { ...newMappings[idx], target_field_name: e.target.value };
-                                                            setTargetMappings(newMappings);
-                                                        }}
-                                                        placeholder="예: voltage_l1"
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        type="text"
-                                                        className="mgmt-input"
-                                                        value={mapping.target_description || ''}
-                                                        onChange={e => {
-                                                            const newMappings = [...targetMappings];
-                                                            newMappings[idx] = { ...newMappings[idx], target_description: e.target.value };
-                                                            setTargetMappings(newMappings);
-                                                        }}
-                                                        placeholder="설명"
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs mgmt-btn-error" onClick={() => {
-                                                        const newMappings = targetMappings.filter((_, i) => i !== idx);
-                                                        setTargetMappings(newMappings);
-                                                    }}>
-                                                        <i className="fas fa-trash" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <div className="mgmt-modal-footer">
-                            <div className="mgmt-footer-right">
-                                <button className="mgmt-btn mgmt-btn-outline" onClick={() => setIsMappingModalOpen(false)}>닫기</button>
-                                <button className="mgmt-btn mgmt-btn-primary" onClick={handleSaveMappings}>저장하기</button>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
-        </div >
+        </div>
     );
 };
 
@@ -731,8 +983,14 @@ const PayloadTemplateManager: React.FC = () => {
             if (typeof templateJson === 'string') {
                 try {
                     templateJson = JSON.parse(templateJson);
-                } catch (e) {
-                    alert('유효하지 않은 JSON 형식입니다.');
+                } catch (parseError) {
+                    await confirm({
+                        title: 'JSON 형식 오류',
+                        message: `유효하지 않은 JSON 형식입니다.\n\n[상세 내역]\n${parseError instanceof Error ? parseError.message : String(parseError)}\n\n팁: {{bd}}와 같은 숫지형 변수도 "{{bd}}"와 같이 따옴표로 감싸야 유효한 JSON이 됩니다.`,
+                        confirmText: '확인',
+                        showCancelButton: false,
+                        confirmButtonType: 'danger'
+                    });
                     return;
                 }
             }
@@ -893,89 +1151,231 @@ const PayloadTemplateManager: React.FC = () => {
 const DataPointSelector: React.FC<{
     selectedPoints: any[];
     onSelect: (point: any) => void;
+    onAddAll?: (points: any[]) => void;
     onRemove: (pointId: number) => void;
-}> = ({ selectedPoints, onSelect, onRemove }) => {
+}> = ({ selectedPoints, onSelect, onAddAll, onRemove }) => {
     const [allPoints, setAllPoints] = useState<DataPoint[]>([]);
+    const [devices, setDevices] = useState<Device[]>([]);
+    const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>();
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
 
+    // Fetch devices on mount
     useEffect(() => {
-        const fetchPoints = async () => {
-            setLoading(true);
+        const fetchDevices = async () => {
+            console.log('--- [DataPointSelector] Fetching devices START ---');
             try {
-                const points = await exportGatewayApi.getDataPoints();
-                setAllPoints(points);
+                // 1. Try standard Service call
+                const res = await DeviceApiService.getDevices({ limit: 1000 });
+                let items: Device[] = [];
+                if (res && res.success) {
+                    const rawData: any = res.data;
+                    // Standard: res.data.items
+                    if (rawData && Array.isArray(rawData.items)) {
+                        items = rawData.items;
+                    }
+                    // Fallback 1: res.data is the array
+                    else if (Array.isArray(rawData)) {
+                        items = rawData;
+                    }
+                    // Fallback 2: res.data.data.items
+                    else if (rawData && rawData.data && Array.isArray(rawData.data.items)) {
+                        items = rawData.data.items;
+                    }
+                }
+
+                console.log(`--- [DataPointSelector] Found ${items.length} items. ---`);
+
+                // Force a test item if empty to verify UI
+                if (items.length === 0) {
+                    console.warn('--- [DataPointSelector] API returned empty, adding test item ---');
+                }
+
+                setDevices(items);
             } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
+                console.error('--- [DataPointSelector] Device fetch CRASH: ---', e);
             }
         };
-        fetchPoints();
+        fetchDevices();
     }, []);
 
-    const filteredPoints = allPoints.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.device_name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Debounce search term
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    // Generic fetch function so it can be called on mount and on updates
+    const fetchPoints = useCallback(async (search: string = debouncedSearch, deviceId?: number) => {
+        console.log('--- [DataPointSelector] Fetching points with:', { search, deviceId });
+        setLoading(true);
+        try {
+            const result = await exportGatewayApi.getDataPoints(search, deviceId);
+            // Since result is now DataPoint[] or {items: [] } depending on my last edit attempt
+            // I standardized exportGatewayApi.getDataPoints to return items object
+            let points: DataPoint[] = [];
+            if (Array.isArray(result)) {
+                points = result;
+            } else if (result && (result as any).items) {
+                points = (result as any).items;
+            }
+
+            console.log(`--- [DataPointSelector] Points fetched: ${points.length} ---`);
+            setAllPoints(points);
+        } catch (e) {
+            console.error('--- [DataPointSelector] Points fetch error: ---', e);
+        } finally {
+            setLoading(false);
+        }
+    }, [debouncedSearch]);
+
+    // Initial fetch to show all points so users don't have to guess/search
+    useEffect(() => {
+        // Ensure devices are fetched first if needed, or just fetch all points
+        fetchPoints('', undefined);
+    }, [fetchPoints]);
+
+    // Fetch points when debounced search or device filter changes
+    useEffect(() => {
+        fetchPoints(debouncedSearch, selectedDeviceId);
+    }, [debouncedSearch, selectedDeviceId, fetchPoints]);
 
     const isSelected = (id: number) => selectedPoints.some(p => p.id === id);
 
     return (
-        <div className="point-selector-container" style={{ border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '12px', background: 'var(--neutral-50)' }}>
-            <div className="search-box" style={{ position: 'relative', marginBottom: '12px' }}>
-                <i className="fas fa-search" style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--neutral-400)' }} />
-                <input
-                    type="text"
-                    className="form-control"
-                    placeholder="포인트 또는 장치 이름 검색..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    style={{ paddingLeft: '32px' }}
-                />
-            </div>
-
-            <div className="point-list" style={{ maxHeight: '200px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', background: 'white', border: '1px solid var(--neutral-200)', borderRadius: '6px' }}>
-                {loading ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: 'var(--neutral-500)' }}>
-                        <i className="fas fa-spinner fa-spin" /> 로딩 중...
-                    </div>
-                ) : filteredPoints.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: 'var(--neutral-500)' }}>검색 결과가 없습니다.</div>
-                ) : (
-                    filteredPoints.map(p => {
-                        const selected = isSelected(p.id);
-                        return (
-                            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--neutral-100)' }}>
-                                <div style={{ fontSize: '13px' }}>
-                                    <div style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{p.name}</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>{p.device_name} ({p.site_name})</div>
-                                </div>
-                                <button
-                                    className={`btn btn-xs ${selected ? 'btn-danger btn-outline' : 'btn-outline'}`}
-                                    onClick={() => selected ? onRemove(p.id) : onSelect(p)}
-                                    type="button"
-                                >
-                                    {selected ? '제거' : '추가'}
-                                </button>
-                            </div>
-                        );
-                    })
-                )}
-            </div>
-
-            <div className="selected-points-summary" style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--neutral-200)' }}>
-                <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px', color: 'var(--neutral-700)' }}>
-                    선택된 포인트 ({selectedPoints.length})
+        <div className="point-selector-container" style={{
+            background: 'white',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            height: '100%',
+            padding: '16px'
+        }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>장치 선택 필터</label>
+                    <Select
+                        placeholder="장치 선택 (전체/장치별)"
+                        style={{ width: '100%', height: '36px' }}
+                        value={selectedDeviceId ?? null}
+                        onChange={(val) => setSelectedDeviceId(val ?? undefined)}
+                        getPopupContainer={trigger => trigger.parentElement}
+                        options={[
+                            { value: null, label: '전체 장치 (All Devices)' },
+                            ...devices.map(d => ({
+                                value: d.id,
+                                label: d.device_type ? `${d.name} [${d.device_type}]` : d.name
+                            }))
+                        ]}
+                    />
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {selectedPoints.map(p => (
-                        <span key={p.id} className="badge primary" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px' }}>
-                            {p.name}
-                            <i className="fas fa-times" style={{ cursor: 'pointer', opacity: 0.8 }} onClick={() => onRemove(p.id)} />
-                        </span>
-                    ))}
-                    {selectedPoints.length === 0 && <span style={{ color: 'var(--neutral-400)', fontSize: '12px', fontStyle: 'italic' }}>선택된 포인트 없음</span>}
+                <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '6px' }}>키워드 검색</label>
+                    <div className="search-box" style={{ position: 'relative' }}>
+                        <i className="fas fa-search" style={{
+                            position: 'absolute',
+                            left: '12px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            color: '#94a3b8',
+                            zIndex: 1
+                        }} />
+                        <input
+                            type="text"
+                            className="mgmt-input sm"
+                            placeholder="명칭 또는 주소 입력..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            style={{ paddingLeft: '36px', height: '36px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', border: '1px solid #e2e8f0', borderRadius: '8px', minHeight: '300px' }}>
+                <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <span>탐색 결과 ({allPoints.length})</span>
+                        {selectedDeviceId && allPoints.length > 0 && onAddAll && (
+                            <button
+                                type="button"
+                                className="btn btn-xs btn-outline"
+                                style={{ fontSize: '10px', height: '18px', padding: '0 6px', lineHeight: '1' }}
+                                onClick={() => onAddAll(allPoints)}
+                            >
+                                <i className="fas fa-plus-double" /> 전체 추가
+                            </button>
+                        )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {loading && <i className="fas fa-spinner fa-spin" />}
+                        <button
+                            type="button"
+                            onClick={() => fetchPoints(debouncedSearch, selectedDeviceId)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#64748b',
+                                cursor: 'pointer',
+                                padding: '2px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                transition: 'color 0.2s'
+                            }}
+                            title="새로고침"
+                            className="refresh-btn-hover"
+                        >
+                            <i className="fas fa-sync-alt" />
+                        </button>
+                    </div>
+                </div>
+                <div className="point-list" style={{ flex: 1, overflowY: 'auto', background: 'white', minHeight: '200px' }}>
+                    {loading && allPoints.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+                            <i className="fas fa-circle-notch fa-spin fa-2x" style={{ marginBottom: '12px' }} /><br />
+                            데이터를 불러오는 중...
+                        </div>
+                    ) : allPoints.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+                            <i className="fas fa-search fa-3x" style={{ marginBottom: '16px', opacity: 0.2 }} /><br />
+                            검색 결과가 없습니다.<br />
+                            <span style={{ fontSize: '12px', opacity: 0.8 }}>다른 키워드나 장치를 선택해 보세요.</span>
+                        </div>
+                    ) : (
+                        allPoints.map(p => {
+                            const selected = isSelected(p.id);
+                            return (
+                                <div key={p.id} style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '10px 14px',
+                                    borderBottom: '1px solid #f1f5f9',
+                                    transition: 'background 0.2s',
+                                    cursor: 'pointer'
+                                }}
+                                    onClick={() => selected ? onRemove(p.id) : onSelect(p)}
+                                    className="point-item-hover">
+                                    <div style={{ fontSize: '12px', flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                                            {p.device_name} • {p.address || '-'}
+                                        </div>
+                                    </div>
+                                    <div style={{ marginLeft: '12px' }}>
+                                        {selected ? (
+                                            <span style={{ color: '#ef4444', fontSize: '18px' }}><i className="fas fa-check-circle" /></span>
+                                        ) : (
+                                            <span style={{ color: '#3b82f6', fontSize: '18px' }}><i className="fas fa-plus-circle" /></span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
             </div>
         </div>
@@ -991,6 +1391,7 @@ const ExportProfileBuilder: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingProfile, setEditingProfile] = useState<Partial<ExportProfile> | null>(null);
+    const [hasChanges, setHasChanges] = useState(false);
     const { confirm } = useConfirmContext();
 
     const fetchProfiles = async () => {
@@ -1009,17 +1410,66 @@ const ExportProfileBuilder: React.FC = () => {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // 1. Validation: Ensure at least one point is mapped
+        if (!editingProfile?.data_points || editingProfile.data_points.length === 0) {
+            notification.warning({ message: '포인트 부족', description: '최소 하나 이상의 데이터 포인트를 매핑해야 합니다.' });
+            return;
+        }
+
+        // 2. Final Confirmation
+        const confirmed = await confirm({
+            title: '저장 확인',
+            message: editingProfile.id ? '프로파일 변경 사항을 저장하시겠습니까?' : '새 프로파일을 생성하시겠습니까?',
+            confirmText: '저장',
+            cancelText: '취소',
+            confirmButtonType: 'primary'
+        });
+        if (!confirmed) return;
+
         try {
-            if (editingProfile?.id) {
-                await exportGatewayApi.updateProfile(editingProfile.id, editingProfile);
+            // Apply defaults for target_field_name if empty
+            const processedProfile = {
+                ...editingProfile,
+                data_points: editingProfile.data_points.map((p: any) => ({
+                    ...p,
+                    target_field_name: p.target_field_name?.trim() || p.name
+                }))
+            };
+
+            let response;
+            if (processedProfile?.id) {
+                response = await exportGatewayApi.updateProfile(processedProfile.id, processedProfile);
             } else {
-                await exportGatewayApi.createProfile(editingProfile!);
+                response = await exportGatewayApi.createProfile(processedProfile!);
             }
-            setIsModalOpen(false);
-            fetchProfiles();
+
+            if (response.success) {
+                notification.success({ message: '저장 완료', description: '프로파일이 성공적으로 저장되었습니다.' });
+                setIsModalOpen(false);
+                setHasChanges(false);
+                fetchProfiles();
+            } else {
+                notification.error({ message: '저장 실패', description: response.message || '프로파일을 저장하는 중 오류가 발생했습니다.' });
+            }
         } catch (error) {
             notification.error({ message: '저장 실패', description: '프로파일을 저장하는 중 오류가 발생했습니다.' });
         }
+    };
+
+    const handleCloseModal = async () => {
+        if (hasChanges) {
+            const confirmed = await confirm({
+                title: '변경사항 유실 주의',
+                message: '수정 중인 내용이 있습니다. 저장하지 않고 닫으시면 모든 데이터가 사라집니다. 정말 닫으시겠습니까?',
+                confirmText: '닫기',
+                cancelText: '취소',
+                confirmButtonType: 'warning'
+            });
+            if (!confirmed) return;
+        }
+        setIsModalOpen(false);
+        setHasChanges(false);
     };
 
     const handleDelete = async (id: number) => {
@@ -1041,9 +1491,34 @@ const ExportProfileBuilder: React.FC = () => {
 
     const handlePointSelect = (point: any) => {
         const currentPoints = editingProfile?.data_points || [];
+        if (currentPoints.some((p: any) => p.id === point.id)) return;
         setEditingProfile({
             ...editingProfile,
-            data_points: [...currentPoints, { id: point.id, name: point.name, device: point.device_name, target_field_name: point.name }]
+            data_points: [...currentPoints, {
+                id: point.id,
+                name: point.name,
+                device: point.device_name,
+                address: point.address,
+                target_field_name: point.name
+            }]
+        });
+    };
+
+    const handleAddAllPoints = (points: any[]) => {
+        const currentPoints = [...(editingProfile?.data_points || [])];
+        const newPoints = points.filter(p => !currentPoints.some(cp => cp.id === p.id));
+
+        if (newPoints.length === 0) return;
+
+        setEditingProfile({
+            ...editingProfile,
+            data_points: [...currentPoints, ...newPoints.map(p => ({
+                id: p.id,
+                name: p.name,
+                device: p.device_name,
+                address: p.address,
+                target_field_name: p.name
+            }))]
         });
     };
 
@@ -1052,6 +1527,16 @@ const ExportProfileBuilder: React.FC = () => {
         setEditingProfile({
             ...editingProfile,
             data_points: currentPoints.filter((p: any) => p.id !== pointId)
+        });
+    };
+
+    const handleMappingNameChange = (pointId: number, name: string) => {
+        const currentPoints = editingProfile?.data_points || [];
+        setEditingProfile({
+            ...editingProfile,
+            data_points: currentPoints.map((p: any) =>
+                p.id === pointId ? { ...p, target_field_name: name } : p
+            )
         });
     };
 
@@ -1097,53 +1582,447 @@ const ExportProfileBuilder: React.FC = () => {
             </div>
 
             {isModalOpen && (
+                <div className="ultra-wide-overlay">
+                    <style>{`
+                        .ultra-wide-overlay {
+                            position: fixed;
+                            top: 0; left: 0; right: 0; bottom: 0;
+                            background: rgba(15, 23, 42, 0.7);
+                            backdrop-filter: blur(8px);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            z-index: 2000;
+                        }
+                        .ultra-wide-container {
+                            background: white;
+                            width: 90vw;
+                            height: 92vh;
+                            max-width: 1600px;
+                            display: flex;
+                            flex-direction: column;
+                            border-radius: 16px;
+                            overflow: hidden;
+                            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3);
+                        }
+                        .refresh-btn-hover:hover {
+                            color: var(--primary-500) !important;
+                        }
+                        .ultra-wide-body {
+                            flex: 1;
+                            display: flex;
+                            overflow: hidden;
+                            background: #f1f5f9;
+                            padding: 16px;
+                            gap: 16px;
+                        }
+                        .side-setup-panel {
+                            width: 350px; /* Slimmer sidebar for discovery */
+                            display: flex;
+                            flex-direction: column;
+                            flex-shrink: 0;
+                            background: white;
+                            border-radius: 12px;
+                            border: 1px solid #e2e8f0;
+                            overflow: hidden;
+                        }
+                        .center-mapping-panel {
+                            flex: 1;
+                            background: white;
+                            border-radius: 12px;
+                            border: 1px solid #e2e8f0;
+                            display: flex;
+                            flex-direction: column;
+                            overflow: hidden;
+                        }
+                        .side-guide-panel {
+                            width: 300px;
+                            background: white;
+                            border-radius: 12px;
+                            border: 1px solid #e2e8f0;
+                            padding: 24px;
+                            overflow-y: auto;
+                            flex-shrink: 0;
+                        }
+                        .setup-card {
+                            background: white;
+                            border-radius: 12px;
+                            border: 1px solid #e2e8f0;
+                            padding: 24px;
+                        }
+                        .ultra-wide-header {
+                            padding: 20px 32px;
+                            background: white;
+                            border-bottom: 1px solid #e2e8f0;
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                        }
+                        .ultra-wide-footer {
+                            padding: 16px 32px;
+                            background: #f8fafc;
+                            border-top: 1px solid #e2e8f0;
+                            display: flex;
+                            justify-content: flex-end; /* Ensure buttons are on the right */
+                            align-items: center;
+                            gap: 12px;
+                        }
+                        .ultra-wide-footer button {
+                            flex: 0 0 auto; /* Prevent buttons from stretching */
+                            width: auto;
+                        }
+                    `}</style>
+                    <div className="ultra-wide-container">
+                        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                            <div className="ultra-wide-header">
+                                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 700 }}>{editingProfile?.id ? "프로파일 수정" : "신규 프로파일 생성"}</h3>
+                                <button type="button" className="mgmt-modal-close" onClick={handleCloseModal} style={{ fontSize: '28px' }}>&times;</button>
+                            </div>
+
+                            {/* Top Setup Bar (Horizontal) */}
+                            <div style={{ background: 'white', padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '32px', alignItems: 'flex-start' }}>
+                                <div style={{ flex: '0 0 350px' }}>
+                                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#64748b', marginBottom: '6px' }}>프로파일 명칭</label>
+                                    <input
+                                        type="text"
+                                        className="mgmt-input"
+                                        required
+                                        value={editingProfile?.name || ''}
+                                        onChange={e => { setEditingProfile({ ...editingProfile, name: e.target.value }); setHasChanges(true); }}
+                                        placeholder="예: 공장 데이터 전송"
+                                        style={{ height: '36px' }}
+                                    />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#64748b', marginBottom: '6px' }}>상세 설명</label>
+                                    <input
+                                        type="text"
+                                        className="mgmt-input"
+                                        value={editingProfile?.description || ''}
+                                        onChange={e => { setEditingProfile({ ...editingProfile, description: e.target.value }); setHasChanges(true); }}
+                                        placeholder="프로파일 용도 요약"
+                                        style={{ height: '36px' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="ultra-wide-body">
+                                {/* Column 1: Data Discovery (Full Height) */}
+                                <div className="side-setup-panel">
+                                    <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+                                        <h4 className="section-title" style={{ margin: 0 }}><i className="fas fa-search-plus" /> 포인트 탐색</h4>
+                                    </div>
+                                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                                        <DataPointSelector
+                                            selectedPoints={editingProfile?.data_points || []}
+                                            onSelect={handlePointSelect}
+                                            onAddAll={handleAddAllPoints}
+                                            onRemove={handlePointRemove}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Column 2: Large Mapping Table */}
+                                <div className="center-mapping-panel">
+                                    <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9' }}>
+                                        <h4 className="section-title" style={{ margin: 0 }}>데이터 매핑 및 외부 필드명 설정</h4>
+                                        <p className="mgmt-modal-form-hint">추가된 포인트가 외부 시스템에서 어떤 필드명(Mapping Name)으로 표시될지 정의하세요.</p>
+                                    </div>
+                                    <div style={{ flex: 1, overflow: 'auto' }}>
+                                        <table className="mgmt-table">
+                                            <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: '#f8fafc' }}>
+                                                <tr>
+                                                    <th style={{ width: '30%' }}>내부 포인트명</th>
+                                                    <th style={{ width: '25%' }}>소스 장치/주소</th>
+                                                    <th style={{ width: '35%' }}>매핑 명칭 (Target Key)</th>
+                                                    <th style={{ width: '10%', textAlign: 'center' }}>삭제</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(editingProfile?.data_points || []).map((p: any) => (
+                                                    <tr key={p.id}>
+                                                        <td><div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>{p.name}</div></td>
+                                                        <td>
+                                                            <div style={{ fontSize: '12px' }}>{p.device}</div>
+                                                            <code style={{ fontSize: '11px', color: 'var(--neutral-400)' }}>{p.address || '-'}</code>
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="text"
+                                                                className="mgmt-input sm"
+                                                                value={p.target_field_name || ''}
+                                                                onChange={e => handleMappingNameChange(p.id, e.target.value)}
+                                                                placeholder="Target Key (e.g. temp_val)"
+                                                                style={{ height: '36px', border: '1px solid #cbd5e1' }}
+                                                            />
+                                                        </td>
+                                                        <td style={{ textAlign: 'center' }}>
+                                                            <button className="mgmt-btn-icon error" onClick={() => handlePointRemove(p.id)}>
+                                                                <i className="fas fa-trash" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {(editingProfile?.data_points || []).length === 0 && (
+                                                    <tr>
+                                                        <td colSpan={4} style={{ textAlign: 'center', padding: '100px 20px', color: 'var(--neutral-400)' }}>
+                                                            <i className="fas fa-plus-circle fa-3x" style={{ marginBottom: '16px', opacity: 0.2 }} />
+                                                            <p>왼쪽 탐색창에서 데이터 포인트를 추가해 주세요.</p>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Column 3: Guide */}
+                                <div className="side-guide-panel">
+                                    <h4 style={{ borderBottom: '2px solid var(--primary-500)', paddingBottom: '8px' }}>Engineer's Guide</h4>
+                                    <div style={{ fontSize: '13px', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
+                                        <section>
+                                            <div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>1. 프로파일 정의</div>
+                                            <p style={{ margin: '4px 0' }}>데이터 수집의 **템플릿** 역할을 합니다. 의미 있는 이름을 지정해 주세요.</p>
+                                        </section>
+                                        <section>
+                                            <div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>2. 포인트 탐색</div>
+                                            <p style={{ margin: '4px 0' }}>디바이스 필터를 사용하면 대량의 포인트도 쉽게 관리할 수 있습니다.</p>
+                                        </section>
+                                        <section>
+                                            <div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>3. 매핑 키(Key) 및 타겟 설정</div>
+                                            <p style={{ margin: '4px 0' }}>외부 시스템에서 수집할 **최종 필드 명칭**입니다. </p>
+                                            <p style={{ fontSize: '11px', color: '#64748b', marginTop: '8px' }}>
+                                                <i className="fas fa-lightbulb" /> **매핑 구조 참고**<br />
+                                                - **프로파일 매핑**: 논리적 수집 대상 정의 (이곳)<br />
+                                                - **내보내기 타겟 매핑**: 목적지별 상세 변환 (Scale/Offset/필드명 재정의)
+                                            </p>
+                                        </section>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="ultra-wide-footer">
+                                <button type="button" className="mgmt-btn-outline" style={{ height: '32px', fontSize: '12px', padding: '0 16px' }} onClick={handleCloseModal}>취소</button>
+                                <button type="submit" className="mgmt-btn-primary" style={{ height: '32px', fontSize: '12px', padding: '0 20px' }}>프로파일 저장</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// =============================================================================
+// Sub-Components: Schedule Manager
+// =============================================================================
+
+const ExportScheduleManager: React.FC = () => {
+    const [schedules, setSchedules] = useState<any[]>([]);
+    const [targets, setTargets] = useState<ExportTarget[]>([]);
+    const [profiles, setProfiles] = useState<ExportProfile[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingSchedule, setEditingSchedule] = useState<Partial<any> | null>(null);
+    const { confirm } = useConfirmContext();
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const [schedulesRes, targetsRes, profilesRes] = await Promise.all([
+                exportGatewayApi.getSchedules(),
+                exportGatewayApi.getTargets(),
+                exportGatewayApi.getProfiles()
+            ]);
+            setSchedules(schedulesRes.data || []);
+            setTargets(targetsRes.data || []);
+            setProfiles(profilesRes.data || []);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { fetchData(); }, []);
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            let response;
+            if (editingSchedule?.id) {
+                response = await exportGatewayApi.updateSchedule(editingSchedule.id, editingSchedule);
+            } else {
+                response = await exportGatewayApi.createSchedule(editingSchedule!);
+            }
+
+            if (response.success) {
+                notification.success({ message: '저장 완료', description: '스케줄이 성공적으로 저장되었습니다.' });
+                setIsModalOpen(false);
+                fetchData();
+            } else {
+                notification.error({ message: '저장 실패', description: response.message || '스케줄을 저장하는 중 오류가 발생했습니다.' });
+            }
+        } catch (error) {
+            notification.error({ message: '저장 실패', description: '스케줄을 저장하는 중 오류가 발생했습니다.' });
+        }
+    };
+
+    const handleDelete = async (id: number) => {
+        const confirmed = await confirm({
+            title: '스케줄 삭제 확인',
+            message: '이 전송 스케줄을 삭제하시겠습니까?',
+            confirmText: '삭제',
+            confirmButtonType: 'danger'
+        });
+
+        if (!confirmed) return;
+        try {
+            await exportGatewayApi.deleteSchedule(id);
+            fetchData();
+        } catch (error) {
+            notification.error({ message: '삭제 실패', description: '스케줄을 삭제하는 중 오류가 발생했습니다.' });
+        }
+    };
+
+    return (
+        <div>
+            <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>배치 전송 스케줄 관리</h3>
+                <button className="btn btn-primary btn-sm" onClick={() => { setEditingSchedule({ schedule_name: '', cron_expression: '0 0 * * *', data_range: 'hour', lookback_periods: 1, timezone: 'Asia/Seoul', is_enabled: true }); setIsModalOpen(true); }}>
+                    <i className="fas fa-plus" /> 스케줄 추가
+                </button>
+            </div>
+
+            <div className="mgmt-table-container">
+                <table className="mgmt-table">
+                    <thead>
+                        <tr>
+                            <th>스케줄 이름</th>
+                            <th>전송 타겟</th>
+                            <th>Cron 표현식</th>
+                            <th>상태</th>
+                            <th>마지막 실행</th>
+                            <th>관리</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {schedules.map(s => (
+                            <tr key={s.id}>
+                                <td>
+                                    <div style={{ fontWeight: 600 }}>{s.schedule_name}</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>{s.description}</div>
+                                </td>
+                                <td>{s.target_name || `ID: ${s.target_id}`}</td>
+                                <td><code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '4px' }}>{s.cron_expression}</code></td>
+                                <td>
+                                    <span className={`mgmt-badge ${s.is_enabled ? 'success' : 'neutral'}`}>
+                                        {s.is_enabled ? '활성' : '비활성'}
+                                    </span>
+                                </td>
+                                <td>
+                                    {s.last_run_at ? new Date(s.last_run_at).toLocaleString() : '-'}
+                                    {s.last_status && <div style={{ fontSize: '10px', color: s.last_status === 'success' ? 'var(--success-600)' : 'var(--error-600)' }}>{s.last_status}</div>}
+                                </td>
+                                <td>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs" onClick={() => { setEditingSchedule(s); setIsModalOpen(true); }} style={{ width: 'auto' }}>수정</button>
+                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs mgmt-btn-error" onClick={() => handleDelete(s.id)} style={{ width: 'auto' }}>삭제</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {isModalOpen && (
                 <div className="mgmt-modal-overlay">
-                    <div className="mgmt-modal-content" style={{ maxWidth: '650px' }}>
+                    <div className="mgmt-modal-content" style={{ maxWidth: '600px' }}>
                         <div className="mgmt-modal-header">
-                            <h3 className="mgmt-modal-title">{editingProfile?.id ? "프로파일 수정" : "신규 프로파일 생성"}</h3>
+                            <h3 className="mgmt-modal-title">{editingSchedule?.id ? "스케줄 수정" : "전송 스케줄 추가"}</h3>
                             <button className="mgmt-modal-close" onClick={() => setIsModalOpen(false)}>&times;</button>
                         </div>
                         <form onSubmit={handleSave}>
                             <div className="mgmt-modal-body">
                                 <div className="mgmt-modal-form-section">
                                     <div className="mgmt-modal-form-group">
-                                        <label>프로파일 명칭</label>
+                                        <label>스케줄 명칭</label>
                                         <input
                                             type="text"
                                             className="mgmt-input"
                                             required
-                                            value={editingProfile?.name || ''}
-                                            onChange={e => setEditingProfile({ ...editingProfile, name: e.target.value })}
-                                            placeholder="예: 공장A 전력량 실시간 전송"
+                                            value={editingSchedule?.schedule_name || ''}
+                                            onChange={e => setEditingSchedule({ ...editingSchedule, schedule_name: e.target.value })}
+                                            placeholder="예: 일일 마감 데이터 전송"
                                         />
                                     </div>
                                     <div className="mgmt-modal-form-group">
-                                        <label>상세 설명</label>
-                                        <textarea
-                                            className="mgmt-input"
-                                            value={editingProfile?.description || ''}
-                                            onChange={e => setEditingProfile({ ...editingProfile, description: e.target.value })}
-                                            placeholder="이 프로파일의 용도와 구성을 설명해주세요"
-                                            style={{ height: '60px', padding: '10px', resize: 'none' }}
-                                        />
+                                        <label>전송 대상 타겟</label>
+                                        <select
+                                            className="mgmt-select"
+                                            required
+                                            value={editingSchedule?.target_id || ''}
+                                            onChange={e => setEditingSchedule({ ...editingSchedule, target_id: parseInt(e.target.value) })}
+                                        >
+                                            <option value="">(타겟 선택)</option>
+                                            {targets.map(t => (
+                                                <option key={t.id} value={t.id}>{t.name} ({t.target_type})</option>
+                                            ))}
+                                        </select>
                                     </div>
-                                </div>
-
-                                <div className="mgmt-modal-form-section">
-                                    <h3 style={{ marginBottom: '12px' }}>
-                                        <i className="fas fa-list-ul" style={{ marginRight: '8px', color: 'var(--primary-500)' }} />
-                                        데이터 포인트 구성
-                                    </h3>
-                                    <DataPointSelector
-                                        selectedPoints={editingProfile?.data_points || []}
-                                        onSelect={handlePointSelect}
-                                        onRemove={handlePointRemove}
-                                    />
+                                    <div className="mgmt-modal-form-group">
+                                        <label>Cron 표현식</label>
+                                        <input
+                                            type="text"
+                                            className="mgmt-input"
+                                            required
+                                            value={editingSchedule?.cron_expression || ''}
+                                            onChange={e => setEditingSchedule({ ...editingSchedule, cron_expression: e.target.value })}
+                                            placeholder="예: 0 0 * * * (매일 자정)"
+                                        />
+                                        <div className="mgmt-modal-form-hint">분 시 일 월 요일 형식입니다. (매분: * * * * *)</div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '15px' }}>
+                                        <div className="mgmt-modal-form-group" style={{ flex: 1 }}>
+                                            <label>데이터 범위 (Data Range)</label>
+                                            <select
+                                                className="mgmt-select"
+                                                value={editingSchedule?.data_range || 'hour'}
+                                                onChange={e => setEditingSchedule({ ...editingSchedule, data_range: e.target.value })}
+                                            >
+                                                <option value="minute">분 단위 (Minutes)</option>
+                                                <option value="hour">시간 단위 (Hours)</option>
+                                                <option value="day">일 단위 (Days)</option>
+                                            </select>
+                                        </div>
+                                        <div className="mgmt-modal-form-group" style={{ flex: 1 }}>
+                                            <label>조회 기간 (Periods)</label>
+                                            <input
+                                                type="number"
+                                                className="mgmt-input"
+                                                value={editingSchedule?.lookback_periods || 1}
+                                                onChange={e => setEditingSchedule({ ...editingSchedule, lookback_periods: parseInt(e.target.value) })}
+                                                min={1}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="mgmt-modal-form-group">
+                                        <label className="checkbox-label">
+                                            <input
+                                                type="checkbox"
+                                                checked={editingSchedule?.is_enabled ?? true}
+                                                onChange={e => setEditingSchedule({ ...editingSchedule, is_enabled: e.target.checked })}
+                                                style={{ marginRight: '8px' }}
+                                            />
+                                            스케줄 활성화
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                             <div className="mgmt-modal-footer">
                                 <button type="button" className="btn-outline" onClick={() => setIsModalOpen(false)}>취소</button>
-                                <button type="submit" className="btn-primary">프로파일 저장</button>
+                                <button type="submit" className="btn-primary">스케줄 저장</button>
                             </div>
                         </form>
                     </div>
@@ -1164,10 +2043,20 @@ const GatewayList: React.FC<{
     onRefresh: () => void;
     onManageProfile: (gateway: Gateway) => void;
     onDeploy: (gateway: Gateway) => void;
-    onStart: (gateway: Gateway) => void;
-    onStop: (gateway: Gateway) => void;
-    onRestart: (gateway: Gateway) => void;
+    onStart: (gateway: Gateway) => Promise<void>;
+    onStop: (gateway: Gateway) => Promise<void>;
+    onRestart: (gateway: Gateway) => Promise<void>;
 }> = ({ gateways, assignments, onRefresh, onManageProfile, onDeploy, onStart, onStop, onRestart }) => {
+    const [actionLoading, setActionLoading] = useState<number | null>(null);
+
+    const handleAction = async (gwId: number, action: (gw: Gateway) => Promise<void>) => {
+        setActionLoading(gwId);
+        try {
+            await action(gateways.find(g => g.id === gwId)!);
+        } finally {
+            setActionLoading(null);
+        }
+    };
     return (
         <div className="gateway-list">
             <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
@@ -1230,17 +2119,32 @@ const GatewayList: React.FC<{
                                             </div>
                                         )}
                                         <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
-                                            {(!gw.processes || gw.processes.length === 0) ? (
-                                                <button className="btn btn-outline btn-xs" style={{ flex: 1 }} onClick={() => onStart(gw)}>
-                                                    <i className="fas fa-play" style={{ fontSize: '10px' }} /> 시작
+                                            {(gw.processes?.[0]?.status !== 'running' && gw.live_status?.status !== 'online') ? (
+                                                <button
+                                                    className="btn btn-outline btn-xs"
+                                                    style={{ flex: 1 }}
+                                                    onClick={() => handleAction(gw.id, onStart)}
+                                                    disabled={actionLoading === gw.id}
+                                                >
+                                                    {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-play" style={{ fontSize: '10px' }} />} 시작
                                                 </button>
                                             ) : (
                                                 <>
-                                                    <button className="btn btn-outline btn-xs btn-danger" style={{ flex: 1 }} onClick={() => onStop(gw)}>
-                                                        <i className="fas fa-stop" style={{ fontSize: '10px' }} /> 중지
+                                                    <button
+                                                        className="btn btn-outline btn-xs btn-danger"
+                                                        style={{ flex: 1 }}
+                                                        onClick={() => handleAction(gw.id, onStop)}
+                                                        disabled={actionLoading === gw.id}
+                                                    >
+                                                        {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-stop" style={{ fontSize: '10px' }} />} 중지
                                                     </button>
-                                                    <button className="btn btn-outline btn-xs" style={{ flex: 1 }} onClick={() => onRestart(gw)}>
-                                                        <i className="fas fa-redo" style={{ fontSize: '10px' }} /> 재시작
+                                                    <button
+                                                        className="btn btn-outline btn-xs"
+                                                        style={{ flex: 1 }}
+                                                        onClick={() => handleAction(gw.id, onRestart)}
+                                                        disabled={actionLoading === gw.id}
+                                                    >
+                                                        {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-redo" style={{ fontSize: '10px' }} />} 재시작
                                                     </button>
                                                 </>
                                             )}
@@ -1283,10 +2187,12 @@ const GatewayList: React.FC<{
 // =============================================================================
 
 const ExportGatewaySettings: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'gateways' | 'profiles' | 'targets' | 'templates'>('gateways');
+    const [activeTab, setActiveTab] = useState<'gateways' | 'profiles' | 'targets' | 'templates' | 'schedules'>('gateways');
     const [gateways, setGateways] = useState<Gateway[]>([]);
     const [assignments, setAssignments] = useState<Record<number, Assignment[]>>({});
     const [loading, setLoading] = useState(false);
+    const [pagination, setPagination] = useState<any>({ current_page: 1, total_pages: 1 });
+    const [page, setPage] = useState(1);
     const { confirm } = useConfirmContext();
 
     // Registration Modal State
@@ -1304,10 +2210,13 @@ const ExportGatewaySettings: React.FC = () => {
     const fetchData = useCallback(async () => {
         if (gateways.length === 0) setLoading(true);
         try {
-            const response = await exportGatewayApi.getGateways();
-            // No filter needed as this API is dedicated to export gateways
-            const gwList = response.data || [];
+            const response = await exportGatewayApi.getGateways({ page, limit: 4 });
+            const data = response.data;
+            const gwList = data?.items || [];
             setGateways(gwList);
+            if (data?.pagination) {
+                setPagination(data.pagination);
+            }
 
             const assignMap: Record<number, Assignment[]> = {};
             await Promise.all((gwList || []).map(async (gw: Gateway) => {
@@ -1321,7 +2230,7 @@ const ExportGatewaySettings: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [gateways.length]);
+    }, [gateways.length, page]);
 
     useEffect(() => {
         fetchData();
@@ -1474,6 +2383,22 @@ const ExportGatewaySettings: React.FC = () => {
                     >
                         <i className="fas fa-code" style={{ marginRight: '8px' }} /> 페이로드 템플릿
                     </button>
+                    <button
+                        className={`nav-tab ${activeTab === 'schedules' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('schedules')}
+                        style={{
+                            padding: '12px 16px',
+                            border: 'none',
+                            background: 'none',
+                            borderBottom: activeTab === 'schedules' ? '2px solid var(--primary-500)' : '2px solid transparent',
+                            color: activeTab === 'schedules' ? 'var(--primary-600)' : 'var(--neutral-500)',
+                            fontWeight: activeTab === 'schedules' ? 600 : 400,
+                            cursor: 'pointer',
+                            fontSize: '14px'
+                        }}
+                    >
+                        <i className="fas fa-calendar-alt" style={{ marginRight: '8px' }} /> 스케줄 관리
+                    </button>
                 </div>
 
                 <div className="tab-actions">
@@ -1493,37 +2418,102 @@ const ExportGatewaySettings: React.FC = () => {
                             <p style={{ marginTop: '16px', color: 'var(--neutral-500)' }}>라이브 상태 로딩 중...</p>
                         </div>
                     ) : (
-                        <GatewayList
-                            gateways={gateways}
-                            assignments={assignments}
-                            onRefresh={fetchData}
-                            onManageProfile={handleManageProfile}
-                            onDeploy={handleDeploy}
-                            onStart={async (gw) => {
-                                try {
-                                    await exportGatewayApi.startGatewayProcess(gw.id);
-                                    fetchData();
-                                } catch (e) { notification.error({ message: '시작 실패', description: '게이트웨이 프로세스를 시작하는 중 오류가 발생했습니다.' }); }
-                            }}
-                            onStop={async (gw) => {
-                                try {
-                                    await exportGatewayApi.stopGatewayProcess(gw.id);
-                                    fetchData();
-                                } catch (e) { notification.error({ message: '중지 실패', description: '게이트웨이 프로세스를 중지하는 중 오류가 발생했습니다.' }); }
-                            }}
-                            onRestart={async (gw) => {
-                                try {
-                                    await exportGatewayApi.restartGatewayProcess(gw.id);
-                                    fetchData();
-                                } catch (e) { notification.error({ message: '재시작 실패', description: '게이트웨이 프로세스를 재시작하는 중 오류가 발생했습니다.' }); }
-                            }}
-                        />
+                        <>
+                            <div style={{ flex: 1, overflow: 'auto' }}>
+                                <GatewayList
+                                    gateways={gateways}
+                                    assignments={assignments}
+                                    onRefresh={fetchData}
+                                    onManageProfile={handleManageProfile}
+                                    onDeploy={handleDeploy}
+                                    onStart={async (gw) => {
+                                        const confirmed = await confirm({
+                                            title: '게이트웨이 시작 확인',
+                                            message: `"${gw.name}" 게이트웨이 프로세스를 시작하시겠습니까?`,
+                                            confirmText: '시작',
+                                            confirmButtonType: 'primary'
+                                        });
+                                        if (!confirmed) return;
+
+                                        try {
+                                            const res = await exportGatewayApi.startGatewayProcess(gw.id);
+                                            if (res.success) {
+                                                await confirm({
+                                                    title: '시작 완료',
+                                                    message: '게이트웨이 프로세스가 성공적으로 시작되었습니다.',
+                                                    showCancelButton: false,
+                                                    confirmText: '확인'
+                                                });
+                                            } else {
+                                                notification.error({ message: '시작 실패', description: res.message || '프로세스 시작에 실패했습니다.' });
+                                            }
+                                            fetchData();
+                                        } catch (e) { notification.error({ message: '시작 에러', description: 'API 호출 중 오류가 발생했습니다.' }); }
+                                    }}
+                                    onStop={async (gw) => {
+                                        const confirmed = await confirm({
+                                            title: '게이트웨이 중지 확인',
+                                            message: `"${gw.name}" 게이트웨이 프로세스를 중지하시겠습니까?`,
+                                            confirmText: '중지',
+                                            confirmButtonType: 'danger'
+                                        });
+                                        if (!confirmed) return;
+
+                                        try {
+                                            const res = await exportGatewayApi.stopGatewayProcess(gw.id);
+                                            if (res.success) {
+                                                await confirm({
+                                                    title: '중지 완료',
+                                                    message: '게이트웨이 프로세스를 중지했습니다.',
+                                                    showCancelButton: false,
+                                                    confirmText: '확인'
+                                                });
+                                            } else {
+                                                notification.error({ message: '중지 실패', description: res.message || '프로세스 중지에 실패했습니다.' });
+                                            }
+                                            fetchData();
+                                        } catch (e) { notification.error({ message: '중지 에러', description: 'API 호출 중 오류가 발생했습니다.' }); }
+                                    }}
+                                    onRestart={async (gw) => {
+                                        const confirmed = await confirm({
+                                            title: '게이트웨이 재시작 확인',
+                                            message: `"${gw.name}" 게이트웨이 프로세스를 재시작하시겠습니까?`,
+                                            confirmText: '재시작',
+                                            confirmButtonType: 'warning'
+                                        });
+                                        if (!confirmed) return;
+
+                                        try {
+                                            const res = await exportGatewayApi.restartGatewayProcess(gw.id);
+                                            if (res.success) {
+                                                await confirm({
+                                                    title: '재시작 완료',
+                                                    message: '게이트웨이 프로세스를 재시작했습니다.',
+                                                    showCancelButton: false,
+                                                    confirmText: '확인'
+                                                });
+                                            } else {
+                                                notification.error({ message: '재시작 실패', description: res.message || '프로세스 재시작에 실패했습니다.' });
+                                            }
+                                            fetchData();
+                                        } catch (e) { notification.error({ message: '재시작 에러', description: 'API 호출 중 오류가 발생했습니다.' }); }
+                                    }}
+                                />
+                            </div>
+                            <Pagination
+                                current={page}
+                                total={pagination.total_count}
+                                pageSize={4}
+                                onChange={(p) => setPage(p)}
+                            />
+                        </>
                     )
                 )}
 
                 {activeTab === 'profiles' && <ExportProfileBuilder />}
                 {activeTab === 'targets' && <ExportTargetManager />}
                 {activeTab === 'templates' && <PayloadTemplateManager />}
+                {activeTab === 'schedules' && <ExportScheduleManager />}
             </div>
 
             {/* Registration Modal */}
@@ -1560,6 +2550,17 @@ const ExportGatewaySettings: React.FC = () => {
                                     />
                                     <div className="mgmt-modal-form-hint">이 게이트웨이 기기(서버)의 IP 주소를 입력하세요. (기본값: 127.0.0.1)</div>
                                 </div>
+                                <div className="mgmt-modal-form-group">
+                                    <label>게이트웨이 ID (선택사항)</label>
+                                    <input
+                                        className="mgmt-input"
+                                        type="number"
+                                        placeholder="자동 할당 (입력 시 해당 ID로 고정)"
+                                        value={newGateway.id || ''}
+                                        onChange={e => setNewGateway({ ...newGateway, id: e.target.value ? parseInt(e.target.value) : undefined })}
+                                    />
+                                    <div className="mgmt-modal-form-hint">비워두면 시스템이 자동으로 순차 부여합니다. (100번대 이후 권장)</div>
+                                </div>
                             </div>
                         </div>
                         <div className="mgmt-modal-footer">
@@ -1586,16 +2587,27 @@ const ExportGatewaySettings: React.FC = () => {
                                 {allProfiles.map(p => {
                                     const isAssigned = (assignments[selectedGateway?.id || 0] || []).some(a => a.profile_id === p.id);
                                     return (
-                                        <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', border: '1px solid var(--neutral-100)', borderRadius: '10px', background: 'var(--neutral-50)' }}>
-                                            <div>
-                                                <div style={{ fontWeight: 600, color: 'var(--neutral-800)' }}>{p.name}</div>
-                                                <div style={{ fontSize: '12px', color: 'var(--neutral-500)' }}>{p.description}</div>
+                                        <div key={p.id} style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            padding: '8px 12px',
+                                            borderBottom: '1px solid #f1f5f9',
+                                            transition: 'background 0.2s'
+                                        }} className="point-item-hover">
+                                            <div style={{ overflow: 'hidden' }}>
+                                                <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                                                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                                    {p.description || '상세 설명 없음'} • 포인트 {Array.isArray(p.data_points) ? p.data_points.length : 0}개
+                                                </div>
                                             </div>
                                             <button
-                                                className={`btn btn-sm ${isAssigned ? 'btn-outline btn-danger' : 'btn-primary'}`}
+                                                type="button"
+                                                className={`mgmt-btn-icon ${isAssigned ? 'neutral' : 'primary'}`}
                                                 onClick={() => handleToggleAssignment(p.id, isAssigned)}
+                                                style={{ flexShrink: 0, width: '24px', height: '24px' }}
                                             >
-                                                {isAssigned ? '해제' : '할당'}
+                                                <i className={`fas ${isAssigned ? 'fa-check' : 'fa-plus'}`} />
                                             </button>
                                         </div>
                                     );
