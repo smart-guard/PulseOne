@@ -30,7 +30,7 @@ class DataService extends BaseService {
             const {
                 page = 1,
                 limit = 50,
-                search,
+                search = '',
                 device_id,
                 site_id,
                 data_type,
@@ -40,26 +40,28 @@ class DataService extends BaseService {
             let allDataPoints = [];
 
             if (device_id) {
+                // 특정 디바이스의 포인트 조회
                 allDataPoints = await this.deviceRepo.getDataPointsByDevice(parseInt(device_id));
             } else {
-                const devicesResult = await this.deviceRepo.findAllDevices({
-                    tenantId,
-                    siteId: site_id ? parseInt(site_id) : null
-                });
+                // 모든 디바이스의 포인트 검색 (Join 쿼리 사용으로 성능 최적화)
+                allDataPoints = await this.deviceRepo.searchDataPoints(tenantId, search);
 
-                for (const device of devicesResult.items) {
-                    try {
-                        const deviceDataPoints = await this.deviceRepo.getDataPointsByDevice(device.id);
-                        allDataPoints.push(...deviceDataPoints);
-                    } catch (error) {
-                        this.logger?.warn(`디바이스 ${device.id} 데이터포인트 조회 실패:`, error.message);
-                    }
+                // 사이트 필터가 있는 경우 추가 필터링
+                if (site_id) {
+                    const siteIdInt = parseInt(site_id);
+                    // searchDataPoints에 site_id가 없으므로 메모리에서 필터링하거나 쿼리 수정 필요
+                    // 일단 메모리에서 처리 (디바이스가 아주 많지 않다는 가정)
+                    const devicesInSite = await this.deviceRepo.findAll(tenantId, { siteId: siteIdInt });
+                    const validDeviceIds = new Set(devicesInSite.map(d => d.id));
+                    allDataPoints = allDataPoints.filter(dp => validDeviceIds.has(dp.device_id));
                 }
             }
 
             // 필터링 적용
             let filteredResults = allDataPoints;
-            if (search) {
+
+            // 검색어 필터링 (searchDataPoints는 이미 처리하지만, getDataPointsByDevice는 안함)
+            if (search && device_id) {
                 const searchLower = search.toLowerCase();
                 filteredResults = filteredResults.filter(dp =>
                     dp.name?.toLowerCase().includes(searchLower) ||
@@ -80,15 +82,21 @@ class DataService extends BaseService {
             const startIndex = (page - 1) * limit;
             const paginatedResults = filteredResults.slice(startIndex, startIndex + parseInt(limit));
 
+            // 데이터 일관성을 위해 device_name 보장
+            const items = paginatedResults.map(dp => ({
+                ...dp,
+                device_name: dp.device_name || 'Unknown Device'
+            }));
+
             return {
-                items: paginatedResults,
+                items,
                 pagination: {
                     page: parseInt(page),
                     limit: parseInt(limit),
-                    total_items: total,
+                    total: total,
                     totalPages: Math.ceil(total / limit),
-                    has_next: startIndex + parseInt(limit) < total,
-                    has_prev: page > 1
+                    hasNext: startIndex + parseInt(limit) < total,
+                    hasPrev: page > 1
                 }
             };
         }, 'DataService.searchPoints');

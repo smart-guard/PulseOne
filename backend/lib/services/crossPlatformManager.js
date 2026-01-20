@@ -70,6 +70,12 @@ class CrossPlatformManager {
     // ========================================
 
     initializePaths() {
+        const cwd = process.cwd();
+        // Project Root 감지: backend 폴더 내부라면 부모 폴더가 루트
+        const projectRoot = (cwd.endsWith('backend') || cwd.endsWith('backend/'))
+            ? path.resolve(cwd, '..')
+            : cwd;
+
         // ConfigManager에서 커스텀 경로 확인
         const customCollectorPath = config.get('COLLECTOR_EXECUTABLE_PATH');
         const customRedisPath = config.get('REDIS_EXECUTABLE_PATH');
@@ -77,71 +83,71 @@ class CrossPlatformManager {
         const basePaths = {
             development: {
                 win32: {
-                    root: process.cwd(),
-                    collector: customCollectorPath || path.resolve(process.cwd(), '..', 'collector.exe'),
-                    exportGateway: path.resolve(process.cwd(), '..', 'export-gateway.exe'),
-                    redis: customRedisPath || path.resolve(process.cwd(), '..', 'redis-server.exe'),
-                    config: path.join(process.cwd(), 'config'),
-                    data: path.join(process.cwd(), 'data'),
-                    logs: path.join(process.cwd(), 'logs'),
-                    sqlite: path.join(process.cwd(), 'data', 'pulseone.db'),
+                    root: projectRoot,
+                    collector: customCollectorPath || path.resolve(projectRoot, 'collector.exe'),
+                    exportGateway: path.resolve(projectRoot, 'export-gateway.exe'),
+                    redis: customRedisPath || path.resolve(projectRoot, 'redis-server.exe'),
+                    config: path.join(projectRoot, 'config'),
+                    data: path.join(projectRoot, 'data'),
+                    logs: path.join(projectRoot, 'logs'),
+                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
                     separator: '\\'
                 },
                 linux: {
-                    root: process.cwd(),
-                    collector: customCollectorPath || path.resolve(process.cwd(), '..', 'core', 'collector', 'bin', 'pulseone-collector'),
-                    exportGateway: path.resolve(process.cwd(), '..', 'core', 'export-gateway', 'bin', 'export-gateway'),
+                    root: projectRoot,
+                    collector: customCollectorPath || path.resolve(projectRoot, 'core', 'collector', 'bin', 'pulseone-collector'),
+                    exportGateway: path.resolve(projectRoot, 'core', 'export-gateway', 'bin', 'export-gateway'),
                     redis: customRedisPath || '/usr/bin/redis-server',
-                    config: path.join(process.cwd(), 'config'),
-                    data: path.join(process.cwd(), 'data'),
-                    logs: path.join(process.cwd(), 'data', 'logs'),
-                    sqlite: path.join(process.cwd(), 'data', 'pulseone.db'),
+                    config: path.join(projectRoot, 'config'),
+                    data: path.join(projectRoot, 'data'),
+                    logs: path.join(projectRoot, 'data', 'logs'),
+                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
                     separator: '/'
                 },
                 darwin: {
-                    root: process.cwd(),
-                    collector: customCollectorPath || path.join(process.cwd(), '..', 'core', 'collector', 'bin', 'pulseone-collector'),
-                    exportGateway: path.join(process.cwd(), '..', 'core', 'export-gateway', 'bin', 'export-gateway'),
+                    root: projectRoot,
+                    collector: customCollectorPath || path.join(projectRoot, 'core', 'collector', 'bin', 'pulseone-collector'),
+                    exportGateway: path.join(projectRoot, 'core', 'export-gateway', 'bin', 'export-gateway'),
                     redis: customRedisPath || '/usr/local/bin/redis-server',
-                    config: path.join(process.cwd(), 'config'),
-                    data: path.join(process.cwd(), 'data'),
-                    logs: path.join(process.cwd(), 'logs'),
-                    sqlite: path.join(process.cwd(), 'data', 'pulseone.db'),
+                    config: path.join(projectRoot, 'config'),
+                    data: path.join(projectRoot, 'data'),
+                    logs: path.join(projectRoot, 'logs'),
+                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
                     separator: '/'
                 }
             },
             production: {
                 win32: {
-                    root: process.cwd(),
-                    collector: customCollectorPath || path.resolve(process.cwd(), '..', 'collector.exe'),
-                    exportGateway: path.resolve(process.cwd(), '..', 'export-gateway.exe'),
-                    redis: customRedisPath || path.resolve(process.cwd(), '..', 'redis-server.exe'),
-                    config: path.resolve(process.cwd(), '..', 'config'),
-                    data: path.resolve(process.cwd(), '..', 'data'),
-                    logs: path.resolve(process.cwd(), '..', 'logs'),
-                    sqlite: path.resolve(process.cwd(), '..', 'data', 'pulseone.db'),
+                    root: projectRoot,
+                    collector: customCollectorPath || path.resolve(projectRoot, 'collector.exe'),
+                    exportGateway: path.resolve(projectRoot, 'export-gateway.exe'),
+                    redis: customRedisPath || path.resolve(projectRoot, 'redis-server.exe'),
+                    config: path.resolve(projectRoot, 'config'),
+                    data: path.resolve(projectRoot, 'data'),
+                    logs: path.resolve(projectRoot, 'logs'),
+                    sqlite: path.resolve(projectRoot, 'data', 'pulseone.db'),
                     separator: '\\'
                 },
                 linux: {
-                    root: process.cwd(),
-                    collector: customCollectorPath || path.resolve(process.cwd(), '..', 'core', 'collector', 'bin', 'pulseone-collector'),
-                    exportGateway: path.resolve(process.cwd(), '..', 'core', 'export-gateway', 'bin', 'export-gateway'),
+                    root: projectRoot,
+                    collector: customCollectorPath || path.resolve(projectRoot, 'core', 'collector', 'bin', 'pulseone-collector'),
+                    exportGateway: path.resolve(projectRoot, 'core', 'export-gateway', 'bin', 'export-gateway'),
                     redis: customRedisPath || '/usr/bin/redis-server',
-                    config: path.join(process.cwd(), 'config'),
-                    data: path.join(process.cwd(), 'data'),
-                    logs: path.join(process.cwd(), 'data', 'logs'),
-                    sqlite: path.join(process.cwd(), 'data', 'pulseone.db'),
+                    config: path.join(projectRoot, 'config'),
+                    data: path.join(projectRoot, 'data'),
+                    logs: path.join(projectRoot, 'data', 'logs'),
+                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
                     separator: '/'
                 },
                 darwin: {
-                    root: process.cwd(),
-                    collector: customCollectorPath || path.join(process.cwd(), 'collector'),
-                    exportGateway: path.join(process.cwd(), 'export-gateway'),
+                    root: projectRoot,
+                    collector: customCollectorPath || path.join(projectRoot, 'collector'),
+                    exportGateway: path.join(projectRoot, 'export-gateway'),
                     redis: customRedisPath || '/usr/local/bin/redis-server',
-                    config: path.join(process.cwd(), 'config'),
-                    data: path.join(process.cwd(), 'data'),
-                    logs: path.join(process.cwd(), 'data', 'logs'),
-                    sqlite: path.join(process.cwd(), 'data', 'pulseone.db'),
+                    config: path.join(projectRoot, 'config'),
+                    data: path.join(projectRoot, 'data'),
+                    logs: path.join(projectRoot, 'data', 'logs'),
+                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
                     separator: '/'
                 }
             }
@@ -727,19 +733,26 @@ class CrossPlatformManager {
 
         if (this.isWindows) {
             return spawn(absoluteCollectorPath, args, {
-                cwd: path.dirname(absoluteCollectorPath),
+                cwd: this.paths.root,
                 detached: true,
-                stdio: 'ignore'
+                stdio: 'ignore',
+                env: {
+                    ...process.env,
+                    DATA_DIR: this.paths.root,
+                    PULSEONE_DATA_DIR: this.paths.root
+                }
             });
         } else {
             return spawn(absoluteCollectorPath, args, {
-                cwd: process.cwd(),
+                cwd: this.paths.root,
                 detached: true,
                 stdio: 'ignore',
                 env: {
                     ...process.env,
                     LD_LIBRARY_PATH: '/usr/local/lib:/usr/lib',
-                    PATH: process.env.PATH + ':/usr/local/bin'
+                    PATH: process.env.PATH + ':/usr/local/bin',
+                    DATA_DIR: this.paths.root,
+                    PULSEONE_DATA_DIR: this.paths.root
                 }
             });
         }
@@ -884,18 +897,25 @@ class CrossPlatformManager {
 
         if (this.isWindows) {
             return spawn(absolutePath, args, {
-                cwd: path.dirname(absolutePath),
-                detached: true,
-                stdio: 'ignore'
-            });
-        } else {
-            return spawn(absolutePath, args, {
-                cwd: path.dirname(absolutePath),
+                cwd: this.paths.root,
                 detached: true,
                 stdio: 'ignore',
                 env: {
                     ...process.env,
-                    LD_LIBRARY_PATH: '/usr/local/lib:/usr/lib'
+                    DATA_DIR: this.paths.root,
+                    PULSEONE_DATA_DIR: this.paths.root
+                }
+            });
+        } else {
+            return spawn(absolutePath, args, {
+                cwd: this.paths.root,
+                detached: true,
+                stdio: 'ignore',
+                env: {
+                    ...process.env,
+                    LD_LIBRARY_PATH: '/usr/local/lib:/usr/lib',
+                    DATA_DIR: this.paths.root,
+                    PULSEONE_DATA_DIR: this.paths.root
                 }
             });
         }

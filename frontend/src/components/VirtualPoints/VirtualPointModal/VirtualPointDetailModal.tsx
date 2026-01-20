@@ -1,5 +1,5 @@
 // ============================================================================
-// VirtualPointDetailModal.tsx - Horizontal Ultra-Wide Layout
+// VirtualPointDetailModal.tsx - Horizontal Layout
 // ============================================================================
 
 import React from 'react';

@@ -17,7 +17,8 @@ class ExportProfileRepository extends BaseRepository {
      */
     async findAll() {
         try {
-            return await this.query().orderBy('name', 'ASC');
+            const results = await this.query().orderBy('name', 'ASC');
+            return results.map(item => this._parseItem(item));
         } catch (error) {
             this.logger.error('ExportProfileRepository.findAll 오류:', error);
             throw error;
@@ -29,7 +30,8 @@ class ExportProfileRepository extends BaseRepository {
      */
     async findById(id) {
         try {
-            return await this.query().where('id', id).first();
+            const item = await this.query().where('id', id).first();
+            return this._parseItem(item);
         } catch (error) {
             this.logger.error('ExportProfileRepository.findById 오류:', error);
             throw error;
@@ -49,9 +51,25 @@ class ExportProfileRepository extends BaseRepository {
      * 활성화된 프로파일 조회
      */
     async findActive() {
-        return await this.query()
+        const results = await this.query()
             .where({ is_enabled: 1 })
             .orderBy('name', 'ASC');
+        return results.map(item => this._parseItem(item));
+    }
+
+    /**
+     * JSON 필드 파싱 헬퍼
+     */
+    _parseItem(item) {
+        if (!item) return null;
+        if (typeof item.data_points === 'string') {
+            try {
+                item.data_points = JSON.parse(item.data_points);
+            } catch (e) {
+                item.data_points = [];
+            }
+        }
+        return item;
     }
 
     /**

@@ -6,18 +6,12 @@ const DataService = require('../lib/services/DataService');
 // 🛡️ 미들웨어 (테스트용)
 // ============================================================================
 
-const authenticateToken = (req, res, next) => {
-    // 실제 환경에서는 인증 로직이 들어감
-    req.user = { id: 1, tenant_id: 1, role: 'admin' };
-    req.tenantId = 1;
-    next();
-};
+const {
+    authenticateToken,
+    tenantIsolation
+} = require('../middleware/tenantIsolation');
 
-const tenantIsolation = (req, res, next) => {
-    if (!req.tenantId) req.tenantId = (req.user && req.user.tenant_id) || 1;
-    next();
-};
-
+// 글로벌 미들웨어는 app.js에서 적용되지만, 개별 라우터에서도 명시적으로 사용 가능
 router.use(authenticateToken);
 router.use(tenantIsolation);
 
@@ -74,19 +68,25 @@ router.get('/points/:id', async (req, res) => {
 router.get('/current-values', async (req, res) => {
     try {
         const { device_ids, limit = 100 } = req.query;
-        let result = [];
+        let resultData = [];
         if (device_ids) {
             const ids = device_ids.split(',').map(id => parseInt(id));
             for (const id of ids) {
                 const vals = await DataService.deviceRepo.getCurrentValuesByDevice(id, req.tenantId);
-                result.push(...vals);
+                resultData.push(...vals);
             }
         } else {
-            // 모든 디바이스 현재값 (필요 시 DataService에 추가 추천)
-            const search = await DataService.searchPoints({ limit: 1000 }, req.tenantId);
-            result = search.items.map(dp => ({ point_id: dp.id, name: dp.name, value: dp.current_value }));
+            // 모든 디바이스 현재값 조회
+            const searchResult = await DataService.searchPoints({ limit: 1000 }, req.tenantId);
+            if (searchResult.success && searchResult.data) {
+                resultData = searchResult.data.items.map(dp => ({
+                    point_id: dp.id,
+                    name: dp.name,
+                    value: dp.current_value
+                }));
+            }
         }
-        res.json(createResponse(true, result.slice(0, parseInt(limit))));
+        res.json(createResponse(true, resultData.slice(0, parseInt(limit))));
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'CURRENT_VALUES_ERROR'));
     }
@@ -173,19 +173,24 @@ router.get('/statistics', async (req, res) => {
 router.post('/export', async (req, res) => {
     try {
         const { export_type, point_ids, device_ids, format = 'csv' } = req.body;
-        let exportData = [];
+        let exportResult;
 
         if (export_type === 'current') {
-            exportData = await DataService.exportCurrentValues(point_ids, device_ids, req.tenantId);
+            exportResult = await DataService.exportCurrentValues(point_ids, device_ids, req.tenantId);
         } else if (export_type === 'configuration') {
-            exportData = await DataService.exportConfiguration(point_ids, device_ids, req.tenantId);
+            exportResult = await DataService.exportConfiguration(point_ids, device_ids, req.tenantId);
         }
 
-        res.json(createResponse(true, {
-            filename: `${export_type}_data_${Date.now()}.${format}`,
-            total_records: exportData.length,
-            data: exportData
-        }));
+        if (exportResult && exportResult.success) {
+            const exportData = exportResult.data || [];
+            res.json(createResponse(true, {
+                filename: `${export_type}_data_${Date.now()}.${format}`,
+                total_records: exportData.length,
+                data: exportData
+            }));
+        } else {
+            res.status(500).json(exportResult || createResponse(false, null, 'Export failed', 'EXPORT_ERROR'));
+        }
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'DATA_EXPORT_ERROR'));
     }

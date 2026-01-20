@@ -157,7 +157,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         onUpdate(payload);
         setShowEditForm(false);
       }
-      alert(`데이터포인트가 ${isCreate ? '생성' : '수정'}되었습니다.`);
+      alert(`설정이 ${isCreate ? '추가' : '변경'}되었습니다. (디바이스 저장 시 서버에 반영됩니다)`);
     } catch (e) {
       alert(`저장 실패: ${e instanceof Error ? e.message : 'Unknown'}`);
     } finally {
@@ -214,9 +214,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         }));
       }
 
-      alert(`완료: 성공 ${successCount}건${failCount > 0 ? `, 실패 ${failCount}건` : ''}`);
+      alert(`완료: 성공 ${successCount}건${failCount > 0 ? `, 실패 ${failCount}건` : ''}\n(디바이스 전체 저장 시 서버에 최종 반영됩니다)`);
       handleBulkModalChange(false);
-      onRefresh(); // 목록 갱신
+      // onRefresh(); // 🔥 제거: 로컬 상태를 유지해야 하며, 서버에서 가져오면 방금 추가한 것들이 사라짐
     } catch (e) {
       alert(`일괄 저장 중 오류가 발생했습니다: ${e instanceof Error ? e.message : 'Unknown'}`);
     } finally {
@@ -254,12 +254,28 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             <div className="form-field">
               <label>데이터 타입</label>
               <select
-                value={formData.data_type || 'number'}
+                value={formData.data_type || 'FLOAT32'}
                 onChange={e => setFormData({ ...formData, data_type: e.target.value as any })}
               >
-                <option value="number">Number (Float/Int)</option>
-                <option value="boolean">Boolean</option>
-                <option value="string">String</option>
+                <optgroup label="Common">
+                  <option value="INT16">INT16 (2 bytes)</option>
+                  <option value="UINT16">UINT16 (2 bytes)</option>
+                  <option value="FLOAT32">FLOAT32 (4 bytes)</option>
+                  <option value="BOOL">Boolean (1 bit/byte)</option>
+                  <option value="STRING">String</option>
+                </optgroup>
+                <optgroup label="32-bit / 64-bit High Precision">
+                  <option value="INT32">INT32 (4 bytes)</option>
+                  <option value="UINT32">UINT32 (4 bytes)</option>
+                  <option value="FLOAT64">FLOAT64 (8 bytes)</option>
+                  <option value="INT64">INT64 (8 bytes)</option>
+                  <option value="UINT64">UINT64 (8 bytes)</option>
+                </optgroup>
+                <optgroup label="8-bit / Others">
+                  <option value="INT8">INT8 (1 byte)</option>
+                  <option value="UINT8">UINT8 (1 byte)</option>
+                  <option value="UNKNOWN">Unknown / Other</option>
+                </optgroup>
               </select>
             </div>
             <div className="form-field">
@@ -530,9 +546,19 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         </div>
         <select value={filterDataType} onChange={e => setFilterDataType(e.target.value)}>
           <option value="all">모든 타입</option>
-          <option value="number">Number</option>
-          <option value="boolean">Boolean</option>
-          <option value="string">String</option>
+          <optgroup label="Categories">
+            <option value="number">Number (Any)</option>
+            <option value="boolean">Boolean</option>
+            <option value="string">String</option>
+          </optgroup>
+          <optgroup label="Specific Types">
+            <option value="INT16">INT16</option>
+            <option value="UINT16">UINT16</option>
+            <option value="INT32">INT32</option>
+            <option value="UINT32">UINT32</option>
+            <option value="FLOAT32">FLOAT32</option>
+            <option value="FLOAT64">FLOAT64</option>
+          </optgroup>
         </select>
         <select value={filterEnabled} onChange={e => setFilterEnabled(e.target.value)}>
           <option value="all">모든 상태</option>

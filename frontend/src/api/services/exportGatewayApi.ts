@@ -32,7 +32,7 @@ export interface Gateway {
         last_heartbeat?: string;
         memory_usage?: number; // compat
     };
-    processes?: any[];
+    processes?: any;
 }
 
 export interface ExportProfile {
@@ -91,6 +91,31 @@ export interface Assignment {
     name?: string; // Profile Name (Joined)
 }
 
+export interface ExportSchedule {
+    id: number;
+    profile_id?: number;
+    target_id: number;
+    schedule_name: string;
+    description: string;
+    cron_expression: string;
+    timezone: string;
+    data_range: 'minute' | 'hour' | 'day';
+    lookback_periods: number;
+    is_enabled: boolean;
+    last_run_at: string | null;
+    last_status: string | null;
+    next_run_at: string | null;
+    total_runs: number;
+    successful_runs: number;
+    failed_runs: number;
+    created_at: string;
+    updated_at: string;
+
+    // UI Only
+    profile_name?: string;
+    target_name?: string;
+}
+
 export interface DataPoint {
     id: number;
     name: string;
@@ -112,8 +137,8 @@ export class ExportGatewayApiService {
     // -------------------------------------------------------------------------
     // Gateways
     // -------------------------------------------------------------------------
-    static async getGateways(): Promise<ApiResponse<Gateway[]>> {
-        return apiClient.get<Gateway[]>(this.GATEWAY_URL);
+    static async getGateways(params: { page?: number; limit?: number } = {}): Promise<ApiResponse<{ items: Gateway[]; pagination: any }>> {
+        return apiClient.get<any>(this.GATEWAY_URL, params);
     }
 
     static async getGatewayById(id: number): Promise<ApiResponse<Gateway>> {
@@ -228,6 +253,25 @@ export class ExportGatewayApiService {
     }
 
     // -------------------------------------------------------------------------
+    // Export Schedules
+    // -------------------------------------------------------------------------
+    static async getSchedules(): Promise<ApiResponse<ExportSchedule[]>> {
+        return apiClient.get<ExportSchedule[]>(`${this.EXPORT_URL}/schedules`);
+    }
+
+    static async createSchedule(data: Partial<ExportSchedule>): Promise<ApiResponse<ExportSchedule>> {
+        return apiClient.post<ExportSchedule>(`${this.EXPORT_URL}/schedules`, data);
+    }
+
+    static async updateSchedule(id: number, data: Partial<ExportSchedule>): Promise<ApiResponse<ExportSchedule>> {
+        return apiClient.put<ExportSchedule>(`${this.EXPORT_URL}/schedules/${id}`, data);
+    }
+
+    static async deleteSchedule(id: number): Promise<ApiResponse<void>> {
+        return apiClient.delete<void>(`${this.EXPORT_URL}/schedules/${id}`);
+    }
+
+    // -------------------------------------------------------------------------
     // Assignments
     // -------------------------------------------------------------------------
     static async getAssignments(gatewayId: number): Promise<ApiResponse<Assignment[]>> {
@@ -245,38 +289,30 @@ export class ExportGatewayApiService {
     // -------------------------------------------------------------------------
     // Shared / Utility
     // -------------------------------------------------------------------------
-    static async getDataPoints(): Promise<DataPoint[]> {
+    static async getDataPoints(searchTerm: string = '', deviceId?: number): Promise<DataPoint[]> {
         try {
-            // We reuse the existing logic to collect points from devices
-            const deviceResponse = await apiClient.get<any>('/devices', { limit: 100 });
-            if (!deviceResponse.success || !deviceResponse.data) return [];
+            const response = await apiClient.get<any>('/api/data/points', {
+                search: searchTerm,
+                device_id: deviceId,
+                limit: 500
+            });
 
-            const devices = deviceResponse.data.items || deviceResponse.data;
-            const allPoints: DataPoint[] = [];
+            if (!response.success || !response.data) {
+                return [];
+            }
 
-            await Promise.all(devices.map(async (device: any) => {
-                try {
-                    const pointResponse = await apiClient.get<any>(`/devices/${device.id}/data-points`, { limit: 100 });
-                    if (pointResponse.success && pointResponse.data) {
-                        const points = pointResponse.data.items || pointResponse.data;
-                        points.forEach((dp: any) => {
-                            allPoints.push({
-                                id: dp.id,
-                                name: dp.name,
-                                device_name: device.name,
-                                site_name: device.site_name || '기본 사이트',
-                                data_type: dp.data_type,
-                                unit: dp.unit || '',
-                                address: dp.address // Map the address field
-                            });
-                        });
-                    }
-                } catch (e) {
-                    console.warn(`Failed to fetch points for device ${device.id}`);
-                }
+            // Defensive extraction: handle both { items: [] } and direct []
+            const rawPoints = response.data.items || (Array.isArray(response.data) ? response.data : []);
+
+            return rawPoints.map((dp: any) => ({
+                id: dp.id,
+                name: dp.name,
+                device_name: dp.device_name || dp.device_info?.name || 'Unknown Device',
+                site_name: dp.site_name || 'System',
+                data_type: dp.data_type,
+                unit: dp.unit || '',
+                address: dp.address
             }));
-
-            return allPoints;
         } catch (error) {
             console.error('Failed to fetch data points:', error);
             return [];

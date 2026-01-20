@@ -86,6 +86,17 @@ ExportCoordinator::ExportCoordinator(const ExportCoordinatorConfig &config)
   LogManager::getInstance().Info("✅ EventSubscriber: 범용 이벤트 구독자");
 
   stats_.start_time = std::chrono::system_clock::now();
+
+  // Redis 클라이언트 초기화
+  try {
+    redis_client_ = std::make_unique<RedisClientImpl>();
+    redis_client_->connect(config_.redis_host, config_.redis_port,
+                           config_.redis_password);
+  } catch (const std::exception &e) {
+
+    LogManager::getInstance().Error("Redis 클라이언트 초기화 실패: " +
+                                    std::string(e.what()));
+  }
 }
 
 ExportCoordinator::~ExportCoordinator() {
@@ -111,15 +122,15 @@ bool ExportCoordinator::start() {
   LogManager::getInstance().Info("ExportCoordinator 시작 중...");
 
   try {
-    // 1. 공유 리소스 초기화
-    if (!initializeSharedResources()) {
-      LogManager::getInstance().Error("공유 리소스 초기화 실패");
+    // 1. 데이터베이스 초기화
+    if (!initializeDatabase()) {
+      LogManager::getInstance().Error("데이터베이스 초기화 실패");
       return false;
     }
 
-    // 2. 데이터베이스 초기화
-    if (!initializeDatabase()) {
-      LogManager::getInstance().Error("데이터베이스 초기화 실패");
+    // 2. 공유 리소스 초기화
+    if (!initializeSharedResources()) {
+      LogManager::getInstance().Error("공유 리소스 초기화 실패");
       return false;
     }
 
@@ -158,6 +169,7 @@ bool ExportCoordinator::start() {
     }
 
     is_running_ = true;
+    startBatchTimers(); // Start batch timer
     LogManager::getInstance().Info("ExportCoordinator v2.0 시작 완료 ✅");
 
     return true;
@@ -199,6 +211,7 @@ void ExportCoordinator::stop() {
   cleanupSharedResources();
 
   is_running_ = false;
+  stopBatchTimers(); // Stop batch timer
   LogManager::getInstance().Info("ExportCoordinator 중지 완료");
 }
 
@@ -308,6 +321,18 @@ bool ExportCoordinator::initializeDatabase() {
     std::string db_path = getDatabasePath();
 
     auto &db_manager = DbLib::DatabaseManager::getInstance();
+
+    // ✅ FIX: DatabaseManager를 명시적으로 초기화하여 올바른 경로 설정
+    DbLib::DatabaseConfig db_config;
+    db_config.type = "SQLITE";
+    db_config.sqlite_path = db_path;
+    db_config.use_redis = false; // Redis는 별도로 관리됨
+
+    if (!db_manager.initialize(db_config)) {
+      LogManager::getInstance().Error(
+          "DatabaseManager 초기화 실패 (경로: " + db_path + ")");
+      return false;
+    }
 
     std::vector<std::vector<std::string>> test_result;
     if (!db_manager.executeQuery("SELECT 1", test_result)) {
@@ -449,7 +474,22 @@ void ExportCoordinator::updateHeartbeat() {
         std::to_string(gateway_id_);
 
     db_manager.executeNonQuery(query);
+
+    // Redis 하트비트 추가
+    if (redis_client_ && redis_client_->isConnected()) {
+      nlohmann::json status_json;
+      status_json["status"] = "online";
+      status_json["lastSeen"] = std::chrono::system_clock::to_time_t(
+          std::chrono::system_clock::now());
+      status_json["gatewayId"] = gateway_id_;
+      status_json["hostname"] = "docker-container"; // 간단하게 상수로 처리
+
+      // gateway:status:{id} 키에 90초 만료로 저장
+      redis_client_->setex("gateway:status:" + std::to_string(gateway_id_),
+                           status_json.dump(), 90);
+    }
   } catch (const std::exception &e) {
+
     LogManager::getInstance().Warn("Export Gateway 하트비트 업데이트 실패: " +
                                    std::string(e.what()));
   }
@@ -538,7 +578,19 @@ ExportCoordinator::handleAlarmEvent(const PulseOne::CSP::AlarmMessage &alarm) {
   std::vector<ExportResult> results;
 
   try {
-    LogManager::getInstance().Info("알람 이벤트 처리: " + alarm.nm);
+    // Batching Logic Support
+    if (config_.enable_alarm_batching) {
+      std::lock_guard<std::mutex> lock(batch_mutex_);
+      pending_alarms_.push_back(alarm);
+
+      if (pending_alarms_.size() >=
+          static_cast<size_t>(config_.alarm_batch_max_size)) {
+        flushAlarmBatch();
+      }
+      return results; // Return empty results as actual send is delayed
+    }
+
+    LogManager::getInstance().Info("알람 이벤트 처리 (즉시 전송): " + alarm.nm);
 
     auto target_manager = getTargetManager();
     if (!target_manager) {
@@ -546,9 +598,12 @@ ExportCoordinator::handleAlarmEvent(const PulseOne::CSP::AlarmMessage &alarm) {
       return results;
     }
 
-    auto target_results = target_manager->sendAlarmToTargets(alarm);
+    // Single Alarm wrapped in Array for compatibility
+    std::vector<PulseOne::CSP::AlarmMessage> single_batch;
+    single_batch.push_back(alarm);
+    auto target_results = target_manager->sendAlarmBatchToTargets(single_batch);
 
-    for (const auto &target_result : target_results) {
+    for (const auto &target_result : target_results.results) {
       ExportResult result = convertTargetSendResult(target_result);
       results.push_back(result);
 
@@ -563,7 +618,7 @@ ExportCoordinator::handleAlarmEvent(const PulseOne::CSP::AlarmMessage &alarm) {
     }
 
     LogManager::getInstance().Info(
-        "알람 전송 완료: " + std::to_string(results.size()) + "개 타겟");
+        "알람 즉시 전송 완료: " + std::to_string(results.size()) + "개 타겟");
 
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("알람 이벤트 처리 실패: " +
@@ -571,6 +626,98 @@ ExportCoordinator::handleAlarmEvent(const PulseOne::CSP::AlarmMessage &alarm) {
   }
 
   return results;
+}
+
+void ExportCoordinator::flushAlarmBatch() {
+  std::vector<PulseOne::CSP::AlarmMessage> batch_to_send;
+  {
+    // Move pending alarms to local batch to minimize lock time
+    std::lock_guard<std::mutex> lock(batch_mutex_);
+    if (pending_alarms_.empty())
+      return;
+    batch_to_send = std::move(pending_alarms_);
+    pending_alarms_.clear(); // Reset vector
+    last_batch_flush_time_ = std::chrono::system_clock::now();
+  }
+
+  try {
+    LogManager::getInstance().Info(
+        "알람 배치 플러시: " + std::to_string(batch_to_send.size()) + "개");
+
+    auto target_manager = getTargetManager();
+    if (!target_manager)
+      return;
+
+    auto target_results =
+        target_manager->sendAlarmBatchToTargets(batch_to_send);
+
+    // Log results and handle failures
+    for (const auto &target_result : target_results.results) {
+      ExportResult result = convertTargetSendResult(target_result);
+      logExportResult(result);
+      updateStats(result);
+
+      // ✅ 전송 실패 시 로컬 저장을 통한 복구 시스템 연동
+      if (!target_result.success && scheduled_exporter_) {
+        auto target = target_manager->getTarget(target_result.target_name);
+        if (target) {
+          scheduled_exporter_->saveFailedAlarmBatchToFile(
+              target->name, batch_to_send, target->config);
+        }
+      }
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(stats_mutex_);
+      stats_.alarm_exports += batch_to_send.size();
+    }
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error("알람 배치 플러시 실패: " +
+                                    std::string(e.what()));
+  }
+}
+
+void ExportCoordinator::startBatchTimers() {
+  if (batch_timer_running_)
+    return;
+
+  batch_timer_running_ = true;
+  last_batch_flush_time_ = std::chrono::system_clock::now();
+
+  batch_timer_thread_ = std::thread([this]() {
+    LogManager::getInstance().Info("배치 타이머 스레드 시작");
+    while (batch_timer_running_) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      if (!config_.enable_alarm_batching)
+        continue;
+
+      auto now = std::chrono::system_clock::now();
+      std::chrono::duration<double, std::milli> elapsed =
+          now - last_batch_flush_time_;
+
+      if (elapsed.count() >= config_.alarm_batch_latency_ms) {
+        std::lock_guard<std::mutex> lock(batch_mutex_);
+        if (!pending_alarms_.empty()) {
+          // Release lock and flush
+          batch_mutex_.unlock();
+          flushAlarmBatch();
+          batch_mutex_.lock();
+        }
+      }
+    }
+    LogManager::getInstance().Info("배치 타이머 스레드 종료");
+  });
+}
+
+void ExportCoordinator::stopBatchTimers() {
+  batch_timer_running_ = false;
+  if (batch_timer_thread_.joinable()) {
+    batch_timer_thread_.join();
+  }
+  // Flush remaining
+  flushAlarmBatch();
 }
 
 std::vector<ExportResult> ExportCoordinator::handleAlarmBatch(

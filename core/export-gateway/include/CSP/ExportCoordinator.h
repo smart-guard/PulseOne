@@ -24,6 +24,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include "Export/ExportTypes.h" // ValueMessage support
+
+#include "Client/RedisClient.h"
+#include "Client/RedisClientImpl.h"
 #include "Database/Repositories/ExportLogRepository.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "DynamicTargetManager.h"
@@ -54,6 +58,11 @@ struct ExportCoordinatorConfig {
   int log_retention_days = 30;
   int max_concurrent_exports = 50;
   int export_timeout_seconds = 30;
+
+  // Batching Configuration
+  bool enable_alarm_batching = true;
+  int alarm_batch_latency_ms = 5000; // 5 seconds default
+  int alarm_batch_max_size = 1000;
 };
 
 struct ExportResult {
@@ -157,7 +166,15 @@ public:
   void handleConfigEvent(const std::string &channel,
                          const std::string &message);
 
+  // Batch Processing Methods
+  void flushAlarmBatch();
+  void checkAlarmBatchTimeout();
+  void sendValueSnapshot();
+
 private:
+  void startBatchTimers();
+  void stopBatchTimers();
+
   bool initializeDatabase();
   bool initializeRepositories();
   bool initializeEventSubscriber();
@@ -185,8 +202,10 @@ private:
   int gateway_id_ = -1;
   std::thread heartbeat_thread_;
   std::atomic<bool> heartbeat_running_{false};
+  std::unique_ptr<RedisClient> redis_client_;
 
   mutable std::mutex stats_mutex_;
+
   ExportCoordinatorStats stats_;
   mutable std::mutex export_mutex_;
 
@@ -196,6 +215,14 @@ private:
       shared_payload_transformer_;
   static std::mutex init_mutex_;
   static std::atomic<bool> shared_resources_initialized_;
+
+  // Batching Members
+  mutable std::mutex batch_mutex_;
+  std::vector<PulseOne::CSP::AlarmMessage> pending_alarms_;
+  std::chrono::system_clock::time_point last_batch_flush_time_;
+
+  std::thread batch_timer_thread_;
+  std::atomic<bool> batch_timer_running_{false};
 };
 
 } // namespace Coordinator

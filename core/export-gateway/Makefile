@@ -77,26 +77,26 @@ SHARED_LIB_DIR = $(SHARED_DIR)/lib
 # =============================================================================
 
 HAS_SHARED := $(shell [ -d "$(SHARED_LIB_DIR)" ] && [ -f "$(SHARED_LIB_DIR)/libpulseone-common$(LIB_SUFFIX)" ] && echo "1" || echo "0")
-HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_NLOHMANN_JSON := $(shell echo '#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
 # 🔥 hiredis 감지
 HAS_HIREDIS := $(shell pkg-config --exists hiredis 2>/dev/null && echo "1" || echo "0")
 ifeq ($(HAS_HIREDIS),0)
-    HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+    HAS_HIREDIS := $(shell echo '#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 endif
 
-HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_HTTPLIB := $(shell echo '#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 
 # 🔥 libcurl 자동 감지
 HAS_CURL := $(shell pkg-config --exists libcurl 2>/dev/null && echo "1" || echo "0")
 ifeq ($(HAS_CURL),0)
-    HAS_CURL := $(shell echo '\#include <curl/curl.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+    HAS_CURL := $(shell echo '#include <curl/curl.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 endif
 
 # OpenSSL 감지 (S3 서명용)
 HAS_OPENSSL := $(shell pkg-config --exists openssl 2>/dev/null && echo "1" || echo "0")
 ifeq ($(HAS_OPENSSL),0)
-    HAS_OPENSSL := $(shell echo '\#include <openssl/sha.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+    HAS_OPENSSL := $(shell echo '#include <openssl/sha.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 endif
 
 # 🔥 Paho MQTT C++ 라이브러리 감지 (v3.1 추가)
@@ -230,7 +230,7 @@ ifeq ($(IS_WINDOWS),1)
 else
     BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
     ifeq ($(PLATFORM),Linux)
-        BASIC_LIBS += -lmysqlclient
+        BASIC_LIBS += -lmariadb
     endif
     PLATFORM_LIBS =
 endif
