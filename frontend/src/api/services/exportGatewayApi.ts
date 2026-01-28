@@ -75,6 +75,7 @@ export interface ExportTargetMapping {
     id: number;
     target_id: number;
     point_id: number;
+    site_id: number; // [RESTORE] Canonical identifier
     target_field_name: string;
     target_description: string;
     conversion_config: any;
@@ -120,6 +121,7 @@ export interface DataPoint {
     id: number;
     name: string;
     device_name: string;
+    site_id: number; // [RESTORE] Canonical identifier
     site_name: string;
     data_type: string;
     unit: string;
@@ -147,6 +149,10 @@ export class ExportGatewayApiService {
 
     static async registerGateway(data: Partial<Gateway>): Promise<ApiResponse<Gateway>> {
         return apiClient.post<Gateway>(this.GATEWAY_URL, data);
+    }
+
+    static async updateGateway(id: number, data: Partial<Gateway>): Promise<ApiResponse<Gateway>> {
+        return apiClient.put<Gateway>(`${this.GATEWAY_URL}/${id}`, data);
     }
 
     static async deleteGateway(id: number): Promise<ApiResponse<void>> {
@@ -308,6 +314,7 @@ export class ExportGatewayApiService {
                 id: dp.id,
                 name: dp.name,
                 device_name: dp.device_name || dp.device_info?.name || 'Unknown Device',
+                site_id: dp.site_id || dp.building_id, // [RESTORE] site_id focus
                 site_name: dp.site_name || 'System',
                 data_type: dp.data_type,
                 unit: dp.unit || '',

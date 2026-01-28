@@ -227,6 +227,11 @@ void testSingleAlarm() {
 
     LogManager::getInstance().Info("테스트 알람 전송: " + alarm.nm);
 
+    // ✅ 수정: DB 로드를 위해 start() 호출 추가
+    if (!manager.isRunning()) {
+      manager.start();
+    }
+
     // ✅ 수정: sendAlarmToTargets() 사용
     auto results = manager.sendAlarmToTargets(alarm);
 

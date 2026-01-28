@@ -54,6 +54,7 @@
 #include <vector>
 
 using json = nlohmann::json;
+// ordered_json is defined in Export/ExportTypes.h
 
 namespace PulseOne {
 namespace CSP {
@@ -149,6 +150,12 @@ public:
    * @note RepositoryFactory를 통해 ExportTargetRepository 인스턴스 획득
    */
   bool loadFromDatabase();
+
+  /**
+   * @brief 게이트웨이 ID 설정 (필터링 및 하트비트용)
+   * @param id 게이트웨이 ID
+   */
+  void setGatewayId(int id);
 
   /**
    * @brief 타겟 강제 리로드 (DB에서)
@@ -326,7 +333,7 @@ public:
    * @brief 전체 통계 조회
    * @return JSON 형식 통계
    */
-  json getStatistics() const;
+  ordered_json getStatistics() const;
 
   /**
    * @brief 통계 리셋
@@ -337,19 +344,19 @@ public:
    * @brief 헬스체크
    * @return JSON 형식 상태 정보
    */
-  json healthCheck() const;
+  ordered_json healthCheck() const;
 
   /**
    * @brief 글로벌 설정 조회
    * @return JSON 형식 설정
    */
-  json getGlobalSettings() const { return global_settings_; }
+  ordered_json getGlobalSettings() const { return global_settings_; }
 
   /**
    * @brief 글로벌 설정 업데이트
    * @param settings 새 설정
    */
-  void updateGlobalSettings(const json &settings);
+  void updateGlobalSettings(const ordered_json &settings);
 
 private:
   // =======================================================================
@@ -390,7 +397,8 @@ private:
 
   bool processTargetByIndex(size_t index, const AlarmMessage &alarm,
                             TargetSendResult &result);
-  json expandConfigVariables(const json &config, const AlarmMessage &alarm);
+  ordered_json expandConfigVariables(const ordered_json &config,
+                                     const AlarmMessage &alarm);
 
   // =======================================================================
   // 멤버 변수들
@@ -398,6 +406,9 @@ private:
 
   // ✅ PUBLISH 전용 Redis 클라이언트
   std::unique_ptr<RedisClient> publish_client_;
+
+  // ✅ 게이트웨이 ID (필터링용)
+  int gateway_id_{0};
 
   // ❌ export_target_repo_ 멤버 변수 제거!
   // → loadFromDatabase()에서 직접 RepositoryFactory 사용
@@ -413,6 +424,23 @@ private:
   std::unordered_map<std::string, std::unique_ptr<FailureProtector>>
       failure_protectors_;
 
+  // ✅ 매핑 캐시: target_id -> { point_id -> target_field_name }
+  mutable std::shared_mutex mappings_mutex_;
+  std::unordered_map<int, std::unordered_map<int, std::string>>
+      target_point_mappings_;
+
+  // ✅ 포인트별 Site ID 오버라이드 캐시: target_id -> { point_id -> site_id }
+  std::unordered_map<int, std::unordered_map<int, int>>
+      target_point_site_mappings_;
+
+  // ✅ 포인트별 Building ID 매핑 캐시 (Target ID -> Point ID -> Building ID)
+  std::unordered_map<int, std::unordered_map<int, int>>
+      target_point_building_mappings_;
+
+  // ✅ 사이트 매핑 캐시: target_id -> { site_id -> external_building_id }
+  std::unordered_map<int, std::unordered_map<int, std::string>>
+      target_site_mappings_;
+
   // 실행 상태
   std::atomic<bool> is_running_{false};
   std::atomic<bool> should_stop_{false};
@@ -427,7 +455,7 @@ private:
   std::condition_variable cv_;
 
   // 설정
-  json global_settings_;
+  ordered_json global_settings_;
 
   // 통계 변수들
   std::atomic<uint64_t> total_requests_{0};

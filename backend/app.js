@@ -253,7 +253,7 @@ if (CacheControlMiddleware && createChromeCacheBuster && createSPACacheMiddlewar
             'Cache-Control': 'no-cache, no-store, must-revalidate, private, max-age=0',
             'Pragma': 'no-cache',
             'Expires': '0',
-            'Last-Modified': new Date().toUTCString()
+            'Last-Modified': logger.getKSTTimestamp()
         });
         next();
     });
@@ -574,7 +574,7 @@ app.get('/api/health', async (req, res) => {
     try {
         const healthInfo = {
             status: 'ok',
-            timestamp: new Date().toISOString(),
+            timestamp: logger.getKSTTimestamp(),
             uptime: process.uptime(),
             pid: process.pid,
             config_manager: {
@@ -634,7 +634,7 @@ app.get('/api/health', async (req, res) => {
         res.status(500).json({
             status: 'error',
             error: error.message,
-            timestamp: new Date().toISOString()
+            timestamp: logger.getKSTTimestamp()
         });
     }
 });
@@ -648,7 +648,7 @@ app.get('/api/system/logs', (req, res) => {
         res.json({
             success: true,
             data: logStats,
-            timestamp: new Date().toISOString()
+            timestamp: logger.getKSTTimestamp()
         });
     } catch (error) {
         logger.api('ERROR', '로그 상태 조회 실패', { error: error.message });
@@ -678,7 +678,7 @@ app.post('/api/system/logs/settings', (req, res) => {
         res.json({
             success: true,
             message: '로그 설정이 변경되었습니다.',
-            timestamp: new Date().toISOString()
+            timestamp: logger.getKSTTimestamp()
         });
     } catch (error) {
         logger.api('ERROR', '로그 설정 변경 실패', { error: error.message });
@@ -788,6 +788,10 @@ app.use('/api/gateways', gatewayRoutes);
 const exportConfigRoutes = require('./routes/export-config');
 app.use('/api/export', exportConfigRoutes);
 
+// Fix: Frontend expects /api/export-gateways
+const exportGatewaysShim = require('./routes/export-gateways-shim');
+app.use('/api/export-gateways', exportGatewaysShim);
+
 logger.system('INFO', '기본 시스템 라우트 등록 완료');
 
 // 장치 관리 라우트 (Device & DataPoint)
@@ -862,7 +866,7 @@ try {
         res.json({
             success: true,
             message: '디버그 모드 - 알람 API 기본 기능',
-            timestamp: new Date().toISOString(),
+            timestamp: logger.getKSTTimestamp(),
             debug_mode: true
         });
     });
@@ -917,7 +921,7 @@ app.use('/api/*', (req, res) => {
         error: 'API endpoint not found',
         path: req.originalUrl,
         method: req.method,
-        timestamp: new Date().toISOString()
+        timestamp: logger.getKSTTimestamp()
     });
 });
 
@@ -949,7 +953,7 @@ app.use((error, req, res, next) => {
         success: false,
         error: message,
         message: serverConfig.env === 'development' ? error.message : message,
-        timestamp: new Date().toISOString()
+        timestamp: logger.getKSTTimestamp()
     });
 });
 
@@ -971,7 +975,7 @@ if (serverConfig.env === 'production') {
             error: 'Not Found',
             message: 'Development mode: Frontend is served at http://localhost:5173',
             backend_api: `http://localhost:${serverConfig.port}/api`,
-            timestamp: new Date().toISOString()
+            timestamp: logger.getKSTTimestamp()
         });
     });
 

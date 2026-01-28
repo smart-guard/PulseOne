@@ -95,10 +95,22 @@ void AlarmEngine::initializeRepositories() {
 
 void AlarmEngine::loadInitialData() {
   if (alarm_occurrence_repo_) {
+    // 1. Max ID 설정
     int max_id = alarm_occurrence_repo_->findMaxId();
     next_occurrence_id_ = (max_id > 0) ? (max_id + 1) : 1;
     LogManager::getInstance().Debug("Next occurrence ID set to: " +
-                                    std::to_string(next_occurrence_id_));
+                                    std::to_string(next_occurrence_id_.load()));
+
+    // 2. 현재 활성 알람들을 캐시에 로드하여 중복 생성 방지 (Startup Recovery)
+    if (cache_) {
+      auto active_alarms = alarm_occurrence_repo_->findActive();
+      for (const auto &alarm : active_alarms) {
+        cache_->setAlarmStatus(alarm.getRuleId(), true, alarm.getId());
+      }
+      LogManager::getInstance().Info(
+          "AlarmEngine: Startup recovery complete. " +
+          std::to_string(active_alarms.size()) + " active alarms restored.");
+    }
   }
 }
 
@@ -242,6 +254,14 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
           alarms_cleared_.fetch_add(1);
         }
       }
+    } else {
+      // 상태는 변하지 않았지만, 이미 활성 상태라면 DB 값 업데이트 (실시간 변동
+      // 반영)
+      auto status = cache_->getAlarmStatus(rule.getId());
+      if (status.is_active && status.occurrence_id > 0) {
+        // 필요 시 별도 메서드 호출 가능 (여기서는 간략화)
+        updateActiveAlarmValue(rule, status.occurrence_id, tv.value);
+      }
     }
   }
 
@@ -293,6 +313,50 @@ std::optional<int64_t> AlarmEngine::raiseAlarm(const AlarmRuleEntity &rule,
                                     std::string(e.what()));
   }
   return std::nullopt;
+}
+
+bool AlarmEngine::updateActiveAlarmValue(const AlarmRuleEntity &rule,
+                                         int64_t occurrence_id,
+                                         const DataValue &value) {
+  if (!alarm_occurrence_repo_)
+    return false;
+
+  // 1. 기존 알람 조회
+  auto alarm_opt =
+      alarm_occurrence_repo_->findById(static_cast<int>(occurrence_id));
+  if (!alarm_opt)
+    return false;
+
+  auto &alarm = *alarm_opt;
+
+  // 2. 값 문자열 변환
+  std::string val_str;
+  std::visit(
+      [&val_str](auto &&v) {
+        std::ostringstream oss;
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, bool>) {
+          oss << (v ? "true" : "false");
+        } else {
+          oss << v;
+        }
+        val_str = oss.str();
+      },
+      value);
+
+  // 3. 변경 사항 확인 (값이 이전과 동일하면 DB 업데이트 스킵하여 성능 최적화)
+  if (alarm.getTriggerValue() == val_str)
+    return true;
+
+  // 4. 정보 업데이트
+  alarm.setTriggerValue(val_str);
+
+  // 다시 평가하여 상태 메시지 갱신
+  auto eval = evaluator_->evaluate(rule, value);
+  alarm.setAlarmMessage(generateMessage(rule, eval, value));
+  alarm.setTriggerCondition(eval.condition_met);
+
+  return alarm_occurrence_repo_->update(alarm);
 }
 
 bool AlarmEngine::clearAlarm(int64_t occurrence_id,

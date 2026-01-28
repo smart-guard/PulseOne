@@ -8,40 +8,51 @@
  * @details 엔지니어가 즉시 문제를 파악할 수 있도록 세분화
  */
 class PulseOneErrorHandler {
-    
+
+    /**
+     * @brief KST 타임스탬프 생성 (UTC+9)
+     */
+    static getKSTTimestamp() {
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000;
+        const kstDate = new Date(now.getTime() + kstOffset);
+        return kstDate.toISOString().replace('T', ' ').replace('Z', '');
+    }
+
+
     /**
      * @brief HTTP 상태코드별 에러 카테고리 분류
      */
     static getErrorCategory(httpStatus) {
         // 연결 관련 (420-429)
         if (httpStatus >= 420 && httpStatus <= 429) return 'connection';
-        
+
         // 프로토콜 관련 (430-449)  
         if (httpStatus >= 430 && httpStatus <= 449) return 'protocol';
-        
+
         // 데이터 관련 (450-469)
         if (httpStatus >= 450 && httpStatus <= 469) return 'data';
-        
+
         // 디바이스 관련 (470-489)
         if (httpStatus >= 470 && httpStatus <= 489) return 'device';
-        
+
         // 설정 관련 (490-499)
         if (httpStatus >= 490 && httpStatus <= 499) return 'configuration';
-        
+
         // 점검 관련 (510-519)
         if (httpStatus >= 510 && httpStatus <= 519) return 'maintenance';
-        
+
         // 시스템 관련 (520-529)
         if (httpStatus >= 520 && httpStatus <= 529) return 'system';
-        
+
         // 프로토콜별 (530+)
         if (httpStatus >= 530 && httpStatus <= 539) return 'modbus';
         if (httpStatus >= 540 && httpStatus <= 549) return 'mqtt';
         if (httpStatus >= 550 && httpStatus <= 559) return 'bacnet';
-        
+
         return 'unknown';
     }
-    
+
     /**
      * @brief HTTP 상태코드별 상세 에러 정보
      */
@@ -59,7 +70,7 @@ class PulseOneErrorHandler {
                 techDetail: 'TCP 연결 실패'
             },
             421: {
-                type: 'connection_timeout', 
+                type: 'connection_timeout',
                 severity: 'medium',
                 icon: '⏱️',
                 color: '#FFA726',
@@ -70,7 +81,7 @@ class PulseOneErrorHandler {
             },
             422: {
                 type: 'connection_refused',
-                severity: 'high', 
+                severity: 'high',
                 icon: '🚫',
                 color: '#FF6B6B',
                 autoRetry: false,
@@ -82,7 +93,7 @@ class PulseOneErrorHandler {
                 type: 'connection_lost',
                 severity: 'medium',
                 icon: '📡',
-                color: '#FFA726', 
+                color: '#FFA726',
                 autoRetry: true,
                 userAction: false,
                 hint: '자동 재연결 시도 중',
@@ -98,7 +109,7 @@ class PulseOneErrorHandler {
                 hint: '인증 정보 확인',
                 techDetail: '인증 실패'
             },
-            
+
             // ===== 프로토콜 관련 (430-449) =====
             430: {
                 type: 'timeout',
@@ -140,7 +151,7 @@ class PulseOneErrorHandler {
                 hint: '통신 케이블 점검',
                 techDetail: '프레임 에러'
             },
-            
+
             // ===== 데이터 관련 (450-469) =====
             450: {
                 type: 'invalid_data',
@@ -192,7 +203,7 @@ class PulseOneErrorHandler {
                 hint: '데이터 업데이트 대기',
                 techDetail: '오래된 데이터'
             },
-            
+
             // ===== 디바이스 관련 (470-489) =====
             470: {
                 type: 'device_not_responding',
@@ -244,7 +255,7 @@ class PulseOneErrorHandler {
                 hint: '디바이스 전원 및 연결 확인',
                 techDetail: '디바이스 오프라인'
             },
-            
+
             // ===== 점검 관련 (510-519) =====
             510: {
                 type: 'maintenance_active',
@@ -276,7 +287,7 @@ class PulseOneErrorHandler {
                 hint: '관리자 권한 요청',
                 techDetail: '권한 부족'
             },
-            
+
             // ===== 프로토콜별 (530+) =====
             530: {
                 type: 'modbus_exception',
@@ -309,7 +320,7 @@ class PulseOneErrorHandler {
                 techDetail: 'BACnet 서비스 에러'
             }
         };
-        
+
         return errorMap[httpStatus] || {
             type: 'unknown_error',
             severity: 'medium',
@@ -321,7 +332,7 @@ class PulseOneErrorHandler {
             techDetail: `알 수 없는 HTTP 상태코드: ${httpStatus}`
         };
     }
-    
+
     /**
      * @brief API 응답 에러 처리 메인 함수
      */
@@ -329,16 +340,16 @@ class PulseOneErrorHandler {
         const httpStatus = response.status;
         const category = this.getErrorCategory(httpStatus);
         const details = this.getErrorDetails(httpStatus);
-        
+
         // 에러 정보 구성
         const errorInfo = {
             httpStatus,
             category,
             deviceId,
-            timestamp: new Date(),
+            timestamp: this.getKSTTimestamp(),
             ...details
         };
-        
+
         // 응답 body에 추가 정보가 있으면 포함
         if (response.data && response.data.error_code) {
             errorInfo.backendErrorCode = response.data.error_code;
@@ -346,43 +357,43 @@ class PulseOneErrorHandler {
         if (response.data && response.data.tech_details) {
             errorInfo.techDetail = response.data.tech_details;
         }
-        
+
         // 에러별 처리 로직
         this.processError(errorInfo);
-        
+
         return errorInfo;
     }
-    
+
     /**
      * @brief 에러별 처리 로직 실행
      */
     static processError(errorInfo) {
         const { httpStatus, category, type, autoRetry, severity } = errorInfo;
-        
+
         // 1. 로그 기록 (심각도별)
         this.logError(errorInfo);
-        
+
         // 2. 자동 재시도 처리
         if (autoRetry) {
             this.scheduleRetry(errorInfo);
         }
-        
+
         // 3. 사용자 알림 (심각도별)
         this.notifyUser(errorInfo);
-        
+
         // 4. 통계 수집
         this.recordErrorStatistics(category, type, httpStatus);
-        
+
         // 5. 카테고리별 특수 처리
         this.handleCategorySpecificActions(errorInfo);
     }
-    
+
     /**
      * @brief 카테고리별 특수 처리
      */
     static handleCategorySpecificActions(errorInfo) {
         const { category, httpStatus, deviceId } = errorInfo;
-        
+
         switch (category) {
             case 'connection':
                 // 연결 문제 → 상태 표시등 빨간색
@@ -391,7 +402,7 @@ class PulseOneErrorHandler {
                     this.startConnectionRetryIndicator(deviceId);
                 }
                 break;
-                
+
             case 'device':
                 // 디바이스 문제 → 디바이스 상태 업데이트
                 this.updateDeviceStatus(deviceId, 'error');
@@ -399,7 +410,7 @@ class PulseOneErrorHandler {
                     this.triggerHardwareDiagnostics(deviceId);
                 }
                 break;
-                
+
             case 'maintenance':
                 // 점검 모드 → UI 점검 모드 표시
                 this.showMaintenanceMode(deviceId);
@@ -407,35 +418,35 @@ class PulseOneErrorHandler {
                     this.estimateMaintenanceCompletion(deviceId);
                 }
                 break;
-                
+
             case 'protocol':
                 // 프로토콜 문제 → 통신 설정 점검 제안
                 this.suggestProtocolCheck(deviceId, httpStatus);
                 break;
-                
+
             case 'modbus':
                 // Modbus 전용 → Modbus 진단 도구 링크
                 this.showModbusDiagnostics(deviceId);
                 break;
-                
+
             case 'mqtt':
                 // MQTT 전용 → 브로커 상태 확인
                 this.checkMqttBrokerStatus();
                 break;
-                
+
             case 'bacnet':
                 // BACnet 전용 → BACnet 객체 탐색 제안
                 this.suggestBacnetObjectScan(deviceId);
                 break;
         }
     }
-    
+
     /**
      * @brief 사용자 알림 (심각도별 차별화)
      */
     static notifyUser(errorInfo) {
         const { severity, icon, color, hint, userAction, httpStatus, deviceId } = errorInfo;
-        
+
         const notification = {
             title: `${icon} ${this.getErrorTitle(httpStatus)}`,
             message: this.getUserMessage(httpStatus, deviceId),
@@ -443,7 +454,7 @@ class PulseOneErrorHandler {
             duration: this.getNotificationDuration(severity),
             actions: userAction ? this.getUserActions(httpStatus) : []
         };
-        
+
         // 심각도별 알림 방식
         switch (severity) {
             case 'critical':
@@ -461,7 +472,7 @@ class PulseOneErrorHandler {
                 break;
         }
     }
-    
+
     /**
      * @brief HTTP 상태코드별 제목
      */
@@ -469,51 +480,51 @@ class PulseOneErrorHandler {
         const titles = {
             // 연결 관련
             420: '연결 실패',
-            421: '연결 타임아웃', 
+            421: '연결 타임아웃',
             422: '연결 거부',
             423: '연결 끊어짐',
             424: '인증 실패',
-            
+
             // 프로토콜 관련
             430: '응답 타임아웃',
             431: '프로토콜 에러',
             434: '체크섬 에러',
             435: '통신 프레임 에러',
-            
+
             // 데이터 관련
             450: '잘못된 데이터',
             451: '데이터 타입 오류',
             452: '값 범위 초과',
             453: '데이터 포맷 오류',
             454: '오래된 데이터',
-            
+
             // 디바이스 관련
             470: '디바이스 응답 없음',
             471: '디바이스 사용 중',
             472: '하드웨어 에러',
             473: '디바이스 없음',
             474: '디바이스 오프라인',
-            
+
             // 설정 관련
             490: '설정 오류',
             491: '설정 누락',
             492: '설정 에러',
             493: '매개변수 오류',
-            
+
             // 점검 관련
             510: '점검 중',
             513: '원격 제어 차단',
             514: '권한 부족',
-            
+
             // 프로토콜별
             530: 'Modbus 예외',
             540: 'MQTT 발행 실패',
             550: 'BACnet 서비스 에러'
         };
-        
+
         return titles[httpStatus] || `에러 ${httpStatus}`;
     }
-    
+
     /**
      * @brief 사용자 조치 버튼들
      */
@@ -524,31 +535,31 @@ class PulseOneErrorHandler {
                     { text: '설정 확인', action: 'checkDeviceConfig' },
                     { text: '연결 테스트', action: 'testConnection' }
                 ];
-                
+
             case 472: // DEVICE_ERROR
                 return [
                     { text: '진단 실행', action: 'runDiagnostics' },
                     { text: '하드웨어 점검', action: 'scheduleHardwareCheck' }
                 ];
-                
+
             case 473: // DEVICE_NOT_FOUND
                 return [
                     { text: '디바이스 검색', action: 'scanDevices' },
                     { text: '설정 수정', action: 'editDeviceConfig' }
                 ];
-                
+
             case 513: // REMOTE_CONTROL_BLOCKED
                 return [
                     { text: '현장 모드 해제', action: 'disableLocalMode' },
                     { text: '권한 요청', action: 'requestPermission' }
                 ];
-                
+
             case 530: // MODBUS_EXCEPTION
                 return [
                     { text: 'Modbus 진단', action: 'runModbusDiagnostics' },
                     { text: '레지스터 맵 확인', action: 'checkRegisterMap' }
                 ];
-                
+
             default:
                 return [
                     { text: '재시도', action: 'retry' },
@@ -556,7 +567,7 @@ class PulseOneErrorHandler {
                 ];
         }
     }
-    
+
     /**
      * @brief 실시간 에러 대시보드용 데이터
      */
@@ -565,15 +576,15 @@ class PulseOneErrorHandler {
             // 카테고리별 에러 개수
             categories: {
                 connection: this.getErrorCount('connection'),
-                device: this.getErrorCount('device'), 
+                device: this.getErrorCount('device'),
                 protocol: this.getErrorCount('protocol'),
                 maintenance: this.getErrorCount('maintenance'),
                 system: this.getErrorCount('system')
             },
-            
+
             // 최근 에러들 (시간순)
             recentErrors: this.getRecentErrors(10),
-            
+
             // 심각도별 분포
             severityDistribution: {
                 critical: this.getErrorCountBySeverity('critical'),
@@ -581,21 +592,21 @@ class PulseOneErrorHandler {
                 medium: this.getErrorCountBySeverity('medium'),
                 low: this.getErrorCountBySeverity('low')
             },
-            
+
             // 디바이스별 에러 현황
             deviceErrors: this.getErrorsByDevice(),
-            
+
             // 자동 복구 성공률
             autoRecoveryRate: this.getAutoRecoverySuccessRate()
         };
     }
-    
+
     /**
      * @brief 엔지니어용 상세 진단 정보
      */
     static getEngineerDiagnostics(httpStatus, deviceId) {
         const details = this.getErrorDetails(httpStatus);
-        
+
         return {
             httpStatus,
             deviceId,
@@ -607,7 +618,7 @@ class PulseOneErrorHandler {
             troubleshootingSteps: this.getTroubleshootingSteps(httpStatus)
         };
     }
-    
+
     /**
      * @brief 엔지니어용 조치 사항
      */
@@ -622,7 +633,7 @@ class PulseOneErrorHandler {
             540: ['MQTT 브로커 연결 상태', 'QoS 설정 확인', '토픽 권한 검증'],
             550: ['BACnet 객체 ID 확인', '속성 접근 권한 검증', 'BACnet 장치 스캔']
         };
-        
+
         return actionMap[httpStatus] || ['시스템 로그 확인', '설정 재검토', '기술지원 문의'];
     }
 }
@@ -637,20 +648,20 @@ class PulseOneErrorHandler {
 export const apiCall = async (url, options = {}, deviceId = null) => {
     try {
         const response = await fetch(url, options);
-        
+
         // 200번대가 아니면 에러 처리
         if (!response.ok) {
             const errorInfo = PulseOneErrorHandler.handleApiError(response, deviceId);
             throw new PulseOneError(errorInfo);
         }
-        
+
         return await response.json();
-        
+
     } catch (error) {
         if (error instanceof PulseOneError) {
             throw error; // 이미 처리된 에러는 그대로 전달
         }
-        
+
         // 네트워크 에러 등 예외적인 경우
         const fallbackError = {
             httpStatus: 0,
@@ -660,7 +671,7 @@ export const apiCall = async (url, options = {}, deviceId = null) => {
             message: '네트워크 연결을 확인하세요.',
             techDetail: error.message
         };
-        
+
         PulseOneErrorHandler.processError(fallbackError);
         throw new PulseOneError(fallbackError);
     }
@@ -766,13 +777,13 @@ class ErrorStatistics {
     static errorCounts = new Map();
     static errorHistory = [];
     static deviceErrorMap = new Map();
-    
+
     static recordError(errorInfo) {
         const key = `${errorInfo.category}_${errorInfo.httpStatus}`;
-        
+
         // 에러 카운트 증가
         this.errorCounts.set(key, (this.errorCounts.get(key) || 0) + 1);
-        
+
         // 에러 히스토리 저장 (최근 1000개만)
         this.errorHistory.unshift({
             ...errorInfo,
@@ -781,7 +792,7 @@ class ErrorStatistics {
         if (this.errorHistory.length > 1000) {
             this.errorHistory = this.errorHistory.slice(0, 1000);
         }
-        
+
         // 디바이스별 에러 매핑
         if (errorInfo.deviceId) {
             if (!this.deviceErrorMap.has(errorInfo.deviceId)) {
@@ -790,20 +801,20 @@ class ErrorStatistics {
             this.deviceErrorMap.get(errorInfo.deviceId).unshift(errorInfo);
         }
     }
-    
+
     static getTopErrors(limit = 10) {
         return Array.from(this.errorCounts.entries())
             .sort((a, b) => b[1] - a[1])
             .slice(0, limit)
             .map(([key, count]) => ({ type: key, count }));
     }
-    
+
     static getDeviceErrorSummary(deviceId) {
         const deviceErrors = this.deviceErrorMap.get(deviceId) || [];
-        const last24h = deviceErrors.filter(e => 
+        const last24h = deviceErrors.filter(e =>
             Date.now() - e.timestamp.getTime() < 24 * 60 * 60 * 1000
         );
-        
+
         return {
             totalErrors: deviceErrors.length,
             last24hErrors: last24h.length,

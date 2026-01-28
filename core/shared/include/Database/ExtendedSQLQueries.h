@@ -87,7 +87,7 @@ const std::string FIND_ACTIVE = R"(
             context_data, source_name, location, created_at, updated_at,
             device_id, point_id, category, tags
         FROM alarm_occurrences 
-        WHERE state = 'active'
+        WHERE state = 'ACTIVE'
         ORDER BY occurrence_time DESC
     )";
 
@@ -114,14 +114,27 @@ const std::string INSERT = R"(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
-// ⭐ 누락된 UPDATE 쿼리 추가
+// ⭐ 누락된 UPDATE 쿼리 추가 (필드 확장 및 named placeholder 적용)
 const std::string UPDATE = R"(
         UPDATE alarm_occurrences SET
-            trigger_value = ?, trigger_condition = ?, alarm_message = ?,
-            severity = ?, state = ?, context_data = ?, source_name = ?,
-            location = ?, device_id = ?, point_id = ?, category = ?, tags = ?,
+            occurrence_time = {occurrence_time},
+            trigger_value = {trigger_value}, 
+            trigger_condition = {trigger_condition}, 
+            alarm_message = {alarm_message},
+            severity = {severity}, 
+            state = {state}, 
+            acknowledged_time = {acknowledged_time},
+            cleared_time = {cleared_time},
+            cleared_by = {cleared_by},
+            context_data = {context_data}, 
+            source_name = {source_name},
+            location = {location}, 
+            device_id = {device_id}, 
+            point_id = {point_id}, 
+            category = {category}, 
+            tags = {tags},
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        WHERE id = {id}
     )";
 
 // 상태 관리 쿼리들
@@ -325,20 +338,26 @@ const std::string INSERT = R"(
 
 const std::string UPDATE = R"(
         UPDATE alarm_rules SET
-            tenant_id = ?, name = ?, description = ?, target_type = ?, target_id = ?,
-            target_group = ?, alarm_type = ?, high_high_limit = ?, high_limit = ?,
-            low_limit = ?, low_low_limit = ?, deadband = ?, rate_of_change = ?,
-            trigger_condition = ?, condition_script = ?, message_script = ?,
-            message_config = ?, message_template = ?, severity = ?, priority = ?,
-            auto_acknowledge = ?, acknowledge_timeout_min = ?, auto_clear = ?,
-            suppression_rules = ?, notification_enabled = ?, notification_delay_sec = ?,
-            notification_repeat_interval_min = ?, notification_channels = ?,
-            notification_recipients = ?, is_enabled = ?, is_latched = ?,
-            template_id = ?, rule_group = ?, created_by_template = ?,
-            last_template_update = ?, escalation_enabled = ?, escalation_max_level = ?,
-            escalation_rules = ?, category = ?, tags = ?,
+            tenant_id = {tenant_id}, name = {name}, description = {description}, 
+            target_type = {target_type}, target_id = {target_id},
+            target_group = {target_group}, alarm_type = {alarm_type}, 
+            high_high_limit = {high_high_limit}, high_limit = {high_limit},
+            low_limit = {low_limit}, low_low_limit = {low_low_limit}, 
+            deadband = {deadband}, rate_of_change = {rate_of_change},
+            trigger_condition = {trigger_condition}, condition_script = {condition_script}, 
+            message_script = {message_script}, message_config = {message_config}, 
+            message_template = {message_template}, severity = {severity}, priority = {priority},
+            auto_acknowledge = {auto_acknowledge}, acknowledge_timeout_min = {acknowledge_timeout_min}, 
+            auto_clear = {auto_clear}, suppression_rules = {suppression_rules}, 
+            notification_enabled = {notification_enabled}, notification_delay_sec = {notification_delay_sec},
+            notification_repeat_interval_min = {notification_repeat_interval_min}, 
+            notification_channels = {notification_channels},
+            notification_recipients = {notification_recipients}, 
+            is_enabled = {is_enabled}, is_latched = {is_latched},
+            template_id = {template_id}, rule_group = {rule_group}, 
+            created_by = {created_by},
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        WHERE id = {id}
     )";
 
 const std::string DELETE_BY_ID = "DELETE FROM alarm_rules WHERE id = ?";

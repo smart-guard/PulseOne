@@ -20,10 +20,15 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
+#include <nlohmann/json.hpp>
 #include <sstream>
 
 namespace PulseOne {
 namespace CSP {
+
+using json = nlohmann::json;
+using ordered_json = nlohmann::ordered_json;
 
 // =============================================================================
 // 생성자 및 소멸자
@@ -41,7 +46,7 @@ FileTargetHandler::~FileTargetHandler() {
 // ITargetHandler 인터페이스 구현
 // =============================================================================
 
-bool FileTargetHandler::initialize(const json &config) {
+bool FileTargetHandler::initialize(const ordered_json &config) {
   // ✅ Stateless 패턴: initialize()는 선택적
   // 설정 검증 + 기본 디렉토리 생성
 
@@ -74,7 +79,7 @@ bool FileTargetHandler::initialize(const json &config) {
 }
 
 TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage &alarm,
-                                              const json &config) {
+                                              const ordered_json &config) {
   TargetSendResult result;
   result.target_type = "FILE";
   result.target_name = getTargetName(config);
@@ -83,6 +88,8 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage &alarm,
   auto start_time = std::chrono::steady_clock::now();
 
   try {
+    std::cout << "[DEBUG][FileTargetHandler] sendAlarm for: "
+              << result.target_name << " point=" << alarm.nm << std::endl;
     LogManager::getInstance().Info("파일 알람 저장: " + result.target_name);
 
     // ✅ 파일 경로 생성 (config 기반)
@@ -106,6 +113,8 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage &alarm,
     }
 
     // ✅ 파일 쓰기
+    std::cout << "[DEBUG][FileTargetHandler] Writing file: " << file_path
+              << std::endl;
     bool write_success = writeFile(file_path, content, config);
 
     if (write_success) {
@@ -121,14 +130,16 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage &alarm,
           std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
                                                                 start_time);
 
+      std::cout << "[DEBUG][FileTargetHandler] File save SUCCESS: " << file_path
+                << std::endl;
       LogManager::getInstance().Info(
-          "✅ 파일 저장 성공: " + file_path + " (" +
-          std::to_string(result.content_size) + " bytes, " +
-          std::to_string(result.response_time.count()) + "ms)");
+          "[FileTargetHandler] 파일 저장 성공: " + file_path + " (" +
+          std::to_string(result.content_size) + " bytes)");
     } else {
-      result.error_message = "파일 쓰기 실패: " + file_path;
+      result.error_message = "파일 저장 실패: " + file_path;
+      LogManager::getInstance().Error("[FileTargetHandler] " +
+                                      result.error_message);
       failure_count_++;
-      LogManager::getInstance().Error(result.error_message);
     }
 
     file_count_++;
@@ -144,7 +155,7 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage &alarm,
 
 std::vector<TargetSendResult> FileTargetHandler::sendValueBatch(
     const std::vector<PulseOne::CSP::ValueMessage> &values,
-    const json &config) {
+    const ordered_json &config) {
 
   std::vector<TargetSendResult> results;
   TargetSendResult result;
@@ -219,7 +230,7 @@ std::vector<TargetSendResult> FileTargetHandler::sendValueBatch(
   return results;
 }
 
-bool FileTargetHandler::testConnection(const json &config) {
+bool FileTargetHandler::testConnection(const ordered_json &config) {
   try {
     LogManager::getInstance().Info("파일 시스템 연결 테스트");
 
@@ -284,7 +295,7 @@ bool FileTargetHandler::testConnection(const json &config) {
   }
 }
 
-bool FileTargetHandler::validateConfig(const json &config,
+bool FileTargetHandler::validateConfig(const ordered_json &config,
                                        std::vector<std::string> &errors) {
   errors.clear();
 
@@ -314,12 +325,12 @@ bool FileTargetHandler::validateConfig(const json &config,
   return true;
 }
 
-json FileTargetHandler::getStatus() const {
-  return json{{"type", "FILE"},
-              {"file_count", file_count_.load()},
-              {"success_count", success_count_.load()},
-              {"failure_count", failure_count_.load()},
-              {"total_bytes_written", total_bytes_written_.load()}};
+ordered_json FileTargetHandler::getStatus() const {
+  return ordered_json{{"type", "FILE"},
+                      {"file_count", file_count_.load()},
+                      {"success_count", success_count_.load()},
+                      {"failure_count", failure_count_.load()},
+                      {"total_bytes_written", total_bytes_written_.load()}};
 }
 
 void FileTargetHandler::cleanup() {
@@ -336,7 +347,8 @@ void FileTargetHandler::cleanup() {
 // Private 핵심 메서드
 // =============================================================================
 
-std::string FileTargetHandler::extractBasePath(const json &config) const {
+std::string
+FileTargetHandler::extractBasePath(const ordered_json &config) const {
   std::string base_path;
   if (config.contains("base_path") &&
       !config["base_path"].get<std::string>().empty()) {
@@ -354,14 +366,16 @@ std::string FileTargetHandler::extractBasePath(const json &config) const {
   return "";
 }
 
-std::string FileTargetHandler::extractFileFormat(const json &config) const {
+std::string
+FileTargetHandler::extractFileFormat(const ordered_json &config) const {
   std::string format = config.value("file_format", "json");
   std::transform(format.begin(), format.end(), format.begin(), ::tolower);
   return format;
 }
 
-std::string FileTargetHandler::generateFilePath(const AlarmMessage &alarm,
-                                                const json &config) const {
+std::string
+FileTargetHandler::generateFilePath(const AlarmMessage &alarm,
+                                    const ordered_json &config) const {
   // base_path
   std::string base_path = extractBasePath(config);
 
@@ -405,8 +419,9 @@ void FileTargetHandler::createDirectoriesForFile(
   }
 }
 
-std::string FileTargetHandler::buildFileContent(const AlarmMessage &alarm,
-                                                const json &config) const {
+std::string
+FileTargetHandler::buildFileContent(const AlarmMessage &alarm,
+                                    const ordered_json &config) const {
   std::string format = extractFileFormat(config);
 
   if (format == "json") {
@@ -424,45 +439,45 @@ std::string FileTargetHandler::buildFileContent(const AlarmMessage &alarm,
   }
 }
 
-std::string FileTargetHandler::buildJsonContent(const AlarmMessage &alarm,
-                                                const json &config) const {
-  json content;
+std::string
+FileTargetHandler::buildJsonContent(const AlarmMessage &alarm,
+                                    const ordered_json &config) const {
+  json request_body;
 
-  // icos C# AlarmMessage 포맷
-  content["bd"] = alarm.bd;
-  content["nm"] = alarm.nm;
-  content["vl"] = alarm.vl;
-  content["tm"] = alarm.tm;
-  content["al"] = alarm.al;
-  content["st"] = alarm.st;
-  content["des"] = alarm.des;
+  // ✅ 템플릿이 있으면 템플릿을 기반으로 생성 (기본 필드 무시)
+  if (config.contains("body_template")) {
+    request_body = config["body_template"];
+    expandTemplateVariables(request_body, alarm);
 
-  // 메타데이터
-  content["source"] = "PulseOne-CSPGateway";
-  content["version"] = "2.0";
-  content["file_timestamp"] = getCurrentTimestamp();
-  content["alarm_status"] = alarm.get_alarm_status_string();
-
-  // 추가 필드
-  if (config.contains("additional_fields") &&
-      config["additional_fields"].is_object()) {
-    for (auto &[key, value] : config["additional_fields"].items()) {
-      content[key] = value;
+    // 이미 배열이면 그대로 반환, 객체면 배열로 감쌈
+    if (request_body.is_array()) {
+      return request_body.dump(); // compact JSON
+    } else {
+      return json::array({request_body}).dump();
     }
   }
 
-  std::string result = content.dump(2);
+  // ✅ 템플릿이 없으면 기본 AlarmMessage 포맷 사용
+  request_body["bd"] = alarm.bd;
+  request_body["nm"] = alarm.nm;
+  request_body["vl"] = alarm.vl;
+  request_body["tm"] = alarm.tm;
+  request_body["al"] = alarm.al;
+  request_body["st"] = alarm.st;
+  request_body["des"] = alarm.des;
 
-  // append 모드면 줄바꿈 추가
-  if (config.value("append_mode", false)) {
-    result += "\n";
-  }
+  // 메타데이터 (기본)
+  request_body["source"] = "PulseOne-CSPGateway";
+  request_body["version"] = "2.0";
+  request_body["alarm_status"] = alarm.get_alarm_status_string();
 
-  return result;
+  // ✅ 사용자 요청 포맷: 배열로 감싸서 반환
+  return json::array({request_body}).dump();
 }
 
-std::string FileTargetHandler::buildCsvContent(const AlarmMessage &alarm,
-                                               const json &config) const {
+std::string
+FileTargetHandler::buildCsvContent(const AlarmMessage &alarm,
+                                   const ordered_json &config) const {
   std::ostringstream csv;
 
   // 헤더 (append 모드가 아닐 때만)
@@ -484,8 +499,9 @@ std::string FileTargetHandler::buildCsvContent(const AlarmMessage &alarm,
   return csv.str();
 }
 
-std::string FileTargetHandler::buildTextContent(const AlarmMessage &alarm,
-                                                const json &config) const {
+std::string
+FileTargetHandler::buildTextContent(const AlarmMessage &alarm,
+                                    const ordered_json &config) const {
   std::ostringstream text;
 
   std::string format = config.value("text_format", "default");
@@ -512,8 +528,9 @@ std::string FileTargetHandler::buildTextContent(const AlarmMessage &alarm,
   return text.str();
 }
 
-std::string FileTargetHandler::buildXmlContent(const AlarmMessage &alarm,
-                                               const json &config) const {
+std::string
+FileTargetHandler::buildXmlContent(const AlarmMessage &alarm,
+                                   const ordered_json &config) const {
   std::ostringstream xml;
 
   xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
@@ -534,7 +551,9 @@ std::string FileTargetHandler::buildXmlContent(const AlarmMessage &alarm,
 
 bool FileTargetHandler::writeFile(const std::string &file_path,
                                   const std::string &content,
-                                  const json &config) const {
+                                  const ordered_json &config) const {
+  LogManager::getInstance().Debug("[FileTargetHandler] Writing file to: " +
+                                  file_path);
   try {
     bool atomic_write = config.value("atomic_write", true);
     bool append_mode = config.value("append_mode", false);
@@ -542,10 +561,13 @@ bool FileTargetHandler::writeFile(const std::string &file_path,
     if (atomic_write && !append_mode) {
       // 원자적 쓰기: 임시 파일 → rename
       std::string temp_path = file_path + ".tmp." + generateTimestampString();
+      LogManager::getInstance().Debug(
+          "[FileTargetHandler] Atomic write using temp: " + temp_path);
 
       std::ofstream temp_file(temp_path);
       if (!temp_file.is_open()) {
-        LogManager::getInstance().Error("임시 파일 생성 실패: " + temp_path);
+        LogManager::getInstance().Error(
+            "[FileTargetHandler] Failed to open temp file: " + temp_path);
         return false;
       }
 
@@ -553,12 +575,17 @@ bool FileTargetHandler::writeFile(const std::string &file_path,
       temp_file.close();
 
       if (temp_file.fail()) {
+        LogManager::getInstance().Error(
+            "[FileTargetHandler] Failed to write content to temp file");
         std::filesystem::remove(temp_path);
         return false;
       }
 
+      LogManager::getInstance().Debug("[FileTargetHandler] Renaming " +
+                                      temp_path + " to " + file_path);
       std::filesystem::rename(temp_path, file_path);
-      LogManager::getInstance().Debug("원자적 파일 쓰기 완료");
+      LogManager::getInstance().Debug(
+          "[FileTargetHandler] Atomic write successful");
 
     } else {
       // 직접 쓰기
@@ -569,7 +596,9 @@ bool FileTargetHandler::writeFile(const std::string &file_path,
 
       std::ofstream file(file_path, mode);
       if (!file.is_open()) {
-        LogManager::getInstance().Error("파일 열기 실패: " + file_path);
+        LogManager::getInstance().Error(
+            "[FileTargetHandler] Failed to open file for writing: " +
+            file_path);
         return false;
       }
 
@@ -577,16 +606,19 @@ bool FileTargetHandler::writeFile(const std::string &file_path,
       file.close();
 
       if (file.fail()) {
+        LogManager::getInstance().Error(
+            "[FileTargetHandler] Failed to write content to file");
         return false;
       }
 
-      LogManager::getInstance().Debug("파일 쓰기 완료");
+      LogManager::getInstance().Debug(
+          "[FileTargetHandler] Direct write successful");
     }
 
     return true;
-
   } catch (const std::exception &e) {
-    LogManager::getInstance().Error("파일 쓰기 예외: " + std::string(e.what()));
+    LogManager::getInstance().Error(
+        "[FileTargetHandler] Exception in writeFile: " + std::string(e.what()));
     return false;
   }
 }
@@ -630,6 +662,26 @@ std::string FileTargetHandler::expandTemplate(const std::string &template_str,
   return result;
 }
 
+void FileTargetHandler::expandTemplateVariables(
+    json &template_json, const AlarmMessage &alarm) const {
+  try {
+    std::string target_field_name = "";
+    std::string target_description = "";
+    std::string converted_value = std::to_string(alarm.vl);
+
+    auto &transformer =
+        ::PulseOne::Transform::PayloadTransformer::getInstance();
+    auto context = transformer.createContext(
+        alarm, target_field_name, target_description, converted_value);
+
+    template_json = transformer.transform(template_json, context);
+
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error("FileTargetHandler 템플릿 변환 실패: " +
+                                    std::string(e.what()));
+  }
+}
+
 std::string
 FileTargetHandler::sanitizeFilename(const std::string &filename) const {
   std::string result = filename;
@@ -659,7 +711,7 @@ FileTargetHandler::sanitizeFilename(const std::string &filename) const {
   return result;
 }
 
-std::string FileTargetHandler::getTargetName(const json &config) const {
+std::string FileTargetHandler::getTargetName(const ordered_json &config) const {
   if (config.contains("name") && config["name"].is_string()) {
     return config["name"].get<std::string>();
   }

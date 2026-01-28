@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     
     -- 🔥 서버 식별 정보
     server_name VARCHAR(100) NOT NULL,
+    server_type VARCHAR(20) DEFAULT 'collector',          -- collector, gateway
+    description TEXT,
     factory_name VARCHAR(100),
     location VARCHAR(200),
     
@@ -105,6 +107,8 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_deleted INTEGER DEFAULT 0,
     site_id INTEGER,
+    max_devices INTEGER DEFAULT 100,
+    max_data_points INTEGER DEFAULT 1000,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
@@ -742,6 +746,7 @@ CREATE TABLE IF NOT EXISTS device_settings (
     performance_monitoring_enabled INTEGER DEFAULT 1,
     diagnostic_mode_enabled INTEGER DEFAULT 0,
     communication_logging_enabled INTEGER DEFAULT 0,    -- 통신 로그 기록
+    auto_registration_enabled INTEGER DEFAULT 0,
     
     -- 🔥 버퍼링 설정
     read_buffer_size INTEGER DEFAULT 1024,
@@ -2458,6 +2463,7 @@ CREATE TABLE IF NOT EXISTS export_target_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     target_id INTEGER NOT NULL,
     point_id INTEGER NOT NULL,
+    site_id INTEGER,
     target_field_name VARCHAR(200),
     target_description VARCHAR(500),
     conversion_config TEXT,
@@ -2466,6 +2472,7 @@ CREATE TABLE IF NOT EXISTS export_target_mappings (
     
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE,
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
     UNIQUE(target_id, point_id)
 );
 

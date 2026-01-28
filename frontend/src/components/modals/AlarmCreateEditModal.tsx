@@ -212,16 +212,22 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
         rate_of_change: formData.rate_of_change ? parseFloat(formData.rate_of_change) : undefined,
       };
 
+      let response;
       if (mode === 'create') {
-        await AlarmApiService.createAlarmRule(submitData as any);
+        response = await AlarmApiService.createAlarmRule(submitData as any);
       } else if (rule) {
-        await AlarmApiService.updateAlarmRule(rule.id, submitData as any);
+        response = await AlarmApiService.updateAlarmRule(rule.id, submitData as any);
       }
-      onSave();
-      onClose();
-    } catch (error) {
+
+      if (response && response.success) {
+        onSave();
+        onClose();
+      } else {
+        alert(`저장에 실패했습니다: ${response?.message || '알 수 없는 오류'}`);
+      }
+    } catch (error: any) {
       console.error(error);
-      alert('저장에 실패했습니다.');
+      alert(`저장 도중 오류가 발생했습니다: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

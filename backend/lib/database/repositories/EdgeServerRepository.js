@@ -19,6 +19,7 @@ class EdgeServerRepository extends BaseRepository {
                 query.where('es.tenant_id', tenantId);
             }
             query.where('es.is_deleted', 0);
+            query.where('es.server_type', 'collector');
             return await query.orderBy('es.server_name', 'ASC');
         } catch (error) {
             this.logger.error('EdgeServerRepository.findAll 오류:', error);
@@ -39,6 +40,7 @@ class EdgeServerRepository extends BaseRepository {
             if (tenantId) {
                 query.where('es.tenant_id', tenantId);
             }
+            query.where('es.server_type', 'collector');
             return await query.first();
         } catch (error) {
             this.logger.error('EdgeServerRepository.findById 오류:', error);

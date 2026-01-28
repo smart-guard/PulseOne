@@ -316,6 +316,7 @@ void AlarmManager::enhanceAlarmEventWithBusinessLogic(
   try {
     // 기본 메타데이터 설정
     event.tenant_id = msg.tenant_id;
+    event.site_id = msg.site_id; // Added site_id population
     event.device_id = msg.device_id;
 
     if (event.timestamp == std::chrono::system_clock::time_point{}) {

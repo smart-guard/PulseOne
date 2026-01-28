@@ -217,7 +217,7 @@ class ExportGatewayService extends BaseService {
     async getAssignmentsByGateway(gatewayId) {
         return await this.handleRequest(async () => {
             const query = `
-                SELECT ep.*, epa.assigned_at
+                SELECT ep.*, epa.profile_id, epa.assigned_at
                 FROM export_profile_assignments epa
                 JOIN export_profiles ep ON epa.profile_id = ep.id
                 WHERE epa.gateway_id = ? AND epa.is_active = 1
@@ -232,15 +232,29 @@ class ExportGatewayService extends BaseService {
      */
     async assignProfileToGateway(profileId, gatewayId) {
         return await this.handleRequest(async () => {
-            // 1. 기존 할당 확인
-            const checkQuery = `SELECT id FROM export_profile_assignments WHERE profile_id = ? AND gateway_id = ?`;
-            const existing = await this.db.executeQuery(checkQuery, [profileId, gatewayId]);
+            // [Fix] Ensure IDs are numbers for SQLite compatibility
+            const pid = Number(profileId);
+            const gid = Number(gatewayId);
 
-            if (existing && existing.length > 0) {
-                // 이미 존재하면 활성화만 (ID 기반 업데이트로 안전성 확보)
+            // 1. 기존 할당 확인
+            const checkQuery = `SELECT id, is_active FROM export_profile_assignments WHERE profile_id = ? AND gateway_id = ?`;
+            const existing = await this.db.executeQuery(checkQuery, [pid, gid]);
+
+            // [Fix] Handle both array (direct) and object (wrapped) return types from DatabaseFactory
+            const rows = existing.rows || (Array.isArray(existing) ? existing : []);
+
+            if (rows.length > 0) {
+                // [Modified] If already active, throw error so frontend can show "Duplicate" popup
+                if (rows[0].is_active) {
+                    const error = new Error('Profile is already assigned to this gateway');
+                    error.statusCode = 409;
+                    throw error;
+                }
+
+                // If exists but inactive (soft deleted), reactivate it
                 await this.db.executeQuery(
-                    `UPDATE export_profile_assignments SET is_active = 1 WHERE id = ?`,
-                    [existing[0].id]
+                    `UPDATE export_profile_assignments SET assigned_at = CURRENT_TIMESTAMP, is_active = 1 WHERE id = ?`,
+                    [rows[0].id]
                 );
             } else {
                 // 신규 할당 (UNIQUE 인덱스가 있어도 애플리케이션 레벨에서 먼저 체크)

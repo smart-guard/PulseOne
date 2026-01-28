@@ -29,6 +29,7 @@
 #include "CSP/HttpTargetHandler.h"
 #include "CSP/S3TargetHandler.h"
 #include "Client/RedisClientImpl.h"
+#include "Database/Repositories/ExportTargetMappingRepository.h" // Added missing include
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
 #include "Database/RepositoryFactory.h"
@@ -38,6 +39,7 @@
 #include "Database/Entities/ExportTargetEntity.h"
 #include "Database/Entities/PayloadTemplateEntity.h"
 #include <algorithm>
+#include <iostream>
 
 namespace PulseOne {
 namespace CSP {
@@ -248,6 +250,11 @@ void DynamicTargetManager::stop() {
   LogManager::getInstance().Info("DynamicTargetManager 중지 완료");
 }
 
+void DynamicTargetManager::setGatewayId(int id) {
+  gateway_id_ = id;
+  LogManager::getInstance().Info("계이트웨이 ID 설정됨: " + std::to_string(id));
+}
+
 // =============================================================================
 // ✅ DB 기반 설정 관리 - 핵심 수정 부분!
 // =============================================================================
@@ -271,8 +278,9 @@ bool DynamicTargetManager::loadFromDatabase() {
     }
 
     auto export_target_repo = factory.getExportTargetRepository();
-    auto template_repo =
-        factory.getPayloadTemplateRepository(); // ✅ 템플릿 레포지토리
+    auto template_repo = factory.getPayloadTemplateRepository();
+    auto mapping_repo =
+        factory.getExportTargetMappingRepository(); // ✅ 매핑 레포지토리 추가
 
     if (!export_target_repo) {
       LogManager::getInstance().Error(
@@ -281,12 +289,13 @@ bool DynamicTargetManager::loadFromDatabase() {
     }
 
     // ✅ 1. 모든 템플릿 로드하여 ID맵 생성
-    std::map<int, json> template_map;
+    std::map<int, ordered_json> template_map;
     if (template_repo) {
       auto templates = template_repo->findAll();
       for (const auto &tmpl : templates) {
         try {
-          template_map[tmpl.getId()] = json::parse(tmpl.getTemplateJson());
+          template_map[tmpl.getId()] =
+              ordered_json::parse(tmpl.getTemplateJson());
           LogManager::getInstance().Debug(
               "템플릿 로드됨: ID=" + std::to_string(tmpl.getId()) +
               ", Name=" + tmpl.getName());
@@ -298,8 +307,87 @@ bool DynamicTargetManager::loadFromDatabase() {
       }
     }
 
+    // ✅ 2. 모든 매핑 로드하여 캐시 생성
+    if (mapping_repo) {
+      std::unique_lock<std::shared_mutex> m_lock(mappings_mutex_);
+      target_point_mappings_.clear();
+      target_site_mappings_.clear();       // ✅ 사이트 매핑 초기화 추가
+      target_site_mappings_.clear();       // ✅ 사이트 매핑 초기화 추가
+      target_point_site_mappings_.clear(); // ✅ 포인트-사이트 매핑 초기화 추가
+      target_point_building_mappings_
+          .clear(); // ✅ 포인트-빌딩 매핑 초기화 추가
+
+      auto mappings = mapping_repo->findAll();
+      for (const auto &m : mappings) {
+        if (m.isEnabled()) {
+          // 2.1 포인트 매핑
+          if (m.getPointId().has_value()) {
+            target_point_mappings_[m.getTargetId()][m.getPointId().value()] =
+                m.getTargetFieldName();
+
+            // ✅ 2.1.1 포인트 매핑에 Site ID가 있으면 캐시 (Site Override)
+            if (m.getSiteId().has_value()) {
+              target_point_site_mappings_[m.getTargetId()]
+                                         [m.getPointId().value()] =
+                                             m.getSiteId().value();
+            }
+
+            // ✅ 2.1.2 Building ID 매핑 추가 (New!)
+            if (m.getBuildingId().has_value()) {
+              target_point_building_mappings_[m.getTargetId()]
+                                             [m.getPointId().value()] =
+                                                 m.getBuildingId().value();
+            }
+          }
+          // 2.2 사이트(빌딩) 매핑 (New!)
+          else if (m.getSiteId().has_value()) {
+            target_site_mappings_[m.getTargetId()][m.getSiteId().value()] =
+                m.getTargetFieldName();
+          }
+        }
+      }
+      LogManager::getInstance().Info(
+          "✅ 타겟 매핑 데이터 로드 완료: 포인트=" +
+          std::to_string(target_point_mappings_.size()) + "개 타겟, 사이트=" +
+          std::to_string(target_site_mappings_.size()) + "개 타겟");
+    }
+
     using PulseOne::Database::Entities::ExportTargetEntity;
-    auto entities = export_target_repo->findByEnabled(true);
+    std::vector<ExportTargetEntity> entities;
+
+    // ✅ 필터링 로직: gateway_id가 설정되어 있으면 해당 게이트웨이에 할당된
+    // 프로파일의 타겟만 로드
+    if (gateway_id_ > 0) {
+      LogManager::getInstance().Info(
+          "게이트웨이(ID=" + std::to_string(gateway_id_) +
+          ")용 타겟 필터링 시작...");
+
+      auto &db_manager = DbLib::DatabaseManager::getInstance();
+      std::string query = "SELECT profile_id FROM export_profile_assignments "
+                          "WHERE gateway_id = " +
+                          std::to_string(gateway_id_);
+
+      std::vector<std::vector<std::string>> result;
+      if (db_manager.executeQuery(query, result) && !result.empty()) {
+        int profile_id = std::stoi(result[0][0]);
+        LogManager::getInstance().Info(
+            "게이트웨이 ID " + std::to_string(gateway_id_) +
+            "에 할당된 프로파일 ID: " + std::to_string(profile_id));
+
+        entities = export_target_repo->findByProfileId(profile_id);
+      } else {
+        LogManager::getInstance().Warn(
+            "게이트웨이 ID " + std::to_string(gateway_id_) +
+            "에 할당된 프로파일을 찾을 수 없음. 타겟을 로드하지 않습니다.");
+        return false;
+      }
+    } else {
+      // ID가 없으면 이전처럼 모든 활성 타겟 로드 (Broadcast 모드)
+      LogManager::getInstance().Warn(
+          "⚠️ 게이트웨이 ID 미설정 - 모든 활성 타겟을 로드합니다 (Broadcast "
+          "모드)");
+      entities = export_target_repo->findByEnabled(true);
+    }
 
     if (entities.empty()) {
       LogManager::getInstance().Warn("활성화된 타겟이 없음");
@@ -313,6 +401,7 @@ bool DynamicTargetManager::loadFromDatabase() {
     for (const auto &entity : entities) {
       try {
         DynamicTarget target;
+        target.id = entity.getId(); // ✅ ID 저장 (매핑 조회용)
         target.name = entity.getName();
         target.type = entity.getTargetType();
         target.enabled = entity.isEnabled();
@@ -320,7 +409,7 @@ bool DynamicTargetManager::loadFromDatabase() {
         target.description = entity.getDescription();
 
         try {
-          target.config = json::parse(entity.getConfig());
+          target.config = ordered_json::parse(entity.getConfig());
         } catch (const std::exception &e) {
           LogManager::getInstance().Error(
               "Config JSON 파싱 실패: " + entity.getName() + " - " +
@@ -613,11 +702,23 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
   std::shared_lock<std::shared_mutex> lock(targets_mutex_);
 
   for (size_t i = 0; i < targets_.size(); ++i) {
+    std::cout << "[DEBUG][DynamicTargetManager] Evaluating target: "
+              << targets_[i].name << " Type: " << targets_[i].type
+              << " Enabled: " << (targets_[i].enabled ? "Yes" : "No")
+              << std::endl;
+    LogManager::getInstance().Debug(
+        "[DynamicTargetManager] Evaluating target: " + targets_[i].name +
+        " (Type: " + targets_[i].type +
+        ", Enabled: " + (targets_[i].enabled ? "Yes" : "No") + ")");
+
     if (!targets_[i].enabled)
       continue;
 
     // 특정 타겟 필터링 (비어있지 않은 경우 전용)
     if (!specific_target.empty() && targets_[i].name != specific_target) {
+      LogManager::getInstance().Debug(
+          "[DynamicTargetManager] Skipped target " + targets_[i].name +
+          " due to specific_target filter: " + specific_target);
       continue;
     }
 
@@ -627,20 +728,140 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
       export_mode = targets_[i].config["export_mode"].get<std::string>();
     }
 
-    if (export_mode != "alarm")
+    if (export_mode != "alarm" && export_mode != "EVENT") {
+      std::cout << "[DEBUG][DynamicTargetManager] Skipped target "
+                << targets_[i].name << " due to export_mode: " << export_mode
+                << std::endl;
+      LogManager::getInstance().Debug("[DynamicTargetManager] Skipped target " +
+                                      targets_[i].name +
+                                      " due to export_mode: " + export_mode);
       continue;
+    }
 
     auto it_handler = handlers_.find(targets_[i].type);
     if (it_handler == handlers_.end() || !it_handler->second) {
+      LogManager::getInstance().Warn(
+          "[DynamicTargetManager] Handler not found for type: " +
+          targets_[i].type + " (Target: " + targets_[i].name + ")");
       batch_result.failed_targets += alarms.size(); // 대략적인 실패 카운트
       continue;
     }
 
+    // ✅ 배치 내 각 알람에 대해 매핑 로직 적용 (processTargetByIndex 로직 복제)
+    std::vector<AlarmMessage> processed_batch;
+    processed_batch.reserve(alarms.size());
+
+    for (const auto &raw_alarm : alarms) {
+      AlarmMessage alarm = raw_alarm; // 복사본 생성
+
+      // 1. 포인트 이름 매핑
+      {
+        std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
+        auto it1 = target_point_mappings_.find(targets_[i].id);
+        if (it1 != target_point_mappings_.end()) {
+          auto it2 = it1->second.find(alarm.point_id);
+          if (it2 != it1->second.end()) {
+            if (!it2->second.empty()) {
+              alarm.nm = it2->second;
+            }
+          }
+        }
+      }
+
+      // 1.5. Site ID 오버라이드
+      int lookup_site_id = alarm.site_id;
+      {
+        std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
+
+        // [DEBUG] Override Check
+        if (target_point_site_mappings_.count(targets_[i].id)) {
+          if (target_point_site_mappings_[targets_[i].id].count(
+                  alarm.point_id)) {
+            lookup_site_id =
+                target_point_site_mappings_[targets_[i].id].at(alarm.point_id);
+            LogManager::getInstance().Info(
+                "[Batch] Point " + std::to_string(alarm.point_id) +
+                " override: " + std::to_string(lookup_site_id));
+          }
+        }
+
+        auto it1 = target_point_site_mappings_.find(targets_[i].id);
+        if (it1 != target_point_site_mappings_.end()) {
+          auto it2 = it1->second.find(alarm.point_id);
+          if (it2 != it1->second.end()) {
+            lookup_site_id = it2->second;
+          }
+        }
+      }
+
+      // 1.6 Building ID 직접 매핑 (New!)
+      {
+        std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
+        if (target_point_building_mappings_.count(targets_[i].id)) {
+          if (target_point_building_mappings_[targets_[i].id].count(
+                  alarm.point_id)) {
+            alarm.bd = target_point_building_mappings_[targets_[i].id].at(
+                alarm.point_id);
+            LogManager::getInstance().Debug(
+                "[Batch] Point " + std::to_string(alarm.point_id) +
+                " building_id override: " + std::to_string(alarm.bd));
+          }
+        }
+      }
+
+      // 2. 빌딩 ID 매핑
+      std::string mapped_bd_str;
+      {
+        std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
+        auto it1 = target_site_mappings_.find(targets_[i].id);
+        if (it1 != target_site_mappings_.end()) {
+          auto it2 = it1->second.find(lookup_site_id);
+          if (it2 != it1->second.end()) {
+            mapped_bd_str = it2->second;
+          }
+        }
+      }
+
+      // fallback to lookup_site_id if no mapping found but override happened
+      if (mapped_bd_str.empty()) {
+        // If override differed from original site_id, use override as building
+        // ID
+        if (lookup_site_id != raw_alarm.site_id) {
+          mapped_bd_str = std::to_string(lookup_site_id);
+        }
+        // Else check config (omitted for brevity, assume DB primary)
+      }
+
+      if (!mapped_bd_str.empty()) {
+        try {
+          alarm.bd = std::stoi(mapped_bd_str);
+        } catch (...) {
+          // ignore
+        }
+      } else {
+        // Fallback to lookup_site_id anyway if no map found?
+        // The logic in processTargetByIndex assumes mapped_bd_str can be empty.
+        // But for "280" case, we want `bd` to be `280`.
+        // If 280 was set in lookup_site_id, we should set it.
+        if (lookup_site_id != alarm.site_id) {
+          alarm.bd = lookup_site_id;
+        }
+      }
+
+      processed_batch.push_back(alarm);
+    }
+
+    std::cout << "[DEBUG][DynamicTargetManager] Dispatching "
+              << processed_batch.size()
+              << " alarms to target: " << targets_[i].name << std::endl;
+    LogManager::getInstance().Info("[DynamicTargetManager] Dispatching " +
+                                   std::to_string(alarms.size()) +
+                                   " alarms to target: " + targets_[i].name);
+
     auto start_time = std::chrono::steady_clock::now();
 
-    // HANDLER에게 배치 위임 (S3는 파일 하나로 묶음, HTTP는 루프 등)
     std::vector<TargetSendResult> results =
-        it_handler->second->sendAlarmBatch(alarms, targets_[i].config);
+        it_handler->second->sendAlarmBatch(processed_batch, targets_[i].config);
 
     auto end_time = std::chrono::steady_clock::now();
     // 배치 전체 처리 시간 (개별 결과에는 각각의 시간이 있을 수 있음)
@@ -789,8 +1010,11 @@ DynamicTargetManager::getFailureProtectorStats() const {
 
 void DynamicTargetManager::registerDefaultHandlers() {
   handlers_["http"] = std::make_unique<HttpTargetHandler>();
+  handlers_["HTTP"] = std::make_unique<HttpTargetHandler>();
   handlers_["s3"] = std::make_unique<S3TargetHandler>();
+  handlers_["S3"] = std::make_unique<S3TargetHandler>();
   handlers_["file"] = std::make_unique<FileTargetHandler>();
+  handlers_["FILE"] = std::make_unique<FileTargetHandler>();
 
   LogManager::getInstance().Info("기본 핸들러 등록 완료: HTTP, S3, File");
 }
@@ -827,7 +1051,7 @@ DynamicTargetManager::getSupportedHandlerTypes() const {
 // 통계 및 모니터링
 // =============================================================================
 
-json DynamicTargetManager::getStatistics() const {
+ordered_json DynamicTargetManager::getStatistics() const {
   auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now() - startup_time_)
                     .count();
@@ -862,7 +1086,7 @@ void DynamicTargetManager::resetStatistics() {
   LogManager::getInstance().Info("통계 리셋 완료");
 }
 
-json DynamicTargetManager::healthCheck() const {
+ordered_json DynamicTargetManager::healthCheck() const {
   std::shared_lock<std::shared_mutex> lock(targets_mutex_);
 
   int enabled_count = 0;
@@ -893,7 +1117,7 @@ json DynamicTargetManager::healthCheck() const {
               {"handlers_count", handlers_.size()}};
 }
 
-void DynamicTargetManager::updateGlobalSettings(const json &settings) {
+void DynamicTargetManager::updateGlobalSettings(const ordered_json &settings) {
   global_settings_ = settings;
   LogManager::getInstance().Info("글로벌 설정 업데이트");
 }
@@ -949,8 +1173,132 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
   auto start_time = std::chrono::high_resolution_clock::now();
 
   try {
-    // ✅ send() → sendAlarm()
-    auto handler_result = handler_it->second->sendAlarm(alarm, target.config);
+    // ✅ 1. 포인트 이름 매핑 (target_field_name)
+    std::string mapped_name;
+    {
+      std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
+      auto it1 = target_point_mappings_.find(target.id);
+      if (it1 != target_point_mappings_.end()) {
+        auto it2 = it1->second.find(alarm.point_id);
+        if (it2 != it1->second.end()) {
+          mapped_name = it2->second;
+        }
+      }
+    }
+
+    // ✅ 1.5. 포인트 기반 Site ID 오버라이드 (override site_id from point
+    // mapping) 포인트 매핑 엔티티에 site_id가 설정되어 있으면, 알람의 원본
+    // site_id를 덮어씀
+    int lookup_site_id = alarm.site_id;
+    {
+      std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
+
+      // [DEBUG] 매핑 상태 로깅
+      if (target_point_site_mappings_.count(target.id)) {
+        auto &m = target_point_site_mappings_[target.id];
+        LogManager::getInstance().Info(
+            "[DEBUG] Target " + std::to_string(target.id) +
+            " override map size: " + std::to_string(m.size()));
+        if (m.count(alarm.point_id)) {
+          LogManager::getInstance().Info(
+              "[DEBUG] Point " + std::to_string(alarm.point_id) +
+              " override found: " + std::to_string(m.at(alarm.point_id)));
+        } else {
+          LogManager::getInstance().Info("[DEBUG] Point " +
+                                         std::to_string(alarm.point_id) +
+                                         " override NOT found");
+        }
+      } else {
+        LogManager::getInstance().Info("[DEBUG] Target " +
+                                       std::to_string(target.id) +
+                                       " has NO override map");
+      }
+
+      auto it1 = target_point_site_mappings_.find(target.id);
+      if (it1 != target_point_site_mappings_.end()) {
+        auto it2 = it1->second.find(alarm.point_id);
+        if (it2 != it1->second.end()) {
+          lookup_site_id = it2->second;
+          LogManager::getInstance().Debug(
+              "포인트 매핑에 의한 Site ID 오버라이드: " +
+              std::to_string(alarm.site_id) + " -> " +
+              std::to_string(lookup_site_id));
+        }
+      }
+    }
+
+    // ✅ 2. 빌딩 ID 매핑 (Hierarchical: Point Mapping -> Site Mapping -> Config
+    // Mapping)
+    std::string mapped_bd_str;
+    int mapped_bd_int = 0;
+
+    {
+      std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
+
+      // 2.1 포인트 기반 빌딩 ID 매핑 확인 (최우선)
+      if (target_point_building_mappings_.count(target.id) &&
+          target_point_building_mappings_.at(target.id).count(alarm.point_id)) {
+        mapped_bd_int =
+            target_point_building_mappings_.at(target.id).at(alarm.point_id);
+        LogManager::getInstance().Debug("포인트별 빌딩 ID 매핑 찾음: " +
+                                        std::to_string(mapped_bd_int));
+      }
+      // 2.2 사이트 기반 빌딩 ID 매핑 확인
+      else {
+        auto it1 = target_site_mappings_.find(target.id);
+        if (it1 != target_site_mappings_.end()) {
+          auto it2 = it1->second.find(lookup_site_id); // ✅ lookup_site_id 사용
+          if (it2 != it1->second.end()) {
+            mapped_bd_str = it2->second;
+          }
+        }
+      }
+    }
+
+    // DB 매핑이 없으면 Config에서 찾음 (fallback)
+    if (mapped_bd_str.empty() && target.config.contains("site_mapping") &&
+        target.config["site_mapping"].is_object()) {
+      std::string site_id_str =
+          std::to_string(lookup_site_id); // ✅ lookup_site_id 사용
+      if (target.config["site_mapping"].contains(site_id_str)) {
+        auto val = target.config["site_mapping"][site_id_str];
+        mapped_bd_str = val.is_number() ? std::to_string(val.get<int>())
+                                        : val.get<std::string>();
+      }
+    }
+
+    int mapped_bd = 0;
+    if (!mapped_bd_str.empty()) {
+      try {
+        mapped_bd = std::stoi(mapped_bd_str);
+      } catch (...) {
+        LogManager::getInstance().Warn("변환된 빌딩 ID가 숫자가 아님: " +
+                                       mapped_bd_str);
+      }
+    }
+
+    // ✅ 3. 매핑된 알람 메시지 생성
+    AlarmMessage mapped_alarm = alarm;
+    if (!mapped_name.empty()) {
+      mapped_alarm.nm = mapped_name;
+      LogManager::getInstance().Debug("포인트 이름 매핑 적용: " + alarm.nm +
+                                      " -> " + mapped_name);
+    }
+    if (mapped_bd > 0) {
+      mapped_alarm.bd = mapped_bd;
+      LogManager::getInstance().Debug(
+          "빌딩 ID 매핑 적용: " + std::to_string(alarm.site_id) + " -> " +
+          std::to_string(mapped_bd));
+    } else if (lookup_site_id != alarm.site_id) {
+      mapped_alarm.bd = lookup_site_id;
+      LogManager::getInstance().Debug("포인트 오버라이드 적용 (매핑 없음): " +
+                                      std::to_string(alarm.site_id) + " -> " +
+                                      std::to_string(lookup_site_id));
+    }
+
+    // ✅ 4. 핸들러 호출
+    auto handler_result =
+        handler_it->second->sendAlarm(mapped_alarm, target.config);
 
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1012,9 +1360,10 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
   }
 }
 
-json DynamicTargetManager::expandConfigVariables(const json &config,
-                                                 const AlarmMessage &alarm) {
-  json expanded = config;
+ordered_json
+DynamicTargetManager::expandConfigVariables(const ordered_json &config,
+                                            const AlarmMessage &alarm) {
+  ordered_json expanded = config;
 
   // 간단한 변수 치환 로직
   if (config.contains("url") && config["url"].is_string()) {

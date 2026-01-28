@@ -495,11 +495,11 @@ std::vector<ExportDataPoint> ScheduledExporter::collectDataForSchedule(
     // 3. 각 매핑된 포인트의 데이터 조회
     for (const auto &mapping : mappings) {
       // ✅ isEnabled() 사용
-      if (!mapping.isEnabled())
+      if (!mapping.isEnabled() || !mapping.getPointId().has_value())
         continue;
 
       auto point_data =
-          fetchPointData(mapping.getPointId(), start_time, end_time);
+          fetchPointData(mapping.getPointId().value(), start_time, end_time);
 
       if (point_data.has_value()) {
         ExportDataPoint dp = point_data.value();
@@ -587,6 +587,8 @@ ScheduledExporter::calculateTimeRange(const std::string &data_range,
 std::optional<ExportDataPoint> ScheduledExporter::fetchPointData(
     int point_id, const std::chrono::system_clock::time_point &start_time,
     const std::chrono::system_clock::time_point &end_time) {
+  (void)start_time;
+  (void)end_time;
 
   if (!redis_client_ || !redis_client_->isConnected()) {
     return std::nullopt;
@@ -632,6 +634,7 @@ bool ScheduledExporter::sendDataToTarget(
     const std::string &target_name,
     const std::vector<ExportDataPoint> &data_points,
     const PulseOne::Database::Entities::ExportScheduleEntity &schedule) {
+  (void)schedule;
 
   try {
     // 1. ValueMessage 벡터로 변환 (C# 호환 포맷)
@@ -806,6 +809,8 @@ std::vector<std::vector<ExportDataPoint>> ScheduledExporter::createBatches(
 std::chrono::system_clock::time_point ScheduledExporter::calculateNextRunTime(
     const std::string &cron_expression, const std::string &timezone,
     const std::chrono::system_clock::time_point &from_time) {
+  (void)cron_expression;
+  (void)timezone;
 
   // 간단한 구현: 현재 + 1시간 (실제로는 Cron 파서 필요)
   // TODO: 실제 Cron 표현식 파싱 라이브러리 사용 (ccronexpr 등)

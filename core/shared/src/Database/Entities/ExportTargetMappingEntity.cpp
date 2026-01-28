@@ -20,10 +20,10 @@ namespace Entities {
 // =============================================================================
 
 ExportTargetMappingEntity::ExportTargetMappingEntity()
-    : BaseEntity(), target_id_(0), point_id_(0), is_enabled_(true) {}
+    : BaseEntity(), target_id_(0), is_enabled_(true) {}
 
 ExportTargetMappingEntity::ExportTargetMappingEntity(int id)
-    : BaseEntity(id), target_id_(0), point_id_(0), is_enabled_(true) {}
+    : BaseEntity(id), target_id_(0), is_enabled_(true) {}
 
 ExportTargetMappingEntity::~ExportTargetMappingEntity() {}
 
@@ -121,7 +121,18 @@ json ExportTargetMappingEntity::toJson() const {
   try {
     j["id"] = getId();
     j["target_id"] = target_id_;
-    j["point_id"] = point_id_;
+    if (point_id_.has_value())
+      j["point_id"] = point_id_.value();
+    else
+      j["point_id"] = nullptr;
+    if (site_id_.has_value())
+      j["site_id"] = site_id_.value();
+    else
+      j["site_id"] = nullptr;
+    if (building_id_.has_value())
+      j["building_id"] = building_id_.value();
+    else
+      j["building_id"] = nullptr;
     j["target_field_name"] = target_field_name_;
     j["target_description"] = target_description_;
     j["conversion_config"] = conversion_config_;
@@ -144,8 +155,14 @@ bool ExportTargetMappingEntity::fromJson(const json &data) {
     if (data.contains("target_id")) {
       target_id_ = data["target_id"].get<int>();
     }
-    if (data.contains("point_id")) {
+    if (data.contains("point_id") && !data["point_id"].is_null()) {
       point_id_ = data["point_id"].get<int>();
+    }
+    if (data.contains("site_id") && !data["site_id"].is_null()) {
+      site_id_ = data["site_id"].get<int>();
+    }
+    if (data.contains("building_id") && !data["building_id"].is_null()) {
+      building_id_ = data["building_id"].get<int>();
     }
     if (data.contains("target_field_name")) {
       target_field_name_ = data["target_field_name"].get<std::string>();
@@ -173,7 +190,12 @@ std::string ExportTargetMappingEntity::toString() const {
   oss << "ExportTargetMappingEntity[";
   oss << "id=" << getId();
   oss << ", target_id=" << target_id_;
-  oss << ", point_id=" << point_id_;
+  if (point_id_.has_value())
+    oss << ", point_id=" << point_id_.value();
+  if (site_id_.has_value())
+    oss << ", site_id=" << site_id_.value();
+  if (building_id_.has_value())
+    oss << ", building_id=" << building_id_.value();
   oss << ", enabled=" << (is_enabled_ ? "true" : "false");
   oss << "]";
   return oss.str();
@@ -190,7 +212,7 @@ bool ExportTargetMappingEntity::hasConversion() const {
 bool ExportTargetMappingEntity::validate() const {
   if (target_id_ <= 0)
     return false;
-  if (point_id_ <= 0)
+  if (!point_id_.has_value() && !site_id_.has_value())
     return false;
   if (target_field_name_.empty())
     return false;

@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     
     -- 🔥 서버 식별 정보
     server_name VARCHAR(100) NOT NULL,
+    server_type VARCHAR(20) DEFAULT 'collector',          -- collector, gateway
+    description TEXT,
     factory_name VARCHAR(100),
     location VARCHAR(200),
     
@@ -100,6 +102,9 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     -- 🔥 메타데이터
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_deleted INTEGER DEFAULT 0,
+    max_devices INTEGER DEFAULT 100,
+    max_data_points INTEGER DEFAULT 1000,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     

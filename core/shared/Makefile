@@ -251,8 +251,8 @@ ifneq ($(DATA_OBJECTS),)
 	@ranlib $@ 2>/dev/null || true
 	@echo -e "$(GREEN)   ✅ DataReader.cpp, DataWriter.cpp compiled$(NC)"
 else
-	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
-	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+	@echo '/* Header-only library - dummy object */' > /tmp/dummy_data.c && $(CXX) -c /tmp/dummy_data.c -o /tmp/dummy_data.o
+	@ar rcs $@ /tmp/dummy_data.o && rm -f /tmp/dummy_data.c /tmp/dummy_data.o
 endif
 
 export: $(EXPORT_LIB)
@@ -262,8 +262,8 @@ ifneq ($(EXPORT_OBJECTS),)
 	@ar rcs $@ $(EXPORT_OBJECTS)
 	@ranlib $@ 2>/dev/null || true
 else
-	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
-	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+	@echo '/* Header-only library - dummy object */' > /tmp/dummy_export.c && $(CXX) -c /tmp/dummy_export.c -o /tmp/dummy_export.o
+	@ar rcs $@ /tmp/dummy_export.o && rm -f /tmp/dummy_export.c /tmp/dummy_export.o
 endif
 
 alarm: $(ALARM_LIB)
