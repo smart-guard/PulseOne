@@ -621,47 +621,47 @@ const ExportTargetManager: React.FC = () => {
                                         ) : editingTarget?.target_type === 's3' ? (
                                             <>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>AWS S3 Bucket</label>
+                                                    <label>S3 Service URL (Endpoint)</label>
                                                     <input
                                                         type="text"
                                                         className="mgmt-input"
-                                                        placeholder="예: my-data-bucket"
-                                                        value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).bucket || ''; } catch { return ''; } })()}
+                                                        placeholder="예: https://s3.ap-northeast-2.amazonaws.com/"
+                                                        value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).S3ServiceUrl || ''; } catch { return ''; } })()}
                                                         onChange={e => {
                                                             let c: any = {};
                                                             try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
-                                                            c = { ...c, bucket: e.target.value };
+                                                            c = { ...c, S3ServiceUrl: e.target.value };
                                                             setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
                                                         }}
                                                     />
                                                 </div>
                                                 <div style={{ display: 'flex', gap: '10px' }}>
                                                     <div className="mgmt-modal-form-group" style={{ flex: 1 }}>
-                                                        <label>Region</label>
+                                                        <label>Bucket Name</label>
                                                         <input
                                                             type="text"
                                                             className="mgmt-input"
-                                                            placeholder="예: ap-northeast-2"
-                                                            value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).region || ''; } catch { return ''; } })()}
+                                                            placeholder="예: hdcl-csp-stg"
+                                                            value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).BucketName || ''; } catch { return ''; } })()}
                                                             onChange={e => {
                                                                 let c: any = {};
                                                                 try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
-                                                                c = { ...c, region: e.target.value };
+                                                                c = { ...c, BucketName: e.target.value };
                                                                 setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
                                                             }}
                                                         />
                                                     </div>
                                                     <div className="mgmt-modal-form-group" style={{ flex: 1 }}>
-                                                        <label>Path Prefix (Folder)</label>
+                                                        <label>Folder (Path Prefix)</label>
                                                         <input
                                                             type="text"
                                                             className="mgmt-input"
-                                                            placeholder="예: data/logs/"
-                                                            value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).prefix || ''; } catch { return ''; } })()}
+                                                            placeholder="예: icos/alarm"
+                                                            value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).Folder || ''; } catch { return ''; } })()}
                                                             onChange={e => {
                                                                 let c: any = {};
                                                                 try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
-                                                                c = { ...c, prefix: e.target.value };
+                                                                c = { ...c, Folder: e.target.value };
                                                                 setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
                                                             }}
                                                         />
@@ -673,11 +673,11 @@ const ExportTargetManager: React.FC = () => {
                                                         type="text"
                                                         className="mgmt-input"
                                                         placeholder="AKIA..."
-                                                        value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).accessKey || ''; } catch { return ''; } })()}
+                                                        value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).AccessKeyID || ''; } catch { return ''; } })()}
                                                         onChange={e => {
                                                             let c: any = {};
                                                             try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
-                                                            c = { ...c, accessKey: e.target.value };
+                                                            c = { ...c, AccessKeyID: e.target.value };
                                                             setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
                                                         }}
                                                     />
@@ -688,11 +688,11 @@ const ExportTargetManager: React.FC = () => {
                                                         type="password"
                                                         className="mgmt-input"
                                                         placeholder="Secret Key..."
-                                                        value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).secretKey || ''; } catch { return ''; } })()}
+                                                        value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).SecretAccessKey || ''; } catch { return ''; } })()}
                                                         onChange={e => {
                                                             let c: any = {};
                                                             try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
-                                                            c = { ...c, secretKey: e.target.value };
+                                                            c = { ...c, SecretAccessKey: e.target.value };
                                                             setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
                                                         }}
                                                     />
@@ -1593,8 +1593,8 @@ const ExportProfileBuilder: React.FC = () => {
 
                 return {
                     ...p,
-                    // Preference: Saved mapping override > Master Metadata > Stale local snapshot > Default
-                    site_id: lm?.site_id || lm?.building_id || mp?.site_id || p.site_id || p.building_id || 0,
+                    // Preference: Saved mapping override > Profile Snapshot > Master Metadata > Default
+                    site_id: lm?.site_id || lm?.building_id || p.site_id || p.building_id || mp?.site_id || 0,
                     target_field_name: lm?.target_field_name || p.target_field_name || p.name,
                     scale: lm?.conversion_config?.scale ?? p.scale ?? 1,
                     offset: lm?.conversion_config?.offset ?? p.offset ?? 0
@@ -2618,7 +2618,7 @@ const ExportGatewayWizard: React.FC<{
             auth: { type: 'x-api-key', apiKey: '' }
         }] as any[],
         config_mqtt: [{ url: '', topic: 'pulseone/data' }] as any[],
-        config_s3: [{ bucket: '', region: '', accessKeyId: '', secretAccessKey: '' }] as any[]
+        config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '' }] as any[]
     });
 
     const [mappings, setMappings] = useState<Partial<ExportTargetMapping>[]>([]);
@@ -2665,7 +2665,7 @@ const ExportGatewayWizard: React.FC<{
                     auth: { type: 'x-api-key', apiKey: '' }
                 }],
                 config_mqtt: [{ url: '', topic: 'pulseone/data' }],
-                config_s3: [{ bucket: '', region: '', accessKeyId: '', secretAccessKey: '' }]
+                config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '' }]
             });
 
             if (editingGateway) {
@@ -2732,8 +2732,17 @@ const ExportGatewayWizard: React.FC<{
 
                 const s3Targets = profileTargets.filter(t => t.target_type.toUpperCase() === 'S3');
                 freshTargetData.config_s3 = s3Targets.length > 0
-                    ? s3Targets.map(t => typeof t.config === 'string' ? JSON.parse(t.config) : t.config)
-                    : [{ bucket: '', region: '', accessKeyId: '', secretAccessKey: '' }];
+                    ? s3Targets.map(t => {
+                        const c = typeof t.config === 'string' ? JSON.parse(t.config) : t.config;
+                        return {
+                            S3ServiceUrl: c.S3ServiceUrl || c.region || '',
+                            BucketName: c.BucketName || c.bucket || c.bucket_name || '',
+                            Folder: c.Folder || c.prefix || '',
+                            AccessKeyID: c.AccessKeyID || c.accessKeyId || c.accessKey || '',
+                            SecretAccessKey: c.SecretAccessKey || c.secretAccessKey || c.secretKey || ''
+                        };
+                    })
+                    : [{ S3ServiceUrl: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '' }];
 
                 setTargetData(freshTargetData);
                 hydratedTargetIdRef.current = editingGateway.id;
@@ -3400,28 +3409,41 @@ const ExportGatewayWizard: React.FC<{
                                         <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--primary-700)' }}><i className="fab fa-aws" /> AWS S3 목적지 설정</div>
-                                                <Button type="link" size="small" icon={<i className="fas fa-plus" />} onClick={() => setTargetData({ ...targetData, config_s3: [...targetData.config_s3, { bucket: '', region: '', accessKeyId: '', secretAccessKey: '' }] })}>추가</Button>
+                                                <Button type="link" size="small" icon={<i className="fas fa-plus" />} onClick={() => setTargetData({ ...targetData, config_s3: [...targetData.config_s3, { S3ServiceUrl: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '' }] })}>추가</Button>
                                             </div>
                                             {targetData.config_s3.map((config, idx) => (
                                                 <div key={idx} style={{ padding: '16px', background: 'white', borderRadius: '8px', border: '1px solid var(--primary-100)', position: 'relative' }}>
                                                     {targetData.config_s3.length > 1 && (
                                                         <Button type="text" danger size="small" icon={<i className="fas fa-trash-alt" />} style={{ position: 'absolute', top: 8, right: 8 }} onClick={() => setTargetData({ ...targetData, config_s3: targetData.config_s3.filter((_, i) => i !== idx) })} />
                                                     )}
+                                                    <div className="mgmt-modal-form-group">
+                                                        <label>S3 Service URL (Endpoint)</label>
+                                                        <Input
+                                                            size="large"
+                                                            placeholder="예: https://s3.ap-northeast-2.amazonaws.com/"
+                                                            value={config.S3ServiceUrl}
+                                                            onChange={e => {
+                                                                const next = [...targetData.config_s3];
+                                                                next[idx].S3ServiceUrl = e.target.value;
+                                                                setTargetData({ ...targetData, config_s3: next });
+                                                            }}
+                                                        />
+                                                    </div>
                                                     <Row gutter={12}>
                                                         <Col span={12}>
                                                             <Form.Item label="Bucket Name" required style={{ marginBottom: '12px' }}>
-                                                                <Input size="large" value={config.bucket} onChange={e => {
+                                                                <Input size="large" value={config.BucketName} placeholder="예: hdcl-csp-stg" onChange={e => {
                                                                     const next = [...targetData.config_s3];
-                                                                    next[idx].bucket = e.target.value;
+                                                                    next[idx].BucketName = e.target.value;
                                                                     setTargetData({ ...targetData, config_s3: next });
                                                                 }} />
                                                             </Form.Item>
                                                         </Col>
                                                         <Col span={12}>
-                                                            <Form.Item label="Region" required style={{ marginBottom: '12px' }}>
-                                                                <Input size="large" value={config.region} onChange={e => {
+                                                            <Form.Item label="Folder" required style={{ marginBottom: '12px' }}>
+                                                                <Input size="large" value={config.Folder} placeholder="예: icos/alarm" onChange={e => {
                                                                     const next = [...targetData.config_s3];
-                                                                    next[idx].region = e.target.value;
+                                                                    next[idx].Folder = e.target.value;
                                                                     setTargetData({ ...targetData, config_s3: next });
                                                                 }} />
                                                             </Form.Item>
@@ -3430,18 +3452,18 @@ const ExportGatewayWizard: React.FC<{
                                                     <Row gutter={12}>
                                                         <Col span={12}>
                                                             <Form.Item label="Access Key" style={{ marginBottom: 0 }}>
-                                                                <Input.Password size="large" value={config.accessKeyId} onChange={e => {
+                                                                <Input size="large" value={config.AccessKeyID} onChange={e => {
                                                                     const next = [...targetData.config_s3];
-                                                                    next[idx].accessKeyId = e.target.value;
+                                                                    next[idx].AccessKeyID = e.target.value;
                                                                     setTargetData({ ...targetData, config_s3: next });
                                                                 }} />
                                                             </Form.Item>
                                                         </Col>
                                                         <Col span={12}>
                                                             <Form.Item label="Secret Key" style={{ marginBottom: 0 }}>
-                                                                <Input.Password size="large" value={config.secretAccessKey} onChange={e => {
+                                                                <Input.Password size="large" value={config.SecretAccessKey} onChange={e => {
                                                                     const next = [...targetData.config_s3];
-                                                                    next[idx].secretAccessKey = e.target.value;
+                                                                    next[idx].SecretAccessKey = e.target.value;
                                                                     setTargetData({ ...targetData, config_s3: next });
                                                                 }} />
                                                             </Form.Item>

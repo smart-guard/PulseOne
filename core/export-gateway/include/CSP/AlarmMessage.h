@@ -89,6 +89,10 @@ struct AlarmMessage {
         bd = j["site_id"].is_number()
                  ? j["site_id"].get<int>()
                  : std::stoi(j["site_id"].get<std::string>());
+      else if (j.contains("tenant_id"))
+        bd = j["tenant_id"].is_number()
+                 ? j["tenant_id"].get<int>()
+                 : std::stoi(j["tenant_id"].get<std::string>());
 
       // 2. Name
       if (j.contains("nm"))
@@ -100,16 +104,35 @@ struct AlarmMessage {
       if (j.contains("vl")) {
         if (j["vl"].is_number())
           vl = j["vl"].get<double>();
-      } else if (j.contains("val")) { // Support 'val' from Redis
+      } else if (j.contains("val")) {
         if (j["val"].is_number())
           vl = j["val"].get<double>();
+      } else if (j.contains("trigger_value")) {
+        if (j["trigger_value"].is_number())
+          vl = j["trigger_value"].get<double>();
+        else if (j["trigger_value"].is_string()) {
+          try {
+            vl = std::stod(j["trigger_value"].get<std::string>());
+          } catch (...) {
+            vl = 0.0;
+          }
+        }
       }
 
       // 4. Timestamp
       if (j.contains("tm"))
         tm = j["tm"].get<std::string>();
-      else if (j.contains("timestamp"))
-        tm = j["timestamp"].get<std::string>();
+      else if (j.contains("timestamp")) {
+        if (j["timestamp"].is_string()) {
+          tm = j["timestamp"].get<std::string>();
+        } else if (j["timestamp"].is_number()) {
+          // MS timestamp (int64) -> yyyy-MM-dd HH:mm:ss.fff
+          int64_t ms = j["timestamp"].get<int64_t>();
+          auto tp = std::chrono::system_clock::time_point(
+              std::chrono::milliseconds(ms));
+          tm = time_to_csharp_format(tp, true);
+        }
+      }
 
       // 5. Status/State
       if (j.contains("al")) {
@@ -117,28 +140,29 @@ struct AlarmMessage {
           al = j["al"].get<int>();
         else {
           std::string s = j["al"].get<std::string>();
-          // Normalize "active"/"CRITICAL" etc if needed, but keeping simple int
-          // parsing preferred
-          if (s == "ALARM" || s == "1" || s == "active")
+          if (s == "ALARM" || s == "1" || s == "active" || s == "ACTIVE")
             al = 1;
           else
             al = 0;
         }
+      } else if (j.contains("state")) {
+        std::string s = j["state"].get<std::string>();
+        if (s == "ALARM" || s == "1" || s == "active" || s == "ACTIVE")
+          al = 1;
+        else
+          al = 0;
       }
 
       if (j.contains("st")) {
         if (j["st"].is_number())
           st = j["st"].get<int>();
-        else {
-          // Support string "ALARM" mapping to an int state if needed
-          // For now assume input might be mixed
-          st = 1;
-        }
       }
 
       // 6. Description
       if (j.contains("des"))
         des = j["des"].get<std::string>();
+      else if (j.contains("message"))
+        des = j["message"].get<std::string>();
 
       // 7. Internal Mapping Inputs
       if (j.contains("site_id"))

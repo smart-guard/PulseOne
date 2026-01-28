@@ -753,6 +753,14 @@ app.post('/api/test/alarm', (req, res) => {
 // =============================================================================
 logger.system('INFO', 'API 라우트 등록 시작');
 
+// =============================================================================
+// E2E Verification Mock Endpoint (Temporary)
+// =============================================================================
+app.post('/api/mock/insite', (req, res) => {
+    logger.system('INFO', '🚀 [MOCK] Captured Export Payload:', JSON.stringify(req.body, null, 2));
+    res.status(200).json({ success: true, message: 'Data received successfully', timestamp: logger.getKSTTimestamp() });
+});
+
 // 기본 시스템 라우트들
 const systemRoutes = require('./routes/system');
 const rbacRoutes = require('./routes/rbac');

@@ -29,7 +29,7 @@ namespace PulseOne {
 namespace CSP {
 
 using json = nlohmann::json;
-using ordered_json = nlohmann::ordered_json;
+using json = nlohmann::json;
 namespace Utils = PulseOne::Utils;
 namespace Client = PulseOne::Client;
 
@@ -64,7 +64,7 @@ S3TargetHandler::~S3TargetHandler() {
 // ITargetHandler 인터페이스 구현
 // =============================================================================
 
-bool S3TargetHandler::initialize(const ordered_json &config) {
+bool S3TargetHandler::initialize(const json &config) {
   // ✅ Stateless 패턴: initialize()는 선택적
   // 설정 검증만 수행
   std::vector<std::string> errors;
@@ -81,7 +81,7 @@ bool S3TargetHandler::initialize(const ordered_json &config) {
 }
 
 TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage &alarm,
-                                            const ordered_json &config) {
+                                            const json &config) {
   TargetSendResult result;
   result.target_type = "S3";
   result.target_name = getTargetName(config);
@@ -166,7 +166,7 @@ TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage &alarm,
 
 std::vector<TargetSendResult>
 S3TargetHandler::sendAlarmBatch(const std::vector<AlarmMessage> &alarms,
-                                const ordered_json &config) {
+                                const json &config) {
   std::vector<TargetSendResult> results;
   if (alarms.empty())
     return results;
@@ -251,7 +251,7 @@ S3TargetHandler::sendAlarmBatch(const std::vector<AlarmMessage> &alarms,
   return results;
 }
 
-bool S3TargetHandler::testConnection(const ordered_json &config) {
+bool S3TargetHandler::testConnection(const json &config) {
   try {
     LogManager::getInstance().Info("S3 연결 테스트 시작");
 
@@ -337,7 +337,7 @@ bool S3TargetHandler::testConnection(const ordered_json &config) {
   }
 }
 
-bool S3TargetHandler::validateConfig(const ordered_json &config,
+bool S3TargetHandler::validateConfig(const json &config,
                                      std::vector<std::string> &errors) {
   errors.clear();
 
@@ -353,33 +353,34 @@ bool S3TargetHandler::validateConfig(const ordered_json &config,
     return false;
   }
 
-  // 버킷명 형식 검증 (AWS S3 규칙)
-  if (bucket_name.length() < 3 || bucket_name.length() > 63) {
-    errors.push_back("bucket_name은 3-63자여야 합니다");
+  // 버킷명 형식 검증 (AWS S3 규칙) - '/' 포함 허용 (Folder 지원)
+  if (bucket_name.length() < 3) {
+    errors.push_back("bucket_name은 3자 이상이어야 합니다");
     return false;
   }
 
-  // 영문 소문자, 숫자, 하이픈만 허용
+  // 영문 소문자, 숫자, 하이픈, 슬래시(/) 허용
   if (!std::regex_match(bucket_name,
-                        std::regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$"))) {
-    errors.push_back("bucket_name은 소문자, 숫자, 하이픈만 사용 가능합니다");
+                        std::regex("^[a-z0-9][a-z0-9.-/]*[a-z0-9]$"))) {
+    errors.push_back(
+        "bucket_name은 소문자, 숫자, 하이픈, 슬래시(/)만 사용 가능합니다");
     return false;
   }
 
   return true;
 }
 
-ordered_json S3TargetHandler::getStatus() const {
+json S3TargetHandler::getStatus() const {
   auto cache_stats = getS3ClientCache().getStats();
 
-  return ordered_json{{"type", "S3"},
-                      {"upload_count", upload_count_.load()},
-                      {"success_count", success_count_.load()},
-                      {"failure_count", failure_count_.load()},
-                      {"total_bytes_uploaded", total_bytes_uploaded_.load()},
-                      {"cache_stats",
-                       {{"active_clients", cache_stats.active_clients},
-                        {"total_entries", cache_stats.total_entries}}}};
+  return json{{"type", "S3"},
+              {"upload_count", upload_count_.load()},
+              {"success_count", success_count_.load()},
+              {"failure_count", failure_count_.load()},
+              {"total_bytes_uploaded", total_bytes_uploaded_.load()},
+              {"cache_stats",
+               {{"active_clients", cache_stats.active_clients},
+                {"total_entries", cache_stats.total_entries}}}};
 }
 
 void S3TargetHandler::cleanup() {
@@ -392,7 +393,7 @@ void S3TargetHandler::cleanup() {
 // =============================================================================
 
 std::shared_ptr<Client::S3Client>
-S3TargetHandler::getOrCreateClient(const ordered_json &config,
+S3TargetHandler::getOrCreateClient(const json &config,
                                    const std::string &bucket_name) {
 
   // ✅ 캐시 키: bucket_name (버킷별로 클라이언트 재사용)
@@ -437,8 +438,12 @@ S3TargetHandler::getOrCreateClient(const ordered_json &config,
   }
 }
 
-std::string
-S3TargetHandler::extractBucketName(const ordered_json &config) const {
+std::string S3TargetHandler::extractBucketName(const json &config) const {
+  if (config.contains("BucketName") &&
+      !config["BucketName"].get<std::string>().empty()) {
+    std::string bucket_name = config["BucketName"].get<std::string>();
+    return expandEnvironmentVariables(bucket_name);
+  }
   if (config.contains("bucket_name") &&
       !config["bucket_name"].get<std::string>().empty()) {
     std::string bucket_name = config["bucket_name"].get<std::string>();
@@ -447,23 +452,46 @@ S3TargetHandler::extractBucketName(const ordered_json &config) const {
   return "";
 }
 
-Client::S3Config
-S3TargetHandler::buildS3Config(const ordered_json &config) const {
+Client::S3Config S3TargetHandler::buildS3Config(const json &config) const {
   Client::S3Config s3_config;
 
   // 버킷명
   s3_config.bucket_name = extractBucketName(config);
 
-  // 리전
-  std::string region = config.value("region", "us-east-1");
-  s3_config.region = expandEnvironmentVariables(region);
+  // Folder (Path Prefix) 처리
+  if (config.contains("Folder")) {
+    s3_config.prefix = config["Folder"].get<std::string>();
+  } else if (config.contains("prefix")) {
+    s3_config.prefix = config["prefix"].get<std::string>();
+  }
+  s3_config.prefix = expandEnvironmentVariables(s3_config.prefix);
 
-  // 엔드포인트
-  if (config.contains("endpoint")) {
-    std::string endpoint = config["endpoint"].get<std::string>();
-    s3_config.endpoint = expandEnvironmentVariables(endpoint);
+  // S3ServiceUrl (Endpoint) 우선 처리
+  if (config.contains("S3ServiceUrl")) {
+    std::string url = config["S3ServiceUrl"].get<std::string>();
+    s3_config.endpoint = expandEnvironmentVariables(url);
+
+    // URL에서 Region 추출 시도 (예: https://s3.ap-northeast-2.amazonaws.com)
+    std::regex region_regex("s3\\.([a-z0-9-]+)\\.amazonaws\\.com");
+    std::smatch match;
+    if (std::regex_search(s3_config.endpoint, match, region_regex)) {
+      s3_config.region = match[1];
+    } else {
+      // 기본값 혹은 설정된 값 유지
+      s3_config.region = config.value("region", "us-east-1");
+    }
   } else {
-    s3_config.endpoint = generateS3Endpoint(s3_config.region);
+    // 리전
+    std::string region = config.value("region", "us-east-1");
+    s3_config.region = expandEnvironmentVariables(region);
+
+    // 엔드포인트
+    if (config.contains("endpoint")) {
+      std::string endpoint = config["endpoint"].get<std::string>();
+      s3_config.endpoint = expandEnvironmentVariables(endpoint);
+    } else {
+      s3_config.endpoint = generateS3Endpoint(s3_config.region);
+    }
   }
 
   // 자격증명 로드
@@ -482,7 +510,7 @@ S3TargetHandler::buildS3Config(const ordered_json &config) const {
   return s3_config;
 }
 
-void S3TargetHandler::loadCredentials(const ordered_json &config,
+void S3TargetHandler::loadCredentials(const json &config,
                                       Client::S3Config &s3_config) const {
   auto &config_manager = ConfigManager::getInstance();
 
@@ -510,7 +538,16 @@ void S3TargetHandler::loadCredentials(const ordered_json &config,
     }
   }
 
-  // 2. 직접 설정에서 로드
+  // 2. 직접 설정에서 로드 (AccessKeyID / SecretAccessKey 우선)
+  if (config.contains("AccessKeyID") && config.contains("SecretAccessKey")) {
+    s3_config.access_key = config_manager.expandVariables(
+        config["AccessKeyID"].get<std::string>());
+    s3_config.secret_key = config_manager.expandVariables(
+        config["SecretAccessKey"].get<std::string>());
+    LogManager::getInstance().Info("✅ S3 자격증명(S3 Service) 설정에서 로드");
+    return;
+  }
+
   if (config.contains("access_key") && config.contains("secret_key")) {
     s3_config.access_key =
         config_manager.expandVariables(config["access_key"].get<std::string>());
@@ -543,9 +580,8 @@ void S3TargetHandler::loadCredentials(const ordered_json &config,
   }
 }
 
-std::string
-S3TargetHandler::generateObjectKey(const AlarmMessage &alarm,
-                                   const ordered_json &config) const {
+std::string S3TargetHandler::generateObjectKey(const AlarmMessage &alarm,
+                                               const json &config) const {
   // 객체 키 템플릿
   std::string template_str =
       config.value("object_key_template",
@@ -558,8 +594,25 @@ S3TargetHandler::generateObjectKey(const AlarmMessage &alarm,
   // 경로 정규화
   object_key = std::regex_replace(object_key, std::regex("//+"), "/");
 
-  // 시작 슬래시 제거
-  if (!object_key.empty() && object_key[0] == '/') {
+  // Folder (Path Prefix) 처리
+  std::string prefix;
+  if (config.contains("Folder")) {
+    prefix = config["Folder"].get<std::string>();
+  } else if (config.contains("prefix")) {
+    prefix = config["prefix"].get<std::string>();
+  }
+
+  if (!prefix.empty()) {
+    prefix = expandEnvironmentVariables(prefix);
+    // prefix에 끝 슬래시 보장
+    if (prefix.back() != '/')
+      prefix += "/";
+
+    object_key = prefix + object_key;
+  }
+
+  // 시작 슬래시 제거 (S3 키 규칙)
+  while (!object_key.empty() && object_key[0] == '/') {
     object_key = object_key.substr(1);
   }
 
@@ -605,9 +658,8 @@ std::string S3TargetHandler::expandTemplate(const std::string &template_str,
   return result;
 }
 
-std::string
-S3TargetHandler::buildJsonContent(const AlarmMessage &alarm,
-                                  const ordered_json &config) const {
+std::string S3TargetHandler::buildJsonContent(const AlarmMessage &alarm,
+                                              const json &config) const {
   json content;
 
   // 기본 알람 데이터
@@ -644,7 +696,7 @@ S3TargetHandler::buildJsonContent(const AlarmMessage &alarm,
 
 std::unordered_map<std::string, std::string>
 S3TargetHandler::buildMetadata(const AlarmMessage &alarm,
-                               const ordered_json &config) const {
+                               const json &config) const {
 
   std::unordered_map<std::string, std::string> metadata;
 
@@ -699,7 +751,7 @@ std::string S3TargetHandler::generateRequestId() const {
   return "req_" + std::to_string(ms.count());
 }
 
-std::string S3TargetHandler::getTargetName(const ordered_json &config) const {
+std::string S3TargetHandler::getTargetName(const json &config) const {
   if (config.contains("name") && config["name"].is_string()) {
     return config["name"].get<std::string>();
   }
@@ -822,7 +874,7 @@ S3TargetHandler::generateS3Endpoint(const std::string &region) const {
 // =============================================================================
 std::vector<TargetSendResult>
 S3TargetHandler::sendValueBatch(const std::vector<ValueMessage> &values,
-                                const ordered_json &config) {
+                                const json &config) {
 
   std::vector<TargetSendResult> results;
   if (values.empty())

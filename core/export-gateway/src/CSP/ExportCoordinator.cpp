@@ -591,7 +591,25 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
   std::vector<ExportResult> results;
 
   try {
-    // ✅ Site ID Enrichment (Resolving site_id from point_id if missing)
+    // ✅ 1. Point Metadata Enrichment (st: Control Status mapping)
+    if (alarm.point_id > 0) {
+      try {
+        auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+        auto point_repo = factory.getDataPointRepository();
+        if (point_repo) {
+          auto point_opt = point_repo->findById(alarm.point_id);
+          if (point_opt.has_value()) {
+            alarm.st = point_opt->isWritable()
+                           ? 1
+                           : 0; // ✅ 제어가능여부(0: Manual/Read-only, 1:
+                                // Auto/Writable)
+          }
+        }
+      } catch (...) {
+      }
+    }
+
+    // ✅ 2. Site ID Enrichment (Resolving site_id from point_id if missing)
     if (alarm.site_id <= 0 && alarm.point_id > 0) {
       try {
         auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
@@ -601,16 +619,14 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
         if (point_repo && device_repo) {
           auto point_opt = point_repo->findById(alarm.point_id);
           if (point_opt.has_value()) {
-            alarm.st = point_opt->isWritable() ? 1 : 0; // ✅ 제어가능여부 매핑
             int device_id = point_opt->getDeviceId();
             auto device_opt = device_repo->findById(device_id);
             if (device_opt.has_value()) {
               alarm.site_id = device_opt->getSiteId();
               LogManager::getInstance().Debug(
-                  "알람 정보 보정 완료: point=" +
+                  "알람 사이트 정보 보정 완료: point=" +
                   std::to_string(alarm.point_id) +
-                  ", site=" + std::to_string(alarm.site_id) +
-                  ", st=" + std::to_string(alarm.st));
+                  ", site=" + std::to_string(alarm.site_id));
             }
           }
         }

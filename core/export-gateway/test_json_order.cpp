@@ -2,7 +2,7 @@
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
-using ordered_json = nlohmann::ordered_json;
+using json = nlohmann::json;
 
 int main() {
   // 1. Standard json (sorted by key)
@@ -14,7 +14,7 @@ int main() {
   std::cout << "Standard JSON (sorted): " << j.dump() << std::endl;
 
   // 2. Ordered json (inserted order)
-  ordered_json oj;
+  json oj;
   oj["timestamp"] = "2026-01-26";
   oj["device_id"] = 1;
   oj["value"] = 100.5;

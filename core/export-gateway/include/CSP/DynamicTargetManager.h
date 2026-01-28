@@ -54,7 +54,7 @@
 #include <vector>
 
 using json = nlohmann::json;
-// ordered_json is defined in Export/ExportTypes.h
+// json은 헤더에서 제거됨 (메모리 절감)
 
 namespace PulseOne {
 namespace CSP {
@@ -177,10 +177,6 @@ public:
    */
   std::optional<DynamicTarget> getTarget(const std::string &name);
 
-  /**
-   * @brief 모든 타겟 조회
-   * @return 타겟 목록
-   */
   std::vector<DynamicTarget> getAllTargets();
 
   /**
@@ -210,6 +206,7 @@ public:
    * @return 성공 시 true
    */
   bool reloadDynamicTargets();
+
   /**
    * @brief 중지 요청 여부 확인
    * @return true면 중지 요청됨
@@ -218,6 +215,7 @@ public:
   bool shouldStop() const {
     return should_stop_.load(std::memory_order_acquire);
   }
+
   // =======================================================================
   // 알람 전송
   // =======================================================================
@@ -333,7 +331,7 @@ public:
    * @brief 전체 통계 조회
    * @return JSON 형식 통계
    */
-  ordered_json getStatistics() const;
+  json getStatistics() const;
 
   /**
    * @brief 통계 리셋
@@ -344,19 +342,19 @@ public:
    * @brief 헬스체크
    * @return JSON 형식 상태 정보
    */
-  ordered_json healthCheck() const;
+  json healthCheck() const;
 
   /**
    * @brief 글로벌 설정 조회
    * @return JSON 형식 설정
    */
-  ordered_json getGlobalSettings() const { return global_settings_; }
+  json getGlobalSettings() const { return global_settings_; }
 
   /**
    * @brief 글로벌 설정 업데이트
    * @param settings 새 설정
    */
-  void updateGlobalSettings(const ordered_json &settings);
+  void updateGlobalSettings(const json &settings);
 
 private:
   // =======================================================================
@@ -397,8 +395,7 @@ private:
 
   bool processTargetByIndex(size_t index, const AlarmMessage &alarm,
                             TargetSendResult &result);
-  ordered_json expandConfigVariables(const ordered_json &config,
-                                     const AlarmMessage &alarm);
+  json expandConfigVariables(const json &config, const AlarmMessage &alarm);
 
   // =======================================================================
   // 멤버 변수들
@@ -455,7 +452,7 @@ private:
   std::condition_variable cv_;
 
   // 설정
-  ordered_json global_settings_;
+  json global_settings_;
 
   // 통계 변수들
   std::atomic<uint64_t> total_requests_{0};

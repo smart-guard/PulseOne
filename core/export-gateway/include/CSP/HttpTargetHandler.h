@@ -77,25 +77,25 @@ public:
   /**
    * @brief 선택적 초기화 (설정 검증만 수행)
    */
-  bool initialize(const ordered_json &config) override;
+  bool initialize(const json &config) override;
 
   /**
    * @brief 알람 전송 (Stateless - config 기반 동작)
    */
   TargetSendResult sendAlarm(const AlarmMessage &alarm,
-                             const ordered_json &config) override;
+                             const json &config) override;
 
   /**
    * @brief 주기적 데이터 배치 전송
    */
   std::vector<TargetSendResult>
   sendValueBatch(const std::vector<PulseOne::CSP::ValueMessage> &values,
-                 const ordered_json &config) override;
+                 const json &config) override;
 
   /**
    * @brief 연결 테스트
    */
-  bool testConnection(const ordered_json &config) override;
+  bool testConnection(const json &config) override;
 
   /**
    * @brief 핸들러 타입
@@ -105,7 +105,7 @@ public:
   /**
    * @brief 설정 검증
    */
-  bool validateConfig(const ordered_json &config,
+  bool validateConfig(const json &config,
                       std::vector<std::string> &errors) override;
 
   /**
@@ -116,7 +116,7 @@ public:
   /**
    * @brief 상태 조회
    */
-  ordered_json getStatus() const override;
+  json getStatus() const override;
 
 private:
   // =======================================================================
@@ -130,49 +130,49 @@ private:
    * @return HttpClient 공유 포인터
    */
   std::shared_ptr<Client::HttpClient>
-  getOrCreateClient(const ordered_json &config, const std::string &url);
+  getOrCreateClient(const json &config, const std::string &url);
 
   /**
    * @brief config에서 URL 추출
    */
-  std::string extractUrl(const ordered_json &config) const;
+  std::string extractUrl(const json &config) const;
 
   /**
    * @brief 재시도와 함께 HTTP 요청 실행
    */
   TargetSendResult executeWithRetry(const AlarmMessage &alarm,
-                                    const ordered_json &config,
+                                    const json &config,
                                     const std::string &url);
 
   TargetSendResult executeWithRetry(const std::vector<ValueMessage> &values,
-                                    const ordered_json &config,
+                                    const json &config,
                                     const std::string &url);
 
   /**
    * @brief 단일 HTTP 요청 실행
    */
   TargetSendResult executeSingleRequest(const AlarmMessage &alarm,
-                                        const ordered_json &config,
+                                        const json &config,
                                         const std::string &url);
 
   TargetSendResult executeSingleRequest(const std::vector<ValueMessage> &values,
-                                        const ordered_json &config,
+                                        const json &config,
                                         const std::string &url);
 
   /**
    * @brief 요청 헤더 생성
    */
   std::unordered_map<std::string, std::string>
-  buildRequestHeaders(const ordered_json &config);
+  buildRequestHeaders(const json &config);
 
   /**
    * @brief 요청 본문 생성
    */
   std::string buildRequestBody(const AlarmMessage &alarm,
-                               const ordered_json &config);
+                               const json &config);
 
   std::string buildRequestBody(const std::vector<ValueMessage> &values,
-                               const ordered_json &config);
+                               const json &config);
 
   /**
    * @brief 백오프 지연 시간 계산
@@ -182,7 +182,7 @@ private:
   /**
    * @brief 타겟 이름 추출
    */
-  std::string getTargetName(const ordered_json &config) const;
+  std::string getTargetName(const json &config) const;
 
   /**
    * @brief 현재 타임스탬프 (ISO 8601)
