@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
+#include <type_traits>
 #include <variant>
 
 namespace PulseOne {
@@ -177,6 +178,8 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, bool>) {
           oss << (v ? "true" : "false");
+        } else if constexpr (std::is_floating_point_v<T>) {
+          oss << std::fixed << std::setprecision(6) << v;
         } else {
           oss << v;
         }
@@ -337,6 +340,8 @@ bool AlarmEngine::updateActiveAlarmValue(const AlarmRuleEntity &rule,
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, bool>) {
           oss << (v ? "true" : "false");
+        } else if constexpr (std::is_floating_point_v<T>) {
+          oss << std::fixed << std::setprecision(6) << v;
         } else {
           oss << v;
         }

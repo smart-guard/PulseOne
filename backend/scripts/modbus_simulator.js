@@ -101,6 +101,7 @@ console.log('🚀 Modbus TCP Simulator started');
 console.log('    - Digital (Coils): 100(PV), 101(SRS), 102(SCS)');
 console.log('    - Analog (Holdings): 200(SSS), 201(SBV)');
 
+/*
 // Keep the process alive
 setInterval(() => {
     simData.pv = simData.pv === 0 ? 1 : 0;
@@ -108,3 +109,4 @@ setInterval(() => {
     simData.sss = 120 + Math.floor(Math.random() * 10);
     console.log(`[Modbus Simulator] Values updated: PV=${simData.pv}, SSS=${simData.sss}`);
 }, 10000);
+*/

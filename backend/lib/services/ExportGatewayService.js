@@ -342,6 +342,7 @@ class ExportGatewayService extends BaseService {
 
     async registerGateway(data, tenantId) {
         return await this.handleRequest(async () => {
+            console.log('DEBUG: registerGateway data:', JSON.stringify(data, null, 2));
             return await this.gatewayRepository.create(data, tenantId);
         }, 'RegisterGateway');
     }
@@ -354,6 +355,7 @@ class ExportGatewayService extends BaseService {
 
     async updateGateway(id, data, tenantId) {
         return await this.handleRequest(async () => {
+            console.log(`DEBUG: updateGateway ID ${id} data:`, JSON.stringify(data, null, 2));
             return await this.gatewayRepository.update(id, data, tenantId);
         }, 'UpdateGateway');
     }

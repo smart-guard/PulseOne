@@ -23,17 +23,17 @@ PayloadTransformer::PayloadTransformer() {
 // 메인 변환
 // =============================================================================
 
-ordered_json PayloadTransformer::transform(const ordered_json &template_json,
+json PayloadTransformer::transform(const json &template_json,
                                            const TransformContext &context) {
   try {
-    ordered_json result = template_json;
+    json result = template_json;
     auto variables = buildVariableMap(context);
     expandJsonRecursive(result, variables);
     return result;
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("PayloadTransformer::transform 실패: " +
                                     std::string(e.what()));
-    return ordered_json::object();
+    return json::object();
   }
 }
 
@@ -58,34 +58,34 @@ PayloadTransformer::transformString(const std::string &template_str,
 // 시스템별 기본 템플릿
 // =============================================================================
 
-ordered_json PayloadTransformer::getInsiteDefaultTemplate() {
-  return ordered_json{{"controlpoint", "{{target_field_name}}"},
+json PayloadTransformer::getInsiteDefaultTemplate() {
+  return json{{"controlpoint", "{{target_field_name}}"},
                       {"description", "{{target_description}}"},
                       {"value", "{{converted_value}}"},
                       {"time", "{{timestamp_iso8601}}"},
                       {"status", "{{alarm_status}}"}};
 }
 
-ordered_json PayloadTransformer::getHDCDefaultTemplate() {
-  return ordered_json{
+json PayloadTransformer::getHDCDefaultTemplate() {
+  return json{
       {"building_id", "{{building_id}}"},
       {"point_id", "{{target_field_name}}"},
-      {"data", ordered_json{{"value", "{{converted_value}}"},
+      {"data", json{{"value", "{{converted_value}}"},
                             {"timestamp", "{{timestamp_unix_ms}}"}}},
-      {"metadata", ordered_json{{"description", "{{target_description}}"},
+      {"metadata", json{{"description", "{{target_description}}"},
                                 {"alarm_status", "{{alarm_status}}"}}}};
 }
 
-ordered_json PayloadTransformer::getBEMSDefaultTemplate() {
-  return ordered_json{{"buildingId", "{{building_id}}"},
+json PayloadTransformer::getBEMSDefaultTemplate() {
+  return json{{"buildingId", "{{building_id}}"},
                       {"sensorName", "{{target_field_name}}"},
                       {"sensorValue", "{{converted_value}}"},
                       {"timestamp", "{{timestamp_iso8601}}"},
                       {"alarmLevel", "{{alarm_status}}"}};
 }
 
-ordered_json PayloadTransformer::getGenericDefaultTemplate() {
-  return ordered_json{{"bd", "{{building_id}}"},
+json PayloadTransformer::getGenericDefaultTemplate() {
+  return json{{"bd", "{{building_id}}"},
                       {"ty", "num"},
                       {"nm", "{{nm}}"},
                       {"vl", "{{vl}}"},
@@ -99,7 +99,7 @@ ordered_json PayloadTransformer::getGenericDefaultTemplate() {
                       {"mx", {80, 90, 100}}};
 }
 
-ordered_json PayloadTransformer::getDefaultTemplateForSystem(
+json PayloadTransformer::getDefaultTemplateForSystem(
     const std::string &system_type) {
   if (system_type == "insite")
     return getInsiteDefaultTemplate();
@@ -274,7 +274,7 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
 // =============================================================================
 
 void PayloadTransformer::expandJsonRecursive(
-    ordered_json &obj, const std::map<std::string, std::string> &variables) {
+    json &obj, const std::map<std::string, std::string> &variables) {
   if (obj.is_string()) {
     std::string str = obj.get<std::string>();
     // 1. 일반 변수 치환 ({var} 및 {{var}} 지원)
@@ -338,7 +338,7 @@ void PayloadTransformer::expandJsonRecursive(
     // 형태라면 문자열이 아닌 원본 타입으로 치환 (예: "[0]" -> [0])
     if (!str.empty() && str.front() == '[' && str.back() == ']') {
       try {
-        ordered_json parsed = ordered_json::parse(str);
+        json parsed = json::parse(str);
         obj = parsed;
         return;
       } catch (...) {

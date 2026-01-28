@@ -74,32 +74,32 @@ public:
   /**
    * @brief 선택적 초기화 (설정 검증만 수행)
    */
-  bool initialize(const ordered_json &config) override;
+  bool initialize(const json &config) override;
 
   /**
    * @brief 알람 업로드 (Stateless - config 기반 동작)
    */
   TargetSendResult sendAlarm(const AlarmMessage &alarm,
-                             const ordered_json &config) override;
+                             const json &config) override;
 
   /**
    * @brief 배치 알람 업로드 (단일 파일로 묶어서 전송)
    */
   std::vector<TargetSendResult>
   sendAlarmBatch(const std::vector<AlarmMessage> &alarms,
-                 const ordered_json &config) override;
+                 const json &config) override;
 
   /**
    * @brief 배치 값 업로드 (단일 파일로 묶어서 전송)
    */
   std::vector<TargetSendResult>
   sendValueBatch(const std::vector<ValueMessage> &values,
-                 const ordered_json &config) override;
+                 const json &config) override;
 
   /**
    * @brief 연결 테스트
    */
-  bool testConnection(const ordered_json &config) override;
+  bool testConnection(const json &config) override;
 
   /**
    * @brief 핸들러 타입
@@ -109,7 +109,7 @@ public:
   /**
    * @brief 설정 검증
    */
-  bool validateConfig(const ordered_json &config,
+  bool validateConfig(const json &config,
                       std::vector<std::string> &errors) override;
 
   /**
@@ -120,7 +120,7 @@ public:
   /**
    * @brief 상태 조회
    */
-  ordered_json getStatus() const override;
+  json getStatus() const override;
 
 private:
   // =======================================================================
@@ -134,29 +134,29 @@ private:
    * @return S3Client 공유 포인터
    */
   std::shared_ptr<Client::S3Client>
-  getOrCreateClient(const ordered_json &config, const std::string &bucket_name);
+  getOrCreateClient(const json &config, const std::string &bucket_name);
 
   /**
    * @brief config에서 버킷명 추출
    */
-  std::string extractBucketName(const ordered_json &config) const;
+  std::string extractBucketName(const json &config) const;
 
   /**
    * @brief S3Config 구성
    */
-  Client::S3Config buildS3Config(const ordered_json &config) const;
+  Client::S3Config buildS3Config(const json &config) const;
 
   /**
    * @brief 자격증명 로드
    */
-  void loadCredentials(const ordered_json &config,
+  void loadCredentials(const json &config,
                        Client::S3Config &s3_config) const;
 
   /**
    * @brief 객체 키 생성
    */
   std::string generateObjectKey(const AlarmMessage &alarm,
-                                const ordered_json &config) const;
+                                const json &config) const;
 
   /**
    * @brief 템플릿 확장
@@ -177,13 +177,13 @@ private:
    * @brief JSON 내용 빌드
    */
   std::string buildJsonContent(const AlarmMessage &alarm,
-                               const ordered_json &config) const;
+                               const json &config) const;
 
   /**
    * @brief 메타데이터 빌드
    */
   std::unordered_map<std::string, std::string>
-  buildMetadata(const AlarmMessage &alarm, const ordered_json &config) const;
+  buildMetadata(const AlarmMessage &alarm, const json &config) const;
 
   /**
    * @brief 내용 압축
@@ -193,7 +193,7 @@ private:
   /**
    * @brief 타겟 이름 반환
    */
-  std::string getTargetName(const ordered_json &config) const;
+  std::string getTargetName(const json &config) const;
 
   /**
    * @brief 현재 타임스탬프 (ISO 8601)

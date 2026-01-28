@@ -19,8 +19,8 @@
 namespace PulseOne {
 namespace CSP {
 
-// using json = nlohmann::ordered_json;
-// using ordered_json = nlohmann::ordered_json;
+// using json = nlohmann::json;
+// using json = nlohmann::json;
 using namespace std::chrono;
 
 // =============================================================================
@@ -59,7 +59,7 @@ size_t MqttTargetHandler::getQueuedMessageCount() const {
 // ITargetHandler 인터페이스 구현
 // =============================================================================
 
-bool MqttTargetHandler::initialize(const ordered_json &config) {
+bool MqttTargetHandler::initialize(const json &config) {
   try {
     LogManager::getInstance().Info("MQTT 타겟 핸들러 초기화 시작");
 
@@ -151,7 +151,7 @@ bool MqttTargetHandler::initialize(const ordered_json &config) {
   }
 }
 
-bool MqttTargetHandler::validateConfig(const ordered_json &config,
+bool MqttTargetHandler::validateConfig(const json &config,
                                        std::vector<std::string> &errors) {
   errors.clear();
 
@@ -189,7 +189,7 @@ bool MqttTargetHandler::validateConfig(const ordered_json &config,
 }
 
 TargetSendResult MqttTargetHandler::sendAlarm(const AlarmMessage &alarm,
-                                              const ordered_json &config) {
+                                              const json &config) {
   TargetSendResult result;
   result.target_type = "MQTT";
   result.target_name = broker_uri_;
@@ -205,7 +205,7 @@ TargetSendResult MqttTargetHandler::sendAlarm(const AlarmMessage &alarm,
     std::string payload;
     if (config.contains("body_template") &&
         config["body_template"].is_object()) {
-      ordered_json payload_json = config["body_template"];
+      json payload_json = config["body_template"];
       expandTemplateVariables(payload_json, alarm);
       payload = payload_json.dump();
     } else {
@@ -257,7 +257,7 @@ TargetSendResult MqttTargetHandler::sendAlarm(const AlarmMessage &alarm,
   return result;
 }
 
-bool MqttTargetHandler::testConnection(const ordered_json &config) {
+bool MqttTargetHandler::testConnection(const json &config) {
   try {
     LogManager::getInstance().Info("MQTT 연결 테스트 시작");
 
@@ -273,7 +273,7 @@ bool MqttTargetHandler::testConnection(const ordered_json &config) {
     if (is_connected_.load()) {
       // 테스트 메시지 발행
       std::string test_topic = "test/" + client_id_ + "/connection";
-      ordered_json test_payload = {
+      json test_payload = {
           {"test", true},
           {"timestamp", PulseOne::Export::getCurrentTimestamp()},
           {"broker", broker_uri_},
@@ -301,7 +301,7 @@ bool MqttTargetHandler::testConnection(const ordered_json &config) {
   }
 }
 
-ordered_json MqttTargetHandler::getStatus() const {
+json MqttTargetHandler::getStatus() const {
   std::lock_guard<std::mutex> lock(queue_mutex_);
 
   return json{{"type", "MQTT"},
@@ -386,7 +386,7 @@ bool MqttTargetHandler::initializeMqttClient() {
 // 브로커 연결 (데드락 수정 버전)
 // =============================================================================
 
-bool MqttTargetHandler::connectToBroker(const ordered_json &config) {
+bool MqttTargetHandler::connectToBroker(const json &config) {
   bool should_process_queue = false;
 
   {
@@ -681,7 +681,7 @@ MqttTargetHandler::generateClientId(const std::string &base_id) const {
 }
 
 std::string MqttTargetHandler::generateTopic(const AlarmMessage &alarm,
-                                             const ordered_json &config) const {
+                                             const json &config) const {
   std::string topic_pattern =
       config.value("topic_pattern", "alarms/{building_id}/{nm}");
   return expandTemplateVariables(topic_pattern, alarm);
@@ -689,7 +689,7 @@ std::string MqttTargetHandler::generateTopic(const AlarmMessage &alarm,
 
 std::string
 MqttTargetHandler::generatePayload(const AlarmMessage &alarm,
-                                   const ordered_json &config) const {
+                                   const json &config) const {
   std::string format = config.value("message_format", "json");
 
   if (format == "json") {
@@ -703,7 +703,7 @@ MqttTargetHandler::generatePayload(const AlarmMessage &alarm,
 
 std::vector<TargetSendResult>
 MqttTargetHandler::sendValueBatch(const std::vector<ValueMessage> &values,
-                                  const ordered_json &config) {
+                                  const json &config) {
 
   std::vector<TargetSendResult> results;
   if (values.empty())
@@ -728,7 +728,7 @@ MqttTargetHandler::sendValueBatch(const std::vector<ValueMessage> &values,
     std::string payload;
     if (config.contains("body_template") &&
         config["body_template"].is_object()) {
-      ordered_json payload_json = config["body_template"];
+      json payload_json = config["body_template"];
       expandTemplateVariables(payload_json, val);
       payload = payload_json.dump();
     } else {
@@ -775,8 +775,8 @@ MqttTargetHandler::expandTemplateVariables(const std::string &template_str,
 
 std::string
 MqttTargetHandler::createJsonMessage(const AlarmMessage &alarm,
-                                     const ordered_json &config) const {
-  ordered_json message;
+                                     const json &config) const {
+  json message;
 
   message["bd"] = alarm.bd;
   message["nm"] = alarm.nm;
@@ -800,7 +800,7 @@ MqttTargetHandler::createJsonMessage(const AlarmMessage &alarm,
 
 std::string
 MqttTargetHandler::createTextMessage(const AlarmMessage &alarm,
-                                     const ordered_json &config) const {
+                                     const json &config) const {
   std::ostringstream text;
   std::string format = config.value("text_format", "default");
 
@@ -891,7 +891,7 @@ void MqttTargetHandler::processQueuedMessages() {
 // 자동 재연결 스레드
 // =============================================================================
 
-void MqttTargetHandler::reconnectThread(ordered_json config) {
+void MqttTargetHandler::reconnectThread(json config) {
   int reconnect_interval = config.value(
       "reconnect_interval_sec", MqttConstants::DEFAULT_RECONNECT_INTERVAL_SEC);
   int max_attempts = config.value(
@@ -927,7 +927,7 @@ void MqttTargetHandler::reconnectThread(ordered_json config) {
 }
 
 void MqttTargetHandler::expandTemplateVariables(
-    ordered_json &template_json, const AlarmMessage &alarm) const {
+    json &template_json, const AlarmMessage &alarm) const {
   auto &transformer = Transform::PayloadTransformer::getInstance();
   auto context = transformer.createContext(alarm);
 
@@ -948,7 +948,7 @@ void MqttTargetHandler::expandTemplateVariables(
 }
 
 void MqttTargetHandler::expandTemplateVariables(
-    ordered_json &template_json, const ValueMessage &value) const {
+    json &template_json, const ValueMessage &value) const {
   auto &transformer = Transform::PayloadTransformer::getInstance();
   auto context = transformer.createContext(value);
 

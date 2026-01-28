@@ -62,7 +62,7 @@ struct ValueMessage {
 } // namespace PulseOne
 
 using json = nlohmann::json;
-using ordered_json = nlohmann::ordered_json;
+// [REMOVE] json을 헤더에서 제거하여 컴파일 메모리 사용량 절감
 
 namespace PulseOne {
 namespace Export {
@@ -207,23 +207,23 @@ public:
 
   // 필수 메서드들
   virtual TargetSendResult sendAlarm(const PulseOne::CSP::AlarmMessage &alarm,
-                                     const ordered_json &config) = 0;
-  virtual bool testConnection(const ordered_json &config) = 0;
+                                     const json &config) = 0;
+  virtual bool testConnection(const json &config) = 0;
   virtual std::string getHandlerType() const = 0;
-  virtual bool validateConfig(const ordered_json &config,
+  virtual bool validateConfig(const json &config,
                               std::vector<std::string> &errors) = 0;
 
   // 선택적 메서드들 (기본 구현 제공)
-  virtual bool initialize(const ordered_json & /* config */) { return true; }
+  virtual bool initialize(const json & /* config */) { return true; }
   virtual void cleanup() { /* 기본: 아무 작업 없음 */ }
-  virtual ordered_json getStatus() const {
-    return ordered_json{{"type", getHandlerType()}, {"status", "active"}};
+  virtual json getStatus() const {
+    return json{{"type", getHandlerType()}, {"status", "active"}};
   }
 
   // 배치 전송 메서드들 (기본 구현: 루프 전송)
   virtual std::vector<TargetSendResult>
   sendAlarmBatch(const std::vector<PulseOne::CSP::AlarmMessage> &alarms,
-                 const ordered_json &config) {
+                 const json &config) {
     std::vector<TargetSendResult> results;
     for (const auto &alarm : alarms) {
       results.push_back(sendAlarm(alarm, config));
@@ -233,7 +233,7 @@ public:
 
   virtual std::vector<TargetSendResult>
   sendValueBatch(const std::vector<PulseOne::CSP::ValueMessage> & /* values */,
-                 const ordered_json & /* config */) {
+                 const json & /* config */) {
     // 기본적으로 값 전송은 배치만 지원하거나 미지원
     return {};
   }
@@ -254,7 +254,7 @@ struct DynamicTarget {
   bool enabled = true;
   int priority = 100;
   std::string description;
-  ordered_json config;
+  json config;
 
   // 런타임 상태 (atomic 멤버들)
   mutable std::atomic<bool> healthy{true};

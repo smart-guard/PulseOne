@@ -289,13 +289,13 @@ bool DynamicTargetManager::loadFromDatabase() {
     }
 
     // ✅ 1. 모든 템플릿 로드하여 ID맵 생성
-    std::map<int, ordered_json> template_map;
+    std::map<int, json> template_map;
     if (template_repo) {
       auto templates = template_repo->findAll();
       for (const auto &tmpl : templates) {
         try {
           template_map[tmpl.getId()] =
-              ordered_json::parse(tmpl.getTemplateJson());
+              json::parse(tmpl.getTemplateJson());
           LogManager::getInstance().Debug(
               "템플릿 로드됨: ID=" + std::to_string(tmpl.getId()) +
               ", Name=" + tmpl.getName());
@@ -409,7 +409,7 @@ bool DynamicTargetManager::loadFromDatabase() {
         target.description = entity.getDescription();
 
         try {
-          target.config = ordered_json::parse(entity.getConfig());
+          target.config = json::parse(entity.getConfig());
         } catch (const std::exception &e) {
           LogManager::getInstance().Error(
               "Config JSON 파싱 실패: " + entity.getName() + " - " +
@@ -836,16 +836,11 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
         try {
           alarm.bd = std::stoi(mapped_bd_str);
         } catch (...) {
-          // ignore
         }
       } else {
-        // Fallback to lookup_site_id anyway if no map found?
-        // The logic in processTargetByIndex assumes mapped_bd_str can be empty.
-        // But for "280" case, we want `bd` to be `280`.
-        // If 280 was set in lookup_site_id, we should set it.
-        if (lookup_site_id != alarm.site_id) {
-          alarm.bd = lookup_site_id;
-        }
+        // [FIX] 만약 사이트 매핑이 없으면 오버라이드된 lookup_site_id(280 등)를
+        // 직접 bd로 사용
+        alarm.bd = lookup_site_id;
       }
 
       processed_batch.push_back(alarm);
@@ -1051,7 +1046,7 @@ DynamicTargetManager::getSupportedHandlerTypes() const {
 // 통계 및 모니터링
 // =============================================================================
 
-ordered_json DynamicTargetManager::getStatistics() const {
+json DynamicTargetManager::getStatistics() const {
   auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now() - startup_time_)
                     .count();
@@ -1086,7 +1081,7 @@ void DynamicTargetManager::resetStatistics() {
   LogManager::getInstance().Info("통계 리셋 완료");
 }
 
-ordered_json DynamicTargetManager::healthCheck() const {
+json DynamicTargetManager::healthCheck() const {
   std::shared_lock<std::shared_mutex> lock(targets_mutex_);
 
   int enabled_count = 0;
@@ -1117,7 +1112,7 @@ ordered_json DynamicTargetManager::healthCheck() const {
               {"handlers_count", handlers_.size()}};
 }
 
-void DynamicTargetManager::updateGlobalSettings(const ordered_json &settings) {
+void DynamicTargetManager::updateGlobalSettings(const json &settings) {
   global_settings_ = settings;
   LogManager::getInstance().Info("글로벌 설정 업데이트");
 }
@@ -1284,15 +1279,16 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
       LogManager::getInstance().Debug("포인트 이름 매핑 적용: " + alarm.nm +
                                       " -> " + mapped_name);
     }
+
+    // [FIX] 빌딩 ID 매핑이 있으면 적용, 없으면 lookup_site_id(280) 적용
     if (mapped_bd > 0) {
       mapped_alarm.bd = mapped_bd;
       LogManager::getInstance().Debug(
           "빌딩 ID 매핑 적용: " + std::to_string(alarm.site_id) + " -> " +
           std::to_string(mapped_bd));
-    } else if (lookup_site_id != alarm.site_id) {
+    } else {
       mapped_alarm.bd = lookup_site_id;
-      LogManager::getInstance().Debug("포인트 오버라이드 적용 (매핑 없음): " +
-                                      std::to_string(alarm.site_id) + " -> " +
+      LogManager::getInstance().Debug("Site ID 매핑 적용 (BD): " +
                                       std::to_string(lookup_site_id));
     }
 
@@ -1360,10 +1356,10 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
   }
 }
 
-ordered_json
-DynamicTargetManager::expandConfigVariables(const ordered_json &config,
+json
+DynamicTargetManager::expandConfigVariables(const json &config,
                                             const AlarmMessage &alarm) {
-  ordered_json expanded = config;
+  json expanded = config;
 
   // 간단한 변수 치환 로직
   if (config.contains("url") && config["url"].is_string()) {

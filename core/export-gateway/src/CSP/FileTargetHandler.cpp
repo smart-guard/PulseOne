@@ -28,7 +28,7 @@ namespace PulseOne {
 namespace CSP {
 
 using json = nlohmann::json;
-using ordered_json = nlohmann::ordered_json;
+using json = nlohmann::json;
 
 // =============================================================================
 // 생성자 및 소멸자
@@ -46,7 +46,7 @@ FileTargetHandler::~FileTargetHandler() {
 // ITargetHandler 인터페이스 구현
 // =============================================================================
 
-bool FileTargetHandler::initialize(const ordered_json &config) {
+bool FileTargetHandler::initialize(const json &config) {
   // ✅ Stateless 패턴: initialize()는 선택적
   // 설정 검증 + 기본 디렉토리 생성
 
@@ -79,7 +79,7 @@ bool FileTargetHandler::initialize(const ordered_json &config) {
 }
 
 TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage &alarm,
-                                              const ordered_json &config) {
+                                              const json &config) {
   TargetSendResult result;
   result.target_type = "FILE";
   result.target_name = getTargetName(config);
@@ -155,7 +155,7 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage &alarm,
 
 std::vector<TargetSendResult> FileTargetHandler::sendValueBatch(
     const std::vector<PulseOne::CSP::ValueMessage> &values,
-    const ordered_json &config) {
+    const json &config) {
 
   std::vector<TargetSendResult> results;
   TargetSendResult result;
@@ -230,7 +230,7 @@ std::vector<TargetSendResult> FileTargetHandler::sendValueBatch(
   return results;
 }
 
-bool FileTargetHandler::testConnection(const ordered_json &config) {
+bool FileTargetHandler::testConnection(const json &config) {
   try {
     LogManager::getInstance().Info("파일 시스템 연결 테스트");
 
@@ -295,7 +295,7 @@ bool FileTargetHandler::testConnection(const ordered_json &config) {
   }
 }
 
-bool FileTargetHandler::validateConfig(const ordered_json &config,
+bool FileTargetHandler::validateConfig(const json &config,
                                        std::vector<std::string> &errors) {
   errors.clear();
 
@@ -325,8 +325,8 @@ bool FileTargetHandler::validateConfig(const ordered_json &config,
   return true;
 }
 
-ordered_json FileTargetHandler::getStatus() const {
-  return ordered_json{{"type", "FILE"},
+json FileTargetHandler::getStatus() const {
+  return json{{"type", "FILE"},
                       {"file_count", file_count_.load()},
                       {"success_count", success_count_.load()},
                       {"failure_count", failure_count_.load()},
@@ -348,7 +348,7 @@ void FileTargetHandler::cleanup() {
 // =============================================================================
 
 std::string
-FileTargetHandler::extractBasePath(const ordered_json &config) const {
+FileTargetHandler::extractBasePath(const json &config) const {
   std::string base_path;
   if (config.contains("base_path") &&
       !config["base_path"].get<std::string>().empty()) {
@@ -367,7 +367,7 @@ FileTargetHandler::extractBasePath(const ordered_json &config) const {
 }
 
 std::string
-FileTargetHandler::extractFileFormat(const ordered_json &config) const {
+FileTargetHandler::extractFileFormat(const json &config) const {
   std::string format = config.value("file_format", "json");
   std::transform(format.begin(), format.end(), format.begin(), ::tolower);
   return format;
@@ -375,7 +375,7 @@ FileTargetHandler::extractFileFormat(const ordered_json &config) const {
 
 std::string
 FileTargetHandler::generateFilePath(const AlarmMessage &alarm,
-                                    const ordered_json &config) const {
+                                    const json &config) const {
   // base_path
   std::string base_path = extractBasePath(config);
 
@@ -421,7 +421,7 @@ void FileTargetHandler::createDirectoriesForFile(
 
 std::string
 FileTargetHandler::buildFileContent(const AlarmMessage &alarm,
-                                    const ordered_json &config) const {
+                                    const json &config) const {
   std::string format = extractFileFormat(config);
 
   if (format == "json") {
@@ -441,7 +441,7 @@ FileTargetHandler::buildFileContent(const AlarmMessage &alarm,
 
 std::string
 FileTargetHandler::buildJsonContent(const AlarmMessage &alarm,
-                                    const ordered_json &config) const {
+                                    const json &config) const {
   json request_body;
 
   // ✅ 템플릿이 있으면 템플릿을 기반으로 생성 (기본 필드 무시)
@@ -477,7 +477,7 @@ FileTargetHandler::buildJsonContent(const AlarmMessage &alarm,
 
 std::string
 FileTargetHandler::buildCsvContent(const AlarmMessage &alarm,
-                                   const ordered_json &config) const {
+                                   const json &config) const {
   std::ostringstream csv;
 
   // 헤더 (append 모드가 아닐 때만)
@@ -501,7 +501,7 @@ FileTargetHandler::buildCsvContent(const AlarmMessage &alarm,
 
 std::string
 FileTargetHandler::buildTextContent(const AlarmMessage &alarm,
-                                    const ordered_json &config) const {
+                                    const json &config) const {
   std::ostringstream text;
 
   std::string format = config.value("text_format", "default");
@@ -530,7 +530,7 @@ FileTargetHandler::buildTextContent(const AlarmMessage &alarm,
 
 std::string
 FileTargetHandler::buildXmlContent(const AlarmMessage &alarm,
-                                   const ordered_json &config) const {
+                                   const json &config) const {
   std::ostringstream xml;
 
   xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
@@ -551,7 +551,7 @@ FileTargetHandler::buildXmlContent(const AlarmMessage &alarm,
 
 bool FileTargetHandler::writeFile(const std::string &file_path,
                                   const std::string &content,
-                                  const ordered_json &config) const {
+                                  const json &config) const {
   LogManager::getInstance().Debug("[FileTargetHandler] Writing file to: " +
                                   file_path);
   try {
@@ -711,7 +711,7 @@ FileTargetHandler::sanitizeFilename(const std::string &filename) const {
   return result;
 }
 
-std::string FileTargetHandler::getTargetName(const ordered_json &config) const {
+std::string FileTargetHandler::getTargetName(const json &config) const {
   if (config.contains("name") && config["name"].is_string()) {
     return config["name"].get<std::string>();
   }

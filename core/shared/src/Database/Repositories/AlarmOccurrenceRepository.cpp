@@ -254,8 +254,14 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity &entity) {
     params["id"] = std::to_string(entity.getId());
     params["occurrence_time"] =
         "'" + timePointToString(entity.getOccurrenceTime()) + "'";
-    params["trigger_value"] =
-        "'" + escapeString(entity.getTriggerValue()) + "'";
+    // 🔧 Sanitization: Strip existing quotes if present to prevent
+    // double-quoting (e.g. ''1.0'')
+    std::string trigger_val = entity.getTriggerValue();
+    if (trigger_val.size() >= 2 && trigger_val.front() == '\'' &&
+        trigger_val.back() == '\'') {
+      trigger_val = trigger_val.substr(1, trigger_val.size() - 2);
+    }
+    params["trigger_value"] = "'" + escapeString(trigger_val) + "'";
     params["trigger_condition"] =
         "'" + escapeString(entity.getTriggerCondition()) + "'";
     params["alarm_message"] =
@@ -304,7 +310,15 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity &entity) {
                                : "NULL";
 
     std::string query = SQL::AlarmOccurrence::UPDATE;
+
+    LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                  "DEBUG_PARAMS: trigger_value=" +
+                                      params["trigger_value"]);
+
     query = RepositoryHelpers::replaceParametersInOrder(query, params);
+
+    LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
+                                  "DEBUG_QUERY: " + query);
 
     bool success = db_layer.executeNonQuery(query);
 
