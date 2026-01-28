@@ -83,6 +83,11 @@ bool EventSubscriber::start() {
   {
     std::lock_guard<std::mutex> lock(channel_mutex_);
     subscribed_channels_ = config_.subscribe_channels;
+    if (subscribed_channels_.empty()) {
+      subscribed_channels_.push_back("alarms:all");
+      LogManager::getInstance().Info(
+          "구독 채널이 비어 있어 기본값(alarms:all) 추가");
+    }
     subscribed_patterns_ = config_.subscribe_patterns;
   }
 
@@ -249,17 +254,12 @@ void EventSubscriber::handleAlarmEvent(const std::string & /*channel*/,
                                        const std::string &message) {
   // 기존 알람 처리 로직 호출
   try {
-    std::cout << "[DEBUG] handleAlarmEvent called with message len: "
-              << message.length() << std::endl;
     auto alarm = parseAlarmMessage(message);
 
     // 큐에 추가 (기존 방식)
     if (!enqueueAlarm(alarm)) {
       LogManager::getInstance().Warn("알람 큐 가득참 - 메시지 드롭");
-      std::cout << "[DEBUG] Alarm queue full!" << std::endl;
       total_failed_.fetch_add(1);
-    } else {
-      std::cout << "[DEBUG] Enqueued alarm: " << alarm.nm << std::endl;
     }
 
   } catch (const std::exception &e) {
@@ -544,14 +544,7 @@ EventSubscriber::parseAlarmMessage(const std::string &json_str) {
   try {
     auto j = json::parse(json_str);
 
-    // ✅ 타입 수정
-    alarm.bd = j.value("bd", 0);    // int (빌딩 ID)
-    alarm.nm = j.value("nm", "");   // string (포인트 이름)
-    alarm.vl = j.value("vl", 0.0);  // double (값)
-    alarm.tm = j.value("tm", "");   // ✅ string으로 수정 (기존: 0L)
-    alarm.al = j.value("al", 0);    // int (알람 상태)
-    alarm.st = j.value("st", 0);    // int (심각도)
-    alarm.des = j.value("des", ""); // string (설명)
+    alarm.from_json(j);
 
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("JSON 파싱 실패: " + std::string(e.what()));
@@ -565,6 +558,13 @@ void EventSubscriber::processAlarm(const PulseOne::CSP::AlarmMessage &alarm) {
     return;
   }
 
+  // ✅ 콜백이 등록되어 있으면 콜백 호출 (ExportCoordinator 연동)
+  if (alarm_callback_) {
+    alarm_callback_(alarm);
+    return;
+  }
+
+  // 기본 처리 (Fallback)
   auto &manager = PulseOne::CSP::DynamicTargetManager::getInstance();
   auto results = manager.sendAlarmToTargets(alarm);
 

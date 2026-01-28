@@ -50,6 +50,7 @@ bool PersistenceStage::Process(PipelineContext &context) {
         PulseOne::Storage::BackendFormat::AlarmEventData alarm_data;
         alarm_data.rule_id = alarm.rule_id;
         alarm_data.tenant_id = alarm.tenant_id;
+        alarm_data.site_id = alarm.site_id; // Added site_id population
         alarm_data.device_id = context.enriched_message.device_id;
         alarm_data.point_id = alarm.point_id;
         alarm_data.state = alarm.getStateString();
@@ -60,6 +61,8 @@ bool PersistenceStage::Process(PipelineContext &context) {
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 alarm.timestamp.time_since_epoch())
                 .count();
+        alarm_data.source_name = alarm.source_name;
+        alarm_data.location = alarm.location;
 
         redis_writer_->PublishAlarmEvent(alarm_data);
       }

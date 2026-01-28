@@ -30,6 +30,9 @@
 namespace PulseOne {
 namespace CSP {
 
+using json = nlohmann::json;
+using ordered_json = nlohmann::ordered_json;
+
 // =============================================================================
 // Static Client Cache (모든 인스턴스 공유)
 // =============================================================================
@@ -65,7 +68,7 @@ HttpTargetHandler::~HttpTargetHandler() {
 // ITargetHandler 인터페이스 구현
 // =============================================================================
 
-bool HttpTargetHandler::initialize(const json &config) {
+bool HttpTargetHandler::initialize(const ordered_json &config) {
   // ✅ Stateless 패턴: initialize()는 선택적
   // 설정 검증만 수행
   std::vector<std::string> errors;
@@ -82,7 +85,7 @@ bool HttpTargetHandler::initialize(const json &config) {
 }
 
 TargetSendResult HttpTargetHandler::sendAlarm(const AlarmMessage &alarm,
-                                              const json &config) {
+                                              const ordered_json &config) {
   TargetSendResult result;
   result.target_type = "HTTP";
   result.target_name = getTargetName(config);
@@ -128,7 +131,7 @@ TargetSendResult HttpTargetHandler::sendAlarm(const AlarmMessage &alarm,
 
 std::vector<TargetSendResult> HttpTargetHandler::sendValueBatch(
     const std::vector<PulseOne::CSP::ValueMessage> &values,
-    const json &config) {
+    const ordered_json &config) {
 
   std::vector<TargetSendResult> results;
   if (values.empty())
@@ -169,7 +172,7 @@ std::vector<TargetSendResult> HttpTargetHandler::sendValueBatch(
   return results;
 }
 
-bool HttpTargetHandler::testConnection(const json &config) {
+bool HttpTargetHandler::testConnection(const ordered_json &config) {
   try {
     LogManager::getInstance().Info("HTTP 연결 테스트 시작");
 
@@ -193,7 +196,7 @@ bool HttpTargetHandler::testConnection(const json &config) {
 
     Client::HttpResponse response;
     if (method == "POST") {
-      json test_payload;
+      ordered_json test_payload;
       test_payload["test"] = true;
       test_payload["timestamp"] = getCurrentTimestamp();
       response = client->post(test_endpoint, test_payload.dump(),
@@ -216,7 +219,7 @@ bool HttpTargetHandler::testConnection(const json &config) {
   }
 }
 
-bool HttpTargetHandler::validateConfig(const json &config,
+bool HttpTargetHandler::validateConfig(const ordered_json &config,
                                        std::vector<std::string> &errors) {
   errors.clear();
 
@@ -240,12 +243,13 @@ bool HttpTargetHandler::validateConfig(const json &config,
   return true;
 }
 
-json HttpTargetHandler::getStatus() const {
-  return json{{"type", "HTTP"},
-              {"request_count", request_count_.load()},
-              {"success_count", success_count_.load()},
-              {"failure_count", failure_count_.load()},
-              {"cache_stats", getHttpClientCache().getStats().active_clients}};
+ordered_json HttpTargetHandler::getStatus() const {
+  return ordered_json{
+      {"type", "HTTP"},
+      {"request_count", request_count_.load()},
+      {"success_count", success_count_.load()},
+      {"failure_count", failure_count_.load()},
+      {"cache_stats", getHttpClientCache().getStats().active_clients}};
 }
 
 void HttpTargetHandler::cleanup() {
@@ -258,7 +262,7 @@ void HttpTargetHandler::cleanup() {
 // =============================================================================
 
 std::shared_ptr<Client::HttpClient>
-HttpTargetHandler::getOrCreateClient(const json &config,
+HttpTargetHandler::getOrCreateClient(const ordered_json &config,
                                      const std::string &url) {
 
   // ✅ 캐시 키: URL + 주요 설정 조합
@@ -277,7 +281,7 @@ HttpTargetHandler::getOrCreateClient(const json &config,
   return client;
 }
 
-std::string HttpTargetHandler::extractUrl(const json &config) const {
+std::string HttpTargetHandler::extractUrl(const ordered_json &config) const {
   if (config.contains("endpoint") &&
       !config["endpoint"].get<std::string>().empty()) {
     return config["endpoint"].get<std::string>();
@@ -289,7 +293,7 @@ std::string HttpTargetHandler::extractUrl(const json &config) const {
 }
 
 TargetSendResult HttpTargetHandler::executeWithRetry(const AlarmMessage &alarm,
-                                                     const json &config,
+                                                     const ordered_json &config,
                                                      const std::string &url) {
 
   TargetSendResult result;
@@ -343,8 +347,10 @@ TargetSendResult HttpTargetHandler::executeWithRetry(const AlarmMessage &alarm,
   return result;
 }
 
-TargetSendResult HttpTargetHandler::executeSingleRequest(
-    const AlarmMessage &alarm, const json &config, const std::string &url) {
+TargetSendResult
+HttpTargetHandler::executeSingleRequest(const AlarmMessage &alarm,
+                                        const ordered_json &config,
+                                        const std::string &url) {
 
   TargetSendResult result;
   result.target_type = "HTTP";
@@ -405,7 +411,7 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
 
 TargetSendResult
 HttpTargetHandler::executeWithRetry(const std::vector<ValueMessage> &values,
-                                    const json &config,
+                                    const ordered_json &config,
                                     const std::string &url) {
 
   TargetSendResult result;
@@ -453,7 +459,7 @@ HttpTargetHandler::executeWithRetry(const std::vector<ValueMessage> &values,
 
 TargetSendResult
 HttpTargetHandler::executeSingleRequest(const std::vector<ValueMessage> &values,
-                                        const json &config,
+                                        const ordered_json &config,
                                         const std::string &url) {
 
   TargetSendResult result;
@@ -501,7 +507,7 @@ HttpTargetHandler::executeSingleRequest(const std::vector<ValueMessage> &values,
 }
 
 std::unordered_map<std::string, std::string>
-HttpTargetHandler::buildRequestHeaders(const json &config) {
+HttpTargetHandler::buildRequestHeaders(const ordered_json &config) {
   std::unordered_map<std::string, std::string> headers;
 
   headers["Accept"] = "application/json";
@@ -511,7 +517,7 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
 
   // 인증 헤더
   if (config.contains("auth") && config["auth"].is_object()) {
-    const json &auth = config["auth"];
+    const ordered_json &auth = config["auth"];
     std::string auth_type = auth.value("type", "none");
 
     if (auth_type == "bearer" && auth.contains("token")) {
@@ -540,14 +546,14 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
 }
 
 std::string HttpTargetHandler::buildRequestBody(const AlarmMessage &alarm,
-                                                const json &config) {
+                                                const ordered_json &config) {
   json request_body;
 
   // ✅ 템플릿이 있으면 템플릿을 기반으로 생성 (기본 필드 무시)
-  if (config.contains("body_template") && config["body_template"].is_object()) {
-    request_body = config["body_template"];
-    expandTemplateVariables(request_body, alarm);
-    return request_body.dump();
+  if (config.contains("body_template")) {
+    json template_json = config["body_template"];
+    expandTemplateVariables(template_json, alarm);
+    return template_json.dump();
   }
 
   // ✅ 템플릿이 없으면 기본 AlarmMessage 포맷 사용
@@ -559,19 +565,21 @@ std::string HttpTargetHandler::buildRequestBody(const AlarmMessage &alarm,
   request_body["st"] = alarm.st;
   request_body["des"] = alarm.des;
 
-  return request_body.dump();
+  return json::array({request_body}).dump();
 }
 
 std::string
 HttpTargetHandler::buildRequestBody(const std::vector<ValueMessage> &values,
-                                    const json &config) {
+                                    const ordered_json &config) {
   json request_body = json::array();
 
   for (const auto &val : values) {
-    if (config.contains("body_template") &&
-        config["body_template"].is_object()) {
+    if (config.contains("body_template")) {
       json item = config["body_template"];
       expandTemplateVariables(item, val);
+
+      // 개별 아이템이 배열이면 (예: [[...], [...]]), 그대로 추가할지 고민 필요
+      // 일반적으로는 개별 아이템을 객체로 기대함. 일단 그대로 추가.
       request_body.push_back(item);
     } else {
       request_body.push_back(val.to_json());
@@ -601,7 +609,7 @@ HttpTargetHandler::calculateBackoffDelay(int attempt,
   return static_cast<uint32_t>(delay);
 }
 
-std::string HttpTargetHandler::getTargetName(const json &config) const {
+std::string HttpTargetHandler::getTargetName(const ordered_json &config) const {
   if (config.contains("name") && config["name"].is_string()) {
     return config["name"].get<std::string>();
   }

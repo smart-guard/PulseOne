@@ -294,16 +294,12 @@ ifeq ($(HAS_BACNET),1)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/BACnet*.cpp)
 endif
 
-ifeq ($(HAS_MQTT_C),1)
-WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Mqtt*.cpp)
-endif
-
-ifeq ($(HAS_MQTT_CPP),1)
-WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Mqtt*.cpp)
+ifneq ($(HAS_MQTT_C)$(HAS_MQTT_CPP),00)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/MQTT*.cpp)
 endif
 
 ifeq ($(HAS_OPCUA),1)
-WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/OPC_UA*.cpp)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/OPCUA*.cpp)
 endif
 
 ifeq ($(HAS_BLE),1)
@@ -311,7 +307,7 @@ WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Ble*.cpp)
 endif
 
 ifeq ($(HAS_ROS),1)
-WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/Ros*.cpp)
+WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Protocol/ROS*.cpp)
 endif
 
 ifeq ($(HAS_HTTP_REST),1)
@@ -344,11 +340,11 @@ DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
 endif
 
 # 추가 드라이버 (항시 포함)
-# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
-# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
-# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.c)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.c)
 # DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp)
-# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp)
+DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp)
 
 # 네트워크 및 API
 ifeq ($(HAS_HTTPLIB),1)

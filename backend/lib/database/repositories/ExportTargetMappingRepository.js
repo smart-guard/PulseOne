@@ -46,6 +46,7 @@ class ExportTargetMappingRepository extends BaseRepository {
             const dataToInsert = {
                 target_id: data.target_id,
                 point_id: data.point_id,
+                site_id: data.site_id || data.building_id, // [RESTORE] site_id as primary
                 target_field_name: data.target_field_name,
                 target_description: data.target_description || '',
                 conversion_config: typeof data.conversion_config === 'object' ? JSON.stringify(data.conversion_config) : (data.conversion_config || '{}'),
@@ -53,7 +54,7 @@ class ExportTargetMappingRepository extends BaseRepository {
                 created_at: this.knex.fn.now()
             };
 
-            const [id] = await this.knex(this.tableName).insert(dataToInsert);
+            const [id] = await this.query().insert(dataToInsert);
             const item = await this.query().where('id', id).first();
             return this._parseItem(item);
         } catch (error) {
@@ -63,13 +64,15 @@ class ExportTargetMappingRepository extends BaseRepository {
     }
 
     /**
-     * 매핑 업데이트
+     * 매핑 수정
      */
     async update(id, data) {
         try {
-            const dataToUpdate = {};
+            const dataToUpdate = {
+                updated_at: this.knex.fn.now()
+            };
 
-            const allowedFields = ['target_field_name', 'target_description', 'conversion_config', 'is_enabled'];
+            const allowedFields = ['target_field_name', 'target_description', 'conversion_config', 'is_enabled', 'site_id'];
             allowedFields.forEach(field => {
                 if (data[field] !== undefined) {
                     if (field === 'conversion_config' && typeof data[field] === 'object') {
@@ -79,6 +82,11 @@ class ExportTargetMappingRepository extends BaseRepository {
                     }
                 }
             });
+
+            // Handle building_id fallback for site_id if building_id is provided but site_id isn't
+            if (data.building_id !== undefined && data.site_id === undefined) {
+                dataToUpdate.site_id = data.building_id;
+            }
 
             const affected = await this.query().where('id', id).update(dataToUpdate);
             if (affected > 0) {

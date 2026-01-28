@@ -111,7 +111,7 @@ private:
   std::atomic<bool> should_stop_{false};
 
   // 설정 캐시 (재연결용)
-  json cached_config_;
+  ordered_json cached_config_;
 
   // 타임아웃 설정
   int connect_timeout_ms_ = MqttConstants::DEFAULT_CONNECT_TIMEOUT_SEC * 1000;
@@ -142,22 +142,22 @@ public:
   // ITargetHandler 인터페이스 구현
   // =======================================================================
 
-  bool initialize(const json &config) override;
+  bool initialize(const ordered_json &config) override;
   TargetSendResult sendAlarm(const AlarmMessage &alarm,
-                             const json &config) override;
+                             const ordered_json &config) override;
 
   /**
    * @brief 주기적 데이터 배치 전송
    */
   std::vector<TargetSendResult>
   sendValueBatch(const std::vector<ValueMessage> &values,
-                 const json &config) override;
+                 const ordered_json &config) override;
 
-  bool testConnection(const json &config) override;
+  bool testConnection(const ordered_json &config) override;
   std::string getHandlerType() const override { return "MQTT"; }
-  json getStatus() const override;
+  ordered_json getStatus() const override;
   void cleanup() override;
-  bool validateConfig(const json &config,
+  bool validateConfig(const ordered_json &config,
                       std::vector<std::string> &errors) override;
 
   // =======================================================================
@@ -194,36 +194,36 @@ private:
   // 내부 구현 메서드
   // =======================================================================
 
-  bool connectToBroker(const json &config);
+  bool connectToBroker(const ordered_json &config);
   void disconnectFromBroker();
   bool initializeMqttClient();
 
   std::string generateTopic(const AlarmMessage &alarm,
-                            const json &config) const;
+                            const ordered_json &config) const;
   std::string generatePayload(const AlarmMessage &alarm,
-                              const json &config) const;
+                              const ordered_json &config) const;
 
   TargetSendResult publishMessage(const std::string &topic,
                                   const std::string &payload, int qos,
                                   bool retain);
 
   std::string generateClientId(const std::string &base_id = "") const;
-  void reconnectThread(json config);
+  void reconnectThread(ordered_json config);
   void processQueuedMessages();
   bool enqueueMessage(const std::string &topic, const std::string &payload);
 
   std::string expandTemplateVariables(const std::string &template_str,
                                       const AlarmMessage &alarm) const;
 
-  void expandTemplateVariables(json &template_json,
+  void expandTemplateVariables(ordered_json &template_json,
                                const AlarmMessage &alarm) const;
 
-  void expandTemplateVariables(json &template_json,
+  void expandTemplateVariables(ordered_json &template_json,
                                const ValueMessage &value) const;
   std::string createJsonMessage(const AlarmMessage &alarm,
-                                const json &config) const;
+                                const ordered_json &config) const;
   std::string createTextMessage(const AlarmMessage &alarm,
-                                const json &config) const;
+                                const ordered_json &config) const;
 };
 
 // =============================================================================

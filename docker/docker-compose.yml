@@ -17,6 +17,7 @@ services:
       - POSTGRES_DATABASE=pulseone
       - POSTGRES_USER=pulseone
       - POSTGRES_PASSWORD=yourpassword
+      - TZ=Asia/Seoul
     volumes:
       - ../frontend:/app
       - /app/node_modules
@@ -54,6 +55,8 @@ services:
       - INFLUXDB_TOKEN=my-super-secret-auth-token
       - INFLUXDB_BUCKET=history
       - USE_INFLUXDB=true
+      - START_COLLECTOR_ON_BOOT=false
+      - TZ=Asia/Seoul
     volumes:
       - ../backend:/app/backend
       - ../config:/app/config
@@ -81,8 +84,10 @@ services:
       - RABBITMQ_HOST=rabbitmq
       - COLLECTOR_ID=1
       - LOG_LEVEL=debug
+      - LOG_LEVEL=debug
       - INFLUXDB_BUCKET=history
-    command: /bin/bash -c "make all && ./bin/pulseone-collector"
+      - TZ=Asia/Seoul
+    command: /bin/bash -c "cd /app/core/shared && make -j4 && cd /app/core/collector && make all && ./bin/pulseone-collector"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -96,6 +101,7 @@ services:
     working_dir: /app/backend
     environment:
       - MODBUS_PORT=50502
+      - TZ=Asia/Seoul
     volumes:
       - ../backend:/app/backend
     command: node scripts/modbus_simulator.js
@@ -107,6 +113,7 @@ services:
     working_dir: /app/backend
     environment:
       - MQTT_BROKER_URL=mqtt://rabbitmq:1883
+      - TZ=Asia/Seoul
     volumes:
       - ../backend:/app/backend
     depends_on:
@@ -120,6 +127,8 @@ services:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
       - "1883:1883"
+    environment:
+      - TZ=Asia/Seoul
 
   influxdb:
     image: influxdb:2.7
@@ -133,6 +142,7 @@ services:
       DOCKER_INFLUXDB_INIT_ORG: pulseone
       DOCKER_INFLUXDB_INIT_BUCKET: history
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: my-super-secret-auth-token
+      TZ: Asia/Seoul
     volumes:
       - influxdb_data:/var/lib/influxdb2
 
@@ -143,6 +153,7 @@ services:
       POSTGRES_USER: pulseone
       POSTGRES_PASSWORD: yourpassword
       POSTGRES_DB: pulseone
+      TZ: Asia/Seoul
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
@@ -156,6 +167,8 @@ services:
   redis:
     image: redis:alpine
     restart: always
+    environment:
+      - TZ=Asia/Seoul
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -179,13 +192,14 @@ services:
       - PULSEONE_CONFIG_DIR=/app/config
       - PULSEONE_DATA_DIR=/app/data
       - AUTO_RUN=true
+      - TZ=Asia/Seoul
     volumes:
       - ../core:/app/core
       - ../config:/app/config
       - ../data:/app/data
       - ../logs:/app/logs
       - shared_libs:/app/core/shared/lib
-    command: /bin/bash -c "make -C core/shared clean && make -C core/shared -j4 && make -C core/export-gateway clean && make -C core/export-gateway -j4 && ./core/export-gateway/bin/export-gateway --id 1"
+    command: /bin/bash -c "make -C core/shared clean && make -C core/shared -j4 && make -C core/export-gateway clean && make -C core/export-gateway -j4 && ./core/export-gateway/bin/export-gateway --id 6"
     tty: true
     depends_on:
       redis:

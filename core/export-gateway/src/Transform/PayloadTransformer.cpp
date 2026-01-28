@@ -23,17 +23,17 @@ PayloadTransformer::PayloadTransformer() {
 // 메인 변환
 // =============================================================================
 
-json PayloadTransformer::transform(const json &template_json,
-                                   const TransformContext &context) {
+ordered_json PayloadTransformer::transform(const ordered_json &template_json,
+                                           const TransformContext &context) {
   try {
-    json result = template_json;
+    ordered_json result = template_json;
     auto variables = buildVariableMap(context);
     expandJsonRecursive(result, variables);
     return result;
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("PayloadTransformer::transform 실패: " +
                                     std::string(e.what()));
-    return json::object();
+    return ordered_json::object();
   }
 }
 
@@ -58,42 +58,48 @@ PayloadTransformer::transformString(const std::string &template_str,
 // 시스템별 기본 템플릿
 // =============================================================================
 
-json PayloadTransformer::getInsiteDefaultTemplate() {
-  return json{{"controlpoint", "{{target_field_name}}"},
-              {"description", "{{target_description}}"},
-              {"value", "{{converted_value}}"},
-              {"time", "{{timestamp_iso8601}}"},
-              {"status", "{{alarm_status}}"}};
+ordered_json PayloadTransformer::getInsiteDefaultTemplate() {
+  return ordered_json{{"controlpoint", "{{target_field_name}}"},
+                      {"description", "{{target_description}}"},
+                      {"value", "{{converted_value}}"},
+                      {"time", "{{timestamp_iso8601}}"},
+                      {"status", "{{alarm_status}}"}};
 }
 
-json PayloadTransformer::getHDCDefaultTemplate() {
-  return json{{"building_id", "{{building_id}}"},
-              {"point_id", "{{target_field_name}}"},
-              {"data", json{{"value", "{{converted_value}}"},
+ordered_json PayloadTransformer::getHDCDefaultTemplate() {
+  return ordered_json{
+      {"building_id", "{{building_id}}"},
+      {"point_id", "{{target_field_name}}"},
+      {"data", ordered_json{{"value", "{{converted_value}}"},
                             {"timestamp", "{{timestamp_unix_ms}}"}}},
-              {"metadata", json{{"description", "{{target_description}}"},
+      {"metadata", ordered_json{{"description", "{{target_description}}"},
                                 {"alarm_status", "{{alarm_status}}"}}}};
 }
 
-json PayloadTransformer::getBEMSDefaultTemplate() {
-  return json{{"buildingId", "{{building_id}}"},
-              {"sensorName", "{{target_field_name}}"},
-              {"sensorValue", "{{converted_value}}"},
-              {"timestamp", "{{timestamp_iso8601}}"},
-              {"alarmLevel", "{{alarm_status}}"}};
+ordered_json PayloadTransformer::getBEMSDefaultTemplate() {
+  return ordered_json{{"buildingId", "{{building_id}}"},
+                      {"sensorName", "{{target_field_name}}"},
+                      {"sensorValue", "{{converted_value}}"},
+                      {"timestamp", "{{timestamp_iso8601}}"},
+                      {"alarmLevel", "{{alarm_status}}"}};
 }
 
-json PayloadTransformer::getGenericDefaultTemplate() {
-  return json{{"building_id", "{{building_id}}"},
-              {"point_name", "{{point_name}}"},
-              {"value", "{{value}}"},
-              {"converted_value", "{{converted_value}}"},
-              {"timestamp", "{{timestamp_iso8601}}"},
-              {"alarm_status", "{{alarm_status}}"},
-              {"source", "PulseOne-ExportGateway"}};
+ordered_json PayloadTransformer::getGenericDefaultTemplate() {
+  return ordered_json{{"bd", "{{building_id}}"},
+                      {"ty", "num"},
+                      {"nm", "{{nm}}"},
+                      {"vl", "{{vl}}"},
+                      {"tm", "{{tm}}"},
+                      {"st", "{{st}}"},
+                      {"al", "{{al}}"},
+                      {"des", "{{des}}"},
+                      {"il", "10"},
+                      {"xl", "_"},
+                      {"mi", {10, 20, 30}},
+                      {"mx", {80, 90, 100}}};
 }
 
-json PayloadTransformer::getDefaultTemplateForSystem(
+ordered_json PayloadTransformer::getDefaultTemplateForSystem(
     const std::string &system_type) {
   if (system_type == "insite")
     return getInsiteDefaultTemplate();
@@ -132,6 +138,27 @@ TransformContext PayloadTransformer::createContext(
   context.timestamp_unix_ms = toUnixTimestampMs(alarm.tm);
   context.alarm_status = getAlarmStatusString(alarm.al, alarm.st);
 
+  // 추가 필드 (il, xl 등) - JSON 타입 보전을 위해 dump() 사용하지 않고 원본값
+  // 유지 고려
+  context.custom_vars["il"] = alarm.il;
+  context.custom_vars["xl"] = alarm.xl;
+  context.custom_vars["mi"] = json(alarm.mi).dump(); // "[0]"
+  context.custom_vars["mx"] = json(alarm.mx).dump(); // "[1]"
+
+  // extra_info 필드들을 모두 custom_vars에 주입하여 즉시 사용 가능하게 함
+  if (!alarm.extra_info.is_null()) {
+    for (auto it = alarm.extra_info.begin(); it != alarm.extra_info.end();
+         ++it) {
+      if (it.value().is_primitive()) {
+        context.custom_vars[it.key()] = it.value().is_string()
+                                            ? it.value().get<std::string>()
+                                            : it.value().dump();
+      } else {
+        context.custom_vars[it.key()] = it.value().dump();
+      }
+    }
+  }
+
   return context;
 }
 
@@ -155,6 +182,13 @@ TransformContext PayloadTransformer::createContext(
 
   context.timestamp_iso8601 = toISO8601(value.tm);
   context.timestamp_unix_ms = toUnixTimestampMs(value.tm);
+
+  // 추가 필드 (기본값)
+  context.custom_vars["il"] = "-";
+  context.custom_vars["xl"] = "1";
+  context.custom_vars["mi"] = "[0]";
+  context.custom_vars["mx"] = "[1]";
+
   context.alarm_status = "NORMAL";
 
   return context;
@@ -194,11 +228,28 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
   vars["bd"] = vars["building_id"];
   vars["nm"] = vars["point_name"];
   vars["vl"] = vars["value"];
-  vars["tm"] = vars["timestamp"];
+  vars["tm"] = vars["timestamp_iso8601"];
   vars["st"] = vars["status"];
   vars["al"] = vars["alarm_flag"];
   vars["des"] = vars["description"];
   vars["ty"] = vars["type"];
+
+  // UI용 별칭 (사용자 가이드 호환)
+  vars["device_name"] = vars["bd"];
+  vars["point_name"] = vars["nm"];
+  vars["value"] = vars["vl"];
+  vars["timestamp"] = vars["tm"];
+  vars["description"] = vars["des"];
+
+  // 추가 필드 (il, xl 등)
+  vars["il"] =
+      context.custom_vars.count("il") ? context.custom_vars.at("il") : "-";
+  vars["xl"] =
+      context.custom_vars.count("xl") ? context.custom_vars.at("xl") : "1";
+  vars["mi"] =
+      context.custom_vars.count("mi") ? context.custom_vars.at("mi") : "[0]";
+  vars["mx"] =
+      context.custom_vars.count("mx") ? context.custom_vars.at("mx") : "[1]";
 
   // 커스텀 변수
   for (const auto &[key, value] : context.custom_vars) {
@@ -223,28 +274,95 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
 // =============================================================================
 
 void PayloadTransformer::expandJsonRecursive(
-    json &obj, const std::map<std::string, std::string> &variables) {
+    ordered_json &obj, const std::map<std::string, std::string> &variables) {
   if (obj.is_string()) {
     std::string str = obj.get<std::string>();
-
+    // 1. 일반 변수 치환 ({var} 및 {{var}} 지원)
     for (const auto &[key, value] : variables) {
-      std::string pattern = "{{" + key + "}}";
+      // {{var}}
+      std::string pattern2 = "{{" + key + "}}";
       size_t pos = 0;
-      while ((pos = str.find(pattern, pos)) != std::string::npos) {
-        str.replace(pos, pattern.length(), value);
+      while ((pos = str.find(pattern2, pos)) != std::string::npos) {
+        str.replace(pos, pattern2.length(), value);
+        pos += value.length();
+      }
+
+      // {var}
+      std::string pattern1 = "{" + key + "}";
+      pos = 0;
+      while ((pos = str.find(pattern1, pos)) != std::string::npos) {
+        str.replace(pos, pattern1.length(), value);
         pos += value.length();
       }
     }
 
-    // 숫자 변환 시도
-    if (!str.empty() && (std::isdigit(str[0]) || str[0] == '-')) {
-      try {
-        if (str.find('.') != std::string::npos) {
-          obj = std::stod(str);
+    // 2. 매핑 변수 치환 ({map:key:true_val:false_val} 또는
+    // {{map:key:true_val:false_val}}) 예: {map:al:발생:복구},
+    // {map:st:제어가능:제어불가}, {map:ty:DIGITAL:ANALOG}
+    std::regex map_regex("\\{+map:([^:]+):([^:]*):([^}]+)\\}+");
+    std::smatch match;
+    std::string search_str = str;
+    std::string result_str;
+    auto words_begin =
+        std::sregex_iterator(search_str.begin(), search_str.end(), map_regex);
+    auto words_end = std::sregex_iterator();
+
+    size_t last_pos = 0;
+    for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
+      std::smatch match = *i;
+      result_str += search_str.substr(last_pos, match.position() - last_pos);
+
+      std::string key = match[1].str();
+      std::string true_val = match[2].str();
+      std::string false_val = match[3].str();
+
+      bool condition = false;
+      if (variables.count(key)) {
+        std::string val = variables.at(key);
+        // "1", "true", "ALARM", "DIGITAL" 등을 참으로 간주
+        if (key == "ty" || key == "type") {
+          condition = (val == "bit" || val == "bool" || val == "DIGITAL");
         } else {
-          obj = std::stoll(str);
+          condition = (val == "1" || val == "true" || val == "active" ||
+                       val == "ALARM");
         }
+      }
+
+      result_str += condition ? true_val : false_val;
+      last_pos = match.position() + match.length();
+    }
+    result_str += search_str.substr(last_pos);
+    str = result_str;
+
+    // 만약 전체 문자열이 "{{var}}" 형태이고, 그 변수값이 JSON 배열/객체
+    // 형태라면 문자열이 아닌 원본 타입으로 치환 (예: "[0]" -> [0])
+    if (!str.empty() && str.front() == '[' && str.back() == ']') {
+      try {
+        ordered_json parsed = ordered_json::parse(str);
+        obj = parsed;
         return;
+      } catch (...) {
+      }
+    }
+
+    // 숫자 변환 시도 (완전한 숫자인 경우만 처리)
+    if (!str.empty() &&
+        (std::isdigit(str[0]) || str[0] == '-' || str[0] == '.')) {
+      try {
+        size_t processed = 0;
+        if (str.find('.') != std::string::npos) {
+          double val = std::stod(str, &processed);
+          if (processed == str.length()) {
+            obj = val;
+            return;
+          }
+        } else {
+          long long val = std::stoll(str, &processed);
+          if (processed == str.length()) {
+            obj = val;
+            return;
+          }
+        }
       } catch (...) {
       }
     }
@@ -266,25 +384,12 @@ void PayloadTransformer::expandJsonRecursive(
 // =============================================================================
 
 std::string PayloadTransformer::toISO8601(const std::string &alarm_tm) {
-  if (alarm_tm.empty()) {
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
-    return oss.str();
-  }
+  int64_t ms = toUnixTimestampMs(alarm_tm);
+  std::time_t t = static_cast<std::time_t>(ms / 1000);
 
-  if (alarm_tm.find('T') != std::string::npos)
-    return alarm_tm;
-
-  std::string iso = alarm_tm;
-  size_t space_pos = iso.find(' ');
-  if (space_pos != std::string::npos) {
-    iso[space_pos] = 'T';
-    if (iso.back() != 'Z')
-      iso += "Z";
-  }
-  return iso;
+  std::ostringstream oss;
+  oss << std::put_time(std::localtime(&t), "%Y-%m-%d %H:%M:%S");
+  return oss.str();
 }
 
 int64_t PayloadTransformer::toUnixTimestampMs(const std::string &alarm_tm) {

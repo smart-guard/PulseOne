@@ -262,7 +262,7 @@ class DeviceQueries {
   static getDataPointsByDevice() {
     return `
       SELECT 
-        dp.id, dp.device_id, d.name as device_name, dp.name, dp.description,
+        dp.id, dp.device_id, d.name as device_name, d.site_id, dp.name, dp.description,
         dp.address, dp.address_string, dp.data_type, dp.access_mode,
         dp.is_enabled, dp.is_writable, dp.unit, dp.scaling_factor,
         dp.scaling_offset, dp.min_value, dp.max_value,
@@ -496,6 +496,7 @@ class DeviceQueries {
         dp.id,
         dp.device_id,
         d.name as device_name,
+        d.site_id,
         dp.name as name,
         dp.description,
         dp.data_type,

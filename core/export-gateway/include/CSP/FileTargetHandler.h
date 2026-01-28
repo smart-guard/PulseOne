@@ -17,6 +17,7 @@
 #define FILE_TARGET_HANDLER_H
 
 #include "Export/ExportTypes.h"
+#include "Transform/PayloadTransformer.h"
 #include <atomic>
 #include <string>
 
@@ -65,25 +66,25 @@ public:
   /**
    * @brief 선택적 초기화 (설정 검증 + 디렉토리 생성)
    */
-  bool initialize(const json &config) override;
+  bool initialize(const ordered_json &config) override;
 
   /**
    * @brief 알람 파일 저장 (Stateless - config 기반 동작)
    */
   TargetSendResult sendAlarm(const AlarmMessage &alarm,
-                             const json &config) override;
+                             const ordered_json &config) override;
 
   /**
    * @brief 연결 테스트
    */
-  bool testConnection(const json &config) override;
+  bool testConnection(const ordered_json &config) override;
 
   /**
    * @brief 스케줄된 값 배치 저장
    */
   std::vector<TargetSendResult>
   sendValueBatch(const std::vector<PulseOne::CSP::ValueMessage> &values,
-                 const json &config) override;
+                 const ordered_json &config) override;
 
   /**
    * @brief 핸들러 타입
@@ -93,7 +94,7 @@ public:
   /**
    * @brief 설정 검증
    */
-  bool validateConfig(const json &config,
+  bool validateConfig(const ordered_json &config,
                       std::vector<std::string> &errors) override;
 
   /**
@@ -104,7 +105,7 @@ public:
   /**
    * @brief 상태 조회
    */
-  json getStatus() const override;
+  ordered_json getStatus() const override;
 
 private:
   // =======================================================================
@@ -114,18 +115,18 @@ private:
   /**
    * @brief config에서 base_path 추출
    */
-  std::string extractBasePath(const json &config) const;
+  std::string extractBasePath(const ordered_json &config) const;
 
   /**
    * @brief config에서 file_format 추출
    */
-  std::string extractFileFormat(const json &config) const;
+  std::string extractFileFormat(const ordered_json &config) const;
 
   /**
    * @brief 파일 경로 생성
    */
   std::string generateFilePath(const AlarmMessage &alarm,
-                               const json &config) const;
+                               const ordered_json &config) const;
 
   /**
    * @brief 디렉토리 생성
@@ -136,43 +137,49 @@ private:
    * @brief 파일 내용 생성
    */
   std::string buildFileContent(const AlarmMessage &alarm,
-                               const json &config) const;
+                               const ordered_json &config) const;
 
   /**
    * @brief JSON 형식 내용
    */
   std::string buildJsonContent(const AlarmMessage &alarm,
-                               const json &config) const;
+                               const ordered_json &config) const;
 
   /**
    * @brief CSV 형식 내용
    */
   std::string buildCsvContent(const AlarmMessage &alarm,
-                              const json &config) const;
+                              const ordered_json &config) const;
 
   /**
    * @brief 텍스트 형식 내용
    */
   std::string buildTextContent(const AlarmMessage &alarm,
-                               const json &config) const;
+                               const ordered_json &config) const;
 
   /**
    * @brief XML 형식 내용
    */
   std::string buildXmlContent(const AlarmMessage &alarm,
-                              const json &config) const;
+                              const ordered_json &config) const;
 
   /**
    * @brief 파일 쓰기 (원자적/직접)
    */
   bool writeFile(const std::string &file_path, const std::string &content,
-                 const json &config) const;
+                 const ordered_json &config) const;
 
   /**
    * @brief 템플릿 확장
    */
   std::string expandTemplate(const std::string &template_str,
                              const AlarmMessage &alarm) const;
+
+  /**
+   * @brief JSON 템플릿 변수 확장 (PayloadTransformer 사용)
+   */
+  void expandTemplateVariables(nlohmann::json &template_json,
+                               const AlarmMessage &alarm) const;
 
   /**
    * @brief 파일명 안전화
@@ -182,7 +189,7 @@ private:
   /**
    * @brief 타겟 이름 반환
    */
-  std::string getTargetName(const json &config) const;
+  std::string getTargetName(const ordered_json &config) const;
 
   /**
    * @brief 현재 타임스탬프 (ISO 8601)

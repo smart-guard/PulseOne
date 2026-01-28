@@ -28,6 +28,8 @@
 namespace PulseOne {
 namespace CSP {
 
+using json = nlohmann::json;
+using ordered_json = nlohmann::ordered_json;
 namespace Utils = PulseOne::Utils;
 namespace Client = PulseOne::Client;
 
@@ -62,7 +64,7 @@ S3TargetHandler::~S3TargetHandler() {
 // ITargetHandler 인터페이스 구현
 // =============================================================================
 
-bool S3TargetHandler::initialize(const json &config) {
+bool S3TargetHandler::initialize(const ordered_json &config) {
   // ✅ Stateless 패턴: initialize()는 선택적
   // 설정 검증만 수행
   std::vector<std::string> errors;
@@ -79,7 +81,7 @@ bool S3TargetHandler::initialize(const json &config) {
 }
 
 TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage &alarm,
-                                            const json &config) {
+                                            const ordered_json &config) {
   TargetSendResult result;
   result.target_type = "S3";
   result.target_name = getTargetName(config);
@@ -164,7 +166,7 @@ TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage &alarm,
 
 std::vector<TargetSendResult>
 S3TargetHandler::sendAlarmBatch(const std::vector<AlarmMessage> &alarms,
-                                const json &config) {
+                                const ordered_json &config) {
   std::vector<TargetSendResult> results;
   if (alarms.empty())
     return results;
@@ -185,10 +187,11 @@ S3TargetHandler::sendAlarmBatch(const std::vector<AlarmMessage> &alarms,
     // JSON Array 생성
     json json_array = json::array();
     for (const auto &alarm : alarms) {
-      if (config.contains("body_template") &&
-          config["body_template"].is_object()) {
+      if (config.contains("body_template")) {
         json item = config["body_template"];
         expandTemplateVariables(item, alarm);
+
+        // 개별 아이템이 이미 배열이면 그대로 추가, 객체면 객체로 추가
         json_array.push_back(item);
       } else {
         json_array.push_back(alarm.to_json());
@@ -248,7 +251,7 @@ S3TargetHandler::sendAlarmBatch(const std::vector<AlarmMessage> &alarms,
   return results;
 }
 
-bool S3TargetHandler::testConnection(const json &config) {
+bool S3TargetHandler::testConnection(const ordered_json &config) {
   try {
     LogManager::getInstance().Info("S3 연결 테스트 시작");
 
@@ -334,7 +337,7 @@ bool S3TargetHandler::testConnection(const json &config) {
   }
 }
 
-bool S3TargetHandler::validateConfig(const json &config,
+bool S3TargetHandler::validateConfig(const ordered_json &config,
                                      std::vector<std::string> &errors) {
   errors.clear();
 
@@ -366,17 +369,17 @@ bool S3TargetHandler::validateConfig(const json &config,
   return true;
 }
 
-json S3TargetHandler::getStatus() const {
+ordered_json S3TargetHandler::getStatus() const {
   auto cache_stats = getS3ClientCache().getStats();
 
-  return json{{"type", "S3"},
-              {"upload_count", upload_count_.load()},
-              {"success_count", success_count_.load()},
-              {"failure_count", failure_count_.load()},
-              {"total_bytes_uploaded", total_bytes_uploaded_.load()},
-              {"cache_stats",
-               {{"active_clients", cache_stats.active_clients},
-                {"total_entries", cache_stats.total_entries}}}};
+  return ordered_json{{"type", "S3"},
+                      {"upload_count", upload_count_.load()},
+                      {"success_count", success_count_.load()},
+                      {"failure_count", failure_count_.load()},
+                      {"total_bytes_uploaded", total_bytes_uploaded_.load()},
+                      {"cache_stats",
+                       {{"active_clients", cache_stats.active_clients},
+                        {"total_entries", cache_stats.total_entries}}}};
 }
 
 void S3TargetHandler::cleanup() {
@@ -389,7 +392,7 @@ void S3TargetHandler::cleanup() {
 // =============================================================================
 
 std::shared_ptr<Client::S3Client>
-S3TargetHandler::getOrCreateClient(const json &config,
+S3TargetHandler::getOrCreateClient(const ordered_json &config,
                                    const std::string &bucket_name) {
 
   // ✅ 캐시 키: bucket_name (버킷별로 클라이언트 재사용)
@@ -434,7 +437,8 @@ S3TargetHandler::getOrCreateClient(const json &config,
   }
 }
 
-std::string S3TargetHandler::extractBucketName(const json &config) const {
+std::string
+S3TargetHandler::extractBucketName(const ordered_json &config) const {
   if (config.contains("bucket_name") &&
       !config["bucket_name"].get<std::string>().empty()) {
     std::string bucket_name = config["bucket_name"].get<std::string>();
@@ -443,7 +447,8 @@ std::string S3TargetHandler::extractBucketName(const json &config) const {
   return "";
 }
 
-Client::S3Config S3TargetHandler::buildS3Config(const json &config) const {
+Client::S3Config
+S3TargetHandler::buildS3Config(const ordered_json &config) const {
   Client::S3Config s3_config;
 
   // 버킷명
@@ -477,7 +482,7 @@ Client::S3Config S3TargetHandler::buildS3Config(const json &config) const {
   return s3_config;
 }
 
-void S3TargetHandler::loadCredentials(const json &config,
+void S3TargetHandler::loadCredentials(const ordered_json &config,
                                       Client::S3Config &s3_config) const {
   auto &config_manager = ConfigManager::getInstance();
 
@@ -538,8 +543,9 @@ void S3TargetHandler::loadCredentials(const json &config,
   }
 }
 
-std::string S3TargetHandler::generateObjectKey(const AlarmMessage &alarm,
-                                               const json &config) const {
+std::string
+S3TargetHandler::generateObjectKey(const AlarmMessage &alarm,
+                                   const ordered_json &config) const {
   // 객체 키 템플릿
   std::string template_str =
       config.value("object_key_template",
@@ -599,8 +605,9 @@ std::string S3TargetHandler::expandTemplate(const std::string &template_str,
   return result;
 }
 
-std::string S3TargetHandler::buildJsonContent(const AlarmMessage &alarm,
-                                              const json &config) const {
+std::string
+S3TargetHandler::buildJsonContent(const AlarmMessage &alarm,
+                                  const ordered_json &config) const {
   json content;
 
   // 기본 알람 데이터
@@ -637,7 +644,7 @@ std::string S3TargetHandler::buildJsonContent(const AlarmMessage &alarm,
 
 std::unordered_map<std::string, std::string>
 S3TargetHandler::buildMetadata(const AlarmMessage &alarm,
-                               const json &config) const {
+                               const ordered_json &config) const {
 
   std::unordered_map<std::string, std::string> metadata;
 
@@ -692,7 +699,7 @@ std::string S3TargetHandler::generateRequestId() const {
   return "req_" + std::to_string(ms.count());
 }
 
-std::string S3TargetHandler::getTargetName(const json &config) const {
+std::string S3TargetHandler::getTargetName(const ordered_json &config) const {
   if (config.contains("name") && config["name"].is_string()) {
     return config["name"].get<std::string>();
   }
@@ -815,7 +822,7 @@ S3TargetHandler::generateS3Endpoint(const std::string &region) const {
 // =============================================================================
 std::vector<TargetSendResult>
 S3TargetHandler::sendValueBatch(const std::vector<ValueMessage> &values,
-                                const json &config) {
+                                const ordered_json &config) {
 
   std::vector<TargetSendResult> results;
   if (values.empty())
@@ -913,45 +920,21 @@ S3TargetHandler::sendValueBatch(const std::vector<ValueMessage> &values,
 
 void S3TargetHandler::expandTemplateVariables(json &template_json,
                                               const AlarmMessage &alarm) const {
-
-  auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-  auto context = transformer.createContext(alarm);
-
-  if (template_json.is_object()) {
-    for (auto it = template_json.begin(); it != template_json.end(); ++it) {
-      if (it.value().is_string()) {
-        std::string val = it.value().get<std::string>();
-        it.value() = transformer.transformString(val, context);
-      } else if (it.value().is_object() || it.value().is_array()) {
-        expandTemplateVariables(it.value(), alarm);
-      }
-    }
-  } else if (template_json.is_array()) {
-    for (auto &item : template_json) {
-      expandTemplateVariables(item, alarm);
-    }
+  try {
+    auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
+    auto context = transformer.createContext(alarm);
+    template_json = transformer.transform(template_json, context);
+  } catch (...) {
   }
 }
 
 void S3TargetHandler::expandTemplateVariables(json &template_json,
                                               const ValueMessage &value) const {
-
-  auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-  auto context = transformer.createContext(value);
-
-  if (template_json.is_object()) {
-    for (auto it = template_json.begin(); it != template_json.end(); ++it) {
-      if (it.value().is_string()) {
-        std::string val = it.value().get<std::string>();
-        it.value() = transformer.transformString(val, context);
-      } else if (it.value().is_object() || it.value().is_array()) {
-        expandTemplateVariables(it.value(), value);
-      }
-    }
-  } else if (template_json.is_array()) {
-    for (auto &item : template_json) {
-      expandTemplateVariables(item, value);
-    }
+  try {
+    auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
+    auto context = transformer.createContext(value);
+    template_json = transformer.transform(template_json, context);
+  } catch (...) {
   }
 }
 

@@ -46,6 +46,36 @@ class ProcessService extends BaseService {
      */
     async getSpecificStatus(processName) {
         return await this.handleRequest(async () => {
+            const isDocker = process.env.DOCKER_CONTAINER === 'true';
+
+            // Docker 환경에서 외부 서비스(DB 등)는 포트 체크로 확인
+            if (isDocker) {
+                const ports = {
+                    'postgresql': 5432,
+                    'influxdb': 8086,
+                    'rabbitmq': 5672,
+                    'redis': 6379,
+                    'collector': 50510
+                };
+
+                const port = ports[processName.toLowerCase()];
+                if (port) {
+                    const host = processName.toLowerCase() === 'collector' ? 'collector' :
+                        processName.toLowerCase() === 'redis' ? 'redis' :
+                            processName.toLowerCase() === 'rabbitmq' ? 'rabbitmq' :
+                                processName.toLowerCase() === 'influxdb' ? 'influxdb' :
+                                    processName.toLowerCase() === 'postgresql' ? 'postgres' : 'localhost';
+
+                    const isPortOpen = await this._checkTcpPort(host, port);
+                    return {
+                        name: processName,
+                        status: isPortOpen ? 'running' : 'stopped',
+                        timestamp: new Date().toISOString(),
+                        checkMethod: 'tcp-port'
+                    };
+                }
+            }
+
             const commands = this._getPlatformCommands();
             const statusCmd = commands[processName]?.status;
 
@@ -59,11 +89,49 @@ class ProcessService extends BaseService {
                     resolve({
                         name: processName,
                         status: isRunning ? 'running' : 'stopped',
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        checkMethod: 'platform-cmd'
                     });
                 });
             });
         }, `ProcessService.getSpecificStatus(${processName})`);
+    }
+
+    /**
+     * TCP 포트 오픈 여부 확인 (헬스체크용)
+     */
+    _checkTcpPort(host, port, timeout = 1000) {
+        const net = require('net');
+        return new Promise((resolve) => {
+            const socket = new net.Socket();
+            let resolved = false;
+
+            const timer = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    socket.destroy();
+                    resolve(false);
+                }
+            }, timeout);
+
+            socket.connect(port, host, () => {
+                if (!resolved) {
+                    resolved = true;
+                    socket.end();
+                    clearTimeout(timer);
+                    resolve(true);
+                }
+            });
+
+            socket.on('error', () => {
+                if (!resolved) {
+                    resolved = true;
+                    socket.destroy();
+                    clearTimeout(timer);
+                    resolve(false);
+                }
+            });
+        });
     }
 
     /**

@@ -85,6 +85,8 @@ public:
   std::optional<int64_t> raiseAlarm(const AlarmRuleEntity &rule,
                                     const AlarmEvaluation &eval,
                                     const DataValue &trigger_value);
+  bool updateActiveAlarmValue(const AlarmRuleEntity &rule,
+                              int64_t occurrence_id, const DataValue &value);
   bool clearAlarm(int64_t occurrence_id, const DataValue &current_value);
   bool clearActiveAlarm(int rule_id, const DataValue &current_value);
 

@@ -126,17 +126,9 @@ bool CollectorApplication::Initialize() {
       return false;
     }
 
-    // 2. 데이터베이스 관리자 초기화
+    // 2. Repository 팩토리 초기화 (데이터베이스 연결 포함)
     LogManager::getInstance().Info(
-        "Step 2/5: Database initialization deferred to RepositoryFactory");
-    // Initialization is handled by RepositoryFactory to consolidate config
-    // loading logic
-    LogManager::getInstance().Info(
-        "✓ DbLib::DatabaseManager will be initialized in Step 3");
-
-    // 3. Repository 팩토리 초기화
-    LogManager::getInstance().Info(
-        "Step 3/5: Initializing RepositoryFactory...");
+        "Step 2/5: Initializing RepositoryFactory & Database...");
     if (!Database::RepositoryFactory::getInstance().initialize()) {
       LogManager::getInstance().Error(
           "✗ RepositoryFactory initialization failed");

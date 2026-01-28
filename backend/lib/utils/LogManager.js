@@ -148,6 +148,21 @@ class LogManager {
     }
 
     /**
+     * KST 타임스탬프 생성 (UTC+9)
+     * 포맷: YYYY-MM-DD HH:mm:ss.SSS
+     */
+    getKSTTimestamp() {
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000; // 9 hours
+        const kstDate = new Date(now.getTime() + kstOffset);
+
+        // toISOString() returns YYYY-MM-DDTHH:mm:ss.sssZ
+        // We want YYYY-MM-DD HH:mm:ss.SSS (no T, no Z)
+        return kstDate.toISOString().replace('T', ' ').replace('Z', '');
+    }
+
+
+    /**
      * 시간 문자열 포맷 (시간별 파일용)
      */
     formatTimeString(date) {
@@ -316,7 +331,9 @@ class LogManager {
      * 로그 엔트리 포맷팅
      */
     formatLogEntry(category, level, message, metadata) {
-        const timestamp = new Date().toISOString();
+        // const timestamp = new Date().toISOString();
+        const timestamp = this.getKSTTimestamp();
+
         const pid = process.pid;
 
         let logLine = `${timestamp} [${pid}] [${level.toUpperCase()}] [${category.toUpperCase()}] ${message}`;
@@ -400,7 +417,8 @@ class LogManager {
             streamInfo.stream.end();
 
             // 백업 파일명 생성 (timestamp 추가)
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const timestamp = this.getKSTTimestamp().replace(/[: ]/g, '-').replace('.', '-');
+
             const dir = path.dirname(streamInfo.filePath);
             const ext = path.extname(streamInfo.filePath);
             const basename = path.basename(streamInfo.filePath, ext);
@@ -565,7 +583,7 @@ class LogManager {
             url: req?.originalUrl,
             method: req?.method,
             ip: req?.ip,
-            timestamp: new Date().toISOString()
+            timestamp: this.getKSTTimestamp()
         };
 
         this.error('application', `Unhandled Error: ${error.message}`, errorData);
@@ -742,5 +760,6 @@ module.exports = {
     getStats: () => logManager.getLogStats(),
     setLevel: (level) => logManager.setLogLevel(level),
     updateSettings: (settings) => logManager.updateSettings(settings),
-    shutdown: () => logManager.shutdown()
+    shutdown: () => logManager.shutdown(),
+    getKSTTimestamp: () => logManager.getKSTTimestamp()
 };

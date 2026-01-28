@@ -22,9 +22,9 @@
 #include <thread>
 #include <vector>
 
+#include "AlarmMessage.h"
+#include "Export/ExportTypes.h"
 #include <nlohmann/json.hpp>
-
-#include "Export/ExportTypes.h" // ValueMessage support
 
 #include "Client/RedisClient.h"
 #include "Client/RedisClientImpl.h"
@@ -37,7 +37,7 @@
 #include "Transform/PayloadTransformer.h"
 #include "Utils/ConfigManager.h"
 
-using json = nlohmann::json;
+// namespace Coordinator
 
 namespace PulseOne {
 namespace Coordinator {
@@ -60,7 +60,7 @@ struct ExportCoordinatorConfig {
   int export_timeout_seconds = 30;
 
   // Batching Configuration
-  bool enable_alarm_batching = true;
+  bool enable_alarm_batching = false;
   int alarm_batch_latency_ms = 5000; // 5 seconds default
   int alarm_batch_max_size = 1000;
 };
@@ -124,10 +124,9 @@ public:
   void setGatewayId(int id) { gateway_id_ = id; }
   void updateHeartbeat();
 
+  std::vector<ExportResult> handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm);
   std::vector<ExportResult>
-  handleAlarmEvent(const PulseOne::CSP::AlarmMessage &alarm);
-  std::vector<ExportResult>
-  handleAlarmBatch(const std::vector<PulseOne::CSP::AlarmMessage> &alarms);
+  handleAlarmBatch(std::vector<PulseOne::CSP::AlarmMessage> alarms);
   std::vector<ExportResult> handleScheduledExport(int schedule_id);
   ExportResult handleManualExport(const std::string &target_name,
                                   const nlohmann::json &data);

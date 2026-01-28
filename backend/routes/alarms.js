@@ -567,7 +567,11 @@ router.post('/rules', async (req, res) => {
         };
 
         const result = await AlarmRuleService.createAlarmRule(ruleData, req.user.id);
-        res.status(201).json(result);
+        if (result.success) {
+            res.status(201).json(result);
+        } else {
+            res.status(400).json(result);
+        }
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_CREATE_ERROR'));
     }
@@ -584,7 +588,11 @@ router.put('/rules/:id', async (req, res) => {
             req.body,
             req.tenantId
         );
-        res.json(result);
+        if (result.success) {
+            res.json(result);
+        } else {
+            res.status(400).json(result);
+        }
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_RULE_UPDATE_ERROR'));
     }
@@ -756,7 +764,11 @@ router.post('/templates', async (req, res) => {
         };
 
         const result = await AlarmTemplateService.create(templateData, req.tenantId);
-        res.status(201).json(result);
+        if (result.success) {
+            res.status(201).json(result);
+        } else {
+            res.status(400).json(result);
+        }
 
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_CREATE_ERROR'));
@@ -774,7 +786,11 @@ router.put('/templates/:id', async (req, res) => {
             req.body,
             req.tenantId
         );
-        res.json(result);
+        if (result.success) {
+            res.json(result);
+        } else {
+            res.status(400).json(result);
+        }
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'ALARM_TEMPLATE_UPDATE_ERROR'));
     }

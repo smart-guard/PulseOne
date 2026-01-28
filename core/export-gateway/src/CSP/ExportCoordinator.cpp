@@ -14,7 +14,14 @@
 #include "CSP/ExportCoordinator.h"
 #include "DatabaseManager.hpp"
 #include <algorithm>
+#include <iostream>
 #include <numeric>
+
+#include "Database/Entities/DataPointEntity.h"
+#include "Database/Entities/DeviceEntity.h"
+#include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/DeviceRepository.h"
+#include "Database/RepositoryFactory.h"
 
 namespace PulseOne {
 namespace Coordinator {
@@ -397,6 +404,12 @@ bool ExportCoordinator::initializeEventSubscriber() {
     event_subscriber_ =
         std::make_unique<PulseOne::Event::EventSubscriber>(event_config);
 
+    // ✅ 알람 처리 콜백 등록 (로깅 및 통합 처리를 위해 Coordinator로 연결)
+    event_subscriber_->setAlarmCallback(
+        [this](const PulseOne::CSP::AlarmMessage &alarm) {
+          this->handleAlarmEvent(alarm);
+        });
+
     // ✅ 스케줄 이벤트 핸들러 등록
     auto schedule_handler = std::make_shared<ScheduleEventHandler>(this);
     event_subscriber_->registerHandler("schedule:*", schedule_handler);
@@ -469,7 +482,7 @@ void ExportCoordinator::updateHeartbeat() {
   try {
     auto &db_manager = DbLib::DatabaseManager::getInstance();
     std::string query =
-        "UPDATE export_gateways SET last_seen = CURRENT_TIMESTAMP, status = "
+        "UPDATE edge_servers SET last_seen = CURRENT_TIMESTAMP, status = "
         "'online' WHERE id = " +
         std::to_string(gateway_id_);
 
@@ -573,15 +586,50 @@ void ExportCoordinator::handleConfigEvent(const std::string &channel,
 // =============================================================================
 
 std::vector<ExportResult>
-ExportCoordinator::handleAlarmEvent(const PulseOne::CSP::AlarmMessage &alarm) {
+ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
 
   std::vector<ExportResult> results;
 
   try {
+    // ✅ Site ID Enrichment (Resolving site_id from point_id if missing)
+    if (alarm.site_id <= 0 && alarm.point_id > 0) {
+      try {
+        auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+        auto point_repo = factory.getDataPointRepository();
+        auto device_repo = factory.getDeviceRepository();
+
+        if (point_repo && device_repo) {
+          auto point_opt = point_repo->findById(alarm.point_id);
+          if (point_opt.has_value()) {
+            alarm.st = point_opt->isWritable() ? 1 : 0; // ✅ 제어가능여부 매핑
+            int device_id = point_opt->getDeviceId();
+            auto device_opt = device_repo->findById(device_id);
+            if (device_opt.has_value()) {
+              alarm.site_id = device_opt->getSiteId();
+              LogManager::getInstance().Debug(
+                  "알람 정보 보정 완료: point=" +
+                  std::to_string(alarm.point_id) +
+                  ", site=" + std::to_string(alarm.site_id) +
+                  ", st=" + std::to_string(alarm.st));
+            }
+          }
+        }
+      } catch (const std::exception &e) {
+        LogManager::getInstance().Warn("사이트 ID 보정 중 오류: " +
+                                       std::string(e.what()));
+      }
+    }
+
     // Batching Logic Support
     if (config_.enable_alarm_batching) {
       std::lock_guard<std::mutex> lock(batch_mutex_);
       pending_alarms_.push_back(alarm);
+      std::cout
+          << "[DEBUG][ExportCoordinator] Alarm enqueued to batch. Queue size: "
+          << pending_alarms_.size() << std::endl;
+      LogManager::getInstance().Debug(
+          "[ExportCoordinator] Alarm enqueued to batch. Queue size: " +
+          std::to_string(pending_alarms_.size()));
 
       if (pending_alarms_.size() >=
           static_cast<size_t>(config_.alarm_batch_max_size)) {
@@ -590,6 +638,8 @@ ExportCoordinator::handleAlarmEvent(const PulseOne::CSP::AlarmMessage &alarm) {
       return results; // Return empty results as actual send is delayed
     }
 
+    std::cout << "[DEBUG][ExportCoordinator] handleAlarmEvent (즉시 전송): "
+              << alarm.nm << std::endl;
     LogManager::getInstance().Info("알람 이벤트 처리 (즉시 전송): " + alarm.nm);
 
     auto target_manager = getTargetManager();
@@ -607,6 +657,9 @@ ExportCoordinator::handleAlarmEvent(const PulseOne::CSP::AlarmMessage &alarm) {
       ExportResult result = convertTargetSendResult(target_result);
       results.push_back(result);
 
+      std::cout << "[DEBUG][ExportCoordinator] Target result: "
+                << target_result.target_name
+                << " success=" << target_result.success << std::endl;
       logExportResult(result, &alarm);
       updateStats(result);
     }
@@ -633,8 +686,11 @@ void ExportCoordinator::flushAlarmBatch() {
   {
     // Move pending alarms to local batch to minimize lock time
     std::lock_guard<std::mutex> lock(batch_mutex_);
-    if (pending_alarms_.empty())
+    if (pending_alarms_.empty()) {
+      LogManager::getInstance().Debug(
+          "[ExportCoordinator] flushAlarmBatch called but no alarms pending");
       return;
+    }
     batch_to_send = std::move(pending_alarms_);
     pending_alarms_.clear(); // Reset vector
     last_batch_flush_time_ = std::chrono::system_clock::now();
@@ -645,8 +701,14 @@ void ExportCoordinator::flushAlarmBatch() {
         "알람 배치 플러시: " + std::to_string(batch_to_send.size()) + "개");
 
     auto target_manager = getTargetManager();
-    if (!target_manager)
+    if (!target_manager) {
+      LogManager::getInstance().Error(
+          "[ExportCoordinator] TargetManager is null in flushAlarmBatch!");
       return;
+    }
+    LogManager::getInstance().Debug("[ExportCoordinator] Sending batch of " +
+                                    std::to_string(batch_to_send.size()) +
+                                    " alarms to TargetManager");
 
     auto target_results =
         target_manager->sendAlarmBatchToTargets(batch_to_send);
@@ -698,12 +760,11 @@ void ExportCoordinator::startBatchTimers() {
           now - last_batch_flush_time_;
 
       if (elapsed.count() >= config_.alarm_batch_latency_ms) {
-        std::lock_guard<std::mutex> lock(batch_mutex_);
+        std::unique_lock<std::mutex> lock(batch_mutex_);
         if (!pending_alarms_.empty()) {
-          // Release lock and flush
-          batch_mutex_.unlock();
+          lock.unlock();
           flushAlarmBatch();
-          batch_mutex_.lock();
+          lock.lock();
         }
       }
     }
@@ -721,7 +782,7 @@ void ExportCoordinator::stopBatchTimers() {
 }
 
 std::vector<ExportResult> ExportCoordinator::handleAlarmBatch(
-    const std::vector<PulseOne::CSP::AlarmMessage> &alarms) {
+    std::vector<PulseOne::CSP::AlarmMessage> alarms) {
 
   std::vector<ExportResult> all_results;
 
@@ -1077,10 +1138,7 @@ void ExportCoordinator::updateStats(const ExportResult &result) {
 }
 
 std::string ExportCoordinator::getDatabasePath() const {
-  auto &config_mgr = ConfigManager::getInstance();
-  std::string db_path =
-      config_mgr.getOrDefault("DATABASE_PATH", config_.database_path);
-  return db_path;
+  return ConfigManager::getInstance().getSQLiteDbPath();
 }
 
 } // namespace Coordinator

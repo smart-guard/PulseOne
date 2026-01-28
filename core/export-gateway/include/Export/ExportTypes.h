@@ -51,9 +51,10 @@ struct ValueMessage {
   std::string ty = "dbl"; // Type (dbl or str), default: dbl
 
   // JSON Serialization
-  nlohmann::json to_json() const {
-    return nlohmann::json{{"bd", bd}, {"nm", nm}, {"vl", vl},
-                          {"tm", tm}, {"st", st}, {"ty", ty}};
+  // JSON Serialization
+  json to_json() const {
+    return json{{"bd", bd}, {"nm", nm}, {"vl", vl},
+                {"tm", tm}, {"st", st}, {"ty", ty}};
   }
 };
 
@@ -61,6 +62,7 @@ struct ValueMessage {
 } // namespace PulseOne
 
 using json = nlohmann::json;
+using ordered_json = nlohmann::ordered_json;
 
 namespace PulseOne {
 namespace Export {
@@ -205,23 +207,23 @@ public:
 
   // 필수 메서드들
   virtual TargetSendResult sendAlarm(const PulseOne::CSP::AlarmMessage &alarm,
-                                     const json &config) = 0;
-  virtual bool testConnection(const json &config) = 0;
+                                     const ordered_json &config) = 0;
+  virtual bool testConnection(const ordered_json &config) = 0;
   virtual std::string getHandlerType() const = 0;
-  virtual bool validateConfig(const json &config,
+  virtual bool validateConfig(const ordered_json &config,
                               std::vector<std::string> &errors) = 0;
 
   // 선택적 메서드들 (기본 구현 제공)
-  virtual bool initialize(const json & /* config */) { return true; }
+  virtual bool initialize(const ordered_json & /* config */) { return true; }
   virtual void cleanup() { /* 기본: 아무 작업 없음 */ }
-  virtual json getStatus() const {
-    return json{{"type", getHandlerType()}, {"status", "active"}};
+  virtual ordered_json getStatus() const {
+    return ordered_json{{"type", getHandlerType()}, {"status", "active"}};
   }
 
   // 배치 전송 메서드들 (기본 구현: 루프 전송)
   virtual std::vector<TargetSendResult>
   sendAlarmBatch(const std::vector<PulseOne::CSP::AlarmMessage> &alarms,
-                 const json &config) {
+                 const ordered_json &config) {
     std::vector<TargetSendResult> results;
     for (const auto &alarm : alarms) {
       results.push_back(sendAlarm(alarm, config));
@@ -231,7 +233,7 @@ public:
 
   virtual std::vector<TargetSendResult>
   sendValueBatch(const std::vector<PulseOne::CSP::ValueMessage> & /* values */,
-                 const json & /* config */) {
+                 const ordered_json & /* config */) {
     // 기본적으로 값 전송은 배치만 지원하거나 미지원
     return {};
   }
@@ -246,12 +248,13 @@ public:
  */
 struct DynamicTarget {
   // 기본 설정 필드들 (복사 가능)
+  int id = 0;
   std::string name;
   std::string type;
   bool enabled = true;
   int priority = 100;
   std::string description;
-  json config;
+  ordered_json config;
 
   // 런타임 상태 (atomic 멤버들)
   mutable std::atomic<bool> healthy{true};
@@ -278,7 +281,7 @@ struct DynamicTarget {
 
   // 이동 생성자
   DynamicTarget(DynamicTarget &&other) noexcept
-      : name(std::move(other.name)), type(std::move(other.type)),
+      : id(other.id), name(std::move(other.name)), type(std::move(other.type)),
         enabled(other.enabled), priority(other.priority),
         description(std::move(other.description)),
         config(std::move(other.config)), healthy(other.healthy.load()),
@@ -295,9 +298,10 @@ struct DynamicTarget {
 
   // 복사 생성자
   DynamicTarget(const DynamicTarget &other)
-      : name(other.name), type(other.type), enabled(other.enabled),
-        priority(other.priority), description(other.description),
-        config(other.config), healthy(other.healthy.load()),
+      : id(other.id), name(other.name), type(other.type),
+        enabled(other.enabled), priority(other.priority),
+        description(other.description), config(other.config),
+        healthy(other.healthy.load()),
         handler_initialized(other.handler_initialized.load()),
         success_count(other.success_count.load()),
         failure_count(other.failure_count.load()),
@@ -312,6 +316,7 @@ struct DynamicTarget {
   // 복사 대입 연산자
   DynamicTarget &operator=(const DynamicTarget &other) {
     if (this != &other) {
+      id = other.id;
       name = other.name;
       type = other.type;
       enabled = other.enabled;
@@ -336,6 +341,7 @@ struct DynamicTarget {
   // 이동 대입 연산자
   DynamicTarget &operator=(DynamicTarget &&other) noexcept {
     if (this != &other) {
+      id = other.id;
       name = std::move(other.name);
       type = std::move(other.type);
       enabled = other.enabled;
@@ -367,7 +373,8 @@ struct DynamicTarget {
 
   // JSON 변환
   json toJson() const {
-    return json{{"name", name},
+    return json{{"id", id},
+                {"name", name},
                 {"type", type},
                 {"enabled", enabled},
                 {"priority", priority},
@@ -530,6 +537,11 @@ json createAlarmJsonArray(
  */
 json createValueJsonArray(
     const std::vector<PulseOne::CSP::ValueMessage> &values);
+
+/**
+ * @brief 현재 타임스탬프 문자열 생성 (용도별 포맷)
+ */
+std::string getCurrentTimestamp(const std::string &format_type = "iso8601");
 
 // =============================================================================
 // 전방 선언 (호환성 - CSP 네임스페이스)
