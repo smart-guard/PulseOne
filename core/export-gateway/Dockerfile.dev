@@ -1,7 +1,7 @@
 # core/export-gateway/Dockerfile.dev - PulseOne Export Gateway 개발 환경
 FROM gcc:12
 
-# 기본 패키지 설치 (redis-tools 추가!)
+# 기본 패키지 설치 (tzdata 추가)
 RUN apt-get update && apt-get install -y \
     cmake make build-essential \
     libsqlite3-dev sqlite3 \
@@ -11,7 +11,11 @@ RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     tree htop procps \
     redis-tools \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+# 타임존 설정 (Asia/Seoul)
+RUN ln -snf /usr/share/zoneinfo/Asia/Seoul /etc/localtime && echo "Asia/Seoul" > /etc/timezone
 
 # httplib 헤더 다운로드
 RUN mkdir -p /usr/local/include && \

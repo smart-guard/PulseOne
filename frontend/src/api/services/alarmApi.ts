@@ -15,6 +15,7 @@ export interface AlarmRule {
   target_group?: string;
 
   // JOIN으로 가져오는 정보들
+  device_id?: number; // Added for frontend hydration
   device_name?: string;
   device_type?: string;
   manufacturer?: string;

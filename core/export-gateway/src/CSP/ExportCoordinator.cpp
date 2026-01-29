@@ -141,6 +141,11 @@ bool ExportCoordinator::start() {
       return false;
     }
 
+    // ✅ FIX: 게이트웨이 ID를 매니저에게 전달하여 타겟 필터링 활성화
+    if (shared_target_manager_) {
+      shared_target_manager_->setGatewayId(gateway_id_);
+    }
+
     // 3. Repositories 초기화
     if (!initializeRepositories()) {
       LogManager::getInstance().Error("Repositories 초기화 실패");
@@ -664,12 +669,10 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
       return results;
     }
 
-    // Single Alarm wrapped in Array for compatibility
-    std::vector<PulseOne::CSP::AlarmMessage> single_batch;
-    single_batch.push_back(alarm);
-    auto target_results = target_manager->sendAlarmBatchToTargets(single_batch);
+    // Single Alarm Dispatch (Corrected)
+    auto target_results = target_manager->sendAlarmToTargets(alarm);
 
-    for (const auto &target_result : target_results.results) {
+    for (const auto &target_result : target_results) {
       ExportResult result = convertTargetSendResult(target_result);
       results.push_back(result);
 
@@ -992,6 +995,9 @@ int ExportCoordinator::reloadTargets() {
       LogManager::getInstance().Error("TargetManager 초기화 안 됨");
       return 0;
     }
+
+    // ✅ FIX: 리로드 전 게이트웨이 ID 재설정 (ID 변경 가능성 대비)
+    target_manager->setGatewayId(gateway_id_);
 
     if (!target_manager->forceReload()) {
       LogManager::getInstance().Error("타겟 리로드 실패");

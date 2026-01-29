@@ -15,6 +15,7 @@
  */
 
 #include "CSP/HttpTargetHandler.h"
+#include "CSP/AlarmMessage.h"
 #include "Client/HttpClient.h"
 #include "Logging/LogManager.h"
 #include "Transform/PayloadTransformer.h"
@@ -244,12 +245,11 @@ bool HttpTargetHandler::validateConfig(const json &config,
 }
 
 json HttpTargetHandler::getStatus() const {
-  return json{
-      {"type", "HTTP"},
-      {"request_count", request_count_.load()},
-      {"success_count", success_count_.load()},
-      {"failure_count", failure_count_.load()},
-      {"cache_stats", getHttpClientCache().getStats().active_clients}};
+  return json{{"type", "HTTP"},
+              {"request_count", request_count_.load()},
+              {"success_count", success_count_.load()},
+              {"failure_count", failure_count_.load()},
+              {"cache_stats", getHttpClientCache().getStats().active_clients}};
 }
 
 void HttpTargetHandler::cleanup() {
@@ -273,7 +273,7 @@ HttpTargetHandler::getOrCreateClient(const json &config,
   options.timeout_sec = config.value("timeout_sec", 30);
   options.connect_timeout_sec = config.value("connect_timeout_sec", 10);
   options.verify_ssl = config.value("verify_ssl", true);
-  options.user_agent = config.value("user_agent", "PulseOne-CSPGateway/2.0");
+  options.user_agent = config.value("user_agent", "iCos5/1.1");
 
   // ✅ 캐시에서 가져오거나 생성
   auto client = getHttpClientCache().getOrCreate(cache_key, options);
@@ -347,10 +347,8 @@ TargetSendResult HttpTargetHandler::executeWithRetry(const AlarmMessage &alarm,
   return result;
 }
 
-TargetSendResult
-HttpTargetHandler::executeSingleRequest(const AlarmMessage &alarm,
-                                        const json &config,
-                                        const std::string &url) {
+TargetSendResult HttpTargetHandler::executeSingleRequest(
+    const AlarmMessage &alarm, const json &config, const std::string &url) {
 
   TargetSendResult result;
   result.target_type = "HTTP";
@@ -378,15 +376,15 @@ HttpTargetHandler::executeSingleRequest(const AlarmMessage &alarm,
     // HTTP 요청 실행
     Client::HttpResponse response;
     if (method == "POST") {
-      response =
-          client->post(endpoint, request_body, "application/json", headers);
+      response = client->post(endpoint, request_body,
+                              "application/json; charset=utf-8", headers);
     } else if (method == "PUT") {
-      response =
-          client->put(endpoint, request_body, "application/json", headers);
+      response = client->put(endpoint, request_body,
+                             "application/json; charset=utf-8", headers);
     } else if (method == "PATCH") {
       LogManager::getInstance().Warn("PATCH는 PUT으로 대체됨");
-      response =
-          client->put(endpoint, request_body, "application/json", headers);
+      response = client->put(endpoint, request_body,
+                             "application/json; charset=utf-8", headers);
     } else {
       response = client->get(endpoint, headers);
     }
@@ -481,11 +479,11 @@ HttpTargetHandler::executeSingleRequest(const std::vector<ValueMessage> &values,
 
     Client::HttpResponse response;
     if (method == "POST") {
-      response =
-          client->post(endpoint, request_body, "application/json", headers);
+      response = client->post(endpoint, request_body,
+                              "application/json; charset=utf-8", headers);
     } else if (method == "PUT") {
-      response =
-          client->put(endpoint, request_body, "application/json", headers);
+      response = client->put(endpoint, request_body,
+                             "application/json; charset=utf-8", headers);
     } else {
       response = client->get(endpoint, headers);
     }
@@ -511,7 +509,7 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
   std::unordered_map<std::string, std::string> headers;
 
   headers["Accept"] = "application/json";
-  headers["User-Agent"] = config.value("user_agent", "PulseOne-CSPGateway/2.0");
+  headers["User-Agent"] = config.value("user_agent", "iCos5/1.1");
   headers["X-Request-ID"] = generateRequestId();
   headers["X-Timestamp"] = getCurrentTimestamp();
 
@@ -528,7 +526,7 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
                                 auth["password"].get<std::string>();
       headers["Authorization"] = "Basic " + base64Encode(credentials);
     } else if (auth_type == "api_key" && auth.contains("key")) {
-      std::string header_name = auth.value("header", "X-API-Key");
+      std::string header_name = auth.value("header", "x-api-key");
       headers[header_name] = auth["key"].get<std::string>();
     }
   }
@@ -618,10 +616,15 @@ std::string HttpTargetHandler::getTargetName(const json &config) const {
 
 std::string HttpTargetHandler::getCurrentTimestamp() const {
   auto now = std::chrono::system_clock::now();
-  auto time_t = std::chrono::system_clock::to_time_t(now);
-  std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
-  return oss.str();
+  // Using AlarmMessage's format for consistency with C# legacy
+  // 2024-01-29 15:00:00.000 (Local time or UTC depending on preference, here
+  // using UTC for headers usually, but user asked for specific format
+  // verification) Let's stick to the exact format requested: "2024-01-29
+  // 15:00:00.000" Note: AlarmMessage::time_to_csharp_format handles ms and
+  // formatting. We'll use UTC (false) for headers to avoid TZ confusion unless
+  // specified otherwise.
+  // C# 명세에 따라 T/Z 없는 포맷 사용: yyyy-MM-dd HH:mm:ss.fff
+  return AlarmMessage::time_to_csharp_format(now, true);
 }
 
 std::string HttpTargetHandler::generateRequestId() const {
@@ -644,6 +647,7 @@ void HttpTargetHandler::expandTemplateVariables(
     // ✅ PayloadTransformer 인스턴스 참조 (Singleton)
     auto &transformer =
         ::PulseOne::Transform::PayloadTransformer::getInstance();
+
     auto context = transformer.createContext(
         alarm, target_field_name, target_description, converted_value);
 

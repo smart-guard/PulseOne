@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS export_targets (
     export_mode VARCHAR(20) DEFAULT 'on_change',
     export_interval INTEGER DEFAULT 0,
     batch_size INTEGER DEFAULT 100,
+    execution_order INTEGER DEFAULT 0,
     
     -- 메타 정보
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

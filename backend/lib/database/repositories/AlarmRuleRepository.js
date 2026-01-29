@@ -38,6 +38,7 @@ class AlarmRuleRepository extends BaseRepository {
                 .select(
                     'ar.*',
                     this.knex.raw('COALESCE(d.name, d2.name) as device_name'),
+                    this.knex.raw('COALESCE(d.id, d2.id) as device_id'), // Explicitly select Device ID for frontend hydration
                     'd.device_type',
                     'p.protocol_type',
                     'p.display_name as protocol_name',
@@ -151,6 +152,7 @@ class AlarmRuleRepository extends BaseRepository {
                 .select(
                     'ar.*',
                     this.knex.raw('COALESCE(d.name, d2.name) as device_name'),
+                    this.knex.raw('COALESCE(d.id, d2.id) as device_id'), // Explicitly select Device ID
                     'd.device_type',
                     'p.protocol_type',
                     'p.display_name as protocol_name',
@@ -344,7 +346,6 @@ class AlarmRuleRepository extends BaseRepository {
                 is_latched: ruleData.is_latched ? 1 : 0,
                 created_by: userId || ruleData.created_by,
                 template_id: ruleData.template_id || null,
-                template_version: ruleData.template_version || 1,
                 rule_group: ruleData.rule_group || null,
                 created_by_template: ruleData.created_by_template ? 1 : 0,
                 escalation_enabled: ruleData.escalation_enabled ? 1 : 0,
@@ -382,7 +383,7 @@ class AlarmRuleRepository extends BaseRepository {
                 'auto_acknowledge', 'acknowledge_timeout_min', 'auto_clear', 'suppression_rules',
                 'notification_enabled', 'notification_delay_sec', 'notification_repeat_interval_min',
                 'notification_channels', 'notification_recipients', 'is_enabled', 'is_latched',
-                'template_id', 'template_version', 'rule_group', 'created_by_template',
+                'template_id', 'rule_group', 'created_by_template',
                 'last_template_update', 'escalation_enabled', 'escalation_max_level', 'escalation_rules',
                 'category', 'tags'
             ];

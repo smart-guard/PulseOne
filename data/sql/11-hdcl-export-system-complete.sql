@@ -96,7 +96,8 @@ INSERT INTO export_targets (
     description,
     config,
     is_enabled,
-    export_mode
+    export_mode,
+    execution_order
 ) VALUES (
     1,
     'ICOS5 API - Alarm',
@@ -115,7 +116,8 @@ INSERT INTO export_targets (
         "lambdaFunction": "icos_5_csp_alarm"
     }',
     1,
-    'on_change'
+    'on_change',
+    1
 );
 
 -- ============================================================================
@@ -132,7 +134,8 @@ INSERT INTO export_targets (
     description,
     config,
     is_enabled,
-    export_mode
+    export_mode,
+    execution_order
 ) VALUES (
     2,
     'HDCL-CSP S3 Data Lake',
@@ -150,7 +153,8 @@ INSERT INTO export_targets (
         "fileNaming": "{timestamp}-{type}.json.gz"
     }',
     1,
-    'batch'
+    'batch',
+    0
 );
 
 -- ============================================================================
@@ -168,7 +172,8 @@ INSERT INTO export_targets (
     description,
     config,
     is_enabled,
-    export_mode
+    export_mode,
+    execution_order
 ) VALUES (
     3,
     'ICOS5 API - Control Request',
@@ -187,7 +192,8 @@ INSERT INTO export_targets (
         "lambdaFunction": "icos_5_csp_control_request"
     }',
     1,
-    'on_change'
+    'on_change',
+    2
 );
 
 -- ============================================================================
@@ -205,7 +211,8 @@ INSERT INTO export_targets (
     description,
     config,
     is_enabled,
-    export_mode
+    export_mode,
+    execution_order
 ) VALUES (
     4,
     'ICOS5 API - Control Result',
@@ -224,7 +231,8 @@ INSERT INTO export_targets (
         "lambdaFunction": "icos_5_csp_control_result"
     }',
     1,
-    'on_demand'
+    'on_demand',
+    3
 );
 
 SELECT '✅ 3단계: Export Targets 생성 완료 (4개)' as step3;

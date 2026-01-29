@@ -129,10 +129,6 @@ json ExportTargetMappingEntity::toJson() const {
       j["site_id"] = site_id_.value();
     else
       j["site_id"] = nullptr;
-    if (building_id_.has_value())
-      j["building_id"] = building_id_.value();
-    else
-      j["building_id"] = nullptr;
     j["target_field_name"] = target_field_name_;
     j["target_description"] = target_description_;
     j["conversion_config"] = conversion_config_;
@@ -160,9 +156,6 @@ bool ExportTargetMappingEntity::fromJson(const json &data) {
     }
     if (data.contains("site_id") && !data["site_id"].is_null()) {
       site_id_ = data["site_id"].get<int>();
-    }
-    if (data.contains("building_id") && !data["building_id"].is_null()) {
-      building_id_ = data["building_id"].get<int>();
     }
     if (data.contains("target_field_name")) {
       target_field_name_ = data["target_field_name"].get<std::string>();
@@ -194,8 +187,6 @@ std::string ExportTargetMappingEntity::toString() const {
     oss << ", point_id=" << point_id_.value();
   if (site_id_.has_value())
     oss << ", site_id=" << site_id_.value();
-  if (building_id_.has_value())
-    oss << ", building_id=" << building_id_.value();
   oss << ", enabled=" << (is_enabled_ ? "true" : "false");
   oss << "]";
   return oss.str();

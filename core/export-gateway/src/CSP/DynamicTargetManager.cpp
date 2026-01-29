@@ -294,8 +294,7 @@ bool DynamicTargetManager::loadFromDatabase() {
       auto templates = template_repo->findAll();
       for (const auto &tmpl : templates) {
         try {
-          template_map[tmpl.getId()] =
-              json::parse(tmpl.getTemplateJson());
+          template_map[tmpl.getId()] = json::parse(tmpl.getTemplateJson());
           LogManager::getInstance().Debug(
               "템플릿 로드됨: ID=" + std::to_string(tmpl.getId()) +
               ", Name=" + tmpl.getName());
@@ -311,11 +310,7 @@ bool DynamicTargetManager::loadFromDatabase() {
     if (mapping_repo) {
       std::unique_lock<std::shared_mutex> m_lock(mappings_mutex_);
       target_point_mappings_.clear();
-      target_site_mappings_.clear();       // ✅ 사이트 매핑 초기화 추가
-      target_site_mappings_.clear();       // ✅ 사이트 매핑 초기화 추가
       target_point_site_mappings_.clear(); // ✅ 포인트-사이트 매핑 초기화 추가
-      target_point_building_mappings_
-          .clear(); // ✅ 포인트-빌딩 매핑 초기화 추가
 
       auto mappings = mapping_repo->findAll();
       for (const auto &m : mappings) {
@@ -330,13 +325,6 @@ bool DynamicTargetManager::loadFromDatabase() {
               target_point_site_mappings_[m.getTargetId()]
                                          [m.getPointId().value()] =
                                              m.getSiteId().value();
-            }
-
-            // ✅ 2.1.2 Building ID 매핑 추가 (New!)
-            if (m.getBuildingId().has_value()) {
-              target_point_building_mappings_[m.getTargetId()]
-                                             [m.getPointId().value()] =
-                                                 m.getBuildingId().value();
             }
           }
           // 2.2 사이트(빌딩) 매핑 (New!)
@@ -405,6 +393,8 @@ bool DynamicTargetManager::loadFromDatabase() {
         target.name = entity.getName();
         target.type = entity.getTargetType();
         target.enabled = entity.isEnabled();
+        target.execution_order = entity.getExecutionOrder();      // 🆕 추가
+        target.execution_delay_ms = entity.getExecutionDelayMs(); // 🆕 추가
         target.priority = 100;
         target.description = entity.getDescription();
 
@@ -451,11 +441,6 @@ bool DynamicTargetManager::loadFromDatabase() {
 
         targets_.push_back(target);
         loaded_count++;
-
-        LogManager::getInstance().Debug("타겟 로드: " + target.name + " (" +
-                                        target.type + "), " +
-                                        "export_mode=" + export_mode);
-
       } catch (const std::exception &e) {
         LogManager::getInstance().Error("타겟 엔티티 처리 실패: " +
                                         std::string(e.what()));
@@ -463,8 +448,24 @@ bool DynamicTargetManager::loadFromDatabase() {
       }
     }
 
+    // ✅ 3. execution_order 기준 정렬 (오름차순: 낮은 숫자가 먼저)
+    std::sort(targets_.begin(), targets_.end(),
+              [](const DynamicTarget &a, const DynamicTarget &b) {
+                if (a.execution_order != b.execution_order) {
+                  return a.execution_order < b.execution_order;
+                }
+                return a.id < b.id; // 동일 순서면 ID순 정렬
+              });
+
+    // ✅ 4. 정렬된 순서대로 로그 출력 (USER 요청 사항)
+    for (const auto &target : targets_) {
+      LogManager::getInstance().Info(
+          "타겟 로드됨: " + target.name + " (" + target.type +
+          "), 실행 순서=" + std::to_string(target.execution_order));
+    }
+
     LogManager::getInstance().Info("✅ DB에서 " + std::to_string(loaded_count) +
-                                   "개 타겟 로드 완료");
+                                   "개 타겟 로드 및 정렬 완료");
     return (loaded_count > 0);
 
   } catch (const std::exception &e) {
@@ -598,12 +599,25 @@ DynamicTargetManager::sendAlarmToTargets(const AlarmMessage &alarm) {
       export_mode = targets_[i].config["export_mode"].get<std::string>();
     }
 
-    // alarm 모드가 아니면 스킵
-    if (export_mode != "alarm") {
+    // Case-insensitive check for alarm/event mode
+    std::string mode_upper = export_mode;
+    std::transform(mode_upper.begin(), mode_upper.end(), mode_upper.begin(),
+                   ::toupper);
+
+    if (mode_upper != "ALARM" && mode_upper != "EVENT") {
       filtered_count++;
       LogManager::getInstance().Debug("타겟 스킵 (export_mode=" + export_mode +
                                       "): " + targets_[i].name);
       continue;
+    }
+
+    // ✅ 지연 전송 적용
+    if (targets_[i].execution_delay_ms > 0) {
+      LogManager::getInstance().Info(
+          "--- [DELAY] 타겟 '" + targets_[i].name + "' 전송 전 " +
+          std::to_string(targets_[i].execution_delay_ms) + "ms 대기 중... ---");
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(targets_[i].execution_delay_ms));
     }
 
     TargetSendResult result;
@@ -729,13 +743,19 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
     }
 
     if (export_mode != "alarm" && export_mode != "EVENT") {
-      std::cout << "[DEBUG][DynamicTargetManager] Skipped target "
-                << targets_[i].name << " due to export_mode: " << export_mode
-                << std::endl;
       LogManager::getInstance().Debug("[DynamicTargetManager] Skipped target " +
                                       targets_[i].name +
                                       " due to export_mode: " + export_mode);
       continue;
+    }
+
+    // ✅ 지연 전송 적용
+    if (targets_[i].execution_delay_ms > 0) {
+      LogManager::getInstance().Info(
+          "--- [BATCH DELAY] 타겟 '" + targets_[i].name + "' 배치 전송 전 " +
+          std::to_string(targets_[i].execution_delay_ms) + "ms 대기 중... ---");
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(targets_[i].execution_delay_ms));
     }
 
     auto it_handler = handlers_.find(targets_[i].type);
@@ -779,9 +799,6 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
                   alarm.point_id)) {
             lookup_site_id =
                 target_point_site_mappings_[targets_[i].id].at(alarm.point_id);
-            LogManager::getInstance().Info(
-                "[Batch] Point " + std::to_string(alarm.point_id) +
-                " override: " + std::to_string(lookup_site_id));
           }
         }
 
@@ -794,20 +811,7 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
         }
       }
 
-      // 1.6 Building ID 직접 매핑 (New!)
-      {
-        std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
-        if (target_point_building_mappings_.count(targets_[i].id)) {
-          if (target_point_building_mappings_[targets_[i].id].count(
-                  alarm.point_id)) {
-            alarm.bd = target_point_building_mappings_[targets_[i].id].at(
-                alarm.point_id);
-            LogManager::getInstance().Debug(
-                "[Batch] Point " + std::to_string(alarm.point_id) +
-                " building_id override: " + std::to_string(alarm.bd));
-          }
-        }
-      }
+      // 1.6 Building ID 직접 매핑 (Removed)
 
       // 2. 빌딩 ID 매핑
       std::string mapped_bd_str;
@@ -1230,16 +1234,8 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
     {
       std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
 
-      // 2.1 포인트 기반 빌딩 ID 매핑 확인 (최우선)
-      if (target_point_building_mappings_.count(target.id) &&
-          target_point_building_mappings_.at(target.id).count(alarm.point_id)) {
-        mapped_bd_int =
-            target_point_building_mappings_.at(target.id).at(alarm.point_id);
-        LogManager::getInstance().Debug("포인트별 빌딩 ID 매핑 찾음: " +
-                                        std::to_string(mapped_bd_int));
-      }
       // 2.2 사이트 기반 빌딩 ID 매핑 확인
-      else {
+      if (true) {
         auto it1 = target_site_mappings_.find(target.id);
         if (it1 != target_site_mappings_.end()) {
           auto it2 = it1->second.find(lookup_site_id); // ✅ lookup_site_id 사용
@@ -1356,9 +1352,8 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
   }
 }
 
-json
-DynamicTargetManager::expandConfigVariables(const json &config,
-                                            const AlarmMessage &alarm) {
+json DynamicTargetManager::expandConfigVariables(const json &config,
+                                                 const AlarmMessage &alarm) {
   json expanded = config;
 
   // 간단한 변수 치환 로직

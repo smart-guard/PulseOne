@@ -895,7 +895,7 @@ PulseOne::Database::Repositories::AlarmRuleRepository::entityToParams(
   if (entity.getTargetId().has_value()) {
     params["target_id"] = std::to_string(entity.getTargetId().value());
   } else {
-    params["target_id"] = "";
+    params["target_id"] = "NULL";
   }
 
   params["target_group"] = escapeString(entity.getTargetGroup());
@@ -909,25 +909,25 @@ PulseOne::Database::Repositories::AlarmRuleRepository::entityToParams(
     params["high_high_limit"] =
         std::to_string(entity.getHighHighLimit().value());
   } else {
-    params["high_high_limit"] = "";
+    params["high_high_limit"] = "NULL";
   }
 
   if (entity.getHighLimit().has_value()) {
     params["high_limit"] = std::to_string(entity.getHighLimit().value());
   } else {
-    params["high_limit"] = "";
+    params["high_limit"] = "NULL";
   }
 
   if (entity.getLowLimit().has_value()) {
     params["low_limit"] = std::to_string(entity.getLowLimit().value());
   } else {
-    params["low_limit"] = "";
+    params["low_limit"] = "NULL";
   }
 
   if (entity.getLowLowLimit().has_value()) {
     params["low_low_limit"] = std::to_string(entity.getLowLowLimit().value());
   } else {
-    params["low_low_limit"] = "";
+    params["low_low_limit"] = "NULL";
   }
 
   params["deadband"] = std::to_string(entity.getDeadband());

@@ -22,6 +22,7 @@
 #include "Database/Repositories/ExportLogRepository.h"
 #include "Database/Repositories/ExportTargetMappingRepository.h"
 #include "Database/Repositories/ExportTargetRepository.h"
+#include "Database/Repositories/PayloadTemplateRepository.h"
 #include "Database/RepositoryFactory.h"
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
@@ -162,6 +163,7 @@ int ExportService::LoadActiveTargets() {
       target.name = db_target.getName();
       target.type = db_target.getTargetType();
       target.enabled = db_target.isEnabled();
+      target.execution_order = db_target.getExecutionOrder(); // 🆕 추가
       target.endpoint = "";
 
       try {
@@ -186,8 +188,55 @@ int ExportService::LoadActiveTargets() {
 
       active_targets_.push_back(target);
 
-      LogManager::getInstance().Info("ExportService: 타겟 로드됨 - " +
-                                     target.name + " (" + target.type + ")");
+      LogManager::getInstance().Info(
+          "ExportService: 타겟 로드됨 - " + target.name + " (" + target.type +
+          ", Order: " + std::to_string(target.execution_order) + ")");
+    }
+
+    // ✅ v3.1.2: execution_order 기준 정렬 (낮은 숫자가 높은 우선순위)
+    std::sort(active_targets_.begin(), active_targets_.end(),
+              [](const ExportTargetConfig &a, const ExportTargetConfig &b) {
+                return a.execution_order < b.execution_order;
+              });
+
+    // ✅ v3.2.0: Payload Template 주입 로직
+    // (active_targets_ 순회하며 DB에서 템플릿 로드)
+    auto payload_repo = factory.getPayloadTemplateRepository();
+    if (payload_repo) {
+      for (auto &target : active_targets_) {
+        // active_targets_에는 template_id가 없으므로 db_targets에서 찾아야 함
+        // (ID로 매칭)
+        auto it = std::find_if(
+            db_targets.begin(), db_targets.end(),
+            [&target](const auto &dbt) { return dbt.getId() == target.id; });
+
+        if (it != db_targets.end()) {
+          auto template_id_opt = it->getTemplateId();
+          if (template_id_opt.has_value()) {
+            int tid = template_id_opt.value();
+            auto template_opt = payload_repo->findById(tid);
+
+            if (template_opt.has_value()) {
+              try {
+                // 템플릿 JSON 파싱
+                std::string body_json = template_opt->getTemplateJson();
+                json body_template = json::parse(body_json);
+
+                // config에 주입 (S3TargetHandler 등이 사용)
+                target.config["body_template"] = body_template;
+
+                LogManager::getInstance().Info(
+                    "ExportService: Payload Template 주입 완료 - 타겟: " +
+                    target.name + ", 템플릿ID: " + std::to_string(tid));
+              } catch (const std::exception &e) {
+                LogManager::getInstance().Error(
+                    "ExportService: Payload Template JSON 파싱 실패 - " +
+                    std::string(e.what()));
+              }
+            }
+          }
+        }
+      }
     }
 
     LogManager::getInstance().Info(

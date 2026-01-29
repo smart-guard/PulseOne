@@ -99,6 +99,9 @@ ifeq ($(HAS_OPENSSL),0)
     HAS_OPENSSL := $(shell echo '\#include <openssl/sha.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 endif
 
+# 🔥 libpqxx 감지 (DBLib 의존성)
+HAS_PQXX := $(shell pkg-config --exists libpqxx 2>/dev/null && echo "1" || echo "0")
+
 # 🔥 Paho MQTT C++ 라이브러리 감지 (v3.1 추가)
 HAS_PAHO_MQTT := $(shell [ -f /usr/include/mqtt/async_client.h ] && echo "1" || echo "0")
 
@@ -229,6 +232,9 @@ ifeq ($(IS_WINDOWS),1)
     PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi
 else
     BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
+    ifeq ($(HAS_PQXX),1)
+        BASIC_LIBS += -lpqxx
+    endif
     ifeq ($(PLATFORM),Linux)
         BASIC_LIBS += -lmariadb
     endif

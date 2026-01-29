@@ -1,21 +1,13 @@
--- =============================================================================
--- backend/lib/database/schemas/01-core-tables.sql
--- 핵심 시스템 테이블 (SQLite 버전) - 2025-08-14 최신 업데이트
--- PulseOne v2.1.0 완전 호환 스키마
--- =============================================================================
-
--- 스키마 버전 관리 테이블
-CREATE TABLE IF NOT EXISTS schema_versions (
+PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+CREATE TABLE schema_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     version VARCHAR(20) NOT NULL,
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     description TEXT
 );
-
--- =============================================================================
--- 테넌트(회사) 테이블 - 멀티테넌트 SaaS 기반
--- =============================================================================
-CREATE TABLE IF NOT EXISTS tenants (
+INSERT INTO schema_versions VALUES(1,'2.1.0','2026-01-27 10:24:00','Complete PulseOne v2.1.0 schema - C++ SQLQueries.h compatible');
+CREATE TABLE tenants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     
     -- 🔥 기본 회사 정보
@@ -57,11 +49,11 @@ CREATE TABLE IF NOT EXISTS tenants (
     CONSTRAINT chk_subscription_plan CHECK (subscription_plan IN ('starter', 'professional', 'enterprise')),
     CONSTRAINT chk_subscription_status CHECK (subscription_status IN ('active', 'trial', 'suspended', 'cancelled'))
 );
-
--- =============================================================================
--- Edge 서버 등록 테이블 - 분산 아키텍처 지원
--- =============================================================================
-CREATE TABLE IF NOT EXISTS edge_servers (
+INSERT INTO tenants VALUES(1,'Smart Factory Korea','SFK001','smartfactory.pulseone.io','Factory Manager','manager@smartfactory.co.kr','+82-2-1234-5678','professional','active',10,10000,50,'monthly',NULL,NULL,NULL,1,'UTC','USD','en','2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO tenants VALUES(2,'Global Manufacturing Inc','GMI002','global-mfg.pulseone.io','Operations Director','ops@globalmfg.com','+1-555-0123','enterprise','active',50,100000,200,'monthly',NULL,NULL,NULL,1,'UTC','USD','en','2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO tenants VALUES(3,'Demo Corporation','DEMO','demo.pulseone.io','Demo Manager','demo@pulseone.com','+82-10-0000-0000','starter','trial',3,1000,10,'monthly',NULL,NULL,NULL,1,'UTC','USD','en','2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO tenants VALUES(4,'Test Factory Ltd','TEST','test.pulseone.io','Test Engineer','test@testfactory.com','+82-31-9999-8888','professional','active',5,5000,25,'monthly',NULL,NULL,NULL,1,'UTC','USD','en','2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+CREATE TABLE edge_servers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     
@@ -116,11 +108,11 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     -- 🔥 제약조건
     CONSTRAINT chk_edge_status CHECK (status IN ('pending', 'active', 'inactive', 'maintenance', 'error'))
 );
-
--- =============================================================================
--- 시스템 설정 테이블 - 키-값 저장소
--- =============================================================================
-CREATE TABLE IF NOT EXISTS system_settings (
+INSERT INTO edge_servers VALUES(1,1,'Main Collector','collector',NULL,'Seoul Main Factory',NULL,'127.0.0.1',NULL,NULL,8080,NULL,NULL,NULL,NULL,'active',NULL,NULL,'2.1.0',0.0,0.0,0.0,0,NULL,NULL,1,1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0,1,100,1000);
+INSERT INTO edge_servers VALUES(2,2,'NY Collector','collector',NULL,'New York Plant',NULL,'10.0.1.5',NULL,NULL,8080,NULL,NULL,NULL,NULL,'active',NULL,NULL,'2.1.0',0.0,0.0,0.0,0,NULL,NULL,1,1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0,3,100,1000);
+INSERT INTO edge_servers VALUES(3,3,'Demo Collector','collector',NULL,'Demo Factory',NULL,'192.168.100.20',NULL,NULL,8080,NULL,NULL,NULL,NULL,'active',NULL,NULL,'2.1.0',0.0,0.0,0.0,0,NULL,NULL,1,1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0,5,100,1000);
+INSERT INTO edge_servers VALUES(4,4,'Test Collector','collector',NULL,'Test Facility',NULL,'192.168.200.20',NULL,NULL,8080,NULL,NULL,NULL,NULL,'active',NULL,NULL,'2.1.0',0.0,0.0,0.0,0,NULL,NULL,1,1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0,6,100,1000);
+CREATE TABLE system_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     
     -- 🔥 설정 키-값
@@ -147,39 +139,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
     -- 🔥 제약조건
     CONSTRAINT chk_data_type CHECK (data_type IN ('string', 'integer', 'boolean', 'json', 'float'))
 );
-
--- =============================================================================
--- 인덱스 생성 (성능 최적화)
--- =============================================================================
-
--- tenants 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_tenants_company_code ON tenants(company_code);
-CREATE INDEX IF NOT EXISTS idx_tenants_active ON tenants(is_active);
-CREATE INDEX IF NOT EXISTS idx_tenants_subscription ON tenants(subscription_status);
-CREATE INDEX IF NOT EXISTS idx_tenants_domain ON tenants(domain);
-
--- edge_servers 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_edge_servers_tenant ON edge_servers(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_edge_servers_status ON edge_servers(status);
-CREATE INDEX IF NOT EXISTS idx_edge_servers_last_seen ON edge_servers(last_seen DESC);
-CREATE INDEX IF NOT EXISTS idx_edge_servers_token ON edge_servers(registration_token);
-CREATE INDEX IF NOT EXISTS idx_edge_servers_hostname ON edge_servers(hostname);
-
--- system_settings 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_system_settings_category ON system_settings(category);
-CREATE INDEX IF NOT EXISTS idx_system_settings_public ON system_settings(is_public);
-CREATE INDEX IF NOT EXISTS idx_system_settings_updated ON system_settings(updated_at DESC);
-
--- =============================================================================
--- backend/lib/database/schemas/02-users-sites.sql
--- 통합 사용자 및 사이트 테이블 (SQLite 버전) - 2025-08-14 최신 업데이트
--- PulseOne v2.1.0 멀티테넌트 & 계층구조 완전 지원
--- =============================================================================
-
--- =============================================================================
--- 통합 사용자 테이블 - 시스템 관리자 + 테넌트 사용자 통합
--- =============================================================================
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER,                                    -- NULL = 시스템 관리자, 값 있음 = 테넌트 사용자
     
@@ -241,11 +201,7 @@ CREATE TABLE IF NOT EXISTS users (
     CONSTRAINT chk_role CHECK (role IN ('system_admin', 'company_admin', 'site_admin', 'engineer', 'operator', 'viewer')),
     CONSTRAINT chk_theme CHECK (theme IN ('light', 'dark', 'auto'))
 );
-
--- =============================================================================
--- 사용자 세션 관리 테이블
--- =============================================================================
-CREATE TABLE IF NOT EXISTS user_sessions (
+CREATE TABLE user_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     
@@ -273,11 +229,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
--- =============================================================================
--- 사이트 테이블 - 완전한 계층구조 지원
--- =============================================================================
-CREATE TABLE IF NOT EXISTS sites (
+CREATE TABLE sites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     parent_site_id INTEGER,                               -- 계층 구조 지원
@@ -349,11 +301,13 @@ CREATE TABLE IF NOT EXISTS sites (
     UNIQUE(tenant_id, code),
     CONSTRAINT chk_site_type CHECK (site_type IN ('company', 'factory', 'office', 'building', 'floor', 'line', 'area', 'zone', 'room'))
 );
-
--- =============================================================================
--- 사용자 즐겨찾기 테이블
--- =============================================================================
-CREATE TABLE IF NOT EXISTS user_favorites (
+INSERT INTO sites VALUES(1,1,NULL,'Seoul Main Factory','SMF001','factory','Main manufacturing facility','Seoul Industrial Complex',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO sites VALUES(2,1,NULL,'Busan Secondary Plant','BSP002','factory','Secondary production facility','Busan Industrial Park',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO sites VALUES(3,2,NULL,'New York Plant','NYP003','factory','East Coast Manufacturing Plant','New York Industrial Zone',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO sites VALUES(4,2,NULL,'Detroit Automotive Plant','DAP004','factory','Automotive Manufacturing Plant','Detroit, MI',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO sites VALUES(5,3,NULL,'Demo Factory','DEMO005','factory','Demonstration facility','Demo Location',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO sites VALUES(6,4,NULL,'Test Facility','TEST006','factory','Testing and R&D facility','Test Location',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+CREATE TABLE user_favorites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     
@@ -375,11 +329,7 @@ CREATE TABLE IF NOT EXISTS user_favorites (
     -- 🔥 제약조건
     CONSTRAINT chk_target_type CHECK (target_type IN ('site', 'device', 'data_point', 'alarm', 'dashboard', 'virtual_point'))
 );
-
--- =============================================================================
--- 사용자 알림 설정 테이블
--- =============================================================================
-CREATE TABLE IF NOT EXISTS user_notification_settings (
+CREATE TABLE user_notification_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     
@@ -414,51 +364,7 @@ CREATE TABLE IF NOT EXISTS user_notification_settings (
     -- 🔥 제약조건
     UNIQUE(user_id)
 );
-
--- =============================================================================
--- 인덱스 생성 (성능 최적화)
--- =============================================================================
-
--- users 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
-CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_last_login ON users(last_login DESC);
-CREATE INDEX IF NOT EXISTS idx_users_employee_id ON users(employee_id);
-
--- user_sessions 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_active ON user_sessions(is_active);
-
--- sites 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_sites_tenant ON sites(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_sites_parent ON sites(parent_site_id);
-CREATE INDEX IF NOT EXISTS idx_sites_type ON sites(site_type);
-CREATE INDEX IF NOT EXISTS idx_sites_hierarchy ON sites(hierarchy_level);
-CREATE INDEX IF NOT EXISTS idx_sites_active ON sites(is_active);
-CREATE INDEX IF NOT EXISTS idx_sites_code ON sites(tenant_id, code);
-CREATE INDEX IF NOT EXISTS idx_sites_edge_server ON sites(edge_server_id);
-CREATE INDEX IF NOT EXISTS idx_sites_hierarchy_path ON sites(hierarchy_path);
-
--- user_favorites 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_favorites_target ON user_favorites(target_type, target_id);
-CREATE INDEX IF NOT EXISTS idx_user_favorites_sort ON user_favorites(user_id, sort_order);
-
--- user_notification_settings 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_user_notification_user ON user_notification_settings(user_id);-- ============================================================================
--- backend/lib/database/schemas/08-protocols-table.sql
--- 프로토콜 정보 전용 테이블 - 하드코딩 제거
--- ============================================================================
-
--- =============================================================================
--- 프로토콜 정보 테이블 
--- =============================================================================
-CREATE TABLE IF NOT EXISTS protocols (
+CREATE TABLE protocols (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     
     -- 기본 정보
@@ -499,19 +405,12 @@ CREATE TABLE IF NOT EXISTS protocols (
     -- 제약조건
     CONSTRAINT chk_category CHECK (category IN ('industrial', 'iot', 'building_automation', 'network', 'web'))
 );
-
--- =============================================================================
--- backend/lib/database/schemas/03-device-tables.sql
--- 디바이스 및 데이터 포인트 테이블 (SQLite 버전) - 2025-08-14 최신 업데이트
--- PulseOne v2.1.0 완전 호환, C++ Struct DataPoint 100% 반영
--- =============================================================================
-
--- =============================================================================
-
--- =============================================================================
--- 제조사 및 모델 정보 (공통 참조)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS manufacturers (
+INSERT INTO protocols VALUES(1,'MODBUS_TCP','Modbus TCP/IP','Industrial protocol over Ethernet',502,0,0,'["read", "write"]','["BOOL", "INT16", "UINT16", "INT32", "UINT32", "FLOAT32"]','{"slave_id": {"type": "integer", "default": 1}}','{}',1000,3000,10,1,0,'1.0','industrial','Modbus Organization','Modbus Application Protocol V1.1b3','2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO protocols VALUES(2,'MODBUS_RTU','Modbus RTU','Modbus over serial communication',NULL,1,0,'["read", "write"]','["BOOL", "INT16", "UINT16", "INT32", "UINT32", "FLOAT32"]','{"slave_id": {"type": "integer", "default": 1}}','{}',1000,3000,1,1,0,'1.0','industrial','Modbus Organization','Modbus over Serial Line V1.02','2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO protocols VALUES(4,'MQTT','MQTT v3.1.1','Lightweight messaging protocol for IoT',1883,0,1,'["publish", "subscribe"]','["BOOL", "INT32", "FLOAT32", "STRING", "JSON"]','{"broker_url": {"type": "string"}, "client_id": {"type": "string"}}','{}',0,5000,100,1,0,'3.1.1','iot','MQTT.org','MQTT v3.1.1 OASIS Standard','2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO protocols VALUES(6,'BACNET','BACnet/IP','Building automation and control networks',47808,0,0,'["read", "write"]','["BOOL", "INT32", "UINT32", "FLOAT32", "STRING"]','{"device_id": {"type": "integer", "default": 1001}}','{}',5000,10000,5,1,0,'1.0','building_automation','ASHRAE','ANSI/ASHRAE 135-2020','2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO protocols VALUES(13,'BLE_BEACON','BLE Beacon','Bluetooth Low Energy Beaconing',NULL,0,0,'["read"]','["BOOL", "INT32", "FLOAT32", "STRING"]','{"uuid": {"type": "string"}}','{}',1000,3000,100,1,0,'4.0','iot','Bluetooth SIG','Bluetooth Core Specification 4.0','2026-01-27 10:24:00','2026-01-27 10:24:00');
+CREATE TABLE manufacturers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
@@ -523,8 +422,12 @@ CREATE TABLE IF NOT EXISTS manufacturers (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE TABLE IF NOT EXISTS device_models (
+INSERT INTO manufacturers VALUES(1,'LS Electric','Global total solution provider in electric power and automation','South Korea','https://www.lselectric.co.kr',NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO manufacturers VALUES(2,'Siemens','German multinational technology conglomerate','Germany','https://www.siemens.com',NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO manufacturers VALUES(3,'Schneider Electric','French multinational company specializing in digital automation and energy management','France','https://www.se.com',NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO manufacturers VALUES(4,'ABB','Swedish-Swiss multinational corporation operating mainly in robotics, power, heavy electrical equipment, and automation technology','Switzerland','https://new.abb.com',NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO manufacturers VALUES(5,'Delta Electronics','Taiwanese electronics manufacturing company','Taiwan','https://www.deltaww.com',NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+CREATE TABLE device_models (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     manufacturer_id INTEGER NOT NULL,
     name VARCHAR(100) NOT NULL,
@@ -540,11 +443,11 @@ CREATE TABLE IF NOT EXISTS device_models (
     FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE CASCADE,
     UNIQUE(manufacturer_id, name)
 );
-
--- =============================================================================
--- 디바이스 그룹 테이블
--- =============================================================================
-CREATE TABLE IF NOT EXISTS device_groups (
+INSERT INTO device_models VALUES(1,1,'XGT Series','XGK-CPUS','PLC','LS Electric XGT Series Programmable Logic Controller',NULL,NULL,NULL,1,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO device_models VALUES(2,1,'iS7 Inverter','SV-iS7','INVERTER','LS Electric iS7 Series High Performance Inverter',NULL,NULL,NULL,1,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO device_models VALUES(3,2,'S7-1200','CPU 1214C','PLC','Siemens SIMATIC S7-1200 Compact Controller',NULL,NULL,NULL,1,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO device_models VALUES(4,3,'PowerLogic PM8000','METSEPM8000','METER','Schneider Electric PowerLogic PM8000 series power meter',NULL,NULL,NULL,1,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+CREATE TABLE device_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     site_id INTEGER NOT NULL,
@@ -576,11 +479,7 @@ CREATE TABLE IF NOT EXISTS device_groups (
     -- 🔥 제약조건
     CONSTRAINT chk_group_type CHECK (group_type IN ('functional', 'physical', 'protocol', 'location'))
 );
-
--- =============================================================================
--- 장치-그룹 다중 배정 테이블 (N:N 관계)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS device_group_assignments (
+CREATE TABLE device_group_assignments (
     device_id INTEGER NOT NULL,
     group_id INTEGER NOT NULL,
     is_primary INTEGER DEFAULT 0,                         -- 대표 그룹 여부
@@ -589,11 +488,7 @@ CREATE TABLE IF NOT EXISTS device_group_assignments (
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     FOREIGN KEY (group_id) REFERENCES device_groups(id) ON DELETE CASCADE
 );
-
--- =============================================================================
--- 드라이버 플러그인 테이블
--- =============================================================================
-CREATE TABLE IF NOT EXISTS driver_plugins (
+CREATE TABLE driver_plugins (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     
     -- 🔥 플러그인 기본 정보
@@ -635,11 +530,7 @@ CREATE TABLE IF NOT EXISTS driver_plugins (
     UNIQUE(protocol_type, version),
     CONSTRAINT chk_license_type CHECK (license_type IN ('free', 'commercial', 'trial'))
 );
-
--- =============================================================================
--- 디바이스 테이블 - 완전한 프로토콜 지원
--- =============================================================================
-CREATE TABLE IF NOT EXISTS devices (
+CREATE TABLE devices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     site_id INTEGER NOT NULL,
@@ -706,11 +597,18 @@ CREATE TABLE IF NOT EXISTS devices (
     -- 제약조건
     CONSTRAINT chk_device_type CHECK (device_type IN ('PLC', 'HMI', 'SENSOR', 'GATEWAY', 'METER', 'CONTROLLER', 'ROBOT', 'INVERTER', 'DRIVE', 'SWITCH'))
 );
-
--- =============================================================================
--- 🔥🔥🔥 디바이스 세부 설정 테이블 (고급 통신 설정)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS device_settings (
+INSERT INTO devices VALUES(1,1,1,NULL,1,'PLC-001','Main production line PLC','PLC','Siemens','S7-1515F',NULL,NULL,1,'192.168.1.10:502','{"slave_id": 1, "timeout_ms": 3000, "byte_order": "big_endian", "unit_id": 1}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(2,1,1,NULL,1,'HMI-001','Operator HMI panel','HMI','Schneider Electric','Harmony GT2512',NULL,NULL,1,'192.168.1.11:502','{"slave_id": 2, "timeout_ms": 3000, "screen_size": "12_inch", "unit_id": 2}',2000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(3,1,1,NULL,1,'ROBOT-001','Automated welding robot','ROBOT','KUKA','KR 16-3 F',NULL,NULL,1,'192.168.1.12:502','{"slave_id": 3, "timeout_ms": 2000, "coordinate_system": "world", "unit_id": 3}',500,2000,5,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(4,1,1,NULL,1,'VFD-001','Conveyor motor VFD','INVERTER','ABB','ACS580-01',NULL,NULL,1,'192.168.1.13:502','{"slave_id": 4, "timeout_ms": 3000, "motor_rated_power": "15kW", "unit_id": 4}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(5,1,1,NULL,1,'HVAC-001','Main air handling unit','CONTROLLER','Honeywell','Spyder',NULL,NULL,2,'192.168.1.30:47808','{"device_id": 1001, "network": 1, "max_apdu": 1476, "segmentation": "segmented_both"}',5000,10000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(6,1,1,NULL,1,'METER-001','Main facility power meter','METER','Schneider Electric','PowerLogic PM8000',NULL,NULL,1,'192.168.1.40:502','{"slave_id": 10, "timeout_ms": 3000, "measurement_class": "0.2S", "unit_id": 10}',5000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(7,2,3,NULL,2,'PLC-NY-001','New York plant main PLC','PLC','Rockwell Automation','CompactLogix 5380',NULL,NULL,1,'10.0.1.10:502','{"slave_id": 1, "timeout_ms": 3000, "communication_format": "RTU_over_TCP", "unit_id": 1}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(8,2,3,NULL,2,'ROBOT-NY-001','Assembly robot station 1','ROBOT','Fanuc','R-2000iD/210F',NULL,NULL,4,'10.0.1.15:44818','{"connection_type": "explicit", "assembly_instance": 100, "originator_to_target": 500, "target_to_originator": 500}',200,1000,5,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(9,3,5,NULL,3,'DEMO-PLC-001','Demo PLC for training','PLC','Demo Manufacturer','Demo-PLC-v2',NULL,NULL,1,'192.168.100.10:502','{"slave_id": 1, "timeout_ms": 3000, "demo_mode": true, "unit_id": 1}',2000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(10,3,5,NULL,3,'DEMO-IOT-001','IoT gateway for wireless sensors','GATEWAY','Generic IoT','MultiProtocol-GW',NULL,NULL,4,'mqtt://192.168.100.20:1883','{"client_id": "demo_gateway", "username": "demo_user", "password": "demo_pass", "keep_alive": 60}',0,5000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO devices VALUES(11,4,6,NULL,4,'TEST-PLC-001','Advanced test PLC for R&D','PLC','Test Systems','TestPLC-Pro',NULL,NULL,1,'192.168.200.10:502','{"slave_id": 1, "timeout_ms": 3000, "test_mode": true, "advanced_diagnostics": true, "unit_id": 1}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+CREATE TABLE device_settings (
     device_id INTEGER PRIMARY KEY,
     
     -- 🔥 폴링 및 타이밍 설정
@@ -761,11 +659,13 @@ CREATE TABLE IF NOT EXISTS device_settings (
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     FOREIGN KEY (updated_by) REFERENCES users(id)
 );
-
--- =============================================================================
--- 디바이스 상태 테이블
--- =============================================================================
-CREATE TABLE IF NOT EXISTS device_status (
+INSERT INTO device_settings VALUES(1,1000,NULL,1,10000,5000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,0,1024,1024,100,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+INSERT INTO device_settings VALUES(2,2000,NULL,1,10000,5000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,0,1024,1024,100,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+INSERT INTO device_settings VALUES(3,500,NULL,1,10000,2000,2000,10,5,3000,1.5,60000,300000,1,15,5,1,1,1,1,1,1,0,0,2048,2048,200,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+INSERT INTO device_settings VALUES(4,1000,NULL,1,10000,5000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,0,1024,1024,100,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+INSERT INTO device_settings VALUES(5,5000,NULL,1,15000,10000,10000,10,3,10000,2,120000,600000,1,60,20,1,0,1,0,1,0,0,0,1024,1024,50,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+INSERT INTO device_settings VALUES(6,5000,NULL,1,10000,5000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,0,1024,1024,100,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+CREATE TABLE device_status (
     device_id INTEGER PRIMARY KEY,
     
     -- 🔥 연결 상태
@@ -806,11 +706,13 @@ CREATE TABLE IF NOT EXISTS device_status (
     -- 🔥 제약조건
     CONSTRAINT chk_connection_status CHECK (connection_status IN ('connected', 'disconnected', 'connecting', 'error', 'maintenance'))
 );
-
--- =============================================================================
--- 🔥🔥🔥 데이터 포인트 테이블 - C++ Struct DataPoint 100% 반영!
--- =============================================================================
-CREATE TABLE IF NOT EXISTS data_points (
+INSERT INTO device_status VALUES(1,'connected','2026-01-27 10:23:00','2026-01-27 09:24:00',0,NULL,NULL,0,15,8,45,2.5,1500,1500,0,99.900000000000005684,'V16.0.3','{"cpu": "S7-1515F", "memory": "512MB"}','{"last_scan": "normal"}',25.300000000000000711,68.5,'2026-01-27 10:24:00');
+INSERT INTO device_status VALUES(2,'connected','2026-01-27 10:23:30','2026-01-27 08:24:00',0,NULL,NULL,0,25,12,78,1.8000000000000000444,800,800,0,99.5,'V2.1.4','{"screen": "12inch", "memory": "256MB"}','{"display": "active"}',18.699999999999999289,45.200000000000002842,'2026-01-27 10:24:00');
+INSERT INTO device_status VALUES(3,'connected','2026-01-27 10:23:55','2026-01-27 09:54:00',0,NULL,NULL,0,8,5,25,5.2000000000000001776,3500,3500,0,100.0,'V8.3.2','{"axes": 6, "payload": "16kg"}','{"position": "active"}',42.100000000000001421,72.799999999999997158,'2026-01-27 10:24:00');
+INSERT INTO device_status VALUES(4,'connected','2026-01-27 10:23:00','2026-01-27 09:39:00',0,NULL,NULL,0,20,10,55,1.1999999999999999556,600,600,0,99.799999999999997158,'V1.5.8','{"power": "15kW", "voltage": "480V"}','{"drive": "running"}',15.199999999999999289,38.899999999999998579,'2026-01-27 10:24:00');
+INSERT INTO device_status VALUES(5,'connected','2026-01-27 10:21:00','2026-01-27 04:24:00',0,NULL,NULL,0,45,25,120,0.80000000000000004441,200,200,0,98.5,'V3.2.1','{"zones": 4, "capacity": "50kW"}','{"system": "auto"}',8.5,28.300000000000000711,'2026-01-27 10:24:00');
+INSERT INTO device_status VALUES(6,'connected','2026-01-27 10:23:00','2026-01-27 02:24:00',0,NULL,NULL,0,35,20,85,1.0,400,400,0,99.200000000000002842,'V2.8.5','{"class": "0.2S", "ct_ratio": "1000:1"}','{"measurement": "active"}',12.800000000000000711,35.700000000000002842,'2026-01-27 10:24:00');
+CREATE TABLE data_points (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id INTEGER NOT NULL,
     
@@ -877,11 +779,28 @@ CREATE TABLE IF NOT EXISTS data_points (
     CONSTRAINT chk_access_mode CHECK (access_mode IN ('read', 'write', 'read_write')),
     CONSTRAINT chk_retention_policy CHECK (retention_policy IN ('standard', 'extended', 'minimal', 'custom'))
 );
-
--- =============================================================================
--- 🔥🔥🔥 현재값 테이블 - JSON 기반 DataVariant 저장
--- =============================================================================
-CREATE TABLE IF NOT EXISTS current_values (
+INSERT INTO data_points VALUES(1,1,'Production_Count','Production counter',1001,NULL,NULL,'UINT32','read',1,0,'pcs',1.0,0.0,0.0,999999.0,1,5000,0.0,0,1,1,0.0,'production','["production", "counter"]','{"importance": "high"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(2,1,'Line_Speed','Line speed sensor',1002,NULL,NULL,'FLOAT32','read',1,0,'m/min',0.10000000000000000555,0.0,0.0,100.0,1,1000,0.0,0,1,1,0.0,'production','["speed", "line"]','{"sensor_type": "encoder"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(3,1,'Motor_Current','Motor current sensor',1003,NULL,NULL,'FLOAT32','read',1,0,'A',0.010000000000000000208,0.0,0.0,50.0,1,1000,0.0,0,1,1,0.0,'electrical','["current", "motor"]','{"sensor_model": "CT-100A"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(4,1,'Temperature','Process temperature',1004,NULL,NULL,'FLOAT32','read',1,0,'°C',0.10000000000000000555,0.0,-40.0,150.0,1,2000,0.0,0,1,1,0.0,'environmental','["temperature", "process"]','{"sensor_location": "heat_exchanger"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(5,1,'Emergency_Stop','Emergency stop button',1005,NULL,NULL,'BOOL','read',1,0,'',1.0,0.0,0.0,1.0,1,0,0.0,0,1,1,0.0,'safety','["emergency", "stop", "safety"]','{"critical": true}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(6,2,'Screen_Status','HMI screen status',2001,NULL,NULL,'UINT16','read',1,0,'',1.0,0.0,0.0,255.0,1,5000,0.0,0,1,1,0.0,'interface','["screen", "hmi"]','{"screen_type": "main"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(7,2,'Active_Alarms','Number of active alarms',2002,NULL,NULL,'UINT16','read',1,0,'count',1.0,0.0,0.0,100.0,1,2000,0.0,0,1,1,0.0,'alarms','["alarms", "active"]','{"priority": "high"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(8,2,'User_Level','Current user access level',2003,NULL,NULL,'UINT16','read',1,0,'',1.0,0.0,0.0,5.0,1,10000,0.0,0,1,1,0.0,'security','["user", "access"]','{"levels": "0=guest,1=operator,2=engineer,3=admin"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(9,3,'Robot_X_Position','Robot X position',3001,NULL,NULL,'FLOAT32','read',1,0,'mm',0.010000000000000000208,0.0,-1611.0,1611.0,1,500,0.0,0,1,1,0.0,'position','["robot", "position", "x-axis"]','{"coordinate_system": "world"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(10,3,'Robot_Y_Position','Robot Y position',3003,NULL,NULL,'FLOAT32','read',1,0,'mm',0.010000000000000000208,0.0,-1611.0,1611.0,1,500,0.0,0,1,1,0.0,'position','["robot", "position", "y-axis"]','{"coordinate_system": "world"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(11,3,'Robot_Z_Position','Robot Z position',3005,NULL,NULL,'FLOAT32','read',1,0,'mm',0.010000000000000000208,0.0,-1000.0,2000.0,1,500,0.0,0,1,1,0.0,'position','["robot", "position", "z-axis"]','{"coordinate_system": "world"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(12,3,'Welding_Current','Welding current',3007,NULL,NULL,'FLOAT32','read',1,0,'A',0.10000000000000000555,0.0,0.0,350.0,1,1000,0.0,0,1,1,0.0,'welding','["welding", "current"]','{"welding_process": "MIG"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(13,5,'Zone1_Temperature','Production Zone 1 Temperature',1,NULL,NULL,'FLOAT32','read',1,0,'°C',1.0,0.0,-10.0,50.0,1,3000,0.0,0,1,1,0.0,'hvac','["temperature", "zone1"]','{"zone": "production_area_1"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(14,5,'Zone1_Humidity','Production Zone 1 Humidity',2,NULL,NULL,'FLOAT32','read',1,0,'%RH',1.0,0.0,0.0,100.0,1,3000,0.0,0,1,1,0.0,'hvac','["humidity", "zone1"]','{"zone": "production_area_1"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(15,6,'Active_Power','Active power consumption',1001,NULL,NULL,'FLOAT32','read',1,0,'kW',0.010000000000000000208,0.0,0.0,1000.0,1,2000,0.0,0,1,1,0.0,'energy','["power", "active"]','{"meter_type": "PM8000"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(16,6,'Reactive_Power','Reactive power',1003,NULL,NULL,'FLOAT32','read',1,0,'kVAR',0.010000000000000000208,0.0,-500.0,500.0,1,2000,0.0,0,1,1,0.0,'energy','["power", "reactive"]','{"meter_type": "PM8000"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(17,6,'Power_Factor','Power factor',1005,NULL,NULL,'FLOAT32','read',1,0,'',0.0010000000000000000208,0.0,0.0,1.0,1,5000,0.0,0,1,1,0.0,'energy','["power", "factor"]','{"meter_type": "PM8000"}',NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-27 10:24:00','2026-01-27 10:24:00',0);
+INSERT INTO data_points VALUES(18,11,'WLS.PV',NULL,4001,NULL,NULL,'UNKNOWN','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,0,1,1,0.0,NULL,NULL,NULL,NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-29 02:07:54','2026-01-29 02:07:54',0);
+INSERT INTO data_points VALUES(19,11,'WLS.SRS',NULL,4002,NULL,NULL,'UNKNOWN','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,0,1,1,0.0,NULL,NULL,NULL,NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-29 02:13:51','2026-01-29 02:13:51',0);
+INSERT INTO data_points VALUES(20,11,'WLS.SSS',NULL,4003,NULL,NULL,'UNKNOWN','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,0,1,1,0.0,NULL,NULL,NULL,NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-29 02:13:51','2026-01-29 02:13:51',0);
+INSERT INTO data_points VALUES(21,11,'WLS.SBV',NULL,4004,NULL,NULL,'UNKNOWN','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,0,1,1,0.0,NULL,NULL,NULL,NULL,0,NULL,NULL,0.0,'standard',1,'2026-01-29 02:13:51','2026-01-29 02:13:51',0);
+CREATE TABLE current_values (
     point_id INTEGER PRIMARY KEY,
     
     -- 🔥 실제 값 (DataVariant 직렬화)
@@ -927,59 +846,24 @@ CREATE TABLE IF NOT EXISTS current_values (
     CONSTRAINT chk_alarm_state CHECK (LOWER(alarm_state) IN ('normal', 'high', 'low', 'critical', 'warning', 'active', 'cleared', 'acknowledged'))
 
 );
-
--- =============================================================================
--- 인덱스 생성 (성능 최적화)
--- =============================================================================
-
--- device_groups 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_device_groups_tenant ON device_groups(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_device_groups_site ON device_groups(site_id);
-CREATE INDEX IF NOT EXISTS idx_device_groups_parent ON device_groups(parent_group_id);
-CREATE INDEX IF NOT EXISTS idx_device_groups_type ON device_groups(group_type);
-
--- driver_plugins 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_driver_plugins_protocol ON driver_plugins(protocol_type);
-CREATE INDEX IF NOT EXISTS idx_driver_plugins_enabled ON driver_plugins(is_enabled);
-
--- devices 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_devices_tenant ON devices(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_devices_site ON devices(site_id);
-CREATE INDEX IF NOT EXISTS idx_devices_group ON devices(device_group_id);
-CREATE INDEX IF NOT EXISTS idx_devices_edge_server ON devices(edge_server_id);
-CREATE INDEX IF NOT EXISTS idx_devices_protocol ON devices(protocol_id);
-CREATE INDEX IF NOT EXISTS idx_devices_type ON devices(device_type);
-CREATE INDEX IF NOT EXISTS idx_devices_enabled ON devices(is_enabled);
-CREATE INDEX IF NOT EXISTS idx_devices_name ON devices(tenant_id, name);
-
--- device_settings 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_device_settings_device_id ON device_settings(device_id);
-CREATE INDEX IF NOT EXISTS idx_device_settings_polling ON device_settings(polling_interval_ms);
-
--- device_status 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_device_status_connection ON device_status(connection_status);
-CREATE INDEX IF NOT EXISTS idx_device_status_last_comm ON device_status(last_communication DESC);
-
--- data_points 테이블 인덱스 (핵심 성능 최적화)
-CREATE INDEX IF NOT EXISTS idx_data_points_device ON data_points(device_id);
-CREATE INDEX IF NOT EXISTS idx_data_points_enabled ON data_points(is_enabled);
-CREATE INDEX IF NOT EXISTS idx_data_points_address ON data_points(device_id, address);
-CREATE INDEX IF NOT EXISTS idx_data_points_type ON data_points(data_type);
-CREATE INDEX IF NOT EXISTS idx_data_points_log_enabled ON data_points(log_enabled);
-CREATE INDEX IF NOT EXISTS idx_data_points_name ON data_points(device_id, name);
-CREATE INDEX IF NOT EXISTS idx_data_points_group ON data_points(group_name);
-
--- current_values 테이블 인덱스 (실시간 조회 최적화)
-CREATE INDEX IF NOT EXISTS idx_current_values_timestamp ON current_values(value_timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_current_values_quality ON current_values(quality_code);
-CREATE INDEX IF NOT EXISTS idx_current_values_updated ON current_values(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_current_values_alarm ON current_values(alarm_active);
-CREATE INDEX IF NOT EXISTS idx_current_values_quality_name ON current_values(quality);
-
--- =============================================================================
--- 디바이스 템플릿 테이블 (운영 디바이스 생성을 위한 참조)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS template_devices (
+INSERT INTO current_values VALUES(1,'{"value": 15847}','{"value": 15847}',NULL,'uint32',0,'good','2026-01-27 10:19:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',45,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(2,'{"value": 18.5}','{"value": 185}',NULL,'float',0,'good','2026-01-27 10:23:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',120,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(3,'{"value": 28.7}','{"value": 2870}',NULL,'float',0,'good','2026-01-27 10:23:30','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',89,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(4,'{"value": 23.8}','{"value": 238}',NULL,'float',0,'good','2026-01-27 10:22:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',67,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(5,'{"value": false}','{"value": false}',NULL,'bool',0,'good','2026-01-27 10:23:50','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',5,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(6,'{"value": 1}','{"value": 1}',NULL,'uint16',0,'good','2026-01-27 10:23:30','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',23,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(7,'{"value": 2}','{"value": 2}',NULL,'uint16',0,'good','2026-01-27 10:23:45','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',15,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(8,'{"value": 2}','{"value": 2}',NULL,'uint16',0,'good','2026-01-27 10:23:15','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',8,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(9,'{"value": 145.67}','{"value": 14567}',NULL,'float',0,'good','2026-01-27 10:23:55','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',234,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(10,'{"value": -287.23}','{"value": -28723}',NULL,'float',0,'good','2026-01-27 10:23:55','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',234,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(11,'{"value": 856.45}','{"value": 85645}',NULL,'float',0,'good','2026-01-27 10:23:55','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',234,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(12,'{"value": 185.4}','{"value": 1854}',NULL,'float',0,'good','2026-01-27 10:23:58','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',156,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(13,'{"value": 22.3}','{"value": 22.3}',NULL,'float',0,'good','2026-01-27 10:21:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',42,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(14,'{"value": 58.2}','{"value": 58.2}',NULL,'float',0,'good','2026-01-27 10:22:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',38,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(15,'{"value": 847.5}','{"value": 84750}',NULL,'float',0,'good','2026-01-27 10:23:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',28,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(16,'{"value": 125.3}','{"value": 12530}',NULL,'float',0,'good','2026-01-27 10:23:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',28,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+INSERT INTO current_values VALUES(17,'{"value": 0.985}','{"value": 985}',NULL,'float',0,'good','2026-01-27 10:23:30','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00','2026-01-27 10:24:00',18,0,0,0,'normal',0,0,NULL,'2026-01-27 10:24:00');
+CREATE TABLE template_devices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     model_id INTEGER NOT NULL,
     name VARCHAR(100) NOT NULL,                           -- 템플릿 명칭
@@ -995,8 +879,11 @@ CREATE TABLE IF NOT EXISTS template_devices (
     FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE CASCADE,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT
 );
-
-CREATE TABLE IF NOT EXISTS template_device_settings (
+INSERT INTO template_devices VALUES(1,1,'XGT Standard Modbus TCP','Standard template for LS XGT PLC using Modbus TCP',1,'{"slave_id": 1, "byte_order": "big_endian"}',1000,3000,1,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO template_devices VALUES(2,2,'iS7 Inverter Basic','Basic monitoring and control for iS7 Inverter',1,'{"slave_id": 1, "byte_order": "big_endian"}',1000,3000,1,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO template_devices VALUES(3,3,'S7-1200 Standard','Standard monitoring for Siemens S7-1200',1,'{"slave_id": 1, "byte_order": "big_endian"}',1000,3000,1,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO template_devices VALUES(4,4,'PM8000 Basic','Basic energy monitoring for Schneider PM8000',1,'{"slave_id": 1, "byte_order": "big_endian"}',1000,3000,1,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+CREATE TABLE template_device_settings (
     template_device_id INTEGER PRIMARY KEY,
     polling_interval_ms INTEGER DEFAULT 1000,
     connection_timeout_ms INTEGER DEFAULT 10000,
@@ -1005,8 +892,11 @@ CREATE TABLE IF NOT EXISTS template_device_settings (
     max_retry_count INTEGER DEFAULT 3,
     FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE CASCADE
 );
-
-CREATE TABLE IF NOT EXISTS template_data_points (
+INSERT INTO template_device_settings VALUES(1,1000,10000,5000,5000,3);
+INSERT INTO template_device_settings VALUES(2,1000,10000,5000,5000,3);
+INSERT INTO template_device_settings VALUES(3,1000,10000,5000,5000,3);
+INSERT INTO template_device_settings VALUES(4,5000,10000,5000,5000,3);
+CREATE TABLE template_data_points (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     template_device_id INTEGER NOT NULL,
     name VARCHAR(100) NOT NULL,
@@ -1023,21 +913,29 @@ CREATE TABLE IF NOT EXISTS template_data_points (
     metadata TEXT,                                       -- JSON 형태
     FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE CASCADE
 );
-
--- 템플릿 인덱스
-CREATE INDEX IF NOT EXISTS idx_template_devices_model ON template_devices(model_id);
-CREATE INDEX IF NOT EXISTS idx_template_data_points_template ON template_data_points(template_device_id);
-CREATE INDEX IF NOT EXISTS idx_manufacturers_name ON manufacturers(name);
-CREATE INDEX IF NOT EXISTS idx_device_models_manufacturer ON device_models(manufacturer_id);-- =============================================================================
--- backend/lib/database/schemas/05-alarm-tables.sql
--- 알람 시스템 테이블 (SQLite 버전) - device_id INTEGER 수정
--- PulseOne v2.1.0 완전 호환, 현재 DB와 100% 동기화
--- =============================================================================
-
--- =============================================================================
--- 알람 규칙 테이블 - 현재 DB 구조와 완전 일치 (category, tags 추가)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS alarm_rules (
+INSERT INTO template_data_points VALUES(1,1,'CPU_Status',NULL,0,NULL,'UINT16','read','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(2,1,'Run_Stop',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(3,1,'Error_Code',NULL,2,NULL,'UINT16','read','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(4,1,'Input_W0',NULL,100,NULL,'UINT16','read','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(5,1,'Output_W0',NULL,200,NULL,'UINT16','read_write','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(6,2,'Frequency',NULL,1,NULL,'FLOAT32','read','Hz',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(7,2,'Output_Current',NULL,2,NULL,'FLOAT32','read','A',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(8,2,'Output_Voltage',NULL,3,NULL,'FLOAT32','read','V',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(9,2,'DC_Link_Voltage',NULL,4,NULL,'FLOAT32','read','V',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(10,2,'Status_Word',NULL,10,NULL,'UINT16','read','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(11,2,'Control_Word',NULL,11,NULL,'UINT16','read_write','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(12,3,'Status',NULL,0,NULL,'UINT16','read','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(13,3,'Run_Mode',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(14,3,'Process_Value',NULL,10,NULL,'FLOAT32','read','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(15,3,'Setpoint',NULL,12,NULL,'FLOAT32','read_write','',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(16,4,'Voltage_A-N',NULL,100,NULL,'FLOAT32','read','V',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(17,4,'Voltage_B-N',NULL,102,NULL,'FLOAT32','read','V',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(18,4,'Voltage_C-N',NULL,104,NULL,'FLOAT32','read','V',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(19,4,'Current_A',NULL,110,NULL,'FLOAT32','read','A',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(20,4,'Current_B',NULL,112,NULL,'FLOAT32','read','A',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(21,4,'Current_C',NULL,114,NULL,'FLOAT32','read','A',1.0,0,1,0,NULL);
+INSERT INTO template_data_points VALUES(22,4,'Total_Active_Power',NULL,120,NULL,'FLOAT32','read','kW',1.0,0,1,0,NULL);
+CREATE TABLE alarm_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     
@@ -1118,11 +1016,18 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
-
--- =============================================================================
--- 알람 발생 이력 - device_id INTEGER로 수정
--- =============================================================================
-CREATE TABLE IF NOT EXISTS alarm_occurrences (
+INSERT INTO alarm_rules VALUES(1,1,'Temperature_High_Alarm','PLC 온도 과열 알람','data_point',4,NULL,'analog',NULL,35.0,15.0,NULL,2.0,0.0,NULL,NULL,NULL,NULL,'온도 알람: {value}°C (임계값: {limit}°C)','high',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL,NULL,NULL,0,NULL,0,3,NULL,'process','["temperature", "plc", "production"]',0);
+INSERT INTO alarm_rules VALUES(2,1,'Motor_Current_Overload','모터 전류 과부하 알람','data_point',3,NULL,'analog',NULL,30.0,NULL,NULL,1.0,0.0,NULL,NULL,NULL,NULL,'모터 과부하: {value}A (한계: {limit}A)','critical',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL,NULL,NULL,0,NULL,0,3,NULL,'process','["current", "motor", "safety"]',0);
+INSERT INTO alarm_rules VALUES(3,1,'Emergency_Stop_Active','비상정지 버튼 활성화 알람','data_point',5,NULL,'digital',NULL,NULL,NULL,NULL,0.0,0.0,NULL,NULL,NULL,NULL,'🚨 비상정지 활성화됨!','critical',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL,NULL,NULL,0,NULL,0,3,NULL,'safety','["emergency", "stop", "critical"]',0);
+INSERT INTO alarm_rules VALUES(4,1,'HVAC_Zone1_Temperature','HVAC 구역1 온도 알람','data_point',13,NULL,'analog',NULL,28.0,18.0,NULL,1.5,0.0,NULL,NULL,NULL,NULL,'Zone1 온도 이상: {value}°C','medium',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL,NULL,NULL,0,NULL,0,3,NULL,'hvac','["temperature", "zone1", "hvac"]',0);
+INSERT INTO alarm_rules VALUES(5,1,'Production_Line_Speed','생산라인 속도 알람','data_point',2,NULL,'analog',NULL,25.0,5.0,NULL,1.0,0.0,NULL,NULL,NULL,NULL,'라인 속도 이상: {value} m/min','medium',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL,NULL,NULL,0,NULL,0,3,NULL,'process','["speed", "production", "line"]',0);
+INSERT INTO alarm_rules VALUES(6,1,'Robot_Position_Limit','로봇 위치 제한 알람','data_point',9,NULL,'analog',NULL,1500.0,-1500.0,NULL,10.0,0.0,NULL,NULL,NULL,NULL,'로봇 X축 위치 제한 초과: {value}mm','high',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL,NULL,NULL,0,NULL,0,3,NULL,'safety','["robot", "position", "limit"]',0);
+INSERT INTO alarm_rules VALUES(7,1,'Power_Consumption_High','전력 소비 과다 알람','data_point',15,NULL,'analog',NULL,900.0,NULL,NULL,50.0,0.0,NULL,NULL,NULL,NULL,'전력 소비 과다: {value}kW','medium',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL,NULL,NULL,0,NULL,0,3,NULL,'energy','["power", "consumption", "energy"]',0);
+INSERT INTO alarm_rules VALUES(15,1,'1F 방재실 소방수신기 1번 접점 감지센서(VDC) 1번 무선 현재값 이상',NULL,'data_point',18,NULL,'threshold_high',NULL,100.0,0.0,NULL,0.0,0.0,'high_limit',NULL,NULL,NULL,NULL,'critical',1,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-29 02:14:21','2026-01-29 02:14:21',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_rules VALUES(16,1,'1F 방재실 소방수신기 1번 접점 감지센서(VDC) 1번 무선 센서 인식상태 이상',NULL,'data_point',19,NULL,'threshold_high',NULL,0.0,0.0,NULL,0.0,0.0,'high_limit',NULL,NULL,NULL,NULL,'critical',1,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-29 02:14:21','2026-01-29 02:14:21',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_rules VALUES(17,1,'1F 방재실 소방수신기 1번 접점 감지센서(VDC) 1번 무선 센서 신호강도 이상',NULL,'data_point',20,NULL,'threshold_low',NULL,0.0,30.0,NULL,0.0,0.0,'low_limit',NULL,NULL,NULL,NULL,'warning',2,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-29 02:14:21','2026-01-29 02:14:21',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_rules VALUES(18,1,'1F 방재실 소방수신기 1번 접점 감지센서(VDC) 1번 무선 센서 배터리전압 이상',NULL,'data_point',21,NULL,'threshold_low',NULL,0.0,20.0,NULL,0.0,0.0,'low_limit',NULL,NULL,NULL,NULL,'warning',2,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-29 02:14:21','2026-01-29 02:14:21',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+CREATE TABLE alarm_occurrences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     rule_id INTEGER NOT NULL,
     tenant_id INTEGER NOT NULL,
@@ -1176,11 +1081,7 @@ CREATE TABLE IF NOT EXISTS alarm_occurrences (
     FOREIGN KEY (acknowledged_by) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (cleared_by) REFERENCES users(id) ON DELETE SET NULL      -- ⭐ 추가!
 );
-
--- =============================================================================
--- 알람 규칙 템플릿 - 현재 DB에 존재하는 테이블
--- =============================================================================
-CREATE TABLE IF NOT EXISTS alarm_rule_templates (
+CREATE TABLE alarm_rule_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     
@@ -1226,11 +1127,7 @@ CREATE TABLE IF NOT EXISTS alarm_rule_templates (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE(tenant_id, name)
 );
-
--- =============================================================================
--- JavaScript 함수 라이브러리 (알람 조건용)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS javascript_functions (
+CREATE TABLE javascript_functions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     
@@ -1266,11 +1163,12 @@ CREATE TABLE IF NOT EXISTS javascript_functions (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE(tenant_id, name)
 );
-
--- =============================================================================
--- 레시피 시스템 (복잡한 알람 로직용)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS recipes (
+INSERT INTO javascript_functions VALUES(1,1,'average',NULL,'Calculate average of values','function average(...values) { return values.reduce((a, b) => a + b, 0) / values.length; }','math','[{"name": "values", "type": "number[]", "required": true}]','number',0,NULL,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+INSERT INTO javascript_functions VALUES(2,1,'oeeCalculation',NULL,'Calculate Overall Equipment Effectiveness','function oeeCalculation(availability, performance, quality) { return (availability / 100) * (performance / 100) * (quality / 100) * 100; }','engineering','[{"name": "availability", "type": "number"}, {"name": "performance", "type": "number"}, {"name": "quality", "type": "number"}]','number',0,NULL,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+INSERT INTO javascript_functions VALUES(3,1,'powerFactorCorrection',NULL,'Calculate power factor correction','function powerFactorCorrection(activePower, reactivePower) { return activePower / Math.sqrt(activePower * activePower + reactivePower * reactivePower); }','electrical','[{"name": "activePower", "type": "number"}, {"name": "reactivePower", "type": "number"}]','number',0,NULL,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+INSERT INTO javascript_functions VALUES(4,1,'productionEfficiency',NULL,'Calculate production efficiency for automotive line','function productionEfficiency(actual, target, hours) { return (actual / target) * 100; }','custom','[{"name": "actual", "type": "number"}, {"name": "target", "type": "number"}, {"name": "hours", "type": "number"}]','number',0,NULL,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+INSERT INTO javascript_functions VALUES(5,1,'energyIntensity',NULL,'Calculate energy intensity per unit','function energyIntensity(totalEnergy, productionCount) { return productionCount > 0 ? totalEnergy / productionCount : 0; }','custom','[{"name": "totalEnergy", "type": "number"}, {"name": "productionCount", "type": "number"}]','number',0,NULL,NULL,NULL,1,0,'2026-01-27 10:24:00','2026-01-27 10:24:00',NULL);
+CREATE TABLE recipes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     
@@ -1305,11 +1203,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE(tenant_id, name)
 );
-
--- =============================================================================
--- 스케줄 시스템 (시간 기반 알람용)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS schedules (
+CREATE TABLE schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     
@@ -1346,63 +1240,7 @@ CREATE TABLE IF NOT EXISTS schedules (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE(tenant_id, name)
 );
-
--- =============================================================================
--- 인덱스 생성
--- =============================================================================
-
--- alarm_rules 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_tenant ON alarm_rules(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_target ON alarm_rules(target_type, target_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_enabled ON alarm_rules(is_enabled);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_template_id ON alarm_rules(template_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_rule_group ON alarm_rules(rule_group);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_created_by_template ON alarm_rules(created_by_template);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_category ON alarm_rules(category);
-CREATE INDEX IF NOT EXISTS idx_alarm_rules_tags ON alarm_rules(tags);
-
--- alarm_occurrences 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_rule ON alarm_occurrences(rule_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_state ON alarm_occurrences(state);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_time ON alarm_occurrences(occurrence_time DESC);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_device_id ON alarm_occurrences(device_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_point_id ON alarm_occurrences(point_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_rule_device ON alarm_occurrences(rule_id, device_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_category ON alarm_occurrences(category);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_tags ON alarm_occurrences(tags);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_acknowledged_by ON alarm_occurrences(acknowledged_by);
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_cleared_by ON alarm_occurrences(cleared_by);    -- ⭐ 추가!
-CREATE INDEX IF NOT EXISTS idx_alarm_occurrences_cleared_time ON alarm_occurrences(cleared_time DESC);
-
--- alarm_rule_templates 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_alarm_templates_tenant ON alarm_rule_templates(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_templates_category ON alarm_rule_templates(category);
-CREATE INDEX IF NOT EXISTS idx_alarm_templates_active ON alarm_rule_templates(is_active);
-CREATE INDEX IF NOT EXISTS idx_alarm_templates_system ON alarm_rule_templates(is_system_template);
-CREATE INDEX IF NOT EXISTS idx_alarm_templates_usage ON alarm_rule_templates(usage_count DESC);
-CREATE INDEX IF NOT EXISTS idx_alarm_templates_name ON alarm_rule_templates(tenant_id, name);
-CREATE INDEX IF NOT EXISTS idx_alarm_templates_tags ON alarm_rule_templates(tags);
-
--- javascript_functions 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_js_functions_tenant ON javascript_functions(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_js_functions_category ON javascript_functions(category);
-
--- recipes 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_recipes_tenant ON recipes(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_recipes_active ON recipes(is_active);
-
--- schedules 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_schedules_tenant ON schedules(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(is_enabled);-- =============================================================================
--- backend/lib/database/schemas/04-virtual-points.sql
--- 가상 포인트 테이블 (SQLite 버전) - 2025-08-14 최신 업데이트
--- PulseOne v2.1.0 완전 호환, JavaScript 엔진 통합 완료
--- =============================================================================
-
--- =============================================================================
--- 🔥🔥🔥 가상포인트 테이블 - 현재 DB 구조와 완전 일치
--- =============================================================================
-CREATE TABLE IF NOT EXISTS virtual_points (
+CREATE TABLE virtual_points (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     
@@ -1485,11 +1323,13 @@ CREATE TABLE IF NOT EXISTS virtual_points (
     CONSTRAINT chk_execution_type CHECK (execution_type IN ('javascript', 'formula', 'aggregation', 'external')),
     CONSTRAINT chk_error_handling CHECK (error_handling IN ('return_null', 'return_zero', 'return_previous', 'throw_error'))
 );
-
--- =============================================================================
--- 가상포인트 입력 매핑 - 현재 DB 구조와 완전 일치
--- =============================================================================
-CREATE TABLE IF NOT EXISTS virtual_point_inputs (
+INSERT INTO virtual_points VALUES(1,1,'site',1,NULL,'Production_Efficiency','Overall production efficiency calculation','const production = getValue("Production_Count"); return (production / 20000) * 100;','float','%',5000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO virtual_points VALUES(2,1,'site',1,NULL,'Energy_Per_Unit','Energy consumption per unit','const power = 847.5; const production = getValue("Production_Count"); return power / production;','float','kW/unit',10000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO virtual_points VALUES(3,1,'site',1,NULL,'Overall_Equipment_Effectiveness','OEE calculation for production line','const availability = 95; const performance = getValue("Line_Speed") / 50 * 100; const quality = 98; return (availability * performance * quality) / 10000;','float','%',15000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO virtual_points VALUES(4,2,'site',3,NULL,'Assembly_Throughput','Assembly line throughput','const cycleTime = 45; return 3600 / cycleTime;','float','units/hour',5000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO virtual_points VALUES(5,3,'site',5,NULL,'Demo_Performance','Demo performance index','return Math.sin(Date.now() / 10000) * 50 + 75;','float','%',2000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO virtual_points VALUES(6,4,'site',6,NULL,'Test_Metric','Test calculation metric','return Math.random() * 100;','float','%',3000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+CREATE TABLE virtual_point_inputs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     virtual_point_id INTEGER NOT NULL,
     variable_name VARCHAR(50) NOT NULL,                -- 계산식에서 사용할 변수명 (예: temp1, motor_power)
@@ -1533,11 +1373,7 @@ CREATE TABLE IF NOT EXISTS virtual_point_inputs (
     CONSTRAINT chk_data_processing CHECK (data_processing IN ('current', 'average', 'min', 'max', 'sum', 'count', 'stddev', 'median')),
     CONSTRAINT chk_quality_filter CHECK (quality_filter IN ('good_only', 'any', 'good_or_uncertain'))
 );
-
--- =============================================================================
--- 가상포인트 현재값 - 현재 DB 구조와 완전 일치
--- =============================================================================
-CREATE TABLE IF NOT EXISTS virtual_point_values (
+CREATE TABLE virtual_point_values (
     virtual_point_id INTEGER PRIMARY KEY,
     
     -- 🔥 계산 결과값
@@ -1574,13 +1410,7 @@ CREATE TABLE IF NOT EXISTS virtual_point_values (
     CONSTRAINT chk_quality CHECK (quality IN ('good', 'bad', 'uncertain', 'calculation_error', 'input_error')),
     CONSTRAINT chk_alarm_state CHECK (alarm_state IN ('normal', 'high', 'low', 'critical', 'warning'))
 );
-
--- =============================================================================
--- 🔥🔥🔥 v3.0.0 고급 기능 테이블들 (현재 DB에 존재하는 테이블들)
--- =============================================================================
-
--- 가상포인트 실행 이력
-CREATE TABLE IF NOT EXISTS virtual_point_execution_history (
+CREATE TABLE virtual_point_execution_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     virtual_point_id INTEGER NOT NULL,
     
@@ -1614,9 +1444,7 @@ CREATE TABLE IF NOT EXISTS virtual_point_execution_history (
     CONSTRAINT chk_result_type CHECK (result_type IN ('success', 'error', 'timeout', 'cancelled')),
     CONSTRAINT chk_trigger_source CHECK (trigger_source IN ('timer', 'manual', 'onchange', 'api', 'system'))
 );
-
--- 의존성 관리 테이블
-CREATE TABLE IF NOT EXISTS virtual_point_dependencies (
+CREATE TABLE virtual_point_dependencies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     virtual_point_id INTEGER NOT NULL,
     
@@ -1641,11 +1469,7 @@ CREATE TABLE IF NOT EXISTS virtual_point_dependencies (
     -- 🔥 제약조건
     CONSTRAINT chk_depends_on_type CHECK (depends_on_type IN ('data_point', 'virtual_point', 'system_variable'))
 );
-
--- =============================================================================
--- 스크립트 라이브러리 테이블 (가상포인트 공통 함수)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS script_library (
+CREATE TABLE script_library (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL DEFAULT 0,              -- 0 = 시스템 전역
     
@@ -1695,9 +1519,7 @@ CREATE TABLE IF NOT EXISTS script_library (
     CONSTRAINT chk_category CHECK (category IN ('math', 'logic', 'engineering', 'conversion', 'utility', 'custom')),
     CONSTRAINT chk_return_type CHECK (return_type IN ('number', 'string', 'boolean', 'object', 'array', 'void'))
 );
-
--- 스크립트 라이브러리 버전 관리
-CREATE TABLE IF NOT EXISTS script_library_versions (
+CREATE TABLE script_library_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     script_id INTEGER NOT NULL,
     
@@ -1718,9 +1540,7 @@ CREATE TABLE IF NOT EXISTS script_library_versions (
     FOREIGN KEY (script_id) REFERENCES script_library(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
-
--- 스크립트 사용 이력
-CREATE TABLE IF NOT EXISTS script_usage_history (
+CREATE TABLE script_usage_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     script_id INTEGER NOT NULL,
     virtual_point_id INTEGER,
@@ -1744,9 +1564,7 @@ CREATE TABLE IF NOT EXISTS script_usage_history (
     -- 🔥 제약조건
     CONSTRAINT chk_usage_context CHECK (usage_context IN ('virtual_point', 'alarm', 'manual', 'test', 'system'))
 );
-
--- 스크립트 템플릿
-CREATE TABLE IF NOT EXISTS script_templates (
+CREATE TABLE script_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     
     -- 🔥 템플릿 정보
@@ -1779,78 +1597,7 @@ CREATE TABLE IF NOT EXISTS script_templates (
     -- 🔥 제약조건
     CONSTRAINT chk_difficulty_level CHECK (difficulty_level IN ('beginner', 'intermediate', 'advanced'))
 );
-
--- =============================================================================
--- 인덱스 생성 (성능 최적화)
--- =============================================================================
-
--- virtual_points 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_virtual_points_tenant ON virtual_points(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_virtual_points_scope ON virtual_points(scope_type);
-CREATE INDEX IF NOT EXISTS idx_virtual_points_site ON virtual_points(site_id);
-CREATE INDEX IF NOT EXISTS idx_virtual_points_device ON virtual_points(device_id);
-CREATE INDEX IF NOT EXISTS idx_virtual_points_enabled ON virtual_points(is_enabled);
-CREATE INDEX IF NOT EXISTS idx_virtual_points_category ON virtual_points(category);
-CREATE INDEX IF NOT EXISTS idx_virtual_points_trigger ON virtual_points(calculation_trigger);
-CREATE INDEX IF NOT EXISTS idx_virtual_points_name ON virtual_points(tenant_id, name);
-
--- virtual_point_inputs 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_vp_inputs_virtual_point ON virtual_point_inputs(virtual_point_id);
-CREATE INDEX IF NOT EXISTS idx_vp_inputs_source ON virtual_point_inputs(source_type, source_id);
-CREATE INDEX IF NOT EXISTS idx_vp_inputs_variable ON virtual_point_inputs(virtual_point_id, variable_name);
-
--- virtual_point_values 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_vp_values_calculated ON virtual_point_values(last_calculated DESC);
-CREATE INDEX IF NOT EXISTS idx_vp_values_quality ON virtual_point_values(quality);
-CREATE INDEX IF NOT EXISTS idx_vp_values_stale ON virtual_point_values(is_stale);
-CREATE INDEX IF NOT EXISTS idx_vp_values_alarm ON virtual_point_values(alarm_active);
-
--- virtual_point_execution_history 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_vp_execution_history_vp_id ON virtual_point_execution_history(virtual_point_id);
-CREATE INDEX IF NOT EXISTS idx_vp_execution_history_time ON virtual_point_execution_history(execution_time DESC);
-CREATE INDEX IF NOT EXISTS idx_vp_execution_history_result ON virtual_point_execution_history(result_type);
-CREATE INDEX IF NOT EXISTS idx_vp_execution_history_trigger ON virtual_point_execution_history(trigger_source);
-
--- virtual_point_dependencies 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_vp_dependencies_vp_id ON virtual_point_dependencies(virtual_point_id);
-CREATE INDEX IF NOT EXISTS idx_vp_dependencies_depends_on ON virtual_point_dependencies(depends_on_type, depends_on_id);
-CREATE INDEX IF NOT EXISTS idx_vp_dependencies_active ON virtual_point_dependencies(is_active);
-
--- script_library 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_script_library_tenant ON script_library(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_script_library_category ON script_library(category);
-CREATE INDEX IF NOT EXISTS idx_script_library_active ON script_library(is_active);
-CREATE INDEX IF NOT EXISTS idx_script_library_system ON script_library(is_system);
-CREATE INDEX IF NOT EXISTS idx_script_library_name ON script_library(tenant_id, name);
-CREATE INDEX IF NOT EXISTS idx_script_library_usage ON script_library(usage_count DESC);
-
--- script_library_versions 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_script_versions_script ON script_library_versions(script_id);
-CREATE INDEX IF NOT EXISTS idx_script_versions_version ON script_library_versions(script_id, version_number);
-
--- script_usage_history 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_script_usage_script ON script_usage_history(script_id);
-CREATE INDEX IF NOT EXISTS idx_script_usage_vp ON script_usage_history(virtual_point_id);
-CREATE INDEX IF NOT EXISTS idx_script_usage_tenant ON script_usage_history(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_script_usage_time ON script_usage_history(used_at DESC);
-CREATE INDEX IF NOT EXISTS idx_script_usage_context ON script_usage_history(usage_context);
-
--- script_templates 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_script_templates_category ON script_templates(category);
-CREATE INDEX IF NOT EXISTS idx_script_templates_industry ON script_templates(industry);
-CREATE INDEX IF NOT EXISTS idx_script_templates_equipment ON script_templates(equipment_type);
-CREATE INDEX IF NOT EXISTS idx_script_templates_active ON script_templates(is_active);
-CREATE INDEX IF NOT EXISTS idx_script_templates_difficulty ON script_templates(difficulty_level);
-CREATE INDEX IF NOT EXISTS idx_script_templates_popularity ON script_templates(popularity_score DESC);-- =============================================================================
--- backend/lib/database/schemas/06-log-tables.sql
--- 로깅 시스템 테이블 (SQLite 버전) - 2025-08-14 최신 업데이트
--- PulseOne v2.1.0 완전 호환, 포괄적 감사 및 로깅 지원
--- =============================================================================
-
--- =============================================================================
--- 🔥🔥🔥 시스템 로그 테이블 - 전체 시스템 로그 중앙화
--- =============================================================================
-CREATE TABLE IF NOT EXISTS system_logs (
+CREATE TABLE system_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER,                               -- NULL = 시스템 전체 로그
     user_id INTEGER,
@@ -1901,11 +1648,11 @@ CREATE TABLE IF NOT EXISTS system_logs (
     -- 🔥 제약조건
     CONSTRAINT chk_log_level CHECK (log_level IN ('DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'))
 );
-
--- =============================================================================
--- 사용자 활동 로그 - 상세한 감사 추적
--- =============================================================================
-CREATE TABLE IF NOT EXISTS user_activities (
+INSERT INTO system_logs VALUES(1,NULL,NULL,'INFO','database',NULL,'Complete initial data loading with C++ schema compatibility',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"tables_populated": 12, "protocols": 5, "devices": 11, "data_points": 17, "current_values": 17, "device_settings": 6, "device_status": 6, "virtual_points": 6, "alarm_rules": 7, "js_functions": 5, "schema_version": "2.1.0"}',NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00');
+INSERT INTO system_logs VALUES(2,NULL,NULL,'INFO','protocols',NULL,'Protocol support initialized',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"modbus_tcp": 1, "bacnet": 2, "mqtt": 3, "ethernet_ip": 4, "modbus_rtu": 5}',NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00');
+INSERT INTO system_logs VALUES(3,NULL,NULL,'INFO','devices',NULL,'Sample devices created with protocol_id foreign keys and complete settings',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"smart_factory": 6, "global_manufacturing": 2, "demo": 2, "test": 1, "total": 11, "all_configured": true}',NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00');
+INSERT INTO system_logs VALUES(4,NULL,NULL,'INFO','datapoints',NULL,'Data points created with C++ SQLQueries.h compatibility',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"total_points": 17, "log_enabled": 17, "data_types": ["BOOL", "UINT16", "UINT32", "FLOAT32"], "schema_compatible": true}',NULL,NULL,NULL,NULL,NULL,'2026-01-27 10:24:00');
+CREATE TABLE user_activities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     tenant_id INTEGER,
@@ -1966,11 +1713,7 @@ CREATE TABLE IF NOT EXISTS user_activities (
     CONSTRAINT chk_action CHECK (action IN ('login', 'logout', 'create', 'read', 'update', 'delete', 'view', 'export', 'import', 'execute', 'approve', 'reject')),
     CONSTRAINT chk_http_method CHECK (http_method IN ('GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'))
 );
-
--- =============================================================================
--- 통신 로그 테이블 - 프로토콜 통신 상세 기록
--- =============================================================================
-CREATE TABLE IF NOT EXISTS communication_logs (
+CREATE TABLE communication_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     device_id INTEGER,
     data_point_id INTEGER,
@@ -2031,11 +1774,7 @@ CREATE TABLE IF NOT EXISTS communication_logs (
     CONSTRAINT chk_direction CHECK (direction IN ('request', 'response', 'notification', 'heartbeat')),
     CONSTRAINT chk_protocol CHECK (protocol IN ('MODBUS_TCP', 'MODBUS_RTU', 'MQTT', 'BACNET', 'OPCUA', 'ETHERNET_IP', 'HTTP'))
 );
-
--- =============================================================================
--- 🔥🔥🔥 데이터 히스토리 테이블 - 시계열 데이터 저장
--- =============================================================================
-CREATE TABLE IF NOT EXISTS data_history (
+CREATE TABLE data_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     point_id INTEGER NOT NULL,
     
@@ -2069,11 +1808,7 @@ CREATE TABLE IF NOT EXISTS data_history (
     CONSTRAINT chk_change_type CHECK (change_type IN ('value_change', 'quality_change', 'manual_entry', 'calculated', 'imported')),
     CONSTRAINT chk_source CHECK (source IN ('collector', 'manual', 'calculated', 'imported', 'simulated'))
 );
-
--- =============================================================================
--- 가상 포인트 히스토리
--- =============================================================================
-CREATE TABLE IF NOT EXISTS virtual_point_history (
+CREATE TABLE virtual_point_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     virtual_point_id INTEGER NOT NULL,
     
@@ -2101,11 +1836,7 @@ CREATE TABLE IF NOT EXISTS virtual_point_history (
     CONSTRAINT chk_vp_quality CHECK (quality IN ('good', 'bad', 'uncertain', 'calculation_error')),
     CONSTRAINT chk_trigger_reason CHECK (trigger_reason IN ('timer', 'value_change', 'manual', 'api', 'system'))
 );
-
--- =============================================================================
--- 알람 이벤트 로그 (상세한 알람 활동 기록)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS alarm_event_logs (
+CREATE TABLE alarm_event_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     occurrence_id INTEGER NOT NULL,
     rule_id INTEGER NOT NULL,
@@ -2148,11 +1879,7 @@ CREATE TABLE IF NOT EXISTS alarm_event_logs (
     CONSTRAINT chk_prev_state CHECK (previous_state IN ('active', 'acknowledged', 'cleared', 'suppressed', 'shelved', 'expired')),
     CONSTRAINT chk_new_state CHECK (new_state IN ('active', 'acknowledged', 'cleared', 'suppressed', 'shelved', 'expired'))
 );
-
--- =============================================================================
--- 시스템 성능 로그 (성능 모니터링)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS performance_logs (
+CREATE TABLE performance_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     
     -- 🔥 성능 카테고리
@@ -2182,70 +1909,7 @@ CREATE TABLE IF NOT EXISTS performance_logs (
     CONSTRAINT chk_metric_category CHECK (metric_category IN ('system', 'database', 'network', 'application', 'security')),
     CONSTRAINT chk_aggregation_type CHECK (aggregation_type IN ('instant', 'average', 'min', 'max', 'sum', 'count'))
 );
-
--- =============================================================================
--- 인덱스 생성 (성능 최적화)
--- =============================================================================
-
--- system_logs 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_system_logs_tenant ON system_logs(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(log_level);
-CREATE INDEX IF NOT EXISTS idx_system_logs_module ON system_logs(module);
-CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_system_logs_user ON system_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_system_logs_request ON system_logs(request_id);
-CREATE INDEX IF NOT EXISTS idx_system_logs_session ON system_logs(session_id);
-
--- user_activities 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_user_activities_user ON user_activities(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_activities_tenant ON user_activities(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_user_activities_timestamp ON user_activities(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_user_activities_action ON user_activities(action);
-CREATE INDEX IF NOT EXISTS idx_user_activities_resource ON user_activities(resource_type, resource_id);
-CREATE INDEX IF NOT EXISTS idx_user_activities_session ON user_activities(session_id);
-CREATE INDEX IF NOT EXISTS idx_user_activities_success ON user_activities(success);
-
--- communication_logs 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_communication_logs_device ON communication_logs(device_id);
-CREATE INDEX IF NOT EXISTS idx_communication_logs_timestamp ON communication_logs(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_communication_logs_protocol ON communication_logs(protocol);
-CREATE INDEX IF NOT EXISTS idx_communication_logs_success ON communication_logs(success);
-CREATE INDEX IF NOT EXISTS idx_communication_logs_direction ON communication_logs(direction);
-CREATE INDEX IF NOT EXISTS idx_communication_logs_data_point ON communication_logs(data_point_id);
-
--- data_history 테이블 인덱스 (시계열 데이터 최적화)
-CREATE INDEX IF NOT EXISTS idx_data_history_point_time ON data_history(point_id, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_data_history_timestamp ON data_history(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_data_history_quality ON data_history(quality);
-CREATE INDEX IF NOT EXISTS idx_data_history_source ON data_history(source);
-CREATE INDEX IF NOT EXISTS idx_data_history_change_type ON data_history(change_type);
-
--- virtual_point_history 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_virtual_point_history_point_time ON virtual_point_history(virtual_point_id, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_virtual_point_history_timestamp ON virtual_point_history(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_virtual_point_history_quality ON virtual_point_history(quality);
-CREATE INDEX IF NOT EXISTS idx_virtual_point_history_trigger ON virtual_point_history(trigger_reason);
-
--- alarm_event_logs 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_alarm_event_logs_occurrence ON alarm_event_logs(occurrence_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_event_logs_rule ON alarm_event_logs(rule_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_event_logs_tenant ON alarm_event_logs(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_alarm_event_logs_time ON alarm_event_logs(event_time DESC);
-CREATE INDEX IF NOT EXISTS idx_alarm_event_logs_type ON alarm_event_logs(event_type);
-CREATE INDEX IF NOT EXISTS idx_alarm_event_logs_user ON alarm_event_logs(user_id);
-
--- performance_logs 테이블 인덱스
-CREATE INDEX IF NOT EXISTS idx_performance_logs_timestamp ON performance_logs(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_performance_logs_category ON performance_logs(metric_category);
-CREATE INDEX IF NOT EXISTS idx_performance_logs_name ON performance_logs(metric_name);
-CREATE INDEX IF NOT EXISTS idx_performance_logs_hostname ON performance_logs(hostname);
-CREATE INDEX IF NOT EXISTS idx_performance_logs_component ON performance_logs(component);
-CREATE INDEX IF NOT EXISTS idx_performance_logs_category_name_time ON performance_logs(metric_category, metric_name, timestamp DESC);
-
--- =============================================================================
--- 감사 로그 테이블 (상세한 설정 업데이트 추적)
--- =============================================================================
-CREATE TABLE IF NOT EXISTS audit_logs (
+CREATE TABLE audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER,
     user_id INTEGER,
@@ -2276,20 +1940,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON audit_logs(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);-- =============================================================================
--- backend/lib/database/schemas/07-indexes.sql
--- 성능 최적화 인덱스 (SQLite 버전) - 2025-08-14 최신 업데이트
--- PulseOne v2.1.0 완전 최적화 - 실시간 조회 및 대용량 데이터 지원
--- =============================================================================
-
--- =============================================================================
-
-CREATE TABLE IF NOT EXISTS export_profiles (
+CREATE TABLE export_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
@@ -2301,15 +1952,7 @@ CREATE TABLE IF NOT EXISTS export_profiles (
     last_exported_at DATETIME,
     data_points TEXT DEFAULT '[]'
 );
-
-CREATE INDEX IF NOT EXISTS idx_profiles_enabled ON export_profiles(is_enabled);
-CREATE INDEX IF NOT EXISTS idx_profiles_created ON export_profiles(created_at DESC);
-
--- ============================================================================
--- 2. export_profile_assignments (게이트웨이별 프로파일 배정)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS export_profile_assignments (
+CREATE TABLE export_profile_assignments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     profile_id INTEGER NOT NULL,
     gateway_id INTEGER NOT NULL,
@@ -2318,12 +1961,7 @@ CREATE TABLE IF NOT EXISTS export_profile_assignments (
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,
     FOREIGN KEY (gateway_id) REFERENCES edge_servers(id) ON DELETE CASCADE
 );
-
--- ============================================================================
--- 3. export_profile_points (프로파일에 포함할 포인트들)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS export_profile_points (
+CREATE TABLE export_profile_points (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     profile_id INTEGER NOT NULL,
     point_id INTEGER NOT NULL,
@@ -2337,16 +1975,7 @@ CREATE TABLE IF NOT EXISTS export_profile_points (
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     UNIQUE(profile_id, point_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_profile_points_profile ON export_profile_points(profile_id);
-CREATE INDEX IF NOT EXISTS idx_profile_points_point ON export_profile_points(point_id);
-CREATE INDEX IF NOT EXISTS idx_profile_points_order ON export_profile_points(profile_id, display_order);
-
--- ============================================================================
--- 3. protocol_services (프로토콜 서비스 설정)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS protocol_services (
+CREATE TABLE protocol_services (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     profile_id INTEGER NOT NULL,
     service_type VARCHAR(20) NOT NULL,
@@ -2362,16 +1991,7 @@ CREATE TABLE IF NOT EXISTS protocol_services (
     
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE
 );
-
-CREATE INDEX IF NOT EXISTS idx_protocol_services_profile ON protocol_services(profile_id);
-CREATE INDEX IF NOT EXISTS idx_protocol_services_type ON protocol_services(service_type);
-CREATE INDEX IF NOT EXISTS idx_protocol_services_enabled ON protocol_services(is_enabled);
-
--- ============================================================================
--- 4. protocol_mappings (프로토콜별 주소/경로 매핑)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS protocol_mappings (
+CREATE TABLE protocol_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     service_id INTEGER NOT NULL,
     point_id INTEGER NOT NULL,
@@ -2393,16 +2013,7 @@ CREATE TABLE IF NOT EXISTS protocol_mappings (
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     UNIQUE(service_id, external_identifier)
 );
-
-CREATE INDEX IF NOT EXISTS idx_protocol_mappings_service ON protocol_mappings(service_id);
-CREATE INDEX IF NOT EXISTS idx_protocol_mappings_point ON protocol_mappings(point_id);
-CREATE INDEX IF NOT EXISTS idx_protocol_mappings_identifier ON protocol_mappings(service_id, external_identifier);
-
--- ============================================================================
--- 5. payload_templates (페이로드 템플릿 - export_targets보다 먼저 생성)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS payload_templates (
+CREATE TABLE payload_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(100) NOT NULL UNIQUE,
     system_type VARCHAR(50) NOT NULL,
@@ -2412,15 +2023,11 @@ CREATE TABLE IF NOT EXISTS payload_templates (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX IF NOT EXISTS idx_payload_templates_system ON payload_templates(system_type);
-CREATE INDEX IF NOT EXISTS idx_payload_templates_active ON payload_templates(is_active);
-
--- ============================================================================
--- 6. export_targets (외부 전송 타겟 - template_id 추가)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS export_targets (
+INSERT INTO payload_templates VALUES(1,'Insite 기본 템플릿','insite','Insite 빌딩 모니터링 시스템용 기본 템플릿',replace('{\n    "building_id": "{{building_id}}",\n    "controlpoint": "{{target_field_name}}",\n    "description": "{{target_description}}",\n    "value": "{{converted_value}}",\n    "time": "{{timestamp_iso8601}}",\n    "status": "{{alarm_status}}"\n}','\n',char(10)),1,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO payload_templates VALUES(2,'HDC 기본 템플릿','hdc','HDC 빌딩 시스템용 기본 템플릿',replace('{\n    "building_id": "{{building_id}}",\n    "point_id": "{{target_field_name}}",\n    "data": {\n        "value": "{{converted_value}}",\n        "timestamp": "{{timestamp_unix_ms}}"\n    },\n    "metadata": {\n        "description": "{{target_description}}",\n        "alarm_status": "{{alarm_status}}",\n        "source": "PulseOne-ExportGateway"\n    }\n}','\n',char(10)),1,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO payload_templates VALUES(3,'BEMS 기본 템플릿','bems','BEMS 에너지 관리 시스템용 기본 템플릿',replace('{\n    "buildingId": "{{building_id}}",\n    "sensorName": "{{target_field_name}}",\n    "sensorValue": "{{converted_value}}",\n    "timestamp": "{{timestamp_iso8601}}",\n    "description": "{{target_description}}",\n    "alarmLevel": "{{alarm_status}}"\n}','\n',char(10)),1,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+INSERT INTO payload_templates VALUES(4,'Generic 기본 템플릿','custom','일반 범용 템플릿',replace('{\n    "building_id": "{{building_id}}",\n    "point_name": "{{point_name}}",\n    "value": "{{value}}",\n    "converted_value": "{{converted_value}}",\n    "timestamp": "{{timestamp_iso8601}}",\n    "alarm_flag": "{{alarm_flag}}",\n    "status": "{{status}}",\n    "description": "{{description}}",\n    "alarm_status": "{{alarm_status}}",\n    "mapped_field": "{{target_field_name}}",\n    "mapped_description": "{{target_description}}",\n    "source": "PulseOne-ExportGateway"\n}','\n',char(10)),1,'2026-01-27 10:24:00','2026-01-27 10:24:00');
+CREATE TABLE export_targets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     profile_id INTEGER,
     
@@ -2440,31 +2047,18 @@ CREATE TABLE IF NOT EXISTS export_targets (
     export_mode VARCHAR(20) DEFAULT 'on_change',
     export_interval INTEGER DEFAULT 0,
     batch_size INTEGER DEFAULT 100,
-    execution_order INTEGER DEFAULT 0,
     
     -- 메타 정보
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, execution_order INTEGER DEFAULT 0,
     
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
     FOREIGN KEY (template_id) REFERENCES payload_templates(id) ON DELETE SET NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_export_targets_type ON export_targets(target_type);
-CREATE INDEX IF NOT EXISTS idx_export_targets_profile ON export_targets(profile_id);
-CREATE INDEX IF NOT EXISTS idx_export_targets_enabled ON export_targets(is_enabled);
-CREATE INDEX IF NOT EXISTS idx_export_targets_name ON export_targets(name);
-CREATE INDEX IF NOT EXISTS idx_export_targets_template ON export_targets(template_id);
-
--- ============================================================================
--- 7. export_target_mappings (Export Target별 매핑)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS export_target_mappings (
+CREATE TABLE export_target_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     target_id INTEGER NOT NULL,
     point_id INTEGER NOT NULL,
-    site_id INTEGER,
     target_field_name VARCHAR(200),
     target_description VARCHAR(500),
     conversion_config TEXT,
@@ -2473,18 +2067,13 @@ CREATE TABLE IF NOT EXISTS export_target_mappings (
     
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE,
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
-    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
     UNIQUE(target_id, point_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_export_target_mappings_target ON export_target_mappings(target_id);
-CREATE INDEX IF NOT EXISTS idx_export_target_mappings_point ON export_target_mappings(point_id);
-
--- ============================================================================
--- 8. export_logs (전송 로그 - 확장)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS export_logs (
+INSERT INTO export_target_mappings VALUES(1,1,18,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV',NULL,NULL,1,'2026-01-28 05:20:04');
+INSERT INTO export_target_mappings VALUES(2,2,18,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV_SEC',NULL,NULL,1,'2026-01-28 05:23:48');
+INSERT INTO export_target_mappings VALUES(3,13,18,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV_PRIMARY',NULL,NULL,1,'2026-01-28 05:25:00');
+INSERT INTO export_target_mappings VALUES(4,14,18,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV_SECONDARY',NULL,NULL,1,'2026-01-28 05:25:00');
+CREATE TABLE export_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     
     -- 기본 분류
@@ -2520,19 +2109,7 @@ CREATE TABLE IF NOT EXISTS export_logs (
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE SET NULL,
     FOREIGN KEY (mapping_id) REFERENCES protocol_mappings(id) ON DELETE SET NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_export_logs_type ON export_logs(log_type);
-CREATE INDEX IF NOT EXISTS idx_export_logs_timestamp ON export_logs(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_export_logs_status ON export_logs(status);
-CREATE INDEX IF NOT EXISTS idx_export_logs_service ON export_logs(service_id);
-CREATE INDEX IF NOT EXISTS idx_export_logs_target ON export_logs(target_id);
-CREATE INDEX IF NOT EXISTS idx_export_logs_target_time ON export_logs(target_id, timestamp DESC);
-
--- ============================================================================
--- 9. export_schedules (예약 작업)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS export_schedules (
+CREATE TABLE export_schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     profile_id INTEGER,
     target_id INTEGER NOT NULL,
@@ -2555,73 +2132,254 @@ CREATE TABLE IF NOT EXISTS export_schedules (
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE
 );
-
-CREATE INDEX IF NOT EXISTS idx_export_schedules_enabled ON export_schedules(is_enabled);
-CREATE INDEX IF NOT EXISTS idx_export_schedules_next_run ON export_schedules(next_run_at);
-CREATE INDEX IF NOT EXISTS idx_export_schedules_target ON export_schedules(target_id);
-
--- ============================================================================
--- 초기 템플릿 데이터 삽입
--- ============================================================================
-
-INSERT OR IGNORE INTO payload_templates (name, system_type, description, template_json, is_active) VALUES 
-('Insite 기본 템플릿', 'insite', 'Insite 빌딩 모니터링 시스템용 기본 템플릿',
-'{
-    "building_id": "{{building_id}}",
-    "controlpoint": "{{target_field_name}}",
-    "description": "{{target_description}}",
-    "value": "{{converted_value}}",
-    "time": "{{timestamp_iso8601}}",
-    "status": "{{alarm_status}}"
-}', 1),
-
-('HDC 기본 템플릿', 'hdc', 'HDC 빌딩 시스템용 기본 템플릿',
-'{
-    "building_id": "{{building_id}}",
-    "point_id": "{{target_field_name}}",
-    "data": {
-        "value": "{{converted_value}}",
-        "timestamp": "{{timestamp_unix_ms}}"
-    },
-    "metadata": {
-        "description": "{{target_description}}",
-        "alarm_status": "{{alarm_status}}",
-        "source": "PulseOne-ExportGateway"
-    }
-}', 1),
-
-('BEMS 기본 템플릿', 'bems', 'BEMS 에너지 관리 시스템용 기본 템플릿',
-'{
-    "buildingId": "{{building_id}}",
-    "sensorName": "{{target_field_name}}",
-    "sensorValue": "{{converted_value}}",
-    "timestamp": "{{timestamp_iso8601}}",
-    "description": "{{target_description}}",
-    "alarmLevel": "{{alarm_status}}"
-}', 1),
-
-('Generic 기본 템플릿', 'custom', '일반 범용 템플릿',
-'{
-    "building_id": "{{building_id}}",
-    "point_name": "{{point_name}}",
-    "value": "{{value}}",
-    "converted_value": "{{converted_value}}",
-    "timestamp": "{{timestamp_iso8601}}",
-    "alarm_flag": "{{alarm_flag}}",
-    "status": "{{status}}",
-    "description": "{{description}}",
-    "alarm_status": "{{alarm_status}}",
-    "mapped_field": "{{target_field_name}}",
-    "mapped_description": "{{target_description}}",
-    "source": "PulseOne-ExportGateway"
-}', 1);
-
--- ============================================================================
--- 뷰 (View) - 통계 조회용
--- ============================================================================
-
--- 🆕 타겟 + 템플릿 통합 뷰 (v2.2 추가)
-CREATE VIEW IF NOT EXISTS v_export_targets_with_templates AS
+CREATE TABLE virtual_point_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    point_id INTEGER NOT NULL,
+    action VARCHAR(50) NOT NULL,          -- CREATE, UPDATE, DELETE, RESTORE, EXECUTE, TOGGLE
+    previous_state TEXT,                  -- JSON string of previous state
+    new_state TEXT,                       -- JSON string of new state (if applicable)
+    user_id INTEGER,                      -- Optional: ID of the user performing the action
+    details TEXT,                         -- Optional: detailed message or reason
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
+);
+DELETE FROM sqlite_sequence;
+INSERT INTO sqlite_sequence VALUES('payload_templates',4);
+INSERT INTO sqlite_sequence VALUES('schema_versions',1);
+INSERT INTO sqlite_sequence VALUES('tenants',4);
+INSERT INTO sqlite_sequence VALUES('sites',6);
+INSERT INTO sqlite_sequence VALUES('edge_servers',4);
+INSERT INTO sqlite_sequence VALUES('protocols',13);
+INSERT INTO sqlite_sequence VALUES('manufacturers',5);
+INSERT INTO sqlite_sequence VALUES('device_models',4);
+INSERT INTO sqlite_sequence VALUES('template_devices',4);
+INSERT INTO sqlite_sequence VALUES('template_data_points',22);
+INSERT INTO sqlite_sequence VALUES('devices',11);
+INSERT INTO sqlite_sequence VALUES('data_points',21);
+INSERT INTO sqlite_sequence VALUES('virtual_points',6);
+INSERT INTO sqlite_sequence VALUES('alarm_rules',18);
+INSERT INTO sqlite_sequence VALUES('javascript_functions',5);
+INSERT INTO sqlite_sequence VALUES('system_logs',4);
+INSERT INTO sqlite_sequence VALUES('export_targets',3);
+INSERT INTO sqlite_sequence VALUES('export_target_mappings',4);
+CREATE INDEX idx_tenants_company_code ON tenants(company_code);
+CREATE INDEX idx_tenants_active ON tenants(is_active);
+CREATE INDEX idx_tenants_subscription ON tenants(subscription_status);
+CREATE INDEX idx_tenants_domain ON tenants(domain);
+CREATE INDEX idx_edge_servers_tenant ON edge_servers(tenant_id);
+CREATE INDEX idx_edge_servers_status ON edge_servers(status);
+CREATE INDEX idx_edge_servers_last_seen ON edge_servers(last_seen DESC);
+CREATE INDEX idx_edge_servers_token ON edge_servers(registration_token);
+CREATE INDEX idx_edge_servers_hostname ON edge_servers(hostname);
+CREATE INDEX idx_system_settings_category ON system_settings(category);
+CREATE INDEX idx_system_settings_public ON system_settings(is_public);
+CREATE INDEX idx_system_settings_updated ON system_settings(updated_at DESC);
+CREATE INDEX idx_users_tenant ON users(tenant_id);
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_active ON users(is_active);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_last_login ON users(last_login DESC);
+CREATE INDEX idx_users_employee_id ON users(employee_id);
+CREATE INDEX idx_user_sessions_user ON user_sessions(user_id);
+CREATE INDEX idx_user_sessions_token ON user_sessions(token_hash);
+CREATE INDEX idx_user_sessions_expires ON user_sessions(expires_at);
+CREATE INDEX idx_user_sessions_active ON user_sessions(is_active);
+CREATE INDEX idx_sites_tenant ON sites(tenant_id);
+CREATE INDEX idx_sites_parent ON sites(parent_site_id);
+CREATE INDEX idx_sites_type ON sites(site_type);
+CREATE INDEX idx_sites_hierarchy ON sites(hierarchy_level);
+CREATE INDEX idx_sites_active ON sites(is_active);
+CREATE INDEX idx_sites_code ON sites(tenant_id, code);
+CREATE INDEX idx_sites_edge_server ON sites(edge_server_id);
+CREATE INDEX idx_sites_hierarchy_path ON sites(hierarchy_path);
+CREATE INDEX idx_user_favorites_user ON user_favorites(user_id);
+CREATE INDEX idx_user_favorites_target ON user_favorites(target_type, target_id);
+CREATE INDEX idx_user_favorites_sort ON user_favorites(user_id, sort_order);
+CREATE INDEX idx_user_notification_user ON user_notification_settings(user_id);
+CREATE INDEX idx_device_groups_tenant ON device_groups(tenant_id);
+CREATE INDEX idx_device_groups_site ON device_groups(site_id);
+CREATE INDEX idx_device_groups_parent ON device_groups(parent_group_id);
+CREATE INDEX idx_device_groups_type ON device_groups(group_type);
+CREATE INDEX idx_driver_plugins_protocol ON driver_plugins(protocol_type);
+CREATE INDEX idx_driver_plugins_enabled ON driver_plugins(is_enabled);
+CREATE INDEX idx_devices_tenant ON devices(tenant_id);
+CREATE INDEX idx_devices_site ON devices(site_id);
+CREATE INDEX idx_devices_group ON devices(device_group_id);
+CREATE INDEX idx_devices_edge_server ON devices(edge_server_id);
+CREATE INDEX idx_devices_protocol ON devices(protocol_id);
+CREATE INDEX idx_devices_type ON devices(device_type);
+CREATE INDEX idx_devices_enabled ON devices(is_enabled);
+CREATE INDEX idx_devices_name ON devices(tenant_id, name);
+CREATE INDEX idx_device_settings_device_id ON device_settings(device_id);
+CREATE INDEX idx_device_settings_polling ON device_settings(polling_interval_ms);
+CREATE INDEX idx_device_status_connection ON device_status(connection_status);
+CREATE INDEX idx_device_status_last_comm ON device_status(last_communication DESC);
+CREATE INDEX idx_data_points_device ON data_points(device_id);
+CREATE INDEX idx_data_points_enabled ON data_points(is_enabled);
+CREATE INDEX idx_data_points_address ON data_points(device_id, address);
+CREATE INDEX idx_data_points_type ON data_points(data_type);
+CREATE INDEX idx_data_points_log_enabled ON data_points(log_enabled);
+CREATE INDEX idx_data_points_name ON data_points(device_id, name);
+CREATE INDEX idx_data_points_group ON data_points(group_name);
+CREATE INDEX idx_current_values_timestamp ON current_values(value_timestamp DESC);
+CREATE INDEX idx_current_values_quality ON current_values(quality_code);
+CREATE INDEX idx_current_values_updated ON current_values(updated_at DESC);
+CREATE INDEX idx_current_values_alarm ON current_values(alarm_active);
+CREATE INDEX idx_current_values_quality_name ON current_values(quality);
+CREATE INDEX idx_template_devices_model ON template_devices(model_id);
+CREATE INDEX idx_template_data_points_template ON template_data_points(template_device_id);
+CREATE INDEX idx_manufacturers_name ON manufacturers(name);
+CREATE INDEX idx_device_models_manufacturer ON device_models(manufacturer_id);
+CREATE INDEX idx_alarm_rules_tenant ON alarm_rules(tenant_id);
+CREATE INDEX idx_alarm_rules_target ON alarm_rules(target_type, target_id);
+CREATE INDEX idx_alarm_rules_enabled ON alarm_rules(is_enabled);
+CREATE INDEX idx_alarm_rules_template_id ON alarm_rules(template_id);
+CREATE INDEX idx_alarm_rules_rule_group ON alarm_rules(rule_group);
+CREATE INDEX idx_alarm_rules_created_by_template ON alarm_rules(created_by_template);
+CREATE INDEX idx_alarm_rules_category ON alarm_rules(category);
+CREATE INDEX idx_alarm_rules_tags ON alarm_rules(tags);
+CREATE INDEX idx_alarm_occurrences_rule ON alarm_occurrences(rule_id);
+CREATE INDEX idx_alarm_occurrences_state ON alarm_occurrences(state);
+CREATE INDEX idx_alarm_occurrences_time ON alarm_occurrences(occurrence_time DESC);
+CREATE INDEX idx_alarm_occurrences_device_id ON alarm_occurrences(device_id);
+CREATE INDEX idx_alarm_occurrences_point_id ON alarm_occurrences(point_id);
+CREATE INDEX idx_alarm_occurrences_rule_device ON alarm_occurrences(rule_id, device_id);
+CREATE INDEX idx_alarm_occurrences_category ON alarm_occurrences(category);
+CREATE INDEX idx_alarm_occurrences_tags ON alarm_occurrences(tags);
+CREATE INDEX idx_alarm_occurrences_acknowledged_by ON alarm_occurrences(acknowledged_by);
+CREATE INDEX idx_alarm_occurrences_cleared_by ON alarm_occurrences(cleared_by);
+CREATE INDEX idx_alarm_occurrences_cleared_time ON alarm_occurrences(cleared_time DESC);
+CREATE INDEX idx_alarm_templates_tenant ON alarm_rule_templates(tenant_id);
+CREATE INDEX idx_alarm_templates_category ON alarm_rule_templates(category);
+CREATE INDEX idx_alarm_templates_active ON alarm_rule_templates(is_active);
+CREATE INDEX idx_alarm_templates_system ON alarm_rule_templates(is_system_template);
+CREATE INDEX idx_alarm_templates_usage ON alarm_rule_templates(usage_count DESC);
+CREATE INDEX idx_alarm_templates_name ON alarm_rule_templates(tenant_id, name);
+CREATE INDEX idx_alarm_templates_tags ON alarm_rule_templates(tags);
+CREATE INDEX idx_js_functions_tenant ON javascript_functions(tenant_id);
+CREATE INDEX idx_js_functions_category ON javascript_functions(category);
+CREATE INDEX idx_recipes_tenant ON recipes(tenant_id);
+CREATE INDEX idx_recipes_active ON recipes(is_active);
+CREATE INDEX idx_schedules_tenant ON schedules(tenant_id);
+CREATE INDEX idx_schedules_enabled ON schedules(is_enabled);
+CREATE INDEX idx_virtual_points_tenant ON virtual_points(tenant_id);
+CREATE INDEX idx_virtual_points_scope ON virtual_points(scope_type);
+CREATE INDEX idx_virtual_points_site ON virtual_points(site_id);
+CREATE INDEX idx_virtual_points_device ON virtual_points(device_id);
+CREATE INDEX idx_virtual_points_enabled ON virtual_points(is_enabled);
+CREATE INDEX idx_virtual_points_category ON virtual_points(category);
+CREATE INDEX idx_virtual_points_trigger ON virtual_points(calculation_trigger);
+CREATE INDEX idx_virtual_points_name ON virtual_points(tenant_id, name);
+CREATE INDEX idx_vp_inputs_virtual_point ON virtual_point_inputs(virtual_point_id);
+CREATE INDEX idx_vp_inputs_source ON virtual_point_inputs(source_type, source_id);
+CREATE INDEX idx_vp_inputs_variable ON virtual_point_inputs(virtual_point_id, variable_name);
+CREATE INDEX idx_vp_values_calculated ON virtual_point_values(last_calculated DESC);
+CREATE INDEX idx_vp_values_quality ON virtual_point_values(quality);
+CREATE INDEX idx_vp_values_stale ON virtual_point_values(is_stale);
+CREATE INDEX idx_vp_values_alarm ON virtual_point_values(alarm_active);
+CREATE INDEX idx_vp_execution_history_vp_id ON virtual_point_execution_history(virtual_point_id);
+CREATE INDEX idx_vp_execution_history_time ON virtual_point_execution_history(execution_time DESC);
+CREATE INDEX idx_vp_execution_history_result ON virtual_point_execution_history(result_type);
+CREATE INDEX idx_vp_execution_history_trigger ON virtual_point_execution_history(trigger_source);
+CREATE INDEX idx_vp_dependencies_vp_id ON virtual_point_dependencies(virtual_point_id);
+CREATE INDEX idx_vp_dependencies_depends_on ON virtual_point_dependencies(depends_on_type, depends_on_id);
+CREATE INDEX idx_vp_dependencies_active ON virtual_point_dependencies(is_active);
+CREATE INDEX idx_script_library_tenant ON script_library(tenant_id);
+CREATE INDEX idx_script_library_category ON script_library(category);
+CREATE INDEX idx_script_library_active ON script_library(is_active);
+CREATE INDEX idx_script_library_system ON script_library(is_system);
+CREATE INDEX idx_script_library_name ON script_library(tenant_id, name);
+CREATE INDEX idx_script_library_usage ON script_library(usage_count DESC);
+CREATE INDEX idx_script_versions_script ON script_library_versions(script_id);
+CREATE INDEX idx_script_versions_version ON script_library_versions(script_id, version_number);
+CREATE INDEX idx_script_usage_script ON script_usage_history(script_id);
+CREATE INDEX idx_script_usage_vp ON script_usage_history(virtual_point_id);
+CREATE INDEX idx_script_usage_tenant ON script_usage_history(tenant_id);
+CREATE INDEX idx_script_usage_time ON script_usage_history(used_at DESC);
+CREATE INDEX idx_script_usage_context ON script_usage_history(usage_context);
+CREATE INDEX idx_script_templates_category ON script_templates(category);
+CREATE INDEX idx_script_templates_industry ON script_templates(industry);
+CREATE INDEX idx_script_templates_equipment ON script_templates(equipment_type);
+CREATE INDEX idx_script_templates_active ON script_templates(is_active);
+CREATE INDEX idx_script_templates_difficulty ON script_templates(difficulty_level);
+CREATE INDEX idx_script_templates_popularity ON script_templates(popularity_score DESC);
+CREATE INDEX idx_system_logs_tenant ON system_logs(tenant_id);
+CREATE INDEX idx_system_logs_level ON system_logs(log_level);
+CREATE INDEX idx_system_logs_module ON system_logs(module);
+CREATE INDEX idx_system_logs_created ON system_logs(created_at DESC);
+CREATE INDEX idx_system_logs_user ON system_logs(user_id);
+CREATE INDEX idx_system_logs_request ON system_logs(request_id);
+CREATE INDEX idx_system_logs_session ON system_logs(session_id);
+CREATE INDEX idx_user_activities_user ON user_activities(user_id);
+CREATE INDEX idx_user_activities_tenant ON user_activities(tenant_id);
+CREATE INDEX idx_user_activities_timestamp ON user_activities(timestamp DESC);
+CREATE INDEX idx_user_activities_action ON user_activities(action);
+CREATE INDEX idx_user_activities_resource ON user_activities(resource_type, resource_id);
+CREATE INDEX idx_user_activities_session ON user_activities(session_id);
+CREATE INDEX idx_user_activities_success ON user_activities(success);
+CREATE INDEX idx_communication_logs_device ON communication_logs(device_id);
+CREATE INDEX idx_communication_logs_timestamp ON communication_logs(timestamp DESC);
+CREATE INDEX idx_communication_logs_protocol ON communication_logs(protocol);
+CREATE INDEX idx_communication_logs_success ON communication_logs(success);
+CREATE INDEX idx_communication_logs_direction ON communication_logs(direction);
+CREATE INDEX idx_communication_logs_data_point ON communication_logs(data_point_id);
+CREATE INDEX idx_data_history_point_time ON data_history(point_id, timestamp DESC);
+CREATE INDEX idx_data_history_timestamp ON data_history(timestamp DESC);
+CREATE INDEX idx_data_history_quality ON data_history(quality);
+CREATE INDEX idx_data_history_source ON data_history(source);
+CREATE INDEX idx_data_history_change_type ON data_history(change_type);
+CREATE INDEX idx_virtual_point_history_point_time ON virtual_point_history(virtual_point_id, timestamp DESC);
+CREATE INDEX idx_virtual_point_history_timestamp ON virtual_point_history(timestamp DESC);
+CREATE INDEX idx_virtual_point_history_quality ON virtual_point_history(quality);
+CREATE INDEX idx_virtual_point_history_trigger ON virtual_point_history(trigger_reason);
+CREATE INDEX idx_alarm_event_logs_occurrence ON alarm_event_logs(occurrence_id);
+CREATE INDEX idx_alarm_event_logs_rule ON alarm_event_logs(rule_id);
+CREATE INDEX idx_alarm_event_logs_tenant ON alarm_event_logs(tenant_id);
+CREATE INDEX idx_alarm_event_logs_time ON alarm_event_logs(event_time DESC);
+CREATE INDEX idx_alarm_event_logs_type ON alarm_event_logs(event_type);
+CREATE INDEX idx_alarm_event_logs_user ON alarm_event_logs(user_id);
+CREATE INDEX idx_performance_logs_timestamp ON performance_logs(timestamp DESC);
+CREATE INDEX idx_performance_logs_category ON performance_logs(metric_category);
+CREATE INDEX idx_performance_logs_name ON performance_logs(metric_name);
+CREATE INDEX idx_performance_logs_hostname ON performance_logs(hostname);
+CREATE INDEX idx_performance_logs_component ON performance_logs(component);
+CREATE INDEX idx_performance_logs_category_name_time ON performance_logs(metric_category, metric_name, timestamp DESC);
+CREATE INDEX idx_audit_logs_tenant ON audit_logs(tenant_id);
+CREATE INDEX idx_audit_logs_user ON audit_logs(user_id);
+CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX idx_audit_logs_created ON audit_logs(created_at DESC);
+CREATE INDEX idx_profiles_enabled ON export_profiles(is_enabled);
+CREATE INDEX idx_profiles_created ON export_profiles(created_at DESC);
+CREATE INDEX idx_profile_points_profile ON export_profile_points(profile_id);
+CREATE INDEX idx_profile_points_point ON export_profile_points(point_id);
+CREATE INDEX idx_profile_points_order ON export_profile_points(profile_id, display_order);
+CREATE INDEX idx_protocol_services_profile ON protocol_services(profile_id);
+CREATE INDEX idx_protocol_services_type ON protocol_services(service_type);
+CREATE INDEX idx_protocol_services_enabled ON protocol_services(is_enabled);
+CREATE INDEX idx_protocol_mappings_service ON protocol_mappings(service_id);
+CREATE INDEX idx_protocol_mappings_point ON protocol_mappings(point_id);
+CREATE INDEX idx_protocol_mappings_identifier ON protocol_mappings(service_id, external_identifier);
+CREATE INDEX idx_payload_templates_system ON payload_templates(system_type);
+CREATE INDEX idx_payload_templates_active ON payload_templates(is_active);
+CREATE INDEX idx_export_targets_type ON export_targets(target_type);
+CREATE INDEX idx_export_targets_profile ON export_targets(profile_id);
+CREATE INDEX idx_export_targets_enabled ON export_targets(is_enabled);
+CREATE INDEX idx_export_targets_name ON export_targets(name);
+CREATE INDEX idx_export_targets_template ON export_targets(template_id);
+CREATE INDEX idx_export_target_mappings_target ON export_target_mappings(target_id);
+CREATE INDEX idx_export_target_mappings_point ON export_target_mappings(point_id);
+CREATE INDEX idx_export_logs_type ON export_logs(log_type);
+CREATE INDEX idx_export_logs_timestamp ON export_logs(timestamp DESC);
+CREATE INDEX idx_export_logs_status ON export_logs(status);
+CREATE INDEX idx_export_logs_service ON export_logs(service_id);
+CREATE INDEX idx_export_logs_target ON export_logs(target_id);
+CREATE INDEX idx_export_logs_target_time ON export_logs(target_id, timestamp DESC);
+CREATE INDEX idx_export_schedules_enabled ON export_schedules(is_enabled);
+CREATE INDEX idx_export_schedules_next_run ON export_schedules(next_run_at);
+CREATE INDEX idx_export_schedules_target ON export_schedules(target_id);
+CREATE VIEW v_export_targets_with_templates AS
 SELECT 
     t.id,
     t.profile_id,
@@ -2644,10 +2402,9 @@ SELECT
     p.is_active as template_is_active
     
 FROM export_targets t
-LEFT JOIN payload_templates p ON t.template_id = p.id;
-
--- 최근 24시간 통계
-CREATE VIEW IF NOT EXISTS v_export_targets_stats_24h AS
+LEFT JOIN payload_templates p ON t.template_id = p.id
+;
+CREATE VIEW v_export_targets_stats_24h AS
 SELECT 
     t.id,
     t.name,
@@ -2679,9 +2436,7 @@ LEFT JOIN export_logs l ON t.id = l.target_id
     AND l.timestamp > datetime('now', '-24 hours')
     AND l.log_type = 'export'
 GROUP BY t.id;
-
--- 전체 누적 통계
-CREATE VIEW IF NOT EXISTS v_export_targets_stats_all AS
+CREATE VIEW v_export_targets_stats_all AS
 SELECT 
     t.id,
     t.name,
@@ -2709,9 +2464,7 @@ FROM export_targets t
 LEFT JOIN export_logs l ON t.id = l.target_id 
     AND l.log_type = 'export'
 GROUP BY t.id;
-
--- 프로파일 상세 정보
-CREATE VIEW IF NOT EXISTS v_export_profiles_detail AS
+CREATE VIEW v_export_profiles_detail AS
 SELECT 
     p.id,
     p.name,
@@ -2724,9 +2477,7 @@ SELECT
 FROM export_profiles p
 LEFT JOIN export_profile_points pp ON p.id = pp.profile_id
 GROUP BY p.id;
-
--- 프로토콜 서비스 상세
-CREATE VIEW IF NOT EXISTS v_protocol_services_detail AS
+CREATE VIEW v_protocol_services_detail AS
 SELECT 
     ps.id,
     ps.profile_id,
@@ -2743,36 +2494,28 @@ FROM protocol_services ps
 LEFT JOIN export_profiles p ON ps.profile_id = p.id
 LEFT JOIN protocol_mappings pm ON ps.id = pm.service_id
 GROUP BY ps.id;
-
--- ============================================================================
--- 트리거 (Trigger)
--- ============================================================================
-
-CREATE TRIGGER IF NOT EXISTS tr_export_profiles_update
+CREATE TRIGGER tr_export_profiles_update
 AFTER UPDATE ON export_profiles
 BEGIN
     UPDATE export_profiles 
     SET updated_at = CURRENT_TIMESTAMP 
     WHERE id = NEW.id;
 END;
-
-CREATE TRIGGER IF NOT EXISTS tr_export_targets_update
+CREATE TRIGGER tr_export_targets_update
 AFTER UPDATE ON export_targets
 BEGIN
     UPDATE export_targets 
     SET updated_at = CURRENT_TIMESTAMP 
     WHERE id = NEW.id;
 END;
-
-CREATE TRIGGER IF NOT EXISTS tr_payload_templates_update
+CREATE TRIGGER tr_payload_templates_update
 AFTER UPDATE ON payload_templates
 BEGIN
     UPDATE payload_templates 
     SET updated_at = CURRENT_TIMESTAMP 
     WHERE id = NEW.id;
 END;
-
-CREATE TRIGGER IF NOT EXISTS tr_profile_points_insert
+CREATE TRIGGER tr_profile_points_insert
 AFTER INSERT ON export_profile_points
 BEGIN
     UPDATE export_profiles 
@@ -2783,8 +2526,7 @@ BEGIN
     )
     WHERE id = NEW.profile_id;
 END;
-
-CREATE TRIGGER IF NOT EXISTS tr_profile_points_delete
+CREATE TRIGGER tr_profile_points_delete
 AFTER DELETE ON export_profile_points
 BEGIN
     UPDATE export_profiles 
@@ -2795,22 +2537,6 @@ BEGIN
     )
     WHERE id = OLD.profile_id;
 END;
-
-
--- =============================================================================
--- Virtual Point Audit Logs
--- =============================================================================
-CREATE TABLE IF NOT EXISTS virtual_point_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    point_id INTEGER NOT NULL,
-    action VARCHAR(50) NOT NULL,          -- CREATE, UPDATE, DELETE, RESTORE, EXECUTE, TOGGLE
-    previous_state TEXT,                  -- JSON string of previous state
-    new_state TEXT,                       -- JSON string of new state (if applicable)
-    user_id INTEGER,                      -- Optional: ID of the user performing the action
-    details TEXT,                         -- Optional: detailed message or reason
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_virtual_point_logs_point_id ON virtual_point_logs(point_id);
-CREATE INDEX IF NOT EXISTS idx_virtual_point_logs_created_at ON virtual_point_logs(created_at);
+CREATE INDEX idx_virtual_point_logs_point_id ON virtual_point_logs(point_id);
+CREATE INDEX idx_virtual_point_logs_created_at ON virtual_point_logs(created_at);
+COMMIT;

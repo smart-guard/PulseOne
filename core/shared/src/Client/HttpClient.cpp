@@ -24,6 +24,7 @@ namespace Client {
 
 #if HAS_CURL
 bool HttpClient::curl_global_initialized_ = false;
+std::mutex HttpClient::curl_global_mutex_;
 #endif
 
 HttpClient::HttpClient(const std::string &base_url,
@@ -118,12 +119,16 @@ void HttpClient::initializeHttpLibrary() {
   try {
     LOG_DEBUG("Trying curl initialization...");
 
-    if (!curl_global_initialized_) {
-      LOG_DEBUG("Initializing curl globally...");
-      curl_global_init(CURL_GLOBAL_DEFAULT);
-      curl_global_initialized_ = true;
+    {
+      std::lock_guard<std::mutex> lock(curl_global_mutex_);
+      if (!curl_global_initialized_) {
+        LOG_DEBUG("Initializing curl globally...");
+        curl_global_init(CURL_GLOBAL_DEFAULT);
+        curl_global_initialized_ = true;
+      }
     }
 
+    std::lock_guard<std::mutex> lock(http_mutex_);
     curl_handle_ = curl_easy_init();
     if (curl_handle_) {
       library_type_ = HttpLibraryType::CURL;
@@ -187,6 +192,7 @@ HttpResponse HttpClient::executeRequest(
     const std::string &content_type,
     const std::unordered_map<std::string, std::string> &headers) {
 
+  std::lock_guard<std::mutex> lock(http_mutex_);
   auto start_time = std::chrono::high_resolution_clock::now();
 
   HttpResponse response;
@@ -370,31 +376,40 @@ HttpResponse HttpClient::executeWithCurl(
     }
 
     struct curl_slist *header_list = nullptr;
+    std::unordered_map<std::string, std::string> merged_headers;
+
+    // Helper to add header with lowercase key
+    auto add_normalized = [&](const std::string &k, const std::string &v) {
+      std::string lower_k = k;
+      std::transform(lower_k.begin(), lower_k.end(), lower_k.begin(),
+                     ::tolower);
+      merged_headers[lower_k] = v;
+    };
 
     for (const auto &header : default_headers_) {
-      std::string header_str = header.first + ": " + header.second;
-      header_list = curl_slist_append(header_list, header_str.c_str());
-      LOG_DEBUG("  Header: " + header_str);
+      add_normalized(header.first, header.second);
     }
 
     for (const auto &header : headers) {
-      std::string header_str = header.first + ": " + header.second;
-      header_list = curl_slist_append(header_list, header_str.c_str());
-      LOG_DEBUG("  Header: " + header_str);
+      add_normalized(header.first, header.second);
     }
 
     if (!content_type.empty()) {
-      std::string content_type_header = "Content-Type: " + content_type;
-      header_list = curl_slist_append(header_list, content_type_header.c_str());
-      LOG_DEBUG("  Header: " + content_type_header);
+      add_normalized("content-type", content_type);
     }
 
     if (!options_.bearer_token.empty()) {
-      std::string auth_header =
-          "Authorization: Bearer " + options_.bearer_token;
-      header_list = curl_slist_append(header_list, auth_header.c_str());
-      LOG_DEBUG("  Header: Authorization: Bearer ***");
-    } else if (!options_.username.empty()) {
+      add_normalized("authorization", "Bearer " + options_.bearer_token);
+    }
+
+    for (const auto &header : merged_headers) {
+      std::string header_str = header.first + ": " + header.second;
+      header_list = curl_slist_append(header_list, header_str.c_str());
+      LOG_DEBUG("  Header: " + header.first + ": " +
+                (header.first == "authorization" ? "***" : header.second));
+    }
+
+    if (!options_.username.empty() && options_.bearer_token.empty()) {
       curl_easy_setopt(curl_handle_, CURLOPT_USERNAME,
                        options_.username.c_str());
       curl_easy_setopt(curl_handle_, CURLOPT_PASSWORD,
@@ -452,8 +467,13 @@ HttpResponse HttpClient::executeWithCurl(
     }
 
     if (header_list) {
+      curl_easy_setopt(curl_handle_, CURLOPT_HTTPHEADER, nullptr);
       curl_slist_free_all(header_list);
     }
+
+    // 다음 요청을 위해 필드 초기화 (상태 전이 방지)
+    curl_easy_setopt(curl_handle_, CURLOPT_POSTFIELDS, nullptr);
+    curl_easy_setopt(curl_handle_, CURLOPT_CUSTOMREQUEST, nullptr);
 
   } catch (const std::exception &e) {
     response.status_code = 0;

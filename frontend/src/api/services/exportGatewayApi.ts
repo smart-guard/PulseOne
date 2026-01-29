@@ -56,6 +56,8 @@ export interface ExportTarget {
     export_mode: string;
     export_interval: number;
     batch_size: number;
+    execution_order: number;
+    execution_delay_ms: number;
     created_at: string;
     updated_at: string;
 }
