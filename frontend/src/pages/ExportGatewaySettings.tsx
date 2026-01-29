@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Select, Tooltip, Tag, Modal, Steps, Form, Input, Space, Divider, Radio, Checkbox, Row, Col, Button } from 'antd';
+import { Select, Tooltip, Tag, Modal, Steps, Form, Input, InputNumber, Space, Divider, Radio, Checkbox, Row, Col, Button } from 'antd';
 import exportGatewayApi, { DataPoint, Gateway, ExportProfile, ExportTarget, Assignment, PayloadTemplate, ExportTargetMapping, ExportSchedule } from '../api/services/exportGatewayApi';
 import { DeviceApiService, Device } from '../api/services/deviceApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
@@ -467,14 +467,14 @@ const ExportTargetManager: React.FC = () => {
                                             <label>전송 프로토콜</label>
                                             <select
                                                 className="mgmt-select"
-                                                value={editingTarget?.target_type || 'http'}
-                                                onChange={e => { setEditingTarget({ ...editingTarget, target_type: e.target.value }); setHasChanges(true); }}
+                                                value={editingTarget?.target_type?.toUpperCase() || 'HTTP'}
+                                                onChange={e => { setEditingTarget({ ...editingTarget, target_type: e.target.value.toUpperCase() }); setHasChanges(true); }}
                                             >
-                                                <option value="http">HTTP POST (JSON)</option>
-                                                <option value="mqtt">MQTT Publisher</option>
-                                                <option value="influxdb">InfluxDB Line Protocol</option>
-                                                <option value="s3">AWS S3 Storage</option>
-                                                <option value="kafka">Apache Kafka</option>
+                                                <option value="HTTP">HTTP POST (JSON)</option>
+                                                <option value="MQTT">MQTT Publisher</option>
+                                                <option value="INFLUXDB">InfluxDB Line Protocol</option>
+                                                <option value="S3">AWS S3 Storage</option>
+                                                <option value="KAFKA">Apache Kafka</option>
                                             </select>
                                         </div>
                                         <div className="mgmt-modal-form-group">
@@ -515,9 +515,30 @@ const ExportTargetManager: React.FC = () => {
                                                 value={editingTarget?.export_interval || 0}
                                                 onChange={e => setEditingTarget({ ...editingTarget, export_interval: parseInt(e.target.value) })}
                                                 min={0}
-                                                step={100}
                                             />
                                             <div className="mgmt-modal-form-hint">배치 모드에서 타임아웃으로도 사용됩니다. (0: 사용 안함)</div>
+                                        </div>
+                                        <div className="mgmt-modal-form-group">
+                                            <label>전송 우선순위 (Execution Order)</label>
+                                            <input
+                                                type="number"
+                                                className="mgmt-input"
+                                                value={editingTarget?.execution_order || 0}
+                                                onChange={e => { setEditingTarget({ ...editingTarget, execution_order: parseInt(e.target.value) }); setHasChanges(true); }}
+                                                min={0}
+                                            />
+                                            <div className="mgmt-modal-form-hint">숫자가 낮을수록 먼저 전송됩니다. (기본값: 0)</div>
+                                        </div>
+                                        <div className="mgmt-modal-form-group">
+                                            <label>전송 지연 (ms) - {editingTarget?.name}</label>
+                                            <input
+                                                type="number"
+                                                className="mgmt-input"
+                                                value={editingTarget?.execution_delay_ms || 0}
+                                                onChange={e => { setEditingTarget({ ...editingTarget, execution_delay_ms: parseInt(e.target.value) }); setHasChanges(true); }}
+                                                min={0}
+                                            />
+                                            <div className="mgmt-modal-form-hint">전송 전 대기할 지연 시간입니다. (ID {editingTarget?.id})</div>
                                         </div>
                                         <div className="mgmt-modal-form-group">
                                             <label>페이로드 템플릿</label>
@@ -537,7 +558,7 @@ const ExportTargetManager: React.FC = () => {
                                     {/* Column 2: Specific Inputs */}
                                     <div style={{ flex: 1.2, borderLeft: '1px solid #eee', paddingLeft: '20px', minWidth: '320px', display: 'flex', flexDirection: 'column' }}>
                                         <div style={{ marginBottom: '15px', fontWeight: 'bold', color: '#333' }}>상세 설정 / 연결 정보</div>
-                                        {(editingTarget?.target_type || 'http') === 'http' ? (
+                                        {(editingTarget?.target_type?.toUpperCase() || 'HTTP') === 'HTTP' ? (
                                             <>
                                                 <div className="mgmt-modal-form-group">
                                                     <label>Endpoint URL (전송 주소)</label>
@@ -618,7 +639,44 @@ const ExportTargetManager: React.FC = () => {
                                                     <div className="mgmt-modal-form-hint">AWS API Gateway 등에서 사용하는 x-api-key 헤더로 전송됩니다.</div>
                                                 </div>
                                             </>
-                                        ) : editingTarget?.target_type === 's3' ? (
+                                        ) : editingTarget?.target_type?.toUpperCase() === 'MQTT' ? (
+                                            <>
+                                                <div className="mgmt-modal-form-group">
+                                                    <label>MQTT Broker URL</label>
+                                                    <input
+                                                        type="text"
+                                                        className="mgmt-input"
+                                                        required
+                                                        placeholder="예: mqtt://localhost:1883"
+                                                        value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).url || ''; } catch { return ''; } })()}
+                                                        onChange={e => {
+                                                            let c: any = {};
+                                                            try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
+                                                            c = { ...c, url: e.target.value };
+                                                            setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
+                                                            setHasChanges(true);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="mgmt-modal-form-group">
+                                                    <label>MQTT Topic</label>
+                                                    <input
+                                                        type="text"
+                                                        className="mgmt-input"
+                                                        required
+                                                        placeholder="예: pulseone/data"
+                                                        value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).topic || ''; } catch { return ''; } })()}
+                                                        onChange={e => {
+                                                            let c: any = {};
+                                                            try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
+                                                            c = { ...c, topic: e.target.value };
+                                                            setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
+                                                            setHasChanges(true);
+                                                        }}
+                                                    />
+                                                </div>
+                                            </>
+                                        ) : editingTarget?.target_type?.toUpperCase() === 'S3' ? (
                                             <>
                                                 <div className="mgmt-modal-form-group">
                                                     <label>S3 Service URL (Endpoint)</label>
@@ -632,6 +690,7 @@ const ExportTargetManager: React.FC = () => {
                                                             try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
                                                             c = { ...c, S3ServiceUrl: e.target.value };
                                                             setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
+                                                            setHasChanges(true);
                                                         }}
                                                     />
                                                 </div>
@@ -648,6 +707,7 @@ const ExportTargetManager: React.FC = () => {
                                                                 try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
                                                                 c = { ...c, BucketName: e.target.value };
                                                                 setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
+                                                                setHasChanges(true);
                                                             }}
                                                         />
                                                     </div>
@@ -663,9 +723,27 @@ const ExportTargetManager: React.FC = () => {
                                                                 try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
                                                                 c = { ...c, Folder: e.target.value };
                                                                 setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
+                                                                setHasChanges(true);
                                                             }}
                                                         />
                                                     </div>
+                                                </div>
+                                                <div className="mgmt-modal-form-group">
+                                                    <label>Object Key Template (Optional)</label>
+                                                    <input
+                                                        type="text"
+                                                        className="mgmt-input"
+                                                        placeholder="예: {year}/{month}/{day}/{hour}/{minute}/{second}_{building_id}.json"
+                                                        value={(() => { try { return (typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : editingTarget.config).ObjectKeyTemplate || ''; } catch { return ''; } })()}
+                                                        onChange={e => {
+                                                            let c: any = {};
+                                                            try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
+                                                            c = { ...c, ObjectKeyTemplate: e.target.value };
+                                                            setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
+                                                            setHasChanges(true);
+                                                        }}
+                                                    />
+                                                    <div className="mgmt-modal-form-hint">사용 가능 변수: {'{year}, {month}, {day}, {hour}, {minute}, {second}, {building_id}'}</div>
                                                 </div>
                                                 <div className="mgmt-modal-form-group">
                                                     <label>Access Key ID</label>
@@ -679,6 +757,7 @@ const ExportTargetManager: React.FC = () => {
                                                             try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
                                                             c = { ...c, AccessKeyID: e.target.value };
                                                             setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
+                                                            setHasChanges(true);
                                                         }}
                                                     />
                                                 </div>
@@ -694,6 +773,7 @@ const ExportTargetManager: React.FC = () => {
                                                             try { c = typeof editingTarget.config === 'string' ? JSON.parse(editingTarget.config) : (editingTarget.config || {}); } catch { }
                                                             c = { ...c, SecretAccessKey: e.target.value };
                                                             setEditingTarget({ ...editingTarget, config: JSON.stringify(c, null, 2) });
+                                                            setHasChanges(true);
                                                         }}
                                                     />
                                                 </div>
@@ -710,7 +790,7 @@ const ExportTargetManager: React.FC = () => {
                                                 <input
                                                     type="checkbox"
                                                     checked={editingTarget?.is_enabled ?? true}
-                                                    onChange={e => setEditingTarget({ ...editingTarget, is_enabled: e.target.checked })}
+                                                    onChange={e => { setEditingTarget({ ...editingTarget, is_enabled: e.target.checked }); setHasChanges(true); }}
                                                     style={{ marginRight: '8px' }}
                                                 />
                                                 이 타겟 활성화
@@ -728,7 +808,7 @@ const ExportTargetManager: React.FC = () => {
                                             className="mgmt-input"
                                             style={{ flex: 1, fontFamily: 'monospace', fontSize: '12px', resize: 'none', minHeight: '300px' }}
                                             value={typeof editingTarget?.config === 'string' ? editingTarget.config : JSON.stringify(editingTarget?.config || {}, null, 2)}
-                                            onChange={e => setEditingTarget({ ...editingTarget, config: e.target.value })}
+                                            onChange={e => { setEditingTarget({ ...editingTarget, config: e.target.value }); setHasChanges(true); }}
                                             placeholder='{ "url": ..., "bucket": ... }'
                                         />
                                     </div>
@@ -2615,10 +2695,11 @@ const ExportGatewayWizard: React.FC<{
             method: 'POST',
             auth_type: 'NONE',
             headers: { Authorization: '' },
-            auth: { type: 'x-api-key', apiKey: '' }
+            auth: { type: 'x-api-key', apiKey: '' },
+            execution_order: 0
         }] as any[],
-        config_mqtt: [{ url: '', topic: 'pulseone/data' }] as any[],
-        config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '' }] as any[]
+        config_mqtt: [{ url: '', topic: 'pulseone/data', execution_order: 0 }] as any[],
+        config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }] as any[]
     });
 
     const [mappings, setMappings] = useState<Partial<ExportTargetMapping>[]>([]);
@@ -2629,6 +2710,64 @@ const ExportGatewayWizard: React.FC<{
         data_range: 'minute' as const,
         lookback_periods: 1
     });
+
+    const handleExecutionOrderChange = (protocol: 'config_http' | 'config_mqtt' | 'config_s3', index: number, newValue: number) => {
+        const nextTargetData = { ...targetData };
+
+        // 1. 모든 프로토콜의 타겟들을 하나의 리스트로 통합하여 순서 조정
+        const protocols: ('config_http' | 'config_mqtt' | 'config_s3')[] = ['config_http', 'config_mqtt', 'config_s3'];
+
+        // 현재 변경 대상 식별을 위한 임시 마킹
+        protocols.forEach(p => {
+            nextTargetData[p] = nextTargetData[p].map((target: any, i: number) => ({
+                ...target,
+                _isChanging: p === protocol && i === index
+            }));
+        });
+
+        // 2. 새로운 값이 기존에 존재하는지 확인하고 밀어내기 수행
+        // 정렬을 위해 플랫하게 펼침
+        let allTargets: any[] = [];
+        protocols.forEach(p => {
+            nextTargetData[p].forEach((t: any, i: number) => {
+                allTargets.push({ ...t, _p: p, _i: i });
+            });
+        });
+
+        // 변경 대상의 값을 먼저 설정
+        const changingTarget = allTargets.find(t => t._isChanging);
+        if (changingTarget) {
+            changingTarget.execution_order = newValue;
+        }
+
+        // 겹치는 값들에 대해 순차적으로 밀어내기 (단순화된 순서 보장 로직)
+        allTargets.sort((a, b) => {
+            if (a.execution_order !== b.execution_order) return a.execution_order - b.execution_order;
+            if (a._isChanging) return -1;
+            if (b._isChanging) return 1;
+            return 0;
+        });
+
+        let currentOrder = -1;
+        allTargets.forEach(t => {
+            if (t.execution_order <= currentOrder) {
+                t.execution_order = currentOrder + 1;
+            }
+            currentOrder = t.execution_order;
+        });
+
+        // 3. 다시 각 프로토콜 배열로 복원
+        protocols.forEach(p => {
+            nextTargetData[p] = allTargets
+                .filter(t => t._p === p)
+                .map(t => {
+                    const { _p, _i, _isChanging, ...rest } = t;
+                    return rest;
+                });
+        });
+
+        setTargetData(nextTargetData);
+    };
 
     // Aggressive Hydration & Initialization logic
     useEffect(() => {
@@ -2665,7 +2804,7 @@ const ExportGatewayWizard: React.FC<{
                     auth: { type: 'x-api-key', apiKey: '' }
                 }],
                 config_mqtt: [{ url: '', topic: 'pulseone/data' }],
-                config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '' }]
+                config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '' }]
             });
 
             if (editingGateway) {
@@ -2720,14 +2859,18 @@ const ExportGatewayWizard: React.FC<{
                         return {
                             ...cfg,
                             headers: cfg.headers || { Authorization: '' },
-                            auth: cfg.auth || { type: 'x-api-key', apiKey: '' }
+                            auth: cfg.auth || { type: 'x-api-key', apiKey: '' },
+                            execution_order: t.execution_order || 0
                         };
                     })
                     : [{ url: '', method: 'POST', auth_type: 'NONE', headers: { Authorization: '' }, auth: { type: 'x-api-key', apiKey: '' } }];
 
                 const mqttTargets = profileTargets.filter(t => t.target_type.toUpperCase() === 'MQTT');
                 freshTargetData.config_mqtt = mqttTargets.length > 0
-                    ? mqttTargets.map(t => typeof t.config === 'string' ? JSON.parse(t.config) : t.config)
+                    ? mqttTargets.map(t => {
+                        const cfg = typeof t.config === 'string' ? JSON.parse(t.config) : t.config;
+                        return { ...cfg, execution_order: t.execution_order || 0 };
+                    })
                     : [{ url: '', topic: 'pulseone/data' }];
 
                 const s3Targets = profileTargets.filter(t => t.target_type.toUpperCase() === 'S3');
@@ -2738,8 +2881,10 @@ const ExportGatewayWizard: React.FC<{
                             S3ServiceUrl: c.S3ServiceUrl || c.region || '',
                             BucketName: c.BucketName || c.bucket || c.bucket_name || '',
                             Folder: c.Folder || c.prefix || '',
+                            ObjectKeyTemplate: c.ObjectKeyTemplate || c.object_key_template || '',
                             AccessKeyID: c.AccessKeyID || c.accessKeyId || c.accessKey || '',
-                            SecretAccessKey: c.SecretAccessKey || c.secretAccessKey || c.secretKey || ''
+                            SecretAccessKey: c.SecretAccessKey || c.secretAccessKey || c.secretKey || '',
+                            execution_order: t.execution_order || 0
                         };
                     })
                     : [{ S3ServiceUrl: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '' }];
@@ -3322,7 +3467,7 @@ const ExportGatewayWizard: React.FC<{
                                         <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--primary-700)' }}><i className="fas fa-link" /> HTTP 목적지 설정</div>
-                                                <Button type="link" size="small" icon={<i className="fas fa-plus" />} onClick={() => setTargetData({ ...targetData, config_http: [...targetData.config_http, { url: '', method: 'POST', auth_type: 'NONE', headers: { Authorization: '' }, auth: { type: 'x-api-key', apiKey: '' } }] })}>추가</Button>
+                                                <Button type="link" size="small" icon={<i className="fas fa-plus" />} onClick={() => setTargetData({ ...targetData, config_http: [...targetData.config_http, { url: '', method: 'POST', auth_type: 'NONE', headers: { Authorization: '' }, auth: { type: 'x-api-key', apiKey: '' }, execution_order: (targetData.config_http.length + targetData.config_mqtt.length + targetData.config_s3.length) }] })}>추가</Button>
                                             </div>
                                             {targetData.config_http.map((config, idx) => (
                                                 <div key={idx} style={{ padding: '16px', background: 'white', borderRadius: '8px', border: '1px solid var(--primary-100)', position: 'relative' }}>
@@ -3364,6 +3509,17 @@ const ExportGatewayWizard: React.FC<{
                                                             </Form.Item>
                                                         </Col>
                                                     </Row>
+                                                    <div className="mgmt-modal-form-group" style={{ marginTop: '12px' }}>
+                                                        <label>전송 우선순위 (Execution Order)</label>
+                                                        <InputNumber
+                                                            size="large"
+                                                            min={0}
+                                                            style={{ width: '100%' }}
+                                                            value={config.execution_order}
+                                                            placeholder="값이 낮을수록 먼저 전송됩니다."
+                                                            onChange={val => handleExecutionOrderChange('config_http', idx, val || 0)}
+                                                        />
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -3373,7 +3529,7 @@ const ExportGatewayWizard: React.FC<{
                                         <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--primary-700)' }}><i className="fas fa-project-diagram" /> MQTT 목적지 설정</div>
-                                                <Button type="link" size="small" icon={<i className="fas fa-plus" />} onClick={() => setTargetData({ ...targetData, config_mqtt: [...targetData.config_mqtt, { url: '', topic: 'pulseone/data' }] })}>추가</Button>
+                                                <Button type="link" size="small" icon={<i className="fas fa-plus" />} onClick={() => setTargetData({ ...targetData, config_mqtt: [...targetData.config_mqtt, { url: '', topic: 'pulseone/data', execution_order: (targetData.config_http.length + targetData.config_mqtt.length + targetData.config_s3.length) }] })}>추가</Button>
                                             </div>
                                             {targetData.config_mqtt.map((config, idx) => (
                                                 <div key={idx} style={{ padding: '16px', background: 'white', borderRadius: '8px', border: '1px solid var(--primary-100)', position: 'relative' }}>
@@ -3400,6 +3556,17 @@ const ExportGatewayWizard: React.FC<{
                                                             </Form.Item>
                                                         </Col>
                                                     </Row>
+                                                    <div className="mgmt-modal-form-group" style={{ marginTop: '12px' }}>
+                                                        <label>전송 우선순위 (Execution Order)</label>
+                                                        <InputNumber
+                                                            size="large"
+                                                            min={0}
+                                                            style={{ width: '100%' }}
+                                                            value={config.execution_order}
+                                                            placeholder="값이 낮을수록 먼저 전송됩니다."
+                                                            onChange={val => handleExecutionOrderChange('config_mqtt', idx, val || 0)}
+                                                        />
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -3409,7 +3576,7 @@ const ExportGatewayWizard: React.FC<{
                                         <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--primary-700)' }}><i className="fab fa-aws" /> AWS S3 목적지 설정</div>
-                                                <Button type="link" size="small" icon={<i className="fas fa-plus" />} onClick={() => setTargetData({ ...targetData, config_s3: [...targetData.config_s3, { S3ServiceUrl: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '' }] })}>추가</Button>
+                                                <Button type="link" size="small" icon={<i className="fas fa-plus" />} onClick={() => setTargetData({ ...targetData, config_s3: [...targetData.config_s3, { S3ServiceUrl: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: (targetData.config_http.length + targetData.config_mqtt.length + targetData.config_s3.length) }] })}>추가</Button>
                                             </div>
                                             {targetData.config_s3.map((config, idx) => (
                                                 <div key={idx} style={{ padding: '16px', background: 'white', borderRadius: '8px', border: '1px solid var(--primary-100)', position: 'relative' }}>
@@ -3449,6 +3616,22 @@ const ExportGatewayWizard: React.FC<{
                                                             </Form.Item>
                                                         </Col>
                                                     </Row>
+                                                    <div className="mgmt-modal-form-group">
+                                                        <label>Object Key Template (Optional)</label>
+                                                        <Input
+                                                            size="large"
+                                                            placeholder="예: {building_id}/{date}/{timestamp}.json"
+                                                            value={config.ObjectKeyTemplate}
+                                                            onChange={e => {
+                                                                const next = [...targetData.config_s3];
+                                                                next[idx].ObjectKeyTemplate = e.target.value;
+                                                                setTargetData({ ...targetData, config_s3: next });
+                                                            }}
+                                                        />
+                                                        <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '4px' }}>
+                                                            * 사용 가능: {'{building_id}, {year}, {month}, {day}, {hour}, {minute}, {second}, {date}, {timestamp}'}
+                                                        </div>
+                                                    </div>
                                                     <Row gutter={12}>
                                                         <Col span={12}>
                                                             <Form.Item label="Access Key" style={{ marginBottom: 0 }}>
@@ -3469,6 +3652,17 @@ const ExportGatewayWizard: React.FC<{
                                                             </Form.Item>
                                                         </Col>
                                                     </Row>
+                                                    <div className="mgmt-modal-form-group" style={{ marginTop: '12px' }}>
+                                                        <label>전송 우선순위 (Execution Order)</label>
+                                                        <InputNumber
+                                                            size="large"
+                                                            min={0}
+                                                            style={{ width: '100%' }}
+                                                            value={config.execution_order}
+                                                            placeholder="값이 낮을수록 먼저 전송됩니다."
+                                                            onChange={val => handleExecutionOrderChange('config_s3', idx, val || 0)}
+                                                        />
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>

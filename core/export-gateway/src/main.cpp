@@ -271,6 +271,11 @@ void testTargets() {
   try {
     auto &manager = DynamicTargetManager::getInstance();
 
+    // ✅ DB 로드를 위해 start() 호출 추가 (테스트 모드용)
+    if (!manager.isRunning()) {
+      manager.start();
+    }
+
     // ✅ 수정: getAllTargets() 사용하여 타겟 정보 추출
     auto targets = manager.getAllTargets();
 
@@ -537,6 +542,14 @@ int main(int argc, char **argv) {
     // 게이트웨이 ID를 로그 태그로 사용 (LogManager 기능에 따라 다름)
     LogManager::getInstance().Info("Export Gateway 시작 (ID: " + gateway_id +
                                    ")");
+
+    // 게이트웨이 ID를 매니저에게도 전달 (테스트 모드용)
+    try {
+      if (gateway_id != "default") {
+        DynamicTargetManager::getInstance().setGatewayId(std::stoi(gateway_id));
+      }
+    } catch (...) {
+    }
 
     // 단독 테스트 모드들
     if (test_alarm) {

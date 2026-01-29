@@ -149,8 +149,7 @@ private:
   /**
    * @brief 자격증명 로드
    */
-  void loadCredentials(const json &config,
-                       Client::S3Config &s3_config) const;
+  void loadCredentials(const json &config, Client::S3Config &s3_config) const;
 
   /**
    * @brief 객체 키 생성
@@ -234,6 +233,16 @@ private:
    * @brief 시간 문자열
    */
   std::string generateHourString() const;
+
+  /**
+   * @brief 분 문자열
+   */
+  std::string generateMinuteString() const;
+
+  /**
+   * @brief 초 문자열
+   */
+  std::string generateSecondString() const;
 
   /**
    * @brief 환경변수 치환

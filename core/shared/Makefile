@@ -64,14 +64,14 @@ INCLUDES = -I$(INCLUDE_DIR) \
 # =============================================================================
 
 HAS_CURL := $(shell pkg-config --exists libcurl 2>/dev/null && echo "1" || echo "0")
-HAS_NLOHMANN_JSON := $(shell echo '#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
-HAS_HIREDIS := $(shell echo '#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_NLOHMANN_JSON := $(shell echo '\#include <nlohmann/json.hpp>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+HAS_HIREDIS := $(shell echo '\#include <hiredis/hiredis.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 HAS_PQXX := $(shell pkg-config --exists libpqxx 2>/dev/null && echo "1" || echo "0")
 
 # 🔥 OpenSSL 감지 (S3Client용 - 필수!)
 HAS_OPENSSL := $(shell pkg-config --exists openssl 2>/dev/null && echo "1" || echo "0")
 ifeq ($(HAS_OPENSSL),0)
-    HAS_OPENSSL := $(shell echo '#include <openssl/sha.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+    HAS_OPENSSL := $(shell echo '\#include <openssl/sha.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 endif
 
 # =============================================================================

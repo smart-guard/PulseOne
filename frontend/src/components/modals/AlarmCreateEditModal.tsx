@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AlarmApiService, AlarmRule } from '../../api/services/alarmApi';
+import { useConfirmContext } from '../common/ConfirmProvider';
 import '../../styles/alarm-settings.css';
 import '../../styles/notification-grid.css';
 import '../../styles/script-patterns.css';
@@ -195,9 +196,17 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
     setFormData(prev => ({ ...prev, alarm_type: 'script', condition_script: pattern.script }));
   };
 
+  const { confirm } = useConfirmContext(); // Hook usage
+
   const handleSubmit = async () => {
-    if (!formData.name) { alert('규칙 이름을 입력하세요.'); return; }
-    if (!formData.target_id) { alert('타겟을 선택하세요.'); return; }
+    if (!formData.name) {
+      await confirm({ title: '입력 확인', message: '규칙 이름을 입력하세요.', confirmText: '확인', showCancelButton: false, confirmButtonType: 'primary' });
+      return;
+    }
+    if (!formData.target_id) {
+      await confirm({ title: '입력 확인', message: '타겟을 선택하세요.', confirmText: '확인', showCancelButton: false, confirmButtonType: 'primary' });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -220,14 +229,33 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
       }
 
       if (response && response.success) {
+        await confirm({
+          title: mode === 'create' ? '생성 완료' : '수정 완료',
+          message: mode === 'create' ? '새로운 알람 규칙이 생성되었습니다.' : '알람 규칙이 수정되었습니다.',
+          confirmText: '확인',
+          showCancelButton: false,
+          confirmButtonType: 'primary'
+        });
         onSave();
         onClose();
       } else {
-        alert(`저장에 실패했습니다: ${response?.message || '알 수 없는 오류'}`);
+        await confirm({
+          title: '저장 실패',
+          message: `저장에 실패했습니다: ${response?.message || '알 수 없는 오류'}`,
+          confirmText: '확인',
+          showCancelButton: false,
+          confirmButtonType: 'danger'
+        });
       }
     } catch (error: any) {
       console.error(error);
-      alert(`저장 도중 오류가 발생했습니다: ${error.message || 'Unknown error'}`);
+      await confirm({
+        title: '오류 발생',
+        message: `저장 도중 오류가 발생했습니다: ${error.message || 'Unknown error'}`,
+        confirmText: '확인',
+        showCancelButton: false,
+        confirmButtonType: 'danger'
+      });
     } finally {
       setLoading(false);
     }

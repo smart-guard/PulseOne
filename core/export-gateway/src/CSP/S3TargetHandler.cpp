@@ -583,9 +583,15 @@ void S3TargetHandler::loadCredentials(const json &config,
 std::string S3TargetHandler::generateObjectKey(const AlarmMessage &alarm,
                                                const json &config) const {
   // 객체 키 템플릿
-  std::string template_str =
-      config.value("object_key_template",
-                   "{building_id}/{date}/{point_name}_{timestamp}_alarm.json");
+  // 객체 키 템플릿
+  std::string template_str;
+  if (config.contains("ObjectKeyTemplate")) {
+    template_str = config["ObjectKeyTemplate"].get<std::string>();
+  } else {
+    template_str = config.value(
+        "object_key_template",
+        "{building_id}/{date}/{point_name}_{timestamp}_alarm.json");
+  }
   template_str = expandEnvironmentVariables(template_str);
 
   // 템플릿 확장
@@ -634,19 +640,36 @@ std::string S3TargetHandler::expandTemplate(const std::string &template_str,
   result = std::regex_replace(result, std::regex("\\{status\\}"),
                               std::to_string(alarm.st));
 
-  // 타임스탬프 변수
-  result = std::regex_replace(result, std::regex("\\{timestamp\\}"),
-                              generateTimestampString());
-  result = std::regex_replace(result, std::regex("\\{date\\}"),
-                              generateDateString());
-  result = std::regex_replace(result, std::regex("\\{year\\}"),
-                              generateYearString());
-  result = std::regex_replace(result, std::regex("\\{month\\}"),
-                              generateMonthString());
-  result =
-      std::regex_replace(result, std::regex("\\{day\\}"), generateDayString());
-  result = std::regex_replace(result, std::regex("\\{hour\\}"),
-                              generateHourString());
+  // 타임스탬프 변수 초기값 (fallback: 현재 시간)
+  std::string year = generateYearString();
+  std::string month = generateMonthString();
+  std::string day = generateDayString();
+  std::string hour = generateHourString();
+  std::string minute = generateMinuteString();
+  std::string second = generateSecondString();
+  std::string date_str = generateDateString();
+  std::string ts_str = generateTimestampString();
+
+  // 발생 시간(alarm.tm: yyyy-MM-dd HH:mm:ss.fff)이 있으면 해당 값 사용
+  if (alarm.tm.length() >= 19) {
+    year = alarm.tm.substr(0, 4);
+    month = alarm.tm.substr(5, 2);
+    day = alarm.tm.substr(8, 2);
+    hour = alarm.tm.substr(11, 2);
+    minute = alarm.tm.substr(14, 2);
+    second = alarm.tm.substr(17, 2);
+    date_str = year + month + day;
+    ts_str = year + month + day + "_" + hour + minute + second;
+  }
+
+  result = std::regex_replace(result, std::regex("\\{timestamp\\}"), ts_str);
+  result = std::regex_replace(result, std::regex("\\{date\\}"), date_str);
+  result = std::regex_replace(result, std::regex("\\{year\\}"), year);
+  result = std::regex_replace(result, std::regex("\\{month\\}"), month);
+  result = std::regex_replace(result, std::regex("\\{day\\}"), day);
+  result = std::regex_replace(result, std::regex("\\{hour\\}"), hour);
+  result = std::regex_replace(result, std::regex("\\{minute\\}"), minute);
+  result = std::regex_replace(result, std::regex("\\{second\\}"), second);
 
   // 알람 상태
   result = std::regex_replace(result, std::regex("\\{alarm_status\\}"),
@@ -661,6 +684,15 @@ std::string S3TargetHandler::expandTemplate(const std::string &template_str,
 std::string S3TargetHandler::buildJsonContent(const AlarmMessage &alarm,
                                               const json &config) const {
   json content;
+
+  // ✅ v3.2.0: Payload Template 지원 (Object or Array)
+  if (config.contains("body_template") &&
+      (config["body_template"].is_object() ||
+       config["body_template"].is_array())) {
+    content = config["body_template"];
+    expandTemplateVariables(content, alarm);
+    return content.dump(2);
+  }
 
   // 기본 알람 데이터
   content["building_id"] = alarm.bd;
@@ -831,6 +863,24 @@ std::string S3TargetHandler::generateHourString() const {
   return oss.str();
 }
 
+std::string S3TargetHandler::generateMinuteString() const {
+  auto now = std::chrono::system_clock::now();
+  auto time_t = std::chrono::system_clock::to_time_t(now);
+
+  std::ostringstream oss;
+  oss << std::put_time(std::gmtime(&time_t), "%M");
+  return oss.str();
+}
+
+std::string S3TargetHandler::generateSecondString() const {
+  auto now = std::chrono::system_clock::now();
+  auto time_t = std::chrono::system_clock::to_time_t(now);
+
+  std::ostringstream oss;
+  oss << std::put_time(std::gmtime(&time_t), "%S");
+  return oss.str();
+}
+
 std::string
 S3TargetHandler::expandEnvironmentVariables(const std::string &str) const {
   std::string result = str;
@@ -916,18 +966,64 @@ S3TargetHandler::sendValueBatch(const std::vector<ValueMessage> &values,
   }
   std::string content = json_array.dump();
 
-  // 3. S3 경로: icos/todo/{bd}/{yyyyMMdd}/{yyyyMMddHHmmss}.json
-  auto now = std::chrono::system_clock::now();
-  std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-  std::tm now_tm = *std::localtime(&now_c);
+  // 3. S3 경로: {Folder}/{bd}/{yyyyMMdd}/{yyyyMMddHHmmss}.json
+  // 발생 시간(values[0].tm) 기반으로 경로 구성
+  std::string year = "", month = "", day = "", hour = "", minute = "",
+              second = "";
+  if (!values.empty() && values[0].tm.length() >= 19) {
+    const std::string &tm = values[0].tm;
+    year = tm.substr(0, 4);
+    month = tm.substr(5, 2);
+    day = tm.substr(8, 2);
+    hour = tm.substr(11, 2);
+    minute = tm.substr(14, 2);
+    second = tm.substr(17, 2);
+  } else {
+    // Fallback: 현재 시간
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+    std::tm now_tm = *std::gmtime(&now_c); // UTC 기준
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y", &now_tm);
+    year = buf;
+    std::strftime(buf, sizeof(buf), "%m", &now_tm);
+    month = buf;
+    std::strftime(buf, sizeof(buf), "%d", &now_tm);
+    day = buf;
+    std::strftime(buf, sizeof(buf), "%H", &now_tm);
+    hour = buf;
+    std::strftime(buf, sizeof(buf), "%M", &now_tm);
+    minute = buf;
+    std::strftime(buf, sizeof(buf), "%S", &now_tm);
+    second = buf;
+  }
 
-  std::stringstream date_ss, time_ss;
-  date_ss << std::put_time(&now_tm, "%Y%m%d");
-  time_ss << std::put_time(&now_tm, "%Y%m%d%H%M%S");
+  std::string date_part = year + month + day;
+  std::string time_part = year + month + day + hour + minute + second;
 
   int bd = values[0].bd;
-  std::string object_key = "icos/todo/" + std::to_string(bd) + "/" +
-                           date_ss.str() + "/" + time_ss.str() + ".json";
+  std::string object_key =
+      std::to_string(bd) + "/" + date_part + "/" + time_part + ".json";
+
+  // Folder (Path Prefix) 처리
+  std::string prefix;
+  if (config.contains("Folder")) {
+    prefix = config["Folder"].get<std::string>();
+  } else if (config.contains("prefix")) {
+    prefix = config["prefix"].get<std::string>();
+  }
+
+  if (!prefix.empty()) {
+    prefix = expandEnvironmentVariables(prefix);
+    if (prefix.back() != '/')
+      prefix += "/";
+    object_key = prefix + object_key;
+  }
+
+  // 시작 슬래시 제거
+  while (!object_key.empty() && object_key[0] == '/') {
+    object_key = object_key.substr(1);
+  }
 
   // 4. 업로드
   bool success = false;

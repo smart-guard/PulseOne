@@ -106,6 +106,16 @@ AlarmEvaluator::evaluateDigital(const Database::Entities::AlarmRuleEntity &rule,
 
   auto status = state_cache_.getAlarmStatus(rule.getId());
 
+  // ✅ Debug Log 추가
+  if (rule.getId() == 8 || triggered) {
+    LogManager::getInstance().Debug(
+        "[AlarmEvaluator] Rule " + std::to_string(rule.getId()) +
+        " Evaluation - Value: " + (value ? "TRUE" : "FALSE") +
+        ", Triggered: " + (triggered ? "TRUE" : "FALSE") +
+        ", CacheActive: " + (status.is_active ? "TRUE" : "FALSE") +
+        ", OccurrenceID: " + std::to_string(status.occurrence_id));
+  }
+
   if (triggered && !status.is_active) {
     eval.should_trigger = true;
     eval.state_changed = true;

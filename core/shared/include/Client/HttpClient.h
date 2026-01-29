@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -280,7 +281,10 @@ private:
 #if HAS_CURL
   CURL *curl_handle_;
   static bool curl_global_initialized_;
+  static std::mutex curl_global_mutex_;
 #endif
+
+  mutable std::mutex http_mutex_;
 
   enum class HttpLibraryType { NONE, HTTPLIB, CURL } library_type_;
 };

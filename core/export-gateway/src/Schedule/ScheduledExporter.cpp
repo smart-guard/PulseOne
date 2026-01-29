@@ -595,8 +595,8 @@ std::optional<ExportDataPoint> ScheduledExporter::fetchPointData(
   }
 
   try {
-    // Redis에서 현재값 조회 (간단한 버전)
-    std::string key = "point:" + std::to_string(point_id) + ":current";
+    // Redis에서 현재값 조회 (Collector 표준: :latest)
+    std::string key = "point:" + std::to_string(point_id) + ":latest";
     std::string json_str = redis_client_->get(key);
 
     if (json_str.empty()) {
@@ -650,12 +650,7 @@ bool ScheduledExporter::sendDataToTarget(
       std::tm *tm_info = std::gmtime(&tt);
       char buf[32];
       std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm_info);
-      std::string ts_str = buf;
-      int ms = point.timestamp % 1000;
-
-      std::stringstream ss;
-      ss << ts_str << "." << std::setfill('0') << std::setw(3) << ms;
-      msg.tm = ss.str();
+      msg.tm = buf;
 
       msg.st = point.quality;
       msg.ty = "dbl"; // Default type

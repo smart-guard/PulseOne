@@ -98,6 +98,8 @@ const std::string CREATE_TABLE = R"(
             export_mode VARCHAR(20) DEFAULT 'on_change',
             export_interval INTEGER DEFAULT 0,
             batch_size INTEGER DEFAULT 100,
+            execution_order INTEGER DEFAULT 100,
+            execution_delay_ms INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             
@@ -117,52 +119,60 @@ const std::string CREATE_INDEXES = R"(
 // 기본 CRUD (통계 필드 제거됨)
 const std::string FIND_ALL = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, 
+               execution_order, execution_delay_ms, created_at, updated_at
         FROM export_targets
         ORDER BY name ASC
     )";
 
 const std::string FIND_BY_ID = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, 
+               execution_order, execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE id = ?
     )";
 
 const std::string FIND_BY_NAME = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, 
+               execution_order, execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE name = ?
     )";
 
 const std::string FIND_BY_ENABLED = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, 
+               execution_order, execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE is_enabled = ? ORDER BY name ASC
     )";
 
 const std::string FIND_BY_TARGET_TYPE = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, 
+               execution_order, execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE target_type = ? ORDER BY name ASC
     )";
 
 const std::string FIND_BY_PROFILE_ID = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+               template_id, export_mode, export_interval, batch_size, 
+               execution_order, execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE profile_id = ? ORDER BY name ASC
     )";
 
 const std::string INSERT = R"(
         INSERT INTO export_targets (
             profile_id, name, target_type, description, is_enabled, config,
-            template_id, export_mode, export_interval, batch_size
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            template_id, export_mode, export_interval, batch_size,
+            execution_order, execution_delay_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
 const std::string UPDATE = R"(
         UPDATE export_targets SET
             profile_id = ?, name = ?, target_type = ?, description = ?, is_enabled = ?,
-            config = ?, template_id = ?, export_mode = ?, export_interval = ?, batch_size = ?,
+            config = ?, template_id = ?, export_mode = ?, export_interval = ?, 
+            batch_size = ?, execution_order = ?, execution_delay_ms = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
@@ -188,6 +198,7 @@ const std::string FIND_WITH_TEMPLATE = R"(
         SELECT 
             t.id, t.profile_id, t.name, t.target_type, t.description, t.is_enabled, t.config,
             t.template_id, t.export_mode, t.export_interval, t.batch_size, 
+            t.execution_order, t.execution_delay_ms,
             t.created_at, t.updated_at,
             p.template_json, p.system_type as template_system_type, p.name as template_name
         FROM export_targets t
@@ -221,7 +232,6 @@ const std::string CREATE_TABLE = R"(
             target_id INTEGER NOT NULL,
             point_id INTEGER,
             site_id INTEGER,
-            building_id INTEGER,
             target_field_name VARCHAR(200),
             target_description VARCHAR(500),
             conversion_config TEXT,
@@ -240,27 +250,27 @@ const std::string CREATE_INDEXES = R"(
     )";
 
 const std::string FIND_ALL = R"(
-        SELECT id, target_id, point_id, site_id, building_id, target_field_name, target_description,
+        SELECT id, target_id, point_id, site_id, target_field_name, target_description,
                conversion_config, is_enabled, created_at
         FROM export_target_mappings
         ORDER BY target_id, point_id
     )";
 
 const std::string FIND_BY_ID = R"(
-        SELECT id, target_id, point_id, site_id, building_id, target_field_name, target_description,
+        SELECT id, target_id, point_id, site_id, target_field_name, target_description,
                conversion_config, is_enabled, created_at
         FROM export_target_mappings WHERE id = ?
     )";
 
 const std::string FIND_BY_TARGET_ID = R"(
-        SELECT id, target_id, point_id, site_id, building_id, target_field_name, target_description,
+        SELECT id, target_id, point_id, site_id, target_field_name, target_description,
                conversion_config, is_enabled, created_at
         FROM export_target_mappings
         WHERE target_id = ? ORDER BY point_id
     )";
 
 const std::string FIND_ENABLED_BY_TARGET_ID = R"(
-        SELECT id, target_id, point_id, site_id, building_id, target_field_name, target_description,
+        SELECT id, target_id, point_id, site_id, target_field_name, target_description,
                conversion_config, is_enabled, created_at
         FROM export_target_mappings
         WHERE target_id = ? AND is_enabled = 1
@@ -268,14 +278,14 @@ const std::string FIND_ENABLED_BY_TARGET_ID = R"(
     )";
 
 const std::string FIND_BY_POINT_ID = R"(
-        SELECT id, target_id, point_id, site_id, building_id, target_field_name, target_description,
+        SELECT id, target_id, point_id, site_id, target_field_name, target_description,
                conversion_config, is_enabled, created_at
         FROM export_target_mappings
         WHERE point_id = ? ORDER BY target_id
     )";
 
 const std::string FIND_BY_TARGET_AND_POINT = R"(
-        SELECT id, target_id, point_id, site_id, building_id, target_field_name, target_description,
+        SELECT id, target_id, point_id, site_id, target_field_name, target_description,
                conversion_config, is_enabled, created_at
         FROM export_target_mappings
         WHERE target_id = ? AND point_id = ?
@@ -285,19 +295,12 @@ const std::string INSERT = R"(
         INSERT INTO export_target_mappings (
             target_id, point_id, site_id, target_field_name, target_description,
             conversion_config, is_enabled
-        INSERT INTO export_target_mappings (
-            target_id, point_id, site_id, building_id, target_field_name, target_description,
-            conversion_config, is_enabled
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
     )";
 
 const std::string UPDATE = R"(
         UPDATE export_target_mappings SET
             target_id = ?, point_id = ?, site_id = ?, target_field_name = ?, target_description = ?,
-        UPDATE export_target_mappings SET
-            target_id = ?, point_id = ?, site_id = ?, building_id = ?, target_field_name = ?, target_description = ?,
-        UPDATE export_target_mappings SET
-            target_id = ?, point_id = ?, site_id = ?, building_id = ?, target_field_name = ?, target_description = ?,
             conversion_config = ?, is_enabled = ?
         WHERE id = ?
     )";

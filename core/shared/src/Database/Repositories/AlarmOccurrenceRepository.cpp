@@ -123,120 +123,44 @@ AlarmOccurrenceRepository::findById(int id) {
 
 bool AlarmOccurrenceRepository::save(AlarmOccurrenceEntity &entity) {
   try {
-    auto &logger = LogManager::getInstance();
-    logger.log("AlarmOccurrenceRepository", LogLevel::INFO,
-               "save() 메서드 시작");
-
     if (!ensureTableExists()) {
-      logger.log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
-                 "테이블 존재 확인 실패");
       return false;
     }
-
-    // 🔧 device_id 정수형 처리
-    std::string safe_message = entity.getAlarmMessage();
-    std::replace(safe_message.begin(), safe_message.end(), '\'', '"');
-
-    std::string safe_trigger_value = entity.getTriggerValue().empty()
-                                         ? "NULL"
-                                         : "'" + entity.getTriggerValue() + "'";
-    std::string safe_trigger_condition =
-        entity.getTriggerCondition().empty()
-            ? "NULL"
-            : "'" + entity.getTriggerCondition() + "'";
-    std::string safe_context = entity.getContextData().empty()
-                                   ? "'{}'"
-                                   : "'" + entity.getContextData() + "'";
-    std::string safe_source = entity.getSourceName().empty()
-                                  ? "'Unknown'"
-                                  : "'" + entity.getSourceName() + "'";
-    std::string safe_location = entity.getLocation().empty()
-                                    ? "'Unknown Location'"
-                                    : "'" + entity.getLocation() + "'";
-
-    // 🔧 수정: device_id INTEGER 처리
-    std::string safe_device_id =
-        entity.getDeviceId().has_value()
-            ? std::to_string(entity.getDeviceId().value())
-            : "NULL";
-
-    std::string safe_point_id =
-        entity.getPointId().has_value()
-            ? std::to_string(entity.getPointId().value())
-            : "NULL";
-    std::string safe_category = entity.getCategory().has_value()
-                                    ? "'" + entity.getCategory().value() + "'"
-                                    : "NULL";
-
-    // tags JSON 변환
-    std::string tags_json = "NULL";
-    if (!entity.getTags().empty()) {
-      std::ostringstream tags_ss;
-      tags_ss << "[";
-      for (size_t i = 0; i < entity.getTags().size(); ++i) {
-        if (i > 0)
-          tags_ss << ",";
-        tags_ss << "\"" << entity.getTags()[i] << "\"";
-      }
-      tags_ss << "]";
-      tags_json = "'" + tags_ss.str() + "'";
-    }
-
-    std::string severity_str = entity.getSeverityString();
-    std::string state_str = entity.getStateString();
-
-    // 🔥 INSERT 쿼리 (cleared_by 포함)
-    std::string insert_query =
-        "INSERT INTO alarm_occurrences ("
-        "rule_id, tenant_id, occurrence_time, trigger_value, "
-        "trigger_condition, "
-        "alarm_message, severity, state, context_data, source_name, location, "
-        "device_id, point_id, category, tags, cleared_by, "
-        "created_at, updated_at"
-        ") VALUES (" +
-        std::to_string(entity.getRuleId()) + ", " +
-        std::to_string(entity.getTenantId()) + ", " +
-        "datetime('now', 'localtime'), " + safe_trigger_value + ", " +
-        safe_trigger_condition + ", " + "'" + safe_message + "', " + "'" +
-        severity_str + "', " + "'" + state_str + "', " + safe_context + ", " +
-        safe_source + ", " + safe_location + ", " + safe_device_id +
-        ", " // 정수형
-        + safe_point_id + ", " + safe_category + ", " + tags_json + ", " +
-        "NULL, " // cleared_by 초기값
-        + "datetime('now', 'localtime'), " + "datetime('now', 'localtime')" +
-        ")";
-
-    logger.log("AlarmOccurrenceRepository", LogLevel::INFO,
-               "실행할 INSERT 쿼리: " + insert_query);
 
     DbLib::DatabaseAbstractionLayer db_layer;
-    bool success = db_layer.executeNonQuery(insert_query);
+    auto params = entityToParams(entity);
 
-    if (success) {
-      logger.log("AlarmOccurrenceRepository", LogLevel::INFO,
-                 "INSERT 쿼리 실행 성공");
-
-      auto id_results =
-          db_layer.executeQuery("SELECT last_insert_rowid() as id");
-      if (!id_results.empty() &&
-          id_results[0].find("id") != id_results[0].end()) {
-        int new_id = std::stoi(id_results[0].at("id"));
-        entity.setId(new_id);
-        logger.log("AlarmOccurrenceRepository", LogLevel::INFO,
-                   "새 ID 설정 완료: " + std::to_string(new_id));
-      }
-
-      return true;
-    } else {
-      logger.log("AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
-                 "INSERT 쿼리 실행 실패");
-      return false;
+    // 발생 시간 설정 (엔티티에 없으면 현재 시간)
+    if (entity.getOccurrenceTime().time_since_epoch().count() == 0) {
+      params["occurrence_time"] =
+          escapeString(timePointToString(std::chrono::system_clock::now()));
     }
 
+    std::string query = SQL::AlarmOccurrence::INSERT_NAMED;
+    query = RepositoryHelpers::replaceParametersInOrder(query, params);
+
+    bool success = db_layer.executeNonQuery(query);
+
+    if (success) {
+      auto id_results = db_layer.executeQuery(
+          PulseOne::Database::SQL::Common::GET_LAST_INSERT_ID);
+      if (!id_results.empty() && id_results[0].count("id")) {
+        auto last_id = std::stoll(id_results[0].at("id"));
+        if (last_id > 0) {
+          entity.setId(static_cast<int>(last_id));
+          entity.markSaved();
+          if (isCacheEnabled()) {
+            cacheEntity(entity);
+          }
+        }
+      }
+    }
+
+    return success;
   } catch (const std::exception &e) {
-    LogManager::getInstance().log(
-        "AlarmOccurrenceRepository", LogLevel::LOG_ERROR,
-        "save() 메서드 예외 발생: " + std::string(e.what()));
+    LogManager::getInstance().log("AlarmOccurrenceRepository",
+                                  LogLevel::LOG_ERROR,
+                                  "save failed: " + std::string(e.what()));
     return false;
   }
 }
@@ -248,92 +172,20 @@ bool AlarmOccurrenceRepository::update(const AlarmOccurrenceEntity &entity) {
     }
 
     DbLib::DatabaseAbstractionLayer db_layer;
-
-    // 🔧 모든 필드 완벽 수동 매핑 (named placeholder 대응)
-    std::map<std::string, std::string> params;
-    params["id"] = std::to_string(entity.getId());
-    params["occurrence_time"] =
-        "'" + timePointToString(entity.getOccurrenceTime()) + "'";
-    // 🔧 Sanitization: Strip existing quotes if present to prevent
-    // double-quoting (e.g. ''1.0'')
-    std::string trigger_val = entity.getTriggerValue();
-    if (trigger_val.size() >= 2 && trigger_val.front() == '\'' &&
-        trigger_val.back() == '\'') {
-      trigger_val = trigger_val.substr(1, trigger_val.size() - 2);
-    }
-    params["trigger_value"] = "'" + escapeString(trigger_val) + "'";
-    params["trigger_condition"] =
-        "'" + escapeString(entity.getTriggerCondition()) + "'";
-    params["alarm_message"] =
-        "'" + escapeString(entity.getAlarmMessage()) + "'";
-    params["severity"] = "'" + escapeString(entity.getSeverityString()) + "'";
-    params["state"] = "'" + escapeString(entity.getStateString()) + "'";
-
-    // 시간 필드 옵셔널 처리
-    params["acknowledged_time"] =
-        entity.getAcknowledgedTime().has_value()
-            ? "'" + timePointToString(entity.getAcknowledgedTime().value()) +
-                  "'"
-            : "NULL";
-
-    params["cleared_time"] =
-        entity.getClearedTime().has_value()
-            ? "'" + timePointToString(entity.getClearedTime().value()) + "'"
-            : "NULL";
-
-    params["context_data"] = "'" + escapeString(entity.getContextData()) + "'";
-    params["source_name"] = "'" + escapeString(entity.getSourceName()) + "'";
-    params["location"] = "'" + escapeString(entity.getLocation()) + "'";
-
-    // 🔧 수정: device_id, point_id INTEGER 처리 (문자열 아님)
-    params["device_id"] = entity.getDeviceId().has_value()
-                              ? std::to_string(entity.getDeviceId().value())
-                              : "NULL";
-
-    params["point_id"] = entity.getPointId().has_value()
-                             ? std::to_string(entity.getPointId().value())
-                             : "NULL";
-
-    // 🔧 수정: category, tags 필드 추가
-    params["category"] =
-        entity.getCategory().has_value()
-            ? "'" + escapeString(entity.getCategory().value()) + "'"
-            : "NULL";
-
-    params["tags"] =
-        "'" + escapeString(RepositoryHelpers::tagsToString(entity.getTags())) +
-        "'";
-
-    // cleared_by 처리
-    params["cleared_by"] = entity.getClearedBy().has_value()
-                               ? std::to_string(entity.getClearedBy().value())
-                               : "NULL";
+    auto params = entityToParams(entity);
 
     std::string query = SQL::AlarmOccurrence::UPDATE;
-
-    LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
-                                  "DEBUG_PARAMS: trigger_value=" +
-                                      params["trigger_value"]);
-
     query = RepositoryHelpers::replaceParametersInOrder(query, params);
-
-    LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
-                                  "DEBUG_QUERY: " + query);
 
     bool success = db_layer.executeNonQuery(query);
 
     if (success) {
-      LogManager::getInstance().log("AlarmOccurrenceRepository", LogLevel::INFO,
-                                    "update - Updated alarm occurrence ID: " +
-                                        std::to_string(entity.getId()));
-
       if (isCacheEnabled()) {
         clearCacheForId(entity.getId());
       }
     }
 
     return success;
-
   } catch (const std::exception &e) {
     LogManager::getInstance().log("AlarmOccurrenceRepository",
                                   LogLevel::LOG_ERROR,
@@ -1353,32 +1205,50 @@ std::map<std::string, std::string>
 AlarmOccurrenceRepository::entityToParams(const AlarmOccurrenceEntity &entity) {
   std::map<std::string, std::string> params;
 
+  params["id"] = std::to_string(entity.getId());
   params["rule_id"] = std::to_string(entity.getRuleId());
   params["tenant_id"] = std::to_string(entity.getTenantId());
+
+  // Time fields
+  params["occurrence_time"] =
+      escapeString(timePointToString(entity.getOccurrenceTime()));
+
+  // String fields
   params["trigger_value"] = escapeString(entity.getTriggerValue());
   params["trigger_condition"] = escapeString(entity.getTriggerCondition());
   params["alarm_message"] = escapeString(entity.getAlarmMessage());
   params["severity"] = escapeString(entity.getSeverityString());
+  params["state"] = escapeString(entity.getStateString());
   params["context_data"] = escapeString(entity.getContextData());
   params["source_name"] = escapeString(entity.getSourceName());
   params["location"] = escapeString(entity.getLocation());
 
-  // 🔧 수정: device_id INTEGER 처리
+  // Optional Time fields
+  params["acknowledged_time"] = entity.getAcknowledgedTime().has_value()
+                                    ? escapeString(timePointToString(
+                                          entity.getAcknowledgedTime().value()))
+                                    : "NULL";
+
+  params["cleared_time"] =
+      entity.getClearedTime().has_value()
+          ? escapeString(timePointToString(entity.getClearedTime().value()))
+          : "NULL";
+
+  // Integer fields
   params["device_id"] = entity.getDeviceId().has_value()
                             ? std::to_string(entity.getDeviceId().value())
                             : "NULL";
-
   params["point_id"] = entity.getPointId().has_value()
                            ? std::to_string(entity.getPointId().value())
                            : "NULL";
-  params["category"] = entity.getCategory().has_value()
-                           ? escapeString(entity.getCategory().value())
-                           : "NULL";
-
-  // cleared_by 처리
   params["cleared_by"] = entity.getClearedBy().has_value()
                              ? std::to_string(entity.getClearedBy().value())
                              : "NULL";
+
+  // Optional String fields
+  params["category"] = entity.getCategory().has_value()
+                           ? escapeString(entity.getCategory().value())
+                           : "NULL";
 
   // tags JSON 변환
   if (!entity.getTags().empty()) {
@@ -1451,13 +1321,10 @@ std::string AlarmOccurrenceRepository::escapeString(const std::string &str) {
 std::string AlarmOccurrenceRepository::timePointToString(
     const std::chrono::system_clock::time_point &time_point) const {
   auto time_t = std::chrono::system_clock::to_time_t(time_point);
-  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                time_point.time_since_epoch()) %
-            1000;
 
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
-  oss << '.' << std::setfill('0') << std::setw(3) << ms.count();
+  // Use localtime for KST since TZ=Asia/Seoul is set in container
+  oss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
 
   return oss.str();
 }

@@ -65,7 +65,7 @@ services:
           memory: 8G
         reservations:
           memory: 1G
-    command: tail -f /dev/null
+    command: /bin/bash -c "make -C core/shared -j10 && make -C core/export-gateway -j10 && ./core/export-gateway/bin/export-gateway --id 6"
     tty: true
     restart: always
     environment:
@@ -76,7 +76,7 @@ services:
       - LOG_LEVEL=debug
       - PULSEONE_CONFIG_DIR=/app/config
       - PULSEONE_DATA_DIR=/app/data
-      - AUTO_RUN=false
+      - AUTO_RUN=true
     volumes:
       - ./core:/app/core
       - ./config:/app/config

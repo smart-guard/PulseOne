@@ -24,7 +24,7 @@ PayloadTransformer::PayloadTransformer() {
 // =============================================================================
 
 json PayloadTransformer::transform(const json &template_json,
-                                           const TransformContext &context) {
+                                   const TransformContext &context) {
   try {
     json result = template_json;
     auto variables = buildVariableMap(context);
@@ -60,43 +60,34 @@ PayloadTransformer::transformString(const std::string &template_str,
 
 json PayloadTransformer::getInsiteDefaultTemplate() {
   return json{{"controlpoint", "{{target_field_name}}"},
-                      {"description", "{{target_description}}"},
-                      {"value", "{{converted_value}}"},
-                      {"time", "{{timestamp_iso8601}}"},
-                      {"status", "{{alarm_status}}"}};
+              {"description", "{{target_description}}"},
+              {"value", "{{converted_value}}"},
+              {"time", "{{timestamp_iso8601}}"},
+              {"status", "{{alarm_status}}"}};
 }
 
 json PayloadTransformer::getHDCDefaultTemplate() {
-  return json{
-      {"building_id", "{{building_id}}"},
-      {"point_id", "{{target_field_name}}"},
-      {"data", json{{"value", "{{converted_value}}"},
+  return json{{"building_id", "{{building_id}}"},
+              {"point_id", "{{target_field_name}}"},
+              {"data", json{{"value", "{{converted_value}}"},
                             {"timestamp", "{{timestamp_unix_ms}}"}}},
-      {"metadata", json{{"description", "{{target_description}}"},
+              {"metadata", json{{"description", "{{target_description}}"},
                                 {"alarm_status", "{{alarm_status}}"}}}};
 }
 
 json PayloadTransformer::getBEMSDefaultTemplate() {
   return json{{"buildingId", "{{building_id}}"},
-                      {"sensorName", "{{target_field_name}}"},
-                      {"sensorValue", "{{converted_value}}"},
-                      {"timestamp", "{{timestamp_iso8601}}"},
-                      {"alarmLevel", "{{alarm_status}}"}};
+              {"sensorName", "{{target_field_name}}"},
+              {"sensorValue", "{{converted_value}}"},
+              {"timestamp", "{{timestamp_iso8601}}"},
+              {"alarmLevel", "{{alarm_status}}"}};
 }
 
 json PayloadTransformer::getGenericDefaultTemplate() {
-  return json{{"bd", "{{building_id}}"},
-                      {"ty", "num"},
-                      {"nm", "{{nm}}"},
-                      {"vl", "{{vl}}"},
-                      {"tm", "{{tm}}"},
-                      {"st", "{{st}}"},
-                      {"al", "{{al}}"},
-                      {"des", "{{des}}"},
-                      {"il", "10"},
-                      {"xl", "_"},
-                      {"mi", {10, 20, 30}},
-                      {"mx", {80, 90, 100}}};
+  return json{{"bd", "{{bd}}"}, {"ty", "{{ty}}"},   {"nm", "{{nm}}"},
+              {"vl", "{{vl}}"}, {"tm", "{{tm}}"},   {"st", "{{st}}"},
+              {"al", "{{al}}"}, {"des", "{{des}}"}, {"il", "{{il}}"},
+              {"xl", "{{xl}}"}, {"mi", "{{mi}}"},   {"mx", "{{mx}}"}};
 }
 
 json PayloadTransformer::getDefaultTemplateForSystem(
@@ -389,6 +380,11 @@ std::string PayloadTransformer::toISO8601(const std::string &alarm_tm) {
 
   std::ostringstream oss;
   oss << std::put_time(std::localtime(&t), "%Y-%m-%d %H:%M:%S");
+
+  // 밀리초 추가 (.SSS)
+  int64_t fractional = ms % 1000;
+  oss << "." << std::setfill('0') << std::setw(3) << fractional;
+
   return oss.str();
 }
 
@@ -404,6 +400,7 @@ int64_t PayloadTransformer::toUnixTimestampMs(const std::string &alarm_tm) {
     std::tm tm = {};
     std::istringstream ss(alarm_tm);
     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+    // DB의 시간은 KST 문자열이므로 mktime(local) 사용 (TZ=Asia/Seoul 대응)
     auto time_point = std::chrono::system_clock::from_time_t(std::mktime(&tm));
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                time_point.time_since_epoch())

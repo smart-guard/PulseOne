@@ -299,7 +299,7 @@ bool AlarmMessage::validate_for_csp_api() const {
   }
 
   // C# DateTime 형식 검증 (간단한 정규식 체크)
-  if (tm.length() < 23) { // yyyy-MM-dd HH:mm:ss.fff 최소 길이
+  if (tm.length() < 19) { // yyyy-MM-dd HH:mm:ss 최소 길이
 #ifdef HAS_SHARED_LIBS
     LogManager::getInstance().Error("Invalid timestamp format: " + tm);
 #endif
@@ -377,6 +377,8 @@ std::string AlarmMessage::time_to_csharp_format(
   // C# DateTime 형식으로 포맷팅: yyyy-MM-dd HH:mm:ss.fff
   std::ostringstream oss;
   oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
+
+  // 밀리초 추가 (.fff)
   oss << "." << std::setfill('0') << std::setw(3) << ms.count();
 
   return oss.str();

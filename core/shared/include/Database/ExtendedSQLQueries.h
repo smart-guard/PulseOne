@@ -114,6 +114,20 @@ const std::string INSERT = R"(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
+const std::string INSERT_NAMED = R"(
+        INSERT INTO alarm_occurrences (
+            rule_id, tenant_id, occurrence_time, trigger_value, trigger_condition,
+            alarm_message, severity, state, context_data, source_name, location,
+            device_id, point_id, category, tags, cleared_by,
+            created_at, updated_at
+        ) VALUES (
+            {rule_id}, {tenant_id}, {occurrence_time}, {trigger_value}, {trigger_condition},
+            {alarm_message}, {severity}, {state}, {context_data}, {source_name}, {location},
+            {device_id}, {point_id}, {category}, {tags}, {cleared_by},
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        )
+    )";
+
 // ⭐ 누락된 UPDATE 쿼리 추가 (필드 확장 및 named placeholder 적용)
 const std::string UPDATE = R"(
         UPDATE alarm_occurrences SET

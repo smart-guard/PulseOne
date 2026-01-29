@@ -39,7 +39,8 @@ const AlarmDetailModal: React.FC<AlarmDetailModalProps> = ({ rule, onClose, onEd
 
     const getTargetDisplay = () => {
         if (rule.target_type === 'device') return rule.device_name || `디바이스 #${rule.target_id}`;
-        return rule.target_display || `데이터포인트 #${rule.target_id}`;
+        // Prefer data_point_name provided by backend join
+        return (rule as any).data_point_name || rule.target_display || `데이터포인트 #${rule.target_id}`;
     };
 
     const renderSentencePills = (pills: { text: string; highlight?: boolean }[]) => (

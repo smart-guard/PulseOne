@@ -43,18 +43,18 @@ namespace CSP {
  */
 struct AlarmMessage {
   // C# 필드 직접 매핑
-  int bd = 0;                   ///< Building ID
-  std::string ty = "num";       ///< Type (num, bit 등)
-  std::string nm;               ///< Point Name
-  double vl = 0.0;              ///< Value
-  std::string il = "-";         ///< Info Limit?
-  std::string xl = "1";         ///< Extra Limit?
-  std::vector<double> mi = {0}; ///< Min
-  std::vector<double> mx = {1}; ///< Max
-  std::string tm;               ///< Timestamp (yyyy-MM-dd HH:mm:ss.fff)
-  int st = 0;                   ///< Alarm State
-  int al = 0;                   ///< Alarm Status (1=발생, 0=해제)
-  std::string des;              ///< Description
+  int bd = 101;                ///< Building ID (default 101)
+  std::string ty = "num";      ///< Type (num, bit 등)
+  std::string nm;              ///< Point Name
+  double vl = 0.0;             ///< Value
+  std::string il = "";         ///< Info Limit (empty)
+  std::string xl = "";         ///< Extra Limit (empty)
+  std::vector<double> mi = {}; ///< Min (empty array)
+  std::vector<double> mx = {}; ///< Max (empty array)
+  std::string tm;              ///< Timestamp (yyyy-MM-dd HH:mm:ss.fff)
+  int st = 1;                  ///< Comm Status (1: Normal)
+  int al = 0;                  ///< Alarm Status (1: Occur, 0: Clear)
+  std::string des;             ///< Description
 
   // Internal Logic Fields (Not exported to final JSON)
   int point_id = 0;

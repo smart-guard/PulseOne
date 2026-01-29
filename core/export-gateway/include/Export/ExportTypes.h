@@ -253,6 +253,8 @@ struct DynamicTarget {
   std::string type;
   bool enabled = true;
   int priority = 100;
+  int execution_order = 0;    // 🆕 v3.1.2 추가: 전송 실행 순서
+  int execution_delay_ms = 0; // 🆕 v3.1.3 추가: 타겟 전송 전 지연 시간
   std::string description;
   json config;
 
@@ -283,6 +285,8 @@ struct DynamicTarget {
   DynamicTarget(DynamicTarget &&other) noexcept
       : id(other.id), name(std::move(other.name)), type(std::move(other.type)),
         enabled(other.enabled), priority(other.priority),
+        execution_order(other.execution_order),
+        execution_delay_ms(other.execution_delay_ms),
         description(std::move(other.description)),
         config(std::move(other.config)), healthy(other.healthy.load()),
         handler_initialized(other.handler_initialized.load()),
@@ -300,8 +304,8 @@ struct DynamicTarget {
   DynamicTarget(const DynamicTarget &other)
       : id(other.id), name(other.name), type(other.type),
         enabled(other.enabled), priority(other.priority),
-        description(other.description), config(other.config),
-        healthy(other.healthy.load()),
+        execution_order(other.execution_order), description(other.description),
+        config(other.config), healthy(other.healthy.load()),
         handler_initialized(other.handler_initialized.load()),
         success_count(other.success_count.load()),
         failure_count(other.failure_count.load()),
@@ -321,6 +325,8 @@ struct DynamicTarget {
       type = other.type;
       enabled = other.enabled;
       priority = other.priority;
+      execution_order = other.execution_order;
+      execution_delay_ms = other.execution_delay_ms;
       description = other.description;
       config = other.config;
       healthy.store(other.healthy.load());
@@ -346,6 +352,8 @@ struct DynamicTarget {
       type = std::move(other.type);
       enabled = other.enabled;
       priority = other.priority;
+      execution_order = other.execution_order;
+      execution_delay_ms = other.execution_delay_ms;
       description = std::move(other.description);
       config = std::move(other.config);
       healthy.store(other.healthy.load());
@@ -378,6 +386,7 @@ struct DynamicTarget {
                 {"type", type},
                 {"enabled", enabled},
                 {"priority", priority},
+                {"execution_delay_ms", execution_delay_ms},
                 {"description", description},
                 {"healthy", healthy.load()},
                 {"handler_initialized", handler_initialized.load()},

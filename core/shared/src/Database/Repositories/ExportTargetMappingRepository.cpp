@@ -103,9 +103,9 @@ bool ExportTargetMappingRepository::save(ExportTargetMappingEntity &entity) {
     // ) VALUES (?, ?, ?, ?, ?, ?)
 
     std::vector<std::string> insert_order = {
-        "target_id",         "point_id",          "site_id",
-        "building_id",       "target_field_name", "target_description",
-        "conversion_config", "is_enabled"};
+        "target_id",         "point_id",           "site_id",
+        "target_field_name", "target_description", "conversion_config",
+        "is_enabled"};
 
     for (const auto &key : insert_order) {
       size_t pos = query.find('?');
@@ -155,9 +155,9 @@ bool ExportTargetMappingRepository::update(
     // WHERE id = ?
 
     std::vector<std::string> update_order = {
-        "target_id",         "point_id",          "site_id",
-        "building_id",       "target_field_name", "target_description",
-        "conversion_config", "is_enabled"};
+        "target_id",         "point_id",           "site_id",
+        "target_field_name", "target_description", "conversion_config",
+        "is_enabled"};
 
     for (const auto &key : update_order) {
       size_t pos = query.find('?');
@@ -586,20 +586,6 @@ ExportTargetMappingEntity ExportTargetMappingRepository::mapRowToEntity(
       entity.setSiteId(std::nullopt);
     }
 
-    it = row.find("building_id");
-    if (it != row.end() && !it->second.empty()) {
-      entity.setBuildingId(std::stoi(it->second));
-    } else {
-      entity.setBuildingId(std::nullopt);
-    }
-
-    it = row.find("building_id");
-    if (it != row.end() && !it->second.empty()) {
-      entity.setBuildingId(std::stoi(it->second));
-    } else {
-      entity.setBuildingId(std::nullopt);
-    }
-
     it = row.find("target_field_name");
     if (it != row.end()) {
       entity.setTargetFieldName(it->second);
@@ -642,12 +628,6 @@ ExportTargetMappingRepository::entityToParams(
   params["site_id"] = entity.getSiteId().has_value()
                           ? std::to_string(entity.getSiteId().value())
                           : "NULL";
-  params["building_id"] = entity.getBuildingId().has_value()
-                              ? std::to_string(entity.getBuildingId().value())
-                              : "NULL";
-  params["building_id"] = entity.getBuildingId().has_value()
-                              ? std::to_string(entity.getBuildingId().value())
-                              : "NULL";
   params["target_field_name"] = entity.getTargetFieldName();
   params["target_description"] = entity.getTargetDescription();
   params["conversion_config"] = entity.getConversionConfig();

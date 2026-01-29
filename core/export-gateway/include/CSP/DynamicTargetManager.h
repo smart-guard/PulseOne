@@ -430,10 +430,6 @@ private:
   std::unordered_map<int, std::unordered_map<int, int>>
       target_point_site_mappings_;
 
-  // ✅ 포인트별 Building ID 매핑 캐시 (Target ID -> Point ID -> Building ID)
-  std::unordered_map<int, std::unordered_map<int, int>>
-      target_point_building_mappings_;
-
   // ✅ 사이트 매핑 캐시: target_id -> { site_id -> external_building_id }
   std::unordered_map<int, std::unordered_map<int, std::string>>
       target_site_mappings_;

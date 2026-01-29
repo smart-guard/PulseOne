@@ -33,7 +33,6 @@ public:
   int getTargetId() const { return target_id_; }
   std::optional<int> getPointId() const { return point_id_; }
   std::optional<int> getSiteId() const { return site_id_; }
-  std::optional<int> getBuildingId() const { return building_id_; }
   std::string getTargetFieldName() const { return target_field_name_; }
   std::string getTargetDescription() const { return target_description_; }
   std::string getConversionConfig() const { return conversion_config_; }
@@ -50,10 +49,6 @@ public:
   }
   void setSiteId(std::optional<int> site_id) {
     site_id_ = site_id;
-    markModified();
-  }
-  void setBuildingId(std::optional<int> building_id) {
-    building_id_ = building_id;
     markModified();
   }
   void setTargetFieldName(const std::string &name) {
@@ -99,7 +94,6 @@ private:
   int target_id_ = 0;
   std::optional<int> point_id_;
   std::optional<int> site_id_;
-  std::optional<int> building_id_;
   std::string target_field_name_;
   std::string target_description_;
   std::string conversion_config_;
