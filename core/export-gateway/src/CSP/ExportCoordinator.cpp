@@ -353,6 +353,21 @@ bool ExportCoordinator::initializeDatabase() {
     }
 
     LogManager::getInstance().Info("데이터베이스 초기화 완료: " + db_path);
+
+    // ✅ 게이트웨이 설정 로드 (subscription_mode)
+    if (gateway_id_ > 0) {
+      std::vector<std::vector<std::string>> gw_result;
+      std::string query =
+          "SELECT subscription_mode FROM edge_servers WHERE id = " +
+          std::to_string(gateway_id_);
+      if (db_manager.executeQuery(query, gw_result) && !gw_result.empty() &&
+          !gw_result[0].empty()) {
+        config_.subscription_mode = gw_result[0][0];
+        LogManager::getInstance().Info("Gateway Subscription Mode 로드 완료: " +
+                                       config_.subscription_mode);
+      }
+    }
+
     return true;
 
   } catch (const std::exception &e) {
@@ -393,7 +408,23 @@ bool ExportCoordinator::initializeEventSubscriber() {
     event_config.redis_password = config_.redis_password;
 
     // ✅ 알람 채널 + 스케줄 이벤트 채널
-    event_config.subscribe_channels = config_.alarm_channels;
+    // gateway_id가 설정되고 subscription_mode가 'selective'인 경우
+    // alarms:all 대신 디바이스별 채널을 사용하도록 유도
+    if (gateway_id_ > 0 && shared_target_manager_ &&
+        config_.subscription_mode == "selective") {
+      auto device_ids = shared_target_manager_->getAssignedDeviceIds();
+      event_config.subscribe_channels
+          .clear(); // ✅ FIX: 기본 채널(alarms:all) 제거
+      for (const auto &id : device_ids) {
+        event_config.subscribe_channels.push_back("device:" + id + ":alarms");
+      }
+      LogManager::getInstance().Info("Selective Subscription 활성화: " +
+                                     std::to_string(device_ids.size()) +
+                                     "개 디바이스 채널 설정");
+    } else {
+      event_config.subscribe_channels = config_.alarm_channels;
+    }
+
     event_config.subscribe_channels.push_back("schedule:reload");
     event_config.subscribe_channels.push_back("schedule:execute:*");
     // ✅ 설정 리로드 채널 추가
@@ -1009,6 +1040,12 @@ int ExportCoordinator::reloadTargets() {
 
     LogManager::getInstance().Info(
         "타겟 리로드 완료: " + std::to_string(reloaded_count) + "개");
+
+    // ✅ Selective Subscription 업데이트
+    if (event_subscriber_) {
+      auto device_ids = target_manager->getAssignedDeviceIds();
+      event_subscriber_->updateSubscriptions(device_ids);
+    }
 
     return reloaded_count;
 

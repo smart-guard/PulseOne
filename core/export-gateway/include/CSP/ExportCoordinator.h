@@ -59,10 +59,8 @@ struct ExportCoordinatorConfig {
   int max_concurrent_exports = 50;
   int export_timeout_seconds = 30;
 
-  // Batching Configuration
-  bool enable_alarm_batching = false;
-  int alarm_batch_latency_ms = 5000; // 5 seconds default
-  int alarm_batch_max_size = 1000;
+  // Subscription Mode
+  std::string subscription_mode = "all"; // "all" or "selective"
 };
 
 struct ExportResult {

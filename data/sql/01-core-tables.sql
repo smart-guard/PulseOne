@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     is_deleted INTEGER DEFAULT 0,
     max_devices INTEGER DEFAULT 100,
     max_data_points INTEGER DEFAULT 1000,
+    subscription_mode TEXT DEFAULT 'all',
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     

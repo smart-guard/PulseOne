@@ -47,6 +47,7 @@
 #include <future>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <set>
 #include <shared_mutex>
 #include <string>
 #include <thread>
@@ -178,6 +179,12 @@ public:
   std::optional<DynamicTarget> getTarget(const std::string &name);
 
   std::vector<DynamicTarget> getAllTargets();
+
+  /**
+   * @brief 할당된 디바이스 ID 목록 조회 (Selective Subscription용)
+   * @return 디바이스 ID set
+   */
+  std::set<std::string> getAssignedDeviceIds() const;
 
   /**
    * @brief 타겟 동적 추가/수정
@@ -433,6 +440,9 @@ private:
   // ✅ 사이트 매핑 캐시: target_id -> { site_id -> external_building_id }
   std::unordered_map<int, std::unordered_map<int, std::string>>
       target_site_mappings_;
+
+  // ✅ 할당된 디바이스 ID 목록 캐시 (Selective Subscription용)
+  std::set<std::string> assigned_device_ids_;
 
   // 실행 상태
   std::atomic<bool> is_running_{false};
