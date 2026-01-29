@@ -32,6 +32,7 @@
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <queue>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -178,6 +179,12 @@ public:
 
   std::vector<std::string> getSubscribedChannels() const;
   std::vector<std::string> getSubscribedPatterns() const;
+
+  /**
+   * @brief 디바이스 ID 목록에 따라 구독 채널 대량 업데이트
+   * @param device_ids 활성 디바이스 ID 목록
+   */
+  void updateSubscriptions(const std::set<std::string> &device_ids);
 
   // =========================================================================
   // 이벤트 핸들러 등록

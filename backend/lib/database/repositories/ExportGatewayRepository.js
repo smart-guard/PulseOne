@@ -75,6 +75,7 @@ class ExportGatewayRepository extends BaseRepository {
                 ip_address: data.ip_address || null,
                 port: data.port || 8080,
                 status: data.status || 'pending',
+                subscription_mode: data.subscription_mode || 'all',
                 config: typeof data.config === 'object' ? JSON.stringify(data.config) : (data.config || '{}')
             };
 
@@ -94,7 +95,7 @@ class ExportGatewayRepository extends BaseRepository {
 
             const allowedFields = [
                 'name', 'server_name', 'description', 'ip_address', 'port',
-                'status', 'config', 'last_seen', 'last_heartbeat'
+                'status', 'config', 'last_seen', 'last_heartbeat', 'subscription_mode'
             ];
 
             allowedFields.forEach(field => {

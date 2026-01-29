@@ -466,6 +466,35 @@ bool DynamicTargetManager::loadFromDatabase() {
 
     LogManager::getInstance().Info("✅ DB에서 " + std::to_string(loaded_count) +
                                    "개 타겟 로드 및 정렬 완료");
+
+    // ✅ 5. 할당된 디바이스 ID 목록 추출 (Selective Subscription용)
+    assigned_device_ids_.clear();
+    if (gateway_id_ > 0) {
+      auto &db_manager = DbLib::DatabaseManager::getInstance();
+      std::string device_query =
+          "SELECT DISTINCT dp.device_id "
+          "FROM data_points dp "
+          "JOIN export_target_mappings etm ON dp.id = etm.point_id "
+          "JOIN export_targets et ON etm.target_id = et.id "
+          "JOIN export_profile_assignments epa ON et.profile_id = "
+          "epa.profile_id "
+          "WHERE epa.gateway_id = " +
+          std::to_string(gateway_id_) +
+          " AND et.is_enabled = 1 AND etm.is_enabled = 1";
+
+      std::vector<std::vector<std::string>> device_result;
+      if (db_manager.executeQuery(device_query, device_result)) {
+        for (const auto &row : device_result) {
+          if (!row[0].empty()) {
+            assigned_device_ids_.insert(row[0]);
+          }
+        }
+        LogManager::getInstance().Info(
+            "✅ 할당된 디바이스 ID 수집 완료: " +
+            std::to_string(assigned_device_ids_.size()) + "개");
+      }
+    }
+
     return (loaded_count > 0);
 
   } catch (const std::exception &e) {
@@ -501,6 +530,11 @@ DynamicTargetManager::getTarget(const std::string &name) {
 std::vector<DynamicTarget> DynamicTargetManager::getAllTargets() {
   std::shared_lock<std::shared_mutex> lock(targets_mutex_);
   return targets_;
+}
+
+std::set<std::string> DynamicTargetManager::getAssignedDeviceIds() const {
+  std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+  return assigned_device_ids_;
 }
 
 // =============================================================================

@@ -2667,7 +2667,7 @@ const ExportGatewayWizard: React.FC<{
     const hydratedTargetIdRef = React.useRef<number | null>(null);
 
     // Step Data
-    const [gatewayData, setGatewayData] = useState({ name: '', ip_address: '127.0.0.1', description: '' });
+    const [gatewayData, setGatewayData] = useState({ name: '', ip_address: '127.0.0.1', description: '', subscription_mode: 'all' });
 
     // Profile State
     const [profileMode, setProfileMode] = useState<'existing' | 'new'>('existing');
@@ -2812,10 +2812,11 @@ const ExportGatewayWizard: React.FC<{
                 setGatewayData({
                     name: editingGateway.name,
                     ip_address: editingGateway.ip_address,
-                    description: editingGateway.description || ''
+                    description: editingGateway.description || '',
+                    subscription_mode: (editingGateway as any).subscription_mode || 'all'
                 });
             } else {
-                setGatewayData({ name: '', ip_address: '127.0.0.1', description: '' });
+                setGatewayData({ name: '', ip_address: '127.0.0.1', description: '', subscription_mode: 'all' });
             }
         }
 
@@ -3261,6 +3262,40 @@ const ExportGatewayWizard: React.FC<{
                                         value={gatewayData.ip_address}
                                         onChange={e => setGatewayData({ ...gatewayData, ip_address: e.target.value })}
                                     />
+                                </Form.Item>
+                                <Form.Item label="구독 모드 (Subscription Mode)" tooltip="성능 최적화를 위해 알람 데이터를 어떻게 구독할지 선택합니다.">
+                                    <div style={{
+                                        padding: '20px',
+                                        border: '1px solid var(--neutral-200)',
+                                        borderRadius: '12px',
+                                        background: 'var(--neutral-50)',
+                                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <Radio.Group
+                                            value={gatewayData.subscription_mode}
+                                            onChange={e => setGatewayData({ ...gatewayData, subscription_mode: e.target.value })}
+                                            style={{ width: '100%' }}
+                                        >
+                                            <div style={{ display: 'flex', gap: '32px' }}>
+                                                <Radio value="all" style={{ flex: 1, margin: 0 }}>
+                                                    <div style={{ display: 'inline-block', verticalAlign: 'top' }}>
+                                                        <span style={{ fontWeight: 600, color: 'var(--neutral-800)', fontSize: '14px' }}>통합 구독 (All Alarms)</span>
+                                                        <div style={{ fontSize: '12px', color: 'var(--neutral-500)', marginTop: '4px', lineHeight: '1.4' }}>
+                                                            모든 알람 채널을 구독합니다.<br />(기본 권장 사항)
+                                                        </div>
+                                                    </div>
+                                                </Radio>
+                                                <Radio value="selective" style={{ flex: 1, margin: 0 }}>
+                                                    <div style={{ display: 'inline-block', verticalAlign: 'top' }}>
+                                                        <span style={{ fontWeight: 600, color: 'var(--neutral-800)', fontSize: '14px' }}>선택적 구독 (Selective)</span>
+                                                        <div style={{ fontSize: '12px', color: 'var(--neutral-500)', marginTop: '4px', lineHeight: '1.4' }}>
+                                                            할당된 디바이스의 채널만<br />개별 구독합니다.
+                                                        </div>
+                                                    </div>
+                                                </Radio>
+                                            </div>
+                                        </Radio.Group>
+                                    </div>
                                 </Form.Item>
                                 <Form.Item label="상세 설명">
                                     <Input.TextArea

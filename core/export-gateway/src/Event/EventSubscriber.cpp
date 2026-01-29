@@ -178,6 +178,52 @@ void EventSubscriber::unregisterHandler(const std::string &channel_pattern) {
   }
 }
 
+void EventSubscriber::updateSubscriptions(
+    const std::set<std::string> &device_ids) {
+  LogManager::getInstance().Info("구독 채널 대량 업데이트 시작 (디바이스 수: " +
+                                 std::to_string(device_ids.size()) + ")");
+
+  std::vector<std::string> current_channels;
+  {
+    std::lock_guard<std::mutex> lock(channel_mutex_);
+    current_channels = subscribed_channels_;
+  }
+
+  // 1. 기존 디바이스 채널 중 더 이상 필요 없는 것 제거
+  for (const auto &channel : current_channels) {
+    if (channel.find("device:") == 0 &&
+        channel.find(":alarms") != std::string::npos) {
+      std::string id = channel.substr(7, channel.find(":alarms") - 7);
+      if (device_ids.find(id) == device_ids.end()) {
+        LogManager::getInstance().Info("더 이상 필요 없는 채널 구독 해제: " +
+                                       channel);
+        unsubscribeChannel(channel);
+      }
+    }
+  }
+
+  // 2. 새로운 디바이스 채널 추가
+  for (const auto &id : device_ids) {
+    if (id.empty())
+      continue;
+    std::string channel = "device:" + id + ":alarms";
+    bool already_subscribed = false;
+    {
+      std::lock_guard<std::mutex> lock(channel_mutex_);
+      already_subscribed =
+          std::find(subscribed_channels_.begin(), subscribed_channels_.end(),
+                    channel) != subscribed_channels_.end();
+    }
+
+    if (!already_subscribed) {
+      LogManager::getInstance().Info("새로운 디바이스 채널 구독: " + channel);
+      subscribeChannel(channel);
+    }
+  }
+
+  LogManager::getInstance().Info("✅ 구독 채널 업데이트 완료");
+}
+
 std::vector<std::string> EventSubscriber::getRegisteredHandlers() const {
   std::lock_guard<std::mutex> lock(handler_mutex_);
 

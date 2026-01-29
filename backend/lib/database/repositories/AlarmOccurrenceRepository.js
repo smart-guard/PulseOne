@@ -693,7 +693,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
             const result = await this.knex(this.tableName)
                 .where('tenant_id', tenantId || 1)
                 .whereNull('acknowledged_time')
-                .where('state', 'active')
+                .whereIn('state', ['active', 'ACTIVE'])
                 .update({
                     acknowledged_time: this.knex.fn.now(),
                     acknowledged_by: userId,
@@ -771,7 +771,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
 
             const result = await this.knex(this.tableName)
                 .where('tenant_id', tenantId || 1)
-                .where('state', 'acknowledged')
+                .whereIn('state', ['acknowledged', 'ACKNOWLEDGED'])
                 .update({
                     cleared_time: this.knex.fn.now(),
                     cleared_value: clearedValue ? JSON.stringify(clearedValue) : null,

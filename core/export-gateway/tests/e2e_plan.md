@@ -1,36 +1,36 @@
-# Export Gateway E2E Test Plan (Detailed)
+# Export Gateway E2E 테스트 계획서 (상세 가이드)
 
-This document provides a comprehensive walkthrough and rationale for verifying the PulseOne end-to-end data export pipeline in a Docker environment.
+본 문서는 Docker 환경에서 PulseOne의 엔드-투-엔드(E2E) 데이터 엑스포트 파이프라인을 검증하기 위한 상세 절차와 기술적 근거를 제공합니다.
 
-## 1. Environment & Architecture Overview
+## 1. 환경 및 아키텍처 개요
 
-Before testing, it's essential to understand the components involved and their communication paths.
+테스트를 진행하기 전, 관여하는 컴포넌트들과 이들의 통신 경로를 이해하는 것이 중요합니다.
 
-*   **Modbus Simulator (`docker-simulator-modbus-1`)**: Acts as the physical PLC hardware. It maintains registers that the Collector reads.
-*   **Collector (`docker-collector-1`)**: The acquisition engine. It polls the simulator via Modbus TCP, evaluates data against alarm rules, and persists state to Redis and SQLite.
-*   **Redis (`docker-redis-1`)**: The high-speed event bus. It enables real-time communication between the Collector (publisher) and the Export Gateway (subscriber).
-*   **Export Gateway (`pulseone-export-gateway`)**: The dispatch engine. It listens for events on Redis, applies payload transformations (templates), and sends data to external targets (HTTP/S3).
+*   **Modbus 시뮬레이터 (`docker-simulator-modbus-1`)**: 물리적인 PLC 하드웨어 역할을 합니다. 수집기가 읽어갈 레지스터 데이터를 유지합니다.
+*   **수집기 (Collector, `docker-collector-1`)**: 데이터 수집 엔진입니다. Modbus TCP를 통해 시뮬레이터를 폴링하고, 데이터를 알람 룰에 따라 평가한 뒤 Redis와 SQLite에 저장합니다.
+*   **Redis (`docker-redis-1`)**: 고속 이벤트 버스입니다. 수집기(발행자)와 Export Gateway(구독자) 사이의 실시간 통신을 가능하게 합니다.
+*   **Export Gateway (`pulseone-export-gateway`)**: 데이터 전송 엔진입니다. Redis의 이벤트를 리스닝하고, 페이로드 변환(템플릿)을 적용한 뒤 외부 타겟(HTTP/S3)으로 데이터를 전송합니다.
 
-| Resource | Value | Rationale |
+| 리소스 | 값 | 기술적 근거 (Rationale) |
 | :--- | :--- | :--- |
-| **Simulator IP** | `172.18.0.10` | Internal bridge IP for container-to-container communication. |
-| **Gateway ID** | `6` | Specified ID for the instance to test isolation and assignment logic. |
-| **Database** | `./data/db/pulseone.db` | Shared volume ensuring all containers see the same configuration. |
+| **시뮬레이터 IP** | `172.18.0.10` | 컨테이너 간 통신을 위한 내부 브릿지 IP입니다. |
+| **게이트웨이 ID** | `6` | 격리(Isolation) 및 할당 로직을 테스트하기 위해 지정된 인스턴스 ID입니다. |
+| **데이터베이스** | `./data/db/pulseone.db` | 모든 컨테이너가 동일한 설정을 공유할 수 있도록 마운트된 공유 볼륨입니다. |
 
 ---
 
-## 2. Phase 1: Atomic Reset (The "Clean Slate" Protocol)
+## 2. 1단계: Atomic Reset (초기화 프로토콜)
 
-Verification requires observing a clear **state transition** (e.g., Normal -> Alarm). If the system is already in an alarm state, the edge-detection logic may not fire.
+검증을 위해서는 명확한 **상태 변화**(예: 정상 -> 알람)를 관찰해야 합니다. 시스템이 이미 알람 상태라면, 엣지 감지(Edge-detection) 로직이 트리거되지 않을 수 있습니다.
 
 ```bash
-# 1. Stop processing to prevent race conditions during reset
+# 1. 초기화 중 데이터 충돌을 방지하기 위해 서비스 중지
 docker stop docker-collector-1 pulseone-export-gateway
 
-# 2. Wipe volatile and recent persistence
-# - alarm_occurrences: Deletes previous incidents.
-# - current_values: Resets the Collector's memory to 'Normal'.
-# - export_logs: Clears history to ensure logs for THIS test are obvious.
+# 2. 휘발성 데이터 및 최근 이력 삭제
+# - alarm_occurrences: 이전 사고 기록 삭제
+# - current_values: 수집기의 메모리를 '정상(Normal)' 상태로 리셋
+# - export_logs: 이번 테스트의 로그만 명확히 보이도록 이력 삭제
 docker exec docker-backend-1 sqlite3 /app/data/db/pulseone.db \
 "DELETE FROM alarm_occurrences; \
  UPDATE current_values SET current_value = '{\"value\":0.0}', alarm_state = 'normal', alarm_active = 0; \
@@ -39,30 +39,30 @@ docker exec docker-backend-1 sqlite3 /app/data/db/pulseone.db \
 
 ---
 
-## 3. Phase 2: Configuration (Building the Scenario)
+## 3. 2단계: 설정 (테스트 시나리오 구축)
 
-We manually inject the test scenario directly into the database. This bypasses potential UI bugs and ensures precision.
+데이터베이스에 직접 테스트 시나리오를 주입합니다. 이는 UI 버그의 영향을 배제하고 정밀한 테스트를 보장합니다.
 
-### 3.1 Resource Registry (SQL)
+### 3.1 리소스 등록 (SQL)
 ```sql
--- Register Device (PLC)
--- Ensures the Collector knows where to poll. edge_server_id=1 maps to docker-collector-1.
+-- 디바이스(PLC) 등록
+-- 수집기가 어디를 폴링해야 할지 지정합니다. edge_server_id=1은 docker-collector-1에 매핑됩니다.
 INSERT OR REPLACE INTO devices (id, tenant_id, site_id, name, device_type, protocol_id, endpoint, edge_server_id, is_enabled, config)
 VALUES (200, 1, 1, 'E2E-PLC', 'PLC', 1, '172.18.0.10:50502', 1, 1, '{"slave_id": 1}');
 
--- Register Data Point (Sensor)
--- Address 100 corresponds to Coil 100 in the simulator.
+-- 데이터 포인트(센서) 등록
+-- 주소 100은 시뮬레이터의 Coil 100번에 해당합니다.
 INSERT OR REPLACE INTO data_points (id, device_id, name, address, data_type, is_enabled, alarm_enabled)
 VALUES (200, 200, 'E2E.ALARM', 100, 'BOOL', 1, 1);
 
--- Register Alarm Rule (Trigger)
--- digital/on_true: Fires as soon as the point value becomes 1.0 (True).
+-- 알람 룰(트리거) 등록
+-- digital/on_true: 포인트 값이 1.0(True)이 되는 즉시 발생합니다.
 INSERT OR REPLACE INTO alarm_rules (id, tenant_id, name, point_id, rule_type, condition, severity, is_enabled)
 VALUES (200, 1, 'E2E_ALARM_RULE', 200, 'digital', 'on_true', 'critical', 1);
 
--- Map to Export Targets
--- Maps the point to existing HTTP (18) and S3 (19) targets.
--- target_field_name: The key used in the exported JSON payload.
+-- Export 타겟 매핑
+-- 포인트를 기존 HTTP(18) 및 S3(19) 타겟과 연결합니다.
+-- target_field_name: 전송될 JSON 페이로드에서 사용될 키 이름입니다.
 INSERT OR REPLACE INTO export_target_mappings (target_id, point_id, site_id, target_field_name, is_enabled)
 VALUES 
 (18, 200, 1, 'ENVS_TEST.E2E_POINT', 1),
@@ -71,50 +71,50 @@ VALUES
 
 ---
 
-## 4. Phase 3: Execution & Monitoring (The Audit Trail)
+## 4. 3단계: 실행 및 모니터링 (감사 추적)
 
-We monitor the logs sequentially to trace the "life of a data point."
+"데이터 포인트의 생애 주기"를 추적하기 위해 로그를 순차적으로 모니터링합니다.
 
-### Step 1: Start & Stabilization
+### 1단계: 서비스 시작 및 안정화
 ```bash
 docker start docker-collector-1 pulseone-export-gateway
 ```
-*Rationale: Ensure the Collector establishes a connection to the simulator and starts polling 0.0.*
+*핵심: 수집기가 시뮬레이터에 연결되어 0.0 값을 정상적으로 폴링하는지 확인합니다.*
 
-### Step 2: External Trigger (Simulating a Fault)
+### 2단계: 외부 트리거 (결함 시뮬레이션)
 ```bash
 docker exec docker-simulator-modbus-1 node scripts/force_modbus.js 100 1
 ```
-*Action: Changes the virtual sensor from 0 to 1.*
+*동작: 가상 센서 값을 0에서 1로 변경합니다.*
 
-### Step 3: Audit the Chain
-1.  **Collector Acquisition**: 
-    Look for: `Read Point 200 (E2E.ALARM) -> Value: true`.
-    *Verification: Did it actually see the change?*
-2.  **Alarm Engine**: 
-    Look for: `eval.should_trigger: 1` and `Publishing alarm event to Redis...`.
-    *Verification: Did it detect the violation?*
-3.  **Redis Dispatch**: 
-    Use: `docker exec docker-redis-1 redis-cli MONITOR`.
-    Look for: `PUBLISH "alarms:all"`.
-    *Verification: Is the event on the wire?*
-4.  **Gateway Reception**: 
-    Look for: `[INFO] Received alarm event for rule_id: 200`.
-    *Verification: Did the Gateway hear the message?*
-5.  **Target Dispatch**: 
-    Look for: `Target result: [HTTP Target] success=1`.
-    *Verification: Did it reach the final destination?*
+### 3단계: 파이프라인 체인 감사
+1.  **수집기 획득 (Collector Acquisition)**: 
+    로그 확인: `Read Point 200 (E2E.ALARM) -> Value: true`.
+    *검증: 수집기가 값의 변화를 실제로 감지했는가?*
+2.  **알람 엔진 (Alarm Engine)**: 
+    로그 확인: `eval.should_trigger: 1` 및 `Publishing alarm event to Redis...`.
+    *검증: 위반 사항을 정확히 판단했는가?*
+3.  **Redis 전송 (Redis Dispatch)**: 
+    확인: `docker exec docker-redis-1 redis-cli MONITOR`.
+    로그 확인: `PUBLISH "alarms:all"`.
+    *검증: 이벤트가 네트워크 상에 게시되었는가?*
+4.  **게이트웨이 수신 (Gateway Reception)**: 
+    로그 확인: `[INFO] Received alarm event for rule_id: 200`.
+    *검증: 게이트웨이가 이벤트를 수신했는가?*
+5.  **타겟 전송 (Target Dispatch)**: 
+    로그 확인: `Target result: [HTTP Target] success=1`.
+    *검증: 데이터가 최종 목적지에 도달했는가?*
 
 ---
 
-## 5. Phase 4: Data Content Verification (Final Audit)
+## 5. 4단계: 데이터 내용 검증 (최준 감사)
 
-Finally, we verify that the **content** of the exported data is correct.
+마지막으로 전송된 데이터의 **내용**이 정확한지 확인합니다.
 
-1.  **Timestamp**: Check if `tm` is in `YYYY-MM-DD HH:mm:ss` format (KST).
-2.  **Identification**: Check if `bd` (site ID) matches `1`.
-3.  **Mapping**: Check if the field name is `ENVS_TEST.E2E_POINT`.
-4.  **Persistence**: Check the database for the final log.
+1.  **타임스탬프**: `tm` 필드가 KST 기준 `YYYY-MM-DD HH:mm:ss` 형식인지 확인합니다.
+2.  **식별 정보**: `bd` (사이트 ID)가 `1`과 일치하는지 확인합니다.
+3.  **매핑 정보**: 필드 이름이 `ENVS_TEST.E2E_POINT`로 변환되었는지 확인합니다.
+4.  **지속성**: DB에서 최종 전송 로그를 확인합니다.
     ```sql
     SELECT * FROM export_logs ORDER BY id DESC LIMIT 1;
     ```
