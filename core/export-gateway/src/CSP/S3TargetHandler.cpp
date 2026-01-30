@@ -471,6 +471,15 @@ Client::S3Config S3TargetHandler::buildS3Config(const json &config) const {
     std::string url = config["S3ServiceUrl"].get<std::string>();
     s3_config.endpoint = expandEnvironmentVariables(url);
 
+    // ✅ Virtual Host Style 자동 감지 (버킷명이 호스트에 포함된 경우)
+    if (!s3_config.bucket_name.empty() &&
+        s3_config.endpoint.find(s3_config.bucket_name + ".") !=
+            std::string::npos) {
+      s3_config.use_virtual_host_style = true;
+      LogManager::getInstance().Info("S3 Virtual Host Style 감지됨: " +
+                                     s3_config.endpoint);
+    }
+
     // URL에서 Region 추출 시도 (예: https://s3.ap-northeast-2.amazonaws.com)
     std::regex region_regex("s3\\.([a-z0-9-]+)\\.amazonaws\\.com");
     std::smatch match;
@@ -691,6 +700,11 @@ std::string S3TargetHandler::buildJsonContent(const AlarmMessage &alarm,
        config["body_template"].is_array())) {
     content = config["body_template"];
     expandTemplateVariables(content, alarm);
+
+    // ✅ 객체인 경우 배열로 래핑하여 일관성 유지
+    if (content.is_object()) {
+      return json::array({content}).dump(2);
+    }
     return content.dump(2);
   }
 
@@ -717,13 +731,12 @@ std::string S3TargetHandler::buildJsonContent(const AlarmMessage &alarm,
     }
   }
 
-  // 압축 메타데이터
   if (config.value("compression_enabled", false)) {
     content["_compression"] = "gzip";
     content["_compression_level"] = config.value("compression_level", 6);
   }
 
-  return content.dump(2);
+  return json::array({content}).dump(2);
 }
 
 std::unordered_map<std::string, std::string>

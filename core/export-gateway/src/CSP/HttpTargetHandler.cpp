@@ -17,6 +17,8 @@
 #include "CSP/HttpTargetHandler.h"
 #include "CSP/AlarmMessage.h"
 #include "Client/HttpClient.h"
+#include "Database/Entities/ExportLogEntity.h"
+#include "Export/ExportLogService.h"
 #include "Logging/LogManager.h"
 #include "Transform/PayloadTransformer.h"
 #include "Utils/ClientCacheManager.h"
@@ -438,6 +440,7 @@ HttpTargetHandler::executeWithRetry(const std::vector<ValueMessage> &values,
       result.response_time =
           std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
                                                                 start_time);
+
       return result;
     }
 
@@ -551,6 +554,11 @@ std::string HttpTargetHandler::buildRequestBody(const AlarmMessage &alarm,
   if (config.contains("body_template")) {
     json template_json = config["body_template"];
     expandTemplateVariables(template_json, alarm);
+
+    // ✅ 객체인 경우 배열로 래핑하여 일관성 유지
+    if (template_json.is_object()) {
+      return json::array({template_json}).dump();
+    }
     return template_json.dump();
   }
 

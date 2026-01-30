@@ -173,6 +173,17 @@ export const MainLayout: React.FC = () => {
                 <span className="menu-title">Export Gateway</span>
               </Link>
             </li>
+            <li className="menu-item">
+              <Link
+                to="/system/export-history"
+                className={`menu-link ${isActiveMenu('/system/export-history') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-history"></i>
+                </div>
+                <span className="menu-title">내보내기 이력</span>
+              </Link>
+            </li>
 
             {/* 데이터 관리 */}
             <li className="menu-item">
@@ -451,11 +462,12 @@ export const MainLayout: React.FC = () => {
                     location.pathname === '/devices/sites' ? '사이트 관리' : // 🆕 구체적인 경로 우선 매칭
                       location.pathname === '/system/tenants' ? '고객사 관리' : // 🆕 구체적인 경로 우선 매칭
                         location.pathname === '/system/export-gateways' ? '외부 연결 > Export Gateway' : // 🆕 외부 연결
-                          location.pathname.startsWith('/devices') ? '디바이스 관리' :
-                            location.pathname.includes('/protocols') ? '프로토콜 관리' :
-                              location.pathname.includes('/data') ? '데이터 관리' :
-                                location.pathname.includes('/alarms') ? '알람 관리' :
-                                  location.pathname.includes('/system') ? '시스템 관리' : '페이지'}
+                          location.pathname === '/system/export-history' ? '외부 연결 > 내보내기 이력' : // 🆕 내보내기 이력
+                            location.pathname.startsWith('/devices') ? '디바이스 관리' :
+                              location.pathname.includes('/protocols') ? '프로토콜 관리' :
+                                location.pathname.includes('/data') ? '데이터 관리' :
+                                  location.pathname.includes('/alarms') ? '알람 관리' :
+                                    location.pathname.includes('/system') ? '시스템 관리' : '페이지'}
             </div>
           </div>
 

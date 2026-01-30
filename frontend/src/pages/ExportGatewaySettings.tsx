@@ -33,7 +33,7 @@ const Card: React.FC<{ children: React.ReactNode; style?: React.CSSProperties; c
 // Sub-Components: Target Manager
 // =============================================================================
 
-const ExportTargetManager: React.FC = () => {
+const ExportTargetManager: React.FC<{ assignments: Record<number, Assignment[]>; gateways: Gateway[] }> = ({ assignments, gateways }) => {
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
     const [profiles, setProfiles] = useState<ExportProfile[]>([]);
@@ -64,10 +64,10 @@ const ExportTargetManager: React.FC = () => {
                 exportGatewayApi.getDataPoints(),
                 exportGatewayApi.getProfiles()
             ]);
-            setTargets(targetsRes.data || []);
-            setTemplates(templatesRes.data || []);
+            setTargets(extractItems(targetsRes.data));
+            setTemplates(extractItems(templatesRes.data));
             setAllPoints(pointsRes || []);
-            setProfiles(profilesRes.data || []);
+            setProfiles(extractItems(profilesRes.data));
         } catch (error) {
             console.error(error);
         } finally {
@@ -107,6 +107,80 @@ const ExportTargetManager: React.FC = () => {
             setHasMappingChanges(false);
         } catch (error) {
             console.error(error);
+        }
+    };
+
+    const handleTriggerManualExport = async (mapping: Partial<ExportTargetMapping>) => {
+        if (!mappingTargetId || !mapping.point_id) return;
+
+        const target = targets.find(t => String(t.id) === String(mappingTargetId));
+        const point = allPoints.find(p => String(p.id) === String(mapping.point_id));
+
+        if (!target || !point) {
+            await confirm({
+                title: '데이터 조회 실패',
+                message: '선택한 타겟 또는 포인트 정보를 찾을 수 없습니다. 페이지를 새로고침한 후 다시 시도해주세요.',
+                showCancelButton: false,
+                confirmButtonType: 'warning'
+            });
+            return;
+        }
+
+        const confirmed = await confirm({
+            title: '수동 데이터 전송',
+            message: `타겟 "${target.name}"으로 포인트 "${point.name}"의 현재 값을 즉시 전송하시겠습니까?`,
+            confirmText: '전송 시작',
+            cancelText: '취소',
+            confirmButtonType: 'primary'
+        });
+
+        if (!confirmed) return;
+
+        // Find the gateway ID assigned to this target's profile
+        let gatewayId: number | null = null;
+        if (target.profile_id) {
+            for (const [gwId, assignedList] of Object.entries(assignments)) {
+                if (assignedList.some(a => String(a.profile_id) === String(target.profile_id))) {
+                    gatewayId = parseInt(gwId);
+                    break;
+                }
+            }
+        }
+
+        if (!gatewayId) {
+            await confirm({
+                title: '게이트웨이 확인 실패',
+                message: '이 타겟의 프로파일이 할당된 게이트웨이를 찾을 수 없습니다. 게이트웨이 할당 상태를 확인해주세요.',
+                showCancelButton: false,
+                confirmButtonType: 'warning'
+            });
+            return;
+        }
+
+        try {
+            const res = await exportGatewayApi.triggerManualExport(gatewayId, {
+                target_name: target.name,
+                point_id: mapping.point_id,
+                command_id: `manual_${Date.now()}`
+            });
+
+            if (res.success) {
+                await confirm({
+                    title: '전송 명령 완료',
+                    message: '수동 전송 명령이 게이트웨이로 전달되었습니다. 전송 결과는 게이트웨이 로그를 통해 확인할 수 있습니다.',
+                    showCancelButton: false,
+                    confirmButtonType: 'success'
+                });
+            } else {
+                throw new Error(res.message);
+            }
+        } catch (error: any) {
+            await confirm({
+                title: '전송 실패',
+                message: `수동 전송 중 오류가 발생했습니다: ${error.message}`,
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
         }
     };
 
@@ -1030,7 +1104,7 @@ const ExportTargetManager: React.FC = () => {
                                                             <div style={{ display: 'flex', alignItems: 'center' }}>
                                                                 <Select
                                                                     showSearch
-                                                                    style={{ width: '100%' }}
+                                                                    style={{ flex: 1 }}
                                                                     placeholder={mapping._temp_name ? `찾을 수 없음: "${mapping._temp_name}"` : "포인트 선택"}
                                                                     optionFilterProp="children"
                                                                     filterOption={(input, option: any) =>
@@ -1053,6 +1127,28 @@ const ExportTargetManager: React.FC = () => {
                                                                         label: `${p.name} [${p.address || '?'}] (${p.device_name})`
                                                                     }))}
                                                                 />
+                                                                {mapping.point_id && (
+                                                                    <Tooltip title="현재 데이터 즉시 전송 (Manual Export)">
+                                                                        <button
+                                                                            type="button"
+                                                                            className="mgmt-btn mgmt-btn-outline"
+                                                                            style={{
+                                                                                width: '32px',
+                                                                                height: '32px',
+                                                                                marginLeft: '8px',
+                                                                                padding: 0,
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'center',
+                                                                                color: 'var(--primary-600)',
+                                                                                borderColor: 'var(--primary-200)'
+                                                                            }}
+                                                                            onClick={() => handleTriggerManualExport(mapping)}
+                                                                        >
+                                                                            <i className="fas fa-paper-plane" />
+                                                                        </button>
+                                                                    </Tooltip>
+                                                                )}
                                                             </div>
                                                             {!mapping.point_id && mapping._temp_name && (
                                                                 <div style={{ color: '#ff4d4f', fontSize: '11px', marginTop: '2px' }}>
@@ -2638,6 +2734,401 @@ const GatewayList: React.FC<{
     );
 };
 
+
+// =============================================================================
+// Sub-Components: Manual Test Manager
+// =============================================================================
+
+const ManualTestManager: React.FC<{ assignments: Record<number, Assignment[]>; gateways: Gateway[]; targets: ExportTarget[]; allPoints: DataPoint[] }> = ({ assignments, gateways, targets, allPoints }) => {
+    const [selectedGatewayId, setSelectedGatewayId] = useState<number | null>(null);
+    const [testMappings, setTestMappings] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [currentMapping, setCurrentMapping] = useState<any>(null);
+    const [testValue, setTestValue] = useState<string | number>('');
+    const [showJsonPreview, setShowJsonPreview] = useState(false);
+    const [editableJson, setEditableJson] = useState<string>('');
+    const { confirm } = useConfirmContext();
+
+    useEffect(() => {
+        if (!currentMapping) return;
+
+        const val = typeof testValue === 'string' ? parseFloat(testValue) || 0 : testValue;
+
+        // Construct standard payload
+        const jsonPayload = [
+            {
+                "bd": currentMapping.site_id || 1,
+                "ty": "num",
+                "nm": currentMapping.target_field_name,
+                "vl": val,
+                "il": "-",
+                "xl": "-",
+                "mi": [0],
+                "mx": [100],
+                "tm": `${new Date().toISOString().replace('T', ' ').split('.')[0]}.000`,
+                "st": 1,
+                "al": 0,
+                "des": "Manual Export Triggered"
+            }
+        ];
+
+        // Stringify with indentation, then collapse simple numeric arrays to single line
+        let formattedJson = JSON.stringify(jsonPayload, null, 2);
+
+        // Regex to find arrays that only contain numbers and are split across lines
+        // e.g., "mi": [\n  0\n] -> "mi": [0]
+        formattedJson = formattedJson.replace(/\[\s+([-+]?[0-9]*\.?[0-9]+)\s+\]/g, '[$1]');
+
+        setEditableJson(formattedJson);
+    }, [currentMapping, testValue]);
+
+    const fetchGatewayMappings = async (gwId: number) => {
+        setLoading(true);
+        try {
+            const gwAssignments = assignments[gwId] || [];
+            const profileIds = gwAssignments.map(a => String(a.profile_id));
+            const linkedTargets = targets.filter(t => profileIds.includes(String(t.profile_id)));
+
+            const pointGroups: Record<number, any> = {};
+            await Promise.all(linkedTargets.map(async (target) => {
+                const res = await exportGatewayApi.getTargetMappings(target.id);
+                const items = extractItems(res.data);
+                items.forEach((m: any) => {
+                    if (!pointGroups[m.point_id]) {
+                        pointGroups[m.point_id] = {
+                            ...m,
+                            target_names: []
+                        };
+                    }
+                    if (!pointGroups[m.point_id].target_names.some((tn: any) => tn.name === target.name)) {
+                        pointGroups[m.point_id].target_names.push({
+                            name: target.name,
+                            type: target.target_type
+                        });
+                    }
+                });
+            }));
+
+            // Sort by point name for better UX
+            const sortedMappings = Object.values(pointGroups).sort((a: any, b: any) => {
+                const nameA = allPoints.find(p => p.id === a.point_id)?.name || '';
+                const nameB = allPoints.find(p => p.id === b.point_id)?.name || '';
+                return nameA.localeCompare(nameB);
+            });
+
+            setTestMappings(sortedMappings);
+        } catch (error) {
+            console.error('Failed to fetch mappings for manual test:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (selectedGatewayId) {
+            fetchGatewayMappings(selectedGatewayId);
+        } else {
+            setTestMappings([]);
+        }
+    }, [selectedGatewayId]);
+
+    const handleOpenTest = (mapping: any) => {
+        setCurrentMapping(mapping);
+        // Get latest value from allPoints if available, or default to 0
+        const point = allPoints.find(p => p.id === mapping.point_id);
+        setTestValue(point?.latest_value || 0);
+        setIsModalOpen(true);
+    };
+
+    const handleSendTest = async () => {
+        if (!currentMapping || !selectedGatewayId) return;
+
+        setLoading(true);
+        try {
+            // Parse editable JSON to get any overrides (like al: 1)
+            let overrides: any = {};
+            try {
+                const parsed = JSON.parse(editableJson);
+                // Extract fields from the first object in array
+                const first = Array.isArray(parsed) ? parsed[0] : parsed;
+                if (first) {
+                    overrides = {
+                        al: first.al,
+                        st: first.st,
+                        des: first.des,
+                        ty: first.ty,
+                        il: first.il,
+                        xl: first.xl
+                    };
+                }
+            } catch (e) {
+                console.error("Failed to parse JSON for overrides", e);
+            }
+
+            // Trigger manual export to ALL targets associated with this point
+            const res = await exportGatewayApi.triggerManualExport(selectedGatewayId, {
+                target_name: "ALL",
+                point_id: currentMapping.point_id,
+                value: typeof testValue === 'string' ? parseFloat(testValue) : testValue,
+                ...overrides
+            });
+
+            if (res.success) {
+                await confirm({
+                    title: '전송 요청 성공',
+                    message: `데이터 "${testValue}"가 관련 타겟(${currentMapping.target_names.map((t: any) => t.name).join(', ')})으로 전송 요청되었습니다.`,
+                    showCancelButton: false,
+                    confirmButtonType: 'success'
+                });
+                setIsModalOpen(false);
+            } else {
+                await confirm({
+                    title: '전송 실패',
+                    message: res.message || '데이터 전송에 실패했습니다.',
+                    showCancelButton: false,
+                    confirmButtonType: 'danger'
+                });
+            }
+        } catch (error) {
+            await confirm({
+                title: '에러',
+                message: '수동 전송 요청 중 오류가 발생했습니다.',
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, overflow: 'auto', paddingBottom: '30px' }}>
+            <Card style={{ padding: '24px 24px 40px 24px', minHeight: 'fit-content' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <div>
+                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>수동 데이터 전송 테스트</h3>
+                        <p style={{ margin: '4px 0 0', color: 'var(--neutral-500)', fontSize: '13px' }}>등록된 게이트웨이의 매핑 정보를 기반으로 데이터를 수동으로 전송해 봅니다.</p>
+                    </div>
+                    <Space size="large">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span style={{ fontWeight: 600, fontSize: '14px' }}>게이트웨이 선택:</span>
+                            <Select
+                                style={{ width: 250 }}
+                                placeholder="게이트웨이를 선택하세요"
+                                value={selectedGatewayId}
+                                onChange={setSelectedGatewayId}
+                                size="large"
+                            >
+                                {gateways.map(gw => (
+                                    <Select.Option key={gw.id} value={gw.id}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <i className="fas fa-server" style={{ color: gw.live_status?.status === 'online' ? 'var(--success-500)' : 'var(--neutral-400)' }} />
+                                            {gw.name}
+                                        </div>
+                                    </Select.Option>
+                                ))}
+                            </Select>
+                        </div>
+                        <Button
+                            icon={<i className="fas fa-sync-alt" />}
+                            onClick={() => selectedGatewayId && fetchGatewayMappings(selectedGatewayId)}
+                            disabled={!selectedGatewayId || loading}
+                        >
+                            새로고침
+                        </Button>
+                    </Space>
+                </div>
+
+                {!selectedGatewayId ? (
+                    <div style={{ padding: '100px', textAlign: 'center', background: 'var(--neutral-50)', borderRadius: '12px', border: '1px dashed var(--neutral-300)' }}>
+                        <i className="fas fa-mouse-pointer" style={{ fontSize: '48px', color: 'var(--neutral-300)', marginBottom: '16px' }} />
+                        <div style={{ fontSize: '15px', color: 'var(--neutral-500)', fontWeight: 600 }}>테스트를 진행할 게이트웨이를 선택해 주세요.</div>
+                    </div>
+                ) : loading && testMappings.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '100px' }}>
+                        <i className="fas fa-spinner fa-spin fa-2x" style={{ color: 'var(--primary-500)' }} />
+                        <p style={{ marginTop: '16px', color: 'var(--neutral-500)' }}>매핑 정보 로딩 중...</p>
+                    </div>
+                ) : (
+                    <div style={{
+                        border: '1px solid var(--neutral-200)',
+                        borderRadius: '12px',
+                        overflowX: 'auto',
+                        overflowY: 'scroll',
+                        background: 'white',
+                        maxHeight: '380px',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                        position: 'relative',
+                        marginBottom: '30px'
+                    }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+                            <thead style={{ background: 'var(--neutral-100)', position: 'sticky', top: 0, zIndex: 10 }}>
+                                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--neutral-200)' }}>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>포인트 정보</th>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>전송 대상 (Multi-Target)</th>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>전송 필드명</th>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)' }}>Building ID</th>
+                                    <th style={{ padding: '12px 16px', background: 'var(--neutral-100)', textAlign: 'center' }}>조작</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {testMappings.map((m, idx) => {
+                                    const point = allPoints.find(p => p.id === m.point_id);
+                                    return (
+                                        <tr key={idx} style={{ borderBottom: '1px solid var(--neutral-50)', transition: 'background 0.2s' }}>
+                                            <td style={{ padding: '12px 16px' }}>
+                                                <div style={{ fontWeight: 600, color: 'var(--primary-600)' }}>{point?.name || `Point #${m.point_id}`}</div>
+                                                <div style={{ fontSize: '11px', color: 'var(--neutral-400)' }}>{point?.device_name}</div>
+                                            </td>
+                                            <td style={{ padding: '12px 16px' }}>
+                                                <div style={{ fontWeight: 600, color: 'var(--neutral-800)', marginBottom: '4px' }}>
+                                                    {m.target_names?.[0]?.name?.split('(')[0]?.trim() || 'Unknown Target'}
+                                                    {m.target_names?.length > 1 && <span style={{ color: 'var(--neutral-400)', fontSize: '12px', fontWeight: 400, marginLeft: '4px' }}>외 {m.target_names.length - 1}건</span>}
+                                                </div>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                    {m.target_names && m.target_names.map((tn: any, i: number) => (
+                                                        <Tag key={i} color="blue" style={{ fontSize: '10px', margin: 0, padding: '0 4px', borderRadius: '4px' }}>
+                                                            {tn.type}
+                                                        </Tag>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '12px 16px' }}><code>{m.target_field_name}</code></td>
+                                            <td style={{ padding: '12px 16px' }}><Tag>{m.site_id || '-'}</Tag></td>
+                                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                                <Button
+                                                    type="primary"
+                                                    size="small"
+                                                    icon={<i className="fas fa-paper-plane" />}
+                                                    onClick={() => handleOpenTest(m)}
+                                                >
+                                                    전송 테스트
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {testMappings.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
+                                            할당된 매핑 정보가 없습니다. 해당 게이트웨이의 데이터 매핑 설정을 확인해 주세요.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )
+                }
+            </Card >
+
+            <Modal
+                title={
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '95%' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <i className="fas fa-flask" style={{ color: 'var(--primary-500)' }} />
+                            <span>데이터 전송 테스트 (Multi-Target)</span>
+                        </div>
+                        <Button
+                            size="small"
+                            icon={<i className="fas fa-code" />}
+                            onClick={() => setShowJsonPreview(!showJsonPreview)}
+                            type={showJsonPreview ? "primary" : "default"}
+                        >
+                            전송 데이터 확인
+                        </Button>
+                    </div>
+                }
+                open={isModalOpen}
+                onCancel={() => setIsModalOpen(false)}
+                footer={[
+                    <Button key="cancel" onClick={() => setIsModalOpen(false)}>취소</Button>,
+                    <Button key="send" type="primary" icon={<i className="fas fa-paper-plane" />} loading={loading} onClick={handleSendTest}>
+                        모든 타겟으로 전송
+                    </Button>
+                ]}
+                width={showJsonPreview ? 800 : 450}
+                centered
+                destroyOnClose
+            >
+                {currentMapping && (
+                    <div style={{ display: 'flex', flexDirection: showJsonPreview ? 'row' : 'column', gap: '20px', padding: '10px 0' }}>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div style={{ background: 'var(--neutral-50)', padding: '16px', borderRadius: '8px', fontSize: '13px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <span style={{ color: 'var(--neutral-500)' }}>대상 타겟:</span>
+                                    <span style={{ fontWeight: 600, textAlign: 'right' }}>
+                                        {currentMapping.target_names && currentMapping.target_names.map((t: any) => t.name).join(', ')}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <span style={{ color: 'var(--neutral-500)' }}>전송 필드:</span>
+                                    <span style={{ fontWeight: 600, color: 'var(--primary-600)' }}>{currentMapping.target_field_name}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--neutral-500)' }}>원본 포인트:</span>
+                                    <span style={{ fontWeight: 600 }}>{allPoints.find(p => p.id === currentMapping.point_id)?.name || currentMapping.point_id}</span>
+                                </div>
+                            </div>
+
+                            <Form layout="vertical">
+                                <Form.Item
+                                    label={<span style={{ fontWeight: 700 }}>전송할 데이터 값 (Override)</span>}
+                                    required
+                                    extra="실제 포인트의 최근 값을 불러왔습니다. 변경하여 전송할 수 있습니다."
+                                >
+                                    <Input
+                                        size="large"
+                                        type="number"
+                                        value={testValue}
+                                        onChange={e => setTestValue(e.target.value)}
+                                        placeholder="숫자 값을 입력하세요"
+                                        style={{ width: '100%' }}
+                                        autoFocus
+                                    />
+                                </Form.Item>
+                            </Form>
+                        </div>
+
+                        {showJsonPreview && (
+                            <div style={{ flex: 1, borderLeft: '1px solid var(--neutral-200)', paddingLeft: '20px' }}>
+                                <div style={{ fontWeight: 700, marginBottom: '8px', fontSize: '12px', color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
+                                    전송 페이로드 미리보기 (C++ ENGINE FORMAT)
+                                </div>
+                                <div style={{ position: 'relative' }}>
+                                    <Input.TextArea
+                                        value={editableJson}
+                                        onChange={e => setEditableJson(e.target.value)}
+                                        rows={15}
+                                        style={{
+                                            background: '#1e1e1e',
+                                            color: '#d4d4d4',
+                                            padding: '16px',
+                                            borderRadius: '8px',
+                                            fontFamily: 'monospace',
+                                            fontSize: '12px',
+                                            border: 'none',
+                                            resize: 'none'
+                                        }}
+                                        spellCheck={false}
+                                    />
+                                    <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '8px' }}>
+                                        <Tag color="blue" style={{ margin: 0, opacity: 0.7, fontSize: '10px' }}>EDITABLE</Tag>
+                                    </div>
+                                </div>
+                                <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--neutral-400)' }}>
+                                    * 위 JSON은 C++ 엔진에서 타겟으로 전송할 때 사용하는 기본 데이터 구조입니다. 템플릿 설정에 따라 최종 형태는 달라질 수 있습니다.
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </Modal>
+        </div >
+    );
+};
+
 // =============================================================================
 // Main Page: ExportGatewaySettings
 // =============================================================================
@@ -3146,7 +3637,8 @@ const ExportGatewayWizard: React.FC<{
                             template_id: finalTemplateId!,
                             is_enabled: true,
                             export_mode: transmissionMode,
-                            export_interval: transmissionMode === 'INTERVAL' ? 60 : 0
+                            export_interval: transmissionMode === 'INTERVAL' ? 60 : 0,
+                            execution_order: config.execution_order || 0
                         };
                         const targetRes = await exportGatewayApi.createTarget(targetPayload);
                         if (targetRes.data?.id) targetIds.push(targetRes.data.id);
@@ -4048,7 +4540,7 @@ const GatewayDetailModal: React.FC<{
 };
 
 const ExportGatewaySettings: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'gateways' | 'profiles' | 'targets' | 'templates' | 'schedules'>('gateways');
+    const [activeTab, setActiveTab] = useState<'gateways' | 'profiles' | 'targets' | 'templates' | 'schedules' | 'manual-test'>('gateways');
     const [gateways, setGateways] = useState<Gateway[]>([]);
     const [assignments, setAssignments] = useState<Record<number, Assignment[]>>({});
     const [targets, setTargets] = useState<ExportTarget[]>([]);
@@ -4076,7 +4568,7 @@ const ExportGatewaySettings: React.FC = () => {
         if (gateways.length === 0) setLoading(true);
         try {
             const [gwRes, targetsRes, templatesRes, pointsRes, profilesRes, schedulesRes] = await Promise.all([
-                exportGatewayApi.getGateways({ page, limit: 4 }),
+                exportGatewayApi.getGateways({ page, limit: 10 }),
                 exportGatewayApi.getTargets(),
                 exportGatewayApi.getTemplates(),
                 exportGatewayApi.getDataPoints(),
@@ -4260,6 +4752,22 @@ const ExportGatewaySettings: React.FC = () => {
                         >
                             <i className="fas fa-calendar-alt" style={{ marginRight: '8px' }} /> 스케줄 관리
                         </button>
+                        <button
+                            className={`nav-tab ${activeTab === 'manual-test' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('manual-test')}
+                            style={{
+                                padding: '12px 16px',
+                                border: 'none',
+                                background: 'none',
+                                borderBottom: activeTab === 'manual-test' ? '2px solid var(--primary-500)' : '2px solid transparent',
+                                color: activeTab === 'manual-test' ? 'var(--primary-600)' : 'var(--neutral-500)',
+                                fontWeight: activeTab === 'manual-test' ? 600 : 400,
+                                cursor: 'pointer',
+                                fontSize: '14px'
+                            }}
+                        >
+                            <i className="fas fa-flask" style={{ marginRight: '8px' }} /> 수동 테스트
+                        </button>
                     </div>
 
                     <div className="tab-actions">
@@ -4408,9 +4916,10 @@ const ExportGatewaySettings: React.FC = () => {
                     )}
 
                     {activeTab === 'profiles' && <ExportProfileBuilder />}
-                    {activeTab === 'targets' && <ExportTargetManager />}
+                    {activeTab === 'targets' && <ExportTargetManager assignments={assignments} gateways={gateways} />}
                     {activeTab === 'templates' && <PayloadTemplateManager />}
                     {activeTab === 'schedules' && <ExportScheduleManager />}
+                    {activeTab === 'manual-test' && <ManualTestManager assignments={assignments} gateways={gateways} targets={targets} allPoints={allPoints} />}
                 </div>
 
                 {/* Replacement: Wizard used for both Register & Edit */}

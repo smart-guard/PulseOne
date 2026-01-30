@@ -119,6 +119,33 @@ export interface ExportSchedule {
     target_name?: string;
 }
 
+export interface ExportLog {
+    id: number;
+    log_type: string;
+    service_id: number;
+    target_id: number;
+    target_name?: string;
+    mapping_id: number;
+    point_id: number;
+    source_value: string;
+    converted_value: string;
+    status: 'success' | 'failure' | 'pending';
+    http_status_code: number;
+    error_message: string;
+    error_code: string;
+    response_data: string;
+    processing_time_ms: number;
+    timestamp: string;
+    profile_name?: string;
+    gateway_name?: string;
+}
+
+export interface ExportLogStatistics {
+    total: number;
+    success: number;
+    failure: number;
+}
+
 export interface DataPoint {
     id: number;
     name: string;
@@ -128,6 +155,7 @@ export interface DataPoint {
     data_type: string;
     unit: string;
     address?: string; // PLC Address (e.g., 40001)
+    latest_value?: any; // [NEW] For UI testing
 }
 
 // =============================================================================
@@ -182,6 +210,17 @@ export class ExportGatewayApiService {
 
     static async restartGatewayProcess(id: number): Promise<ApiResponse<any>> {
         return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${id}/restart`);
+    }
+
+    static async triggerManualExport(gatewayId: number, payload: {
+        target_name: string;
+        target_id?: number;
+        point_id: number;
+        command_id?: string;
+        value?: number;
+        [key: string]: any; // Allow extra fields like 'al', 'st', etc.
+    }): Promise<ApiResponse<any>> {
+        return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${gatewayId}/manual-export`, payload);
     }
 
     // -------------------------------------------------------------------------
@@ -295,6 +334,37 @@ export class ExportGatewayApiService {
     }
 
     // -------------------------------------------------------------------------
+    // Export Logs
+    // -------------------------------------------------------------------------
+    static async getExportLogs(params: {
+        target_id?: number;
+        gateway_id?: number;
+        status?: string;
+        log_type?: string;
+        date_from?: string;
+        date_to?: string;
+        target_type?: string;
+        search_term?: string;
+        page?: number;
+        limit?: number;
+    } = {}): Promise<ApiResponse<{ items: ExportLog[]; pagination: any }>> {
+        return apiClient.get<any>(`${this.EXPORT_URL}/logs`, params);
+    }
+
+    static async getExportLogStatistics(params: {
+        target_id?: number;
+        gateway_id?: number;
+        status?: string;
+        log_type?: string;
+        date_from?: string;
+        date_to?: string;
+        target_type?: string;
+        search_term?: string;
+    } = {}): Promise<ApiResponse<ExportLogStatistics>> {
+        return apiClient.get<ExportLogStatistics>(`${this.EXPORT_URL}/logs/statistics`, params);
+    }
+
+    // -------------------------------------------------------------------------
     // Shared / Utility
     // -------------------------------------------------------------------------
     static async getDataPoints(searchTerm: string = '', deviceId?: number): Promise<DataPoint[]> {
@@ -320,7 +390,8 @@ export class ExportGatewayApiService {
                 site_name: dp.site_name || 'System',
                 data_type: dp.data_type,
                 unit: dp.unit || '',
-                address: dp.address
+                address: dp.address,
+                latest_value: dp.latest_value // [NEW]
             }));
         } catch (error) {
             console.error('Failed to fetch data points:', error);

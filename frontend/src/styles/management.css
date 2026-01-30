@@ -399,7 +399,13 @@
 
 /* === 상태 표시 (Pills) === */
 .mgmt-status-pill {
+    display: inline-block;
+    width: auto;
+    min-width: 60px;
+    /* Minimum width for consistency */
+    max-width: 100%;
     padding: 2px 10px;
+    text-align: center;
     border-radius: var(--radius-full);
     font-size: var(--text-xs);
     font-weight: 600;

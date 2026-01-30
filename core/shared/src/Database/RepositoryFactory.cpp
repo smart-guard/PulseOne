@@ -50,8 +50,11 @@ namespace Database {
 // Adapter for DbLib Logger
 class PulseOneDbLogger : public DbLib::IDbLogger {
 public:
+  static std::atomic<bool> enabled;
   void log([[maybe_unused]] const std::string &category, int level,
            const std::string &message) override {
+    if (!enabled.load())
+      return;
     // Simple mapping: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
     auto &logger = LogManager::getInstance();
     switch (level) {
@@ -73,6 +76,8 @@ public:
     }
   }
 };
+std::atomic<bool> PulseOneDbLogger::enabled(true);
+static PulseOneDbLogger db_logger_adapter;
 
 // =============================================================================
 // 싱글톤 구현
@@ -175,7 +180,7 @@ bool RepositoryFactory::initialize() {
       db_config.influx_bucket =
           config_manager_->getOrDefault("INFLUX_BUCKET", "history");
 
-      static PulseOneDbLogger db_logger_adapter; // Keep alive
+      // static PulseOneDbLogger db_logger_adapter; // Moved to global scope
 
       if (!db_manager_->initialize(db_config, &db_logger_adapter)) {
         logger_->Error("Failed to initialize DatabaseManager");
@@ -230,6 +235,7 @@ void RepositoryFactory::shutdown() {
     // 데드락/Hang 위험이 있습니다.
 
     initialized_.store(false);
+    PulseOneDbLogger::enabled.store(false);
 
   } catch (...) {
     // 모든 예외 무시

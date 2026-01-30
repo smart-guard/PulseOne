@@ -25,6 +25,8 @@ services:
       - ../config:/app/config
       - ../core:/app/core
       - ../data:/app/data
+    networks:
+      - pulseone_network
 
   backend:
     build:
@@ -37,8 +39,6 @@ services:
       - ../config/.env
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
       rabbitmq:
         condition: service_started
@@ -62,6 +62,8 @@ services:
       - ../config:/app/config
       - ../core:/app/core
       - ../data:/app/data
+    networks:
+      - pulseone_network
 
   collector:
 
@@ -73,8 +75,6 @@ services:
     depends_on:
       rabbitmq:
         condition: service_started
-      redis:
-        condition: service_healthy
     environment:
       - REDIS_HOST=redis
       - REDIS_PRIMARY_HOST=redis
@@ -83,7 +83,6 @@ services:
       - SQLITE_PATH=/app/data/db/pulseone.db
       - RABBITMQ_HOST=rabbitmq
       - COLLECTOR_ID=1
-      - LOG_LEVEL=debug
       - LOG_LEVEL=debug
       - INFLUXDB_BUCKET=history
       - TZ=Asia/Seoul
@@ -94,6 +93,8 @@ services:
       - ../data:/app/data
       - ../config:/app/config
       - ../core:/app/core
+    networks:
+      - pulseone_network
     tty: true
 
   simulator-modbus:
@@ -107,6 +108,8 @@ services:
     command: node scripts/modbus_simulator.js
     ports:
       - "50502:50502"
+    networks:
+      - pulseone_network
 
   simulator-mqtt:
     image: node:20-slim
@@ -116,6 +119,8 @@ services:
       - TZ=Asia/Seoul
     volumes:
       - ../backend:/app/backend
+    networks:
+      - pulseone_network
     depends_on:
       - rabbitmq
     command: node scripts/mqtt_simulator.js
@@ -129,10 +134,14 @@ services:
       - "1883:1883"
     environment:
       - TZ=Asia/Seoul
+    networks:
+      - pulseone_network
 
   influxdb:
     image: influxdb:2.7
     restart: always
+    networks:
+      - pulseone_network
     ports:
       - "${INFLUXDB_PORT:-8086}:8086"
     environment:
@@ -163,19 +172,8 @@ services:
       retries: 5
     volumes:
       - ../data/sql/schema_postgres_minimal.sql:/docker-entrypoint-initdb.d/init.sql
-
-  redis:
-    image: redis:alpine
-    restart: always
-    environment:
-      - TZ=Asia/Seoul
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+    networks:
+      - pulseone_network
 
   export-gateway:
     build:
@@ -199,11 +197,20 @@ services:
       - ../data:/app/data
       - ../logs:/app/logs
       - shared_libs:/app/core/shared/lib
-    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev && ./core/export-gateway/bin/export-gateway --id 6"
-    tty: true
-    depends_on:
-      redis:
-        condition: service_healthy
+    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev && ./core/export-gateway/bin/export-gateway --id 6"
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 1G
+    networks:
+      - pulseone_network
+
+networks:
+  pulseone_network:
+    name: docker_default
+    external: true
 
 volumes:
   influxdb_data:

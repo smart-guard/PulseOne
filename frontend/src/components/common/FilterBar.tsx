@@ -15,8 +15,8 @@ export interface FilterConfig {
 
 interface FilterBarProps {
     searchPlaceholder?: string;
-    searchTerm: string;
-    onSearchChange: (value: string) => void;
+    searchTerm?: string;
+    onSearchChange?: (value: string) => void;
     filters: FilterConfig[];
     onReset: () => void;
     activeFilterCount: number;
@@ -27,7 +27,7 @@ interface FilterBarProps {
 
 export const FilterBar: React.FC<FilterBarProps> = ({
     searchPlaceholder = '검색...',
-    searchTerm,
+    searchTerm = '',
     onSearchChange,
     filters,
     onReset,
@@ -40,18 +40,20 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         <div className={`mgmt-filter-bar ${className}`}>
             {/* 필터 섹션: 검색 + 옵션들 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 1, minWidth: 0 }}>
-                <div className="mgmt-filter-group search">
-                    <div className="mgmt-search-wrapper">
-                        <i className="fas fa-search mgmt-search-icon"></i>
-                        <input
-                            type="text"
-                            className="mgmt-input mgmt-input-with-icon sm"
-                            placeholder={searchPlaceholder}
-                            value={searchTerm}
-                            onChange={(e) => onSearchChange(e.target.value)}
-                        />
+                {onSearchChange && (
+                    <div className="mgmt-filter-group search">
+                        <div className="mgmt-search-wrapper">
+                            <i className="fas fa-search mgmt-search-icon"></i>
+                            <input
+                                type="text"
+                                className="mgmt-input mgmt-input-with-icon sm"
+                                placeholder={searchPlaceholder}
+                                value={searchTerm}
+                                onChange={(e) => onSearchChange(e.target.value)}
+                            />
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {leftActions}
 

@@ -394,8 +394,8 @@ const std::string INSERT = R"(
         INSERT INTO export_logs (
             log_type, service_id, target_id, mapping_id, point_id,
             source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, client_info
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            response_data, http_status_code, processing_time_ms, timestamp, client_info
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
 const std::string UPDATE = R"(
