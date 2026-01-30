@@ -692,15 +692,16 @@ bool ExportLogRepository::save(ExportLogEntity &entity) {
     // INSERT INTO export_logs (
     //     log_type, service_id, target_id, mapping_id, point_id,
     //     source_value, converted_value, status, error_message, error_code,
-    //     response_data, http_status_code, processing_time_ms, client_info
-    // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    //     response_data, http_status_code, processing_time_ms, timestamp,
+    //     client_info
+    // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     std::vector<std::string> insert_order = {
         "log_type",           "service_id",    "target_id",
         "mapping_id",         "point_id",      "source_value",
         "converted_value",    "status",        "error_message",
         "error_code",         "response_data", "http_status_code",
-        "processing_time_ms", "client_info"};
+        "processing_time_ms", "timestamp",     "client_info"};
 
     // ✅ 순서대로 파라미터 치환
     for (const auto &key : insert_order) {
@@ -753,11 +754,31 @@ bool ExportLogRepository::update(const ExportLogEntity &entity) {
     auto params = entityToParams(entity);
     std::string query = SQL::ExportLog::UPDATE;
 
-    for (const auto &param : params) {
+    std::vector<std::string> update_order = {
+        "log_type",           "service_id",    "target_id",
+        "mapping_id",         "point_id",      "source_value",
+        "converted_value",    "status",        "error_message",
+        "error_code",         "response_data", "http_status_code",
+        "processing_time_ms", "timestamp",     "client_info"};
+
+    // ✅ 순서대로 파라미터 치환
+    for (const auto &key : update_order) {
       size_t pos = query.find('?');
       if (pos != std::string::npos) {
-        query.replace(
-            pos, 1, "'" + RepositoryHelpers::escapeString(param.second) + "'");
+        auto it = params.find(key);
+        if (it != params.end() && !it->second.empty()) {
+          query.replace(
+              pos, 1, "'" + RepositoryHelpers::escapeString(it->second) + "'");
+        } else {
+          // 빈 값 처리
+          if (key == "service_id" || key == "target_id" ||
+              key == "mapping_id" || key == "point_id" ||
+              key == "http_status_code" || key == "processing_time_ms") {
+            query.replace(pos, 1, "NULL");
+          } else {
+            query.replace(pos, 1, "''");
+          }
+        }
       }
     }
 
@@ -1733,6 +1754,15 @@ ExportLogRepository::entityToParams(const ExportLogEntity &entity) {
   params["response_data"] = entity.getResponseData();
   params["http_status_code"] = std::to_string(entity.getHttpStatusCode());
   params["processing_time_ms"] = std::to_string(entity.getProcessingTimeMs());
+
+  // ✅ 타임스탬프 (KST 기준 문자열로 변환)
+  auto tp = entity.getTimestamp();
+  std::time_t tt = std::chrono::system_clock::to_time_t(tp);
+  std::tm tm = *std::localtime(&tt); // 컨테이너 TZ=Asia/Seoul 반영
+  std::ostringstream oss;
+  oss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+  params["timestamp"] = oss.str();
+
   params["client_info"] = entity.getClientInfo();
 
   return params;

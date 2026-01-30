@@ -82,13 +82,24 @@ bool EventSubscriber::start() {
   // 3. 구독 채널 설정
   {
     std::lock_guard<std::mutex> lock(channel_mutex_);
-    subscribed_channels_ = config_.subscribe_channels;
+    for (const auto &channel : config_.subscribe_channels) {
+      if (std::find(subscribed_channels_.begin(), subscribed_channels_.end(),
+                    channel) == subscribed_channels_.end()) {
+        subscribed_channels_.push_back(channel);
+      }
+    }
+
     if (subscribed_channels_.empty()) {
       subscribed_channels_.push_back("alarms:all");
       LogManager::getInstance().Info(
           "구독 채널이 비어 있어 기본값(alarms:all) 추가");
     }
-    subscribed_patterns_ = config_.subscribe_patterns;
+    for (const auto &pattern : config_.subscribe_patterns) {
+      if (std::find(subscribed_patterns_.begin(), subscribed_patterns_.end(),
+                    pattern) == subscribed_patterns_.end()) {
+        subscribed_patterns_.push_back(pattern);
+      }
+    }
   }
 
   // 4. 스레드 시작
@@ -263,7 +274,8 @@ void EventSubscriber::routeMessage(const std::string &channel,
   }
 
   // 2. 기본 내장 핸들러 (커스텀 핸들러가 없거나 실패한 경우)
-  if (channel.find("alarms:") == 0 || channel.find("alarm:") == 0) {
+  if (channel.find("alarms:") == 0 || channel.find("alarm:") == 0 ||
+      channel.find("device:") == 0) {
     handleAlarmEvent(channel, message);
   } else if (channel.find("schedule:") == 0) {
     handleScheduleEvent(channel, message);
@@ -464,7 +476,6 @@ void EventSubscriber::workerLoop(int thread_index) {
     }
 
     try {
-      auto process_start = std::chrono::steady_clock::now();
 
       // 알람 처리 및 타겟 전송
       processAlarm(alarm);

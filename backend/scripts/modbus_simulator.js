@@ -20,17 +20,16 @@ let simData = {
     direction: 1
 };
 
-// 주기적으로 데이터 업데이트
+// Periodic data update (Removed random toggles for deterministic E2E testing)
 setInterval(() => {
-    // 알람 시뮬레이션을 위해 10초마다 디지털 값 토글
-    if (Math.random() > 0.8) simData.pv = simData.pv === 0 ? 1 : 0;
+    // We let manual triggers (force_modbus.js) control the state
 
-    // 아날로그 값 변동
-    simData.sss += 1 * simData.direction;
+    // Slow analog movement (optional, but keep it stable)
+    simData.sss += 0.1 * simData.direction;
     if (simData.sss > 95 || simData.sss < 30) simData.direction *= -1;
 
-    simData.sbv = 36 + Math.random(); // 배터리 전압은 비교적 일정하게 유지
-}, 2000);
+    // simData.sbv = 36.5; // Keep stable
+}, 5000);
 
 const vector = {
     getCoil: (addr, unitID) => {

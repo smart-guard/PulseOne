@@ -59,6 +59,11 @@ struct ExportCoordinatorConfig {
   int max_concurrent_exports = 50;
   int export_timeout_seconds = 30;
 
+  // Batching Configuration
+  bool enable_alarm_batching = false;
+  int alarm_batch_latency_ms = 1000;
+  int alarm_batch_max_size = 100;
+
   // Subscription Mode
   std::string subscription_mode = "all"; // "all" or "selective"
 };
@@ -162,6 +167,8 @@ public:
                            const std::string & /*message*/);
   void handleConfigEvent(const std::string &channel,
                          const std::string &message);
+  void handleCommandEvent(const std::string &channel,
+                          const std::string &message);
 
   // Batch Processing Methods
   void flushAlarmBatch();

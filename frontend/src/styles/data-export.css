@@ -281,6 +281,17 @@
   color: var(--warning-700);
 }
 
+/* Force correct width for status pills in export history table */
+.export-history .mgmt-status-pill {
+  display: inline-block !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+  padding: 4px 10px !important;
+  text-align: center !important;
+}
+
 /* 진행률 표시 */
 .task-progress {
   display: flex;
@@ -513,60 +524,60 @@
   .tab-navigation {
     flex-direction: column;
   }
-  
+
   .form-row {
     flex-direction: column;
   }
-  
+
   .date-range-inputs {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .quick-dates {
     flex-wrap: wrap;
     justify-content: center;
   }
-  
+
   .filter-row {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .filter-row .form-select,
   .filter-row .form-input {
     min-width: auto;
   }
-  
+
   .task-header {
     flex-direction: column;
     gap: var(--space-3);
   }
-  
+
   .task-meta {
     justify-content: flex-start;
   }
-  
+
   .task-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
   }
-  
+
   .templates-header {
     flex-direction: column;
     gap: var(--space-3);
     align-items: stretch;
   }
-  
+
   .templates-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .template-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
   }
-  
+
   .form-actions {
     justify-content: stretch;
     flex-direction: column;
@@ -579,6 +590,7 @@
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -592,4 +604,3 @@
 .template-card {
   animation: slideIn 0.3s ease-out;
 }
-

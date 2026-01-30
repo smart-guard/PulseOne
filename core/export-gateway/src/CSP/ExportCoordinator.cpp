@@ -14,14 +14,23 @@
 #include "CSP/ExportCoordinator.h"
 #include "DatabaseManager.hpp"
 #include <algorithm>
+#include <chrono>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <numeric>
 
+#include "CSP/AlarmMessage.h"
+#include "CSP/DynamicTargetManager.h"
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/DeviceRepository.h"
+#include "Database/Repositories/ExportTargetMappingRepository.h"
+#include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/RepositoryFactory.h"
+#include "Export/ExportTypes.h"
+#include "Logging/LogManager.h"
+#include "Utils/ConfigManager.h"
 
 namespace PulseOne {
 namespace Coordinator {
@@ -64,6 +73,24 @@ public:
   }
 
   std::string getName() const override { return "ConfigEventHandler"; }
+};
+
+// CommandEventHandler 내부 클래스
+class CommandEventHandler : public PulseOne::Event::IEventHandler {
+private:
+  ExportCoordinator *coordinator_;
+
+public:
+  explicit CommandEventHandler(ExportCoordinator *coordinator)
+      : coordinator_(coordinator) {}
+
+  bool handleEvent(const std::string &channel,
+                   const std::string &message) override {
+    coordinator_->handleCommandEvent(channel, message);
+    return true;
+  }
+
+  std::string getName() const override { return "CommandEventHandler"; }
 };
 
 // =============================================================================
@@ -455,6 +482,13 @@ bool ExportCoordinator::initializeEventSubscriber() {
     event_subscriber_->registerHandler("config:*", config_handler);
     event_subscriber_->registerHandler("target:*", config_handler);
 
+    // ✅ 명령 이벤트 핸들러 등록 (Manual Export 등)
+    // cmd:* 패턴이 모든 명령을 처리하므로 게이트웨이 전용 채널을 별도로 구독할
+    // 필요 없음
+    auto command_handler = std::make_shared<CommandEventHandler>(this);
+    event_subscriber_->registerHandler("cmd:*", command_handler);
+    event_subscriber_->subscribePattern("cmd:*");
+
     // EventSubscriber 시작
     if (!event_subscriber_->start()) {
       LogManager::getInstance().Error("EventSubscriber 시작 실패");
@@ -613,6 +647,92 @@ void ExportCoordinator::handleConfigEvent(const std::string &channel,
 
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("설정 이벤트 처리 실패: " +
+                                    std::string(e.what()));
+  }
+}
+
+void ExportCoordinator::handleCommandEvent(const std::string &channel,
+                                           const std::string &message) {
+  try {
+    LogManager::getInstance().Info("Gateway 명령 수신: " + message);
+
+    auto j = nlohmann::json::parse(message);
+    std::string command = j.value("command", "");
+    nlohmann::json payload =
+        j.contains("payload") ? j["payload"] : nlohmann::json::object();
+
+    if (command == "manual_export") {
+      std::string target_name = payload.value("target_name", "");
+      int target_id = payload.value("target_id", 0);
+
+      if (target_name == "ALL" || target_name == "all") {
+        auto target_manager = getTargetManager();
+        if (target_manager) {
+          auto all_targets = target_manager->getAllTargets();
+          bool overall_success = true;
+          std::string error_summary = "";
+
+          for (const auto &target : all_targets) {
+            if (!target.enabled)
+              continue;
+            auto res = handleManualExport(target.name, payload);
+            if (!res.success) {
+              overall_success = false;
+              if (!error_summary.empty())
+                error_summary += ", ";
+              error_summary += target.name + ": " + res.error_message;
+            }
+          }
+
+          if (redis_client_ && redis_client_->isConnected()) {
+            nlohmann::json res_payload;
+            res_payload["success"] = overall_success;
+            res_payload["error"] = error_summary;
+            res_payload["target"] = "ALL";
+            res_payload["command_id"] = payload.value("command_id", "");
+            nlohmann::json res_msg;
+            res_msg["command"] = "manual_export_result";
+            res_msg["payload"] = res_payload;
+            redis_client_->publish("cmd:gateway:result", res_msg.dump());
+          }
+        }
+        return;
+      }
+
+      if (target_name.empty() && target_id > 0 && target_repo_) {
+        auto target = target_repo_->findById(target_id);
+        if (target.has_value()) {
+          target_name = target->getName();
+        }
+      }
+
+      if (target_name.empty()) {
+        LogManager::getInstance().Error(
+            "수동 전송 실패: 타겟 이름 또는 ID가 없습니다.");
+        return;
+      }
+
+      auto result = handleManualExport(target_name, payload);
+
+      // Publish result to redis so UI can show it
+      if (redis_client_ && redis_client_->isConnected()) {
+        nlohmann::json res_payload;
+        res_payload["success"] = result.success;
+        res_payload["error"] = result.error_message;
+        res_payload["target"] = target_name;
+        res_payload["command_id"] = payload.value("command_id", "");
+
+        nlohmann::json res_msg;
+        res_msg["command"] = "manual_export_result";
+        res_msg["payload"] = res_payload;
+
+        redis_client_->publish("cmd:gateway:result", res_msg.dump());
+      }
+    } else {
+      LogManager::getInstance().Warn("지원되지 않는 명령: " + command);
+    }
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error("handleCommandEvent 에러: " +
                                     std::string(e.what()));
   }
 }
@@ -901,20 +1021,99 @@ ExportCoordinator::handleManualExport(const std::string &target_name,
 
   ExportResult result;
   result.target_name = target_name;
+  result.success = false;
 
   try {
-    LogManager::getInstance().Info("수동 전송: " + target_name);
+    int point_id = data.value("point_id", 0);
+    if (point_id <= 0) {
+      result.error_message = "유효하지 않은 point_id";
+      return result;
+    }
 
+    // 1. Redis에서 최신값 조회
+    if (!redis_client_ || !redis_client_->isConnected()) {
+      result.error_message = "Redis 연결 안 됨";
+      return result;
+    }
+
+    std::string redis_key = "point:" + std::to_string(point_id) + ":latest";
+    std::string val_json_str = redis_client_->get(redis_key);
+    if (val_json_str.empty()) {
+      result.error_message = "Redis 데이터를 찾을 수 없음: " + redis_key;
+      return result;
+    }
+
+    auto val_json = nlohmann::json::parse(val_json_str);
+
+    // 2. AlarmMessage 준비 (매핑 및 템플릿 지원)
+    PulseOne::CSP::AlarmMessage alarm;
+    alarm.point_id = point_id;
+    alarm.site_id = val_json.value("bd", val_json.value("site_id", 0));
+    alarm.nm = val_json.value("nm", val_json.value("point_name", ""));
+
+    // 값 파싱 (문자열 또는 숫자 대응) 및 페이로드 오버라이드 지원
+    try {
+      if (data.contains("value")) {
+        if (data["value"].is_string()) {
+          alarm.vl = std::stod(data["value"].get<std::string>());
+        } else if (data["value"].is_number()) {
+          alarm.vl = data["value"].get<double>();
+        } else {
+          alarm.vl = 0.0;
+        }
+      } else if (val_json.contains("vl") && val_json["vl"].is_string()) {
+        alarm.vl = std::stod(val_json["vl"].get<std::string>());
+      } else {
+        alarm.vl = val_json.value("vl", 0.0);
+      }
+    } catch (...) {
+      alarm.vl = 0.0;
+    }
+
+    // 타임스탬프 처리
+    long long tm_ms = val_json.value("tm_ms", 0LL);
+    if (tm_ms > 0) {
+      auto tp = std::chrono::system_clock::time_point(
+          std::chrono::milliseconds(tm_ms));
+      alarm.tm = PulseOne::CSP::AlarmMessage::time_to_csharp_format(tp, true);
+    } else {
+      alarm.tm =
+          PulseOne::CSP::AlarmMessage::current_time_to_csharp_format(true);
+    }
+
+    // Allows override of al, st, and des from manual command data
+    alarm.al = data.value("al", 0);
+    alarm.st = data.value("st", val_json.value("st", 1));
+    alarm.des = data.value("des", std::string("Manual Export Triggered"));
+
+    // 3. DynamicTargetManager를 통해 전송 (매핑 포인트 이름 자동 적용)
     auto target_manager = getTargetManager();
     if (!target_manager) {
       result.error_message = "TargetManager 초기화 안 됨";
       return result;
     }
 
-    LogManager::getInstance().Info("수동 전송 완료: " + target_name);
+    LogManager::getInstance().Info("수동 전송 시작: " + target_name +
+                                   " (Point=" + std::to_string(point_id) + ")");
+
+    PulseOne::CSP::TargetSendResult send_res =
+        target_manager->sendAlarmToTarget(target_name, alarm);
+
+    // 4. 결과 변환 및 통계 업데이트
+    result = convertTargetSendResult(send_res);
+    updateStats(result);
+    // ✅ 수동 전송 기록 로그 저장 (UI 히스토리용)
+    logExportResult(result, &alarm);
+
+    if (result.success) {
+      LogManager::getInstance().Info("수동 전송 완료: " + target_name);
+    } else {
+      LogManager::getInstance().Error("수동 전송 실패 [" + target_name +
+                                      "]: " + result.error_message);
+    }
 
   } catch (const std::exception &e) {
-    result.error_message = "수동 전송 실패: " + std::string(e.what());
+    result.error_message = "수동 전송 중 예외: " + std::string(e.what());
     LogManager::getInstance().Error(result.error_message);
   }
 
@@ -946,7 +1145,8 @@ void ExportCoordinator::logExportResult(
         static_cast<int>(result.processing_time.count()));
 
     if (alarm_message) {
-      log_entity.setSourceValue(alarm_message->to_json().dump());
+      log_entity.setSourceValue(
+          nlohmann::json::array({alarm_message->to_json()}).dump());
     }
 
     log_repo_->save(log_entity);

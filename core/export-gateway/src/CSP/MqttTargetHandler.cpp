@@ -404,6 +404,7 @@ bool MqttTargetHandler::connectToBroker(const json &config) {
     connection_attempts_++;
 
     auto start_time = steady_clock::now();
+    (void)start_time; // Suppress unused warning in Mock mode
 
     try {
       LogManager::getInstance().Info(
@@ -488,6 +489,7 @@ bool MqttTargetHandler::connectToBroker(const json &config) {
 
 #else
       // Mock 모드
+      (void)config;
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
       if (broker_uri_.empty() ||
@@ -606,6 +608,8 @@ TargetSendResult MqttTargetHandler::publishMessage(const std::string &topic,
 
 #else
     // Mock 모드
+    (void)qos;
+    (void)retain;
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
     result.success = true;
@@ -687,9 +691,8 @@ std::string MqttTargetHandler::generateTopic(const AlarmMessage &alarm,
   return expandTemplateVariables(topic_pattern, alarm);
 }
 
-std::string
-MqttTargetHandler::generatePayload(const AlarmMessage &alarm,
-                                   const json &config) const {
+std::string MqttTargetHandler::generatePayload(const AlarmMessage &alarm,
+                                               const json &config) const {
   std::string format = config.value("message_format", "json");
 
   if (format == "json") {
@@ -773,9 +776,8 @@ MqttTargetHandler::expandTemplateVariables(const std::string &template_str,
   return result;
 }
 
-std::string
-MqttTargetHandler::createJsonMessage(const AlarmMessage &alarm,
-                                     const json &config) const {
+std::string MqttTargetHandler::createJsonMessage(const AlarmMessage &alarm,
+                                                 const json &config) const {
   json message;
 
   message["bd"] = alarm.bd;
@@ -798,9 +800,8 @@ MqttTargetHandler::createJsonMessage(const AlarmMessage &alarm,
   return message.dump();
 }
 
-std::string
-MqttTargetHandler::createTextMessage(const AlarmMessage &alarm,
-                                     const json &config) const {
+std::string MqttTargetHandler::createTextMessage(const AlarmMessage &alarm,
+                                                 const json &config) const {
   std::ostringstream text;
   std::string format = config.value("text_format", "default");
 

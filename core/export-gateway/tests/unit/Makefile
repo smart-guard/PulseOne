@@ -39,6 +39,8 @@ INCLUDES += -I$(SHARED_INCLUDE_DIR)/Client
 INCLUDES += -I$(SHARED_INCLUDE_DIR)/Security
 INCLUDES += -I$(SHARED_INCLUDE_DIR)/Data
 INCLUDES += -I$(PROJECT_ROOT)/core/collector/include
+INCLUDES += -I$(SHARED_DIR)/modules/DbLib/include
+INCLUDES += -I$(SHARED_DIR)/modules/LogLib/include
 INCLUDES += -I/usr/include/hiredis
 INCLUDES += -I/usr/local/include
 
@@ -75,6 +77,7 @@ ifeq ($(HAS_SHARED),1)
     SHARED_LIBS += -lpulseone-client
     SHARED_LIBS += -lpulseone-common
     SHARED_LIBS += -lpulseone-security
+    SHARED_LIBS += -lpulseone-dblib
 endif
 
 UTILITY_LIBS =
@@ -115,7 +118,7 @@ ifeq ($(HAS_PAHO_MQTT),1)
     UTILITY_LIBS += -lpaho-mqttpp3 -lpaho-mqtt3a
 endif
 
-BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
+BASIC_LIBS = -lpthread -lm -ldl -lsqlite3 -lpqxx -lmysqlclient
 
 LDFLAGS = $(SHARED_LIBS) $(UTILITY_LIBS) $(BASIC_LIBS)
 
@@ -190,6 +193,9 @@ ifneq ($(wildcard test_performance.cpp),)
 endif
 ifneq ($(wildcard test_performance_e2e.cpp),)
     TEST_BINARIES += $(BIN_DIR)/test_performance_e2e
+endif
+ifneq ($(wildcard test_export_log_service.cpp),)
+    TEST_BINARIES += $(BIN_DIR)/test_export_log_service
 endif
 
 # =============================================================================
@@ -370,7 +376,7 @@ endif
 clean:
 	@echo -e "$(YELLOW)🧹 Cleaning unit tests$(NC)"
 	@rm -rf $(BUILD_DIR)
-	@rm -f $(BIN_DIR)/test_*
+	@rm -rf $(BIN_DIR)/test_*
 	@echo -e "$(GREEN)✅ Clean completed$(NC)"
 
 # =============================================================================
@@ -426,3 +432,12 @@ $(BIN_DIR)/test_export_coordinator: test_export_coordinator.cpp $(ALL_GATEWAY_OB
 test-coordinator: $(BIN_DIR)/test_export_coordinator
 	@echo -e "$(BLUE)🧪 Running ExportCoordinator tests$(NC)"
 	@$(BIN_DIR)/test_export_coordinator
+
+$(BIN_DIR)/test_export_log_service: test_export_log_service.cpp $(ALL_GATEWAY_OBJECTS) | $(BIN_DIR)
+	@echo -e "$(BLUE)🔨 Building ExportLogService test$(NC)"
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) test_export_log_service.cpp $(ALL_GATEWAY_OBJECTS) -o $@ $(LDFLAGS)
+	@echo -e "$(GREEN)✅ Built: $@$(NC)"
+
+test-log: $(BIN_DIR)/test_export_log_service
+	@echo -e "$(BLUE)🧪 Running ExportLogService tests$(NC)"
+	@export SQLITE_DB_PATH=$(UNIT_TEST_DIR)/test.db && $(BIN_DIR)/test_export_log_service && rm -f $(UNIT_TEST_DIR)/test.db

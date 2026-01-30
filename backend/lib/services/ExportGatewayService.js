@@ -34,6 +34,10 @@ class ExportGatewayService extends BaseService {
         return RepositoryFactory.getInstance().getExportScheduleRepository();
     }
 
+    get exportLogRepository() {
+        return RepositoryFactory.getInstance().getExportLogRepository();
+    }
+
     get db() {
         return RepositoryFactory.getInstance().getDatabaseFactory();
     }
@@ -64,8 +68,58 @@ class ExportGatewayService extends BaseService {
 
     async updateProfile(id, data, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.profileRepository.update(id, data, tenantId);
+            LogManager.api('INFO', `[UpdateProfile] ID: ${id}, points count: ${data.data_points?.length || 0}`);
+            const profile = await this.profileRepository.update(id, data, tenantId);
+
+            // ✅ 프로파일 수정 시, 해당 프로파일을 사용하는 모든 타겟의 매핑 정보도 동기화
+            if (profile && data.data_points) {
+                const points = Array.isArray(data.data_points) ? data.data_points : JSON.parse(data.data_points || '[]');
+                LogManager.api('INFO', `[UpdateProfile] Starting sync for profile ${id}`);
+                await this.syncProfileToTargets(id, points);
+            }
+
+            return profile;
         }, 'UpdateProfile');
+    }
+
+    /**
+     * 프로파일 변경 내용을 관련 타겟들의 물리적 매핑 테이블(export_target_mappings)에 동기화
+     */
+    async syncProfileToTargets(profileId, dataPoints) {
+        try {
+            LogManager.api('INFO', `[syncProfileToTargets] Profile: ${profileId}, Points: ${dataPoints.length}`);
+            // ✅ targetRepository를 사용하여 해당 프로파일을 사용하는 모든 타겟 조회
+            const targets = await this.targetRepository.query().where('profile_id', profileId);
+            const rows = Array.isArray(targets) ? targets : [];
+
+            LogManager.api('INFO', `[syncProfileToTargets] Found ${rows.length} targets to sync`);
+
+            for (const target of rows) {
+                LogManager.api('INFO', `[syncProfileToTargets] Syncing target: ${target.name} (ID: ${target.id})`);
+
+                // 기존 매핑 삭제 (동기화를 위해)
+                const deleted = await this.targetMappingRepository.deleteByTargetId(target.id);
+                LogManager.api('INFO', `[syncProfileToTargets] Deleted existing mappings for target ${target.id}: ${deleted}`);
+
+                for (const dp of dataPoints) {
+                    await this.targetMappingRepository.save({
+                        target_id: target.id,
+                        point_id: dp.id,
+                        site_id: dp.site_id || dp.building_id,
+                        target_field_name: dp.target_field_name || dp.name,
+                        target_description: '',
+                        conversion_config: {
+                            scale: dp.scale ?? 1,
+                            offset: dp.offset ?? 0
+                        },
+                        is_enabled: 1
+                    });
+                }
+            }
+        } catch (error) {
+            LogManager.api('ERROR', `[syncProfileToTargets] Error (Profile: ${profileId})`, { error: error.message, stack: error.stack });
+            throw error;
+        }
     }
 
     async deleteProfile(id, tenantId) {
@@ -459,6 +513,43 @@ class ExportGatewayService extends BaseService {
                 };
             }
         }, 'TestTargetConnection');
+    }
+
+    // =========================================================================
+    // Export Log Management
+    // =========================================================================
+
+    async getExportLogs(filters, page, limit) {
+        return await this.handleRequest(async () => {
+            return await this.exportLogRepository.findAll(filters, page, limit);
+        }, 'GetExportLogs');
+    }
+
+    async getExportLogStatistics(filters) {
+        return await this.handleRequest(async () => {
+            return await this.exportLogRepository.getStatistics(filters);
+        }, 'GetExportLogStatistics');
+    }
+
+    /**
+     * 수동 데이터 전송 트리거 (Redis C2)
+     */
+    async manualExport(gatewayId, payload) {
+        return await this.handleRequest(async () => {
+            // 1. 게이트웨이 확인
+            const gateway = await this.gatewayRepository.findById(gatewayId);
+            if (!gateway) throw new Error('Export Gateway not found');
+
+            // 2. 명령 전송 (Redis C2)
+            // payload expects: { target_name, point_id, command_id }
+            const result = await EdgeServerService.sendCommand(gatewayId, 'manual_export', payload);
+
+            return {
+                success: true,
+                message: `Gateway ${gateway.name} 수동 전송 명령 전송 완료`,
+                c2_result: result
+            };
+        }, 'ManualExport');
     }
 }
 

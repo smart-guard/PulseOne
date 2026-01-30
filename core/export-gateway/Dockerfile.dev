@@ -5,6 +5,8 @@ FROM gcc:12
 RUN apt-get update && apt-get install -y \
     cmake make build-essential \
     libsqlite3-dev sqlite3 \
+    libpq-dev libpqxx-dev \
+    libmariadb-dev-compat \
     curl git pkg-config \
     wget unzip vim nano \
     libssl-dev uuid-dev \

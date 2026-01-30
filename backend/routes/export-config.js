@@ -470,6 +470,23 @@ router.post('/gateways/:gatewayId/deploy', async (req, res) => {
 });
 
 /**
+ * @route POST /api/export/gateways/:gatewayId/manual-export
+ * @desc 수동 데이터 전송 트리거
+ */
+router.post('/gateways/:gatewayId/manual-export', async (req, res) => {
+    try {
+        // payload requires { target_name, point_id, command_id }
+        const response = await ExportGatewayService.manualExport(req.params.gatewayId, req.body);
+
+        LogManager.api('INFO', `수동 전송 명령 전송: G${req.params.gatewayId}, Point ${req.body.point_id}`);
+        res.json(response);
+    } catch (error) {
+        LogManager.api('ERROR', `수동 전송 전송 실패 (${req.params.gatewayId})`, { error: error.message });
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
  * @route POST /api/export/gateways/:gatewayId/start
  * @desc 게이트웨이 프로세스 시작
  */
@@ -510,6 +527,59 @@ router.post('/gateways/:gatewayId/restart', async (req, res) => {
         res.json(response);
     } catch (error) {
         LogManager.api('ERROR', `게이트웨이 재시작 실패 (${req.params.gatewayId})`, { error: error.message });
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// =============================================================================
+// Export Logs
+// =============================================================================
+
+/**
+ * @route GET /api/export/logs/statistics
+ * @desc Export Log 통계 조회
+ */
+router.get('/logs/statistics', async (req, res) => {
+    try {
+        const filters = {
+            target_id: req.query.target_id,
+            status: req.query.status,
+            log_type: req.query.log_type,
+            date_from: req.query.date_from,
+            date_to: req.query.date_to,
+            target_type: req.query.target_type,
+            search_term: req.query.search_term
+        };
+        const response = await ExportGatewayService.getExportLogStatistics(filters);
+        res.json(response);
+    } catch (error) {
+        LogManager.api('ERROR', '내보내기 로그 통계 조회 실패', { error: error.message });
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @route GET /api/export/logs
+ * @desc Export Log 목록 조회
+ */
+router.get('/logs', async (req, res) => {
+    try {
+        const filters = {
+            target_id: req.query.target_id,
+            status: req.query.status,
+            log_type: req.query.log_type,
+            date_from: req.query.date_from,
+            date_to: req.query.date_to,
+            target_type: req.query.target_type,
+            search_term: req.query.search_term
+        };
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+
+        const response = await ExportGatewayService.getExportLogs(filters, page, limit);
+        res.json(response);
+    } catch (error) {
+        LogManager.api('ERROR', '내보내기 로그 조회 실패', { error: error.message });
         res.status(500).json({ success: false, message: error.message });
     }
 });

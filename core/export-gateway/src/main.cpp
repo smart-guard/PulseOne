@@ -27,8 +27,13 @@
 #include "CSP/AlarmMessage.h"
 #include "CSP/DynamicTargetManager.h"
 #include "CSP/ExportCoordinator.h"
+#include "Export/ExportLogService.h"
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
+
+// ✅ 데이터베이스 및 레포지토리 팩토리 (추가)
+#include "Database/RepositoryFactory.h"
+#include "DatabaseManager.hpp"
 
 using namespace PulseOne;
 using namespace PulseOne::Coordinator;
@@ -543,6 +548,31 @@ int main(int argc, char **argv) {
     LogManager::getInstance().Info("Export Gateway 시작 (ID: " + gateway_id +
                                    ")");
 
+    // 1.1 데이터베이스 및 레포지토리 팩토리 초기화 (비동기 서비스용)
+    {
+      auto &db_manager = DbLib::DatabaseManager::getInstance();
+      DbLib::DatabaseConfig db_config;
+      db_config.type = "SQLITE";
+      db_config.sqlite_path = config.database_path;
+      db_config.use_redis = false;
+
+      if (!db_manager.initialize(db_config)) {
+        LogManager::getInstance().Error(
+            "DatabaseManager 초기화 실패 (경로: " + config.database_path + ")");
+        return 1;
+      }
+
+      if (!PulseOne::Database::RepositoryFactory::getInstance().initialize()) {
+        LogManager::getInstance().Error("RepositoryFactory 초기화 실패");
+        return 1;
+      }
+      LogManager::getInstance().Info(
+          "✅ 전역 데이터베이스 및 레포지토리 초기화 완료");
+    }
+
+    // 1.5 ExportLogService 시작 (비동기 로그 저장)
+    PulseOne::Export::ExportLogService::getInstance().start();
+
     // 게이트웨이 ID를 매니저에게도 전달 (테스트 모드용)
     try {
       if (gateway_id != "default") {
@@ -614,6 +644,7 @@ int main(int argc, char **argv) {
 
     // 7. 정리
     coordinator.stop();
+    PulseOne::Export::ExportLogService::getInstance().stop();
     std::cout << "\nExport Gateway 종료 완료 (ID: " << gateway_id << ")\n";
 
     return 0;

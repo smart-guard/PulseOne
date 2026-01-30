@@ -374,12 +374,9 @@ std::string AlarmMessage::time_to_csharp_format(
 #endif
   }
 
-  // C# DateTime 형식으로 포맷팅: yyyy-MM-dd HH:mm:ss.fff
+  // C# DateTime 형식으로 포맷팅: yyyy-MM-dd HH:mm:ss
   std::ostringstream oss;
   oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
-
-  // 밀리초 추가 (.fff)
-  oss << "." << std::setfill('0') << std::setw(3) << ms.count();
 
   return oss.str();
 }

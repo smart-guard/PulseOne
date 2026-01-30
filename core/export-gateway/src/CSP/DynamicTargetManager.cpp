@@ -400,6 +400,7 @@ bool DynamicTargetManager::loadFromDatabase() {
 
         try {
           target.config = json::parse(entity.getConfig());
+          target.config["id"] = target.id; // ✅ 핸들러 로깅용 ID 주입
         } catch (const std::exception &e) {
           LogManager::getInstance().Error(
               "Config JSON 파싱 실패: " + entity.getName() + " - " +

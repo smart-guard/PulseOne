@@ -113,11 +113,11 @@ class AlarmOccurrenceRepository extends BaseRepository {
             }
 
             if (filters.dateFrom) {
-                query.where('ao.occurrence_time', '>=', filters.dateFrom);
+                query.where('ao.occurrence_time', '>=', this.normalizeTimestamp(filters.dateFrom));
             }
 
             if (filters.dateTo) {
-                query.where('ao.occurrence_time', '<=', filters.dateTo);
+                query.where('ao.occurrence_time', '<=', this.normalizeTimestamp(filters.dateTo));
             }
 
             if (filters.search) {
@@ -1114,6 +1114,31 @@ class AlarmOccurrenceRepository extends BaseRepository {
         } catch (error) {
             console.warn('JSON 파싱 실패:', error.message);
             return null;
+        }
+    }
+
+    /**
+     * SQLite 날짜 비교를 위해 ISO 형식(UTC)을 DB 형식(Local, YYYY-MM-DD HH:mm:ss)으로 변환
+     */
+    normalizeTimestamp(dateStr) {
+        if (!dateStr || typeof dateStr !== 'string') return dateStr;
+
+        try {
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr;
+
+            // KST (Asia/Seoul) 또는 시스템 로컬 타임으로 변환
+            // 2026-01-29T23:00:00.000Z -> 2026-01-30 08:00:00
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hour = String(date.getHours()).padStart(2, '0');
+            const minute = String(date.getMinutes()).padStart(2, '0');
+            const second = String(date.getSeconds()).padStart(2, '0');
+
+            return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+        } catch (error) {
+            return dateStr;
         }
     }
 }
