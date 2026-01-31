@@ -292,6 +292,11 @@
   text-align: center !important;
 }
 
+/* Force vertical alignment for table cells */
+.export-history .mgmt-table td {
+  vertical-align: middle;
+}
+
 /* 진행률 표시 */
 .task-progress {
   display: flex;

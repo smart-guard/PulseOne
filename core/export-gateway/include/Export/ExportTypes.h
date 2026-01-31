@@ -23,17 +23,24 @@
 #ifndef EXPORT_TYPES_H
 #define EXPORT_TYPES_H
 
-#include "CSP/AlarmMessage.h"
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <mutex>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <nlohmann/json.hpp>
+
+// JSON Alias (Global for this header as per original design, moved up for
+// visibility/usage)
+using json = nlohmann::json;
+
+#include "CSP/AlarmMessage.h"
 
 namespace PulseOne {
 namespace CSP {
@@ -51,7 +58,6 @@ struct ValueMessage {
   std::string ty = "dbl"; // Type (dbl or str), default: dbl
 
   // JSON Serialization
-  // JSON Serialization
   json to_json() const {
     return json{{"bd", bd}, {"nm", nm}, {"vl", vl},
                 {"tm", tm}, {"st", st}, {"ty", ty}};
@@ -61,8 +67,8 @@ struct ValueMessage {
 } // namespace CSP
 } // namespace PulseOne
 
-using json = nlohmann::json;
-// [REMOVE] json을 헤더에서 제거하여 컴파일 메모리 사용량 절감
+// [REMOVE] json을 헤더에서 제거하여 컴파일 메모리 사용량 절감 (Original Comment
+// preserved but alias moved up)
 
 namespace PulseOne {
 namespace Export {
@@ -253,7 +259,7 @@ struct DynamicTarget {
   std::string type;
   bool enabled = true;
   int priority = 100;
-  int execution_order = 0;    // 🆕 v3.1.2 추가: 전송 실행 순서
+  int execution_order = 100;  // Runtime priority (Sourced from Gateway config)
   int execution_delay_ms = 0; // 🆕 v3.1.3 추가: 타겟 전송 전 지연 시간
   std::string description;
   json config;
@@ -433,6 +439,10 @@ public:
                        TargetHandlerCreator creator) {
     std::lock_guard<std::mutex> lock(factory_mutex_);
     creators_[type_name] = creator;
+    // Note: LogManager might not be initialized yet during static
+    // initialization. Using std::cout for early registration debugging.
+    std::cout << "[TargetHandlerFactory] Registered handler: " << type_name
+              << std::endl;
   }
 
   std::unique_ptr<ITargetHandler> createHandler(const std::string &type_name) {

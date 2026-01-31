@@ -17,6 +17,7 @@
 #include "CSP/HttpTargetHandler.h"
 #include "CSP/AlarmMessage.h"
 #include "Client/HttpClient.h"
+#include "Constants/ExportConstants.h" // ✅ Added Constants
 #include "Database/Entities/ExportLogEntity.h"
 #include "Export/ExportLogService.h"
 #include "Logging/LogManager.h"
@@ -34,7 +35,7 @@ namespace PulseOne {
 namespace CSP {
 
 using json = nlohmann::json;
-using json = nlohmann::json;
+namespace HttpConst = PulseOne::Constants::Export::Http;
 
 // =============================================================================
 // Static Client Cache (모든 인스턴스 공유)
@@ -90,7 +91,7 @@ bool HttpTargetHandler::initialize(const json &config) {
 TargetSendResult HttpTargetHandler::sendAlarm(const AlarmMessage &alarm,
                                               const json &config) {
   TargetSendResult result;
-  result.target_type = "HTTP";
+  result.target_type = PulseOne::Constants::Export::TargetType::HTTP;
   result.target_name = getTargetName(config);
   result.success = false;
 
@@ -198,12 +199,12 @@ bool HttpTargetHandler::testConnection(const json &config) {
     auto headers = buildRequestHeaders(config);
 
     Client::HttpResponse response;
-    if (method == "POST") {
+    if (method == HttpConst::METHOD_POST) {
       json test_payload;
       test_payload["test"] = true;
       test_payload["timestamp"] = getCurrentTimestamp();
       response = client->post(test_endpoint, test_payload.dump(),
-                              "application/json", headers);
+                              HttpConst::CONTENT_TYPE_JSON, headers);
     } else {
       response = client->get(test_endpoint, headers);
     }
@@ -247,7 +248,7 @@ bool HttpTargetHandler::validateConfig(const json &config,
 }
 
 json HttpTargetHandler::getStatus() const {
-  return json{{"type", "HTTP"},
+  return json{{"type", PulseOne::Constants::Export::TargetType::HTTP},
               {"request_count", request_count_.load()},
               {"success_count", success_count_.load()},
               {"failure_count", failure_count_.load()},
@@ -299,7 +300,7 @@ TargetSendResult HttpTargetHandler::executeWithRetry(const AlarmMessage &alarm,
                                                      const std::string &url) {
 
   TargetSendResult result;
-  result.target_type = "HTTP";
+  result.target_type = PulseOne::Constants::Export::TargetType::HTTP;
   result.target_name = getTargetName(config);
   result.success = false;
 
@@ -353,7 +354,7 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
     const AlarmMessage &alarm, const json &config, const std::string &url) {
 
   TargetSendResult result;
-  result.target_type = "HTTP";
+  result.target_type = PulseOne::Constants::Export::TargetType::HTTP;
   result.target_name = getTargetName(config);
   result.success = false;
 
@@ -366,7 +367,7 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
     }
 
     // HTTP 메서드 및 엔드포인트
-    std::string method = config.value("method", "POST");
+    std::string method = config.value("method", HttpConst::METHOD_POST);
     std::transform(method.begin(), method.end(), method.begin(), ::toupper);
 
     std::string endpoint = config.value("endpoint", url);
@@ -377,16 +378,16 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
 
     // HTTP 요청 실행
     Client::HttpResponse response;
-    if (method == "POST") {
+    if (method == HttpConst::METHOD_POST) {
       response = client->post(endpoint, request_body,
-                              "application/json; charset=utf-8", headers);
-    } else if (method == "PUT") {
+                              HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
+    } else if (method == HttpConst::METHOD_PUT) {
       response = client->put(endpoint, request_body,
-                             "application/json; charset=utf-8", headers);
-    } else if (method == "PATCH") {
+                             HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
+    } else if (method == HttpConst::METHOD_PATCH) {
       LogManager::getInstance().Warn("PATCH는 PUT으로 대체됨");
       response = client->put(endpoint, request_body,
-                             "application/json; charset=utf-8", headers);
+                             HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
     } else {
       response = client->get(endpoint, headers);
     }
@@ -397,8 +398,29 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
     result.response_body = response.body;
 
     if (!result.success) {
-      result.error_message = "HTTP " + std::to_string(response.status_code) +
-                             ": " + response.body.substr(0, 200);
+      std::string clean_body = response.body;
+
+      // HTML 응답인 경우 제목(title)만 추출하여 노이즈 제거
+      if (clean_body.find("<html") != std::string::npos ||
+          clean_body.find("<HTML") != std::string::npos) {
+        std::regex title_regex("<title>(.*?)</title>",
+                               std::regex_constants::icase);
+        std::smatch match;
+        if (std::regex_search(clean_body, match, title_regex) &&
+            match.size() > 1) {
+          clean_body = "[HTML] " + match.str(1);
+        } else {
+          clean_body = "HTML Error Response (Check logs)";
+        }
+      }
+
+      // 너무 긴 에러 메시지 절삭 (최대 100자)
+      if (clean_body.length() > 100) {
+        clean_body = clean_body.substr(0, 100) + "...";
+      }
+
+      result.error_message =
+          "HTTP " + std::to_string(response.status_code) + ": " + clean_body;
     }
 
     return result;
@@ -415,7 +437,7 @@ HttpTargetHandler::executeWithRetry(const std::vector<ValueMessage> &values,
                                     const std::string &url) {
 
   TargetSendResult result;
-  result.target_type = "HTTP";
+  result.target_type = PulseOne::Constants::Export::TargetType::HTTP;
   result.target_name = getTargetName(config);
   result.success = false;
 
@@ -464,7 +486,7 @@ HttpTargetHandler::executeSingleRequest(const std::vector<ValueMessage> &values,
                                         const std::string &url) {
 
   TargetSendResult result;
-  result.target_type = "HTTP";
+  result.target_type = PulseOne::Constants::Export::TargetType::HTTP;
   result.target_name = getTargetName(config);
   result.success = false;
 
@@ -475,18 +497,18 @@ HttpTargetHandler::executeSingleRequest(const std::vector<ValueMessage> &values,
       return result;
     }
 
-    std::string method = config.value("method", "POST");
+    std::string method = config.value("method", HttpConst::METHOD_POST);
     std::string endpoint = config.value("endpoint", url);
     auto headers = buildRequestHeaders(config);
     std::string request_body = buildRequestBody(values, config);
 
     Client::HttpResponse response;
-    if (method == "POST") {
+    if (method == HttpConst::METHOD_POST) {
       response = client->post(endpoint, request_body,
-                              "application/json; charset=utf-8", headers);
-    } else if (method == "PUT") {
+                              HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
+    } else if (method == HttpConst::METHOD_PUT) {
       response = client->put(endpoint, request_body,
-                             "application/json; charset=utf-8", headers);
+                             HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
     } else {
       response = client->get(endpoint, headers);
     }
@@ -496,8 +518,29 @@ HttpTargetHandler::executeSingleRequest(const std::vector<ValueMessage> &values,
     result.response_body = response.body;
 
     if (!result.success) {
-      result.error_message = "HTTP " + std::to_string(response.status_code) +
-                             ": " + response.body.substr(0, 200);
+      std::string clean_body = response.body;
+
+      // HTML 응답인 경우 제목(title)만 추출하여 노이즈 제거
+      if (clean_body.find("<html") != std::string::npos ||
+          clean_body.find("<HTML") != std::string::npos) {
+        std::regex title_regex("<title>(.*?)</title>",
+                               std::regex_constants::icase);
+        std::smatch match;
+        if (std::regex_search(clean_body, match, title_regex) &&
+            match.size() > 1) {
+          clean_body = "[HTML] " + match.str(1);
+        } else {
+          clean_body = "HTML Error Response (Check logs)";
+        }
+      }
+
+      // 너무 긴 에러 메시지 절삭 (최대 100자)
+      if (clean_body.length() > 100) {
+        clean_body = clean_body.substr(0, 100) + "...";
+      }
+
+      result.error_message =
+          "HTTP " + std::to_string(response.status_code) + ": " + clean_body;
     }
 
     return result;
@@ -511,10 +554,11 @@ std::unordered_map<std::string, std::string>
 HttpTargetHandler::buildRequestHeaders(const json &config) {
   std::unordered_map<std::string, std::string> headers;
 
-  headers["Accept"] = "application/json";
-  headers["User-Agent"] = config.value("user_agent", "iCos5/1.1");
-  headers["X-Request-ID"] = generateRequestId();
-  headers["X-Timestamp"] = getCurrentTimestamp();
+  headers[HttpConst::HEADER_ACCEPT] = HttpConst::CONTENT_TYPE_JSON;
+  headers[HttpConst::HEADER_USER_AGENT] =
+      config.value("user_agent", "iCos5/1.1");
+  headers[HttpConst::HEADER_X_REQUEST_ID] = generateRequestId();
+  headers[HttpConst::HEADER_X_TIMESTAMP] = getCurrentTimestamp();
 
   // 인증 헤더
   if (config.contains("auth") && config["auth"].is_object()) {
@@ -522,12 +566,14 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
     std::string auth_type = auth.value("type", "none");
 
     if (auth_type == "bearer" && auth.contains("token")) {
-      headers["Authorization"] = "Bearer " + auth["token"].get<std::string>();
+      headers[HttpConst::HEADER_AUTHORIZATION] =
+          "Bearer " + auth["token"].get<std::string>();
     } else if (auth_type == "basic" && auth.contains("username") &&
                auth.contains("password")) {
       std::string credentials = auth["username"].get<std::string>() + ":" +
                                 auth["password"].get<std::string>();
-      headers["Authorization"] = "Basic " + base64Encode(credentials);
+      headers[HttpConst::HEADER_AUTHORIZATION] =
+          "Basic " + base64Encode(credentials);
     } else if (auth_type == "api_key" && auth.contains("key")) {
       std::string header_name = auth.value("header", "x-api-key");
       headers[header_name] = auth["key"].get<std::string>();
@@ -713,6 +759,9 @@ std::string HttpTargetHandler::base64Encode(const std::string &input) const {
 
   return result;
 }
+
+REGISTER_TARGET_HANDLER(PulseOne::Constants::Export::TargetType::HTTP,
+                        HttpTargetHandler);
 
 } // namespace CSP
 } // namespace PulseOne

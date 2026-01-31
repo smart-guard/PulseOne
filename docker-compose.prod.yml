@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # Core Backend (Node.js)
+  # ==========================================
+  backend:
+    image: pulseone-backend:latest
+    container_name: pulseone-backend-prod
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.prod
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - BACKEND_PORT=3000
+      - DATABASE_TYPE=SQLITE
+      - SQLITE_PATH=/app/data/db/pulseone.db
+      - REDIS_PRIMARY_HOST=redis
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+
+  # ==========================================
+  # Redis Cache
+  # ==========================================
+  redis:
+    image: redis:6.2-alpine
+    container_name: pulseone-redis-prod
+    restart: always
+    volumes:
+      - redis_data:/data
+
+  # ==========================================
+  # Data Collector (C++)
+  # ==========================================
+  collector:
+    image: pulseone-collector:latest
+    container_name: pulseone-collector-prod
+    build:
+      context: .
+      dockerfile: collector/Dockerfile.prod
+    restart: always
+    environment:
+      - COLLECTOR_ID=1
+      - COLLECTOR_HOST=backend
+      - COLLECTOR_PORT=8001
+      - SQLITE_PATH=/app/data/db/pulseone.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - backend
+
+  # ==========================================
+  # Export Gateway (C++)
+  # ==========================================
+  export-gateway:
+    image: pulseone-export-gateway:latest
+    container_name: pulseone-export-gateway-prod
+    build:
+      context: .
+      dockerfile: core/export-gateway/Dockerfile.prod
+    restart: always
+    environment:
+      - GATEWAY_ID=1
+      - BACKEND_HOST=backend
+      - REDIS_HOST=redis
+      - SQLITE_PATH=/app/data/db/pulseone.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - backend
+      - redis
+
+volumes:
+  redis_data:

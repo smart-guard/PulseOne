@@ -65,7 +65,6 @@ struct ExportTargetConfig {
   bool enabled = true;
   std::string endpoint;
   json config; // 타겟별 추가 설정
-  int execution_order = 0;
 
   // 상태 정보
   std::string status;

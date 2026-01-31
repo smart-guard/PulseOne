@@ -27,6 +27,8 @@ export interface ServiceInfo {
   last_error?: string;
   health_check_url?: string;
   collectorId?: number;
+  gatewayId?: number;
+  serviceType?: 'core' | 'collector' | 'export-gateway';
   ip?: string;
   exists?: boolean;
   devices?: {
@@ -129,6 +131,14 @@ export interface DatabaseStats {
   last_updated: string;
 }
 
+export interface DashboardPerformance {
+  api_response_time: number;
+  database_response_time: number;
+  cache_hit_rate: number;
+  error_rate: number;
+  throughput_per_second: number;
+}
+
 export interface PerformanceMetrics {
   timestamp: string;
 
@@ -215,17 +225,29 @@ export interface DashboardOverviewData {
   system_metrics: SystemMetrics;
   device_summary: DeviceSummary;
   alarms: AlarmSummary;
-  data_summary?: {
-    total_data_points: number;
-    active_data_points: number;
-    data_rate_per_second: number;
+  performance: DashboardPerformance;
+  communication_status: {
+    upstream: {
+      total_devices: number;
+      connected_devices: number;
+      connectivity_rate: number;
+      last_polled_at: string;
+    };
+    downstream: {
+      total_exports: number;
+      success_rate: number;
+      last_dispatch_at: string;
+    };
   };
   health_status: {
     overall: 'healthy' | 'degraded' | 'critical';
     database: 'healthy' | 'warning' | 'critical';
+    redis: 'healthy' | 'warning' | 'critical';
+    collector: 'healthy' | 'warning' | 'critical';
+    gateway: 'healthy' | 'warning' | 'critical';
     network: 'healthy' | 'warning' | 'critical';
     storage: 'healthy' | 'warning' | 'critical';
-    cache: 'healthy' | 'warning' | 'critical';
+    cache?: 'healthy' | 'warning' | 'critical';
     message_queue?: 'healthy' | 'warning' | 'critical';
   };
   last_updated: string;
@@ -405,6 +427,14 @@ export class DashboardApiService {
   static async getSystemHealth(): Promise<ApiResponse<SystemHealthData>> {
     console.log('💚 시스템 헬스 상태 조회');
     return this.httpClient.get<SystemHealthData>(ENDPOINTS.DASHBOARD_SYSTEM_HEALTH);
+  }
+
+  /**
+   * 서비스 상태 목록 조회 (Redis Heartbeat 기반)
+   */
+  static async getServicesStatus(): Promise<ApiResponse<ServiceInfo[]>> {
+    console.log('💓 서비스 상태 목록 조회 (Redis)');
+    return this.httpClient.get<ServiceInfo[]>(ENDPOINTS.DASHBOARD_SERVICES_STATUS);
   }
 
   // ========================================================================

@@ -92,7 +92,6 @@ class ExportTargetRepository extends BaseRepository {
                 export_mode: data.export_mode || 'on_change',
                 export_interval: data.export_interval || 60,
                 batch_size: data.batch_size || 100,
-                execution_order: data.execution_order || 0,
                 execution_delay_ms: data.execution_delay_ms || 0,
                 is_enabled: data.is_enabled !== undefined ? data.is_enabled : 1,
                 created_at: this.knex.fn.now(),
@@ -116,7 +115,7 @@ class ExportTargetRepository extends BaseRepository {
                 updated_at: this.knex.fn.now()
             };
 
-            const allowedFields = ['name', 'target_type', 'type', 'config', 'is_enabled', 'profile_id', 'template_id', 'export_mode', 'export_interval', 'batch_size', 'execution_order', 'execution_delay_ms'];
+            const allowedFields = ['name', 'target_type', 'type', 'config', 'is_enabled', 'profile_id', 'template_id', 'export_mode', 'export_interval', 'batch_size', 'execution_delay_ms'];
             allowedFields.forEach(field => {
                 if (data[field] !== undefined) {
                     if (field === 'config' && typeof data[field] === 'object') {

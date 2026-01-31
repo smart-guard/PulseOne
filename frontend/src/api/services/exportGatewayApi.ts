@@ -22,6 +22,7 @@ export interface Gateway {
     last_heartbeat?: string;
     description?: string;
     version?: string;
+    subscription_mode?: 'all' | 'selective';
 
     live_status?: {
         id: number;
@@ -33,6 +34,7 @@ export interface Gateway {
         memory_usage?: number; // compat
     };
     processes?: any;
+    config?: any;
 }
 
 export interface ExportProfile {
@@ -56,7 +58,6 @@ export interface ExportTarget {
     export_mode: string;
     export_interval: number;
     batch_size: number;
-    execution_order: number;
     execution_delay_ms: number;
     created_at: string;
     updated_at: string;

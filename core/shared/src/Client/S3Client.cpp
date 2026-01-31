@@ -248,6 +248,7 @@ S3UploadResult S3Client::executeUploadWithRetry(
       result.upload_time_ms = duration.count();
       result.upload_time = timestamp;
       result.file_size = content.length();
+      result.status_code = http_response.status_code;
 
       if (http_response.isSuccess()) {
         result.success = true;
@@ -268,9 +269,30 @@ S3UploadResult S3Client::executeUploadWithRetry(
         break;
 
       } else {
+        std::string clean_body = http_response.body;
+
+        // HTML 응답인 경우 제목(title)만 추출하여 노이즈 제거
+        if (clean_body.find("<html") != std::string::npos ||
+            clean_body.find("<HTML") != std::string::npos) {
+          std::regex title_regex("<title>(.*?)</title>",
+                                 std::regex_constants::icase);
+          std::smatch match;
+          if (std::regex_search(clean_body, match, title_regex) &&
+              match.size() > 1) {
+            clean_body = "[HTML] " + match.str(1);
+          } else {
+            clean_body = "HTML Error Response (Check logs)";
+          }
+        }
+
+        // 너무 긴 에러 메시지 절삭 (최대 100자)
+        if (clean_body.length() > 100) {
+          clean_body = clean_body.substr(0, 100) + "...";
+        }
+
         result.error_message = "HTTP " +
                                std::to_string(http_response.status_code) +
-                               ": " + http_response.body;
+                               ": " + clean_body;
 
         // 재시도하지 않을 오류들 (4xx 클라이언트 오류)
         if (http_response.isClientError()) {

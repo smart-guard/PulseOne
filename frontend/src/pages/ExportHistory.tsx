@@ -14,6 +14,7 @@ import LogDetailModal from '../components/modals/LogDetailModal';
 import { usePagination } from '../hooks/usePagination';
 import '../styles/management.css';
 import '../styles/pagination.css';
+import '../styles/data-export.css';
 
 // -----------------------------------------------------------------------------
 // Type Definitions
@@ -405,7 +406,7 @@ const ExportHistory: React.FC = () => {
                                     <thead>
                                         <tr>
                                             <th style={{ width: '80px' }}>ID</th>
-                                            <th style={{ width: '100px' }}>상태</th>
+                                            <th style={{ width: '100px', textAlign: 'center', verticalAlign: 'middle' }}>상태</th>
                                             <th style={{ width: '180px' }}>발생 시간</th>
                                             <th>타겟 시스템</th>
                                             <th>설정 정보 (Profile / Gateway)</th>
@@ -440,7 +441,7 @@ const ExportHistory: React.FC = () => {
                                                         style={{ cursor: 'pointer' }}
                                                     >
                                                         <td className="font-bold text-neutral-600">#{log.id}</td>
-                                                        <td>
+                                                        <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
                                                             <span className={getStatusBadgeClass(log.status)}>
                                                                 {(log.status || 'UNKNOWN').toUpperCase()}
                                                             </span>

@@ -14,9 +14,12 @@
  */
 
 #include "CSP/FileTargetHandler.h"
+#include "Constants/ExportConstants.h"
 #include "Logging/LogManager.h"
+#include "Transform/PayloadTransformer.h"
 #include "Utils/ConfigManager.h"
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -27,7 +30,6 @@
 namespace PulseOne {
 namespace CSP {
 
-using json = nlohmann::json;
 using json = nlohmann::json;
 
 // =============================================================================
@@ -153,9 +155,9 @@ TargetSendResult FileTargetHandler::sendAlarm(const AlarmMessage &alarm,
   return result;
 }
 
-std::vector<TargetSendResult> FileTargetHandler::sendValueBatch(
-    const std::vector<PulseOne::CSP::ValueMessage> &values,
-    const json &config) {
+std::vector<TargetSendResult>
+FileTargetHandler::sendValueBatch(const std::vector<ValueMessage> &values,
+                                  const json &config) {
 
   std::vector<TargetSendResult> results;
   TargetSendResult result;
@@ -327,10 +329,10 @@ bool FileTargetHandler::validateConfig(const json &config,
 
 json FileTargetHandler::getStatus() const {
   return json{{"type", "FILE"},
-                      {"file_count", file_count_.load()},
-                      {"success_count", success_count_.load()},
-                      {"failure_count", failure_count_.load()},
-                      {"total_bytes_written", total_bytes_written_.load()}};
+              {"file_count", file_count_.load()},
+              {"success_count", success_count_.load()},
+              {"failure_count", failure_count_.load()},
+              {"total_bytes_written", total_bytes_written_.load()}};
 }
 
 void FileTargetHandler::cleanup() {
@@ -347,8 +349,7 @@ void FileTargetHandler::cleanup() {
 // Private 핵심 메서드
 // =============================================================================
 
-std::string
-FileTargetHandler::extractBasePath(const json &config) const {
+std::string FileTargetHandler::extractBasePath(const json &config) const {
   std::string base_path;
   if (config.contains("base_path") &&
       !config["base_path"].get<std::string>().empty()) {
@@ -366,16 +367,14 @@ FileTargetHandler::extractBasePath(const json &config) const {
   return "";
 }
 
-std::string
-FileTargetHandler::extractFileFormat(const json &config) const {
+std::string FileTargetHandler::extractFileFormat(const json &config) const {
   std::string format = config.value("file_format", "json");
   std::transform(format.begin(), format.end(), format.begin(), ::tolower);
   return format;
 }
 
-std::string
-FileTargetHandler::generateFilePath(const AlarmMessage &alarm,
-                                    const json &config) const {
+std::string FileTargetHandler::generateFilePath(const AlarmMessage &alarm,
+                                                const json &config) const {
   // base_path
   std::string base_path = extractBasePath(config);
 
@@ -419,9 +418,8 @@ void FileTargetHandler::createDirectoriesForFile(
   }
 }
 
-std::string
-FileTargetHandler::buildFileContent(const AlarmMessage &alarm,
-                                    const json &config) const {
+std::string FileTargetHandler::buildFileContent(const AlarmMessage &alarm,
+                                                const json &config) const {
   std::string format = extractFileFormat(config);
 
   if (format == "json") {
@@ -439,9 +437,8 @@ FileTargetHandler::buildFileContent(const AlarmMessage &alarm,
   }
 }
 
-std::string
-FileTargetHandler::buildJsonContent(const AlarmMessage &alarm,
-                                    const json &config) const {
+std::string FileTargetHandler::buildJsonContent(const AlarmMessage &alarm,
+                                                const json &config) const {
   json request_body;
 
   // ✅ 템플릿이 있으면 템플릿을 기반으로 생성 (기본 필드 무시)
@@ -475,9 +472,8 @@ FileTargetHandler::buildJsonContent(const AlarmMessage &alarm,
   return json::array({request_body}).dump();
 }
 
-std::string
-FileTargetHandler::buildCsvContent(const AlarmMessage &alarm,
-                                   const json &config) const {
+std::string FileTargetHandler::buildCsvContent(const AlarmMessage &alarm,
+                                               const json &config) const {
   std::ostringstream csv;
 
   // 헤더 (append 모드가 아닐 때만)
@@ -499,9 +495,8 @@ FileTargetHandler::buildCsvContent(const AlarmMessage &alarm,
   return csv.str();
 }
 
-std::string
-FileTargetHandler::buildTextContent(const AlarmMessage &alarm,
-                                    const json &config) const {
+std::string FileTargetHandler::buildTextContent(const AlarmMessage &alarm,
+                                                const json &config) const {
   std::ostringstream text;
 
   std::string format = config.value("text_format", "default");
@@ -528,9 +523,8 @@ FileTargetHandler::buildTextContent(const AlarmMessage &alarm,
   return text.str();
 }
 
-std::string
-FileTargetHandler::buildXmlContent(const AlarmMessage &alarm,
-                                   const json &config) const {
+std::string FileTargetHandler::buildXmlContent(const AlarmMessage &alarm,
+                                               const json &config) const {
   std::ostringstream xml;
 
   xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
@@ -833,6 +827,9 @@ FileTargetHandler::getFileExtension(const std::string &format) const {
     return "xml";
   return "dat";
 }
+
+REGISTER_TARGET_HANDLER(PulseOne::Constants::Export::TargetType::FILE,
+                        FileTargetHandler);
 
 } // namespace CSP
 } // namespace PulseOne

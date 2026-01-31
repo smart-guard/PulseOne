@@ -4,6 +4,7 @@ import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { notification } from 'antd';
 import { StatCard } from '../components/common/StatCard';
+import { useConfirmContext } from '../components/common/ConfirmProvider';
 import { FilterBar } from '../components/common/FilterBar';
 import { Pagination } from '../components/common/Pagination';
 import { DeviceTemplate, Manufacturer, Protocol } from '../types/manufacturing';
@@ -42,39 +43,54 @@ const DeviceTemplatesPage: React.FC = () => {
         setMasterModalOpen(true);
     };
 
-    const handleDelete = async (template: DeviceTemplate) => {
+    const { confirm } = useConfirmContext();
+
+    const handleDelete = async (template: DeviceTemplate, onSuccess?: () => void) => {
+        // Frontend check for immediate feedback (optional but good UX)
         if ((template.device_count || 0) > 0) {
-            notification.warning({
-                message: '삭제 불가',
-                description: '사용 중인 마스터 모델은 삭제할 수 없습니다.',
-                placement: 'topRight'
+            await confirm({
+                title: '삭제 불가',
+                message: `현재 이 마스터 모델을 사용 중인 디바이스가 ${template.device_count}개 존재합니다.\n모든 디바이스 연결을 해제한 후 삭제해주세요.`,
+                confirmButtonType: 'warning',
+                showCancelButton: false
             });
             return;
         }
 
-        if (window.confirm(`"${template.name}" 모델을 삭제하시겠습니까?`)) {
+        const confirmed = await confirm({
+            title: '마스터 모델 삭제',
+            message: `"${template.name}" 모델을 정말 삭제하시겠습니까?\n삭제 후에는 복구할 수 없습니다.`,
+            confirmButtonType: 'danger'
+        });
+
+        if (confirmed) {
             try {
                 setLoading(true);
                 const res = await TemplateApiService.deleteTemplate(template.id);
                 if (res.success) {
-                    notification.success({
-                        message: '삭제 완료',
-                        description: '마스터 모델이 성공적으로 삭제되었습니다.',
-                        placement: 'topRight'
+                    await confirm({
+                        title: '삭제 완료',
+                        message: '마스터 모델이 성공적으로 삭제되었습니다.',
+                        confirmButtonType: 'primary',
+                        showCancelButton: false
                     });
                     loadTemplates();
+                    if (onSuccess) onSuccess();
                 } else {
-                    notification.error({
-                        message: '삭제 실패',
-                        description: res.message || '삭제에 실패했습니다.',
-                        placement: 'topRight'
+                    // Backend might return specific error message about usage if frontend count was stale
+                    await confirm({
+                        title: '삭제 실패',
+                        message: res.message || '삭제에 실패했습니다.',
+                        confirmButtonType: 'danger',
+                        showCancelButton: false
                     });
                 }
-            } catch (err) {
-                notification.error({
-                    message: '오류 발생',
-                    description: '삭제 중 오류가 발생했습니다.',
-                    placement: 'topRight'
+            } catch (err: any) {
+                await confirm({
+                    title: '오류 발생',
+                    message: err.response?.data?.message || '삭제 중 오류가 발생했습니다.',
+                    confirmButtonType: 'danger',
+                    showCancelButton: false
                 });
             } finally {
                 setLoading(false);
@@ -384,8 +400,7 @@ const DeviceTemplatesPage: React.FC = () => {
                 }}
                 onEdit={onEditTemplate}
                 onDelete={(t) => {
-                    setDetailModalOpen(false);
-                    handleDelete(t);
+                    handleDelete(t, () => setDetailModalOpen(false));
                 }}
             />
             <MasterModelModal
@@ -401,8 +416,7 @@ const DeviceTemplatesPage: React.FC = () => {
                 }}
                 template={editingTemplate}
                 onDelete={(t) => {
-                    setMasterModalOpen(false);
-                    handleDelete(t);
+                    handleDelete(t, () => setMasterModalOpen(false));
                 }}
                 manufacturers={manufacturers}
                 protocols={protocols}

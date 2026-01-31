@@ -98,7 +98,6 @@ const std::string CREATE_TABLE = R"(
             export_mode VARCHAR(20) DEFAULT 'on_change',
             export_interval INTEGER DEFAULT 0,
             batch_size INTEGER DEFAULT 100,
-            execution_order INTEGER DEFAULT 100,
             execution_delay_ms INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -120,7 +119,7 @@ const std::string CREATE_INDEXES = R"(
 const std::string FIND_ALL = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
                template_id, export_mode, export_interval, batch_size, 
-               execution_order, execution_delay_ms, created_at, updated_at
+               execution_delay_ms, created_at, updated_at
         FROM export_targets
         ORDER BY name ASC
     )";
@@ -128,35 +127,35 @@ const std::string FIND_ALL = R"(
 const std::string FIND_BY_ID = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
                template_id, export_mode, export_interval, batch_size, 
-               execution_order, execution_delay_ms, created_at, updated_at
+               execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE id = ?
     )";
 
 const std::string FIND_BY_NAME = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
                template_id, export_mode, export_interval, batch_size, 
-               execution_order, execution_delay_ms, created_at, updated_at
+               execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE name = ?
     )";
 
 const std::string FIND_BY_ENABLED = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
                template_id, export_mode, export_interval, batch_size, 
-               execution_order, execution_delay_ms, created_at, updated_at
+               execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE is_enabled = ? ORDER BY name ASC
     )";
 
 const std::string FIND_BY_TARGET_TYPE = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
                template_id, export_mode, export_interval, batch_size, 
-               execution_order, execution_delay_ms, created_at, updated_at
+               execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE target_type = ? ORDER BY name ASC
     )";
 
 const std::string FIND_BY_PROFILE_ID = R"(
         SELECT id, profile_id, name, target_type, description, is_enabled, config,
                template_id, export_mode, export_interval, batch_size, 
-               execution_order, execution_delay_ms, created_at, updated_at
+               execution_delay_ms, created_at, updated_at
         FROM export_targets WHERE profile_id = ? ORDER BY name ASC
     )";
 
@@ -164,15 +163,15 @@ const std::string INSERT = R"(
         INSERT INTO export_targets (
             profile_id, name, target_type, description, is_enabled, config,
             template_id, export_mode, export_interval, batch_size,
-            execution_order, execution_delay_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            execution_delay_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
 const std::string UPDATE = R"(
         UPDATE export_targets SET
             profile_id = ?, name = ?, target_type = ?, description = ?, is_enabled = ?,
             config = ?, template_id = ?, export_mode = ?, export_interval = ?, 
-            batch_size = ?, execution_order = ?, execution_delay_ms = ?,
+            batch_size = ?, execution_delay_ms = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
     )";
@@ -198,7 +197,7 @@ const std::string FIND_WITH_TEMPLATE = R"(
         SELECT 
             t.id, t.profile_id, t.name, t.target_type, t.description, t.is_enabled, t.config,
             t.template_id, t.export_mode, t.export_interval, t.batch_size, 
-            t.execution_order, t.execution_delay_ms,
+            t.execution_delay_ms,
             t.created_at, t.updated_at,
             p.template_json, p.system_type as template_system_type, p.name as template_name
         FROM export_targets t

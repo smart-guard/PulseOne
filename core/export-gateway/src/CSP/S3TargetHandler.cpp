@@ -15,6 +15,7 @@
 
 #include "CSP/S3TargetHandler.h"
 #include "Client/S3Client.h"
+#include "Constants/ExportConstants.h"
 #include "Logging/LogManager.h"
 #include "Transform/PayloadTransformer.h"
 #include "Utils/ClientCacheManager.h"
@@ -83,7 +84,7 @@ bool S3TargetHandler::initialize(const json &config) {
 TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage &alarm,
                                             const json &config) {
   TargetSendResult result;
-  result.target_type = "S3";
+  result.target_type = PulseOne::Constants::Export::TargetType::S3;
   result.target_name = getTargetName(config);
   result.success = false;
 
@@ -132,6 +133,7 @@ TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage &alarm,
 
     // 결과 처리
     result.success = upload_result.success;
+    result.status_code = upload_result.status_code;
     result.response_time = std::chrono::milliseconds(
         static_cast<long>(upload_result.upload_time_ms));
     result.content_size = json_content.length();
@@ -172,7 +174,8 @@ S3TargetHandler::sendAlarmBatch(const std::vector<AlarmMessage> &alarms,
     return results;
 
   std::string target_name = getTargetName(config);
-  TargetSendResult base_result(target_name, "S3", false);
+  TargetSendResult base_result(
+      target_name, PulseOne::Constants::Export::TargetType::S3, false);
 
   try {
     std::string bucket_name = extractBucketName(config);
@@ -359,9 +362,9 @@ bool S3TargetHandler::validateConfig(const json &config,
     return false;
   }
 
-  // 영문 소문자, 숫자, 하이픈, 슬래시(/) 허용
+  // 영문 소문자, 숫자, 하이픈(-), 점(.), 슬래시(/) 허용
   if (!std::regex_match(bucket_name,
-                        std::regex("^[a-z0-9][a-z0-9.-/]*[a-z0-9]$"))) {
+                        std::regex("^[a-z0-9][a-z0-9.\\-/]*[a-z0-9]$"))) {
     errors.push_back(
         "bucket_name은 소문자, 숫자, 하이픈, 슬래시(/)만 사용 가능합니다");
     return false;
@@ -373,7 +376,7 @@ bool S3TargetHandler::validateConfig(const json &config,
 json S3TargetHandler::getStatus() const {
   auto cache_stats = getS3ClientCache().getStats();
 
-  return json{{"type", "S3"},
+  return json{{"type", PulseOne::Constants::Export::TargetType::S3},
               {"upload_count", upload_count_.load()},
               {"success_count", success_count_.load()},
               {"failure_count", failure_count_.load()},
@@ -1098,6 +1101,9 @@ void S3TargetHandler::expandTemplateVariables(json &template_json,
   } catch (...) {
   }
 }
+
+REGISTER_TARGET_HANDLER(PulseOne::Constants::Export::TargetType::S3,
+                        S3TargetHandler);
 
 } // namespace CSP
 } // namespace PulseOne

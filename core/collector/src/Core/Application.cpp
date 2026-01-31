@@ -16,7 +16,10 @@
 #include "Pipeline/DataProcessingService.h"
 #include "Pipeline/PipelineManager.h"
 #include "Utils/ConfigManager.h"
+#include "Utils/RedisManager.h"
 #include "Workers/WorkerManager.h"
+
+#include <nlohmann/json.hpp>
 
 #if HAS_HTTPLIB
 #include "Api/ConfigApiCallbacks.h"
@@ -587,6 +590,26 @@ void CollectorApplication::UpdateHeartbeat() {
         std::to_string(collector_id);
 
     db_mgr.executeNonQuery(query);
+
+    // Redis 하트비트 추가
+    auto redis = PulseOne::Utils::RedisManager::getInstance().getClient();
+    if (redis && redis->isConnected()) {
+      nlohmann::json status_json;
+      status_json["status"] = "online";
+      status_json["lastSeen"] = std::chrono::system_clock::to_time_t(
+          std::chrono::system_clock::now());
+      status_json["gatewayId"] = collector_id;
+      status_json["hostname"] =
+          "docker-container"; // Hostname retrieval is complex cross-platform
+
+      // Backend EdgeServerService expects collector:status:{id} for collectors
+      std::string key = "collector:status:" + std::to_string(collector_id);
+
+      // 90 seconds TTL (Backend refreshes often, but this allows for some
+      // missed beats)
+      redis->setex(key, status_json.dump(), 90);
+    }
+
   } catch (const std::exception &e) {
     LogManager::getInstance().Warn("Heartbeat update failed: " +
                                    std::string(e.what()));

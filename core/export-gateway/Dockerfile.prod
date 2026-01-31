@@ -1,0 +1,74 @@
+# ==========================================
+# Builder Stage
+# ==========================================
+FROM ubuntu:22.04 AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libsqlite3-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    uuid-dev \
+    pkg-config \
+    nlohmann-json3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Hiredis (Redis Client)
+RUN git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git /tmp/hiredis && \
+    cd /tmp/hiredis && \
+    make && make install && \
+    rm -rf /tmp/hiredis
+
+# Install Paho MQTT C (Dependency for C++)
+RUN git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git /tmp/paho.mqtt.c && \
+    cd /tmp/paho.mqtt.c && \
+    cmake -Bbuild -DPAHO_ENABLE_TESTING=OFF -DPAHO_BUILD_STATIC=ON -DPAHO_WITH_SSL=ON . && \
+    cmake --build build/ --target install && \
+    rm -rf /tmp/paho.mqtt.c
+
+# Install Paho MQTT C++
+RUN git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git /tmp/paho.mqtt.cpp && \
+    cd /tmp/paho.mqtt.cpp && \
+    cmake -Bbuild -DPAHO_BUILD_STATIC=ON -DPAHO_BUILD_DOCUMENTATION=OFF . && \
+    cmake --build build/ --target install && \
+    rm -rf /tmp/paho.mqtt.cpp
+
+WORKDIR /src
+
+# Copy source
+COPY core/export-gateway/ ./core/export-gateway/
+COPY core/shared/ ./core/shared/
+COPY core/collector/include/ ./core/collector/include/
+
+# Build
+WORKDIR /src/core/export-gateway
+RUN make -j$(nproc)
+
+# ==========================================
+# Final Stage
+# ==========================================
+FROM ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libsqlite3-0 \
+    libcurl4 \
+    libssl3 \
+    uuid-runtime \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy binary
+COPY --from=builder /src/core/export-gateway/bin/export-gateway /app/pulseone-export-gateway
+
+# Create data directories
+RUN mkdir -p /app/data/db /app/data/logs /app/config
+
+# Environment
+ENV LD_LIBRARY_PATH=/app:/usr/local/lib
+
+CMD ["/app/pulseone-export-gateway"]

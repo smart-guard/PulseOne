@@ -7,6 +7,7 @@
  */
 
 #include "CSP/MqttTargetHandler.h"
+#include "Constants/ExportConstants.h"
 #include "Logging/LogManager.h"
 #include "Transform/PayloadTransformer.h"
 #include <algorithm>
@@ -968,6 +969,9 @@ void MqttTargetHandler::expandTemplateVariables(
     }
   }
 }
+
+REGISTER_TARGET_HANDLER(PulseOne::Constants::Export::TargetType::MQTT,
+                        MqttTargetHandler);
 
 } // namespace CSP
 } // namespace PulseOne

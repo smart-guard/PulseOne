@@ -276,8 +276,10 @@ EXPORT_SOURCES = $(wildcard $(SRC_DIR)/Export/*.cpp)
 EXPORT_OBJECTS = $(EXPORT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
 # 🛠️ Utils 디렉토리
-UTILS_SOURCES = $(wildcard $(SRC_DIR)/Utils/*.cpp)
-UTILS_OBJECTS = $(UTILS_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+UTILS_CXX_SOURCES = $(wildcard $(SRC_DIR)/Utils/*.cpp)
+UTILS_C_SOURCES = $(wildcard $(SRC_DIR)/Utils/*.c)
+UTILS_OBJECTS = $(UTILS_CXX_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o) \
+                $(UTILS_C_SOURCES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
 # 📌 Main 파일
 MAIN_SOURCES = $(SRC_DIR)/main.cpp
@@ -328,6 +330,11 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@mkdir -p $(dir $@)
 	@echo -e "$(YELLOW)⚙️  Compiling $< [$(PLATFORM)]$(NC)"
 	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	@echo -e "$(YELLOW)⚙️  Compiling C source $< [$(PLATFORM)]$(NC)"
+	@$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
 # =============================================================================
 # 유틸리티

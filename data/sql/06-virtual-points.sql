@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS virtual_points (
     low_limit REAL,
     deadband REAL DEFAULT 0.0,
     
+    is_deleted INTEGER DEFAULT 0,                        -- Added for soft delete
+    
     -- 🔥 감사 필드
     created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -445,3 +447,22 @@ CREATE INDEX IF NOT EXISTS idx_script_templates_equipment ON script_templates(eq
 CREATE INDEX IF NOT EXISTS idx_script_templates_active ON script_templates(is_active);
 CREATE INDEX IF NOT EXISTS idx_script_templates_difficulty ON script_templates(difficulty_level);
 CREATE INDEX IF NOT EXISTS idx_script_templates_popularity ON script_templates(popularity_score DESC);
+
+-- =============================================================================
+-- 가상포인트 활동 로그 (v3.1.0 추가)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS virtual_point_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    point_id INTEGER NOT NULL,
+    action VARCHAR(50) NOT NULL,          -- CREATE, UPDATE, DELETE, RESTORE, EXECUTE, TOGGLE
+    previous_state TEXT,                  -- JSON string of previous state
+    new_state TEXT,                       -- JSON string of new state (if applicable)
+    user_id INTEGER,                      -- Optional: ID of the user performing the action
+    details TEXT,                         -- Optional: detailed message or reason
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_virtual_point_logs_point_id ON virtual_point_logs(point_id);
+CREATE INDEX IF NOT EXISTS idx_virtual_point_logs_created_at ON virtual_point_logs(created_at);
+```

@@ -40,8 +40,13 @@
 #include "Export/ExportTypes.h" // ← CSP/ITargetHandler.h 대체
 
 // ✅ v6.2.2: ExportTargetEntity 헤더 포함 (필수!)
+#include "CSP/DynamicTargetLoader.h"
 #include "Database/Entities/ExportTargetEntity.h"
-
+#include "Database/Entities/ExportTargetMappingEntity.h"
+#include "Database/Entities/PayloadTemplateEntity.h"
+#include "Database/Repositories/ExportTargetMappingRepository.h"
+#include "Database/Repositories/ExportTargetRepository.h"
+#include "Database/Repositories/PayloadTemplateRepository.h"
 #include <atomic>
 #include <condition_variable>
 #include <future>
@@ -95,6 +100,11 @@ public:
    */
   static DynamicTargetManager &getInstance();
 
+  // ✅ Helper methods moved to DynamicTargetLoader
+
+  // Singleton instance
+  static DynamicTargetManager *instance_;
+  std::mutex mutex_;
   // 복사/이동/삭제 방지
   DynamicTargetManager(const DynamicTargetManager &) = delete;
   DynamicTargetManager &operator=(const DynamicTargetManager &) = delete;

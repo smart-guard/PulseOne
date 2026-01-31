@@ -796,6 +796,10 @@ app.use('/api/gateways', gatewayRoutes);
 const exportConfigRoutes = require('./routes/export-config');
 app.use('/api/export', exportConfigRoutes);
 
+// Redis Inspector
+const redisRoutes = require('./routes/redis');
+app.use('/api/redis', redisRoutes);
+
 // Fix: Frontend expects /api/export-gateways
 const exportGatewaysShim = require('./routes/export-gateways-shim');
 app.use('/api/export-gateways', exportGatewaysShim);

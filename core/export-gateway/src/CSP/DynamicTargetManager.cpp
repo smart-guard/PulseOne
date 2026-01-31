@@ -36,6 +36,7 @@
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 // ✅ v6.2.2: ExportTargetEntity.h 명시적 include (완전한 타입 정의)
+#include "Constants/ExportConstants.h" // ✅ Added Constants
 #include "Database/Entities/ExportTargetEntity.h"
 #include "Database/Entities/PayloadTemplateEntity.h"
 #include <algorithm>
@@ -45,7 +46,9 @@ namespace PulseOne {
 namespace CSP {
 
 using namespace PulseOne::Export;
+using namespace PulseOne::Export;
 using namespace PulseOne::Database;
+namespace ExportConst = PulseOne::Constants::Export;
 
 // =============================================================================
 // 싱글턴 구현
@@ -260,249 +263,90 @@ void DynamicTargetManager::setGatewayId(int id) {
 // =============================================================================
 
 bool DynamicTargetManager::loadFromDatabase() {
+  if (should_stop_.load()) {
+    return false;
+  }
+
   try {
-    LogManager::getInstance().Info("DB에서 타겟 로드 시작...");
+    DynamicTargetLoader loader;
+    loader.setGatewayId(gateway_id_);
 
-    // ✅ RepositoryFactory 자동 초기화 추가
-    auto &factory = RepositoryFactory::getInstance();
-    if (!factory.isInitialized()) {
-      LogManager::getInstance().Warn(
-          "⚠️ RepositoryFactory 미초기화 감지 - 자동 초기화 시도");
+    // Loader를 통해 데이터 로드 (DB 연결, 쿼리, 파싱, 캐시 구성 등 수행)
+    auto data = loader.loadFromDatabase();
 
-      if (!factory.initialize()) {
-        LogManager::getInstance().Error("❌ RepositoryFactory 초기화 실패");
-        return false;
-      }
-
-      LogManager::getInstance().Info("✅ RepositoryFactory 자동 초기화 완료");
-    }
-
-    auto export_target_repo = factory.getExportTargetRepository();
-    auto template_repo = factory.getPayloadTemplateRepository();
-    auto mapping_repo =
-        factory.getExportTargetMappingRepository(); // ✅ 매핑 레포지토리 추가
-
-    if (!export_target_repo) {
-      LogManager::getInstance().Error(
-          "ExportTargetRepository를 가져올 수 없음");
+    if (data.targets.empty()) {
+      LogManager::getInstance().Warn("활성화된 타겟이 없음 (Manager)");
+      std::unique_lock<std::shared_mutex> lock(targets_mutex_);
+      targets_.clear();
       return false;
     }
 
-    // ✅ 1. 모든 템플릿 로드하여 ID맵 생성
-    std::map<int, json> template_map;
-    if (template_repo) {
-      auto templates = template_repo->findAll();
-      for (const auto &tmpl : templates) {
-        try {
-          template_map[tmpl.getId()] = json::parse(tmpl.getTemplateJson());
-          LogManager::getInstance().Debug(
-              "템플릿 로드됨: ID=" + std::to_string(tmpl.getId()) +
-              ", Name=" + tmpl.getName());
-        } catch (const std::exception &e) {
-          LogManager::getInstance().Error(
-              "템플릿 JSON 파싱 실패 (ID=" + std::to_string(tmpl.getId()) +
-              "): " + std::string(e.what()));
-        }
-      }
-    }
-
-    // ✅ 2. 모든 매핑 로드하여 캐시 생성
-    if (mapping_repo) {
-      std::unique_lock<std::shared_mutex> m_lock(mappings_mutex_);
-      target_point_mappings_.clear();
-      target_point_site_mappings_.clear(); // ✅ 포인트-사이트 매핑 초기화 추가
-
-      auto mappings = mapping_repo->findAll();
-      for (const auto &m : mappings) {
-        if (m.isEnabled()) {
-          // 2.1 포인트 매핑
-          if (m.getPointId().has_value()) {
-            target_point_mappings_[m.getTargetId()][m.getPointId().value()] =
-                m.getTargetFieldName();
-
-            // ✅ 2.1.1 포인트 매핑에 Site ID가 있으면 캐시 (Site Override)
-            if (m.getSiteId().has_value()) {
-              target_point_site_mappings_[m.getTargetId()]
-                                         [m.getPointId().value()] =
-                                             m.getSiteId().value();
-            }
-          }
-          // 2.2 사이트(빌딩) 매핑 (New!)
-          else if (m.getSiteId().has_value()) {
-            target_site_mappings_[m.getTargetId()][m.getSiteId().value()] =
-                m.getTargetFieldName();
-          }
-        }
-      }
-      LogManager::getInstance().Info(
-          "✅ 타겟 매핑 데이터 로드 완료: 포인트=" +
-          std::to_string(target_point_mappings_.size()) + "개 타겟, 사이트=" +
-          std::to_string(target_site_mappings_.size()) + "개 타겟");
-    }
-
-    using PulseOne::Database::Entities::ExportTargetEntity;
-    std::vector<ExportTargetEntity> entities;
-
-    // ✅ 필터링 로직: gateway_id가 설정되어 있으면 해당 게이트웨이에 할당된
-    // 프로파일의 타겟만 로드
-    if (gateway_id_ > 0) {
-      LogManager::getInstance().Info(
-          "게이트웨이(ID=" + std::to_string(gateway_id_) +
-          ")용 타겟 필터링 시작...");
-
-      auto &db_manager = DbLib::DatabaseManager::getInstance();
-      std::string query = "SELECT profile_id FROM export_profile_assignments "
-                          "WHERE gateway_id = " +
-                          std::to_string(gateway_id_);
-
-      std::vector<std::vector<std::string>> result;
-      if (db_manager.executeQuery(query, result) && !result.empty()) {
-        int profile_id = std::stoi(result[0][0]);
-        LogManager::getInstance().Info(
-            "게이트웨이 ID " + std::to_string(gateway_id_) +
-            "에 할당된 프로파일 ID: " + std::to_string(profile_id));
-
-        entities = export_target_repo->findByProfileId(profile_id);
-      } else {
-        LogManager::getInstance().Warn(
-            "게이트웨이 ID " + std::to_string(gateway_id_) +
-            "에 할당된 프로파일을 찾을 수 없음. 타겟을 로드하지 않습니다.");
-        return false;
-      }
-    } else {
-      // ID가 없으면 이전처럼 모든 활성 타겟 로드 (Broadcast 모드)
-      LogManager::getInstance().Warn(
-          "⚠️ 게이트웨이 ID 미설정 - 모든 활성 타겟을 로드합니다 (Broadcast "
-          "모드)");
-      entities = export_target_repo->findByEnabled(true);
-    }
-
-    if (entities.empty()) {
-      LogManager::getInstance().Warn("활성화된 타겟이 없음");
-      return false;
-    }
-
-    std::unique_lock<std::shared_mutex> lock(targets_mutex_);
-    targets_.clear();
+    // 4. 새로운 타겟 리스트 생성 (Handler 및 Protector 초기화)
+    std::unordered_map<std::string, std::unique_ptr<ITargetHandler>>
+        new_handlers;
+    std::unordered_map<std::string, std::unique_ptr<FailureProtector>>
+        new_protectors;
 
     int loaded_count = 0;
-    for (const auto &entity : entities) {
-      try {
-        DynamicTarget target;
-        target.id = entity.getId(); // ✅ ID 저장 (매핑 조회용)
-        target.name = entity.getName();
-        target.type = entity.getTargetType();
-        target.enabled = entity.isEnabled();
-        target.execution_order = entity.getExecutionOrder();      // 🆕 추가
-        target.execution_delay_ms = entity.getExecutionDelayMs(); // 🆕 추가
-        target.priority = 100;
-        target.description = entity.getDescription();
-
-        try {
-          target.config = json::parse(entity.getConfig());
-          target.config["id"] = target.id; // ✅ 핸들러 로깅용 ID 주입
-        } catch (const std::exception &e) {
-          LogManager::getInstance().Error(
-              "Config JSON 파싱 실패: " + entity.getName() + " - " +
-              std::string(e.what()));
-          continue;
+    // Loader가 반환한 targets는 이미 정렬되어 있음
+    for (auto &target : data.targets) {
+      // Handler 생성 및 초기화
+      auto handler =
+          TargetHandlerFactory::getInstance().createHandler(target.type);
+      if (handler) {
+        if (handler->initialize(target.config)) {
+          new_handlers[target.name] = std::move(handler);
+          target.handler_initialized = true;
+        } else {
+          LogManager::getInstance().Warn("핸들러 초기화 실패: " + target.name);
         }
-
-        // export_mode 설정
-        std::string export_mode = entity.getExportMode();
-        if (export_mode.empty() || export_mode == "0") {
-          export_mode = "alarm";
-        }
-        target.config["export_mode"] = export_mode;
-
-        if (entity.getExportInterval() > 0) {
-          target.config["export_interval"] = entity.getExportInterval();
-        }
-
-        if (entity.getBatchSize() > 0) {
-          target.config["batch_size"] = entity.getBatchSize();
-        }
-
-        // ✅ 템플릿 주입 로직
-        if (entity.getTemplateId().has_value()) {
-          int tid = entity.getTemplateId().value();
-          target.config["template_id"] = tid;
-
-          if (template_map.count(tid)) {
-            target.config["body_template"] = template_map[tid];
-            LogManager::getInstance().Debug(
-                "타겟 '" + target.name +
-                "'에 템플릿 ID=" + std::to_string(tid) + " 적용됨");
-          } else {
-            LogManager::getInstance().Warn(
-                "타겟 '" + target.name +
-                "'의 템플릿 ID=" + std::to_string(tid) + "를 찾을 수 없음");
-          }
-        }
-
-        targets_.push_back(target);
-        loaded_count++;
-      } catch (const std::exception &e) {
-        LogManager::getInstance().Error("타겟 엔티티 처리 실패: " +
-                                        std::string(e.what()));
-        continue;
       }
+
+      // Failure Protector 생성
+      FailureProtectorConfig fp_config;
+      if (target.config.contains(ExportConst::ConfigKeys::FAILURE_THRESHOLD))
+        fp_config.failure_threshold =
+            target.config[ExportConst::ConfigKeys::FAILURE_THRESHOLD];
+
+      new_protectors[target.name] =
+          std::make_unique<FailureProtector>(target.name, fp_config);
+
+      loaded_count++;
     }
 
-    // ✅ 3. execution_order 기준 정렬 (오름차순: 낮은 숫자가 먼저)
-    std::sort(targets_.begin(), targets_.end(),
-              [](const DynamicTarget &a, const DynamicTarget &b) {
-                if (a.execution_order != b.execution_order) {
-                  return a.execution_order < b.execution_order;
-                }
-                return a.id < b.id; // 동일 순서면 ID순 정렬
-              });
+    // 5. 멤버 변수 교체 (Lock 보호)
+    {
+      std::unique_lock<std::shared_mutex> lock(targets_mutex_);
 
-    // ✅ 4. 정렬된 순서대로 로그 출력 (USER 요청 사항)
-    for (const auto &target : targets_) {
-      LogManager::getInstance().Info(
-          "타겟 로드됨: " + target.name + " (" + target.type +
-          "), 실행 순서=" + std::to_string(target.execution_order));
-    }
+      targets_ = std::move(data.targets);
+      handlers_ = std::move(new_handlers);
+      failure_protectors_ = std::move(new_protectors);
 
-    LogManager::getInstance().Info("✅ DB에서 " + std::to_string(loaded_count) +
-                                   "개 타겟 로드 및 정렬 완료");
-
-    // ✅ 5. 할당된 디바이스 ID 목록 추출 (Selective Subscription용)
-    assigned_device_ids_.clear();
-    if (gateway_id_ > 0) {
-      auto &db_manager = DbLib::DatabaseManager::getInstance();
-      std::string device_query =
-          "SELECT DISTINCT dp.device_id "
-          "FROM data_points dp "
-          "JOIN export_target_mappings etm ON dp.id = etm.point_id "
-          "JOIN export_targets et ON etm.target_id = et.id "
-          "JOIN export_profile_assignments epa ON et.profile_id = "
-          "epa.profile_id "
-          "WHERE epa.gateway_id = " +
-          std::to_string(gateway_id_) +
-          " AND et.is_enabled = 1 AND etm.is_enabled = 1";
-
-      std::vector<std::vector<std::string>> device_result;
-      if (db_manager.executeQuery(device_query, device_result)) {
-        for (const auto &row : device_result) {
-          if (!row[0].empty()) {
-            assigned_device_ids_.insert(row[0]);
-          }
-        }
-        LogManager::getInstance().Info(
-            "✅ 할당된 디바이스 ID 수집 완료: " +
-            std::to_string(assigned_device_ids_.size()) + "개");
+      // 매핑 캐시 업데이트
+      {
+        std::unique_lock<std::shared_mutex> m_lock(mappings_mutex_);
+        target_point_mappings_ = std::move(data.target_point_mappings);
+        target_point_site_mappings_ =
+            std::move(data.target_point_site_mappings);
+        target_site_mappings_ = std::move(data.target_site_mappings);
       }
+
+      // 할당된 디바이스 ID 목록 갱신 (Loader에서 이미 계산됨)
+      assigned_device_ids_ = std::move(data.assigned_device_ids);
     }
 
-    return (loaded_count > 0);
+    LogManager::getInstance().Info(
+        "✅ 타겟 매니저 갱신 완료: " + std::to_string(loaded_count) + "개");
+    return true;
 
   } catch (const std::exception &e) {
-    LogManager::getInstance().Error("DB 로드 실패: " + std::string(e.what()));
+    LogManager::getInstance().Error("타겟 로딩 중 예외 발생: " +
+                                    std::string(e.what()));
     return false;
   }
 }
+
+// ✅ Helper methods moved to DynamicTargetLoader.cpp
 
 bool DynamicTargetManager::forceReload() {
   LogManager::getInstance().Info("강제 리로드...");
@@ -606,8 +450,9 @@ DynamicTargetManager::sendAlarmToTargets(const AlarmMessage &alarm) {
       alarm_json["des"] = alarm.des;
       alarm_json["st"] = alarm.st;
 
-      int subscriber_count =
-          publish_client_->publish("alarms:processed", alarm_json.dump());
+      int subscriber_count = publish_client_->publish(
+          PulseOne::Constants::Export::Redis::CHANNEL_ALARMS_PROCESSED,
+          alarm_json.dump());
 
       LogManager::getInstance().Debug(
           "알람 발행 완료: " + std::to_string(subscriber_count) + "명 구독 중");
@@ -629,17 +474,20 @@ DynamicTargetManager::sendAlarmToTargets(const AlarmMessage &alarm) {
     }
 
     // ✅ export_mode 체크
-    std::string export_mode = "alarm"; // 기본값
-    if (targets_[i].config.contains("export_mode")) {
-      export_mode = targets_[i].config["export_mode"].get<std::string>();
+    std::string export_mode = ExportConst::ExportMode::ALARM; // 기본값
+    if (targets_[i].config.contains(ExportConst::ConfigKeys::EXPORT_MODE)) {
+      export_mode = targets_[i]
+                        .config[ExportConst::ConfigKeys::EXPORT_MODE]
+                        .get<std::string>();
     }
 
-    // Case-insensitive check for alarm/event mode
     std::string mode_upper = export_mode;
     std::transform(mode_upper.begin(), mode_upper.end(), mode_upper.begin(),
                    ::toupper);
 
-    if (mode_upper != "ALARM" && mode_upper != "EVENT") {
+    if (mode_upper != "ALARM" &&
+        mode_upper != ExportConst::ExportMode::EVENT) { // EVENT is already
+                                                        // uppercase in constant
       filtered_count++;
       LogManager::getInstance().Debug("타겟 스킵 (export_mode=" + export_mode +
                                       "): " + targets_[i].name);
@@ -741,7 +589,9 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
     for (const auto &alarm : alarms) {
       try {
         json alarm_json = alarm.to_json(); // helper or manual packing
-        publish_client_->publish("alarms:processed", alarm_json.dump());
+        publish_client_->publish(
+            PulseOne::Constants::Export::Redis::CHANNEL_ALARMS_PROCESSED,
+            alarm_json.dump());
       } catch (...) {
       }
     }
@@ -772,12 +622,15 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
     }
 
     // export_mode 체크
-    std::string export_mode = "alarm";
-    if (targets_[i].config.contains("export_mode")) {
-      export_mode = targets_[i].config["export_mode"].get<std::string>();
+    std::string export_mode = ExportConst::ExportMode::ALARM;
+    if (targets_[i].config.contains(ExportConst::ConfigKeys::EXPORT_MODE)) {
+      export_mode = targets_[i]
+                        .config[ExportConst::ConfigKeys::EXPORT_MODE]
+                        .get<std::string>();
     }
 
-    if (export_mode != "alarm" && export_mode != "EVENT") {
+    if (export_mode != ExportConst::ExportMode::ALARM &&
+        export_mode != ExportConst::ExportMode::EVENT) {
       LogManager::getInstance().Debug("[DynamicTargetManager] Skipped target " +
                                       targets_[i].name +
                                       " due to export_mode: " + export_mode);
@@ -793,11 +646,11 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
           std::chrono::milliseconds(targets_[i].execution_delay_ms));
     }
 
-    auto it_handler = handlers_.find(targets_[i].type);
+    auto it_handler = handlers_.find(targets_[i].name);
     if (it_handler == handlers_.end() || !it_handler->second) {
       LogManager::getInstance().Warn(
-          "[DynamicTargetManager] Handler not found for type: " +
-          targets_[i].type + " (Target: " + targets_[i].name + ")");
+          "[DynamicTargetManager] Handler not found for target: " +
+          targets_[i].name + " (Type: " + targets_[i].type + ")");
       batch_result.failed_targets += alarms.size(); // 대략적인 실패 카운트
       continue;
     }
@@ -892,13 +745,14 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
                                    std::to_string(alarms.size()) +
                                    " alarms to target: " + targets_[i].name);
 
-    auto start_time = std::chrono::steady_clock::now();
+    // auto start_time = std::chrono::steady_clock::now(); // Unused variable
+    // removed
 
     std::vector<TargetSendResult> results =
         it_handler->second->sendAlarmBatch(processed_batch, targets_[i].config);
 
-    auto end_time = std::chrono::steady_clock::now();
-    // 배치 전체 처리 시간 (개별 결과에는 각각의 시간이 있을 수 있음)
+    // auto end_time = std::chrono::steady_clock::now(); // Unused variable
+    // removed 배치 전체 처리 시간 (개별 결과에는 각각의 시간이 있을 수 있음)
 
     for (const auto &res : results) {
       if (res.success) {
@@ -929,7 +783,7 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
 
 BatchTargetResult DynamicTargetManager::sendValueBatchToTargets(
     const std::vector<PulseOne::CSP::ValueMessage> &values,
-    const std::string &type, const std::string &specific_target) {
+    const std::string & /*type*/, const std::string &specific_target) {
   BatchTargetResult batch_result;
 
   if (values.empty()) {
@@ -948,13 +802,16 @@ BatchTargetResult DynamicTargetManager::sendValueBatchToTargets(
     }
 
     // export_mode 체크 (value 모드 확인)
-    std::string export_mode = "alarm";
-    if (targets_[i].config.contains("export_mode")) {
-      export_mode = targets_[i].config["export_mode"].get<std::string>();
+    std::string export_mode = ExportConst::ExportMode::ALARM;
+    if (targets_[i].config.contains(ExportConst::ConfigKeys::EXPORT_MODE)) {
+      export_mode = targets_[i]
+                        .config[ExportConst::ConfigKeys::EXPORT_MODE]
+                        .get<std::string>();
     }
 
     // "value" 또는 "batch" 모드여야 함
-    if (export_mode != "value" && export_mode != "batch") {
+    if (export_mode != ExportConst::ExportMode::VALUE &&
+        export_mode != ExportConst::ExportMode::BATCH) {
       continue;
     }
 
@@ -1043,14 +900,9 @@ DynamicTargetManager::getFailureProtectorStats() const {
 // =============================================================================
 
 void DynamicTargetManager::registerDefaultHandlers() {
-  handlers_["http"] = std::make_unique<HttpTargetHandler>();
-  handlers_["HTTP"] = std::make_unique<HttpTargetHandler>();
-  handlers_["s3"] = std::make_unique<S3TargetHandler>();
-  handlers_["S3"] = std::make_unique<S3TargetHandler>();
-  handlers_["file"] = std::make_unique<FileTargetHandler>();
-  handlers_["FILE"] = std::make_unique<FileTargetHandler>();
-
-  LogManager::getInstance().Info("기본 핸들러 등록 완료: HTTP, S3, File");
+  // ✅ v3.0: REGISTER_TARGET_HANDLER 매크로 사용으로 변경되어
+  // 명시적 등록이 필요 없으나, 하위 호환성을 위해 유지하거나 빈 함수로 둠
+  LogManager::getInstance().Info("기본 핸들러 등록 완료 (Factory 기반)");
 }
 
 bool DynamicTargetManager::registerHandler(
@@ -1184,10 +1036,11 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
   result.target_name = target.name;
   result.target_type = target.type;
 
-  auto handler_it = handlers_.find(target.type);
+  auto handler_it = handlers_.find(target.name);
   if (handler_it == handlers_.end()) {
     result.success = false;
-    result.error_message = "핸들러를 찾을 수 없음: " + target.type;
+    result.error_message = "핸들러를 찾을 수 없음 (이름): " + target.name +
+                           " (타입: " + target.type + ")";
     return false;
   }
 
@@ -1264,7 +1117,7 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
     // ✅ 2. 빌딩 ID 매핑 (Hierarchical: Point Mapping -> Site Mapping -> Config
     // Mapping)
     std::string mapped_bd_str;
-    int mapped_bd_int = 0;
+    // int mapped_bd_int = 0; // Unused variable removed
 
     {
       std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
@@ -1282,12 +1135,15 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
     }
 
     // DB 매핑이 없으면 Config에서 찾음 (fallback)
-    if (mapped_bd_str.empty() && target.config.contains("site_mapping") &&
-        target.config["site_mapping"].is_object()) {
+    if (mapped_bd_str.empty() &&
+        target.config.contains(ExportConst::ConfigKeys::SITE_MAPPING) &&
+        target.config[ExportConst::ConfigKeys::SITE_MAPPING].is_object()) {
       std::string site_id_str =
           std::to_string(lookup_site_id); // ✅ lookup_site_id 사용
-      if (target.config["site_mapping"].contains(site_id_str)) {
-        auto val = target.config["site_mapping"][site_id_str];
+      if (target.config[ExportConst::ConfigKeys::SITE_MAPPING].contains(
+              site_id_str)) {
+        auto val =
+            target.config[ExportConst::ConfigKeys::SITE_MAPPING][site_id_str];
         mapped_bd_str = val.is_number() ? std::to_string(val.get<int>())
                                         : val.get<std::string>();
       }
@@ -1387,8 +1243,8 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
   }
 }
 
-json DynamicTargetManager::expandConfigVariables(const json &config,
-                                                 const AlarmMessage &alarm) {
+json DynamicTargetManager::expandConfigVariables(
+    const json &config, const AlarmMessage & /*alarm*/) {
   json expanded = config;
 
   // 간단한 변수 치환 로직

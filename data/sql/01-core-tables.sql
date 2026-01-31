@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     
     -- 🔥 등록 및 보안
     registration_token VARCHAR(255) UNIQUE,
+    instance_key VARCHAR(255) UNIQUE,                      -- 컬렉터 인스턴스 고유 키 (hostname:hash)
     activation_code VARCHAR(50),
     api_key VARCHAR(255),
     
@@ -103,11 +104,13 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_deleted INTEGER DEFAULT 0,
+    site_id INTEGER,
     max_devices INTEGER DEFAULT 100,
-    max_data_points INTEGER DEFAULT 1000,
+    max_data_points INTEGER DEFAULT 1000, 
     subscription_mode TEXT DEFAULT 'all',
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
     
     -- 🔥 제약조건
     CONSTRAINT chk_edge_status CHECK (status IN ('pending', 'active', 'inactive', 'maintenance', 'error'))

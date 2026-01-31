@@ -1,0 +1,53 @@
+# ==========================================
+# Builder Stage
+# ==========================================
+FROM ubuntu:22.04 AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libsqlite3-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    uuid-dev \
+    nlohmann-json3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+# Copy source
+COPY collector/ .
+COPY core/ shared/ ./core/shared/
+
+# Build
+RUN mkdir build && cd build && \
+    cmake .. && \
+    make -j$(nproc)
+
+# ==========================================
+# Final Stage
+# ==========================================
+FROM ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libsqlite3-0 \
+    libcurl4 \
+    libssl3 \
+    uuid-runtime \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy binary
+COPY --from=builder /src/build/collector /app/pulseone-collector
+
+# Create data directories
+RUN mkdir -p /app/data/db /app/data/logs
+
+# Environment
+ENV LD_LIBRARY_PATH=/app
+
+CMD ["/app/pulseone-collector"]

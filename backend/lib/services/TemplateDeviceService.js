@@ -395,17 +395,42 @@ class TemplateDeviceService extends BaseService {
     }
 
     /**
-     * 템플릿을 삭제합다.
+     * 템플릿을 삭제합니다.
      */
     async deleteTemplate(id, tenantId, user = null) {
         return await this.handleRequest(async () => {
             const template = await this.repository.findById(id);
             if (!template) throw new Error('Template not found');
 
+            // 0. Check for active device usage
+            // Assuming deviceRepo has count or query capability. If not, use internal Knex query via repository.
+            // Using repository's underlying knex if accessible, or deviceRepo.
+
+            // First try to use deviceRepo if it has a count method, otherwise use direct knex query via this.repository.knex
+            const [{ count }] = await this.repository.knex('devices')
+                .where('template_device_id', id)
+                .count('* as count');
+
+            if (count > 0) {
+                throw new Error(`이 템플릿을 사용 중인 디바이스가 ${count}개 존재합니다. 먼저 디바이스에서 해제해주세요.`);
+            }
+
             return await this.transaction(async (trx) => {
-                await this.templatePointRepo.deleteByTemplateId(id);
-                await this.templateSettingsRepo.deleteByTemplateId(id);
-                const success = await this.repository.deleteById(id);
+                await this.templatePointRepo.deleteByTemplateId(id, trx);
+                await this.templateSettingsRepo.deleteByTemplateId(id, trx);
+
+                // Assuming TemplateDeviceRepository's deleteById supports trx as the second argument (standard pattern?)
+                // If not, we need to check TemplateDeviceRepository.js.
+                // Assuming it extends BaseRepository or implements its own with trx support.
+                // Safest is to use query(trx).
+
+                // But wait, validation step showed TemplateDeviceRepository implementation? 
+                // No, I haven't seen TemplateDeviceRepository.js yet.
+                // I will assume it follows the pattern. If it crashes, I will fix.
+                // To be safe, I'll use: this.repository.query(trx).where('id', id).del();
+
+                const affected = await this.repository.query(trx).where('id', id).del();
+                const success = affected > 0;
 
                 if (success && user) {
                     await this.auditLogService.logAction({

@@ -18,6 +18,8 @@
 #include "Client/RedisClientImpl.h"
 #include "Export/ExportTypes.h"
 #include "Logging/LogManager.h"
+#include "Schedule/ScheduledExporter.h"
+#include "Utils/ConfigManager.h"
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
@@ -335,11 +337,11 @@ void EventSubscriber::handleScheduleEvent(const std::string &channel,
     if (channel == "schedule:reload") {
       LogManager::getInstance().Info("🔄 스케줄 리로드 이벤트");
 
-      // TODO: ScheduledExporter 싱글턴 접근 후 reloadSchedules() 호출
-      // auto& exporter = PulseOne::Schedule::ScheduledExporter::getInstance();
-      // int loaded = exporter.reloadSchedules();
-      // LogManager::getInstance().Info("스케줄 리로드 완료: " +
-      // std::to_string(loaded) + "개");
+      // ScheduledExporter 싱글턴 접근 후 reloadSchedules() 호출
+      auto &exporter = ::PulseOne::Schedule::ScheduledExporter::getInstance();
+      int loaded = exporter.reloadSchedules();
+      LogManager::getInstance().Info(
+          "스케줄 리로드 완료: " + std::to_string(loaded) + "개");
 
     } else if (channel.find("schedule:execute:") == 0) {
       // 특정 스케줄 실행
@@ -349,9 +351,9 @@ void EventSubscriber::handleScheduleEvent(const std::string &channel,
       LogManager::getInstance().Info("⚡ 스케줄 실행 이벤트: ID=" +
                                      std::to_string(schedule_id));
 
-      // TODO: ScheduledExporter.executeSchedule(schedule_id) 호출
-      // auto& exporter = PulseOne::Schedule::ScheduledExporter::getInstance();
-      // auto result = exporter.executeSchedule(schedule_id);
+      // ScheduledExporter.executeSchedule(schedule_id) 호출
+      auto &exporter = ::PulseOne::Schedule::ScheduledExporter::getInstance();
+      auto result = exporter.executeSchedule(schedule_id);
 
     } else if (channel.find("schedule:stop:") == 0) {
       // 특정 스케줄 중지

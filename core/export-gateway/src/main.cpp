@@ -3,7 +3,7 @@
  * @brief ExportCoordinator 기반 통합 아키텍처
  * @author PulseOne Development Team
  * @date 2025-10-31
- * @version 2.0.1 - 컴파일 에러 수정
+ * @version 3.1.0 - Factory 기반 핸들러 등록 완료
  *
  * 🔧 주요 수정사항:
  * - ❌ sendAlarmToAllTargets() → ✅ sendAlarmToTargets()
@@ -506,7 +506,7 @@ int main(int argc, char **argv) {
         print_usage(argv[0]);
         return 0;
       } else if (arg == "--version") {
-        std::cout << "PulseOne Export Gateway v2.0.2\n";
+        std::cout << "PulseOne Export Gateway v3.1.0\n";
         return 0;
       } else if (arg == "--interactive") {
         interactive = true;

@@ -165,20 +165,24 @@ class MonitoringService extends BaseService {
      */
     async getPerformanceMetrics() {
         return await this.handleRequest(async () => {
+            // TODO: 실제 API 및 DB 성능 지표 수집 로직 구현
+            // 현재는 시스템 부하에 따른 상대적인 값 제공
+            const cpuUsage = await this._getCPUUsage();
+
             return {
                 timestamp: new Date().toISOString(),
                 api: {
-                    response_time_ms: Math.round(Math.random() * 100) + 20,
-                    throughput_per_second: Math.round(Math.random() * 500) + 100,
-                    error_rate: Math.round(Math.random() * 5 * 100) / 100
+                    response_time_ms: 10 + Math.floor(cpuUsage / 5), // CPU 부하에 비례
+                    throughput_per_second: 0, // 실제 요청 카운터 필요
+                    error_rate: 0
                 },
                 database: {
-                    query_time_ms: Math.round(Math.random() * 50) + 10,
-                    connection_pool_usage: Math.round(Math.random() * 80) + 10
+                    query_time_ms: 5 + Math.floor(cpuUsage / 10),
+                    connection_pool_usage: 0 // 실제 커넥션 풀 정보 필요
                 },
                 cache: {
-                    hit_rate: Math.round(Math.random() * 30) + 60,
-                    miss_rate: Math.round(Math.random() * 40) + 10
+                    hit_rate: 100,
+                    miss_rate: 0
                 }
             };
         }, 'MonitoringService.getPerformanceMetrics');
@@ -266,7 +270,17 @@ class MonitoringService extends BaseService {
      * Internal: Get Network Usage (Estimated)
      */
     _getNetworkUsage() {
-        return Math.round(Math.random() * 50); // Simplified for now
+        // 인터페이스 트래픽 통계 수집은 OS별로 복잡하므로 
+        // 현재는 활성 인터페이스 유무에 따라 기본값 반환
+        try {
+            const interfaces = os.networkInterfaces();
+            const activeCount = Object.keys(interfaces).filter(name =>
+                interfaces[name].some(addr => !addr.internal)
+            ).length;
+            return activeCount > 0 ? 1 : 0;
+        } catch (e) {
+            return 0;
+        }
     }
 
     /**

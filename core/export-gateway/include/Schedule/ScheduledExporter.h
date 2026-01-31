@@ -6,7 +6,6 @@
 
 #ifndef SCHEDULED_EXPORTER_H
 #define SCHEDULED_EXPORTER_H
-
 #include "Client/RedisClient.h"
 #include "Database/Entities/ExportLogEntity.h"
 #include "Database/Entities/ExportScheduleEntity.h"
@@ -17,6 +16,9 @@
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
 #include "Export/ExportTypes.h"
+#include "Logging/LogManager.h"
+#include "Utils/ConfigManager.h"
+
 #include <atomic>
 #include <chrono>
 #include <map>
@@ -27,10 +29,10 @@
 #include <thread>
 #include <vector>
 
-using json = nlohmann::json;
-
 namespace PulseOne {
 namespace Schedule {
+
+using json = nlohmann::json;
 
 struct ScheduledExporterConfig {
   std::string redis_host = "localhost";
@@ -92,9 +94,10 @@ struct ScheduleExecutionResult {
 
 class ScheduledExporter {
 public:
-  explicit ScheduledExporter(const ScheduledExporterConfig &config);
-  ~ScheduledExporter();
+  static ScheduledExporter &
+  getInstance(const ScheduledExporterConfig &config = {});
 
+  // Singleton: Delete copy/move constructors
   ScheduledExporter(const ScheduledExporter &) = delete;
   ScheduledExporter &operator=(const ScheduledExporter &) = delete;
   ScheduledExporter(ScheduledExporter &&) = delete;
@@ -135,6 +138,8 @@ public:
   void backgroundRetryLoop();
 
 private:
+  explicit ScheduledExporter(const ScheduledExporterConfig &config);
+  ~ScheduledExporter();
   void scheduleCheckLoop();
 
   std::vector<PulseOne::Database::Entities::ExportScheduleEntity>
