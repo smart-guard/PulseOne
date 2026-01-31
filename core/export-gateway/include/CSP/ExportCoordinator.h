@@ -160,7 +160,7 @@ public:
   }
 
   PulseOne::Schedule::ScheduledExporter *getScheduledExporter() const {
-    return scheduled_exporter_.get();
+    return scheduled_exporter_;
   }
 
   void handleScheduleEvent(const std::string &channel,
@@ -184,7 +184,7 @@ private:
   bool initializeEventSubscriber();
   bool initializeScheduledExporter();
 
-  static bool initializeSharedResources();
+  bool initializeSharedResources(int gateway_id);
   static void cleanupSharedResources();
 
   ExportResult convertTargetSendResult(
@@ -196,7 +196,7 @@ private:
   std::atomic<bool> is_running_{false};
 
   std::unique_ptr<PulseOne::Event::EventSubscriber> event_subscriber_;
-  std::unique_ptr<PulseOne::Schedule::ScheduledExporter> scheduled_exporter_;
+  PulseOne::Schedule::ScheduledExporter *scheduled_exporter_ = nullptr;
 
   std::unique_ptr<PulseOne::Database::Repositories::ExportLogRepository>
       log_repo_;

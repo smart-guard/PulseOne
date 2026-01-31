@@ -6,6 +6,7 @@
 const BaseService = require('./BaseService');
 const RepositoryFactory = require('../database/repositories/RepositoryFactory');
 const CrossPlatformManager = require('./crossPlatformManager');
+const MonitoringService = require('./MonitoringService');
 
 class DashboardService extends BaseService {
     constructor() {
@@ -31,18 +32,23 @@ class DashboardService extends BaseService {
         return RepositoryFactory.getInstance().getRepository('AlarmRuleRepository');
     }
 
+    get exportLogRepo() {
+        return RepositoryFactory.getInstance().getRepository('ExportLogRepository');
+    }
+
     /**
      * 대시보드 전체 시스템 개요 데이터 조회
      */
     async getOverviewData(tenantId) {
         return await this.handleRequest(async () => {
             // 1. 서비스 상태 및 시스템 메트릭 (병렬 조회)
-            const [servicesResult, systemInfo, systemMetrics, edgeServers, exportGateways] = await Promise.all([
+            const [servicesResult, systemInfo, systemMetrics, edgeServers, exportGateways, performanceData] = await Promise.all([
                 CrossPlatformManager.getServicesForAPI(),
                 CrossPlatformManager.getSystemInfo(),
                 this._getProcessMetrics(),
                 this.deviceRepo.knex('edge_servers').where('tenant_id', tenantId).where('is_deleted', false).catch(() => []),
-                this.deviceRepo.knex('export_gateways').where('tenant_id', tenantId).where('is_deleted', false).catch(() => [])
+                this.deviceRepo.knex('export_gateways').where('tenant_id', tenantId).where('is_deleted', false).catch(() => []),
+                MonitoringService.getPerformanceMetrics().catch(() => null)
             ]);
 
             let services = servicesResult.data || [];
@@ -194,11 +200,12 @@ class DashboardService extends BaseService {
             services = [...otherServices, ...finalizedCollectors, ...finalizedGateways, ...shadowCollectors];
 
             // 2. 디바이스 및 사이트 통계
-            const [protocolStats, siteStatsRaw, systemSummary, allDataPoints] = await Promise.all([
+            const [protocolStats, siteStatsRaw, systemSummary, allDataPoints, exportStats] = await Promise.all([
                 this.deviceRepo.getDeviceStatsByProtocol(tenantId).catch(() => []),
                 this.deviceRepo.getDeviceStatsBySite(tenantId).catch(() => []),
                 this.deviceRepo.getSystemStatusSummary(tenantId).catch(() => ({})),
-                this.deviceRepo.searchDataPoints(tenantId, '').catch(() => [])
+                this.deviceRepo.searchDataPoints(tenantId, '').catch(() => []),
+                this.exportLogRepo.getStatistics({ tenant_id: tenantId }).catch(() => ({ total: 0, success: 0, failure: 0 }))
             ]);
 
             // 3. 알람 통계
@@ -217,12 +224,18 @@ class DashboardService extends BaseService {
                 disconnected: systemSummary.disconnected_devices || 0,
                 error: systemSummary.error_devices || 0,
                 protocols: protocolStats.reduce((acc, p) => { acc[p.protocol_type] = p.device_count; return acc; }, {}),
+                protocol_details: protocolStats.map(p => ({
+                    type: p.protocol_type,
+                    name: p.protocol_name,
+                    count: p.device_count,
+                    connected: p.connected_count || 0
+                })),
                 sites_count: sites.length || 0
             };
 
             const dataPointStats = {
-                total: allDataPoints.length,
-                active: allDataPoints.filter(dp => dp.is_enabled).length,
+                total: systemSummary.total_data_points || 0,
+                enabled: systemSummary.enabled_data_points || 0,
                 analog: allDataPoints.filter(dp => dp.data_type === 'analog' || dp.data_type === 'REAL').length,
                 digital: allDataPoints.filter(dp => dp.data_type === 'digital' || dp.data_type === 'BOOL').length,
                 string: allDataPoints.filter(dp => dp.data_type === 'string' || dp.data_type === 'STRING').length
@@ -253,13 +266,40 @@ class DashboardService extends BaseService {
                     recent_alarms: recentAlarms?.slice(0, 5) || []
                 },
                 data_summary: dataPointStats,
+                site_stats: siteStatsRaw.map(s => ({
+                    id: s.site_id,
+                    name: s.site_name,
+                    device_count: s.device_count,
+                    connected_count: s.connected_count
+                })),
+                performance: {
+                    api_response_time: performanceData?.api?.response_time_ms || 0,
+                    database_response_time: performanceData?.database?.query_time_ms || 0,
+                    cache_hit_rate: performanceData?.cache?.hit_rate || 0,
+                    error_rate: performanceData?.api?.error_rate || 0,
+                    throughput_per_second: performanceData?.api?.throughput_per_second || 0
+                },
                 health_status: {
                     overall: services.filter(s => s.status === 'running').length >= Math.ceil(services.length * 0.8) ? 'healthy' : 'degraded',
-                    database_connected: services.find(s => s.name === 'database')?.status === 'running',
-                    redis_connected: services.find(s => s.name === 'redis')?.status === 'running',
-                    active_alarms_count: activeAlarms?.length || 0,
-                    services_running: services.filter(s => s.status === 'running').length,
-                    services_total: services.length
+                    database: services.find(s => s.name === 'database')?.status === 'running' ? 'healthy' : 'warning',
+                    redis: services.find(s => s.name === 'redis')?.status === 'running' ? 'healthy' : 'critical',
+                    collector: services.find(s => s.name.startsWith('collector'))?.status === 'running' ? 'healthy' : 'warning',
+                    gateway: services.find(s => s.name.startsWith('export-gateway'))?.status === 'running' ? 'healthy' : 'warning',
+                    network: 'healthy',
+                    storage: 'healthy'
+                },
+                communication_status: {
+                    upstream: {
+                        total_devices: deviceStats.total,
+                        connected_devices: deviceStats.connected,
+                        connectivity_rate: deviceStats.total > 0 ? Math.round((deviceStats.connected / deviceStats.total) * 100) : 0,
+                        last_polled_at: systemSummary.last_communication || new Date().toISOString()
+                    },
+                    downstream: {
+                        total_exports: exportStats.total,
+                        success_rate: exportStats.total > 0 ? Math.round((exportStats.success / exportStats.total) * 100) : 0,
+                        last_dispatch_at: exportStats.last_dispatch || new Date().toISOString()
+                    }
                 },
                 hierarchy: hierarchy,
                 unassigned_collectors: unassignedCollectors

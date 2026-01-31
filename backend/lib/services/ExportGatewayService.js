@@ -451,12 +451,33 @@ class ExportGatewayService extends BaseService {
             }
 
             if (target_type === 'http') {
-                if (!conf.url) throw new Error('URL is required for HTTP target');
+                const url = conf.url || conf.endpoint;
+                if (!url) throw new Error('URL/Endpoint is required for HTTP target');
+
+                // Build headers from config
+                const headers = { ...(conf.headers || {}) };
+
+                // Handle nested auth object (bearer, basic, api_key) - Align with HttpTargetHandler.cpp
+                if (conf.auth && typeof conf.auth === 'object') {
+                    const auth = conf.auth;
+                    const authType = auth.type?.toLowerCase();
+
+                    if (authType === 'bearer' && auth.token) {
+                        headers['Authorization'] = `Bearer ${auth.token}`;
+                    } else if (authType === 'basic' && auth.username && auth.password) {
+                        const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
+                        headers['Authorization'] = `Basic ${credentials}`;
+                    } else if (authType === 'api_key' || authType === 'x-api-key') {
+                        const headerName = auth.header || 'x-api-key';
+                        headers[headerName] = auth.apiKey || auth.key;
+                    }
+                }
+
                 try {
-                    const response = await axios.get(conf.url, {
-                        headers: conf.headers || {},
+                    const response = await axios.get(url, {
+                        headers,
                         timeout: 5000,
-                        validateStatus: (status) => status >= 200 && status < 300 // Only 2xx is success
+                        validateStatus: (status) => status >= 200 && status < 300
                     });
                     return {
                         success: true,
@@ -477,22 +498,37 @@ class ExportGatewayService extends BaseService {
                     throw new Error(`Connection failed: ${error.message}`);
                 }
             } else if (target_type === 's3') {
-                if (!conf.bucket || !conf.region) throw new Error('Bucket and Region are required for S3 target');
+                // Align with S3TargetHandler.cpp schema
+                const bucketName = conf.BucketName || conf.bucket_name || conf.bucket;
+                const serviceUrl = conf.S3ServiceUrl || conf.endpoint;
+                const accessKey = conf.AccessKeyID || conf.access_key;
+                const secretKey = conf.SecretAccessKey || conf.secret_key;
+                const region = conf.region || 'ap-northeast-2';
+
+                if (!bucketName) throw new Error('BucketName is required for S3 target');
 
                 // Check for placeholder credentials
-                const isPlaceholder = (k) => !k || k === 'YOUR_AWS_ACCESS_KEY' || k === 'YOUR_AWS_SECRET_KEY' || k.startsWith('YOUR_AWS_');
-                if (isPlaceholder(conf.accessKey) || isPlaceholder(conf.secretKey)) {
-                    throw new Error('Valid AWS Access Key and Secret Key are required. Placeholder values are not allowed.');
+                const isPlaceholder = (k) => !k || k === 'YOUR_AWS_ACCESS_KEY' || k === 'YOUR_AWS_SECRET_KEY' || k.startsWith('YOUR_AWS_') || k === 'AKIA...';
+                if (isPlaceholder(accessKey) || isPlaceholder(secretKey)) {
+                    throw new Error('Valid AccessKeyID and SecretAccessKey are required. Placeholder values are not allowed.');
                 }
 
                 // Basic connectivity test to S3 endpoint
-                const s3Url = `https://${conf.bucket}.s3.${conf.region}.amazonaws.com`;
+                // If serviceUrl is provided, use it. Otherwise, generate standard AWS S3 URL.
+                let s3Url = serviceUrl;
+                if (!s3Url) {
+                    s3Url = `https://${bucketName}.s3.${region}.amazonaws.com`;
+                } else {
+                    // Normalize endpoint: ensure it ends with bucket name if using path-style or if bucket missing from host
+                    if (s3Url.endsWith('/')) s3Url = s3Url.slice(0, -1);
+                }
+
                 try {
+                    // Try a HEAD request to verify reachability
                     const response = await axios.head(s3Url, { timeout: 5000, validateStatus: () => true });
-                    // S3 returns 404 if bucket doesn't exist.
-                    // 403 (Forbidden) is common without full SDK signing but confirms bucket exists and is reachable.
+
                     if (response.status === 404) {
-                        throw new Error(`Bucket '${conf.bucket}' not found or unreachable in region '${conf.region}'.`);
+                        throw new Error(`Bucket '${bucketName}' not found or unreachable at ${s3Url}.`);
                     }
 
                     return {
@@ -500,11 +536,12 @@ class ExportGatewayService extends BaseService {
                         message: `S3 endpoint reachable. Bucket existence confirmed (Connectivity OK).`,
                         details: {
                             status: response.status,
-                            info: 'Verified bucket reachability. Full credential validation requires the actual export process.'
+                            endpoint: s3Url,
+                            info: 'Verified bucket reachability. Full credential validation occurs during actual export.'
                         }
                     };
                 } catch (error) {
-                    throw new Error(`S3 Connectivity check failed: ${error.message}`);
+                    throw new Error(`S3 Connectivity check failed (${s3Url}): ${error.message}`);
                 }
             } else {
                 return {

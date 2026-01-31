@@ -16,13 +16,19 @@
 #ifndef FILE_TARGET_HANDLER_H
 #define FILE_TARGET_HANDLER_H
 
-#include "Export/ExportTypes.h"
-#include "Transform/PayloadTransformer.h"
+#include "../Export/ExportTypes.h"
+#include "../Transform/PayloadTransformer.h"
+#include "AlarmMessage.h"
+#include "ITargetHandler.h"
 #include <atomic>
+#include <nlohmann/json.hpp>
 #include <string>
+#include <vector>
 
 namespace PulseOne {
 namespace CSP {
+
+using json = nlohmann::json;
 
 /**
  * @brief 로컬 파일 타겟 핸들러 (Stateless v2.0)

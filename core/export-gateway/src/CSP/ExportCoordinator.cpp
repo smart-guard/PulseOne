@@ -21,6 +21,7 @@
 
 #include "CSP/AlarmMessage.h"
 #include "CSP/DynamicTargetManager.h"
+#include "Constants/ExportConstants.h" // ✅ Added Constants
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Entities/DeviceEntity.h"
 #include "Database/Repositories/DataPointRepository.h"
@@ -163,15 +164,15 @@ bool ExportCoordinator::start() {
     }
 
     // 2. 공유 리소스 초기화
-    if (!initializeSharedResources()) {
+    if (!initializeSharedResources(gateway_id_)) {
       LogManager::getInstance().Error("공유 리소스 초기화 실패");
       return false;
     }
 
-    // ✅ FIX: 게이트웨이 ID를 매니저에게 전달하여 타겟 필터링 활성화
-    if (shared_target_manager_) {
-      shared_target_manager_->setGatewayId(gateway_id_);
-    }
+    // ✅ setGatewayId는 initializeSharedResources 내부에서 처리됨
+    // if (shared_target_manager_) {
+    //   shared_target_manager_->setGatewayId(gateway_id_);
+    // }
 
     // 3. Repositories 초기화
     if (!initializeRepositories()) {
@@ -258,7 +259,7 @@ void ExportCoordinator::stop() {
 // 공유 리소스 관리
 // =============================================================================
 
-bool ExportCoordinator::initializeSharedResources() {
+bool ExportCoordinator::initializeSharedResources(int gateway_id) {
   std::lock_guard<std::mutex> lock(init_mutex_);
 
   if (shared_resources_initialized_.load()) {
@@ -276,8 +277,9 @@ bool ExportCoordinator::initializeSharedResources() {
       shared_target_manager_ =
           std::shared_ptr<PulseOne::CSP::DynamicTargetManager>(
               &PulseOne::CSP::DynamicTargetManager::getInstance(),
-              [](PulseOne::CSP::DynamicTargetManager *) {} // no-op 삭제자
-          );
+              [](PulseOne::CSP::DynamicTargetManager *) {});
+
+      shared_target_manager_->setGatewayId(gateway_id);
 
       if (!shared_target_manager_->start()) {
         LogManager::getInstance().Error("DynamicTargetManager 시작 실패");
@@ -373,6 +375,13 @@ bool ExportCoordinator::initializeDatabase() {
       return false;
     }
 
+    // ✅ RepositoryFactory 명시적 초기화
+    auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+    if (!factory.initialize()) {
+      LogManager::getInstance().Warn(
+          "RepositoryFactory 초기화 실패 - 계속 진행");
+    }
+
     std::vector<std::vector<std::string>> test_result;
     if (!db_manager.executeQuery("SELECT 1", test_result)) {
       LogManager::getInstance().Error("데이터베이스 연결 실패");
@@ -445,11 +454,15 @@ bool ExportCoordinator::initializeEventSubscriber() {
       for (const auto &id : device_ids) {
         event_config.subscribe_channels.push_back("device:" + id + ":alarms");
       }
+      // ✅ FIX: Selective 모드에서는 패턴 구독 비활성화 (중복 방지)
+      event_config.subscribe_patterns.clear();
+
       LogManager::getInstance().Info("Selective Subscription 활성화: " +
                                      std::to_string(device_ids.size()) +
-                                     "개 디바이스 채널 설정");
+                                     "개 디바이스 채널 설정 (패턴 구독 차단)");
     } else {
       event_config.subscribe_channels = config_.alarm_channels;
+      event_config.subscribe_patterns = config_.alarm_patterns;
     }
 
     event_config.subscribe_channels.push_back("schedule:reload");
@@ -526,8 +539,7 @@ bool ExportCoordinator::initializeScheduledExporter() {
     schedule_config.enable_debug_log = config_.enable_debug_log;
 
     scheduled_exporter_ =
-        std::make_unique<PulseOne::Schedule::ScheduledExporter>(
-            schedule_config);
+        &PulseOne::Schedule::ScheduledExporter::getInstance(schedule_config);
 
     if (!scheduled_exporter_->start()) {
       LogManager::getInstance().Error("ScheduledExporter 시작 실패");
@@ -561,15 +573,18 @@ void ExportCoordinator::updateHeartbeat() {
     // Redis 하트비트 추가
     if (redis_client_ && redis_client_->isConnected()) {
       nlohmann::json status_json;
-      status_json["status"] = "online";
-      status_json["lastSeen"] = std::chrono::system_clock::to_time_t(
-          std::chrono::system_clock::now());
+      status_json["status"] = PulseOne::Constants::Export::Redis::STATUS_ONLINE;
+      status_json[PulseOne::Constants::Export::Redis::KEY_LAST_SEEN] =
+          std::chrono::system_clock::to_time_t(
+              std::chrono::system_clock::now());
       status_json["gatewayId"] = gateway_id_;
       status_json["hostname"] = "docker-container"; // 간단하게 상수로 처리
 
       // gateway:status:{id} 키에 90초 만료로 저장
-      redis_client_->setex("gateway:status:" + std::to_string(gateway_id_),
-                           status_json.dump(), 90);
+      redis_client_->setex(
+          PulseOne::Constants::Export::Redis::KEY_GATEWAY_STATUS_PREFIX +
+              std::to_string(gateway_id_),
+          status_json.dump(), 90);
     }
   } catch (const std::exception &e) {
 
@@ -593,13 +608,16 @@ void ExportCoordinator::handleScheduleEvent(const std::string &channel,
     }
 
     // ✅ schedule:reload 처리
-    if (channel == "schedule:reload") {
+    if (channel ==
+        PulseOne::Constants::Export::Redis::CHANNEL_SCHEDULE_RELOAD) {
       int loaded = scheduled_exporter_->reloadSchedules();
       LogManager::getInstance().Info(
           "✅ 스케줄 리로드 완료: " + std::to_string(loaded) + "개");
     }
-    // ✅ schedule:execute:{id} 처리 (NEW!)
-    else if (channel.find("schedule:execute:") == 0) {
+    // ✅ schedule:execute:{id} 처리
+    else if (channel.find(
+                 PulseOne::Constants::Export::Redis::PATTERN_SCHEDULE_EXECUTE
+                     .substr(0, 17)) == 0) {
       std::string id_str = channel.substr(17); // "schedule:execute:" 이후
       try {
         int schedule_id = std::stoi(id_str);
@@ -639,7 +657,8 @@ void ExportCoordinator::handleConfigEvent(const std::string &channel,
   try {
     LogManager::getInstance().Info("🔄 설정 이벤트 수신: " + channel);
 
-    if (channel == "config:reload" || channel == "target:reload") {
+    if (channel == PulseOne::Constants::Export::Redis::CHANNEL_CONFIG_RELOAD ||
+        channel == PulseOne::Constants::Export::Redis::CHANNEL_TARGET_RELOAD) {
       int loaded = reloadTargets();
       LogManager::getInstance().Info(
           "✅ 타겟 리로드 트리거 완료: " + std::to_string(loaded) + "개");
@@ -661,11 +680,14 @@ void ExportCoordinator::handleCommandEvent(const std::string &channel,
     nlohmann::json payload =
         j.contains("payload") ? j["payload"] : nlohmann::json::object();
 
-    if (command == "manual_export") {
-      std::string target_name = payload.value("target_name", "");
-      int target_id = payload.value("target_id", 0);
+    if (command == PulseOne::Constants::Export::Command::MANUAL_EXPORT) {
+      std::string target_name =
+          payload.value(PulseOne::Constants::Export::JsonKeys::TARGET_NAME, "");
+      int target_id =
+          payload.value(PulseOne::Constants::Export::JsonKeys::TARGET_ID, 0);
 
-      if (target_name == "ALL" || target_name == "all") {
+      if (target_name == PulseOne::Constants::Export::JsonKeys::ALL_TARGETS ||
+          target_name == "all") { // "all" for backward compatibility
         auto target_manager = getTargetManager();
         if (target_manager) {
           auto all_targets = target_manager->getAllTargets();
@@ -686,14 +708,23 @@ void ExportCoordinator::handleCommandEvent(const std::string &channel,
 
           if (redis_client_ && redis_client_->isConnected()) {
             nlohmann::json res_payload;
-            res_payload["success"] = overall_success;
-            res_payload["error"] = error_summary;
-            res_payload["target"] = "ALL";
-            res_payload["command_id"] = payload.value("command_id", "");
+            res_payload[PulseOne::Constants::Export::JsonKeys::SUCCESS] =
+                overall_success;
+            res_payload[PulseOne::Constants::Export::JsonKeys::ERROR] =
+                error_summary;
+            res_payload[PulseOne::Constants::Export::JsonKeys::TARGET] =
+                PulseOne::Constants::Export::JsonKeys::ALL_TARGETS;
+            res_payload[PulseOne::Constants::Export::JsonKeys::COMMAND_ID] =
+                payload.value(PulseOne::Constants::Export::JsonKeys::COMMAND_ID,
+                              "");
             nlohmann::json res_msg;
-            res_msg["command"] = "manual_export_result";
-            res_msg["payload"] = res_payload;
-            redis_client_->publish("cmd:gateway:result", res_msg.dump());
+            res_msg[PulseOne::Constants::Export::JsonKeys::COMMAND] =
+                PulseOne::Constants::Export::Command::MANUAL_EXPORT_RESULT;
+            res_msg[PulseOne::Constants::Export::JsonKeys::PAYLOAD] =
+                res_payload;
+            redis_client_->publish(
+                PulseOne::Constants::Export::Redis::CHANNEL_CMD_GATEWAY_RESULT,
+                res_msg.dump());
           }
         }
         return;
@@ -717,16 +748,24 @@ void ExportCoordinator::handleCommandEvent(const std::string &channel,
       // Publish result to redis so UI can show it
       if (redis_client_ && redis_client_->isConnected()) {
         nlohmann::json res_payload;
-        res_payload["success"] = result.success;
-        res_payload["error"] = result.error_message;
-        res_payload["target"] = target_name;
-        res_payload["command_id"] = payload.value("command_id", "");
+        res_payload[PulseOne::Constants::Export::JsonKeys::SUCCESS] =
+            result.success;
+        res_payload[PulseOne::Constants::Export::JsonKeys::ERROR] =
+            result.error_message;
+        res_payload[PulseOne::Constants::Export::JsonKeys::TARGET] =
+            target_name;
+        res_payload[PulseOne::Constants::Export::JsonKeys::COMMAND_ID] =
+            payload.value(PulseOne::Constants::Export::JsonKeys::COMMAND_ID,
+                          "");
 
         nlohmann::json res_msg;
-        res_msg["command"] = "manual_export_result";
-        res_msg["payload"] = res_payload;
+        res_msg[PulseOne::Constants::Export::JsonKeys::COMMAND] =
+            PulseOne::Constants::Export::Command::MANUAL_EXPORT_RESULT;
+        res_msg[PulseOne::Constants::Export::JsonKeys::PAYLOAD] = res_payload;
 
-        redis_client_->publish("cmd:gateway:result", res_msg.dump());
+        redis_client_->publish(
+            PulseOne::Constants::Export::Redis::CHANNEL_CMD_GATEWAY_RESULT,
+            res_msg.dump());
       }
     } else {
       LogManager::getInstance().Warn("지원되지 않는 명령: " + command);

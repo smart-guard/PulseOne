@@ -33,6 +33,12 @@ namespace Schedule {
 // 생성자 및 소멸자
 // =============================================================================
 
+ScheduledExporter &
+ScheduledExporter::getInstance(const ScheduledExporterConfig &config) {
+  static ScheduledExporter instance(config);
+  return instance;
+}
+
 ScheduledExporter::ScheduledExporter(const ScheduledExporterConfig &config)
     : config_(config), last_reload_time_(std::chrono::system_clock::now()) {
 
@@ -801,19 +807,44 @@ std::vector<std::vector<ExportDataPoint>> ScheduledExporter::createBatches(
 // 내부 메서드 - Cron 처리
 // =============================================================================
 
+// Include ccronexpr header
+#include "Utils/ccronexpr.h"
+
 std::chrono::system_clock::time_point ScheduledExporter::calculateNextRunTime(
     const std::string &cron_expression, const std::string &timezone,
     const std::chrono::system_clock::time_point &from_time) {
-  (void)cron_expression;
-  (void)timezone;
 
-  // 간단한 구현: 현재 + 1시간 (실제로는 Cron 파서 필요)
-  // TODO: 실제 Cron 표현식 파싱 라이브러리 사용 (ccronexpr 등)
+  (void)timezone; // Timezone handling is complex, defaulting to system time for
+                  // now
 
   using namespace std::chrono;
 
-  // 임시: 1시간 후
-  return from_time + hours(1);
+  cron_expr expr;
+  const char *err = nullptr;
+
+  // 1. Cron 표현식 파싱
+  cron_parse_expr(cron_expression.c_str(), &expr, &err);
+
+  if (err) {
+    LogManager::getInstance().Error("❌ Cron 파싱 실패: " + cron_expression +
+                                    " (" + std::string(err) + ")");
+    // 실패 시 안전책: 1시간 후 리턴
+    return from_time + hours(1);
+  }
+
+  // 2. 현재 시간(from_time)을 time_t로 변환
+  time_t now_t = system_clock::to_time_t(from_time);
+
+  // 3. 다음 실행 시간 계산
+  time_t next_t = cron_next(&expr, now_t);
+
+  if (next_t == (time_t)-1) {
+    LogManager::getInstance().Error("❌ 다음 실행 시간 계산 실패 (Cron): " +
+                                    cron_expression);
+    return from_time + hours(1);
+  }
+
+  return system_clock::from_time_t(next_t);
 }
 
 // =============================================================================

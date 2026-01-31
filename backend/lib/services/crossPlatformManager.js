@@ -6,6 +6,7 @@ const path = require('path');
 const { spawn, exec } = require('child_process');
 const fs = require('fs').promises;
 const fsSync = require('fs');
+const http = require('http'); // For Docker Socket Communication
 
 // ConfigManager와 LogManager 연동
 const config = require('../config/ConfigManager');
@@ -18,6 +19,7 @@ class CrossPlatformManager {
         this.isWindows = this.platform === 'win32';
         this.isLinux = this.platform === 'linux';
         this.isMac = this.platform === 'darwin';
+        this.isDocker = process.env.DOCKER_CONTAINER === 'true';
         this.isDevelopment = this.detectDevelopmentEnvironment();
 
         // 플랫폼별 설정 초기화
@@ -743,6 +745,7 @@ class CrossPlatformManager {
                 env: {
                     ...process.env,
                     TZ: 'Asia/Seoul', // Force KST
+                    REDIS_HOST: config.get('REDIS_HOST') || 'localhost',
                     DATA_DIR: this.paths.root,
                     PULSEONE_DATA_DIR: this.paths.root
                 }
@@ -755,6 +758,7 @@ class CrossPlatformManager {
                 env: {
                     ...process.env,
                     TZ: 'Asia/Seoul', // Force KST
+                    REDIS_HOST: config.get('REDIS_HOST') || 'localhost',
                     LD_LIBRARY_PATH: '/usr/local/lib:/usr/lib',
                     PATH: process.env.PATH + ':/usr/local/bin',
                     DATA_DIR: this.paths.root,
@@ -834,6 +838,101 @@ class CrossPlatformManager {
     }
 
     // ========================================
+    // 🐳 Docker Control (Socket)
+    // ========================================
+
+    async _dockerRequest(method, path, body = null) {
+        return new Promise((resolve, reject) => {
+            const options = {
+                socketPath: '/var/run/docker.sock',
+                path: path,
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            const req = http.request(options, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        // 204 No Content handling
+                        if (res.statusCode === 204) return resolve(null);
+                        try {
+                            const parsed = data ? JSON.parse(data) : null;
+                            resolve(parsed);
+                        } catch (e) {
+                            resolve(data);
+                        }
+                    } else {
+                        reject(new Error(`Docker API Error (${res.statusCode}): ${data}`));
+                    }
+                });
+            });
+
+            req.on('error', (err) => {
+                reject(new Error(`Docker Socket Error: ${err.message}`));
+            });
+
+            if (body) {
+                req.write(JSON.stringify(body));
+            }
+            req.end();
+        });
+    }
+
+    /**
+     * Controls a Docker container by name pattern
+     */
+    async controlDockerContainer(serviceName, action, id = null) {
+        try {
+            // Find container by name
+            // Name usually: {project}_{service}_{index}
+            // Start simple: match "export-gateway" in name
+            const containers = await this._dockerRequest('GET', '/containers/json?all=1');
+
+            // Filter Logic:
+            // 1. Must contain serviceName (e.g., 'export-gateway')
+            // 2. If ID provided, maybe match specific number? (Currently mapped to single service)
+            // Compromise: Find the first container matching 'export-gateway' that belongs to our project
+            const projectName = process.env.COMPOSE_PROJECT_NAME || 'pulseone';
+            const targetContainer = containers.find(c => {
+                const names = c.Names.map(n => n.replace('/', '')); // Remove leading slash
+                return names.some(n => n.includes(serviceName) && n.includes(projectName));
+            });
+
+            if (!targetContainer) {
+                throw new Error(`Docker container for service '${serviceName}' not found`);
+            }
+
+            const containerId = targetContainer.Id;
+            const containerState = targetContainer.State;
+
+            this.log('INFO', `Docker Container Control: ${action} ${serviceName} (${containerId})`);
+
+            if (action === 'start') {
+                if (containerState === 'running') return { success: false, error: 'Container already running' };
+                await this._dockerRequest('POST', `/containers/${containerId}/start`);
+                return { success: true, message: 'Container started via Docker API' };
+            }
+            else if (action === 'stop') {
+                if (containerState !== 'running') return { success: false, error: 'Container not running' };
+                await this._dockerRequest('POST', `/containers/${containerId}/stop`);
+                return { success: true, message: 'Container stopped via Docker API' };
+            }
+            else if (action === 'restart') {
+                await this._dockerRequest('POST', `/containers/${containerId}/restart`);
+                return { success: true, message: 'Container restarted via Docker API' };
+            }
+
+        } catch (error) {
+            this.log('ERROR', `Docker Control Failed: ${error.message}`);
+            return { success: false, error: error.message, platform: 'docker' };
+        }
+    }
+
+    // ========================================
     // 📤 Export Gateway 서비스 제어
     // ========================================
 
@@ -843,6 +942,12 @@ class CrossPlatformManager {
             path: this.paths.exportGateway,
             gatewayId
         });
+
+        // ✅ Docker Environment Handling
+        if (this.isDocker) {
+            this.log('INFO', 'Docker 환경 감지: Export Gateway 컨테이너 시작 시도');
+            return await this.controlDockerContainer('export-gateway', 'start', gatewayId);
+        }
 
         try {
             const gatewayExists = await this.fileExists(this.paths.exportGateway);
@@ -909,6 +1014,7 @@ class CrossPlatformManager {
                 env: {
                     ...process.env,
                     TZ: 'Asia/Seoul', // Force KST
+                    REDIS_HOST: config.get('REDIS_HOST') || 'localhost',
                     DATA_DIR: this.paths.root,
                     PULSEONE_DATA_DIR: this.paths.root
                 }
@@ -921,6 +1027,7 @@ class CrossPlatformManager {
                 env: {
                     ...process.env,
                     TZ: 'Asia/Seoul', // Force KST
+                    REDIS_HOST: config.get('REDIS_HOST') || 'localhost',
                     LD_LIBRARY_PATH: '/usr/local/lib:/usr/lib',
                     DATA_DIR: this.paths.root,
                     PULSEONE_DATA_DIR: this.paths.root
@@ -931,6 +1038,12 @@ class CrossPlatformManager {
 
     async stopExportGateway(gatewayId = null) {
         this.log('INFO', 'Export Gateway 중지 요청', { gatewayId });
+
+        // ✅ Docker Environment Handling
+        if (this.isDocker) {
+            this.log('INFO', 'Docker 환경 감지: Export Gateway 컨테이너 중지 시도');
+            return await this.controlDockerContainer('export-gateway', 'stop', gatewayId);
+        }
 
         try {
             const processes = await this.getRunningProcesses();
@@ -952,7 +1065,18 @@ class CrossPlatformManager {
     }
 
     async restartExportGateway(gatewayId = null) {
-        await this.stopExportGateway(gatewayId);
+        this.log('INFO', 'Export Gateway 재시작 요청', { gatewayId });
+
+        // ✅ Docker Environment Handling
+        if (this.isDocker) {
+            return await this.controlDockerContainer('export-gateway', 'restart', gatewayId);
+        }
+
+        const stopResult = await this.stopExportGateway(gatewayId);
+        if (!stopResult.success && stopResult.error !== '실행 중인 게이트웨이가 없습니다') {
+            return stopResult;
+        }
+
         await this.sleep(1000);
         return await this.startExportGateway(gatewayId);
     }

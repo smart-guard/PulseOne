@@ -124,7 +124,8 @@ RUN apt-get update && apt-get install -y \
     g++-mingw-w64-x86-64 \
     make cmake git \
     pkg-config \
-    wget unzip
+    wget unzip \
+    nlohmann-json3-dev
 
 # Install Windows libraries
 RUN mkdir -p /usr/x86_64-w64-mingw32/include && \
@@ -388,14 +389,27 @@ echo [5/6] Checking SQLite DLL...
 if not exist "sqlite3.dll" (
     echo Downloading SQLite DLL...
     curl -L -o sqlite.zip "https://www.sqlite.org/2024/sqlite-dll-win-x64-3460100.zip"
-    
     if exist "sqlite.zip" (
         tar -xf sqlite.zip
         del /f sqlite.zip 2>nul
-        
-        if exist "sqlite3.dll" (
-            echo SQLite DLL downloaded
-        )
+    )
+)
+
+:: Download WinSW for Service Support
+echo.
+echo [6/6] Downloading Windows Service Wrapper (WinSW)...
+
+if not exist "WinSW-x64.exe" (
+    echo Downloading WinSW...
+    curl -L -o WinSW-x64.exe "https://github.com/winsw/winsw/releases/download/v2.11.0/WinSW-x64.exe"
+    
+    if exist "WinSW-x64.exe" (
+        echo WinSW downloaded successfully.
+        copy WinSW-x64.exe pulseone-backend.exe >nul
+        copy WinSW-x64.exe pulseone-collector.exe >nul
+        copy WinSW-x64.exe pulseone-export-gateway.exe >nul
+    ) else (
+        echo WARNING: WinSW download failed. Service installation will not work.
     )
 )
 
@@ -528,6 +542,99 @@ if not exist "config\collector.env" (
 )
 
 echo Configuration files created
+
+:: Create Service XML Configurations
+echo.
+echo Creating Service Configurations...
+
+(
+    echo ^<service^>
+    echo   ^<id^>pulseone-backend^</id^>
+    echo   ^<name^>PulseOne Backend^</name^>
+    echo   ^<description^>PulseOne Industrial IoT Backend Service^</description^>
+    echo   ^<executable^>node^</executable^>
+    echo   ^<arguments^>backend\app.js^</arguments^>
+    echo   ^<workingdirectory^>%INSTALL_DIR%^</workingdirectory^>
+    echo   ^<logmode^>roll^</logmode^>
+    echo   ^<onfailure action="restart" delay="10 sec"/^>
+    echo   ^<env name="NODE_ENV" value="production"/^>
+    echo ^</service^>
+) > pulseone-backend.xml
+
+(
+    echo ^<service^>
+    echo   ^<id^>pulseone-collector^</id^>
+    echo   ^<name^>PulseOne Collector^</name^>
+    echo   ^<description^>PulseOne Data Collector Service^</description^>
+    echo   ^<executable^>collector.exe^</executable^>
+    echo   ^<workingdirectory^>%INSTALL_DIR%^</workingdirectory^>
+    echo   ^<logmode^>roll^</logmode^>
+    echo   ^<onfailure action="restart" delay="10 sec"/^>
+    echo ^</service^>
+) > pulseone-collector.xml
+
+(
+    echo ^<service^>
+    echo   ^<id^>pulseone-export-gateway^</id^>
+    echo   ^<name^>PulseOne Export Gateway^</name^>
+    echo   ^<description^>PulseOne Export Gateway Service^</description^>
+    echo   ^<executable^>pulseone-export-gateway.exe^</executable^>
+    echo   ^<workingdirectory^>%INSTALL_DIR%^</workingdirectory^>
+    echo   ^<logmode^>roll^</logmode^>
+    echo   ^<onfailure action="restart" delay="10 sec"/^>
+    echo ^</service^>
+) > pulseone-export-gateway.xml
+
+:: Create Service Installer Script
+(
+    echo @echo off
+    echo title PulseOne Service Installer
+    echo.
+    echo Parsing installation directory...
+    echo pushd "%%~dp0"
+    echo.
+    echo [1/3] Installing Backend Service...
+    echo pulseone-backend.exe install
+    echo pulseone-backend.exe start
+    echo.
+    echo [2/3] Installing Collector Service...
+    echo pulseone-collector.exe install
+    echo pulseone-collector.exe start
+    echo.
+    echo [3/3] Installing Export Gateway Service...
+    echo if exist "pulseone-export-gateway.exe" (
+    echo     pulseone-export-gateway.exe install
+    echo     pulseone-export-gateway.exe start
+    echo ) else (
+    echo     echo WARNING: pulseone-export-gateway.exe not found. Skipping service registration.
+    echo )
+    echo.
+    echo Services installed and started!
+    echo pause
+) > install_service.bat
+
+:: Create Service Uninstaller Script
+(
+    echo @echo off
+    echo title PulseOne Service Uninstaller
+    echo.
+    echo pushd "%%~dp0"
+    echo.
+    echo [1/3] Removing Backend Service...
+    echo pulseone-backend.exe stop
+    echo pulseone-backend.exe uninstall
+    echo.
+    echo [2/3] Removing Collector Service...
+    echo pulseone-collector.exe stop
+    echo pulseone-collector.exe uninstall
+    echo.
+    echo [3/3] Removing Export Gateway Service...
+    echo pulseone-export-gateway.exe stop
+    echo pulseone-export-gateway.exe uninstall
+    echo.
+    echo Services removed.
+    echo pause
+) > uninstall_service.bat
 
 :: Installation summary
 echo.

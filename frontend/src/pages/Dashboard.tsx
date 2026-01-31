@@ -9,6 +9,9 @@ import { Pagination } from '../components/common/Pagination';
 interface HealthStatus {
   overall: 'healthy' | 'degraded' | 'critical';
   database: 'healthy' | 'warning' | 'critical';
+  redis: 'healthy' | 'warning' | 'critical';
+  collector: 'healthy' | 'warning' | 'critical';
+  gateway: 'healthy' | 'warning' | 'critical';
   network: 'healthy' | 'warning' | 'critical';
   storage: 'healthy' | 'warning' | 'critical';
   cache: 'healthy' | 'warning' | 'critical';
@@ -34,6 +37,19 @@ interface DashboardData {
   system_metrics: SystemMetrics;
   device_summary: DeviceSummary;
   alarms: AlarmSummary;
+  communication_status: {
+    upstream: {
+      total_devices: number;
+      connected_devices: number;
+      connectivity_rate: number;
+      last_polled_at: string;
+    };
+    downstream: {
+      total_exports: number;
+      success_rate: number;
+      last_dispatch_at: string;
+    };
+  };
   health_status: HealthStatus;
   performance: PerformanceMetrics;
   last_updated: string;
@@ -69,6 +85,228 @@ interface TodayAlarmStats {
     alarm_count: number;
   }>;
 }
+
+// ============================================================================
+// 🧩 하위 컴포넌트들
+// ============================================================================
+
+// 요약 타일 컴포넌트
+const SummaryTile: React.FC<{
+  title: string;
+  value: string | number;
+  subValue?: string;
+  unit?: string;
+  icon: string;
+  color: string;
+  trend?: { value: number; label: string; positive: boolean };
+}> = ({ title, value, subValue, unit, icon, color, trend }) => (
+  <div style={{
+    background: 'white',
+    borderRadius: '16px',
+    padding: '24px',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
+    border: `1px solid #f1f5f9`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px'
+  }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{
+        width: '48px',
+        height: '48px',
+        borderRadius: '12px',
+        background: `${color}15`,
+        color: color,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '24px'
+      }}>
+        {icon}
+      </div>
+      {trend && (
+        <div style={{
+          fontSize: '12px',
+          fontWeight: '600',
+          color: trend.positive ? '#10b981' : '#ef4444',
+          background: trend.positive ? '#ecfdf5' : '#fef2f2',
+          padding: '4px 8px',
+          borderRadius: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px'
+        }}>
+          {trend.positive ? '↑' : '↓'} {trend.label}
+        </div>
+      )}
+    </div>
+    <div>
+      <div style={{ fontSize: '14px', color: '#64748b', fontWeight: '500', marginBottom: '4px' }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+        <span style={{ fontSize: '28px', fontWeight: '700', color: '#1e293b' }}>{value}</span>
+        {unit && <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: '500' }}>{unit}</span>}
+      </div>
+      {subValue && <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>{subValue}</div>}
+    </div>
+  </div>
+);
+
+// Flow Monitor 시각화 컴포넌트
+const FlowMonitor: React.FC<{ data: DashboardData | null }> = ({ data }) => {
+  if (!data) return null;
+
+  const steps = [
+    {
+      id: 'source',
+      label: '현공 데이터 수집',
+      icon: '📡',
+      status: 'healthy',
+      value: `${data.system_metrics.dataPointsPerSecond} PPS`,
+      subValue: '데이터 유입량'
+    },
+    {
+      id: 'collector',
+      label: '커넥터 처리',
+      icon: '📥',
+      status: data.health_status.collector,
+      value: `${data.communication_status.upstream.connectivity_rate}%`,
+      subValue: '디바이스 통신율'
+    },
+    {
+      id: 'gateway',
+      label: '내보내기 게이트웨이',
+      icon: '🔄',
+      status: data.health_status.gateway,
+      value: `${data.services.details.filter(s => s.name.includes('gateway') && s.status === 'running').length} Active`,
+      subValue: '활성 서비스'
+    },
+    {
+      id: 'target',
+      label: '최종 목적지 전송',
+      icon: '🎯',
+      status: data.communication_status.downstream.success_rate > 90 ? 'healthy' : 'warning',
+      value: `${data.communication_status.downstream.success_rate}%`,
+      subValue: '전송 성공률'
+    }
+  ];
+
+  return (
+    <div style={{
+      background: 'white',
+      borderRadius: '20px',
+      padding: '32px 40px',
+      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.04)',
+      marginBottom: '32px',
+      border: '1px solid #f1f5f9',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* 장식용 배경 */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        width: '300px',
+        height: '100%',
+        background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(248,250,252,1) 100%)',
+        zIndex: 0
+      }}></div>
+
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: '32px'
+        }}>
+          <div>
+            <div style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.025em' }}>운영 데이터 흐름 모니터링</div>
+            <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>수집된 로우 데이터가 최종 목적지까지 전달되는 전 과정을 실시간 모니터링합니다.</div>
+          </div>
+          <div style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', background: '#f8fafc', padding: '6px 12px', borderRadius: '8px', border: '1px solid #f1f5f9' }}>
+            시스템 건전성: {data.health_status.overall === 'healthy' ? '🟢 최상' : '🟡 주의'}
+          </div>
+        </div>
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'relative',
+          padding: '0 20px'
+        }}>
+          {steps.map((step, index) => (
+            <React.Fragment key={step.id}>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '16px',
+                zIndex: 1,
+                width: '160px'
+              }}>
+                <div style={{
+                  width: '72px',
+                  height: '72px',
+                  borderRadius: '24px',
+                  background: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '32px',
+                  boxShadow: '0 8px 20px rgba(0, 0, 0, 0.06)',
+                  border: `2px solid ${step.status === 'healthy' ? '#10b981' : step.status === 'warning' ? '#f59e0b' : '#ef4444'}`,
+                  position: 'relative'
+                }}>
+                  {step.icon}
+                  <div style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    right: '-4px',
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    background: step.status === 'healthy' ? '#10b981' : step.status === 'warning' ? '#f59e0b' : '#ef4444',
+                    border: '3px solid white',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                  }}></div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#1e293b', marginBottom: '4px', whiteSpace: 'nowrap' }}>{step.label}</div>
+                  <div style={{ fontSize: '18px', fontWeight: '900', color: step.status === 'healthy' ? '#059669' : '#1e293b' }}>{step.value}</div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase', marginTop: '2px' }}>{step.subValue}</div>
+                </div>
+              </div>
+
+              {index < steps.length - 1 && (
+                <div style={{
+                  flex: 1,
+                  height: '2px',
+                  background: `linear-gradient(90deg, ${step.status === 'healthy' ? '#10b981' : '#cbd5e1'} 0%, ${steps[index + 1].status === 'healthy' ? '#10b981' : '#cbd5e1'} 100%)`,
+                  margin: '0 -10px',
+                  marginBottom: '50px',
+                  position: 'relative',
+                  opacity: 0.6
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    fontSize: '14px',
+                    color: '#94a3b8',
+                    background: 'white',
+                    padding: '0 8px'
+                  }}>▶</div>
+                </div>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ============================================================================
 // 🎯 메인 대시보드 컴포넌트
@@ -122,7 +360,7 @@ const Dashboard: React.FC = () => {
   // ==========================================================================
 
   /**
-   * 대시보드 개요 데이터 로드 (DashboardApiService 사용)
+   * 대시보드 개요 데이터 로드 (하나의 통합 API 사용)
    */
   const loadDashboardOverview = useCallback(async (showLoading = false) => {
     try {
@@ -131,64 +369,20 @@ const Dashboard: React.FC = () => {
       }
       setError(null);
 
-      console.log('🎯 대시보드 데이터 로드 시작...');
+      console.log('🎯 통합 대시보드 데이터 로드 시작...');
 
-      // DashboardApiService를 사용한 통합 데이터 로드
-      const {
-        servicesData,
-        systemMetrics,
-        databaseStats,
-        performanceData,
-        errors
-      } = await DashboardApiService.loadAllDashboardData();
+      // 단일 통합 API 호출
+      const response = await DashboardApiService.getOverview();
 
-      // 알람 데이터 추가 로드
-      let alarmStats = null;
-      let recentAlarms: any[] = [];
-      let todayAlarmStats: TodayAlarmStats | null = null;
-
-      try {
-        const [statsResponse, recentResponse, todayStatsResponse] = await Promise.all([
-          DashboardApiService.getAlarmStatistics(),
-          DashboardApiService.getRecentAlarms(5),
-          DashboardApiService.getTodayAlarmStatistics && DashboardApiService.getTodayAlarmStatistics() || Promise.resolve({ success: false })
-        ]);
-
-        if (statsResponse.success) alarmStats = statsResponse.data;
-        if (recentResponse.success) {
-          recentAlarms = recentResponse.data || [];
-          console.log(`✅ 최근 알람 ${recentAlarms.length}개 로드 성공`);
-        }
-        if ((todayStatsResponse as any).success) todayAlarmStats = (todayStatsResponse as any).data;
-        // 알람이 없는 것은 정상 상황 (에러가 아님)
-        if (recentAlarms.length === 0) {
-          console.log('ℹ️ 현재 발생한 최근 알람이 없습니다 (정상)');
-        }
-      } catch (alarmError) {
-        console.warn('⚠️ 알람 데이터 로드 실패:', alarmError);
-        errors.push('알람 데이터 로드 실패');
-      }
-
-      // 데이터 변환 및 통합
-      const dashboardData = transformApiDataToDashboard(
-        servicesData,
-        systemMetrics,
-        databaseStats,
-        performanceData,
-        alarmStats,
-        recentAlarms,
-        todayAlarmStats
-      );
-
-      setDashboardData(dashboardData);
-      setConnectionStatus(errors.length === 0 ? 'connected' : 'reconnecting');
-      setConsecutiveErrors(errors.length);
-
-      if (errors.length > 0) {
-        console.warn('⚠️ 일부 데이터 로드 실패:', errors);
-        setError(`일부 서비스 연결 실패: ${errors.join(', ')}`);
+      if (response.success && response.data) {
+        // 백엔드 데이터를 프런트엔드 형식에 맞게 변환 및 보정
+        const transformedData = transformApiDataToDashboard(response.data);
+        setDashboardData(transformedData);
+        setConnectionStatus('connected');
+        setConsecutiveErrors(0);
+        console.log('✅ 대시보드 통합 데이터 로드 및 변환 완료');
       } else {
-        console.log('✅ 대시보드 데이터 로드 완료');
+        throw new Error(response.message || '데이터 로드 실패');
       }
 
     } catch (err) {
@@ -207,175 +401,97 @@ const Dashboard: React.FC = () => {
   }, []);
 
   /**
-   * API 데이터를 대시보드 형식으로 변환
+   * API 데이터를 대시보드 형식으로 변환 (현재는 getOverview에서 직접 리턴하므로 사용처 확인 후 정리)
+   * ⚠️ 더 이상 사용되지 않거나 단순 매핑용으로 변경될 예정입니다.
    */
-  const transformApiDataToDashboard = (
-    servicesData: any,
-    systemMetrics: any,
-    databaseStats: any,
-    performanceData: any,
-    alarmStats: any,
-    recentAlarms: any[],
-    todayAlarmStats: TodayAlarmStats | null
-  ): DashboardData => {
+  const transformApiDataToDashboard = (apiData: any): DashboardData => {
+    if (!apiData) return createFallbackDashboardData();
+
     const now = new Date();
 
-    // 포트 정보 추출 (API 응답에서)
-    const ports = servicesData?.ports || {};
-
-    // 서비스 상태 변환
-    const services = {
-      total: 5,
-      running: 0,
-      stopped: 0,
-      error: 0,
-      details: [
-        {
-          name: 'backend',
-          displayName: 'Backend API',
-          status: 'running' as const,
-          icon: 'server',
-          controllable: false,
-          description: '백엔드 서비스',
-          port: ports.backend || 3000,
-          version: '2.1.0',
-          uptime: systemMetrics?.process?.uptime || 300,
-          memory_usage: systemMetrics?.process?.memory?.rss || 82,
-          cpu_usage: systemMetrics?.cpu?.usage || 8
-        },
-        {
-          name: 'collector',
-          displayName: 'Data Collector',
-          status: (servicesData?.services?.collector === 'healthy' ? 'running' : 'stopped'),
-          icon: 'download',
-          controllable: true,
-          description: 'C++ 데이터 수집 서비스',
-          port: ports.collector || 8080,
-          last_error: servicesData?.services?.collector !== 'healthy' ? 'Service not running' : undefined
-        },
-        {
-          name: 'redis',
-          displayName: 'Redis Cache',
-          status: (servicesData?.services?.redis === 'healthy' ? 'running' : 'stopped'),
-          icon: 'database',
-          controllable: true,
-          description: '실시간 데이터 캐시',
-          port: ports.redis || 6379,
-          last_error: servicesData?.services?.redis === 'healthy' ? undefined :
-            servicesData?.services?.redis === 'disabled' ? 'Service disabled' : 'Connection failed'
-        },
-        {
-          name: 'rabbitmq',
-          displayName: 'RabbitMQ',
-          status: 'stopped' as const,
-          icon: 'exchange',
-          controllable: true,
-          description: '메시지 큐 서비스',
-          port: ports.rabbitmq || 5672,
-          last_error: 'Service not installed'
-        },
-        {
-          name: 'postgresql',
-          displayName: 'PostgreSQL',
-          status: (databaseStats?.connection_status === 'connected' ? 'running' : 'stopped'),
-          icon: 'elephant',
-          controllable: true,
-          description: '메타데이터 저장소',
-          port: ports.postgresql || 5432,
-          last_error: databaseStats?.connection_status !== 'connected' ? 'Connection failed' : undefined
-        }
-      ]
-    };
-
-    // 실행중/중지된 서비스 수 계산
-    services.details.forEach(service => {
-      if (service.status === 'running') services.running++;
-      else if (service.status === 'error') services.error++;
-      else services.stopped++;
-    });
-
-    // 시스템 메트릭 변환
-    const system_metrics: SystemMetrics = {
-      dataPointsPerSecond: Math.floor(Math.random() * 150) + 50,
-      avgResponseTime: performanceData?.api?.response_time_ms || 63,
-      dbQueryTime: performanceData?.database?.query_time_ms || 27,
-      cpuUsage: systemMetrics?.cpu?.usage || 31,
-      memoryUsage: systemMetrics?.memory?.usage || 42,
-      diskUsage: systemMetrics?.disk?.usage || 44,
-      networkUsage: systemMetrics?.network?.usage || 21,
-      activeConnections: Math.floor(Math.random() * 30) + 5,
-      queueSize: Math.floor(Math.random() * 20),
-      timestamp: now.toISOString(),
-      system: systemMetrics?.system,
-      process: systemMetrics?.process,
-      cpu: systemMetrics?.cpu,
-      memory: systemMetrics?.memory,
-      disk: systemMetrics?.disk,
-      network: systemMetrics?.network
-    };
-
-    // 디바이스 요약 (실제 DB 데이터 사용)
-    const device_summary: DeviceSummary = {
-      total_devices: databaseStats?.devices || 5,
-      connected_devices: Math.floor((databaseStats?.devices || 5) * 0.8),
-      disconnected_devices: Math.floor((databaseStats?.devices || 5) * 0.2),
-      error_devices: 0,
-      protocols_count: 3,
-      sites_count: 2,
-      data_points_count: databaseStats?.data_points || 103,
-      enabled_devices: Math.floor((databaseStats?.devices || 5) * 0.8)
-    };
-
-    // 알람 요약 (API 응답 구조에 맞게 수정)
-    const alarms: AlarmSummary = {
-      active_total: alarmStats?.dashboard_summary?.total_active || 0,
-      today_total: todayAlarmStats?.today_total || 0,
-      unacknowledged: alarmStats?.dashboard_summary?.unacknowledged || 0,
-      critical: todayAlarmStats?.severity_breakdown?.critical || 0,
-      major: todayAlarmStats?.severity_breakdown?.major || 0,
-      minor: todayAlarmStats?.severity_breakdown?.minor || 0,
-      warning: todayAlarmStats?.severity_breakdown?.warning || 0,
-      recent_alarms: (Array.isArray(recentAlarms) ? recentAlarms : []).slice(0, 5).map(alarm => ({
-        id: alarm.id || `alarm_${Date.now()}`,
-        type: (alarm.severity === 'medium' ? 'warning' : alarm.severity) as any || 'info',
-        message: alarm.alarm_message || alarm.message || '알람 메시지',
-        timestamp: alarm.occurrence_time || alarm.timestamp || now.toISOString(),
-        device_id: alarm.device_id,
-        device_name: alarm.device_name || 'Unknown Device',
-        acknowledged: alarm.acknowledged_time !== null,
-        acknowledged_by: alarm.acknowledged_by,
-        severity: alarm.severity || 'low'
-      }))
-    };
-
-    // 헬스 상태 (실제 서비스 상태 기반)
-    const health_status: HealthStatus = {
-      overall: servicesData?.overall || 'degraded',
-      database: databaseStats?.connection_status === 'connected' ? 'healthy' : 'warning',
-      network: 'healthy',
-      storage: systemMetrics?.disk?.usage > 90 ? 'critical' : 'healthy',
-      cache: servicesData?.services?.redis === 'healthy' ? 'healthy' : 'critical',
-      message_queue: 'warning'
-    };
-
-    // 성능 지표 (실제 API 데이터 사용)
-    const performance: PerformanceMetrics = {
-      api_response_time: performanceData?.api?.response_time_ms || 63,
-      database_response_time: performanceData?.database?.query_time_ms || 27,
-      cache_hit_rate: performanceData?.cache?.hit_rate || 85,
-      error_rate: performanceData?.api?.error_rate || 2.1,
-      throughput_per_second: performanceData?.api?.throughput_per_second || 250
-    };
+    // 서비스 목록 보정 (필수 필드 및 아이콘 매핑)
+    const servicesDetails = (apiData.services?.details || []).map((s: any) => ({
+      ...s,
+      icon: s.icon || (s.name.includes('collector') ? 'download' :
+        s.name.includes('gateway') ? 'exchange' : 'server'),
+      status: s.status || 'stopped',
+      displayName: s.displayName || s.name,
+      controllable: s.controllable !== undefined ? s.controllable : true
+    }));
 
     return {
-      services,
-      system_metrics,
-      device_summary,
-      alarms,
-      health_status,
-      performance,
-      last_updated: now.toISOString()
-    } as any;
+      services: {
+        total: apiData.services?.total || 0,
+        running: apiData.services?.running || 0,
+        stopped: apiData.services?.stopped || 0,
+        error: apiData.services?.error || 0,
+        details: servicesDetails
+      },
+      system_metrics: {
+        dataPointsPerSecond: apiData.system_metrics?.dataPointsPerSecond || 0,
+        avgResponseTime: apiData.system_metrics?.avgResponseTime || 0,
+        dbQueryTime: apiData.system_metrics?.dbQueryTime || 0,
+        cpuUsage: apiData.system_metrics?.cpuUsage || apiData.system_metrics?.cpu?.usage || 0,
+        memoryUsage: apiData.system_metrics?.memoryUsage || apiData.system_metrics?.memory?.usage || 0,
+        diskUsage: apiData.system_metrics?.diskUsage || apiData.system_metrics?.disk?.usage || 0,
+        networkUsage: apiData.system_metrics?.networkUsage || 0,
+        activeConnections: apiData.system_metrics?.activeConnections || 0,
+        queueSize: apiData.system_metrics?.queueSize || 0,
+        timestamp: apiData.system_metrics?.timestamp || now.toISOString()
+      },
+      device_summary: {
+        total_devices: apiData.device_summary?.total || apiData.device_summary?.total_devices || 0,
+        connected_devices: apiData.device_summary?.connected || apiData.device_summary?.connected_devices || 0,
+        disconnected_devices: apiData.device_summary?.disconnected || apiData.device_summary?.disconnected_devices || 0,
+        error_devices: apiData.device_summary?.error || apiData.device_summary?.error_devices || 0,
+        protocols_count: apiData.device_summary?.protocols_count || 0,
+        sites_count: apiData.device_summary?.sites_count || 0,
+        data_points_count: apiData.device_summary?.data_points_count || 0,
+        enabled_devices: apiData.device_summary?.enabled_devices || 0
+      },
+      alarms: {
+        active_total: apiData.alarms?.active_total || 0,
+        today_total: apiData.alarms?.today_total || 0,
+        unacknowledged: apiData.alarms?.unacknowledged || 0,
+        critical: apiData.alarms?.critical || 0,
+        major: apiData.alarms?.major || 0,
+        minor: apiData.alarms?.minor || 0,
+        warning: apiData.alarms?.warning || 0,
+        recent_alarms: apiData.alarms?.recent_alarms || []
+      },
+      communication_status: {
+        upstream: {
+          total_devices: apiData.communication_status?.upstream?.total_devices || 0,
+          connected_devices: apiData.communication_status?.upstream?.connected_devices || 0,
+          connectivity_rate: apiData.communication_status?.upstream?.connectivity_rate || 0,
+          last_polled_at: apiData.communication_status?.upstream?.last_polled_at || now.toISOString()
+        },
+        downstream: {
+          total_exports: apiData.communication_status?.downstream?.total_exports || 0,
+          success_rate: apiData.communication_status?.downstream?.success_rate || 0,
+          last_dispatch_at: apiData.communication_status?.downstream?.last_dispatch_at || now.toISOString()
+        }
+      },
+      health_status: {
+        overall: apiData.health_status?.overall || 'degraded',
+        database: apiData.health_status?.database || 'warning',
+        redis: apiData.health_status?.redis || 'critical',
+        collector: apiData.health_status?.collector || 'warning',
+        gateway: apiData.health_status?.gateway || 'warning',
+        network: apiData.health_status?.network || 'healthy',
+        storage: apiData.health_status?.storage || 'healthy',
+        cache: apiData.health_status?.cache || 'warning',
+        message_queue: apiData.health_status?.message_queue || 'warning'
+      },
+      performance: {
+        api_response_time: apiData.performance?.api_response_time || 0,
+        database_response_time: apiData.performance?.database_response_time || 0,
+        cache_hit_rate: apiData.performance?.cache_hit_rate || 0,
+        error_rate: apiData.performance?.error_rate || 0,
+        throughput_per_second: apiData.performance?.throughput_per_second || 0
+      },
+      last_updated: apiData.last_updated || now.toISOString()
+    };
   };
 
   /**
@@ -476,9 +592,25 @@ const Dashboard: React.FC = () => {
         warning: 0,
         recent_alarms: []
       },
+      communication_status: {
+        upstream: {
+          total_devices: 0,
+          connected_devices: 0,
+          connectivity_rate: 0,
+          last_polled_at: now.toISOString()
+        },
+        downstream: {
+          total_exports: 0,
+          success_rate: 0,
+          last_dispatch_at: now.toISOString()
+        }
+      },
       health_status: {
         overall: 'degraded',
         database: 'warning',
+        redis: 'critical',
+        collector: 'warning',
+        gateway: 'warning',
         network: 'healthy',
         storage: 'healthy',
         cache: 'critical',
@@ -550,7 +682,7 @@ const Dashboard: React.FC = () => {
     });
   };
 
-  const executeServiceAction = async (serviceName: string, displayName: string, action: string) => {
+  const executeServiceAction = async (serviceName: string, displayName: string, action: 'start' | 'stop' | 'restart') => {
     try {
       setProcessing(serviceName);
       console.log(`🔧 ${serviceName} ${action} 실행중...`);
@@ -775,7 +907,7 @@ const Dashboard: React.FC = () => {
       {/* 확인 다이얼로그 */}
       <ConfirmDialog config={confirmModal} />
 
-      {/* 헤더 */}
+      {/* 운영 대시보드 헤더 */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -784,1114 +916,417 @@ const Dashboard: React.FC = () => {
       }}>
         <div>
           <h1 style={{
-            fontSize: '28px',
-            fontWeight: '700',
-            color: '#1e293b',
+            fontSize: '32px',
+            fontWeight: '800',
+            color: '#0f172a',
             margin: 0,
-            marginBottom: '8px'
+            marginBottom: '4px',
+            letterSpacing: '-0.025em'
           }}>
-            시스템 대시보드
+            운영 대시보드
           </h1>
           <div style={{
-            fontSize: '14px',
+            fontSize: '15px',
             color: '#64748b',
             display: 'flex',
             alignItems: 'center',
             gap: '12px'
           }}>
-            <span>PulseOne 시스템의 전체 현황을 실시간으로 모니터링합니다</span>
+            <span>PulseOne 실시간 가동 및 데이터 모니터링</span>
             <span style={{
-              padding: '4px 8px',
-              borderRadius: '12px',
-              background: connectionStatus === 'connected' ? '#dcfce7' : '#fef2f2',
-              color: connectionStatus === 'connected' ? '#166534' : '#dc2626',
+              padding: '4px 10px',
+              borderRadius: '20px',
+              background: connectionStatus === 'connected' ? '#ecfdf5' : '#fef2f2',
+              color: connectionStatus === 'connected' ? '#059669' : '#dc2626',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
-              fontSize: '12px'
+              gap: '6px',
+              fontSize: '12px',
+              fontWeight: '600'
             }}>
               <span style={{
-                width: '6px',
-                height: '6px',
+                width: '8px',
+                height: '8px',
                 borderRadius: '50%',
-                background: connectionStatus === 'connected' ? '#22c55e' : '#ef4444'
+                background: connectionStatus === 'connected' ? '#10b981' : '#ef4444',
+                boxShadow: connectionStatus === 'connected' ? '0 0 8px #10b981' : 'none'
               }}></span>
-              {connectionStatus === 'connected' ? '연결됨' :
-                connectionStatus === 'reconnecting' ? '재연결 중' : '연결 끊김'}
+              {connectionStatus === 'connected' ? '서버 연결됨' :
+                connectionStatus === 'reconnecting' ? '재연결 중' : '서버 연결 끊김'}
             </span>
-            {consecutiveErrors > 0 && (
-              <span style={{ color: '#dc2626', fontSize: '12px' }}>
-                (에러 {consecutiveErrors}회)
-              </span>
-            )}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{
+            fontSize: '13px',
+            color: '#94a3b8',
+            marginRight: '12px',
+            textAlign: 'right'
+          }}>
+            최근 업데이트: {new Date(dashboardData?.last_updated || Date.now()).toLocaleTimeString()}
+          </div>
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
             style={{
-              padding: '8px 16px',
-              background: autoRefresh ? '#3b82f6' : '#6b7280',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
+              padding: '10px 18px',
+              background: autoRefresh ? '#f1f5f9' : '#3b82f6',
+              color: autoRefresh ? '#475569' : 'white',
+              border: '1px solid #e2e8f0',
+              borderRadius: '10px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              fontSize: '14px'
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s'
             }}
           >
-            {autoRefresh ? '⏸ 일시정지' : '▶️ 재시작'}
+            {autoRefresh ? '⏸ 일시정지' : '▶️ 재개'}
           </button>
           <button
             onClick={handleRefreshConfirm}
             style={{
-              padding: '8px 16px',
-              background: '#3b82f6',
+              padding: '10px 18px',
+              background: '#0f172a',
               color: 'white',
               border: 'none',
-              borderRadius: '8px',
+              borderRadius: '10px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              fontSize: '14px'
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s'
             }}
           >
-            🔄 새로고침
+            🔄 즉시 갱신
           </button>
         </div>
       </div>
+
+      {/* 4대 요약 지표 */}
+      {dashboardData && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '24px',
+          marginBottom: '32px'
+        }}>
+          <SummaryTile
+            title="업스트림 연결성"
+            value={`${dashboardData?.device_summary?.connected_devices || 0}/${dashboardData?.device_summary?.total_devices || 0}`}
+            subValue={`연결률: ${dashboardData?.communication_status?.upstream?.connectivity_rate || 0}%`}
+            icon="🔌"
+            color="#3b82f6"
+            trend={{ value: 0, label: '안정적', positive: true }}
+          />
+          <SummaryTile
+            title="다운스트림 내보내기"
+            value={`${dashboardData?.communication_status?.downstream?.success_rate || 0}`}
+            unit="%"
+            subValue={`총 전송수: ${dashboardData?.communication_status?.downstream?.total_exports || 0}`}
+            icon="📤"
+            color="#10b981"
+            trend={{ value: 2.1, label: '상승중', positive: true }}
+          />
+          <SummaryTile
+            title="실시간 활성 알람"
+            value={dashboardData?.alarms?.active_total || 0}
+            subValue={`오늘 발생: ${dashboardData?.alarms?.today_total || 0}`}
+            icon="🔔"
+            color="#ef4444"
+            trend={{ value: dashboardData?.alarms?.critical || 0, label: `심각 알람: ${dashboardData?.alarms?.critical || 0}`, positive: false }}
+          />
+          <SummaryTile
+            title="시스템 건전성"
+            value={dashboardData?.health_status?.overall === 'healthy' ? '정상' : dashboardData?.health_status?.overall === 'degraded' ? '주의' : '장애'}
+            subValue={`CPU: ${dashboardData?.system_metrics?.cpuUsage || 0}% | MEM: ${dashboardData?.system_metrics?.memoryUsage || 0}%`}
+            icon="🛡️"
+            color={dashboardData?.health_status?.overall === 'healthy' ? '#10b981' : dashboardData?.health_status?.overall === 'degraded' ? '#f59e0b' : '#ef4444'}
+          />
+        </div>
+      )}
 
       {/* 에러 표시 */}
       {error && (
         <div style={{
           background: '#fef2f2',
           border: '1px solid #fecaca',
-          borderRadius: '8px',
-          padding: '16px',
-          marginBottom: '24px',
+          borderRadius: '12px',
+          padding: '20px',
+          marginBottom: '32px',
           display: 'flex',
           alignItems: 'center',
-          gap: '12px'
+          gap: '16px',
+          boxShadow: '0 4px 12px rgba(239, 68, 68, 0.1)'
         }}>
-          <span style={{ color: '#dc2626', fontSize: '20px' }}>⚠️</span>
+          <span style={{ fontSize: '24px' }}>⚠️</span>
           <div>
-            <div style={{ fontWeight: '600', color: '#991b1b' }}>연결 문제 감지</div>
+            <div style={{ fontWeight: '700', color: '#991b1b', fontSize: '16px' }}>네트워크 연결 오류</div>
             <div style={{ color: '#dc2626', fontSize: '14px' }}>{error}</div>
           </div>
         </div>
       )}
 
-      {/* 📊 메인 레이아웃: 왼쪽 서비스 + 오른쪽 시스템 상태 */}
+      {/* 📊 메인 레이아웃: 운영 인사이트 (장치 상태 및 알람 트렌드) */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '400px 1fr',
+        gridTemplateColumns: 'minmax(400px, 1fr) 1.5fr',
         gap: '24px',
+        alignItems: 'start',
         marginBottom: '24px'
       }}>
-
-        {/* 📋 왼쪽: 서비스 상태 목록 */}
+        {/* 📊 장치 상태 분포 (Device Distribution) */}
         {dashboardData && (
           <div style={{
             background: 'white',
-            borderRadius: '12px',
-            boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
-            overflow: 'hidden'
+            borderRadius: '20px',
+            boxShadow: '0 4px 25px rgba(0, 0, 0, 0.04)',
+            border: '1px solid #f1f5f9',
+            padding: '28px'
           }}>
-            <div style={{
-              padding: '20px',
-              background: '#f8fafc',
-              borderBottom: '1px solid #e2e8f0',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                fontSize: '18px',
-                fontWeight: '600',
-                color: '#334155'
-              }}>
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  background: '#dcfce7',
-                  color: '#16a34a',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  🖥️
-                </div>
-                서비스 상태
-              </div>
-              <div style={{ display: 'flex', gap: '16px', fontSize: '12px' }}>
-                <span style={{ color: '#16a34a' }}>
-                  <strong>{dashboardData.services.running}</strong> 실행중
-                </span>
-                <span style={{ color: '#ea580c' }}>
-                  <strong>{dashboardData.services.stopped}</strong> 중지됨
-                </span>
-              </div>
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ fontSize: '18px', fontWeight: '800', color: '#1e293b' }}>장치 연결 상태 분포</div>
+              <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>현장에 설치된 전체 장치 가동 현황</div>
             </div>
 
-            <div style={{ padding: '20px' }}>
-              {dashboardData.services.details.map((service) => (
-                <div key={service.name} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '16px',
-                  background: '#f8fafc',
-                  borderRadius: '8px',
-                  marginBottom: '12px',
-                  border: '1px solid #e2e8f0',
-                  position: 'relative',
-                  minHeight: '120px',
-                  opacity: processing === service.name ? 0.6 : 1
-                }}>
-
-                  {/* 에러 메시지 - 오른쪽 상단 */}
-                  {service.last_error && service.status !== 'running' && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '8px',
-                      right: '8px',
-                      background: '#fef2f2',
-                      color: '#dc2626',
-                      fontSize: '10px',
-                      padding: '4px 6px',
-                      borderRadius: '4px',
-                      border: '1px solid #fecaca',
-                      zIndex: 10,
-                      maxWidth: '120px',
-                      lineHeight: '1.2'
-                    }}>
-                      {service.last_error}
-                    </div>
-                  )}
-
-                  {/* 상태 표시 */}
-                  <div style={{
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    background: service.status === 'running' ? '#22c55e' : '#6b7280',
-                    flexShrink: 0
-                  }}></div>
-
-                  {/* 서비스 아이콘 */}
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    background: service.status === 'running' ? '#dcfce7' : '#f1f5f9',
-                    color: service.status === 'running' ? '#16a34a' : '#64748b',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '16px',
-                    flexShrink: 0
-                  }}>
-                    {service.icon === 'server' ? '🖥️' :
-                      service.icon === 'download' ? '📥' :
-                        service.icon === 'database' ? '🗄️' :
-                          service.icon === 'exchange' ? '🔄' :
-                            service.icon === 'elephant' ? '🐘' : '⚙️'}
-                  </div>
-
-                  {/* 서비스 정보 */}
-                  <div style={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    minWidth: 0,
-                    paddingRight: '8px'
-                  }}>
-                    <h3 style={{
-                      margin: 0,
-                      marginBottom: '4px',
-                      fontWeight: '600',
-                      color: '#1e293b',
-                      fontSize: '14px'
-                    }}>
-                      {service.displayName}
-                    </h3>
-
-                    <p style={{
-                      margin: 0,
-                      marginBottom: '4px',
-                      color: '#64748b',
-                      fontSize: '12px',
-                      lineHeight: '1.4'
-                    }}>
-                      {service.description}
-                    </p>
-
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#64748b'
-                    }}>
-                      {service.port && `포트: ${service.port}`}
-                      {service.port && service.version && ' • '}
-                      {service.version && `v${service.version}`}
-                    </div>
-                  </div>
-
-                  {/* 메트릭 정보 */}
-                  {service.status === 'running' && (
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      fontSize: '11px',
-                      color: '#64748b',
-                      textAlign: 'right',
-                      minWidth: '80px',
-                      marginRight: '8px'
-                    }}>
-                      {service.memory_usage && service.memory_usage > 0 && (
-                        <div>메모리: {service.memory_usage}MB</div>
-                      )}
-                      {service.cpu_usage && service.cpu_usage > 0 && (
-                        <div>CPU: {service.cpu_usage}%</div>
-                      )}
-                      {service.uptime && service.uptime > 0 && (
-                        <div>가동: {formatUptime(service.uptime)}</div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 제어 버튼 */}
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px',
-                    alignItems: 'center'
-                  }}>
-                    {service.controllable ? (
-                      service.status === 'running' ? (
-                        <>
-                          <button
-                            onClick={() => handleServiceAction(service.name, service.displayName, 'stop')}
-                            disabled={processing === service.name}
-                            style={{
-                              padding: '4px 8px',
-                              background: '#ef4444',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: processing === service.name ? 'not-allowed' : 'pointer',
-                              fontSize: '11px',
-                              fontWeight: '600',
-                              minWidth: '48px',
-                              whiteSpace: 'nowrap'
-                            }}
-                          >
-                            {processing === service.name ? '⏳' : '⏹️ 중지'}
-                          </button>
-
-                          <button
-                            onClick={() => handleServiceAction(service.name, service.displayName, 'restart')}
-                            disabled={processing === service.name}
-                            style={{
-                              padding: '4px 8px',
-                              background: '#f59e0b',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: processing === service.name ? 'not-allowed' : 'pointer',
-                              fontSize: '11px',
-                              fontWeight: '600',
-                              minWidth: '48px',
-                              whiteSpace: 'nowrap'
-                            }}
-                          >
-                            {processing === service.name ? '⏳' : '🔄 재시작'}
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => handleServiceAction(service.name, service.displayName, 'start')}
-                          disabled={processing === service.name}
-                          style={{
-                            padding: '6px 12px',
-                            background: '#22c55e',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: processing === service.name ? 'not-allowed' : 'pointer',
-                            fontSize: '11px',
-                            fontWeight: '600',
-                            minWidth: '48px',
-                            whiteSpace: 'nowrap'
-                          }}
-                        >
-                          {processing === service.name ? '⏳' : '▶️ 시작'}
-                        </button>
-                      )
-                    ) : (
-                      <span style={{
-                        fontSize: '11px',
-                        color: '#3b82f6',
-                        background: '#dbeafe',
-                        padding: '4px 8px',
-                        borderRadius: '8px',
-                        fontWeight: '500'
-                      }}>
-                        필수
-                      </span>
-                    )}
-
-                    {/* 상태 정보 - 카드 하단 */}
-                    {service.status !== 'running' && (
-                      <div style={{
-                        position: 'absolute',
-                        bottom: '8px',
-                        right: '8px',
-                        fontSize: '10px',
-                        color: '#64748b',
-                        textAlign: 'center'
-                      }}>
-                        <div style={{ color: '#f59e0b', fontWeight: '500' }}>
-                          서비스 중지됨
-                        </div>
-                        {service.port && (
-                          <div style={{ color: '#9ca3af', marginTop: '2px' }}>
-                            포트 {service.port} 비활성
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 📊 오른쪽: 2x2 시스템 상태 그리드 */}
-        {dashboardData && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '16px'
-          }}>
-
-            {/* 시스템 개요 */}
-            <div style={{
-              background: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                padding: '20px',
-                background: '#f8fafc',
-                borderBottom: '1px solid #e2e8f0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#334155'
-                }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    background: '#dbeafe',
-                    color: '#3b82f6',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '14px'
-                  }}>
-                    💙
-                  </div>
-                  시스템 개요
-                </div>
-                <span style={{
-                  fontSize: '12px',
-                  color: dashboardData.health_status.overall === 'healthy' ? '#16a34a' : '#f59e0b',
-                  background: dashboardData.health_status.overall === 'healthy' ? '#dcfce7' : '#fef3c7',
-                  padding: '4px 8px',
-                  borderRadius: '12px'
-                }}>
-                  {dashboardData.health_status.overall === 'healthy' ? '정상' : '주의'}
-                </span>
-              </div>
-              <div style={{ padding: '20px' }}>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '12px'
-                }}>
-                  <div style={{
-                    textAlign: 'center',
-                    padding: '16px',
-                    background: '#f8fafc',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0'
-                  }}>
-                    <div style={{
-                      fontSize: '24px',
-                      fontWeight: '700',
-                      color: '#1e293b',
-                      marginBottom: '4px'
-                    }}>
-                      {dashboardData.device_summary.total_devices}
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#64748b',
-                      marginBottom: '8px'
-                    }}>
-                      디바이스
-                    </div>
-                    <div style={{
-                      fontSize: '10px',
-                      color: '#64748b'
-                    }}>
-                      연결: {dashboardData.device_summary.connected_devices} / 활성: {dashboardData.device_summary.enabled_devices}
-                    </div>
-                  </div>
-
-                  <div style={{
-                    textAlign: 'center',
-                    padding: '16px',
-                    background: '#f8fafc',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0'
-                  }}>
-                    <div style={{
-                      fontSize: '24px',
-                      fontWeight: '700',
-                      color: '#1e293b',
-                      marginBottom: '4px'
-                    }}>
-                      {dashboardData.system_metrics.dataPointsPerSecond}
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#64748b',
-                      marginBottom: '8px'
-                    }}>
-                      데이터 포인트/초
-                    </div>
-                    <div style={{
-                      fontSize: '10px',
-                      color: '#64748b'
-                    }}>
-                      응답시간: {dashboardData.system_metrics.avgResponseTime}ms
-                    </div>
-                  </div>
-
-                  <div style={{
-                    textAlign: 'center',
-                    padding: '16px',
-                    background: '#f8fafc',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0'
-                  }}>
-                    <div style={{
-                      fontSize: '24px',
-                      fontWeight: '700',
-                      color: dashboardData.alarms.today_total > 0 ? '#dc2626' : '#1e293b',
-                      marginBottom: '4px'
-                    }}>
-                      {dashboardData.alarms.today_total || 0}
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#64748b',
-                      marginBottom: '8px'
-                    }}>
-                      24시간 내 알람
-                    </div>
-                    <div style={{
-                      fontSize: '10px',
-                      color: '#64748b'
-                    }}>
-                      심각: {dashboardData.alarms.critical || 0} / 미확인: {dashboardData.alarms.unacknowledged || 0}
-                    </div>
-                  </div>
-
-                  <div style={{
-                    textAlign: 'center',
-                    padding: '16px',
-                    background: '#f8fafc',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0'
-                  }}>
-                    <div style={{
-                      fontSize: '24px',
-                      fontWeight: '700',
-                      color: '#1e293b',
-                      marginBottom: '4px'
-                    }}>
-                      {dashboardData.device_summary.data_points_count}
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#64748b',
-                      marginBottom: '8px'
-                    }}>
-                      데이터 포인트
-                    </div>
-                    <div style={{
-                      fontSize: '10px',
-                      color: '#64748b'
-                    }}>
-                      프로토콜: {dashboardData.device_summary.protocols_count}개
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 시스템 리소스 */}
-            <div style={{
-              background: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                padding: '20px',
-                background: '#f8fafc',
-                borderBottom: '1px solid #e2e8f0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#334155'
-                }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    background: '#fef3c7',
-                    color: '#f59e0b',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '14px'
-                  }}>
-                    📊
-                  </div>
-                  시스템 리소스
-                </div>
-                <div style={{
-                  fontSize: '12px',
-                  color: '#64748b'
-                }}>
-                  평균 응답시간: {dashboardData.system_metrics.avgResponseTime}ms
-                </div>
-              </div>
-              <div style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+              {/* 시각화 (Simple Bar Chart instead of complex Pie) */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {[
-                  { label: 'CPU 사용률', value: dashboardData.system_metrics.cpuUsage, unit: '%' },
-                  { label: '메모리', value: dashboardData.system_metrics.memoryUsage, unit: '%' },
-                  { label: '디스크', value: dashboardData.system_metrics.diskUsage, unit: '%' },
-                  { label: '네트워크', value: dashboardData.system_metrics.networkUsage, unit: ' Mbps' }
-                ].map((metric, index) => (
-                  <div key={index} style={{ marginBottom: '16px' }}>
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: '8px',
-                      fontSize: '14px'
-                    }}>
-                      <span style={{ color: '#374151' }}>{metric.label}</span>
-                      <span style={{ fontWeight: '600', color: '#1f2937' }}>
-                        {metric.value}{metric.unit}
-                      </span>
+                  { label: '정상 연결', count: dashboardData?.device_summary?.connected_devices || 0, color: '#10b981', total: dashboardData?.device_summary?.total_devices || 0 },
+                  { label: '연결 끊김', count: dashboardData?.device_summary?.disconnected_devices || 0, color: '#64748b', total: dashboardData?.device_summary?.total_devices || 0 },
+                  { label: '통신 오류', count: dashboardData?.device_summary?.error_devices || 0, color: '#ef4444', total: dashboardData?.device_summary?.total_devices || 0 }
+                ].map((item) => (
+                  <div key={item.label}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                      <span style={{ fontWeight: '600', color: '#475569' }}>{item.label}</span>
+                      <span style={{ fontWeight: '700', color: '#1e293b' }}>{item.count}대 ({item.total > 0 ? Math.round((item.count / item.total) * 100) : 0}%)</span>
                     </div>
-                    <div style={{
-                      width: '100%',
-                      height: '6px',
-                      background: '#f3f4f6',
-                      borderRadius: '3px',
-                      overflow: 'hidden'
-                    }}>
+                    <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
                       <div style={{
-                        width: `${Math.min(metric.value, 100)}%`,
+                        width: `${item.total > 0 ? (item.count / item.total) * 100 : 0}%`,
                         height: '100%',
-                        background: metric.value > 80 ? '#ef4444' : metric.value > 60 ? '#f59e0b' : '#22c55e',
-                        transition: 'width 0.3s ease'
+                        background: item.color,
+                        borderRadius: '4px',
+                        transition: 'width 1s ease-out'
                       }}></div>
                     </div>
                   </div>
                 ))}
-
-                <div style={{
-                  borderTop: '1px solid #e5e7eb',
-                  paddingTop: '16px',
-                  fontSize: '12px',
-                  color: '#6b7280'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span>활성 연결:</span>
-                    <span>{dashboardData.system_metrics.activeConnections}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span>큐 크기:</span>
-                    <span>{dashboardData.system_metrics.queueSize}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>DB 쿼리 시간:</span>
-                    <span>{dashboardData.system_metrics.dbQueryTime}ms</span>
-                  </div>
-                </div>
               </div>
             </div>
 
-            {/* 성능 지표 */}
             <div style={{
-              background: 'white',
+              marginTop: '28px',
+              padding: '16px',
+              background: '#f8fafc',
               borderRadius: '12px',
-              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
-              overflow: 'hidden'
+              border: '1px solid #f1f5f9'
             }}>
-              <div style={{
-                padding: '20px',
-                background: '#f8fafc',
-                borderBottom: '1px solid #e2e8f0'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#334155'
-                }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    background: '#e0f2fe',
-                    color: '#0891b2',
-                    borderRadius: '6px',
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#475569', marginBottom: '8px' }}>프로토콜별 장치 현황</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {(dashboardData.device_summary.protocol_details || []).map(p => (
+                  <div key={p.type} style={{
+                    padding: '6px 12px',
+                    background: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '12px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '14px'
+                    gap: '6px'
                   }}>
-                    📈
-                  </div>
-                  성능 지표
-                </div>
-              </div>
-              <div style={{ padding: '20px' }}>
-                {[
-                  { label: 'API 응답시간', value: `${dashboardData.performance.api_response_time}ms` },
-                  { label: 'DB 응답시간', value: `${dashboardData.performance.database_response_time}ms` },
-                  { label: '캐시 적중률', value: `${dashboardData.performance.cache_hit_rate}%` },
-                  { label: '처리량/초', value: `${dashboardData.performance.throughput_per_second}` },
-                  { label: '에러율', value: `${dashboardData.performance.error_rate.toFixed(2)}%` }
-                ].map((perf, index) => (
-                  <div key={index} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px',
-                    background: '#f8fafc',
-                    borderRadius: '6px',
-                    marginBottom: '8px',
-                    fontSize: '14px'
-                  }}>
-                    <span style={{ color: '#64748b' }}>{perf.label}</span>
-                    <span style={{ fontWeight: '600', color: '#1e293b' }}>{perf.value}</span>
+                    <span style={{ fontWeight: '700', color: '#334155' }}>{p.type}</span>
+                    <span style={{ color: '#94a3b8' }}>|</span>
+                    <span style={{ fontWeight: '600', color: '#3b82f6' }}>{p.count}대</span>
                   </div>
                 ))}
+                {(!dashboardData.device_summary.protocol_details || dashboardData.device_summary.protocol_details.length === 0) && (
+                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>등록된 장치가 없습니다.</div>
+                )}
               </div>
             </div>
+          </div>
+        )}
 
-            {/* 헬스 체크 */}
+        {/* 🔔 알람 핫스팟 및 트렌드 (Alarm Hotspots) */}
+        {dashboardData && (
+          <div style={{
+            background: 'white',
+            borderRadius: '20px',
+            boxShadow: '0 4px 25px rgba(0, 0, 0, 0.04)',
+            border: '1px solid #f1f5f9',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
             <div style={{
-              background: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
-              overflow: 'hidden'
+              padding: '24px 28px',
+              borderBottom: '1px solid #f1f5f9',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
             }}>
-              <div style={{
-                padding: '20px',
-                background: '#f8fafc',
-                borderBottom: '1px solid #e2e8f0'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#334155'
-                }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    background: '#dcfce7',
-                    color: '#16a34a',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '14px'
-                  }}>
-                    💚
-                  </div>
-                  헬스 체크
-                </div>
+              <div>
+                <div style={{ fontSize: '18px', fontWeight: '800', color: '#1e293b' }}>실시간 운영 현황 및 알람</div>
+                <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>현장별 실시간 상태 및 최근 주요 이벤트</div>
               </div>
-              <div style={{ padding: '20px' }}>
-                {[
-                  { label: '데이터베이스', status: dashboardData.health_status.database },
-                  { label: '네트워크', status: dashboardData.health_status.network },
-                  { label: '스토리지', status: dashboardData.health_status.storage },
-                  { label: '캐시', status: dashboardData.health_status.cache },
-                  { label: '메시지 큐', status: dashboardData.health_status.message_queue }
-                ].map((health, index) => (
-                  <div key={index} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '8px 0',
-                    borderBottom: index < 4 ? '1px solid #f1f5f9' : 'none',
-                    fontSize: '14px'
-                  }}>
-                    <span style={{ color: '#64748b' }}>{health.label}</span>
-                    <span style={{
+              <button
+                onClick={() => window.location.href = '/alarms'}
+                style={{ color: '#3b82f6', background: 'none', border: 'none', fontSize: '14px', fontWeight: '700', cursor: 'pointer', padding: '8px', borderRadius: '8px', transition: 'background 0.2s' }}
+                onMouseOver={(e) => (e.currentTarget.style.background = '#eff6ff')}
+                onMouseOut={(e) => (e.currentTarget.style.background = 'none')}
+              >
+                상세 이력 보기 →
+              </button>
+            </div>
+
+            <div style={{ padding: '24px 28px', display: 'flex', gap: '24px', flex: 1 }}>
+              {/* 현장별 상태 (Hotspots) */}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#475569', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '3px', height: '12px', background: '#3b82f6', borderRadius: '2px' }}></span>
+                  현장별 가동 상태
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {(dashboardData.device_summary as any).protocol_details?.map((proto: any) => (
+                    <div key={proto.type} style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      color: health.status === 'healthy' ? '#16a34a' :
-                        health.status === 'warning' ? '#f59e0b' : '#dc2626'
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      background: '#f8fafc',
+                      borderRadius: '12px',
+                      border: '1px solid #f1f5f9'
                     }}>
-                      <span style={{
-                        width: '6px',
-                        height: '6px',
-                        borderRadius: '50%',
-                        background: health.status === 'healthy' ? '#22c55e' :
-                          health.status === 'warning' ? '#f59e0b' : '#ef4444'
-                      }}></span>
-                      {health.status}
-                    </span>
-                  </div>
-                ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ fontSize: '18px' }}>{proto.type === 'modbus' ? '🧩' : '🔌'}</span>
+                        <div>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{proto.name}</div>
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>{proto.type.toUpperCase()}</div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '16px', fontWeight: '800', color: '#1e293b' }}>{proto.count}</div>
+                        <div style={{ fontSize: '11px', color: '#10b981', fontWeight: '600' }}>{proto.connected} Connected</div>
+                      </div>
+                    </div>
+                  ))}    </div>
+              </div>
+
+              {/* 최근 이벤트 피드 */}
+              <div style={{ flex: 1.2 }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#475569', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '3px', height: '12px', background: '#ef4444', borderRadius: '2px' }}></span>
+                  최근 주요 이벤트
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {(dashboardData.alarms.recent_alarms || []).length > 0 ? (
+                    dashboardData.alarms.recent_alarms.slice(0, 4).map((alarm) => (
+                      <div key={alarm.id} style={{
+                        padding: '12px',
+                        borderRadius: '12px',
+                        background: alarm.severity === 'critical' ? '#fff1f2' : (alarm.severity === 'major' ? '#fffbeb' : '#f8fafc'),
+                        border: `1px solid ${alarm.severity === 'critical' ? '#fecaca' : (alarm.severity === 'major' ? '#fde68a' : '#f1f5f9')}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}>
+                        <div style={{ fontSize: '18px' }}>
+                          {alarm.severity === 'critical' ? '🚨' : (alarm.severity === 'major' ? '🔶' : '🔔')}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{alarm.message}</div>
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
+                            {alarm.device_name || '시스템'} • {new Date(alarm.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ padding: '32px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #e2e8f0' }}>
+                      <div style={{ fontSize: '13px', color: '#94a3b8' }}>최근 알람이 없습니다.</div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-
           </div>
         )}
       </div>
 
-      {/* 📊 하단: 최근 알람 (기존 가로 레이아웃 유지) */}
-      {dashboardData && (
-        <div style={{
-          background: 'white',
-          borderRadius: '12px',
-          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
-          overflow: 'hidden'
-        }}>
-          <div style={{
-            padding: '20px',
-            background: '#f8fafc',
-            borderBottom: '1px solid #e2e8f0',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              fontSize: '18px',
-              fontWeight: '600',
-              color: '#334155'
-            }}>
-              <div style={{
-                width: '32px',
-                height: '32px',
-                background: '#fef2f2',
-                color: '#dc2626',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                🔔
-              </div>
-              최근 알람
-              <span style={{
-                fontSize: '12px',
-                color: '#64748b',
-                background: '#f1f5f9',
-                padding: '4px 8px',
-                borderRadius: '12px'
-              }}>
-                24시간 내: {dashboardData.alarms.today_total}건
-              </span>
-            </div>
-            <button style={{
-              padding: '8px 16px',
-              background: 'transparent',
-              color: '#3b82f6',
-              border: '1px solid #3b82f6',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              모든 알람 보기 →
-            </button>
-          </div>
-
-          <div style={{ padding: '20px' }}>
-            {!dashboardData.alarms.recent_alarms || dashboardData.alarms.recent_alarms.length === 0 ? (
-              dashboardData.alarms.today_total > 0 ? (
-                // 통계상 알람이 있는데 recent_alarms가 비어있는 경우
-                <div style={{
-                  textAlign: 'center',
-                  padding: '40px 20px',
-                  color: '#64748b'
-                }}>
-                  <div style={{
-                    fontSize: '48px',
-                    marginBottom: '16px'
-                  }}>
-                    🔔
-                  </div>
-                  <h3 style={{
-                    margin: 0,
-                    marginBottom: '8px',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    color: '#f59e0b'
-                  }}>
-                    알람 목록을 불러올 수 없습니다
-                  </h3>
-                  <p style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    color: '#64748b',
-                    marginBottom: '16px'
-                  }}>
-                    24시간 내 {dashboardData.alarms.today_total}건의 알람이 있지만<br />
-                    최근 알람 목록을 가져오는 중 오류가 발생했습니다.
-                  </p>
-                  <button
-                    onClick={() => loadDashboardOverview(true)}
-                    style={{
-                      padding: '8px 16px',
-                      background: '#3b82f6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '14px'
-                    }}
-                  >
-                    새로고침
-                  </button>
-                </div>
-              ) : (
-                // 실제로 알람이 없는 경우
-                <div style={{
-                  textAlign: 'center',
-                  padding: '40px 20px',
-                  color: '#64748b'
-                }}>
-                  <div style={{
-                    fontSize: '48px',
-                    marginBottom: '16px'
-                  }}>
-                    ✅
-                  </div>
-                  <h3 style={{
-                    margin: 0,
-                    marginBottom: '8px',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    color: '#16a34a'
-                  }}>
-                    현재 발생한 알람이 없습니다
-                  </h3>
-                  <p style={{
-                    margin: 0,
-                    fontSize: '14px',
-                    color: '#64748b'
-                  }}>
-                    시스템이 정상적으로 동작하고 있습니다
-                  </p>
-                </div>
-              )
-            ) : (
-              // 알람이 있는 경우 표시 (기존 가로 레이아웃 유지)
-              dashboardData.alarms.recent_alarms.slice(0, 3).map((alarm, index) => (
-                <div key={alarm.id} style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '16px',
-                  padding: '16px',
-                  background: '#f8fafc',
-                  borderRadius: '8px',
-                  marginBottom: index < Math.min(dashboardData.alarms.recent_alarms.length, 3) - 1 ? '12px' : 0,
-                  border: '1px solid #e2e8f0'
-                }}>
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    background: alarm.type === 'warning' ? '#fef3c7' :
-                      alarm.type === 'critical' ? '#fef2f2' :
-                        alarm.type === 'major' ? '#fef3c7' : '#e0f2fe',
-                    color: alarm.type === 'warning' ? '#f59e0b' :
-                      alarm.type === 'critical' ? '#dc2626' :
-                        alarm.type === 'major' ? '#f59e0b' : '#0891b2',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    {alarm.type === 'warning' ? '⚠️' :
-                      alarm.type === 'critical' ? '🚨' :
-                        alarm.type === 'major' ? '🔶' : 'ℹ️'}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      fontWeight: '500',
-                      color: '#1e293b',
-                      fontSize: '14px',
-                      marginBottom: '4px'
-                    }}>
-                      {alarm.message}
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#64748b'
-                    }}>
-                      {alarm.device_name} • {new Date(alarm.timestamp).toLocaleString()} • 심각도: {alarm.severity}
-                    </div>
-                  </div>
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-end',
-                    gap: '4px',
-                    flexShrink: 0
-                  }}>
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#64748b'
-                    }}>
-                      {new Date(alarm.timestamp).toLocaleTimeString()}
-                    </div>
-                    <span style={{
-                      fontSize: '12px',
-                      color: alarm.acknowledged ? '#16a34a' : '#dc2626',
-                      background: alarm.acknowledged ? '#dcfce7' : '#fef2f2',
-                      padding: '4px 8px',
-                      borderRadius: '12px'
-                    }}>
-                      {alarm.acknowledged ? '✅ 확인됨' : '❗ 미확인'}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 📊 하단 상태바 */}
+      {/* 📊 하단: 성능 지표 및 자산 요약 */}
       <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginTop: '24px',
-        padding: '16px 20px',
-        background: 'white',
-        borderRadius: '8px',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-        fontSize: '14px',
-        color: '#64748b'
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '24px',
+        marginBottom: '40px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span>마지막 업데이트: {lastUpdate.toLocaleTimeString()}</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {dashboardData && (
+          <>
             <div style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: autoRefresh ? '#22c55e' : '#6b7280',
-              animation: autoRefresh ? 'pulse 2s infinite' : 'none'
-            }}></div>
-            {autoRefresh ? '10초마다 자동 새로고침' : '자동 새로고침 일시정지'}
-          </span>
-        </div>
+              background: 'white',
+              borderRadius: '20px',
+              padding: '24px 28px',
+              border: '1px solid #f1f5f9',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)'
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: '800', color: '#1e293b', marginBottom: '20px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>⚡</span> 시스템 성능 지수
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px' }}>
+                <div style={{ textAlign: 'center', padding: '16px', background: '#f8fafc', borderRadius: '16px' }}>
+                  <div style={{ color: '#64748b', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>API 응답속도</div>
+                  <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '20px' }}>{dashboardData.performance.api_response_time}<span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: '2px' }}>ms</span></div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '16px', background: '#f8fafc', borderRadius: '16px' }}>
+                  <div style={{ color: '#64748b', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>DB 쿼리 시간</div>
+                  <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '20px' }}>{dashboardData.performance.database_response_time}<span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: '2px' }}>ms</span></div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '16px', background: '#f8fafc', borderRadius: '16px' }}>
+                  <div style={{ color: '#64748b', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>데이터 처리량</div>
+                  <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '20px', whiteSpace: 'nowrap' }}>
+                    {dashboardData.performance.throughput_per_second}<span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: '2px' }}>req/s</span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: dashboardData?.health_status?.overall === 'healthy' ? '#22c55e' : '#f59e0b'
-            }}></div>
-            시스템: {dashboardData?.health_status?.overall === 'healthy' ? '정상' : '주의'}
-          </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: connectionStatus === 'connected' ? '#22c55e' : '#ef4444'
-            }}></div>
-            {connectionStatus === 'connected' ? '연결됨' : '연결 끊김'}
-          </span>
-          {consecutiveErrors === 0 && connectionStatus === 'connected' ? (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: '#22c55e'
-              }}></div>
-              실시간 데이터 표시 중
-            </span>
-          ) : (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: '#ef4444'
-              }}></div>
-              일부 데이터 오류 ({consecutiveErrors}회)
-            </span>
-          )}
-        </div>
+              background: 'white',
+              borderRadius: '20px',
+              padding: '24px 28px',
+              border: '1px solid #f1f5f9',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.04)'
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: '800', color: '#1e293b', marginBottom: '20px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>📊</span> 통합 자산 요약
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px' }}>
+                <div style={{ textAlign: 'center', padding: '16px', background: '#f0f9ff', borderRadius: '16px', border: '1px solid #e0f2fe' }}>
+                  <div style={{ color: '#0369a1', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>등록 프로토콜</div>
+                  <div style={{ fontWeight: '800', color: '#0c4a6e', fontSize: '20px' }}>{dashboardData?.device_summary?.protocol_details?.length || 0}<span style={{ fontSize: '12px', marginLeft: '2px' }}>종</span></div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '16px', background: '#ecfdf5', borderRadius: '16px', border: '1px solid #d1fae5' }}>
+                  <div style={{ color: '#047857', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>활성 현장 (Site)</div>
+                  <div style={{ fontWeight: '800', color: '#064e3b', fontSize: '20px' }}>{dashboardData?.device_summary?.sites_count || 0}<span style={{ fontSize: '12px', marginLeft: '2px' }}>개소</span></div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '16px', background: '#fffbeb', borderRadius: '16px', border: '1px solid #fef3c7' }}>
+                  <div style={{ color: '#b45309', fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>수집 포인트 수</div>
+                  <div style={{ fontWeight: '800', color: '#78350f', fontSize: '20px' }}>
+                    {((dashboardData?.device_summary?.data_points_count || 0) / 1000).toFixed(1)}<span style={{ fontSize: '12px', marginLeft: '2px' }}>k EA</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
+
+      {/* Flow Monitor (가장 하단으로 이동) */}
+      <FlowMonitor data={dashboardData} />
 
       <style>
         {`

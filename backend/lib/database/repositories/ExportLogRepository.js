@@ -27,6 +27,7 @@ class ExportLogRepository extends BaseRepository {
                         .andOn('pa.is_active', '=', 1);
                 })
                 .leftJoin('edge_servers as g', 'pa.gateway_id', 'g.id')
+                .distinct() // ✅ FIX: Prevent duplicates from multiple profile assignments
                 .select(
                     'l.*',
                     't.name as target_name',
@@ -127,13 +128,15 @@ class ExportLogRepository extends BaseRepository {
             const stats = await query.select(
                 this.knex.raw('COUNT(*) as total'),
                 this.knex.raw("SUM(CASE WHEN UPPER(l.status) = 'SUCCESS' THEN 1 ELSE 0 END) as success"),
-                this.knex.raw("SUM(CASE WHEN UPPER(l.status) = 'FAILURE' THEN 1 ELSE 0 END) as failure")
+                this.knex.raw("SUM(CASE WHEN UPPER(l.status) = 'FAILURE' THEN 1 ELSE 0 END) as failure"),
+                this.knex.raw('MAX(l.timestamp) as last_dispatch')
             ).first();
 
             return {
                 total: parseInt(stats?.total || 0),
                 success: parseInt(stats?.success || 0),
-                failure: parseInt(stats?.failure || 0)
+                failure: parseInt(stats?.failure || 0),
+                last_dispatch: stats?.last_dispatch || null
             };
         } catch (error) {
             this.logger.error('ExportLogRepository.getStatistics Error:', error);

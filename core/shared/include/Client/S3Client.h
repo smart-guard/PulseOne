@@ -31,6 +31,7 @@ struct S3UploadResult {
   std::chrono::system_clock::time_point upload_time;
   double upload_time_ms = 0.0;
   size_t file_size = 0;
+  int status_code = 0;
 
   bool isSuccess() const { return success; }
 };

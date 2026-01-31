@@ -28,8 +28,26 @@ class EdgeServerService extends BaseService {
             // DB 목록 가져오기
             const servers = await this.repository.findAll(tenantId);
 
-            // Redis에서 실시간 상태 병합 (Optional)
-            // 성능을 위해 필요 시 별도 메서드로 분리 전권장
+            // Redis에서 실시간 상태 병합
+            try {
+                const client = await this.redis.getRedisClient();
+                if (client) {
+                    for (const server of servers) {
+                        const prefix = (server.server_type || 'collector').toLowerCase() === 'gateway'
+                            ? 'gateway:status'
+                            : 'collector:status';
+
+                        const key = `${prefix}:${server.id}`;
+                        const data = await client.get(key);
+                        if (data) {
+                            server.live_status = JSON.parse(data);
+                        }
+                    }
+                }
+            } catch (err) {
+                // Ignore Redis errors for list view
+            }
+
             return servers;
         }, 'GetAllEdgeServers');
     }
@@ -44,7 +62,8 @@ class EdgeServerService extends BaseService {
 
             // 실시간 상태 조회 병합
             try {
-                const liveStatus = await this.getLiveStatus(id);
+                // server.server_type determines the key prefix
+                const liveStatus = await this.getLiveStatus(id, server.server_type);
                 if (liveStatus) {
                     server.live_status = liveStatus;
                 }
@@ -55,116 +74,69 @@ class EdgeServerService extends BaseService {
     }
 
     /**
-     * 활성 에지 서버 목록 조회
-     */
-    async getActiveEdgeServers(tenantId) {
-        return await this.handleRequest(async () => {
-            return await this.repository.findActive(tenantId);
-        }, 'GetActiveEdgeServers');
-    }
-
-    /**
-     * 서버 상태 및 메트릭 업데이트 (Edge 서버로부터의 하트비트)
-     */
-    async updateEdgeServerStatus(id, status, remarks) {
-        return await this.handleRequest(async () => {
-            const updateData = {
-                status: status || 'active',
-                last_seen: new Date(),
-                remarks: remarks
-            };
-            return await this.repository.update(id, updateData);
-        }, 'UpdateEdgeServerStatus');
-    }
-
-    /**
-     * 신규 서버 등록 (기존 registerServer)
-     */
-    async registerEdgeServer(serverData, tenantId) {
-        return await this.handleRequest(async () => {
-            // 1. 테넌트의 한도 정보 조회
-            const TenantService = require('./TenantService');
-            const tenantService = new TenantService();
-            const tenant = await tenantService.getTenantById(tenantId);
-
-            if (!tenant) {
-                throw new Error('고객사 정보를 찾을 수 없습니다.');
-            }
-
-            // 2. 현재 등록된 서버 수 조회
-            const currentServers = await this.repository.findAll(tenantId);
-            const activeCount = currentServers.length;
-
-            // 3. 한도 체크
-            const maxLimit = tenant.max_edge_servers || 1;
-            if (activeCount >= maxLimit) {
-                throw new Error(`EDGE 서버 등록 한도(${maxLimit}대)를 초과했습니다. 더 이상 등록할 수 없습니다.`);
-            }
-
-            if (!serverData.registration_token) {
-                serverData.registration_token = Buffer.from(`${tenantId}-${serverData.server_name}-${Date.now()}`).toString('base64');
-            }
-            return await this.repository.create(serverData, tenantId);
-        }, 'RegisterEdgeServer');
-    }
-
-    /**
-     * 서버 등록 해제 (기존 deleteServer)
-     */
-    async unregisterEdgeServer(id, tenantId) {
-        return await this.handleRequest(async () => {
-            const success = await this.repository.deleteById(id, tenantId);
-            if (!success) throw new Error('Server not found or delete failed');
-            return { id, success: true };
-        }, 'UnregisterEdgeServer');
-    }
-
-    // =========================================================================
-    // 📡 Gateway Command & Control (C2) Methods
-    // =========================================================================
-
-    /**
-     * 게이트웨이로 명령 전송 (Redis Pub/Sub)
+     * 에지 서버(게이트웨이/콜렉터)에 명령 전달 (Redis Pub/Sub)
      * @param {number} serverId 
-     * @param {string} commandType 'config:reload', 'service:restart', etc
-     * @param {object} payload 
+     * @param {string} command 'manual_export', 'config:reload', 'target:reload' 등
+     * @param {any} payload 명령 데이터
      */
-    async sendCommand(serverId, commandType, payload = {}) {
+    async sendCommand(serverId, command, payload = {}) {
         return await this.handleRequest(async () => {
-            const channel = `cmd:gateway:${serverId}`; // 특정 게이트웨이 지정
-            // 또는 광역 채널 사용 시: `config:reload` (모든 게이트웨이가 구독 중인 채널)
+            const server = await this.repository.findById(serverId);
+            if (!server) throw new Error(`Server with ID ${serverId} not found`);
 
-            // 현재 C++ 구현은 'config:reload' 채널을 구독하므로, 
-            // 개별 제어보다는 Broadcast 방식으로 구현되어 있음.
-            // 개별 제어를 위해서는 C++이 `cmd:gateway:{ID}`를 구독해야 함.
-            // 우선 계획된 'config:reload' 채널로 발행.
+            const serverType = (server.server_type || 'collector').toLowerCase();
+            let channel;
 
-            const targetChannel = commandType === 'config:reload' ? 'config:reload' : `cmd:gateway:${serverId}`;
+            // 명령 종류에 따른 채널 매핑 (C2 프로토콜 규격)
+            if (command === 'config:reload' || command === 'target:reload') {
+                // 브로드캐스트 명령
+                channel = command;
+            } else if (command === 'manual_export') {
+                // 특정 대상 지정 명령
+                channel = `cmd:${serverType}:${serverId}`;
+            } else {
+                // 기본 명령 패턴
+                channel = `cmd:${serverType}:${serverId}:${command}`;
+            }
 
-            const message = JSON.stringify({
-                command: commandType,
-                payload: payload,
-                timestamp: Date.now()
-            });
+            const message = {
+                command,
+                payload,
+                serverId,
+                serverType,
+                timestamp: new Date().toISOString()
+            };
 
-            // RedisManager proxy handles async connection internally if using the direct proxy methods,
-            // but let's be explicit to ensure it works.
             const client = await this.redis.getRedisClient();
-            if (!client) throw new Error('Redis client not available');
+            if (!client) throw new Error('Redis connection not available');
 
-            await client.publish(targetChannel, message);
+            const result = await client.publish(channel, JSON.stringify(message));
 
-            return { success: true, channel: targetChannel, command: commandType };
+            console.log(`📡 [C2] Command sent to ${channel}:`, command);
+
+            return {
+                channel,
+                command,
+                recipient_count: result,
+                timestamp: message.timestamp
+            };
         }, 'SendCommand');
     }
 
+    // ... (rest of the file until getLiveStatus)
+
     /**
-     * 게이트웨이 실시간 상태 조회 (Redis)
+     * 게이트웨이/콜렉터 실시간 상태 조회 (Redis)
      * @param {number} serverId 
+     * @param {string} serverType 'collector' (default) or 'gateway'
      */
-    async getLiveStatus(serverId) {
+    async getLiveStatus(serverId, serverType = 'collector') {
         try {
-            const key = `gateway:status:${serverId}`;
+            const prefix = (serverType || 'collector').toLowerCase() === 'gateway'
+                ? 'gateway:status'
+                : 'collector:status';
+
+            const key = `${prefix}:${serverId}`;
             const client = await this.redis.getRedisClient();
             if (!client) return null;
 

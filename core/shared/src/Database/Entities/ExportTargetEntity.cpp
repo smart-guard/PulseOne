@@ -40,7 +40,7 @@ ExportTargetEntity::ExportTargetEntity()
       template_id_(std::nullopt) // 🔥 v3.1.0 추가: NULL 초기화
       ,
       export_mode_("on_change"), export_interval_(0), batch_size_(100),
-      execution_order_(0), execution_delay_ms_(0) {
+      execution_delay_ms_(0) {
   // 통계 필드 초기화 코드 모두 제거됨
 }
 
@@ -49,7 +49,7 @@ ExportTargetEntity::ExportTargetEntity(int id)
       template_id_(std::nullopt) // 🔥 v3.1.0 추가: NULL 초기화
       ,
       export_mode_("on_change"), export_interval_(0), batch_size_(100),
-      execution_order_(0), execution_delay_ms_(0) {
+      execution_delay_ms_(0) {
   // 통계 필드 초기화 코드 모두 제거됨
 }
 
@@ -255,7 +255,6 @@ json ExportTargetEntity::toJson() const {
     j["export_mode"] = export_mode_;
     j["export_interval"] = export_interval_;
     j["batch_size"] = batch_size_;
-    j["execution_order"] = execution_order_;
     j["execution_delay_ms"] = execution_delay_ms_;
 
     // 타임스탬프 (epoch seconds)
@@ -339,10 +338,6 @@ bool ExportTargetEntity::fromJson(const json &data) {
       batch_size_ = data["batch_size"].get<int>();
     }
 
-    if (data.contains("execution_order")) {
-      execution_order_ = data["execution_order"].get<int>();
-    }
-
     if (data.contains("execution_delay_ms")) {
       execution_delay_ms_ = data["execution_delay_ms"].get<int>();
     }
@@ -372,7 +367,7 @@ std::string ExportTargetEntity::toString() const {
   }
 
   oss << ", mode=" << export_mode_;
-  oss << ", order=" << execution_order_;
+  oss << ", batch=" << batch_size_;
   oss << ", delay=" << execution_delay_ms_;
   oss << ", enabled=" << (is_enabled_ ? "true" : "false");
   oss << "]";

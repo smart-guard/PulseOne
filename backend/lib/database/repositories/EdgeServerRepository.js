@@ -20,7 +20,8 @@ class EdgeServerRepository extends BaseRepository {
             }
             query.where('es.is_deleted', 0);
             query.where('es.server_type', 'collector');
-            return await query.orderBy('es.server_name', 'ASC');
+            const results = await query.orderBy('es.server_name', 'ASC');
+            return results.map(item => this._parseItem(item));
         } catch (error) {
             this.logger.error('EdgeServerRepository.findAll 오류:', error);
             throw error;
@@ -41,7 +42,8 @@ class EdgeServerRepository extends BaseRepository {
                 query.where('es.tenant_id', tenantId);
             }
             query.where('es.server_type', 'collector');
-            return await query.first();
+            const item = await query.first();
+            return this._parseItem(item);
         } catch (error) {
             this.logger.error('EdgeServerRepository.findById 오류:', error);
             throw error;
@@ -53,7 +55,8 @@ class EdgeServerRepository extends BaseRepository {
      */
     async findByToken(token) {
         try {
-            return await this.query().where('registration_token', token).first();
+            const item = await this.query().where('registration_token', token).first();
+            return this._parseItem(item);
         } catch (error) {
             this.logger.error('EdgeServerRepository.findByToken 오류:', error);
             throw error;
@@ -158,6 +161,33 @@ class EdgeServerRepository extends BaseRepository {
             this.logger.error('EdgeServerRepository.deleteById 오류:', error);
             throw error;
         }
+    }
+
+    /**
+     * JSON 필드 파싱 헬퍼
+     */
+    _parseItem(item) {
+        if (!item) return null;
+
+        // config 파싱
+        if (typeof item.config === 'string') {
+            try {
+                item.config = JSON.parse(item.config);
+            } catch (e) {
+                item.config = {};
+            }
+        }
+
+        // capabilities 파싱
+        if (typeof item.capabilities === 'string') {
+            try {
+                item.capabilities = JSON.parse(item.capabilities);
+            } catch (e) {
+                item.capabilities = [];
+            }
+        }
+
+        return item;
     }
 }
 

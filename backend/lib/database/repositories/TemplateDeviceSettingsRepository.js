@@ -69,9 +69,9 @@ class TemplateDeviceSettingsRepository extends BaseRepository {
     /**
      * 설정을 삭제합니다.
      */
-    async deleteByTemplateId(templateId) {
+    async deleteByTemplateId(templateId, trx = null) {
         try {
-            const affected = await this.query().where('template_device_id', templateId).del();
+            const affected = await this.query(trx).where('template_device_id', templateId).del();
             return affected > 0;
         } catch (error) {
             this.logger.error('TemplateDeviceSettingsRepository.deleteByTemplateId 오류:', error);

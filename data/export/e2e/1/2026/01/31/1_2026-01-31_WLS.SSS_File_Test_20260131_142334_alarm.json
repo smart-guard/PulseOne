@@ -1,0 +1,1 @@
+[{"al":1,"alarm_status":"발생","bd":1,"des":"🚨 [긴급] WLS.SSS Out of Range: HIGH (Value: 160.00) [야간긴급] [위치: Location for Pt 4, 시간: 2026-01-31 23:23:34] → 즉시 대응 필요!","nm":"WLS.SSS_File_Test","source":"PulseOne-CSPGateway","st":0,"tm":"2026-01-31 23:23:34","version":"2.0","vl":160.0}]

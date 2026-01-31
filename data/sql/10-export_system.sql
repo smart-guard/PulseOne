@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS export_profiles (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_by VARCHAR(50),
     point_count INTEGER DEFAULT 0,
-    last_exported_at DATETIME
+    last_exported_at DATETIME,
+    data_points TEXT DEFAULT '[]'
 );
 
 CREATE INDEX IF NOT EXISTS idx_profiles_enabled ON export_profiles(is_enabled);
@@ -161,7 +162,6 @@ CREATE TABLE IF NOT EXISTS export_targets (
     export_mode VARCHAR(20) DEFAULT 'on_change',
     export_interval INTEGER DEFAULT 0,
     batch_size INTEGER DEFAULT 100,
-    execution_order INTEGER DEFAULT 100,
     execution_delay_ms INTEGER DEFAULT 0,
     
     -- 메타 정보
@@ -185,7 +185,8 @@ CREATE INDEX IF NOT EXISTS idx_export_targets_template ON export_targets(templat
 CREATE TABLE IF NOT EXISTS export_target_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     target_id INTEGER NOT NULL,
-    point_id INTEGER NOT NULL,
+    point_id INTEGER,
+    site_id INTEGER,
     target_field_name VARCHAR(200),
     target_description VARCHAR(500),
     conversion_config TEXT,
@@ -194,6 +195,7 @@ CREATE TABLE IF NOT EXISTS export_target_mappings (
     
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE,
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
     UNIQUE(target_id, point_id)
 );
 

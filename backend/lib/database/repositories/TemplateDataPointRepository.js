@@ -103,9 +103,9 @@ class TemplateDataPointRepository extends BaseRepository {
     /**
      * 특정 템플릿의 모든 데이터 포인트를 삭제합니다.
      */
-    async deleteByTemplateId(templateId) {
+    async deleteByTemplateId(templateId, trx = null) {
         try {
-            const affected = await this.query().where('template_device_id', templateId).del();
+            const affected = await this.query(trx).where('template_device_id', templateId).del();
             return affected > 0;
         } catch (error) {
             this.logger.error('TemplateDataPointRepository.deleteByTemplateId 오류:', error);

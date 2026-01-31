@@ -163,7 +163,7 @@ int ExportService::LoadActiveTargets() {
       target.name = db_target.getName();
       target.type = db_target.getTargetType();
       target.enabled = db_target.isEnabled();
-      target.execution_order = db_target.getExecutionOrder(); // 🆕 추가
+      target.enabled = db_target.isEnabled();
       target.endpoint = "";
 
       try {
@@ -188,15 +188,14 @@ int ExportService::LoadActiveTargets() {
 
       active_targets_.push_back(target);
 
-      LogManager::getInstance().Info(
-          "ExportService: 타겟 로드됨 - " + target.name + " (" + target.type +
-          ", Order: " + std::to_string(target.execution_order) + ")");
+      LogManager::getInstance().Info("ExportService: 타겟 로드됨 - " +
+                                     target.name + " (" + target.type + ")");
     }
 
-    // ✅ v3.1.2: execution_order 기준 정렬 (낮은 숫자가 높은 우선순위)
+    // ✅ v3.1.2: 이름 기준 정렬 (기본값)
     std::sort(active_targets_.begin(), active_targets_.end(),
               [](const ExportTargetConfig &a, const ExportTargetConfig &b) {
-                return a.execution_order < b.execution_order;
+                return a.name < b.name;
               });
 
     // ✅ v3.2.0: Payload Template 주입 로직

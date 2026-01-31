@@ -130,8 +130,7 @@ bool ExportTargetRepository::save(ExportTargetEntity &entity) {
         "export_mode",       // 8
         "export_interval",   // 9
         "batch_size",        // 10
-        "execution_order",   // 11
-        "execution_delay_ms" // 12
+        "execution_delay_ms" // 11
     };
 
     for (const auto &key : insert_order) {
@@ -144,7 +143,7 @@ bool ExportTargetRepository::save(ExportTargetEntity &entity) {
           query.replace(pos, 1, "NULL");
         } else if (key == "profile_id" || key == "is_enabled" ||
                    key == "export_interval" || key == "batch_size" ||
-                   key == "execution_order" || key == "execution_delay_ms") {
+                   key == "execution_delay_ms") {
           query.replace(pos, 1, value);
         } else {
           // SQL Injection 방지
@@ -197,7 +196,6 @@ bool ExportTargetRepository::update(const ExportTargetEntity &entity) {
         "template_id", // 🆕 추가
         "export_mode",       "export_interval",
         "batch_size",
-        "execution_order",   // 🆕 추가
         "execution_delay_ms" // 🆕 추가
     };
 
@@ -211,7 +209,7 @@ bool ExportTargetRepository::update(const ExportTargetEntity &entity) {
           query.replace(pos, 1, "NULL");
         } else if (key == "profile_id" || key == "is_enabled" ||
                    key == "export_interval" || key == "batch_size" ||
-                   key == "execution_order" || key == "execution_delay_ms") {
+                   key == "execution_delay_ms") {
           query.replace(pos, 1, value);
         } else {
           // SQL Injection 방지
@@ -917,24 +915,6 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
   }
 
   // ==========================================================================
-  // execution_order (🆕 추가)
-  // ==========================================================================
-  try {
-    auto it = row.find("execution_order");
-    if (it != row.end() && !it->second.empty()) {
-      entity.setExecutionOrder(std::stoi(it->second));
-    } else {
-      entity.setExecutionOrder(0);
-    }
-  } catch (const std::exception &e) {
-    if (logger_) {
-      logger_->Debug("mapRowToEntity: execution_order parse failed: " +
-                     std::string(e.what()));
-    }
-    entity.setExecutionOrder(0);
-  }
-
-  // ==========================================================================
   // execution_delay_ms (🆕 추가)
   // ==========================================================================
   try {
@@ -981,8 +961,6 @@ ExportTargetRepository::entityToParams(const ExportTargetEntity &entity) {
   params["export_mode"] = entity.getExportMode();
   params["export_interval"] = std::to_string(entity.getExportInterval());
   params["batch_size"] = std::to_string(entity.getBatchSize());
-  params["execution_order"] =
-      std::to_string(entity.getExecutionOrder()); // 🆕 추가
   params["execution_delay_ms"] =
       std::to_string(entity.getExecutionDelayMs()); // 🆕 추가
 

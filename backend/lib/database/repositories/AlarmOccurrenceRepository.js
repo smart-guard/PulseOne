@@ -919,12 +919,12 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .where('occurrence_time', '<', endDate)
                 .select([
                     this.knex.raw('COUNT(*) as today_total'),
-                    this.knex.raw("SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as today_active"),
+                    this.knex.raw("SUM(CASE WHEN state IN ('active', 'ACTIVE') THEN 1 ELSE 0 END) as today_active"),
                     this.knex.raw('SUM(CASE WHEN acknowledged_time IS NULL THEN 1 ELSE 0 END) as today_unacknowledged'),
-                    this.knex.raw("SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as today_critical"),
-                    this.knex.raw("SUM(CASE WHEN severity IN ('major', 'high') THEN 1 ELSE 0 END) as today_major"),
-                    this.knex.raw("SUM(CASE WHEN severity IN ('minor', 'low') THEN 1 ELSE 0 END) as today_minor"),
-                    this.knex.raw("SUM(CASE WHEN severity IN ('medium', 'warning') THEN 1 ELSE 0 END) as today_warning")
+                    this.knex.raw("SUM(CASE WHEN severity IN ('critical', 'CRITICAL') THEN 1 ELSE 0 END) as today_critical"),
+                    this.knex.raw("SUM(CASE WHEN severity IN ('major', 'MAJOR', 'high', 'HIGH') THEN 1 ELSE 0 END) as today_major"),
+                    this.knex.raw("SUM(CASE WHEN severity IN ('minor', 'MINOR', 'low', 'LOW') THEN 1 ELSE 0 END) as today_minor"),
+                    this.knex.raw("SUM(CASE WHEN severity IN ('medium', 'MEDIUM', 'warning', 'WARNING') THEN 1 ELSE 0 END) as today_warning")
                 ])
                 .first();
 
@@ -941,6 +941,34 @@ class AlarmOccurrenceRepository extends BaseRepository {
         } catch (error) {
             this.logger?.error('AlarmOccurrenceRepository.getStatsToday failed:', error.message);
             throw error;
+        }
+    }
+
+    /**
+     * Dashboard 전용: 테넌트별 종합 통계 조회
+     */
+    async getStatsByTenant(tenantId) {
+        try {
+            const [summary, severity, device] = await Promise.all([
+                this.getStatsSummary(tenantId),
+                this.getStatsBySeverity(tenantId),
+                this.getStatsByDevice(tenantId)
+            ]);
+
+            const { today_total } = await this.getStatsToday(tenantId);
+
+            return {
+                active: summary.active_alarms || 0,
+                total_today: today_total || 0,
+                total_week: 0, // TODO: 주간 통계 구현
+                total_month: 0, // TODO: 월간 통계 구현
+                by_severity: severity.reduce((acc, s) => { acc[s.severity] = s.count; return acc; }, {}),
+                by_device: device.reduce((acc, d) => { acc[d.device_id] = d.total_alarms; return acc; }, {}),
+                response_times: {}
+            };
+        } catch (error) {
+            this.logger?.error('AlarmOccurrenceRepository.getStatsByTenant failed:', error.message);
+            return null;
         }
     }
 

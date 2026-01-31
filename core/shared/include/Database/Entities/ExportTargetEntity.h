@@ -94,7 +94,6 @@ public:
   std::string getExportMode() const { return export_mode_; }
   int getExportInterval() const { return export_interval_; }
   int getBatchSize() const { return batch_size_; }
-  int getExecutionOrder() const { return execution_order_; } // 🆕 v3.1.1 추가
   int getExecutionDelayMs() const {
     return execution_delay_ms_;
   } // 🆕 v3.1.3 추가
@@ -151,11 +150,6 @@ public:
 
   void setBatchSize(int size) {
     batch_size_ = size;
-    markModified();
-  }
-
-  void setExecutionOrder(int order) { // 🆕 v3.1.1 추가
-    execution_order_ = order;
     markModified();
   }
 
@@ -226,7 +220,6 @@ private:
   std::string export_mode_ = "on_change"; // 전송 모드
   int export_interval_ = 0;               // 주기 전송 간격 (초)
   int batch_size_ = 100;                  // 배치 크기
-  int execution_order_ = 0;               // 🆕 v3.1.1 추가: 전송 우선순위
   int execution_delay_ms_ = 0;            // 🆕 v3.1.3 추가: 전송 지연 (ms)
 
   // ❌ 제거된 필드들 (export_logs에서 집계)

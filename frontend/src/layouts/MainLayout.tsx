@@ -446,6 +446,17 @@ export const MainLayout: React.FC = () => {
                 <span className="menu-title">감사 로그</span>
               </Link>
             </li>
+            <li className="menu-item">
+              <Link
+                to="/system/redis-manager"
+                className={`menu-link ${isActiveSubMenu('/system/redis-manager') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-database"></i>
+                </div>
+                <span className="menu-title">Redis Inspector</span>
+              </Link>
+            </li>
           </ul>
         </nav>
       </div>
