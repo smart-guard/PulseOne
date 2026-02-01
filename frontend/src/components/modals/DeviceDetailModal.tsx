@@ -54,6 +54,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   const [editData, setEditData] = useState<Device | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [dataPoints, setDataPoints] = useState<DataPoint[]>([]);
+  const [originalDataPoints, setOriginalDataPoints] = useState<DataPoint[]>([]);
   const [isLoadingDataPoints, setIsLoadingDataPoints] = useState(false);
   const [dataPointsError, setDataPointsError] = useState<string | null>(null);
 
@@ -185,7 +186,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
           }, 100);
         }
       },
-      showCancel: config.showCancel !== false
+      showCancel: config.showCancel !== undefined ? config.showCancel : (config.type === 'confirm')
     });
   };
 
@@ -207,7 +208,8 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       if (response.success && response.data) {
         const points = response.data.items || [];
         setDataPoints(points);
-        console.log(`데이터포인트 ${points.length}개 로드 완료`);
+        setOriginalDataPoints(JSON.parse(JSON.stringify(points))); // Deep copy
+        console.log(`데이터포인트 ${points.length}개 로드 완료 (원본 백업 완료)`);
       } else {
         throw new Error(response.error || '데이터포인트 조회 실패');
       }
@@ -251,28 +253,119 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       return;
     }
 
+    // ========================================================================
+    // 🔍 스마트 변경 감지 (Diffing)
+    // ========================================================================
+    const changes: string[] = [];
+    const isEdit = mode === 'edit';
+
+    if (isEdit && device) {
+      // 1. 기본 정보 및 통신 설정 비교
+      const checkFields = [
+        { key: 'name', label: '디바이스 명' },
+        { key: 'manufacturer', label: '제조사' },
+        { key: 'model', label: '모델' },
+        { key: 'device_type', label: '타입' },
+        { key: 'endpoint', label: '엔드포인트' },
+        { key: 'polling_interval', label: '폴링 간격', unit: 'ms' },
+        { key: 'timeout', label: '타임아웃', unit: 'ms' },
+        { key: 'retry_count', label: '재시도 횟수', unit: '회' },
+        { key: 'is_enabled', label: '활성화 상태', isBool: true }
+      ];
+
+      checkFields.forEach(f => {
+        const oldVal = (device as any)[f.key];
+        const newVal = (editData as any)[f.key];
+
+        if (String(oldVal ?? '') !== String(newVal ?? '')) {
+          let displayOld = oldVal ?? '-';
+          let displayNew = newVal ?? '-';
+
+          if (f.isBool) {
+            displayOld = oldVal ? '활성' : '비활성';
+            displayNew = newVal ? '활성' : '비활성';
+          } else if (f.unit) {
+            displayOld = `${displayOld}${f.unit}`;
+            displayNew = `${displayNew}${f.unit}`;
+          }
+
+          changes.push(`- ${f.label}: ${displayOld} → ${displayNew}`);
+        }
+      });
+
+      // 2. 데이터포인트 변경 감지
+      const added = dataPoints.filter(dp => !originalDataPoints.some(o => o.id === dp.id));
+      const removed = originalDataPoints.filter(o => !dataPoints.some(dp => dp.id === o.id));
+      const modified = dataPoints.filter(dp => {
+        const original = originalDataPoints.find(o => o.id === dp.id);
+        if (!original) return false;
+        return dp.name !== original.name ||
+          dp.address !== original.address ||
+          dp.data_type !== original.data_type ||
+          dp.unit !== original.unit ||
+          dp.access_mode !== original.access_mode ||
+          dp.is_enabled !== original.is_enabled ||
+          dp.scaling_factor !== original.scaling_factor ||
+          dp.scaling_offset !== original.scaling_offset;
+      });
+
+      if (added.length > 0) changes.push(`- 데이터포인트 추가: ${added.length}건 (${added.map(a => a.name).join(', ')})`);
+      if (removed.length > 0) changes.push(`- 데이터포인트 삭제: ${removed.length}건 (${removed.map(r => r.name).join(', ')})`);
+
+      modified.forEach(dp => {
+        const original = originalDataPoints.find(o => o.id === dp.id)!;
+        const dpChanges: string[] = [];
+
+        const dpFields = [
+          { key: 'name', label: '이름' },
+          { key: 'address', label: '주소' },
+          { key: 'data_type', label: '타입' },
+          { key: 'unit', label: '단위' },
+          { key: 'access_mode', label: '권한' },
+          { key: 'is_enabled', label: '상태', isBool: true },
+          { key: 'scaling_factor', label: '배율' },
+          { key: 'scaling_offset', label: '오프셋' }
+        ];
+
+        dpFields.forEach(f => {
+          const oldV = (original as any)[f.key];
+          const newV = (dp as any)[f.key];
+          if (String(oldV ?? '') !== String(newV ?? '')) {
+            let oStr = oldV ?? '-';
+            let nStr = newV ?? '-';
+            if (f.isBool) {
+              oStr = oldV ? 'ON' : 'OFF';
+              nStr = newV ? 'ON' : 'OFF';
+            }
+            dpChanges.push(`${f.label}: ${oStr}→${nStr}`);
+          }
+        });
+
+        if (dpChanges.length > 0) {
+          changes.push(`- [${dp.name}] 수정: ${dpChanges.join(', ')}`);
+        }
+      });
+
+      // 변경사항이 전혀 없는 경우
+      if (changes.length === 0) {
+        showCustomModal({
+          type: 'success', // 정보성 팝업
+          title: '변경 내용 없음',
+          message: '수정된 내용이 없습니다.',
+          confirmText: '확인',
+          showCancel: false,
+          onConfirm: () => {
+            onClose(); // [변경 요청] 확인 누르면 장치 편집 모달도 닫기
+          }
+        });
+        return;
+      }
+    }
+
     const actionText = mode === 'create' ? '생성' : '수정';
-
-    // 📋 마스터 모델 위저드와 동일한 수준의 상세 요약 메시지 구성
-    const confirmMessage = `
-아래 설정으로 디바이스를 ${actionText}하시겠습니까?
-
-■ 기본 정보
-- 디바이스 명: ${editData.name}
-- 제조사/모델: ${editData.manufacturer || '-'} / ${editData.model || '-'}
-- 디바이스 타입: ${editData.device_type}
-
-■ 통신 및 접속
-- 프로토콜: ${editData.protocol_type}
-- 엔드포인트: ${editData.endpoint}
-
-■ 운영 설정
-- 폴링 간격: ${editData.polling_interval}ms
-- 타임아웃: ${editData.timeout}ms
-- 재시도 횟수: ${editData.retry_count}회
-- 활성화 상태: ${editData.is_enabled ? '활성화' : '비활성화'}
-${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editData.tags) ? editData.tags.join(', ') : editData.tags}\n` : ''}${Object.keys(editData.metadata || {}).length > 0 ? `- 시스템 메타데이터: 포함됨\n` : ''}
-    `.trim();
+    const confirmMessage = isEdit
+      ? `아래 변경 사항을 반영하여 디바이스를 수정하시겠습니까?\n\n${changes.join('\n')}`
+      : `아래 설정으로 신규 디바이스를 생성하시겠습니까?\n\n- 디바이스 명: ${editData.name}\n- 프로토콜: ${editData.protocol_type}\n- 엔드포인트: ${editData.endpoint}\n- 데이터포인트: ${dataPoints.length}건`;
 
     console.log('🎨 예쁜 커스텀 확인 모달 표시...');
 
@@ -746,6 +839,7 @@ ${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editDat
                         editData={editData}
                         mode={mode}
                         onUpdateField={updateField}
+                        showModal={showCustomModal}
                       />
                     </div>
                   )}
@@ -778,6 +872,7 @@ ${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editDat
                             onCreate={handleCreateDataPoint}
                             onUpdate={handleUpdateDataPoint}
                             onDelete={handleDeleteDataPoint}
+                            showModal={showCustomModal}
                           />
                         </div>
                       </div>
@@ -839,6 +934,7 @@ ${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editDat
                     editData={editData}
                     mode={mode}
                     onUpdateField={updateField}
+                    showModal={showCustomModal}
                   />
                 )}
 
@@ -863,6 +959,7 @@ ${editData.tags && editData.tags.length > 0 ? `- 태그: ${Array.isArray(editDat
                     onCreate={handleCreateDataPoint}
                     onUpdate={handleUpdateDataPoint}
                     onDelete={handleDeleteDataPoint}
+                    showModal={showCustomModal}
                   />
                 )}
 

@@ -808,6 +808,7 @@ CREATE TABLE template_data_points (
     access_mode VARCHAR(10) DEFAULT 'read',
     unit VARCHAR(50),
     scaling_factor REAL DEFAULT 1.0,
+    scaling_offset REAL DEFAULT 0.0,
     is_writable INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
     sort_order INTEGER DEFAULT 0,

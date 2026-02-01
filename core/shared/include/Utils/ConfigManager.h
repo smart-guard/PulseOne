@@ -407,7 +407,6 @@ private:
   void createTimeseriesEnvFile();
   void createMessagingEnvFile();
   void createSecurityEnvFile();
-  void createCSPGatewayEnvFile();
   void createSecretsDirectory();
   bool createFileFromTemplate(const std::string &filepath,
                               const std::string &content);

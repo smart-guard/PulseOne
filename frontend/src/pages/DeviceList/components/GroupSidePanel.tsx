@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GroupApiService, DeviceGroup } from '../../../api/services/groupApi';
-// import { useConfirmContext } from '../../../components/common/ConfirmProvider';
+import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 
 interface GroupSidePanelProps {
     selectedGroupId: number | 'all';
@@ -60,9 +60,7 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
         });
     };
 
-    // --- Actions ---
-    // Reverting to window.confirm/alert temporarily to fix white screen crash
-    // const { confirm } = useConfirmContext();
+    const { confirm } = useConfirmContext();
 
     const handleCreateStart = (parentId: number | 'root', e?: React.MouseEvent) => {
         e?.stopPropagation();
@@ -105,11 +103,23 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                 await loadGroups();
                 handleCancel();
             } else {
-                alert(`생성 실패: ${res.error || '그룹 생성에 실패했습니다.'}`);
+                await confirm({
+                    title: '생성 실패',
+                    message: `그룹 생성에 실패했습니다: ${res.error || '알 수 없는 오류'}`,
+                    confirmText: '확인',
+                    showCancelButton: false,
+                    confirmButtonType: 'danger'
+                });
             }
         } catch (err: any) {
             console.error(err);
-            alert(`오류 발생: ${err.message || '알 수 없는 오류가 발생했습니다.'}`);
+            await confirm({
+                title: '오류 발생',
+                message: `오류가 발생했습니다: ${err.message || '알 수 없는 오류'}`,
+                confirmText: '확인',
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
         } finally {
             setActionLoading(false);
         }
@@ -129,20 +139,38 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                 await loadGroups();
                 handleCancel();
             } else {
-                alert(`수정 실패: ${res.error || '그룹 수정에 실패했습니다.'}`);
+                await confirm({
+                    title: '수정 실패',
+                    message: `그룹 수정에 실패했습니다: ${res.error || '알 수 없는 오류'}`,
+                    confirmText: '확인',
+                    showCancelButton: false,
+                    confirmButtonType: 'danger'
+                });
             }
         } catch (err: any) {
             console.error(err);
-            alert(`오류 발생: ${err.message || '알 수 없는 오류가 발생했습니다.'}`);
-        } finally {
-            setActionLoading(false);
+            await confirm({
+                title: '오류 발생',
+                message: `오류가 발생했습니다: ${err.message || '알 수 없는 오류'}`,
+                confirmText: '확인',
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
         }
     };
 
     const handleDelete = async (groupId: number, e: React.MouseEvent) => {
         e.stopPropagation();
 
-        if (!window.confirm('정말 이 그룹을 삭제하시겠습니까?\n하위 그룹이나 장치가 포함되어 있다면 삭제되지 않을 수 있습니다.')) return;
+        const isConfirmed = await confirm({
+            title: '그룹 삭제',
+            message: '정말 이 그룹을 삭제하시겠습니까?\n하위 그룹이나 장치가 포함되어 있다면 삭제되지 않을 수 있습니다.',
+            confirmText: '삭제',
+            cancelText: '취소',
+            confirmButtonType: 'danger'
+        });
+
+        if (!isConfirmed) return;
 
         try {
             setActionLoading(true);
@@ -150,11 +178,23 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
             if (res.success) {
                 await loadGroups();
             } else {
-                alert(`삭제 실패: ${res.error || '하위 그룹이나 장치가 있는지 확인해주세요.'}`);
+                await confirm({
+                    title: '삭제 실패',
+                    message: `삭제에 실패했습니다: ${res.error || '하위 그룹이나 장치가 있는지 확인해주세요.'}`,
+                    confirmText: '확인',
+                    showCancelButton: false,
+                    confirmButtonType: 'danger'
+                });
             }
         } catch (err: any) {
             console.error(err);
-            alert(`오류 발생: ${err.message || '삭제 중 오류가 발생했습니다.'}`);
+            await confirm({
+                title: '오류 발생',
+                message: `삭제 중 오류가 발생했습니다: ${err.message || '알 수 없는 오류'}`,
+                confirmText: '확인',
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
         } finally {
             setActionLoading(false);
         }
@@ -170,10 +210,23 @@ const GroupSidePanel: React.FC<GroupSidePanelProps> = ({
                 setMoveTargetGroupId(null);
                 await loadGroups();
             } else {
-                alert(`이동 실패: ${res.error || '그룹 이동에 실패했습니다.'}`);
+                await confirm({
+                    title: '이동 실패',
+                    message: `그룹 이동에 실패했습니다: ${res.error || '알 수 없는 오류'}`,
+                    confirmText: '확인',
+                    showCancelButton: false,
+                    confirmButtonType: 'danger'
+                });
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Failed to move group:', error);
+            await confirm({
+                title: '오류 발생',
+                message: `이동 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`,
+                confirmText: '확인',
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
         } finally {
             setActionLoading(false);
         }

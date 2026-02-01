@@ -42,6 +42,7 @@ services:
       - ../config/messaging.env
       - ../config/timeseries.env
       - ../config/security.env
+      - ../config/collector.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,12 +74,13 @@ services:
       - pulseone_network
 
   collector:
-
     build:
       context: ..
       dockerfile: core/collector/Dockerfile
     restart: always
     hostname: docker-collector-1
+    ports:
+      - "5001:8080"
     depends_on:
       rabbitmq:
         condition: service_started
@@ -186,7 +188,6 @@ services:
     build:
       context: ..
       dockerfile: core/export-gateway/Dockerfile.dev
-
     restart: always
     env_file:
       - ../config/redis.env
@@ -222,5 +223,3 @@ networks:
 volumes:
   influxdb_data:
   shared_libs:
-
-

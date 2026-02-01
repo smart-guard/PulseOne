@@ -230,7 +230,8 @@ const ProtocolManagement: React.FC = () => {
                   </div>
                   <div className="mgmt-card-actions">
                     <button className="mgmt-btn-icon" onClick={() => openDetail(protocol)} title="상세보기"><i className="fas fa-eye"></i></button>
-                    <button className="mgmt-btn-icon" onClick={() => openEditor('edit', protocol.id)} title="편집"><i className="fas fa-edit"></i></button>
+                    {/* System Protocol: Create/Delete not allowed, Edit restricted to meta */}
+                    <button className="mgmt-btn-icon" onClick={() => openEditor('edit', protocol.id)} title="설정 변경"><i className="fas fa-cog"></i></button>
                   </div>
                 </div>
                 <div className="mgmt-card-body">
@@ -313,6 +314,15 @@ const ProtocolManagement: React.FC = () => {
                         <span className={`mgmt-badge ${protocol.is_enabled ? 'success' : 'neutral'}`}>
                           {protocol.is_enabled ? '활성' : '비활성'}
                         </span>
+                        {/* List View Actions */}
+                        <button
+                          className="mgmt-btn-icon-small"
+                          onClick={(e) => { e.stopPropagation(); openEditor('edit', protocol.id); }}
+                          title="설정 변경"
+                          style={{ marginLeft: '8px', opacity: 0.6 }}
+                        >
+                          <i className="fas fa-cog"></i>
+                        </button>
                       </div>
                     </td>
                   </tr>

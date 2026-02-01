@@ -53,6 +53,15 @@ class DeviceModelService extends BaseService {
      */
     async createModel(data) {
         return await this.handleRequest(async () => {
+            // Check for existing model with same manufacturer and name
+            if (data.manufacturer_id && data.name) {
+                const existing = await this.repository.findUnique(data.manufacturer_id, data.name);
+                if (existing) {
+                    // Reuse existing model, verify ownership or just return/update
+                    // We update it to ensure latest metadata is applied
+                    return await this.repository.update(existing.id, data);
+                }
+            }
             return await this.repository.create(data);
         }, 'CreateModel');
     }

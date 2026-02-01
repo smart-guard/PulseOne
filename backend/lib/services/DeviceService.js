@@ -6,6 +6,20 @@
 const BaseService = require('./BaseService');
 const RepositoryFactory = require('../database/repositories/RepositoryFactory');
 
+// 헬퍼: JSON 스트링인 경우 파싱 (특히 {"value": 1.0} 형태 대응)
+const safeParseValue = (val) => {
+    if (typeof val !== 'string' || !val.trim().startsWith('{')) return val;
+    try {
+        const parsed = JSON.parse(val);
+        if (parsed && typeof parsed === 'object' && 'value' in parsed) {
+            return parsed.value;
+        }
+        return parsed;
+    } catch (e) {
+        return val;
+    }
+};
+
 class DeviceService extends BaseService {
     constructor() {
         super(null);
@@ -195,12 +209,69 @@ class DeviceService extends BaseService {
      */
     async getDevices(options) {
         return await this.handleRequest(async () => {
+            const isStatusFiltering = options.status && options.status !== 'all';
+
+            // 실시간 상태 필터링 작업이 필요한 경우, 전체를 가져와서 필터링 후 페이징 처리
+            if (isStatusFiltering) {
+                // DB에서 필터링된 전체 리스트를 가져옴 (페이징 없이)
+                const allItems = await this.repository.findAll(options.tenantId, {
+                    ...options,
+                    page: 1,
+                    limit: 10000, // 충분히 큰 수
+                    includeCount: false
+                });
+
+                // 실시간 상태 주입
+                await this.enrichWithCollectorStatus(allItems);
+
+                // 상태 필터링 수행
+                const filteredItems = allItems.filter(device => {
+                    const statusValue = (device.collector_status?.status || 'unknown').toLowerCase();
+                    return statusValue === options.status.toLowerCase();
+                });
+
+                // 정렬 수행
+                const sortBy = options.sort_by || 'name';
+                const sortOrder = (options.sort_order || 'ASC').toUpperCase();
+                filteredItems.sort((a, b) => {
+                    const valA = a[sortBy] || '';
+                    const valB = b[sortBy] || '';
+                    if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
+                    if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
+                    return 0;
+                });
+
+                // 페이징 처리
+                const page = parseInt(options.page) || 1;
+                const limit = parseInt(options.limit) || 100;
+                const total = filteredItems.length;
+                const totalPages = Math.ceil(total / limit);
+                const offset = (page - 1) * limit;
+                const items = filteredItems.slice(offset, offset + limit);
+
+                // RTU 요약은 필터링된 전체 데이터 기준
+                const rtu_summary = await this.repository.getRtuSummary(options.tenantId, options);
+
+                return {
+                    items,
+                    pagination: {
+                        page,
+                        limit,
+                        total,
+                        totalPages,
+                        hasNext: page < totalPages,
+                        hasPrev: page > 1
+                    },
+                    rtu_summary
+                };
+            }
+
+            // 일반적인 경우 (DB 페이징 사용)
             const result = await this.repository.findAll(options.tenantId, {
                 ...options,
                 includeCount: true
             });
 
-            // RTU 정보 추가 및 가공 로직 (기존 route에서 이동)
             if (result && result.items) {
                 result.items = this.enhanceDevicesWithRtuInfo(result.items);
 
@@ -212,8 +283,8 @@ class DeviceService extends BaseService {
                     await this.enrichWithCollectorStatus(result.items);
                 }
 
-                // RTU 통계 추가
-                result.rtu_summary = this.calculateRtuSummary(result.items);
+                // RTU 통계 추가 (필터링된 전체 데이터 기준)
+                result.rtu_summary = await this.repository.getRtuSummary(options.tenantId, options);
             }
 
             return result;
@@ -277,6 +348,16 @@ class DeviceService extends BaseService {
     async getDeviceDataPoints(deviceId, options = {}) {
         return await this.handleRequest(async () => {
             let dataPoints = await this.repository.getDataPointsByDevice(deviceId);
+
+            // 프론트엔드 CurrentValue 객체 구조에 맞춰 변환
+            dataPoints = dataPoints.map(dp => ({
+                ...dp,
+                current_value: (dp.current_value !== null && dp.current_value !== undefined) ? {
+                    value: safeParseValue(dp.current_value),
+                    timestamp: dp.last_update,
+                    quality: dp.quality || 'good'
+                } : null
+            }));
 
             // 필터링 적용
             if (options.data_type) {
@@ -598,15 +679,23 @@ class DeviceService extends BaseService {
 
             // CollectorProxy를 통한 실시간 진단 요청
             // TODO: Collector 측에 diagnose API 구현 필요. 현재는 통신 상태 확인으로 대체
+            const startTime = Date.now();
             const status = await this.collectorProxy.getDeviceStatus(id.toString(), {
                 edgeServerId: device.edge_server_id
             });
+            const responseTimeMs = Date.now() - startTime;
+
+            const isConnected = status.success && status.data && (status.data.connected === true || (status.data.data && status.data.data.connected === true));
 
             return {
                 device_id: id,
                 protocol: device.protocol_type,
                 endpoint: device.endpoint,
-                diag_result: status.success ? 'Success' : 'Failed',
+                diag_result: isConnected ? 'Success' : 'Failed',
+                test_successful: isConnected,
+                success: isConnected, // 프론트엔드 호환용 추가
+                response_time_ms: responseTimeMs,
+                error_message: isConnected ? '' : (status.message || 'Connection failed'),
                 details: status.data || {},
                 timestamp: new Date().toISOString()
             };
@@ -751,10 +840,26 @@ class DeviceService extends BaseService {
                 try {
                     const id = parseInt(serverId);
                     const workerResult = await this.collectorProxy.getWorkerStatus(id);
-                    const statuses = workerResult.data?.workers || {};
+
+                    // 수집기 프록시의 응답 구조 대응: workerResult.data.data.workers 또는 workerResult.data.workers
+                    const statuses = (workerResult.data?.data?.workers || workerResult.data?.workers || {});
 
                     devices.forEach(d => {
-                        d.collector_status = statuses[d.id.toString()] || { status: 'unknown' };
+                        const rawStatus = statuses[d.id.toString()] || { status: 'unknown' };
+
+                        // 수집기 'state' 또는 'status' 필드를 프론트엔드 규격인 'status'로 정규화
+                        const rawState = rawStatus.state || rawStatus.status || 'unknown';
+                        const status = rawState.toLowerCase();
+
+                        d.collector_status = {
+                            ...rawStatus,
+                            status: status // 프론트엔드 호환용 (DeviceRow.tsx)
+                        };
+
+                        // 🔥 워커가 동작 중이 아니면 실제 DB 상태와 관계없이 연결 상태도 끊김으로 표시 (논리적 정합성)
+                        if (status !== 'running') {
+                            d.connection_status = 'disconnected';
+                        }
                     });
                 } catch (e) {
                     this.logger.warn(`Collector [${serverId}] status enrichment failed:`, e.message);
@@ -796,6 +901,31 @@ class DeviceService extends BaseService {
 
             return affected;
         }, 'BulkDeleteDevices');
+    }
+
+    /**
+     * 스캔 결과 조회 (최근 생성된 디바이스 목록)
+     */
+    async getScanResults(options) {
+        return await this.handleRequest(async () => {
+            const { tenantId, since, protocol } = options;
+
+            // since가 없으면 최근 5분 이내 데이터 조회 (기초값)
+            const sinceTime = since ? new Date(parseInt(since)) : new Date(Date.now() - 5 * 60 * 1000);
+
+            let query = this.repository.query('d')
+                .leftJoin('protocols as p', 'p.id', 'd.protocol_id')
+                .where('d.created_at', '>=', sinceTime.toISOString().slice(0, 19).replace('T', ' '))
+                .where('d.tenant_id', tenantId)
+                .select('d.*', 'p.protocol_type', 'p.display_name as protocol_name');
+
+            if (protocol) {
+                query.where('p.protocol_type', protocol);
+            }
+
+            const results = await query;
+            return results.map(d => this.enhanceDeviceWithRtuInfo(this.repository.parseDevice(d)));
+        }, 'GetScanResults');
     }
 }
 

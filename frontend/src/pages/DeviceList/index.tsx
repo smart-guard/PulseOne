@@ -163,11 +163,18 @@ const DeviceList: React.FC = () => {
 
       setError(null);
 
+      // Map status filter to backend values (running/stopped)
+      let backendStatus = undefined;
+      if (statusFilter === 'online') backendStatus = 'running';
+      else if (statusFilter === 'offline') backendStatus = 'stopped';
+      else if (statusFilter === 'error') backendStatus = 'error';
+
       const apiParams = {
         page: currentPage,
         limit: pageSize,
         protocol_type: protocolFilter !== 'all' ? protocolFilter : undefined,
         connection_status: connectionFilter !== 'all' ? connectionFilter : undefined,
+        status: backendStatus, // Mapped worker status for backend
         search: searchTerm || undefined,
         sort_by: sortField,
         sort_order: sortOrder,
@@ -182,25 +189,12 @@ const DeviceList: React.FC = () => {
       if (response.success && response.data) {
         // 백엔드에서 페이징 처리된 결과를 반환함
         const { items, pagination } = response.data;
-
-        let processedItems = items || [];
-
-        // collector_status 필터링 (아직 백엔드에서 지원하지 않는 경우 클라이언트에서 수행)
-        // 만약 데이터가 너무 많다면 이 부분도 백엔드 필터 레이어로 옮겨야 함
-        if (statusFilter !== 'all') {
-          processedItems = processedItems.filter(device => {
-            const statusValue = (device.collector_status?.status || 'unknown').toLowerCase();
-            return statusValue === statusFilter;
-          });
-        }
-
-        setDevices(processedItems);
+        setDevices(items || []);
 
         if (pagination) {
           setTotalCount(pagination.total || 0);
         } else {
-          // Fallback if pagination object is missing
-          setTotalCount(processedItems.length);
+          setTotalCount((items || []).length);
         }
 
         setRenderKey(prev => prev + 1);

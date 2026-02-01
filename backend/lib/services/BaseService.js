@@ -21,7 +21,7 @@ class BaseService {
             success,
             data,
             message: message || (success ? 'Success' : 'Error'),
-            error_code: errorCode,
+            error: errorCode,
             timestamp: new Date().toISOString()
         };
     }

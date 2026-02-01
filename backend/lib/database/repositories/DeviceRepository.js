@@ -103,6 +103,71 @@ class DeviceRepository extends BaseRepository {
     }
 
     /**
+     * 필터링된 전체 디바이스를 기준으로 RTU 요약을 계산합니다.
+     */
+    async getRtuSummary(tenantId, options = {}) {
+        try {
+            const query = this.knex('devices as d')
+                .leftJoin('protocols as p', 'p.id', 'd.protocol_id')
+                .leftJoin('device_status as dst', 'dst.device_id', 'd.id');
+
+            // 공통 필터 적용 (검색어, 그룹 등 포함)
+            this._applyFilters(query, tenantId, options);
+
+            // RTU 프로토콜인 것만 조회
+            query.where('p.protocol_type', 'MODBUS_RTU');
+
+            const allRtuDevices = await query.select(
+                'd.id',
+                'd.name',
+                'd.endpoint',
+                'd.config',
+                'p.protocol_type',
+                'dst.connection_status'
+            );
+
+            const rtuMasters = allRtuDevices.filter(d => {
+                let config = d.config;
+                if (typeof config === 'string') {
+                    try { config = JSON.parse(config); } catch (e) { return false; }
+                }
+                return config && config.rtu_info && config.rtu_info.is_master;
+            });
+
+            const rtuSlaves = allRtuDevices.filter(d => {
+                let config = d.config;
+                if (typeof config === 'string') {
+                    try { config = JSON.parse(config); } catch (e) { return false; }
+                }
+                return config && config.rtu_info && config.rtu_info.is_slave;
+            });
+
+            return {
+                total_rtu_devices: allRtuDevices.length,
+                rtu_masters: rtuMasters.length,
+                rtu_slaves: rtuSlaves.length,
+                rtu_networks: rtuMasters.map(master => {
+                    let config = master.config;
+                    if (typeof config === 'string') {
+                        try { config = JSON.parse(config); } catch (e) { }
+                    }
+                    return {
+                        master_id: master.id,
+                        master_name: master.name,
+                        serial_port: master.endpoint,
+                        baud_rate: config?.rtu_info?.baud_rate || null,
+                        slave_count: config?.rtu_info?.slave_count || 0,
+                        connection_status: master.connection_status
+                    };
+                })
+            };
+        } catch (error) {
+            this.logger.error('DeviceRepository.getRtuSummary 오류:', error);
+            return { total_rtu_devices: 0, rtu_masters: 0, rtu_slaves: 0, rtu_networks: [] };
+        }
+    }
+
+    /**
      * ID로 디바이스를 조회합니다.
      */
     async findById(id, tenantId = null, trx = null, options = {}) {
@@ -619,7 +684,11 @@ class DeviceRepository extends BaseRepository {
      */
     async getDataPointById(pointId) {
         try {
-            return await this.knex('data_points').where('id', pointId).first();
+            return await this.knex('data_points as dp')
+                .leftJoin('current_values as cv', 'dp.id', 'cv.point_id')
+                .select('dp.*', 'cv.current_value', 'cv.quality', 'cv.value_timestamp as last_update')
+                .where('dp.id', pointId)
+                .first();
         } catch (error) {
             this.logger.error(`DeviceRepository.getDataPointById 실패 (PointID: ${pointId}):`, error);
             throw error;
@@ -927,8 +996,9 @@ class DeviceRepository extends BaseRepository {
             query.where('d.site_id', options.siteId || options.site_id);
         }
 
-        if (options.groupId) {
-            const groupIds = Array.isArray(options.groupId) ? options.groupId : [options.groupId];
+        const groupId = options.groupId || options.device_group_id;
+        if (groupId) {
+            const groupIds = Array.isArray(groupId) ? groupId : [groupId];
             query.where(builder => {
                 builder.whereIn('d.device_group_id', groupIds)
                     .orWhereExists(function () {

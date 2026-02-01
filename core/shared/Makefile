@@ -94,6 +94,8 @@ endif
 # 🔥🔥🔥 Redis 플래그 수정 (핵심!)
 ifeq ($(HAS_HIREDIS),1)
     CXXFLAGS += -DHAS_HIREDIS -DHAVE_REDIS=1
+    HIREDIS_CFLAGS := $(shell pkg-config --cflags hiredis 2>/dev/null)
+    CXXFLAGS += $(HIREDIS_CFLAGS)
     $(info ✅ Redis enabled: -DHAVE_REDIS=1)
 endif
 
@@ -122,7 +124,8 @@ endif
 COMMON_SOURCES = $(wildcard $(SRC_DIR)/Common/*.cpp) \
                 $(wildcard $(SRC_DIR)/Utils/*.cpp) \
                 $(wildcard $(SRC_DIR)/Platform/*.cpp) \
-                $(wildcard $(SRC_DIR)/Logging/*.cpp) \
+                src/Logging/LogManager.cpp \
+                src/Logging/LogLevelManager.cpp \
                 $(wildcard modules/LogLib/src/*.cpp)
 
 # 🆕 DbLib 소스
@@ -203,6 +206,9 @@ $(COMMON_LIB): $(COMMON_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-common [$(PLATFORM)]$(NC)"
 ifneq ($(COMMON_OBJECTS),)
 	@ar rcs $@ $(COMMON_OBJECTS)
+	@echo "🔍 Checking symbols in libpulseone-common:"
+	@nm -C $@ | grep "LogManager::Info" || echo "❌ LogManager::Info symbol MISSING!"
+	@nm -C $@ | grep "ConfigManager::reload" || echo "❌ ConfigManager::reload symbol MISSING!"
 	@ranlib $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
@@ -225,6 +231,8 @@ $(DATABASE_LIB): $(DATABASE_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-database [$(PLATFORM)]$(NC)"
 ifneq ($(DATABASE_OBJECTS),)
 	@ar rcs $@ $(DATABASE_OBJECTS)
+	@echo "🔍 Checking symbols in libpulseone-database:"
+	@nm -C $@ | grep "RepositoryFactory::getInstance" || echo "❌ RepositoryFactory::getInstance symbol MISSING!"
 	@ranlib $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
@@ -430,7 +438,11 @@ info:
 	@echo "libpulseone-client: $(if $(wildcard $(CLIENT_LIB)),✅ exists,❌ missing)"
 	@echo "libpulseone-data: $(if $(wildcard $(DATA_LIB)),✅ exists (DataReader/Writer),❌ missing)"
 	@echo "libpulseone-export: $(if $(wildcard $(EXPORT_LIB)),✅ exists,❌ missing)"
+	@echo "libpulseone-export: $(if $(wildcard $(EXPORT_LIB)),✅ exists,❌ missing)"
 	@echo "libpulseone-alarm: $(if $(wildcard $(ALARM_LIB)),✅ exists,❌ missing)"
+	@echo ""
+	@echo "DEBUG: COMMON_SOURCES = $(COMMON_SOURCES)"
+	@echo "DEBUG: DATABASE_SOURCES = $(DATABASE_SOURCES)"
 
 # =============================================================================
 # 유틸리티

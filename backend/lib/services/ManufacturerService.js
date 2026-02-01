@@ -67,6 +67,15 @@ class ManufacturerService extends BaseService {
      */
     async updateManufacturer(id, data) {
         return await this.handleRequest(async () => {
+            // 이름 변경 시 중복 체크
+            if (data.name) {
+                const existing = await this.repository.findByName(data.name);
+                // 이름으로 찾았는데 존재하고, 내 ID가 아니라면 중복
+                if (existing && existing.id != id) {
+                    throw new Error(`이미 존재하는 제조사 이름입니다: ${data.name}`);
+                }
+            }
+
             const manufacturer = await this.repository.update(id, data);
             if (!manufacturer) {
                 throw new Error(`제조사 정보를 업데이트할 수 없습니다. (ID: ${id})`);
@@ -80,7 +89,7 @@ class ManufacturerService extends BaseService {
      */
     async deleteManufacturer(id) {
         return await this.handleRequest(async () => {
-            // 연관된 모델이 있는지 체크 (추후 구현)
+            // Repository에서 연관된 모델 체크를 수행함
             const success = await this.repository.deleteById(id);
             if (!success) {
                 throw new Error(`제조사 삭제에 실패했습니다. (ID: ${id})`);

@@ -290,7 +290,22 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
                   {diagnoseResult.details && (
                     <ul className="diag-details">
                       {Object.entries(diagnoseResult.details).map(([key, value]: [string, any]) => (
-                        <li key={key}><strong>{key}:</strong> {String(value)}</li>
+                        <li key={key} style={{ wordBreak: 'break-all' }}>
+                          <strong>{key}:</strong>
+                          {typeof value === 'object' ? (
+                            <pre style={{
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-all',
+                              fontSize: '10px',
+                              background: 'rgba(0,0,0,0.03)',
+                              padding: '4px',
+                              borderRadius: '4px',
+                              marginTop: '4px'
+                            }}>
+                              {JSON.stringify(value, null, 2)}
+                            </pre>
+                          ) : String(value)}
+                        </li>
                       ))}
                     </ul>
                   )}
@@ -537,6 +552,8 @@ const DeviceStatusTab: React.FC<DeviceStatusTabProps> = ({ device, dataPoints })
           border-radius: 6px;
           font-size: 11px;
           position: relative;
+          word-break: break-all;
+          overflow-x: hidden;
         }
         .diagnose-result.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
         .diagnose-result.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }

@@ -150,18 +150,17 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
       }
 
       let response;
-      if (mode === 'create') {
-        response = await ProtocolApiService.createProtocol(protocol as any);
-      } else if (mode === 'edit' && protocolId) {
+      // System Protocol: Only Edit mode supported
+      if (mode === 'edit' && protocolId) {
         response = await ProtocolApiService.updateProtocol(protocolId, protocol);
+      } else {
+        throw new Error('지원되지 않는 모드입니다.');
       }
 
       if (response?.success) {
         await confirm({
           title: '저장 완료',
-          message: mode === 'create'
-            ? `프로토콜 "${protocol.display_name}"이(가) 성공적으로 생성되었습니다.`
-            : `프로토콜 "${protocol.display_name}"이(가) 성공적으로 수정되었습니다.`,
+          message: `프로토콜 "${protocol.display_name}" 설정이 성공적으로 수정되었습니다.`,
           confirmText: '확인',
           showCancelButton: false,
           confirmButtonType: 'primary'
@@ -209,7 +208,8 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
   };
 
   const isReadOnly = mode === 'view';
-  const title = mode === 'create' ? '새 프로토콜 등록' : mode === 'edit' ? '프로토콜 편집' : '프로토콜 상세보기';
+  // System Protocol: Always "Configuration" context
+  const title = mode === 'edit' ? '프로토콜 설정 편집' : '프로토콜 상세보기';
 
   if (!isOpen) return null;
 
@@ -262,10 +262,9 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                           type="text"
                           className="mgmt-form-control"
                           value={protocol.protocol_type || ''}
-                          onChange={(e) => handleInputChange('protocol_type', e.target.value)}
-                          readOnly={isReadOnly || (mode === 'edit')}
-                          placeholder="예: MODBUS_TCP"
-                          required
+                          readOnly={true} // System ID - Always ReadOnly
+                          style={{ backgroundColor: 'var(--neutral-100)', cursor: 'not-allowed' }}
+                          title="시스템 정의 값으로 변경할 수 없습니다."
                         />
                       </div>
                       <div className="mgmt-modal-form-group">
@@ -540,7 +539,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
               style={{ width: 'auto', minWidth: '120px' }}
               disabled={saving}
             >
-              {saving ? '저장 중...' : mode === 'create' ? '등록하기' : '수정하기'}
+              {saving ? '저장 중...' : '저장하기'}
             </button>
           )}
         </div>

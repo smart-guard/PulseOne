@@ -16,12 +16,12 @@ router.use(authenticateToken);
 router.use(tenantIsolation);
 
 // 응답 헬퍼
-function createResponse(success, data, message, error_code) {
+function createResponse(success, data, message, errorCode) {
     return {
         success,
         data,
         message: message || (success ? 'Success' : 'Error'),
-        error_code: error_code,
+        error: errorCode,
         timestamp: new Date().toISOString()
     };
 }
@@ -63,21 +63,30 @@ router.get('/points/:id', async (req, res) => {
 
 /**
  * GET /api/data/current-values
- * 현재값 일괄 조회
+ * 현재값 일괄 조회 (device_ids 또는 point_ids 지원)
  */
 router.get('/current-values', async (req, res) => {
     try {
-        const { device_ids, limit = 100 } = req.query;
+        const { device_ids, point_ids, limit = 100 } = req.query;
         let resultData = [];
-        if (device_ids) {
-            const ids = device_ids.split(',').map(id => parseInt(id));
+
+        if (point_ids) {
+            // 특정 포인트들 조회 (Batch)
+            const ids = point_ids.split(',').map(id => parseInt(id.trim()));
+            const result = await DataService.getCurrentValuesByPointIds(ids, req.tenantId);
+            if (result.success) {
+                resultData = result.data;
+            }
+        } else if (device_ids) {
+            // 특정 디바이스들의 모든 포인트 조회
+            const ids = device_ids.split(',').map(id => parseInt(id.trim()));
             for (const id of ids) {
                 const vals = await DataService.deviceRepo.getCurrentValuesByDevice(id, req.tenantId);
                 resultData.push(...vals);
             }
         } else {
-            // 모든 디바이스 현재값 조회
-            const searchResult = await DataService.searchPoints({ limit: 1000 }, req.tenantId);
+            // 모든 활성 데이터포인트 검색
+            const searchResult = await DataService.searchPoints({ limit: 1000, enabled_only: true }, req.tenantId);
             if (searchResult.success && searchResult.data) {
                 resultData = searchResult.data.items.map(dp => ({
                     point_id: dp.id,
@@ -86,7 +95,11 @@ router.get('/current-values', async (req, res) => {
                 }));
             }
         }
-        res.json(createResponse(true, resultData.slice(0, parseInt(limit))));
+
+        res.json(createResponse(true, {
+            current_values: resultData.slice(0, parseInt(limit)),
+            total_count: resultData.length
+        }));
     } catch (error) {
         res.status(500).json(createResponse(false, null, error.message, 'CURRENT_VALUES_ERROR'));
     }

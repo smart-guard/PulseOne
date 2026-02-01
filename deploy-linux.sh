@@ -79,13 +79,13 @@ EOF
 fi
 
 docker run --rm \
-    -v "$(pwd)/collector:/src/collector" \
+    -v "$(pwd)/core/collector:/src/collector" \
     -v "$(pwd)/core:/src/core" \
     -v "$PACKAGE_DIR/collector:/output" \
     pulseone-linux-builder bash -c "
         mkdir -p /src/collector/build
         cd /src/collector/build
-        cmake ..
+        cmake .. -DCMAKE_BUILD_TYPE=Release
         make -j\$(nproc)
         cp collector /output/pulseone-collector
 

@@ -144,6 +144,7 @@ export interface Device {
 
   site_name?: string;
   site_code?: string;
+  protocol_name?: string; // 🔥 추가: 스캔 결과 등에서 표시용 프로토콜명
   group_name?: string;
   group_type?: string;
   groups?: DeviceGroupAssignment[];
@@ -777,6 +778,19 @@ export class DeviceApiService {
       return await apiClient.post<any>(ENDPOINTS.NETWORK_SCAN, params);
     } catch (error) {
       console.error('네트워크 스캔 실패:', error);
+      throw error;
+    }
+  }
+
+  // 네트워크 스캔 결과 조회
+  static async getScanResults(params: {
+    since?: string;
+    protocol?: string;
+  }): Promise<ApiResponse<Device[]>> {
+    try {
+      return await apiClient.get<Device[]>(`${this.BASE_URL}/scan/results`, params);
+    } catch (error) {
+      console.error('네트워크 스캔 결과 조회 실패:', error);
       throw error;
     }
   }

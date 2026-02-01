@@ -265,7 +265,7 @@ CXXFLAGS += -DHAVE_CURL=1
 endif
 
 # 최종 라이브러리 링킹 순서
-LIBS := $(SHARED_LIBS) $(PROTOCOL_LIBS) $(UTILITY_LIBS) -lpqxx -lpq -lmysqlclient $(BASIC_LIBS) $(PLATFORM_LIBS)
+LIBS := -Wl,--start-group $(SHARED_LIBS) -Wl,--end-group $(PROTOCOL_LIBS) $(UTILITY_LIBS) -lpqxx -lpq -lmysqlclient $(BASIC_LIBS) $(PLATFORM_LIBS)
 
 # =============================================================================
 # 소스 파일 수집

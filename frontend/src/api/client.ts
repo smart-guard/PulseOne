@@ -49,9 +49,13 @@ class UnifiedHttpClient {
   // ========================================================================
 
   private preprocessRequest(endpoint: string, config: RequestConfig = {}): [string, RequestInit] {
-    const url = config.baseUrl ?
-      `${config.baseUrl}${endpoint}` :
-      `${this.baseUrl}${endpoint}`;
+    // 🌐 절대 주소(http:// 또는 https://)가 포함된 경우 baseUrl을 붙이지 않음
+    let url = endpoint;
+    if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+      url = config.baseUrl ?
+        `${config.baseUrl}${endpoint}` :
+        `${this.baseUrl}${endpoint}`;
+    }
 
     // 🔄 API 요청 로깅 (기존 axios 패턴과 동일)
     console.log(`🔄 API 요청: ${(config.method || 'GET').toUpperCase()} ${url}`);

@@ -18,7 +18,8 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   device,
   editData,
   mode,
-  onUpdateField
+  onUpdateField,
+  showModal
 }) => {
   // ========================================================================
   // 상태 관리
@@ -286,7 +287,16 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
    */
   const handleTestConnection = async () => {
     if (!device?.id) {
-      alert('저장된 디바이스만 연결 테스트가 가능합니다.');
+      if (showModal) {
+        showModal({
+          type: 'error',
+          title: '연결 테스트 불가',
+          message: '저장된 디바이스만 연결 테스트가 가능합니다.',
+          onConfirm: () => { }
+        });
+      } else {
+        alert('저장된 디바이스만 연결 테스트가 가능합니다.');
+      }
       return;
     }
 
@@ -297,16 +307,53 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       if (response.success && response.data) {
         const result = response.data;
         if (result.test_successful) {
-          alert(`✅ 연결 성공!\n응답시간: ${result.response_time_ms}ms`);
+          if (showModal) {
+            showModal({
+              type: 'success',
+              title: '연결 성공',
+              message: `✅ 실제 장비와 정상적으로 통신되었습니다.\n측정된 응답 시간: ${result.response_time_ms}ms`,
+              onConfirm: () => { }
+            });
+          } else {
+            alert(`✅ 연결 성공!\n응답시간: ${result.response_time_ms}ms`);
+          }
         } else {
-          alert(`❌ 연결 실패!\n오류: ${result.error_message}`);
+          if (showModal) {
+            showModal({
+              type: 'error',
+              title: '연결 실패',
+              message: `❌ 하드웨어와 연결할 수 없습니다.\n오류 원인: ${result.error_message}`,
+              onConfirm: () => { }
+            });
+          } else {
+            alert(`❌ 연결 실패!\n오류: ${result.error_message}`);
+          }
         }
       } else {
-        alert(`❌ 테스트 실패: ${response.error}`);
+        if (showModal) {
+          showModal({
+            type: 'error',
+            title: '테스트 실패',
+            message: `❌ 서버 시스템 오류: ${response.error}`,
+            onConfirm: () => { }
+          });
+        } else {
+          alert(`❌ 테스트 실패: ${response.error}`);
+        }
       }
     } catch (error) {
       console.error('연결 테스트 실패:', error);
-      alert(`❌ 연결 테스트 오류: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errMsg = error instanceof Error ? error.message : 'Unknown error';
+      if (showModal) {
+        showModal({
+          type: 'error',
+          title: '연결 테스트 오류',
+          message: `❌ 네트워크 또는 서버 통신에 문제가 발생했습니다.\n${errMsg}`,
+          onConfirm: () => { }
+        });
+      } else {
+        alert(`❌ 연결 테스트 오류: ${errMsg}`);
+      }
     } finally {
       setIsTestingConnection(false);
     }

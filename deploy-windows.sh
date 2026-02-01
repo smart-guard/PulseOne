@@ -142,7 +142,7 @@ DOCKERFILE_EOF
     
     # Run Windows cross-compilation
     docker run --rm \
-        -v "$(pwd)/collector:/src" \
+        -v "$(pwd)/core/collector:/src" \
         -v "$PACKAGE_DIR:/output" \
         "$DOCKER_IMAGE" bash -c "
             cd /src
