@@ -146,6 +146,16 @@ export interface DeviceBasicInfoTabProps {
   editData?: Device | null;
   mode: 'view' | 'edit' | 'create';
   onUpdateField: (field: string, value: any) => void;
+  showModal?: (config: {
+    type: 'confirm' | 'success' | 'error';
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void | Promise<void>;
+    onCancel?: () => void;
+    showCancel?: boolean;
+  }) => void;
 }
 
 export interface DeviceSettingsTabProps {
@@ -166,6 +176,16 @@ export interface DeviceDataPointsTabProps {
   onCreate: (dataPoint: DataPoint) => void;
   onUpdate: (dataPoint: DataPoint) => void;
   onDelete: (pointId: number) => void;
+  showModal?: (config: {
+    type: 'confirm' | 'success' | 'error';
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void | Promise<void>;
+    onCancel?: () => void;
+    showCancel?: boolean;
+  }) => void;
 }
 
 export interface DeviceStatusTabProps {

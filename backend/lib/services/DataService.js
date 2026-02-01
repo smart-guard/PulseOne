@@ -5,6 +5,20 @@
 
 const BaseService = require('./BaseService');
 const RepositoryFactory = require('../database/repositories/RepositoryFactory');
+
+// 헬퍼: JSON 스트링인 경우 파싱 (특히 {"value": 1.0} 형태 대응)
+const safeParseValue = (val) => {
+    if (typeof val !== 'string' || !val.trim().startsWith('{')) return val;
+    try {
+        const parsed = JSON.parse(val);
+        if (parsed && typeof parsed === 'object' && 'value' in parsed) {
+            return parsed.value;
+        }
+        return parsed;
+    } catch (e) {
+        return val;
+    }
+};
 const timeSeriesManager = require('../connection/timeseries');
 const ConfigManager = require('../config/ConfigManager');
 const config = ConfigManager.getInstance();
@@ -114,6 +128,33 @@ class DataService extends BaseService {
     }
 
     /**
+     * 특정 포인트들의 현재값 일괄 조회
+     */
+    async getCurrentValuesByPointIds(pointIds, tenantId) {
+        return await this.handleRequest(async () => {
+            if (!pointIds || pointIds.length === 0) return [];
+
+            const results = [];
+            for (const id of pointIds) {
+                const point = await this.deviceRepo.getDataPointById(parseInt(id));
+                if (point) {
+                    results.push({
+                        id: point.id,
+                        point_id: point.id,
+                        name: point.name,
+                        value: safeParseValue(point.current_value),
+                        unit: point.unit,
+                        status: point.status,
+                        quality: point.quality || 'good',
+                        timestamp: point.last_update || point.updated_at
+                    });
+                }
+            }
+            return results;
+        }, 'DataService.getCurrentValuesByPointIds');
+    }
+
+    /**
      * 디바이스 현재값 조회
      */
     async getDeviceCurrentValues(deviceId, tenantId) {
@@ -131,7 +172,12 @@ class DataService extends BaseService {
                     connection_status: device.connection_status,
                     last_communication: device.last_seen || device.last_communication
                 },
-                current_values: currentValues,
+                current_values: currentValues.map(cv => ({
+                    ...cv,
+                    value: safeParseValue(cv.current_value),
+                    timestamp: cv.value_timestamp,
+                    quality: cv.quality || 'good'
+                })),
                 total_points: currentValues.length
             };
         }, 'DataService.getDeviceCurrentValues');

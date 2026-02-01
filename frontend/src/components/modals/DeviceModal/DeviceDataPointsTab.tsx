@@ -18,7 +18,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   onRefresh,
   onCreate,
   onUpdate,
-  onDelete
+  onDelete,
+  showModal
 }) => {
   // ========================================================================
   // 상태 관리
@@ -134,12 +135,50 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   };
 
   const handleSave = async (isCreate: boolean) => {
-    // 유효성 검사
-    if (!formData.name?.trim() || !formData.address?.trim()) {
-      alert('필수 입력값(이름, 주소)을 확인해주세요.');
+    // 유효성 검사 - address가 숫자일 수 있으므로 안전하게 변환 후 체크
+    const nameStr = (formData.name || '').toString().trim();
+    const addrStr = (formData.address || '').toString().trim();
+
+    if (!nameStr || !addrStr) {
+      if (showModal) {
+        showModal({
+          type: 'error',
+          title: '입력 오류',
+          message: '필수 입력값(이름, 주소)을 확인해주세요.',
+          onConfirm: () => { }
+        });
+      } else {
+        alert('필수 입력값(이름, 주소)을 확인해주세요.');
+      }
       return;
     }
 
+    // 변경 사항 확인 (편집 시에만)
+    if (!isCreate && editingPoint) {
+      const changedKeys = Object.keys(formData).filter(key => {
+        if (['updated_at', 'created_at', 'current_value', 'value', 'id', 'device_id'].includes(key)) return false;
+        const oldVal = (editingPoint as any)[key];
+        const newVal = (formData as any)[key];
+        return String(oldVal ?? '') !== String(newVal ?? '');
+      });
+
+      if (changedKeys.length === 0) {
+        if (showModal) {
+          showModal({
+            type: 'success',
+            title: '변경 내용 없음',
+            message: '수정된 내용이 없습니다.',
+            onConfirm: () => {
+              setShowEditForm(false);
+              setEditingPoint(null);
+            }
+          });
+        }
+        return;
+      }
+    }
+
+    // [변경 요청] 저장 클릭 시 "확인" 과정 없이 바로 실행 (어차피 메인에서 최종 저장 필요)
     try {
       setIsProcessing(true);
       const payload = {
@@ -147,19 +186,50 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         id: isCreate ? Date.now() : editingPoint!.id,
         device_id: deviceId,
         updated_at: new Date().toISOString(),
-        created_at: isCreate ? new Date().toISOString() : formData.created_at
+        created_at: isCreate ? new Date().toISOString() : formData.created_at,
+        // 🔥 Ensure engineering fields are preserved
+        scaling_factor: formData.scaling_factor ?? 1,
+        scaling_offset: formData.scaling_offset ?? 0,
+        min_value: formData.min_value,
+        max_value: formData.max_value,
+        unit: formData.unit
       } as DataPoint;
 
       if (isCreate) {
         onCreate(payload);
-        setShowCreateForm(false);
       } else {
         onUpdate(payload);
-        setShowEditForm(false);
       }
-      alert(`설정이 ${isCreate ? '추가' : '변경'}되었습니다. (디바이스 저장 시 서버에 반영됩니다)`);
-    } catch (e) {
-      alert(`저장 실패: ${e instanceof Error ? e.message : 'Unknown'}`);
+
+      if (showModal) {
+        showModal({
+          type: 'success',
+          title: '저장 완료',
+          message: '데이터포인트 정보가 임시 반영되었습니다.\n장치 모달 우측 하단의 [저장] 버튼을 클릭해야 서버에 최종 저장됩니다.',
+          onConfirm: () => {
+            setShowCreateForm(false);
+            setShowEditForm(false);
+            setEditingPoint(null);
+          }
+        });
+      } else {
+        alert('저장되었습니다.');
+        setShowCreateForm(false);
+        setShowEditForm(false);
+        setEditingPoint(null);
+      }
+    } catch (error) {
+      console.error('DataPoint save error:', error);
+      if (showModal) {
+        showModal({
+          type: 'error',
+          title: '저장 실패',
+          message: '저장 중 오류가 발생했습니다.',
+          onConfirm: () => { }
+        });
+      } else {
+        alert('저장 중 오류가 발생했습니다.');
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -171,12 +241,30 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       const res = await DataApiService.getCurrentValues({ point_ids: [dp.id], include_metadata: true });
       if (res.success && res.data?.current_values) {
         const val = res.data.current_values.find(v => v.point_id === dp.id);
-        alert(val ? `값: ${val.value} (${val.quality})\n시간: ${val.timestamp}` : '값을 읽지 못했습니다.');
+        const msg = val ? `값: ${val.value} (${val.quality})\n시간: ${val.timestamp}` : '값을 읽지 못했습니다.';
+        if (showModal) {
+          showModal({
+            type: 'success',
+            title: '읽기 테스트 결과',
+            message: msg,
+            onConfirm: () => { }
+          });
+        } else {
+          alert(msg);
+        }
       } else {
-        alert('읽기 실패');
+        if (showModal) {
+          showModal({ type: 'error', title: '읽기 실패', message: '데이터를 읽어오지 못했습니다.', onConfirm: () => { } });
+        } else {
+          alert('읽기 실패');
+        }
       }
     } catch (e) {
-      alert('통신 오류');
+      if (showModal) {
+        showModal({ type: 'error', title: '통신 오류', message: '백엔드 서버와 통신할 수 없습니다.', onConfirm: () => { } });
+      } else {
+        alert('통신 오류');
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -214,11 +302,25 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         }));
       }
 
-      alert(`완료: 성공 ${successCount}건${failCount > 0 ? `, 실패 ${failCount}건` : ''}\n(디바이스 전체 저장 시 서버에 최종 반영됩니다)`);
-      handleBulkModalChange(false);
-      // onRefresh(); // 🔥 제거: 로컬 상태를 유지해야 하며, 서버에서 가져오면 방금 추가한 것들이 사라짐
+      const msg = `완료: 성공 ${successCount}건${failCount > 0 ? `, 실패 ${failCount}건` : ''}\n(디바이스 전체 저장 시 서버에 최종 반영됩니다)`;
+      if (showModal) {
+        showModal({
+          type: 'success',
+          title: '일괄 등록 완료',
+          message: msg,
+          onConfirm: () => handleBulkModalChange(false)
+        });
+      } else {
+        alert(msg);
+        handleBulkModalChange(false);
+      }
     } catch (e) {
-      alert(`일괄 저장 중 오류가 발생했습니다: ${e instanceof Error ? e.message : 'Unknown'}`);
+      const errMsg = `일괄 저장 중 오류가 발생했습니다: ${e instanceof Error ? e.message : 'Unknown'}`;
+      if (showModal) {
+        showModal({ type: 'error', title: '일괄 등록 실패', message: errMsg, onConfirm: () => { } });
+      } else {
+        alert(errMsg);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -627,7 +729,19 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   {canEdit && (
                     <>
                       <button onClick={() => handleOpenEditCtx(dp)} title="편집"><i className="fas fa-pencil-alt"></i></button>
-                      <button onClick={() => confirm('삭제?') && onDelete(dp.id)} title="삭제" className="danger"><i className="fas fa-trash"></i></button>
+                      <button onClick={() => {
+                        if (showModal) {
+                          showModal({
+                            type: 'confirm',
+                            title: '삭제 확인',
+                            message: `[${dp.name}] 데이터포인트를 삭제하시겠습니까?`,
+                            confirmText: '삭제',
+                            onConfirm: () => onDelete(dp.id)
+                          });
+                        } else if (confirm('삭제하시겠습니까?')) {
+                          onDelete(dp.id);
+                        }
+                      }} title="삭제" className="danger"><i className="fas fa-trash"></i></button>
                     </>
                   )}
                 </div>
@@ -703,16 +817,18 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
 
          /* Table */
          .dp-table-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: white; }
-         .dp-table-head { display: grid; grid-template-columns: 1fr 100px 120px 90px 100px 150px 120px 80px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
-         .th { padding: 10px 12px; display: flex; align-items: center; }
+         .dp-table-head { display: grid; grid-template-columns: minmax(200px, 1fr) 100px 110px 70px 80px 120px 90px 120px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
+         .th { padding: 10px 12px; display: flex; align-items: center; justify-content: center; }
+         .th.col-name { justify-content: flex-start; }
          
          .dp-table-body { flex: 1; overflow-y: auto; }
-         .tr { display: grid; grid-template-columns: 1fr 100px 120px 90px 100px 150px 120px 80px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
+         .tr { display: grid; grid-template-columns: minmax(200px, 1fr) 100px 110px 70px 80px 120px 90px 120px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
          .tr:hover { background: #f8fafc; }
-         .td { padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; }
+         .td { padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; text-align: center; }
+         .td.col-name { align-items: flex-start; text-align: left; }
          
-         .name-row { display: flex; align-items: center; gap: 6px; }
-         .name { font-weight: 500; color: #1e293b; }
+         .name-row { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+         .name { font-weight: 500; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
          .desc { font-size: 11px; color: #94a3b8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
          .badge.disabled { background: #f1f5f9; color: #94a3b8; font-size: 10px; padding: 1px 4px; border-radius: 3px; border: 1px solid #e2e8f0; }
          
@@ -725,17 +841,18 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
          .access-tag.write { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
          .access-tag.read_write { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
 
-         .scale-row { font-size: 12px; color: #475569; }
+         .scale-row { font-size: 12px; color: #475569; width: 100%; text-align: center; }
          .scale-row.offset { font-size: 11px; color: #94a3b8; }
          
          .range-tag { font-size: 11px; color: #475569; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
          .range-none { color: #cbd5e1; }
-
+         
+         .td.col-action { overflow: visible; align-items: center; }
          .val { font-weight: 600; color: #0f172a; }
          .no-val { color: #cbd5e1; }
 
          .btn-group { display: flex; gap: 4px; }
-         .btn-group button { width: 26px; height: 26px; border: 1px solid #e2e8f0; background: white; border-radius: 4px; color: #64748b; cursor: pointer; font-size: 11px; display: flex; justify-content: center; align-items: center; }
+         .btn-group button { width: 26px; height: 26px; border: 1px solid #e2e8f0; background: white; border-radius: 4px; color: #64748b; cursor: pointer; font-size: 11px; display: flex; justify-content: center; align-items: center; box-sizing: border-box; }
          .btn-group button:hover { border-color: #3b82f6; color: #3b82f6; }
          .btn-group button.danger:hover { border-color: #ef4444; color: #ef4444; }
 
@@ -770,7 +887,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
          .btn-sec { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; }
 
          @media (max-width: 1200px) {
-            .dp-table-head, .tr { grid-template-columns: 1fr 80px 100px 70px 80px 110px 90px 70px; }
+            .dp-table-head, .tr { grid-template-columns: minmax(150px, 1fr) 80px 100px 60px 70px 100px 80px 120px; }
          }
       `}</style>
     </div>

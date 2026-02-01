@@ -58,10 +58,9 @@ bool ConfigManager::doInitialize() {
   createTimeseriesEnvFile();
   createMessagingEnvFile();
   createSecurityEnvFile();
-  createCSPGatewayEnvFile();
+  createSecurityEnvFile();
   createSecretsDirectory();
   ensureDataDirectories();
-  ensureCSPDirectories();
 
   // 3. 설정 파일들 로드
   loadMainConfig();
@@ -286,9 +285,9 @@ void ConfigManager::printConfigSearchLog() const {
 std::map<std::string, bool> ConfigManager::checkAllConfigFiles() const {
   std::map<std::string, bool> file_status;
 
-  std::vector<std::string> config_files = {
-      ".env",          "database.env", "redis.env",      "timeseries.env",
-      "messaging.env", "security.env", "csp-gateway.env"};
+  std::vector<std::string> config_files = {".env",          "database.env",
+                                           "redis.env",     "timeseries.env",
+                                           "messaging.env", "security.env"};
 
   for (const auto &filename : config_files) {
     std::string full_path = Path::Join(configDir_, filename);
@@ -327,8 +326,8 @@ DATABASE_TYPE=SQLITE
 # 기본 디렉토리 설정
 DATA_DIR=./data
 
-# 추가 설정 파일들 (모듈별 분리) - CSP Gateway 포함
-CONFIG_FILES=database.env,timeseries.env,redis.env,messaging.env,security.env,csp-gateway.env
+# 추가 설정 파일들 (모듈별 분리)
+CONFIG_FILES=database.env,timeseries.env,redis.env,messaging.env,security.env
 
 # 시스템 설정
 MAX_WORKER_THREADS=4
@@ -447,116 +446,6 @@ SSL_ENABLED=false
   createFileFromTemplate(sec_path, content);
 }
 
-void ConfigManager::createCSPGatewayEnvFile() {
-  std::string csp_path = Path::Join(configDir_, "csp-gateway.env");
-
-  if (FileSystem::FileExists(csp_path)) {
-    return;
-  }
-
-  std::string content =
-      R"(# =============================================================================
-# CSP Gateway 설정 파일 (csp-gateway.env) - 기존 C# 버전 완전 포팅
-# =============================================================================
-
-# CSP Gateway 기본 설정
-CSP_GATEWAY_ENABLED=true
-CSP_GATEWAY_SERVICE_NAME=PulseOne CSP Gateway
-CSP_GATEWAY_VERSION=1.8
-CSP_GATEWAY_BUILDING_ID=1001
-
-# API 전송 설정
-CSP_API_ENABLED=true
-CSP_API_ENDPOINT=https://api.pulseone.com/v1/alarms
-CSP_API_KEY_FILE=${SECRETS_DIR}/csp_api_key.key
-CSP_API_TIMEOUT_MS=10000
-CSP_API_MAX_RETRY=3
-CSP_API_RETRY_DELAY_MS=1000
-
-# AWS S3 업로드 설정
-CSP_S3_ENABLED=true
-CSP_S3_BUCKET_NAME=pulseone-alarm-data
-CSP_S3_REGION=ap-northeast-2
-CSP_S3_ACCESS_KEY_FILE=${SECRETS_DIR}/aws_access_key.key
-CSP_S3_SECRET_KEY_FILE=${SECRETS_DIR}/aws_secret_key.key
-CSP_S3_OBJECT_PREFIX=alarms/{building_id}/
-CSP_S3_FILE_NAME_PATTERN={building_id}_{timestamp}_alarm.json
-CSP_S3_TIMEOUT_MS=10000
-CSP_S3_MAX_RETRY=3
-
-# Insite 연동 설정 (ver1.6)
-CSP_INSITE_ENABLED=false
-CSP_INSITE_ENDPOINT=https://insite.pulseone.com/api/v1/data
-CSP_INSITE_API_KEY_FILE=${SECRETS_DIR}/insite_api_key.key
-CSP_INSITE_TIMEOUT_MS=5000
-CSP_INSITE_CONTROL_DISABLED=true
-CSP_INSITE_CONTROL_CLEAR_INTERVAL_HOURS=24
-
-# Inbase 연동 설정 (ver1.6)
-CSP_INBASE_ENABLED=false
-CSP_INBASE_ENDPOINT=https://inbase.pulseone.com/api/v1/upload
-CSP_INBASE_API_KEY_FILE=${SECRETS_DIR}/inbase_api_key.key
-CSP_INBASE_TIMEOUT_MS=8000
-
-# BEMS 업로드 설정 (ver1.7)
-CSP_BEMS_ENABLED=false
-CSP_BEMS_ENDPOINT=https://bems.pulseone.com/api/v1/building-data
-CSP_BEMS_API_KEY_FILE=${SECRETS_DIR}/bems_api_key.key
-CSP_BEMS_BUILDING_ID=${CSP_GATEWAY_BUILDING_ID}
-CSP_BEMS_TIMEOUT_MS=15000
-
-# 알람 필터링 설정
-CSP_ALARM_MIN_PRIORITY=1
-CSP_ALARM_MAX_PRIORITY=4
-CSP_ALARM_TAG_INCLUDE_PATTERN=.*
-CSP_ALARM_TAG_EXCLUDE_PATTERN=^TEST_.*
-CSP_ALARM_MAX_AGE_HOURS=24
-
-# Modbus 설정 (기존 C# 버전 이슈 수정)
-CSP_MODBUS_ALARM_TIMEZONE=LOCAL_TIME
-CSP_MODBUS_UPDATE_TIME_SOURCE=DATA_TIME
-CSP_MODBUS_INVALID_VALUE_THRESHOLD=-2147483638
-CSP_MODBUS_USE_PREVIOUS_ON_INVALID=true
-
-# 로깅 설정 (ver1.1 상세로깅)
-CSP_DETAILED_LOGGING=true
-CSP_LOG_VALUE_FILE_SAVE=true
-CSP_LOG_UPDATE_TIME_ERROR=true
-CSP_LOG_NETWORK_RECONNECT=true
-CSP_PERFORMANCE_MONITORING=true
-CSP_STATS_UPDATE_INTERVAL_MS=30000
-CSP_HEALTH_CHECK_INTERVAL_MS=60000
-
-# 실패 처리 설정
-CSP_FAILED_ALARM_SAVE_ENABLED=true
-CSP_FAILED_ALARM_SAVE_PATH=${DATA_DIR}/failed_alarms/
-CSP_FAILED_ALARM_FILE_PATTERN=failed_{timestamp}_alarm.json
-CSP_FAILED_ALARM_RETRY_ENABLED=true
-CSP_FAILED_ALARM_RETRY_INTERVAL_MINUTES=30
-CSP_FAILED_ALARM_MAX_RETRY_COUNT=5
-
-# 배치 처리 설정
-CSP_BATCH_PROCESSING_ENABLED=true
-CSP_BATCH_SIZE=100
-CSP_BATCH_TIMEOUT_MS=5000
-CSP_BATCH_FLUSH_INTERVAL_MS=10000
-
-# 네트워크 설정 (ver1.1)
-CSP_NETWORK_RECONNECT_ENABLED=true
-CSP_NETWORK_RECONNECT_TIMEOUT_MS=30000
-CSP_NETWORK_SERVICE_RESTART_ON_RECONNECT=true
-
-# SSL 설정
-CSP_SSL_ENABLED=true
-CSP_SSL_VERIFY_PEER=true
-CSP_SSL_CERT_FILE=${SECRETS_DIR}/csp_client.crt
-CSP_SSL_KEY_FILE=${SECRETS_DIR}/csp_client.key
-CSP_SSL_CA_FILE=${SECRETS_DIR}/csp_ca.crt
-)";
-
-  createFileFromTemplate(csp_path, content);
-}
-
 void ConfigManager::createSecretsDirectory() {
   std::string secrets_dir = Path::Join(configDir_, "secrets");
 
@@ -590,15 +479,21 @@ SecretManager가 자동으로 감지하여 처리합니다.
 )";
     createFileFromTemplate(readme_path, readme_content);
 
-    std::vector<std::string> key_files = {
-        // 기존 시크릿들 (평문 호환)
-        "postgres_primary.key", "mysql.key", "redis_primary.key",
-        "influx_token.key", "rabbitmq.key", "jwt_secret.key",
-        "session_secret.key",
-        // CSP Gateway 전용 시크릿들 (암호화)
-        "csp_api_key.key", "aws_access_key.key", "aws_secret_key.key",
-        "insite_api_key.key", "inbase_api_key.key", "bems_api_key.key",
-        "csp_client.crt", "csp_client.key", "csp_ca.crt"};
+    std::vector<std::string> key_files = {// 기존 시크릿들 (평문 호환)
+                                          "postgres_primary.key",
+                                          "mysql.key",
+                                          "redis_primary.key",
+                                          "influx_token.key",
+                                          "rabbitmq.key",
+                                          "jwt_secret.key",
+                                          "session_secret.key",
+                                          "postgres_primary.key",
+                                          "mysql.key",
+                                          "redis_primary.key",
+                                          "influx_token.key",
+                                          "rabbitmq.key",
+                                          "jwt_secret.key",
+                                          "session_secret.key"};
 
     for (const auto &key_file : key_files) {
       std::string key_path = Path::Join(secrets_dir, key_file);
@@ -654,24 +549,6 @@ void ConfigManager::ensureDataDirectories() {
                                        "temp"};
 
   for (const auto &dir : sub_dirs) {
-    try {
-      std::string full_path = Path::Join(dataDir_, dir);
-      FileSystem::CreateDirectoryRecursive(full_path);
-    } catch (const std::exception &) {
-      // 실패해도 계속 진행
-    }
-  }
-}
-
-void ConfigManager::ensureCSPDirectories() {
-  if (dataDir_.empty()) {
-    return;
-  }
-
-  std::vector<std::string> csp_dirs = {"failed_alarms", "csp_logs",
-                                       "csp_backup", "csp_cache"};
-
-  for (const auto &dir : csp_dirs) {
     try {
       std::string full_path = Path::Join(dataDir_, dir);
       FileSystem::CreateDirectoryRecursive(full_path);

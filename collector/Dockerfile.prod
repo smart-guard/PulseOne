@@ -18,12 +18,12 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /src
 
 # Copy source
-COPY collector/ .
-COPY core/ shared/ ./core/shared/
+COPY core/collector/ .
+COPY core/shared/ ./core/shared/
 
 # Build
 RUN mkdir build && cd build && \
-    cmake .. && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make -j$(nproc)
 
 # ==========================================

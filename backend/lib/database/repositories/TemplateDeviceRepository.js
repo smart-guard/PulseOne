@@ -45,6 +45,8 @@ class TemplateDeviceRepository extends BaseRepository {
             if (options.search) {
                 countQuery.where('name', 'like', `%${options.search}%`);
             }
+            // Soft Delete Filter: Exclude deleted items by default
+            countQuery.where('is_deleted', 0);
 
             // Get total count
             const countResult = await countQuery.first();
@@ -86,6 +88,8 @@ class TemplateDeviceRepository extends BaseRepository {
             if (options.search) {
                 query.where('template_devices.name', 'like', `%${options.search}%`);
             }
+            // Soft Delete Filter: Exclude deleted items by default
+            query.where('template_devices.is_deleted', 0);
 
             const sortBy = options.sort_by || 'template_devices.name';
             const sortOrder = (options.sort_order || 'ASC').toUpperCase();
@@ -135,6 +139,7 @@ class TemplateDeviceRepository extends BaseRepository {
                 .leftJoin('manufacturers as m', 'm.id', 'dm.manufacturer_id')
                 .leftJoin('protocols as p', 'p.id', 'template_devices.protocol_id')
                 .where('template_devices.id', id)
+                .andWhere('template_devices.is_deleted', 0) // Soft delete check
                 .first();
 
             if (template) {
@@ -169,6 +174,7 @@ class TemplateDeviceRepository extends BaseRepository {
     async create(data, trx = null) {
         try {
             const query = trx ? trx(this.tableName) : this.query();
+            // is_deleted defaults to 0
             const [id] = await query.insert({
                 model_id: data.model_id,
                 name: data.name,
@@ -178,7 +184,8 @@ class TemplateDeviceRepository extends BaseRepository {
                 polling_interval: data.polling_interval || 1000,
                 timeout: data.timeout || 3000,
                 is_public: data.is_public !== false ? 1 : 0,
-                created_by: data.created_by || null
+                created_by: data.created_by || null,
+                is_deleted: 0
             });
             return await this.findById(id, trx);
         } catch (error) {
@@ -223,11 +230,18 @@ class TemplateDeviceRepository extends BaseRepository {
     }
 
     /**
-     * 템플릿을 삭제합니다.
+     * 템플릿을 삭제합니다. (Soft Delete)
      */
     async deleteById(id) {
         try {
-            const affected = await this.query().where('id', id).del();
+            this.logger.log(`🗑️ [TemplateDeviceRepository] Soft-deleting template ${id}...`);
+            const affected = await this.query()
+                .where('id', id)
+                .update({
+                    is_deleted: 1,
+                    updated_at: this.knex.fn.now()
+                });
+
             return affected > 0;
         } catch (error) {
             this.logger.error('TemplateDeviceRepository.deleteById 오류:', error);

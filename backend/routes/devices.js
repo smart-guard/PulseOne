@@ -45,7 +45,7 @@ router.get('/', async (req, res) => {
         const result = await DeviceService.getDevices(options);
         res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: error.message, error: 'DEVICES_FETCH_ERROR' });
     }
 });
 
@@ -62,7 +62,7 @@ router.put('/bulk', async (req, res) => {
         const result = await DeviceService.bulkUpdateDevices(ids, data, tenantId, user);
         res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({ success: false, message: error.message, error: 'BULK_UPDATE_ERROR' });
     }
 });
 
@@ -104,6 +104,22 @@ router.get('/statistics', async (req, res) => {
     try {
         const { tenantId } = req;
         const result = await DeviceService.getDeviceStatistics(tenantId);
+        res.status(result.success ? 200 : 500).json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 📋 네트워크 스캔 결과 조회
+router.get('/scan/results', async (req, res) => {
+    try {
+        const { tenantId } = req;
+        const { since, protocol } = req.query;
+        const result = await DeviceService.getScanResults({
+            tenantId,
+            since,
+            protocol
+        });
         res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -251,6 +267,25 @@ router.post('/:id/diagnose', async (req, res) => {
         res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * POST /api/devices/:id/test-connection
+ * 디바이스 연결 테스트 (HMI-001 대응)
+ */
+router.post('/:id/test-connection', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await DeviceService.diagnoseConnection(id, req.tenantId);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+            error: 'TEST_CONNECTION_ERROR',
+            timestamp: new Date().toISOString()
+        });
     }
 });
 

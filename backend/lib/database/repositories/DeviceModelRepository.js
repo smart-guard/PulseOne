@@ -86,6 +86,20 @@ class DeviceModelRepository extends BaseRepository {
             throw error;
         }
     }
+    /**
+     * 제조사 ID와 이름으로 디바이스 모델을 조회합니다.
+     */
+    async findUnique(manufacturerId, name) {
+        try {
+            return await this.query()
+                .where('manufacturer_id', manufacturerId)
+                .where('name', name)
+                .first();
+        } catch (error) {
+            this.logger.error('DeviceModelRepository.findUnique 오류:', error);
+            throw error;
+        }
+    }
 
     /**
      * 새로운 디바이스 모델을 생성합니다.

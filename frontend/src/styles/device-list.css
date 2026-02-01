@@ -588,6 +588,14 @@
   justify-content: flex-start !important;
 }
 
+.device-list-table-header>.device-list-status-cell,
+.device-list-table-row>.device-list-status-cell,
+.device-list-table-header>.device-list-data-cell,
+.device-list-table-row>.device-list-data-cell {
+  justify-content: center !important;
+  text-align: center;
+}
+
 /* 액션 버튼 그룹 */
 .device-list-row-actions {
   display: flex;
@@ -596,14 +604,31 @@
   gap: var(--space-2);
 }
 
-.device-list-row-actions .btn-icon {
+.device-list-row-actions .mgmt-btn-icon {
   width: 32px;
-  height: 32px;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  margin: 0 !important;
   font-size: 14px;
+  background-color: white;
+  border: 1px solid var(--neutral-200);
+  box-shadow: var(--shadow-sm);
+  vertical-align: middle;
+  box-sizing: border-box !important;
 }
 
-.device-list-row-actions .btn-icon i {
+.device-list-row-actions .mgmt-btn-icon:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--neutral-300);
+  background-color: var(--neutral-50);
+}
+
+.device-list-row-actions .mgmt-btn-icon i {
   font-size: 14px;
+  line-height: 1;
 }
 
 /* Old button styles removed */
@@ -640,8 +665,8 @@
 
   .device-list-table-header,
   .device-list-table-row {
-    /* Checkbox(44) + Name(min 200) + MasterModel/Mfg(min 220) + Info/Proto(reduced min 140) + Status(100) + Pts(60) + Action(100) */
-    grid-template-columns: 44px minmax(200px, 1fr) minmax(220px, 1.2fr) minmax(140px, 1fr) 100px 60px 100px !important;
+    /* Checkbox(44) + Name(min 200) + MasterModel/Mfg(min 180) + Info/Proto(min 120) + Status(90) + Pts(60) + Action(130) */
+    grid-template-columns: 44px minmax(200px, 1fr) minmax(180px, 1.1fr) minmax(120px, 1fr) 90px 60px 130px !important;
     gap: var(--space-4);
     padding: 0 var(--space-4);
   }
@@ -651,8 +676,8 @@
 
   .device-list-table-header,
   .device-list-table-row {
-    /* Checkbox(44) + Name(min 150) + MasterModel/Mfg(min 180) + Info/Proto(reduced min 120) + Status(90) + Pts(60) + Action(100) */
-    grid-template-columns: 44px minmax(150px, 1.1fr) minmax(180px, 1.1fr) minmax(120px, 0.9fr) 90px 60px 100px !important;
+    /* Checkbox(44) + Name(min 150) + MasterModel/Mfg(min 160) + Info/Proto(min 110) + Status(80) + Pts(60) + Action(130) */
+    grid-template-columns: 44px minmax(150px, 1.1fr) minmax(160px, 1fr) minmax(110px, 0.9fr) 80px 60px 130px !important;
     gap: var(--space-2);
     padding: 0 var(--space-4);
     min-width: 800px;
@@ -667,8 +692,8 @@
 
   .device-list-table-header,
   .device-list-table-row {
-    /* Checkbox(40) + Name(min 120) + MasterModel/Mfg(min 150) + Info/Proto(reduced min 110) + Status(80) + Pts(50) + Action(90) */
-    grid-template-columns: 40px minmax(120px, 1fr) minmax(150px, 1.1fr) minmax(110px, 0.9fr) 80px 50px 90px !important;
+    /* Checkbox(40) + Name(min 110) + MasterModel/Mfg(min 130) + Info/Proto(min 100) + Status(80) + Pts(50) + Action(120) */
+    grid-template-columns: 40px minmax(110px, 1fr) minmax(130px, 1fr) minmax(100px, 0.9fr) 80px 50px 120px !important;
     gap: var(--space-1);
     padding: 0 var(--space-3);
     font-size: 11px;
