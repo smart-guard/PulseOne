@@ -1,0 +1,243 @@
+/* config-editor.css */
+
+.config-editor-container {
+    height: calc(100vh - 64px);
+    display: flex;
+    flex-direction: column;
+    background-color: var(--neutral-50);
+}
+
+.config-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-right: 1px solid var(--neutral-200);
+    background: white;
+}
+
+.sidebar-search {
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--neutral-100);
+}
+
+.search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input-wrapper i {
+    position: absolute;
+    left: var(--space-3);
+    color: var(--neutral-400);
+    font-size: 12px;
+}
+
+.search-input-wrapper input {
+    width: 100%;
+    padding: var(--space-2) var(--space-3) var(--space-2) var(--space-8);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
+    transition: all 0.2s;
+}
+
+.search-input-wrapper input:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px var(--primary-50);
+}
+
+.file-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-2);
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: 4px;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent;
+}
+
+.file-item:hover {
+    background: var(--neutral-50);
+}
+
+.file-item.active {
+    background: var(--primary-50);
+    border-color: var(--primary-100);
+    color: var(--primary-700);
+}
+
+.file-item i {
+    margin-right: var(--space-3);
+    font-size: 14px;
+    opacity: 0.6;
+}
+
+.file-item.active i {
+    color: var(--primary-500);
+    opacity: 1;
+}
+
+.file-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.editor-main-container {
+    flex: 1;
+    padding: var(--space-6);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.editor-surface {
+    flex: 1;
+    background: white;
+    border-radius: var(--radius-2xl);
+    border: 1px solid var(--neutral-200);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.editor-toolbar {
+    padding: var(--space-4) var(--space-6);
+    background: white;
+    border-bottom: 1px solid var(--neutral-100);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.editor-content-area {
+    flex: 1;
+    display: flex;
+    position: relative;
+    background: #1e1e1e;
+    /* VS Code style dark theme */
+    overflow: hidden;
+}
+
+/* Line Number Gutter */
+.line-numbers {
+    width: 50px;
+    padding: var(--space-4) 0;
+    background: #252526;
+    color: #858585;
+    text-align: right;
+    padding-right: var(--space-3);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    user-select: none;
+    border-right: 1px solid #333;
+}
+
+.code-editor-textarea {
+    flex: 1;
+    padding: var(--space-4);
+    background: transparent;
+    color: #d4d4d4;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    border: none;
+    resize: none;
+    white-space: pre;
+    overflow: auto;
+    outline: none;
+    /* Fix text clipping */
+    padding-bottom: 40px;
+}
+
+/* Custom Scrollbar for Editor */
+.code-editor-textarea::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.code-editor-textarea::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+.code-editor-textarea::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 5px;
+    border: 2px solid #1e1e1e;
+}
+
+.code-editor-textarea::-webkit-scrollbar-thumb:hover {
+    background: #444;
+}
+
+.empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--neutral-400);
+}
+
+.empty-state i {
+    font-size: 48px;
+    margin-bottom: var(--space-4);
+    opacity: 0.2;
+}
+
+.status-tag {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.status-tag.unsaved {
+    background: #fffbeb;
+    color: #d97706;
+    border: 1px solid #fef3c7;
+}
+
+.status-tag.saved {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #dcfce7;
+}
+
+@keyframes pulse-dots {
+    0% {
+        opacity: 0.4;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.4;
+    }
+}
+
+.unsaved-dot {
+    width: 8px;
+    height: 8px;
+    background: #f59e0b;
+    border-radius: 50%;
+    animation: pulse-dots 1.5s infinite;
+}

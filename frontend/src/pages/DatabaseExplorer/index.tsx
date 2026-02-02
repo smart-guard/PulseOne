@@ -40,10 +40,10 @@ const DatabaseExplorer: React.FC = () => {
             <Layout className="flex-1 overflow-hidden h-full bg-transparent">
                 {/* Sidebar */}
                 <Sider
-                    width={300}
+                    width={320}
                     theme="light"
-                    className="border-r border-gray-200 overflow-hidden"
-                    style={{ background: '#fff' }}
+                    className="border-r border-gray-200"
+                    style={{ background: '#fff', overflow: 'hidden' }}
                 >
                     <TablesSidebar
                         refreshTrigger={refreshTrigger}

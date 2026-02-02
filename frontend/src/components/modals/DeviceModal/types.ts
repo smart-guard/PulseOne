@@ -100,6 +100,7 @@ export interface DeviceSettings {
   keep_alive_timeout_s?: number;
   is_outlier_detection_enabled?: boolean;
   is_deadband_enabled?: boolean;
+  is_auto_registration_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
   updated_by?: string;
@@ -148,6 +149,7 @@ export interface DeviceBasicInfoTabProps {
   editData?: Device | null;
   mode: 'view' | 'edit' | 'create';
   onUpdateField: (field: string, value: any) => void;
+  onUpdateSettings?: (field: string, value: any) => void;
   showModal?: (config: {
     type: 'confirm' | 'success' | 'error';
     title: string;
@@ -170,6 +172,7 @@ export interface DeviceSettingsTabProps {
 
 export interface DeviceDataPointsTabProps {
   deviceId: number;
+  protocolType?: string; // 🔥 NEW: 프로토콜 타입 추가
   dataPoints: DataPoint[];
   isLoading: boolean;
   error: string | null;

@@ -20,6 +20,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   editData,
   mode,
   onUpdateField,
+  onUpdateSettings,
   showModal
 }) => {
   // ========================================================================
@@ -1059,6 +1060,55 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
               )}
             </div>
 
+            {/* 🔥 MQTT Base Topic (MQTT 일 때 엔드포인트 바로 아래 배치) */}
+            {editData?.protocol_type === 'MQTT' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="bi-field">
+                  <label style={{ color: 'var(--primary-600)', fontWeight: 600 }}>
+                    <i className="fas fa-satellite-dish"></i> MQTT Base Topic *
+                  </label>
+                  {mode === 'view' ? (
+                    <div className="form-val text-break" style={{ color: 'var(--primary-700)', fontWeight: 600 }}>
+                      {rtuConfig.topic || '-'}
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        className="bi-input"
+                        value={rtuConfig.topic || ''}
+                        onChange={(e) => updateRtuConfig('topic', e.target.value)}
+                        placeholder="예: factory/line1/#"
+                        style={{ borderColor: 'var(--primary-300)', background: 'var(--primary-50)' }}
+                        required
+                      />
+                      <div className="hint-text">
+                        데이터 구독을 위한 <strong>최상위 토픽</strong>입니다. (예: <code>factory/1/#</code>)
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* 🔥 MQTT Auto-Registration Toggle */}
+                <div className="bi-field" style={{ marginTop: '4px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--success-700)', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!(editData?.settings as any)?.is_auto_registration_enabled}
+                      disabled={mode === 'view'}
+                      onChange={(e) => onUpdateSettings?.('is_auto_registration_enabled', e.target.checked)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    <span><i className="fas fa-magic"></i> MQTT 자동 데이터 등록 (Auto-Discovery)</span>
+                  </label>
+                  <div className="hint-text" style={{ marginLeft: '24px' }}>
+                    수집 시 등록되지 않은 JSON 키를 <strong>데이터 포인트로 자동 등록</strong>합니다.
+                  </div>
+                </div>
+              </div>
+            )}
+
+
             {mode === 'view' && displayData?.protocol && displayData.protocol.default_port && (
               <div className="bi-field">
                 <label>기본 포트</label>
@@ -1187,6 +1237,8 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
           )}
         </div>
       )}
+
+      {/* MQTT 상세 설정은 엔드포인트 아래로 이동됨 */}
 
       {/* 5. 고급 데이터 (엔지니어링 메타데이터) */}
       {(mode === 'edit' || mode === 'create' || (mode === 'view' && (Object.keys(displayData?.metadata || {}).length > 0 || Object.keys(displayData?.custom_fields || {}).length > 0))) && (

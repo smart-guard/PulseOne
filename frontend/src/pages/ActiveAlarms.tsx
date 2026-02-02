@@ -221,9 +221,6 @@ const ActiveAlarms: React.FC = () => {
       }
 
       if (response && response.success) {
-        if (!isBulkAction) {
-          decrementAlarmCount();
-        }
         await Promise.all([fetchActiveAlarms(), fetchStatistics()]);
         setShowActionModal(false);
       } else {

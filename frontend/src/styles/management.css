@@ -684,6 +684,33 @@
     color: var(--primary-700);
 }
 
+.mgmt-btn-text {
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mgmt-btn-text.premium {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(var(--primary-rgb), 0.05);
+    border: 1px solid rgba(var(--primary-rgb), 0.1);
+    color: var(--primary-600);
+    font-weight: 800;
+}
+
+.mgmt-btn-text.premium:hover {
+    background: rgba(var(--primary-rgb), 0.1);
+    border-color: rgba(var(--primary-rgb), 0.2);
+    transform: translateY(-1px);
+}
+
+.mgmt-btn-text.premium:active {
+    transform: translateY(0);
+}
+
 .mgmt-checkbox-label {
     display: flex;
     align-items: center;
@@ -1346,4 +1373,14 @@
 /* === AntD Notification layering fix === */
 .ant-notification {
     z-index: 10000 !important;
+}
+/* === 전역 애니메이션 === */
+@keyframes slideDown {
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }

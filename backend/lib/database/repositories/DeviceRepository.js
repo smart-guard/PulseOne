@@ -310,7 +310,7 @@ class DeviceRepository extends BaseRepository {
                     'is_data_validation_enabled', 'is_outlier_detection_enabled', 'is_deadband_enabled',
                     'is_detailed_logging_enabled', 'is_performance_monitoring_enabled',
                     'is_diagnostic_mode_enabled', 'is_communication_logging_enabled',
-                    'read_buffer_size', 'write_buffer_size', 'queue_size', 'updated_by'
+                    'is_auto_registration_enabled', 'read_buffer_size', 'write_buffer_size', 'queue_size', 'updated_by'
                 ];
 
                 const initialSettings = {};
@@ -331,7 +331,8 @@ class DeviceRepository extends BaseRepository {
                     'is_keep_alive_enabled', 'is_data_validation_enabled',
                     'is_outlier_detection_enabled', 'is_deadband_enabled',
                     'is_detailed_logging_enabled', 'is_performance_monitoring_enabled',
-                    'is_diagnostic_mode_enabled', 'is_communication_logging_enabled'
+                    'is_diagnostic_mode_enabled', 'is_communication_logging_enabled',
+                    'is_auto_registration_enabled'
                 ];
 
                 booleanFields.forEach(f => {
@@ -369,6 +370,7 @@ class DeviceRepository extends BaseRepository {
                             description: dp.description || '',
                             address: dp.address,
                             address_string: dp.address_string || '',
+                            mapping_key: dp.mapping_key || '',
                             data_type: dp.data_type || 'uint16',
                             access_mode: dp.access_mode || 'read',
                             is_enabled: dp.is_enabled !== false ? 1 : 0,
@@ -456,7 +458,7 @@ class DeviceRepository extends BaseRepository {
                         'is_data_validation_enabled', 'is_outlier_detection_enabled', 'is_deadband_enabled',
                         'is_detailed_logging_enabled', 'is_performance_monitoring_enabled',
                         'is_diagnostic_mode_enabled', 'is_communication_logging_enabled',
-                        'read_buffer_size', 'write_buffer_size', 'queue_size', 'updated_by'
+                        'is_auto_registration_enabled', 'read_buffer_size', 'write_buffer_size', 'queue_size', 'updated_by'
                     ];
 
                     const settingsToUpdate = {
@@ -474,7 +476,8 @@ class DeviceRepository extends BaseRepository {
                         'is_keep_alive_enabled', 'is_data_validation_enabled',
                         'is_outlier_detection_enabled', 'is_deadband_enabled',
                         'is_detailed_logging_enabled', 'is_performance_monitoring_enabled',
-                        'is_diagnostic_mode_enabled', 'is_communication_logging_enabled'
+                        'is_diagnostic_mode_enabled', 'is_communication_logging_enabled',
+                        'is_auto_registration_enabled'
                     ];
 
                     booleanFields.forEach(f => {
@@ -1104,6 +1107,7 @@ class DeviceRepository extends BaseRepository {
             description: dp.description || '',
             address: parseInt(dp.address, 10),
             address_string: dp.address_string || String(dp.address),
+            mapping_key: dp.mapping_key || null,
             data_type: dbDataType,
             access_mode: dp.access_mode || 'read',
             is_enabled: dp.is_enabled !== false ? 1 : 0,

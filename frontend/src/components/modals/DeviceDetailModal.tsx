@@ -397,6 +397,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               site_id: editData.site_id,
               retry_count: editData.retry_count,
               is_enabled: editData.is_enabled,
+              settings: editData.settings || {},
               group_ids: editData.group_ids || (editData.device_group_id ? [editData.device_group_id] : []),
               data_points: dataPoints // 🔥 NEW: 일괄 생성용 데이터포인트
             };
@@ -839,6 +840,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                         editData={editData}
                         mode={mode}
                         onUpdateField={updateField}
+                        onUpdateSettings={updateSettings}
                         showModal={showCustomModal}
                       />
                     </div>
@@ -864,6 +866,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                         <div className="wizard-points-mini-tab">
                           <DeviceDataPointsTab
                             deviceId={0}
+                            protocolType={editData?.protocol_type}
                             dataPoints={dataPoints as any}
                             isLoading={isLoadingDataPoints}
                             error={dataPointsError}
@@ -904,6 +907,14 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                         <label>엔드포인트</label>
                         <span className="endpoint-text">{editData?.endpoint || '(미입력)'}</span>
                       </div>
+                      {editData?.protocol_type === 'MQTT' && (
+                        <div className="summary-item">
+                          <label>Base Topic</label>
+                          <span style={{ color: 'var(--primary-600)' }}>
+                            {(editData?.config as any)?.topic || '(미입력)'}
+                          </span>
+                        </div>
+                      )}
                       <div className="summary-item">
                         <label>데이터포인트</label>
                         <span>{dataPoints.length} 개</span>
@@ -934,6 +945,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                     editData={editData}
                     mode={mode}
                     onUpdateField={updateField}
+                    onUpdateSettings={updateSettings}
                     showModal={showCustomModal}
                   />
                 )}
@@ -951,6 +963,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                 {activeTab === 'datapoints' && (
                   <DeviceDataPointsTab
                     deviceId={device?.id || editData?.id || 0}
+                    protocolType={displayData?.protocol_type}
                     dataPoints={dataPoints as any}
                     isLoading={isLoadingDataPoints}
                     error={dataPointsError}

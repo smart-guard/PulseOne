@@ -11,6 +11,7 @@ import DeviceDataPointsBulkModal from './DeviceDataPointsBulkModal';
 
 const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   deviceId,
+  protocolType, // 🔥 NEW
   dataPoints,
   isLoading,
   error,
@@ -91,7 +92,10 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
     // Metadata & Group
     group_name: '',
     tags: [],
-    metadata: {}
+    metadata: {},
+    protocol_params: {},
+    address_string: '',
+    mapping_key: ''
   };
 
   const [formData, setFormData] = useState<Partial<DataPoint>>(initialPointData);
@@ -135,9 +139,10 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
   };
 
   const handleSave = async (isCreate: boolean) => {
-    // 유효성 검사 - address가 숫자일 수 있으므로 안전하게 변환 후 체크
     const nameStr = (formData.name || '').toString().trim();
-    const addrStr = (formData.address || '').toString().trim();
+    const addrStr = protocolType === 'MQTT'
+      ? (formData.address_string || '').toString().trim()
+      : (formData.address || '').toString().trim();
 
     if (!nameStr || !addrStr) {
       if (showModal) {
@@ -185,6 +190,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         ...formData,
         id: isCreate ? Date.now() : editingPoint!.id,
         device_id: deviceId,
+        // MQTT일 경우 address가 필수이므로 더미 값 할당 (중복 방지를 위해 Date.now 사용)
+        address: protocolType === 'MQTT' ? (formData.address || Math.floor(Date.now() / 1000) % 1000000) : formData.address,
         updated_at: new Date().toISOString(),
         created_at: isCreate ? new Date().toISOString() : formData.created_at,
         // 🔥 Ensure engineering fields are preserved
@@ -344,14 +351,35 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               />
             </div>
             <div className="form-field">
-              <label>주소 (Address) *</label>
+              <label>{protocolType === 'MQTT' ? 'Sub-Topic' : '주소 (Address)'} *</label>
               <input
                 type="text"
-                value={formData.address || ''}
-                onChange={e => setFormData({ ...formData, address: e.target.value })}
-                placeholder="Ex: 40001"
+                value={protocolType === 'MQTT' ? (formData.address_string || '') : (formData.address || '')}
+                onChange={e => {
+                  if (protocolType === 'MQTT') {
+                    setFormData({ ...formData, address_string: e.target.value });
+                  } else {
+                    setFormData({ ...formData, address: e.target.value });
+                  }
+                }}
+                placeholder={protocolType === 'MQTT' ? "Ex: /sensor/temp" : "Ex: 40001"}
               />
             </div>
+
+            {protocolType === 'MQTT' && (
+              <div className="form-field">
+                <label>JSON Key (Mapping)</label>
+                <input
+                  type="text"
+                  value={formData.mapping_key || ''}
+                  onChange={e => setFormData({
+                    ...formData,
+                    mapping_key: e.target.value
+                  })}
+                  placeholder="Ex: temperature"
+                />
+              </div>
+            )}
 
             <div className="form-field">
               <label>데이터 타입</label>
@@ -791,6 +819,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         onClose={() => handleBulkModalChange(false)}
         onSave={handleBulkCreate}
         existingAddresses={dataPoints?.map(dp => dp.address) || []}
+        protocolType={protocolType}
       />
 
       <style>{`

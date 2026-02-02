@@ -117,7 +117,8 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
             flexDirection: 'column',
             gap: '24px',
             animation: 'fadeIn 0.5s ease-out',
-            paddingBottom: '80px', // 🔥 Fix: 하단 잘림 방지를 위한 충분한 여백 확보
+            padding: '24px', // 🔥 상하좌우 여백을 주어 보더가 잘리지 않도록 함
+            paddingBottom: '60px',
             boxSizing: 'border-box'
         }}>
             {/* 1. 상단 요약 영역 (공통) */}
@@ -158,7 +159,9 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                 boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
                 display: 'flex',
                 flexDirection: 'column',
-                minHeight: '500px'
+                minHeight: '500px',
+                marginBottom: '60px', // 🔥 하단 보더라인 및 그림자 공간 충분히 확보
+                overflow: 'visible'    // 🔥 그림자가 잘리지 않도록 허용
             }}>
                 {/* 탭 헤더 */}
                 <div className="dashboard-tabs" style={{
@@ -203,7 +206,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                 </div>
 
                 {/* 탭 컨텐츠 */}
-                <div className="dashboard-content" style={{ flex: 1, padding: '24px', paddingBottom: '150px', overflowY: 'auto', boxSizing: 'border-box' }}>
+                <div className="dashboard-content" style={{ flex: 1, padding: '24px', paddingBottom: '40px', overflowY: 'auto', boxSizing: 'border-box' }}>
                     {activeTab === 'monitoring' && (
                         <div className="monitoring-content" style={{ animation: 'fadeIn 0.3s ease-in' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>

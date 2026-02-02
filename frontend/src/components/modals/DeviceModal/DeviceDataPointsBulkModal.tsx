@@ -22,6 +22,7 @@ interface DeviceDataPointsBulkModalProps {
     onClose: () => void;
     onSave: (points: Partial<DataPoint>[]) => Promise<void>;
     existingAddresses: string[];
+    protocolType?: string;
 }
 
 const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
@@ -29,7 +30,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     isOpen,
     onClose,
     onSave,
-    existingAddresses
+    existingAddresses,
+    protocolType
 }) => {
     const { confirm } = useConfirmContext();
     // 초기 빈 행 생성
@@ -59,6 +61,10 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
     const [templates, setTemplates] = useState<DeviceTemplate[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
     const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+
+    // 🔥 NEW: JSON 파서 상태
+    const [showJsonParser, setShowJsonParser] = useState(false);
+    const [jsonInput, setJsonInput] = useState('');
 
     // 테이블 컨테이너 참조 (스크롤 제어 등)
     const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -247,6 +253,72 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         }
     };
 
+    // 🔥 NEW: JSON 샘플 파싱 로직
+    const handleParseJson = () => {
+        try {
+            const data = JSON.parse(jsonInput);
+            const flatPoints: { name: string; mapping_key: string; data_type: string }[] = [];
+
+            const flatten = (obj: any, prefix = '') => {
+                for (const key in obj) {
+                    const value = obj[key];
+                    const fullKey = prefix ? `${prefix}.${key}` : key;
+                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                        flatten(value, fullKey);
+                    } else {
+                        let dataType = 'number';
+                        if (typeof value === 'boolean') dataType = 'boolean';
+                        else if (typeof value === 'string') dataType = 'string';
+                        flatPoints.push({ name: key, mapping_key: fullKey, data_type: dataType });
+                    }
+                }
+            };
+
+            flatten(data);
+
+            const newRows = flatPoints.map(p => ({
+                ...createEmptyRow(),
+                name: p.name,
+                mapping_key: p.mapping_key,
+                address: '', // Sub-topic remains empty
+                data_type: p.data_type as any
+            }));
+
+            setPoints(prev => {
+                // 비어있지 않은 첫 20개 행이 있다면 그 뒤에 추가, 아니면 교체
+                const hasData = prev.some(p => p.name || p.address);
+                const next = hasData ? [...prev, ...newRows] : newRows;
+
+                if (next.length < 20) {
+                    const padding = Array(20 - next.length).fill(null).map(() => createEmptyRow());
+                    const final = [...next, ...padding];
+                    pushHistory(final);
+                    return final;
+                }
+                pushHistory(next);
+                return next;
+            });
+
+            setShowJsonParser(false);
+            setJsonInput('');
+
+            confirm({
+                title: '파싱 완료',
+                message: `${flatPoints.length}개의 데이터 필드를 찾았습니다.\n[주소] 열에 해당 토픽(Sub-topic)을 입력해주세요.`,
+                confirmButtonType: 'success',
+                showCancelButton: false
+            });
+
+        } catch (e) {
+            confirm({
+                title: '파싱 실패',
+                message: '유효한 JSON 형식이 아닙니다. 형식을 확인해주세요.',
+                confirmButtonType: 'danger',
+                showCancelButton: false
+            });
+        }
+    };
+
     // 값 파싱 및 검증
     const validatePoint = (point: BulkDataPoint, allPoints?: BulkDataPoint[]): BulkDataPoint => {
         const errors: string[] = [];
@@ -374,7 +446,9 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
             return;
         }
 
-        const fields = ['name', 'address', 'data_type', 'access_mode', 'description', 'unit', 'scaling_factor', 'scaling_offset'];
+        const fields = protocolType === 'MQTT'
+            ? ['name', 'address', 'mapping_key', 'data_type', 'access_mode', 'description', 'unit', 'scaling_factor', 'scaling_offset']
+            : ['name', 'address', 'data_type', 'access_mode', 'description', 'unit', 'scaling_factor', 'scaling_offset'];
         const totalCols = fields.length;
         const totalRows = points.length;
 
@@ -482,20 +556,22 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                 if (cols.length < 2 && !cols[0]?.trim()) return;
 
                 const targetIdx = startRowIdx + i;
+                const isMqtt = protocolType === 'MQTT';
 
                 const newPointData: BulkDataPoint = {
-                    ...createEmptyRow(), // ID 새로 생성 -> 덮어쓰기 시에는 기존 ID 유지 필요하나, 여기선 로직 단순화
+                    ...createEmptyRow(), // ID 새로 생성
                     name: cols[0]?.trim() || '',
                     address: cols[1]?.trim() || '',
-                    data_type: (cols[2]?.trim().toLowerCase() as any) || 'number',
-                    access_mode: (cols[3]?.trim().toLowerCase() as any) || 'read',
-                    description: cols[4]?.trim() || '',
-                    unit: cols[5]?.trim() || '',
-                    scaling_factor: cols[6] ? parseFloat(cols[6]) : 1,
-                    scaling_offset: cols[7] ? parseFloat(cols[7]) : 0,
+                    mapping_key: isMqtt ? (cols[2]?.trim() || '') : undefined,
+                    data_type: (cols[isMqtt ? 3 : 2]?.trim().toLowerCase() as any) || 'number',
+                    access_mode: (cols[isMqtt ? 4 : 3]?.trim().toLowerCase() as any) || 'read',
+                    description: cols[isMqtt ? 5 : 4]?.trim() || '',
+                    unit: cols[isMqtt ? 6 : 5]?.trim() || '',
+                    scaling_factor: cols[isMqtt ? 7 : 6] ? parseFloat(cols[isMqtt ? 7 : 6]) : 1,
+                    scaling_offset: cols[isMqtt ? 8 : 7] ? parseFloat(cols[isMqtt ? 8 : 7]) : 0,
                 };
 
-                const validated = validatePoint(newPointData);
+                const validated = validatePoint(newPointData, next);
 
                 if (targetIdx < next.length) {
                     // 기존 행 덮어쓰기 (ID 유지)
@@ -618,7 +694,8 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                         <tr>
                                             <th className="col-idx">#</th>
                                             <th className="col-name">이름 *</th>
-                                            <th className="col-addr">주소 *</th>
+                                            <th className="col-addr">{protocolType === 'MQTT' ? 'Sub-Topic *' : '주소 *'}</th>
+                                            {protocolType === 'MQTT' && <th className="col-key">JSON Key</th>}
                                             <th className="col-type">타입</th>
                                             <th className="col-mode">권한</th>
                                             <th className="col-desc">설명</th>
@@ -660,15 +737,26 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                         // blur 시 전체 다시 검증 (중복 체크 보정)
                                                         setPoints(prev => prev.map(p => validatePoint(p, prev)));
                                                     }}
-                                                    placeholder={idx === 0 ? "40001" : ""}
+                                                    placeholder={idx === 0 ? (protocolType === 'MQTT' ? "/sensor/temp" : "40001") : ""}
                                                 />
                                             </td>
+                                            {protocolType === 'MQTT' && (
+                                                <td className="col-key">
+                                                    <input
+                                                        className="excel-input font-mono"
+                                                        value={point.mapping_key || ''}
+                                                        onChange={e => updatePoint(idx, 'mapping_key', e.target.value)}
+                                                        onKeyDown={e => handleKeyDown(e, idx, 2)}
+                                                        placeholder={idx === 0 ? "temperature" : ""}
+                                                    />
+                                                </td>
+                                            )}
                                             <td className="col-type">
                                                 <select
                                                     className="excel-select"
                                                     value={point.data_type}
                                                     onChange={e => updatePoint(idx, 'data_type', e.target.value)}
-                                                    onKeyDown={e => handleKeyDown(e, idx, 2)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 3 : 2)}
                                                 >
                                                     <option value="number">number</option>
                                                     <option value="boolean">boolean</option>
@@ -680,7 +768,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-select"
                                                     value={point.access_mode}
                                                     onChange={e => updatePoint(idx, 'access_mode', e.target.value)}
-                                                    onKeyDown={e => handleKeyDown(e, idx, 3)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 4 : 3)}
                                                 >
                                                     <option value="read">read</option>
                                                     <option value="write">write</option>
@@ -692,7 +780,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-input"
                                                     value={point.description || ''}
                                                     onChange={e => updatePoint(idx, 'description', e.target.value)}
-                                                    onKeyDown={e => handleKeyDown(e, idx, 4)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 5 : 4)}
                                                 />
                                             </td>
                                             <td className="col-unit">
@@ -700,7 +788,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-input"
                                                     value={point.unit || ''}
                                                     onChange={e => updatePoint(idx, 'unit', e.target.value)}
-                                                    onKeyDown={e => handleKeyDown(e, idx, 5)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 6 : 5)}
                                                 />
                                             </td>
                                             <td className="col-scale">
@@ -709,7 +797,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-input text-right"
                                                     value={point.scaling_factor}
                                                     onChange={e => updatePoint(idx, 'scaling_factor', parseFloat(e.target.value))}
-                                                    onKeyDown={e => handleKeyDown(e, idx, 6)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 7 : 6)}
                                                 />
                                             </td>
                                             <td className="col-offset">
@@ -718,7 +806,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                                     className="excel-input text-right"
                                                     value={point.scaling_offset}
                                                     onChange={e => updatePoint(idx, 'scaling_offset', parseFloat(e.target.value))}
-                                                    onKeyDown={e => handleKeyDown(e, idx, 7)}
+                                                    onKeyDown={e => handleKeyDown(e, idx, protocolType === 'MQTT' ? 8 : 7)}
                                                 />
                                             </td>
                                             <td className="col-actions">
@@ -744,6 +832,24 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                             <button className="template-btn" onClick={() => setShowTemplateSelector(!showTemplateSelector)}>
                                 <i className="fas fa-file-import"></i> 템플릿 불러오기
                             </button>
+                            {protocolType === 'MQTT' && (
+                                <button
+                                    className="json-parser-btn"
+                                    onClick={() => setShowJsonParser(!showJsonParser)}
+                                    style={{
+                                        padding: '8px 16px',
+                                        background: '#f0fdf4',
+                                        color: '#166534',
+                                        border: '1px solid #bbf7d0',
+                                        borderRadius: '6px',
+                                        fontWeight: 700,
+                                        fontSize: 13,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <i className="fas fa-code"></i> JSON 샘플 파싱
+                                </button>
+                            )}
                             <button className="reset-btn" onClick={handleReset} title="전체 입력 데이터 초기화">
                                 <i className="fas fa-trash-alt"></i> 초기화
                             </button>
@@ -770,7 +876,49 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                 </div>
                             </div>
                         )}
-                        <span className="stats-text">
+
+                        {/* 🔥 NEW: JSON 파서 버블 */}
+                        {showJsonParser && (
+                            <div className="json-parser-bubble" style={{
+                                position: 'absolute', bottom: '90px', left: '160px', width: '400px',
+                                background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0',
+                                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.2)', zIndex: 1000,
+                                display: 'flex', flexDirection: 'column', overflow: 'hidden'
+                            }}>
+                                <div className="bubble-header" style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#166534' }}>JSON 샘플 데이터 파싱</span>
+                                    <button onClick={() => setShowJsonParser(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8' }}><i className="fas fa-times"></i></button>
+                                </div>
+                                <div style={{ padding: '16px' }}>
+                                    <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>
+                                        디바이스에서 수신되는 JSON 페이로드를 아래에 붙여넣으세요.<br />
+                                        자동으로 키 구조를 분석하여 행을 생성합니다.
+                                    </p>
+                                    <textarea
+                                        className="custom-scrollbar"
+                                        value={jsonInput}
+                                        onChange={(e) => setJsonInput(e.target.value)}
+                                        placeholder='{ "temperature": 25.5, "status": { "on": true } }'
+                                        style={{
+                                            width: '100%', height: '150px', border: '1px solid #cbd5e1',
+                                            borderRadius: '6px', padding: '10px', fontSize: '12px',
+                                            fontFamily: 'monospace', outline: 'none', resize: 'none'
+                                        }}
+                                    />
+                                    <button
+                                        onClick={handleParseJson}
+                                        style={{
+                                            width: '100%', marginTop: '12px', padding: '10px',
+                                            background: '#166534', color: 'white', border: 'none',
+                                            borderRadius: '6px', fontWeight: 700, cursor: 'pointer'
+                                        }}
+                                    >
+                                        구조 분석 및 자동 생성
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        <span className="stats-text" style={{ marginLeft: '12px' }}>
                             총 <strong>{points.filter(p => p.name || p.address).length}</strong>개 입력됨
                         </span>
                     </div>
@@ -785,7 +933,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                         </button>
                     </div>
                 </footer>
-            </div>
+            </div >
 
             <style>{`
                 .bulk-modal-overlay {
@@ -796,7 +944,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                 }
 
                 #bulk-modal-box {
-                    width: 1280px;
+                    width: ${protocolType === 'MQTT' ? '1400px' : '1280px'};
                     height: 850px;
                     max-height: 90vh;
                     background: white;
@@ -915,6 +1063,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                 .col-idx { width: 45px; text-align: center; color: #94a3b8; font-size: 11px; font-family: monospace; }
                 .col-name { width: 220px; }
                 .col-addr { width: 140px; }
+                .col-key { width: 150px; }
                 .col-type { width: 110px; }
                 .col-mode { width: 110px; }
                 .col-desc { width: 280px; }
@@ -1073,7 +1222,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                 }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
             `}</style>
-        </div>,
+        </div >,
         document.body
     );
 };

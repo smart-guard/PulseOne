@@ -375,6 +375,19 @@ class DataService extends BaseService {
             return [];
         }, 'DataService.exportConfiguration');
     }
+
+    /**
+     * 이력 데이터 내보내기
+     */
+    async exportHistoricalData(params, tenantId) {
+        return await this.handleRequest(async () => {
+            const result = await this.getHistoricalData(params, tenantId);
+            if (result.success && result.data) {
+                return result.data.historical_data || [];
+            }
+            return [];
+        }, 'DataService.exportHistoricalData');
+    }
 }
 
 module.exports = new DataService();

@@ -1,19 +1,19 @@
 // frontend/src/pages/ConfigEditor/index.tsx
-import React, { useState, useEffect } from 'react';
-import { Layout, Typography, Space, Tag, List, Badge, Card, Tooltip } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Layout, Typography, Space, Tag, List, Badge, Card, Tooltip, Input } from 'antd';
 import {
-    SettingOutlined,
-    WarningOutlined,
-    FileTextOutlined,
     SettingFilled,
+    FileTextOutlined,
     RightOutlined,
     FolderOpenOutlined,
-    LockOutlined
+    LockOutlined,
+    SearchOutlined,
+    WarningOutlined
 } from '@ant-design/icons';
 import { ManagementLayout } from '../../components/common/ManagementLayout';
 import { ConfigApiService, ConfigFile } from '../../api/services/configApi';
 import EnvFileEditor from './EnvFileEditor';
-import '../../styles/management.css';
+import '../../styles/config-editor.css'; // Use the new specialized CSS
 
 const { Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -23,6 +23,7 @@ const ConfigEditor: React.FC = () => {
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [configPath, setConfigPath] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         loadFiles();
@@ -43,124 +44,117 @@ const ConfigEditor: React.FC = () => {
         }
     };
 
+    const filteredFiles = useMemo(() => {
+        if (!searchTerm) return files;
+        return files.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [files, searchTerm]);
+
     return (
-        <ManagementLayout className="h-full flex flex-col bg-gray-50">
-            {/* Header Area */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shadow-sm z-10">
-                <Space size="middle">
-                    <div className="bg-purple-600 p-2.5 rounded-xl shadow-purple-100 shadow-lg text-white flex items-center justify-center">
-                        <SettingFilled style={{ fontSize: '20px' }} />
+        <ManagementLayout className="config-editor-container">
+            {/* Premium Header Area */}
+            <div className="bg-white border-b border-gray-200 px-8 py-5 flex justify-between items-center z-10">
+                <Space size="large">
+                    <div className="bg-primary-600 p-3 rounded-2xl shadow-primary-100 shadow-xl text-white flex items-center justify-center">
+                        <SettingFilled style={{ fontSize: '24px' }} />
                     </div>
                     <div>
-                        <Title level={4} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.02em' }}>
-                            System Configuration
+                        <Title level={3} style={{ margin: 0, fontWeight: 800, letterSpacing: '-0.025em', color: 'var(--neutral-900)' }}>
+                            시스템 설정
                         </Title>
-                        <Text type="secondary" style={{ fontSize: '12px' }}>
-                            Edit server environment variables and configuration patterns
+                        <Text style={{ fontSize: '14px', color: 'var(--neutral-500)' }}>
+                            서버 환경 변수 및 핵심 설정 구성요소를 관리합니다.
                         </Text>
                     </div>
                 </Space>
-                <Tag color="warning" icon={<WarningOutlined />} style={{ padding: '4px 12px', borderRadius: '6px', fontWeight: 600 }}>
-                    Restart backend to apply changes
-                </Tag>
+
+                <div className="flex items-center gap-4">
+                    <Tag color="warning" icon={<WarningOutlined />} style={{ padding: '6px 16px', borderRadius: '12px', fontWeight: 700, fontSize: '13px', border: 'none', background: 'var(--warning-50)', color: 'var(--warning-700)' }}>
+                        변경 사항 적용을 위해 백엔드 재시작이 필요합니다
+                    </Tag>
+                </div>
             </div>
 
-            <Layout className="flex-1 overflow-hidden h-full bg-transparent">
-                {/* Sidebar: File List */}
-                <Sider
-                    width={280}
-                    theme="light"
-                    className="border-r border-gray-200"
-                    style={{ background: '#fff' }}
-                >
-                    <div className="flex flex-col h-full bg-white">
-                        <div className="p-4 border-b border-gray-100">
-                            <Space>
-                                <SettingOutlined className="text-purple-600" />
-                                <Text strong style={{ fontSize: '14px' }}>Config Files</Text>
-                                <Badge
-                                    count={files.length}
-                                    style={{ backgroundColor: '#f5f3ff', color: '#7c3aed', boxShadow: 'none', fontSize: '10px' }}
-                                />
-                            </Space>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-                            <List
-                                loading={loading}
-                                dataSource={files}
-                                renderItem={(file) => (
-                                    <div
-                                        key={file.name}
-                                        onClick={() => setSelectedFile(file.name)}
-                                        className={`group flex items-center px-4 py-3 mb-1 rounded-lg cursor-pointer transition-all duration-200 ${selectedFile === file.name
-                                            ? 'bg-purple-600 shadow-purple-100 shadow-md translate-x-1'
-                                            : 'hover:bg-gray-50'
-                                            }`}
-                                    >
-                                        <FileTextOutlined
-                                            className={`mr-3 text-sm ${selectedFile === file.name ? 'text-white' : 'text-purple-400 opacity-60'
-                                                }`}
-                                        />
-                                        <Text
-                                            className={`flex-1 truncate text-xs font-medium ${selectedFile === file.name ? 'text-white' : 'text-gray-700'
-                                                }`}
-                                        >
-                                            {file.name}
-                                        </Text>
-                                        {selectedFile === file.name ? (
-                                            <RightOutlined className="text-white text-[10px]" />
-                                        ) : (
-                                            <RightOutlined className="text-gray-300 text-[10px] opacity-0 group-hover:opacity-100" />
-                                        )}
-                                    </div>
-                                )}
+            <Layout className="flex-1 overflow-hidden bg-transparent">
+                {/* Modern Sidebar */}
+                <Sider width={320} className="config-sidebar">
+                    <div className="sidebar-search">
+                        <div className="search-input-wrapper">
+                            <i className="fas fa-search"></i>
+                            <input
+                                type="text"
+                                placeholder="설정 파일 검색..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
+                    </div>
 
-                        <div className="bg-gray-50 p-4 border-t border-gray-100">
-                            <Text type="secondary" style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', display: 'block', marginBottom: '8px' }}>
-                                <FolderOpenOutlined className="mr-1" /> Config Directory
+                    <div className="file-list custom-scrollbar">
+                        <div className="px-3 py-2">
+                            <Text strong style={{ fontSize: '11px', color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                설정 파일 목록 ({filteredFiles.length})
                             </Text>
-                            <Tooltip title={configPath}>
-                                <div className="bg-white border border-gray-200 rounded-md p-2 shadow-sm">
-                                    <Text className="truncate block font-mono text-[9px] text-gray-500">
-                                        {configPath || 'Scanning...'}
-                                    </Text>
+                        </div>
+
+                        {loading ? (
+                            <div className="p-8 text-center"><Text type="secondary">로딩 중...</Text></div>
+                        ) : (
+                            filteredFiles.map((file) => (
+                                <div
+                                    key={file.name}
+                                    onClick={() => setSelectedFile(file.name)}
+                                    className={`file-item ${selectedFile === file.name ? 'active' : ''}`}
+                                >
+                                    <i className={`fas ${file.name.includes('.env') ? 'fa-file-code' : 'fa-file-alt'}`}></i>
+                                    <span className="file-name">{file.name}</span>
+                                    {selectedFile === file.name && <RightOutlined style={{ fontSize: '10px' }} />}
                                 </div>
-                            </Tooltip>
-                            <div className="mt-4 flex items-center justify-center gap-2 py-1.5 px-3 bg-red-50 rounded-md border border-red-100">
-                                <LockOutlined className="text-red-500 text-[10px]" />
-                                <Text strong style={{ fontSize: '9px', color: '#ef4444' }}>RESTRICTED ACCESS</Text>
+                            ))
+                        )}
+                    </div>
+
+                    <div className="p-6 border-t border-gray-100 bg-gray-50/50">
+                        <div className="flex items-center justify-between mb-3">
+                            <Text style={{ fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>
+                                설정 경로
+                            </Text>
+                            <Badge status="processing" text={<Text style={{ fontSize: '10px', color: 'var(--neutral-400)' }}>Connected</Text>} />
+                        </div>
+                        <Tooltip title={configPath}>
+                            <div className="bg-white border border-neutral-200 rounded-xl p-3 shadow-sm flex items-center gap-3">
+                                <FolderOpenOutlined style={{ color: 'var(--primary-500)' }} />
+                                <Text style={{ fontSize: '11px', color: 'var(--neutral-600)', fontFamily: 'monospace' }} className="truncate">
+                                    {configPath || '/app/config'}
+                                </Text>
                             </div>
+                        </Tooltip>
+
+                        <div className="mt-4 flex items-center gap-2 py-2 px-3 bg-error-50 rounded-lg border border-error-100">
+                            <LockOutlined className="text-error-500 text-[12px]" />
+                            <Text strong style={{ fontSize: '10px', color: 'var(--error-600)' }}>RESTRICTED SYSTEM ACCESS</Text>
                         </div>
                     </div>
                 </Sider>
 
-                {/* Main Content: Editor */}
-                <Content className="overflow-hidden bg-gray-50 flex flex-col">
+                {/* Editor Area */}
+                <Content className="overflow-hidden bg-transparent flex flex-col">
                     {selectedFile ? (
                         <div className="h-full flex flex-col">
                             <EnvFileEditor filename={selectedFile} />
                         </div>
                     ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                        <div className="empty-state">
                             <Card bordered={false} className="bg-transparent text-center">
-                                <FileTextOutlined style={{ fontSize: '64px', opacity: 0.1, marginBottom: '24px', display: 'block' }} />
-                                <Title level={4} style={{ color: '#9ca3af', fontWeight: 600 }}>Select a configuration file</Title>
-                                <Text type="secondary">Choose an environment file to manage system settings</Text>
+                                <div className="bg-neutral-100 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                                    <FileTextOutlined style={{ fontSize: '32px', color: 'var(--neutral-400)' }} />
+                                </div>
+                                <Title level={4} style={{ color: 'var(--neutral-800)', fontWeight: 800 }}>관리할 파일을 선택하세요</Title>
+                                <Text style={{ color: 'var(--neutral-500)' }}>왼쪽 목록에서 서버 환경 설정 파일을 선택하여 편집할 수 있습니다.</Text>
                             </Card>
                         </div>
                     )}
                 </Content>
             </Layout>
-
-            <style>{`
-                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
-                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
-            `}</style>
         </ManagementLayout>
     );
 };
