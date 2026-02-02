@@ -192,6 +192,8 @@ router.post('/export', async (req, res) => {
             exportResult = await DataService.exportCurrentValues(point_ids, device_ids, req.tenantId);
         } else if (export_type === 'configuration') {
             exportResult = await DataService.exportConfiguration(point_ids, device_ids, req.tenantId);
+        } else if (export_type === 'historical') {
+            exportResult = await DataService.exportHistoricalData(req.body, req.tenantId);
         }
 
         if (exportResult && exportResult.success) {

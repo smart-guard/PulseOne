@@ -35,6 +35,7 @@ class TemplateDataPointRepository extends BaseRepository {
                 description: data.description || null,
                 address: data.address,
                 address_string: data.address_string || null,
+                mapping_key: data.mapping_key || null,
                 data_type: data.data_type || 'FLOAT32',
                 access_mode: data.access_mode || 'read',
                 unit: data.unit || null,
@@ -43,7 +44,8 @@ class TemplateDataPointRepository extends BaseRepository {
                 is_writable: data.is_writable ? 1 : 0,
                 is_active: data.is_active !== false ? 1 : 0,
                 sort_order: data.sort_order || 0,
-                metadata: typeof data.metadata === 'object' ? JSON.stringify(data.metadata) : (data.metadata || null)
+                metadata: typeof data.metadata === 'object' ? JSON.stringify(data.metadata) : (data.metadata || null),
+                protocol_params: typeof data.protocol_params === 'object' ? JSON.stringify(data.protocol_params) : (data.protocol_params || null)
             });
             return await this.query().where('id', id).first();
         } catch (error) {
@@ -62,14 +64,14 @@ class TemplateDataPointRepository extends BaseRepository {
             };
 
             const fields = [
-                'name', 'description', 'address', 'address_string',
+                'name', 'description', 'address', 'address_string', 'mapping_key',
                 'data_type', 'access_mode', 'unit', 'scaling_factor', 'scaling_offset',
-                'is_writable', 'is_active', 'sort_order', 'metadata'
+                'is_writable', 'is_active', 'sort_order', 'metadata', 'protocol_params'
             ];
 
             fields.forEach(field => {
                 if (data[field] !== undefined) {
-                    if (field === 'metadata' && typeof data[field] === 'object') {
+                    if ((field === 'metadata' || field === 'protocol_params') && typeof data[field] === 'object') {
                         updateData[field] = JSON.stringify(data[field]);
                     } else if (field === 'is_writable' || field === 'is_active') {
                         updateData[field] = data[field] ? 1 : 0;

@@ -21,6 +21,8 @@ export interface DataPoint {
   device_id: number;
   device_name?: string;
   address: string;
+  address_string?: string;
+  mapping_key?: string;
   data_type: 'number' | 'boolean' | 'string';
   original_data_type?: string; // 원본 C++ 타입 (FLOAT32, UINT32 등)
   unit?: string;

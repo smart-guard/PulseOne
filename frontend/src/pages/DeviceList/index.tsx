@@ -39,8 +39,14 @@ const DeviceList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [protocolFilter, setProtocolFilter] = useState<string>('all');
-  const [protocolIdFilter, setProtocolIdFilter] = useState<number | 'all'>('all');
-  const [instanceIdFilter, setInstanceIdFilter] = useState<number | 'all'>('all');
+  const [protocolIdFilter, setProtocolIdFilter] = useState<number | 'all'>(() => {
+    const pId = new URLSearchParams(window.location.search).get('protocolId');
+    return pId ? parseInt(pId, 10) : 'all';
+  });
+  const [instanceIdFilter, setInstanceIdFilter] = useState<number | 'all'>(() => {
+    const iId = new URLSearchParams(window.location.search).get('instanceId');
+    return iId ? parseInt(iId, 10) : 'all';
+  });
   const [connectionFilter, setConnectionFilter] = useState<string>('all');
   const [availableProtocols, setAvailableProtocols] = useState<string[]>([]);
 
@@ -690,7 +696,7 @@ const DeviceList: React.FC = () => {
                   return newParams;
                 }, { replace: true });
               }}
-              className="mgmt-btn-text"
+              className="mgmt-btn-text premium"
               style={{
                 color: 'var(--primary-600)',
                 fontSize: '12px',

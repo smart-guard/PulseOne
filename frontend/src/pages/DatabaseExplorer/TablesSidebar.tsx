@@ -18,6 +18,9 @@ const TablesSidebar: React.FC<TablesSidebarProps> = ({ refreshTrigger, onSelectT
     const [searchTerm, setSearchTerm] = useState('');
     const [dbPath, setDbPath] = useState<string>('');
 
+    // Force independent scrolling by using a fixed-height relative to viewport
+    const sidebarHeight = 'calc(100vh - 150px)'; // Header(80px) + Search(70px) approx
+
     useEffect(() => {
         loadTables();
     }, [refreshTrigger]);
@@ -71,7 +74,7 @@ const TablesSidebar: React.FC<TablesSidebarProps> = ({ refreshTrigger, onSelectT
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar p-2">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2" style={{ height: sidebarHeight, maxHeight: sidebarHeight }}>
                 <List
                     loading={loading}
                     dataSource={filteredTables}
@@ -129,6 +132,9 @@ const TablesSidebar: React.FC<TablesSidebarProps> = ({ refreshTrigger, onSelectT
             </div>
 
             <style>{`
+                .custom-scrollbar {
+                    overflow-y: auto !important;
+                }
                 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
