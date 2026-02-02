@@ -731,7 +731,7 @@ class DeviceService extends BaseService {
             return {
                 status: result.success ? 'started' : 'failed',
                 job_id: Date.now().toString(), // 임시 Job ID
-                message: result.data?.message || 'Scan initiated',
+                message: result.data?.data?.message || result.data?.message || 'Scan initiated',
                 target_edge_server: edgeServerId
             };
         }, 'ScanNetwork');
@@ -912,19 +912,47 @@ class DeviceService extends BaseService {
 
             // since가 없으면 최근 5분 이내 데이터 조회 (기초값)
             const sinceTime = since ? new Date(parseInt(since)) : new Date(Date.now() - 5 * 60 * 1000);
+            const isoSince = sinceTime.toISOString().slice(0, 19).replace('T', ' ');
 
-            let query = this.repository.query('d')
+            // 1. 기본 디바이스 스캔 결과 조회
+            let deviceQuery = this.repository.query('d')
                 .leftJoin('protocols as p', 'p.id', 'd.protocol_id')
-                .where('d.created_at', '>=', sinceTime.toISOString().slice(0, 19).replace('T', ' '))
+                .where('d.created_at', '>=', isoSince)
                 .where('d.tenant_id', tenantId)
                 .select('d.*', 'p.protocol_type', 'p.display_name as protocol_name');
 
             if (protocol) {
-                query.where('p.protocol_type', protocol);
+                deviceQuery.where('p.protocol_type', protocol);
             }
 
-            const results = await query;
-            return results.map(d => this.enhanceDeviceWithRtuInfo(this.repository.parseDevice(d)));
+            const discoveredDevices = await deviceQuery;
+            let results = discoveredDevices.map(d => this.enhanceDeviceWithRtuInfo(this.repository.parseDevice(d)));
+
+            // 2. MQTT인 경우 최근 자동 등록된 데이터포인트도 결과에 포함 (UX 개선)
+            if (protocol === 'MQTT') {
+                const factory = require('../database/repositories/RepositoryFactory').getInstance();
+                const pointRepo = factory.getDataPointRepository();
+
+                const discoveredPoints = await pointRepo.query('dp')
+                    .leftJoin('devices as d', 'd.id', 'dp.device_id')
+                    .leftJoin('protocols as p', 'p.id', 'd.protocol_id')
+                    .where('dp.created_at', '>=', isoSince)
+                    .where('p.protocol_type', 'MQTT')
+                    .where('d.tenant_id', tenantId)
+                    .select('dp.id', 'dp.name', 'dp.address_string', 'd.endpoint', 'p.display_name as protocol_name');
+
+                const virtualDevices = discoveredPoints.map(p => ({
+                    id: `pt_${p.id}`,
+                    name: p.name,
+                    protocol_name: p.protocol_name,
+                    endpoint: p.endpoint,
+                    is_point: true
+                }));
+
+                results = [...results, ...virtualDevices];
+            }
+
+            return results;
         }, 'GetScanResults');
     }
 }

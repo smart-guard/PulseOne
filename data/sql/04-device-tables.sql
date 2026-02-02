@@ -185,6 +185,7 @@ CREATE TABLE IF NOT EXISTS devices (
     template_device_id INTEGER,
     manufacturer_id INTEGER,
     model_id INTEGER,
+    protocol_instance_id INTEGER,                        -- 프로토콜 인스턴스 참조
     
     -- 감사 정보
     created_by INTEGER,
@@ -196,6 +197,7 @@ CREATE TABLE IF NOT EXISTS devices (
     FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
     FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
+    FOREIGN KEY (protocol_instance_id) REFERENCES protocol_instances(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id),
     FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE SET NULL,
     FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE SET NULL,

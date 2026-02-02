@@ -26,6 +26,8 @@ export interface Device {
   serial_number?: string;
   protocol_type: string;
   protocol_id: number;
+  protocol_instance_id?: number; // 🔥 NEW: 인스턴스 ID
+  instance_name?: string;        // 🔥 NEW: 인스턴스 이름
   protocol?: {
     id: number;
     name: string;

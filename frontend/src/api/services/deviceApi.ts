@@ -57,6 +57,8 @@ export interface Device {
 
   // 프로토콜 정보 - ID와 타입 모두 관리
   protocol_id: number;           // 데이터베이스 ID (실제 저장값)
+  protocol_instance_id?: number; // 🔥 NEW: 프로토콜 인스턴스 ID (멀티 인스턴스/VHost 지원)
+  instance_name?: string;        // 🔥 NEW: 인스턴스 이름 (표시용)
   protocol_type: string;         // 타입 문자열 (표시용)
   endpoint: string;
   config?: any;
@@ -253,6 +255,7 @@ export interface CreateDeviceRequest {
   manufacturer?: string;
   model?: string;
   protocol_id: number;           // protocol_type → protocol_id
+  protocol_instance_id?: number; // 🔥 NEW: 프로토콜 인스턴스 ID (선택 사항)
   endpoint: string;
   config?: any;
   site_id?: number;
@@ -280,6 +283,7 @@ export interface UpdateDeviceRequest {
   config?: any;
   device_group_id?: number;
   protocol_id?: number;
+  protocol_instance_id?: number; // 🔥 NEW
   tags?: string[] | string;
   metadata?: any;
   custom_fields?: any;
@@ -311,6 +315,7 @@ export interface GetDevicesParams {
   search?: string;
   protocol_type?: string;        // 필터링용 (호환성)
   protocol_id?: number;          // ID로 필터링
+  protocol_instance_id?: number; // 🔥 NEW: 인스턴스 ID로 필터링
   device_type?: string;
   connection_status?: string;
   status?: string;

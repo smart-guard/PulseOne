@@ -4,7 +4,8 @@
 // ============================================================================
 
 import { apiClient } from '../client';
-import { ApiResponse, PaginatedApiResponse } from '../../types/common';
+import { ApiResponse, PaginatedApiResponse, PaginatedResponse } from '../../types/common';
+export type { ApiResponse, PaginatedApiResponse, PaginatedResponse };
 
 // ============================================================================
 // 프로토콜 관련 인터페이스들
@@ -27,6 +28,8 @@ export interface Protocol {
   };
   default_polling_interval?: number;
   default_timeout?: number;
+  max_concurrent_connections?: number;
+  min_firmware_version?: string;
   category?: string;
   vendor?: string;
   standard_reference?: string;
@@ -35,6 +38,21 @@ export interface Protocol {
   device_count?: number;
   enabled_count?: number;
   connected_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProtocolInstance {
+  id: number;
+  protocol_id: number;
+  instance_name: string;
+  description?: string;
+  vhost?: string;
+  api_key?: string;
+  api_key_updated_at?: string;
+  connection_params?: Record<string, any>;
+  is_enabled: boolean;
+  status: 'RUNNING' | 'STOPPED' | 'ERROR';
   created_at?: string;
   updated_at?: string;
 }
@@ -174,5 +192,53 @@ export class ProtocolApiService {
     error_message?: string;
   }>> {
     return await apiClient.post<any>(`${this.BASE_URL}/${id}/test`, params);
+  }
+
+  /**
+   * MQTT 브로커 상태 조회
+   */
+  static async getBrokerStatus(): Promise<ApiResponse<{
+    is_healthy: boolean;
+    stats: any;
+    health_details: any;
+    connection_list: any[];
+    timestamp: string;
+  }>> {
+    return await apiClient.get<any>(`${this.BASE_URL}/broker/status`);
+  }
+
+  /**
+   * 프로토콜 인스턴스 목록 조회
+   */
+  static async getProtocolInstances(protocolId: number, page: number = 1, limit: number = 20): Promise<PaginatedApiResponse<ProtocolInstance>> {
+    return await apiClient.get<PaginatedResponse<ProtocolInstance>>(`${this.BASE_URL}/${protocolId}/instances?page=${page}&limit=${limit}`);
+  }
+
+  /**
+   * 프로토콜 인스턴스 생성
+   */
+  static async createProtocolInstance(protocolId: number, data: Partial<ProtocolInstance>): Promise<ApiResponse<ProtocolInstance>> {
+    return await apiClient.post<ProtocolInstance>(this.BASE_URL + "/" + protocolId + "/instances", data);
+  }
+
+  /**
+   * 프로토콜 인스턴스 수정
+   */
+  static async updateProtocolInstance(instanceId: number, data: Partial<ProtocolInstance>): Promise<ApiResponse<ProtocolInstance>> {
+    return await apiClient.put<ProtocolInstance>(this.BASE_URL + "/instances/" + instanceId, data);
+  }
+
+  /**
+   * 프로토콜 인스턴스 삭제
+   */
+  static async deleteProtocolInstance(instanceId: number): Promise<ApiResponse<{ deleted: boolean }>> {
+    return await apiClient.delete<{ deleted: boolean }>(this.BASE_URL + "/instances/" + instanceId);
+  }
+
+  /**
+   * 특정 프로토콜을 사용하는 디바이스 목록 조회
+   */
+  static async getProtocolDevices(protocolId: number, params?: { limit?: number; offset?: number }): Promise<ApiResponse<any[]>> {
+    return await apiClient.get<any[]>(`${this.BASE_URL}/${protocolId}/devices`, params);
   }
 }

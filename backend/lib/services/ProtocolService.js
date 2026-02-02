@@ -5,6 +5,7 @@
 
 const BaseService = require('./BaseService');
 const RepositoryFactory = require('../database/repositories/RepositoryFactory');
+const { manager: RabbitMQManager } = require('../connection/mq');
 
 class ProtocolService extends BaseService {
     constructor() {
@@ -16,6 +17,13 @@ class ProtocolService extends BaseService {
             this._repository = RepositoryFactory.getInstance().getRepository('ProtocolRepository');
         }
         return this._repository;
+    }
+
+    get instanceRepository() {
+        if (!this._instanceRepository) {
+            this._instanceRepository = RepositoryFactory.getInstance().getProtocolInstanceRepository();
+        }
+        return this._instanceRepository;
     }
 
     /**
@@ -180,6 +188,125 @@ class ProtocolService extends BaseService {
                 error_message: errorMessage
             };
         }, 'TestConnection');
+    }
+
+    /**
+     * MQTT 브로커 상태 조회 (상세 메트릭 포함)
+     */
+    async getBrokerStatus() {
+        return await this.handleRequest(async () => {
+            const isHealthy = await RabbitMQManager.isHealthy();
+            const advancedStats = await RabbitMQManager.getAdvancedStats();
+
+            return {
+                is_healthy: isHealthy,
+                stats: advancedStats?.metrics || null,
+                health_details: advancedStats?.health || null,
+                connection_list: advancedStats?.connection_list || [],
+                timestamp: new Date().toISOString()
+            };
+        }, 'GetBrokerStatus');
+    }
+
+    // =========================================================================
+    // Protocol Instance Management
+    // =========================================================================
+
+    /**
+     * 특정 프로토콜의 인스턴스 목록 조회 (Multi-Tenant)
+     */
+    async getInstancesByProtocolId(protocolId, tenantId = null, page = 1, limit = 100) {
+        return await this.handleRequest(async () => {
+            // tenantId가 있으면 tenant_id 필터링, 없으면(System Admin) 모든 테넌트 조회 가능하나 필터링 제공 가능
+            // Repository의 findByProtocolId는 단순히 protocol_id로만 찾지만,
+            // Multi-Tenant 환경에서는 findAll을 사용하여 필터링하는 것이 안전.
+
+            const filters = {
+                protocol_id: protocolId
+            };
+
+            if (tenantId) {
+                filters.tenant_id = tenantId;
+            }
+
+            // Repository Method Correction: findByProtocolId -> findAll with filters
+            return await this.instanceRepository.findAll(filters, { page, limit });
+        }, 'GetInstancesByProtocolId');
+    }
+
+    /**
+     * 인스턴스 생성
+     */
+    async createInstance(instanceData) {
+        return await this.handleRequest(async () => {
+            const id = await this.instanceRepository.create(instanceData);
+
+            // 활성화 상태라면 RabbitMQ 연결 시도
+            if (instanceData.is_enabled) {
+                try {
+                    await RabbitMQManager.connectInstance({ id, ...instanceData });
+                } catch (error) {
+                    console.error(`[ProtocolService] Instance:${id} 초기 연결 실패:`, error.message);
+                }
+            }
+
+            return { id, ...instanceData };
+        }, 'CreateInstance');
+    }
+
+    /**
+     * 인스턴스 업데이트
+     */
+    async updateInstance(id, updateData) {
+        return await this.handleRequest(async () => {
+            await this.instanceRepository.update(id, updateData);
+
+            // 연결 정보가 변경되었거나 상태가 변경된 경우 재연결/해제 처리
+            const instance = await this.instanceRepository.findById(id);
+            if (instance) {
+                if (instance.is_enabled) {
+                    try {
+                        await RabbitMQManager.connectInstance(instance);
+                    } catch (error) {
+                        console.error(`[ProtocolService] Instance:${id} 재연결 실패:`, error.message);
+                    }
+                } else {
+                    await RabbitMQManager.disconnectInstance(id);
+                }
+            }
+
+            return { id, ...updateData };
+        }, 'UpdateInstance');
+    }
+
+    /**
+     * 인스턴스 삭제
+     */
+    async deleteInstance(id) {
+        return await this.handleRequest(async () => {
+            // RabbitMQ 연결 해제 우선 수행
+            await RabbitMQManager.disconnectInstance(id);
+            return await this.instanceRepository.delete(id);
+        }, 'DeleteInstance');
+    }
+
+    /**
+     * 모든 활성화된 인스턴스 초기화 (시스템 시작 시 호출용)
+     */
+    async initializeInstances() {
+        return await this.handleRequest(async () => {
+            const instances = await this.instanceRepository.findAll({ is_enabled: 1 });
+            console.log(`[ProtocolService] ${instances.length}개의 활성 인스턴스 초기화 시작...`);
+
+            for (const instance of instances) {
+                try {
+                    await RabbitMQManager.connectInstance(instance);
+                } catch (error) {
+                    console.error(`[ProtocolService] Instance:${instance.id} 초기화 중 연결 실패:`, instance.instance_name);
+                }
+            }
+            return { count: instances.length };
+        }, 'InitializeInstances');
     }
 }
 

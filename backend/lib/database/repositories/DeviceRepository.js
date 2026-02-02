@@ -22,6 +22,7 @@ class DeviceRepository extends BaseRepository {
         try {
             const query = this.query('d')
                 .leftJoin('protocols as p', 'p.id', 'd.protocol_id')
+                .leftJoin('protocol_instances as pi', 'pi.id', 'd.protocol_instance_id')
                 .leftJoin('device_groups as dg', 'dg.id', 'd.device_group_id')
                 .leftJoin('sites as s', 's.id', 'd.site_id')
                 .leftJoin('device_status as dst', 'dst.device_id', 'd.id')
@@ -29,8 +30,10 @@ class DeviceRepository extends BaseRepository {
                 .leftJoin('template_devices as td', 'td.id', 'd.template_device_id')
                 .select(
                     'd.*',
+                    'd.protocol_instance_id',
                     'p.protocol_type',
                     'p.display_name as protocol_name',
+                    'pi.instance_name',
                     'dg.name as device_group_name',
                     's.name as site_name',
                     'td.name as template_name',
@@ -174,14 +177,17 @@ class DeviceRepository extends BaseRepository {
         try {
             const query = (trx || this.knex)('devices as d')
                 .leftJoin('protocols as p', 'p.id', 'd.protocol_id')
+                .leftJoin('protocol_instances as pi', 'pi.id', 'd.protocol_instance_id')
                 .leftJoin('device_groups as dg', 'dg.id', 'd.device_group_id')
                 .leftJoin('sites as s', 's.id', 'd.site_id')
                 .leftJoin('device_status as dst', 'dst.device_id', 'd.id')
                 .leftJoin('template_devices as td', 'td.id', 'd.template_device_id')
                 .select(
                     'd.*',
+                    'd.protocol_instance_id',
                     'p.protocol_type',
                     'p.display_name as protocol_name',
+                    'pi.instance_name',
                     'dg.name as device_group_name',
                     's.name as site_name',
                     'td.name as template_name',
@@ -267,6 +273,7 @@ class DeviceRepository extends BaseRepository {
                 model: deviceData.model || null,
                 serial_number: deviceData.serial_number || null,
                 protocol_id: deviceData.protocol_id,
+                protocol_instance_id: deviceData.protocol_instance_id || null,
                 endpoint: deviceData.endpoint,
                 config: typeof deviceData.config === 'object' ? JSON.stringify(deviceData.config) : (deviceData.config || '{}'),
                 polling_interval: deviceData.polling_interval || 1000,
@@ -405,7 +412,7 @@ class DeviceRepository extends BaseRepository {
         try {
             const allowedFields = [
                 'name', 'description', 'device_type', 'manufacturer', 'model', 'serial_number',
-                'protocol_id', 'endpoint', 'config', 'polling_interval', 'timeout',
+                'protocol_id', 'protocol_instance_id', 'endpoint', 'config', 'polling_interval', 'timeout',
                 'retry_count', 'is_enabled', 'installation_date', 'device_group_id', 'edge_server_id',
                 'tags', 'metadata', 'custom_fields'
             ];
@@ -1028,6 +1035,14 @@ class DeviceRepository extends BaseRepository {
 
         if (options.endpoint) {
             query.where('d.endpoint', options.endpoint);
+        }
+
+        if (options.protocolId || options.protocol_id) {
+            query.where('d.protocol_id', options.protocolId || options.protocol_id);
+        }
+
+        if (options.protocolInstanceId || options.protocol_instance_id) {
+            query.where('d.protocol_instance_id', options.protocolInstanceId || options.protocol_instance_id);
         }
 
         // 필터 추가: 프로토콜 타입

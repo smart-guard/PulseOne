@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ProtocolApiService } from '../api/services/protocolApi';
 import ProtocolEditor from '../components/modals/ProtocolModal/ProtocolEditor';
 import ProtocolDetailModal from '../components/modals/ProtocolModal/ProtocolDetailModal';
@@ -13,6 +14,7 @@ import { PageHeader } from '../components/common/PageHeader';
 import { StatCard } from '../components/common/StatCard';
 import { FilterBar } from '../components/common/FilterBar';
 import { ProtocolDevicesModal } from '../components/modals/ProtocolModal/ProtocolDevicesModal';
+import ProtocolDashboard from '../components/protocols/ProtocolDashboard';
 import '../styles/management.css';
 import '../styles/protocol-management.css';
 
@@ -72,6 +74,11 @@ const ProtocolManagement: React.FC = () => {
   const [showEditor, setShowEditor] = useState<{ mode: 'create' | 'edit', protocolId?: number } | null>(null);
   const [showDevicesModal, setShowDevicesModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Dashboard View State (URL 기반으로 동기화)
+  const { type: urlProtocolType, id: urlProtocolId, tab: urlTab } = useParams();
+  const navigate = useNavigate();
+  const selectedDashboardId = urlProtocolId ? parseInt(urlProtocolId) : null;
 
   const loadProtocols = useCallback(async () => {
     try {
@@ -134,7 +141,10 @@ const ProtocolManagement: React.FC = () => {
   };
 
   const openEditor = (mode: 'create' | 'edit', id?: number) => setShowEditor({ mode, protocolId: id });
-  const openDetail = (protocol: Protocol) => { setSelectedProtocol(protocol); setShowDetailModal(true); };
+  const openDetail = (protocol: Protocol) => {
+    // 모든 프로토콜에 대해 통합 대시보드로 이동
+    navigate(`/protocols/${protocol.protocol_type.toLowerCase()}/${protocol.id}`);
+  };
   const openDevicesPopup = (protocol: Protocol) => { setSelectedProtocol(protocol); setShowDevicesModal(true); };
 
   const handlePageChange = (page: number, size: number) => {
@@ -144,6 +154,42 @@ const ProtocolManagement: React.FC = () => {
 
   if (loading && protocols.length === 0) {
     return <ManagementLayout><div className="loading-container">로딩 중...</div></ManagementLayout>;
+  }
+
+  // Dashboard View Render
+  if (selectedDashboardId) {
+    const protocol = protocols.find(p => p.id === selectedDashboardId);
+
+    // 데이터 로딩 중이거나 프로토콜을 찾지 못한 경우 처리
+    if (loading && !protocol) {
+      return <ManagementLayout><div className="loading-container">대시보드 데이터를 불러오는 중...</div></ManagementLayout>;
+    }
+
+    if (!protocol && !loading) {
+      return (
+        <ManagementLayout>
+          <div style={{ textAlign: 'center', padding: '100px' }}>
+            <h3>프로토콜을 찾을 수 없습니다.</h3>
+            <button className="mgmt-btn" onClick={() => navigate('/protocols')}>목록으로 돌아가기</button>
+          </div>
+        </ManagementLayout>
+      );
+    }
+    return (
+      <ManagementLayout>
+        <div className="dashboard-view-container" style={{ marginBottom: '24px' }}>
+          <div className="mgmt-back-nav" style={{ marginBottom: '16px' }}>
+            <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" onClick={() => navigate('/protocols')}>
+              <i className="fas fa-arrow-left"></i> 프로토콜 목록으로 돌아가기
+            </button>
+          </div>
+          <ProtocolDashboard
+            protocol={protocol}
+            onRefresh={() => { loadProtocols(); loadStats(); }}
+          />
+        </div>
+      </ManagementLayout>
+    );
   }
 
   return (
@@ -230,8 +276,6 @@ const ProtocolManagement: React.FC = () => {
                   </div>
                   <div className="mgmt-card-actions">
                     <button className="mgmt-btn-icon" onClick={() => openDetail(protocol)} title="상세보기"><i className="fas fa-eye"></i></button>
-                    {/* System Protocol: Create/Delete not allowed, Edit restricted to meta */}
-                    <button className="mgmt-btn-icon" onClick={() => openEditor('edit', protocol.id)} title="설정 변경"><i className="fas fa-cog"></i></button>
                   </div>
                 </div>
                 <div className="mgmt-card-body">
@@ -314,15 +358,6 @@ const ProtocolManagement: React.FC = () => {
                         <span className={`mgmt-badge ${protocol.is_enabled ? 'success' : 'neutral'}`}>
                           {protocol.is_enabled ? '활성' : '비활성'}
                         </span>
-                        {/* List View Actions */}
-                        <button
-                          className="mgmt-btn-icon-small"
-                          onClick={(e) => { e.stopPropagation(); openEditor('edit', protocol.id); }}
-                          title="설정 변경"
-                          style={{ marginLeft: '8px', opacity: 0.6 }}
-                        >
-                          <i className="fas fa-cog"></i>
-                        </button>
                       </div>
                     </td>
                   </tr>

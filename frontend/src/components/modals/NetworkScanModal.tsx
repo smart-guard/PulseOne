@@ -18,6 +18,8 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
     const [discoveredDevices, setDiscoveredDevices] = useState<Device[]>([]);
     const [scanStartTime, setScanStartTime] = useState<number | null>(null);
     const pollingTimer = useRef<NodeJS.Timeout | null>(null);
+    const [scanDuration, setScanDuration] = useState(0);
+    const [progress, setProgress] = useState(0);
 
     // Reset state when modal opens/closes
     useEffect(() => {
@@ -27,6 +29,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
             setDiscoveredDevices([]);
             setScanStartTime(null);
             setError(null);
+            setProgress(0);
         }
     }, [isOpen]);
 
@@ -50,10 +53,8 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
     };
 
     const handleScan = async () => {
-        // Validation: range is mandatory for non-BACNET, non-MODBUS_RTU protocols.
-        // For BACNET, empty range triggers broadcast/auto-detect.
-        if (!range && protocol !== 'BACNET' && protocol !== 'MODBUS_RTU') {
-            setError('IP 범위(CIDR)를 입력해주세요.');
+        if (!range && protocol !== 'BACNET' && protocol !== 'MODBUS_RTU' && protocol !== 'MQTT') {
+            setError(protocol === 'MQTT' ? '브로커 URL을 입력해주세요.' : 'IP 범위(CIDR)를 입력해주세요.');
             return;
         }
 
@@ -61,10 +62,22 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
             setIsScanning(true);
             setError(null);
             setDiscoveredDevices([]);
+            setProgress(0);
             const startTime = Date.now();
             setScanStartTime(startTime);
+            setScanDuration(timeoutValue + 2000);
+            // Start progress animation
+            const progressInterval = 100;
+            const totalDuration = timeoutValue + 2000;
+            let currentProgress = 0;
 
-            // Call Scan API
+            const progressTimer = setInterval(() => {
+                currentProgress += progressInterval;
+                const newProgress = Math.min((currentProgress / totalDuration) * 100, 95);
+                setProgress(newProgress);
+                if (currentProgress >= totalDuration) clearInterval(progressTimer);
+            }, progressInterval);
+
             const response = await DeviceApiService.scanNetwork({
                 protocol,
                 range,
@@ -72,26 +85,52 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
             });
 
             if (response.success) {
-                // Start polling for results
                 startPolling(startTime);
 
-                // Keep modal open to show results
-                // We'll stop scanning state after a while or manually
-                // Let's stop after timeoutValue + some buffer
-                window.setTimeout(() => {
+                window.setTimeout(async () => {
                     if (pollingTimer.current) {
                         clearInterval(pollingTimer.current);
                         pollingTimer.current = null;
                     }
                     setIsScanning(false);
-                }, timeoutValue + 2000);
+                    setProgress(100);
+                    clearInterval(progressTimer);
+
+                    // Fetch final results to get the count
+                    const finalResults = await DeviceApiService.getScanResults({
+                        since: startTime.toString(),
+                        protocol: protocol
+                    });
+
+                    const foundCount = finalResults.success && finalResults.data ? finalResults.data.length : 0;
+
+                    if (foundCount > 0) {
+                        await confirm({
+                            title: '스캔 완료',
+                            message: `${foundCount}건의 새로운 장치가 발견되어 자동 등록되었습니다.`,
+                            confirmText: '확인',
+                            showCancelButton: false,
+                            confirmButtonType: 'success'
+                        });
+                    } else {
+                        await confirm({
+                            title: '스캔 완료',
+                            message: '새롭게 발견된 장치가 없습니다. 네트워크 환경 또는 설정을 확인해주세요.',
+                            confirmText: '확인',
+                            showCancelButton: false,
+                            confirmButtonType: 'warning'
+                        });
+                    }
+                }, totalDuration);
 
             } else {
+                clearInterval(progressTimer);
                 throw new Error(response.error || '스캔 시작 실패');
             }
         } catch (err: any) {
             setError(err.message || '스캔 중 오류가 발생했습니다.');
             setIsScanning(false);
+            setProgress(0);
         }
     };
 
@@ -150,6 +189,7 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                 style={{ height: '42px', borderRadius: '10px', fontSize: '14px' }}
                             >
                                 <option value="BACNET">BACnet/IP (추천)</option>
+                                <option value="MQTT">MQTT Discovery (스마트 탐색)</option>
                                 <option value="MODBUS_TCP">Modbus TCP (테스트용)</option>
                                 <option value="MODBUS_RTU">Modbus RTU (시리얼)</option>
                             </select>
@@ -162,20 +202,25 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
 
                         <div className="mgmt-modal-form-group">
                             <label style={{ fontSize: '12px', fontWeight: 700, color: '#718096', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                                {protocol === 'MODBUS_RTU' ? '시리얼 포트 경로' : '네트워크 대역 (CIDR)'}
+                                {protocol === 'MQTT' ? '브로커 URL' : (protocol === 'MODBUS_RTU' ? '시리얼 포트 경로' : '네트워크 대역 (CIDR)')}
                             </label>
                             <input
                                 type="text"
                                 className="mgmt-input"
-                                placeholder={protocol === 'MODBUS_RTU' ? '예: /dev/ttyS0' : '예: 192.168.1.0/24'}
+                                placeholder={protocol === 'MQTT' ? '예: mqtt://rabbitmq:1883' : (protocol === 'MODBUS_RTU' ? '예: /dev/ttyS0' : '예: 192.168.1.0/24')}
                                 value={range}
                                 onChange={(e) => setRange(e.target.value)}
                                 disabled={isScanning}
                                 style={{ height: '42px', borderRadius: '10px', fontSize: '14px' }}
                             />
-                            {protocol !== 'MODBUS_RTU' && (
+                            {protocol !== 'MODBUS_RTU' && protocol !== 'MQTT' && (
                                 <div style={{ marginTop: '8px', color: '#a0aec0', fontSize: '11px' }}>
                                     대역을 비워두면 로컬 네트워크 브로드캐스트를 사용합니다.
+                                </div>
+                            )}
+                            {protocol === 'MQTT' && (
+                                <div style={{ marginTop: '8px', color: '#a0aec0', fontSize: '11px' }}>
+                                    브로커에 연결하여 활성화된 토픽을 기반으로 장치를 자동 탐색합니다.
                                 </div>
                             )}
                         </div>
@@ -205,6 +250,30 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                             )}
                         </div>
 
+                        {/* Progress Bar Container */}
+                        {isScanning && (
+                            <div style={{ marginBottom: '20px' }}>
+                                <div style={{
+                                    height: '6px',
+                                    background: '#e2e8f0',
+                                    borderRadius: '3px',
+                                    overflow: 'hidden',
+                                    marginBottom: '8px'
+                                }}>
+                                    <div style={{
+                                        width: `${progress}%`,
+                                        height: '100%',
+                                        background: 'linear-gradient(90deg, #667eea, #764ba2)',
+                                        transition: 'width 0.3s ease-out'
+                                    }}></div>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#718096', fontWeight: 500 }}>
+                                    <span>네트워크 탐색 중...</span>
+                                    <span>{Math.round(progress)}%</span>
+                                </div>
+                            </div>
+                        )}
+
                         <div style={{
                             border: '1px solid #e2e8f0',
                             borderRadius: '16px',
@@ -233,8 +302,23 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                                 </div>
                             ) : discoveredDevices.length === 0 && isScanning ? (
                                 <div style={{ padding: '48px 24px', textAlign: 'center' }}>
-                                    <div style={{ marginBottom: '16px' }}>
-                                        <i className="fas fa-search-location fa-beat" style={{ fontSize: '32px', color: '#667eea', opacity: 0.6 }}></i>
+                                    <div style={{ marginBottom: '16px', position: 'relative', display: 'inline-block' }}>
+                                        <i className="fas fa-search-location" style={{ fontSize: '32px', color: '#667eea', opacity: 0.6 }}></i>
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '-10px',
+                                            right: '-10px',
+                                            width: '20px',
+                                            height: '20px',
+                                            background: '#ebf4ff',
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                        }}>
+                                            <i className="fas fa-circle-notch fa-spin" style={{ fontSize: '10px', color: '#667eea' }}></i>
+                                        </div>
                                     </div>
                                     <div style={{ fontWeight: 700, color: '#4a5568', fontSize: '14px', marginBottom: '4px' }}>네트워크 탐색 중...</div>
                                     <div style={{ color: '#a0aec0', fontSize: '12px' }}>장치를 찾는 동안 잠시만 기다려 주세요.</div>
@@ -293,25 +377,39 @@ const NetworkScanModal: React.FC<NetworkScanModalProps> = ({ isOpen, onClose, on
                     >
                         {discoveredDevices.length > 0 ? '완료' : '닫기'}
                     </button>
-                    {!isScanning && (
-                        <button
-                            className="mgmt-btn mgmt-btn-primary"
-                            onClick={handleScan}
-                            style={{
-                                height: '42px',
-                                padding: '0 28px',
-                                fontSize: '14px',
-                                borderRadius: '10px',
-                                fontWeight: 700,
-                                boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)',
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                border: 'none'
-                            }}
-                        >
-                            <i className="fas fa-search" style={{ marginRight: '8px' }}></i>
-                            스캔 시작
-                        </button>
-                    )}
+                    <button
+                        className="mgmt-btn mgmt-btn-primary"
+                        onClick={handleScan}
+                        disabled={isScanning}
+                        style={{
+                            height: '42px',
+                            minWidth: '140px',
+                            padding: '0 28px',
+                            fontSize: '14px',
+                            borderRadius: '10px',
+                            fontWeight: 700,
+                            boxShadow: isScanning ? 'none' : '0 4px 12px rgba(102, 126, 234, 0.4)',
+                            background: isScanning ? '#cbd5e0' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            border: 'none',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px'
+                        }}
+                    >
+                        {isScanning ? (
+                            <>
+                                <i className="fas fa-circle-notch fa-spin"></i>
+                                <span>스캔 중...</span>
+                            </>
+                        ) : (
+                            <>
+                                <i className="fas fa-search"></i>
+                                <span>스캔 시작</span>
+                            </>
+                        )}
+                    </button>
                 </div>
             </div>
         </div>
