@@ -700,6 +700,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       {/* 테이블 */}
       <div className="dp-table-wrap">
         <div className="dp-table-head">
+          <div className="th col-id">ID</div>
           <div className="th col-name">이름 / 설명</div>
           <div className="th col-addr">주소</div>
           <div className="th col-type">타입 / 단위</div>
@@ -712,6 +713,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         <div className="dp-table-body">
           {filteredDataPoints.map(dp => (
             <div key={dp.id} className="tr">
+              <div className="td col-id">
+                <span className="id-tag">{dp.id}</span>
+              </div>
               <div className="td col-name">
                 <div className="name-row">
                   <span className="name">{dp.name}</span>
@@ -844,17 +848,19 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
          .btn-icon { background: white; border: 1px solid #cbd5e1; width: 32px; height: 32px; border-radius: 4px; color: #64748b; cursor: pointer; display: inline-flex; justify-content: center; align-items: center; }
          .btn-icon:hover { background: #f1f5f9; color: #3b82f6; }
 
-         /* Table */
-         .dp-table-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: white; }
-         .dp-table-head { display: grid; grid-template-columns: minmax(200px, 1fr) 100px 110px 70px 80px 120px 90px 120px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
-         .th { padding: 10px 12px; display: flex; align-items: center; justify-content: center; }
-         .th.col-name { justify-content: flex-start; }
-         
-         .dp-table-body { flex: 1; overflow-y: auto; }
-         .tr { display: grid; grid-template-columns: minmax(200px, 1fr) 100px 110px 70px 80px 120px 90px 120px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
-         .tr:hover { background: #f8fafc; }
-         .td { padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; text-align: center; }
-         .td.col-name { align-items: flex-start; text-align: left; }
+          /* Table */
+          .dp-table-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: white; }
+          .dp-table-head { display: grid; grid-template-columns: 60px minmax(180px, 1fr) 100px 110px 70px 80px 120px 90px 120px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
+          .th { padding: 10px 12px; display: flex; align-items: center; justify-content: center; }
+          .th.col-id { border-right: 1px solid transparent; }
+          .th.col-name { justify-content: flex-start; }
+          
+          .dp-table-body { flex: 1; overflow-y: auto; }
+          .tr { display: grid; grid-template-columns: 60px minmax(180px, 1fr) 100px 110px 70px 80px 120px 90px 120px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
+          .tr:hover { background: #f8fafc; }
+          .td { padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; text-align: center; }
+          .td.col-id { border-right: 1px solid transparent; color: #94a3b8; font-family: monospace; font-size: 11px; }
+          .td.col-name { align-items: flex-start; text-align: left; }
          
          .name-row { display: flex; align-items: center; gap: 6px; overflow: hidden; }
          .name { font-weight: 500; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -915,9 +921,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
          .btn-pri { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; }
          .btn-sec { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; }
 
-         @media (max-width: 1200px) {
-            .dp-table-head, .tr { grid-template-columns: minmax(150px, 1fr) 80px 100px 60px 70px 100px 80px 120px; }
-         }
+          @media (max-width: 1200px) {
+             .dp-table-head, .tr { grid-template-columns: 50px minmax(130px, 1fr) 80px 100px 60px 70px 100px 80px 120px; }
+          }
       `}</style>
     </div>
   );

@@ -29,6 +29,8 @@ const ExportTargetMappingRepository = require('./ExportTargetMappingRepository')
 const ExportScheduleRepository = require('./ExportScheduleRepository');
 const ExportLogRepository = require('./ExportLogRepository');
 const ProtocolInstanceRepository = require('./ProtocolInstanceRepository');
+const BackupRepository = require('./BackupRepository');
+const SystemSettingsRepository = require('./SystemSettingsRepository');
 
 // 기존 DatabaseFactory 사용
 const DatabaseFactory = require('../DatabaseFactory');
@@ -328,6 +330,20 @@ class RepositoryFactory {
         return this.getRepository('ProtocolInstanceRepository');
     }
 
+    /**
+     * BackupRepository 반환
+     */
+    getBackupRepository() {
+        return this.getRepository('BackupRepository');
+    }
+
+    /**
+     * SystemSettingsRepository 반환
+     */
+    getSystemSettingsRepository() {
+        return this.getRepository('SystemSettingsRepository');
+    }
+
     // =========================================================================
     // 내부 구현 메서드들
     // =========================================================================
@@ -450,6 +466,14 @@ class RepositoryFactory {
 
                 case 'ProtocolInstanceRepository':
                     repository = new ProtocolInstanceRepository();
+                    break;
+
+                case 'BackupRepository':
+                    repository = new BackupRepository();
+                    break;
+
+                case 'SystemSettingsRepository':
+                    repository = new SystemSettingsRepository();
                     break;
 
                 default:

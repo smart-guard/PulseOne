@@ -75,29 +75,6 @@
     flex: 1 !important;
 }
 
-/* 🚦 Status Indicator & Dot */
-.status-indicator {
-    display: flex !important;
-    align-items: center !important;
-    gap: var(--space-2) !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-}
-
-.status-dot {
-    width: 8px !important;
-    height: 8px !important;
-    border-radius: 50% !important;
-}
-
-.status-dot.active {
-    background: var(--success-500) !important;
-    box-shadow: 0 0 0 3px var(--success-50) !important;
-}
-
-.status-dot.inactive {
-    background: var(--neutral-300) !important;
-}
 
 /* 🏁 Modal Footer Refinements */
 .management-container .modal-footer {

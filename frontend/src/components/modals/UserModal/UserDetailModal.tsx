@@ -179,7 +179,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                                     <div className="detail-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <span className="detail-label" style={{ marginBottom: 0 }}>계정 생성</span>
                                         <span className="detail-value" style={{ fontSize: '13px', fontFamily: 'monospace' }}>
-                                            {user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}
+                                            {user.created_at ? new Date(user.created_at).toLocaleString() : '-'}
                                         </span>
                                     </div>
                                     <div className="detail-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -191,7 +191,7 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
                                     <div className="detail-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <span className="detail-label" style={{ marginBottom: 0 }}>최근 수정</span>
                                         <span className="detail-value" style={{ fontSize: '13px', fontFamily: 'monospace' }}>
-                                            {user.updated_at ? new Date(user.updated_at).toLocaleDateString() : '-'}
+                                            {user.updated_at ? new Date(user.updated_at).toLocaleString() : '-'}
                                         </span>
                                     </div>
                                 </div>

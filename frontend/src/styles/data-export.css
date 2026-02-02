@@ -424,7 +424,7 @@
   color: var(--neutral-500);
 }
 
-.status-indicator {
+.export-status-indicator {
   display: flex;
   flex-direction: column;
   align-items: flex-end;

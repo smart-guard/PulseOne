@@ -24,7 +24,8 @@ router.use(tenantIsolation);
 router.get('/', async (req, res) => {
     const filters = {
         includeDeleted: req.query.includeDeleted === 'true',
-        onlyDeleted: req.query.onlyDeleted === 'true'
+        onlyDeleted: req.query.onlyDeleted === 'true',
+        tenant_id: req.query.tenant_id
     };
     const response = await UserService.getAllUsers(req.tenantId, filters);
     res.json(response);

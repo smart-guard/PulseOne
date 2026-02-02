@@ -485,7 +485,7 @@ const DataExport: React.FC = () => {
                     {task.fileSize && <span className="chip">{task.fileSize}</span>}
                   </div>
                 </div>
-                <div className="status-indicator">
+                <div className="export-status-indicator">
                   <span className={`badge-status ${task.status}`}>
                     {task.status === 'completed' ? '완료' : task.status === 'running' ? `처리 중 (${task.progress}%)` : '실패'}
                   </span>

@@ -642,7 +642,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             <div className="bi-field">
               <label>디바이스명 *</label>
               {mode === 'view' ? (
-                <div className="form-val">{displayData?.name || 'N/A'}</div>
+                <div className="form-val">{displayData?.name || 'N/A'} (ID: {displayData?.id})</div>
               ) : (
                 <input
                   type="text"

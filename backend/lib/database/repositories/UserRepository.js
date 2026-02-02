@@ -24,6 +24,8 @@ class UserRepository extends BaseRepository {
 
             if (tenantId) {
                 query = query.where('tenant_id', tenantId);
+            } else if (filters.tenant_id && filters.tenant_id !== 'all') {
+                query = query.where('tenant_id', filters.tenant_id);
             }
 
             // 필터링: 삭제된 사용자 제외 (기본값)
