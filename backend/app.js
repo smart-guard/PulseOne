@@ -96,6 +96,7 @@ const RealtimeService = require('./lib/services/RealtimeService');
 const config = require('./lib/config/ConfigManager');
 const logger = require('./lib/utils/LogManager');
 const RepositoryFactory = require('./lib/database/repositories/RepositoryFactory');
+const ProtocolService = require('./lib/services/ProtocolService');
 
 // 서버 시작 로그
 logger.system('INFO', 'PulseOne Backend Server 시작 중...', {
@@ -1158,6 +1159,15 @@ if (require.main === module) {
             } catch (err) {
                 logger.system('ERROR', 'Collector 자동 시작 실패', { error: err.message });
             }
+        }
+
+        // 프로토콜 인스턴스 초기화 (Multi-Instance 대응)
+        try {
+            logger.system('INFO', '프로토콜 인스턴스 초기화 중...');
+            await ProtocolService.initializeInstances();
+            logger.system('INFO', '프로토콜 인스턴스 초기화 완료');
+        } catch (err) {
+            logger.system('ERROR', '프로토콜 인스턴스 초기화 실패', { error: err.message });
         }
 
         console.log(`

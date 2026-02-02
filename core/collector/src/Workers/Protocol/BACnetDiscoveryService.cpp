@@ -142,7 +142,7 @@ void BACnetDiscoveryService::ConvertDeviceInfoToEntity(
     entity.setName(device_info.name.empty() ? "Unknown Device"
                                             : device_info.name);
     entity.setDescription(device_info.description);
-    entity.setDeviceType("BACnet Device");
+    entity.setDeviceType("CONTROLLER");
 
     // Tenant/Site ID initialization (Default to 1 for discovered devices)
     entity.setTenantId(1);
@@ -1206,8 +1206,9 @@ bool BACnetDiscoveryService::StartNetworkScan(
     auto &logger = LogManager::getInstance();
 
     if (is_network_scan_active_.load()) {
-      logger.Warn("StartNetworkScan failed: Scan is already active");
-      return false;
+      logger.Info("StartNetworkScan: A network scan is already in progress. "
+                  "Continuing with active scan.");
+      return true;
     }
 
     logger.Info("Starting Network Scan... Setting flags.");
@@ -1271,11 +1272,11 @@ bool BACnetDiscoveryService::StartNetworkScan(
     return true;
 
   } catch (const std::exception &e) {
+    auto &logger = LogManager::getInstance();
+    logger.Error("Exception starting network scan thread: " +
+                 std::string(e.what()));
     is_network_scan_active_ = false;
     network_scan_running_ = false;
-
-    auto &logger = LogManager::getInstance();
-    logger.Error("Exception starting network scan: " + std::string(e.what()));
     return false;
   }
 }

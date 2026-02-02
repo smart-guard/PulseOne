@@ -134,7 +134,7 @@ router.post('/scan', async (req, res) => {
             ...req.body,
             tenantId
         });
-        res.status(result.status === 'started' ? 202 : 500).json(result);
+        res.status(result.data?.status === 'started' || result.data?.status === 'scan_started' ? 202 : 500).json(result);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -280,12 +280,7 @@ router.post('/:id/test-connection', async (req, res) => {
         const result = await DeviceService.diagnoseConnection(id, req.tenantId);
         res.json(result);
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message,
-            error: 'TEST_CONNECTION_ERROR',
-            timestamp: new Date().toISOString()
-        });
+        res.status(500).json({ success: false, message: error.message, error: 'TEST_CONNECTION_ERROR' });
     }
 });
 

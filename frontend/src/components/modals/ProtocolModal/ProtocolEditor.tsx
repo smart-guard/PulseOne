@@ -101,6 +101,7 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
     }
   }, [mode, protocolId, isOpen]);
 
+
   const loadProtocol = async () => {
     try {
       setLoading(true);
@@ -205,6 +206,43 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
     } catch (err) {
       // JSON 파싱 에러는 무시
     }
+  };
+
+  const handleBrokerParamChange = (key: string, value: any) => {
+    setProtocol(prev => {
+      const updatedParams = {
+        ...(prev.connection_params || {}),
+        [key]: value
+      };
+
+      // 만약 브로커를 활성화하는데 API 키가 없으면 자동 생성
+      if (key === 'broker_enabled' && value === true && !updatedParams.broker_api_key) {
+        updatedParams.broker_api_key = crypto.randomUUID();
+        updatedParams.broker_api_key_updated_at = new Date().toISOString();
+      }
+
+      return {
+        ...prev,
+        connection_params: updatedParams
+      };
+    });
+  };
+
+  const handleReissueApiKey = () => {
+    confirm({
+      title: 'API 키 재발급',
+      message: '새로운 API 키를 발급하시겠습니까? 기존 키를 사용하는 장치들의 연결이 끊어질 수 있습니다.',
+      onConfirm: () => {
+        setProtocol(prev => {
+          const updatedParams = {
+            ...(prev.connection_params || {}),
+            broker_api_key: crypto.randomUUID(),
+            broker_api_key_updated_at: new Date().toISOString()
+          };
+          return { ...prev, connection_params: updatedParams };
+        });
+      }
+    });
   };
 
   const isReadOnly = mode === 'view';
@@ -455,7 +493,22 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
                     </div>
                   </div>
 
+                  {/* MQTT 전용 브로커 설정 - 상세 대시보드로 이동 */}
+                  {protocol.protocol_type === 'MQTT' && (
+                    <div className="mgmt-modal-form-section" style={{ border: '2px dashed var(--primary-200)', padding: '24px', borderRadius: '8px', backgroundColor: 'var(--primary-25)', textAlign: 'center' }}>
+                      <h3 style={{ color: 'var(--primary-600)', marginBottom: '12px' }}><i className="fas fa-server"></i> 브로커 설정 안내</h3>
+                      <p style={{ fontSize: '13px', color: 'var(--neutral-600)', lineHeight: '1.6', marginTop: '8px' }}>
+                        PulseOne MQTT 브로커 및 실시간 모니터링 기능은<br />
+                        <strong>커뮤니케이션 대시보드</strong>로 통합되었습니다.
+                      </p>
+                      <div style={{ marginTop: '16px', fontSize: '12px', color: 'var(--primary-600)', fontWeight: 600 }}>
+                        (프로토콜 목록에서 MQTT를 선택하여 대시보드에 진입하세요)
+                      </div>
+                    </div>
+                  )}
+
                   {/* 3 & 4. 사이드-바이-사이드 도메인 레이아웃 */}
+
                   <div className="mgmt-modal-form-domains">
                     {/* 드라이버 역량 (Capabilities) */}
                     <div className="mgmt-modal-form-domain">
@@ -524,7 +577,8 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
               </form>
             </div>
           </>
-        )}
+        )
+        }
 
         {/* 모달 푸터 */}
         <div className="mgmt-modal-footer">
@@ -543,8 +597,8 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
             </button>
           )}
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
 
   );
 };

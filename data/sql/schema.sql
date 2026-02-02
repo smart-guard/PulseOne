@@ -389,6 +389,30 @@ CREATE TABLE protocols (
     -- 제약조건
     CONSTRAINT chk_category CHECK (category IN ('industrial', 'iot', 'building_automation', 'network', 'web'))
 );
+CREATE TABLE protocol_instances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    protocol_id INTEGER NOT NULL,
+    instance_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    
+    -- 인스턴스별 연결 정보 (vhost, broker ID/PW 등)
+    vhost VARCHAR(50) DEFAULT '/',
+    api_key VARCHAR(100),
+    api_key_updated_at DATETIME,
+    
+    connection_params TEXT,             -- JSON: 인스턴스 전용 상세 파라미터
+    
+    -- 상태 및 관리
+    is_enabled INTEGER DEFAULT 1,
+    status VARCHAR(20) DEFAULT 'STOPPED', -- RUNNING, STOPPED, ERROR
+    
+    -- 메타데이터
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+    
+    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE
+);
 CREATE TABLE manufacturers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(100) NOT NULL UNIQUE,
@@ -518,6 +542,7 @@ CREATE TABLE devices (
     
     -- 프로토콜 설정 (외래키 사용)
     protocol_id INTEGER NOT NULL,
+    protocol_instance_id INTEGER,                      -- 연결된 프로토콜 인스턴스 (MQTT vhost 등)
     endpoint VARCHAR(255) NOT NULL,                      -- IP:Port 또는 연결 문자열
     config TEXT NOT NULL,                               -- JSON 형태 프로토콜별 설정
     
@@ -559,6 +584,7 @@ CREATE TABLE devices (
     FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
     FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
+    FOREIGN KEY (protocol_instance_id) REFERENCES protocol_instances(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id),
     FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE SET NULL,
     FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE SET NULL,

@@ -28,6 +28,7 @@ const PayloadTemplateRepository = require('./PayloadTemplateRepository');
 const ExportTargetMappingRepository = require('./ExportTargetMappingRepository');
 const ExportScheduleRepository = require('./ExportScheduleRepository');
 const ExportLogRepository = require('./ExportLogRepository');
+const ProtocolInstanceRepository = require('./ProtocolInstanceRepository');
 
 // 기존 DatabaseFactory 사용
 const DatabaseFactory = require('../DatabaseFactory');
@@ -320,6 +321,13 @@ class RepositoryFactory {
         return this.getRepository('ExportLogRepository');
     }
 
+    /**
+     * ProtocolInstanceRepository 반환
+     */
+    getProtocolInstanceRepository() {
+        return this.getRepository('ProtocolInstanceRepository');
+    }
+
     // =========================================================================
     // 내부 구현 메서드들
     // =========================================================================
@@ -438,6 +446,10 @@ class RepositoryFactory {
 
                 case 'ExportLogRepository':
                     repository = new ExportLogRepository();
+                    break;
+
+                case 'ProtocolInstanceRepository':
+                    repository = new ProtocolInstanceRepository();
                     break;
 
                 default:

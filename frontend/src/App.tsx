@@ -62,8 +62,12 @@ const App: React.FC = () => {
                 {/* 대시보드 */}
                 <Route path="dashboard" element={<Dashboard />} />
 
-                {/* 🆕 프로토콜 관리 - 새로 추가된 라우트 */}
-                <Route path="protocols" element={<ProtocolManagement />} />
+                {/* 🆕 프로토콜 관리 - 통합 대시보드 URL 구조 개편 */}
+                <Route path="protocols">
+                  <Route index element={<ProtocolManagement />} />
+                  <Route path=":type/:id" element={<ProtocolManagement />} />
+                  <Route path=":type/:id/:tab" element={<ProtocolManagement />} />
+                </Route>
 
                 {/* 🆕 디바이스 마스터 모델 & 제조사 관리 */}
                 <Route path="devices">

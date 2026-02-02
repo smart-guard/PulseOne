@@ -39,6 +39,8 @@ const DeviceList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [protocolFilter, setProtocolFilter] = useState<string>('all');
+  const [protocolIdFilter, setProtocolIdFilter] = useState<number | 'all'>('all');
+  const [instanceIdFilter, setInstanceIdFilter] = useState<number | 'all'>('all');
   const [connectionFilter, setConnectionFilter] = useState<string>('all');
   const [availableProtocols, setAvailableProtocols] = useState<string[]>([]);
 
@@ -119,6 +121,24 @@ const DeviceList: React.FC = () => {
     }
   }, [searchParams, devices, isModalOpen]);
 
+  // URL 기반 필터 복원
+  useEffect(() => {
+    const pId = searchParams.get('protocolId');
+    const iId = searchParams.get('instanceId');
+
+    if (pId) {
+      setProtocolIdFilter(parseInt(pId, 10));
+    } else {
+      setProtocolIdFilter('all');
+    }
+
+    if (iId) {
+      setInstanceIdFilter(parseInt(iId, 10));
+    } else {
+      setInstanceIdFilter('all');
+    }
+  }, [searchParams]);
+
 
   // 정렬 핸들러
   const handleSort = useCallback((field: string) => {
@@ -180,6 +200,8 @@ const DeviceList: React.FC = () => {
         sort_order: sortOrder,
         include_collector_status: true,
         device_group_id: selectedGroupId === 'all' ? undefined : selectedGroupId,
+        protocol_id: protocolIdFilter !== 'all' ? protocolIdFilter : undefined,
+        protocol_instance_id: instanceIdFilter !== 'all' ? instanceIdFilter : undefined,
         onlyDeleted: includeDeleted,
         includeCount: true // backend standard for returning total
       };
@@ -214,7 +236,7 @@ const DeviceList: React.FC = () => {
     } finally {
       setIsInitialLoading(false);
     }
-  }, [currentPage, pageSize, protocolFilter, connectionFilter, statusFilter, searchTerm, sortField, sortOrder, hasInitialLoad, selectedGroupId, includeDeleted]);
+  }, [currentPage, pageSize, protocolFilter, protocolIdFilter, instanceIdFilter, connectionFilter, statusFilter, searchTerm, sortField, sortOrder, hasInitialLoad, selectedGroupId, includeDeleted]);
 
   const loadDeviceStats = useCallback(async () => {
     try {
@@ -578,7 +600,7 @@ const DeviceList: React.FC = () => {
     if (hasInitialLoad) {
       loadDevices(true);
     }
-  }, [currentPage, pageSize, protocolFilter, connectionFilter, statusFilter, searchTerm, sortField, sortOrder, hasInitialLoad, selectedGroupId, includeDeleted]);
+  }, [currentPage, pageSize, protocolFilter, protocolIdFilter, instanceIdFilter, connectionFilter, statusFilter, searchTerm, sortField, sortOrder, hasInitialLoad, selectedGroupId, includeDeleted]);
 
   useEffect(() => {
     if (!autoRefresh || !hasInitialLoad || isModalOpen) {
@@ -597,6 +619,11 @@ const DeviceList: React.FC = () => {
 
     return () => clearInterval(intervalId);
   }, [autoRefresh, hasInitialLoad, isModalOpen, loadDevices]);
+
+  // 프로토콜 이름 및 인스턴스 이름 가져오기 (필터 표시용)
+  const activeProtocolName = protocolIdFilter !== 'all'
+    ? DeviceApiService.getProtocolManager().getProtocolName(protocolIdFilter)
+    : null;
 
   return (
     <>
@@ -620,6 +647,65 @@ const DeviceList: React.FC = () => {
           }
         />
 
+        {(protocolIdFilter !== 'all' || instanceIdFilter !== 'all') && (
+          <div className="active-filter-banner" style={{
+            margin: '0 var(--space-4) var(--space-4)',
+            padding: '10px 18px',
+            background: 'linear-gradient(90deg, var(--primary-50), #fff)',
+            border: '1px solid var(--primary-200)',
+            borderRadius: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 2px 8px rgba(var(--primary-rgb), 0.05)',
+            animation: 'slideDown 0.3s ease-out'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--primary-800)', fontWeight: 700 }}>
+              <div style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                background: 'var(--primary-100)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--primary-600)'
+              }}>
+                <i className="fas fa-filter"></i>
+              </div>
+              <span>
+                {activeProtocolName && <span style={{ color: 'var(--primary-900)' }}>{activeProtocolName}</span>}
+                {instanceIdFilter !== 'all' && <span style={{ marginLeft: '4px', opacity: 0.7 }}>(인스턴스 #{instanceIdFilter})</span>}
+                <span style={{ marginLeft: '8px', fontWeight: 500, color: 'var(--neutral-500)' }}>필터가 적용된 상태입니다.</span>
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setProtocolIdFilter('all');
+                setInstanceIdFilter('all');
+                setSearchParams(prev => {
+                  const newParams = new URLSearchParams(prev);
+                  newParams.delete('protocolId');
+                  newParams.delete('instanceId');
+                  return newParams;
+                }, { replace: true });
+              }}
+              className="mgmt-btn-text"
+              style={{
+                color: 'var(--primary-600)',
+                fontSize: '12px',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <i className="fas fa-times-circle"></i>
+              필터 해제
+            </button>
+          </div>
+        )}
+
         {deviceStats && (
           <div className="mgmt-stats-panel">
             <StatCard title="전체 디바이스" value={deviceStats.total_devices || 0} icon="fas fa-network-wired" type="primary" />
@@ -636,10 +722,19 @@ const DeviceList: React.FC = () => {
             setSearchTerm('');
             setStatusFilter('all');
             setProtocolFilter('all');
+            setProtocolIdFilter('all');
+            setInstanceIdFilter('all');
             setConnectionFilter('all');
             setIncludeDeleted(false);
+            // URL 파라미터도 청소
+            setSearchParams(prev => {
+              const newParams = new URLSearchParams(prev);
+              newParams.delete('protocolId');
+              newParams.delete('instanceId');
+              return newParams;
+            }, { replace: true });
           }}
-          activeFilterCount={(searchTerm ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (protocolFilter !== 'all' ? 1 : 0) + (connectionFilter !== 'all' ? 1 : 0) + (includeDeleted ? 1 : 0)}
+          activeFilterCount={(searchTerm ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0) + (protocolFilter !== 'all' ? 1 : 0) + (connectionFilter !== 'all' ? 1 : 0) + (includeDeleted ? 1 : 0) + (protocolIdFilter !== 'all' ? 1 : 0) + (instanceIdFilter !== 'all' ? 1 : 0)}
           filters={[
             {
               label: '상태',

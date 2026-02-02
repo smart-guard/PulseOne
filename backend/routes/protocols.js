@@ -17,6 +17,19 @@ router.use(validateTenantStatus);
 // ============================================================================
 
 /**
+ * GET /api/protocols/broker/status
+ * MQTT 브로커 상태 조회
+ */
+router.get('/broker/status', async (req, res) => {
+    try {
+        const result = await ProtocolService.getBrokerStatus();
+        res.status(result.success ? 200 : 500).json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
  * GET /api/protocols/statistics
  * 프로토콜 사용 통계 조회
  */
@@ -206,6 +219,89 @@ router.get('/:id/devices', async (req, res) => {
         const limit = parseInt(req.query.limit) || 50;
         const offset = parseInt(req.query.offset) || 0;
         const result = await ProtocolService.getDevicesByProtocol(parseInt(id), limit, offset);
+        res.status(result.success ? 200 : 500).json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+
+// ============================================================================
+// Protocol Instances
+// ============================================================================
+
+/**
+ * GET /api/protocols/:id/instances
+ * 특정 프로토콜의 인스턴스 목록 조회
+ */
+/**
+ * GET /api/protocols/:id/instances
+ * 특정 프로토콜의 인스턴스 목록 조회
+ */
+router.get('/:id/instances', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId } = req; // From middleware
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+
+        // tenantId가 미들웨어에 의해 설정되면 필터링됨. System Admin의 경우 tenantId가 null일 수 있음(로직에 따라).
+        const result = await ProtocolService.getInstancesByProtocolId(parseInt(id), tenantId, page, limit);
+        res.status(result.success ? 200 : 500).json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * POST /api/protocols/:id/instances
+ * 새 인스턴스 생성
+ */
+router.post('/:id/instances', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tenantId, user } = req;
+
+        let targetTenantId = tenantId;
+
+        // System Admin이라면 body에서 tenant_id 지정 가능
+        if (user && user.role === 'system_admin' && req.body.tenant_id) {
+            targetTenantId = req.body.tenant_id;
+        }
+
+        const result = await ProtocolService.createInstance({
+            ...req.body,
+            protocol_id: parseInt(id),
+            tenant_id: targetTenantId // Service uses this for DB Insert
+        });
+        res.status(result.success ? 201 : 500).json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * PUT /api/protocols/instances/:instanceId
+ * 인스턴스 정보 수정
+ */
+router.put('/instances/:instanceId', async (req, res) => {
+    try {
+        const { instanceId } = req.params;
+        const result = await ProtocolService.updateInstance(parseInt(instanceId), req.body);
+        res.status(result.success ? 200 : 500).json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * DELETE /api/protocols/instances/:instanceId
+ * 인스턴스 삭제
+ */
+router.delete('/instances/:instanceId', async (req, res) => {
+    try {
+        const { instanceId } = req.params;
+        const result = await ProtocolService.deleteInstance(parseInt(instanceId));
         res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

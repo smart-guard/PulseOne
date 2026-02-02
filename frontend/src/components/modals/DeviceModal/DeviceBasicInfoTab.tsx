@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { DeviceApiService, ProtocolInfo } from '../../../api/services/deviceApi';
+import { ProtocolApiService, ProtocolInstance } from '../../../api/services/protocolApi';
 import { GroupApiService, DeviceGroup } from '../../../api/services/groupApi';
 import { CollectorApiService, EdgeServer } from '../../../api/services/collectorApi';
 import { ManufactureApiService } from '../../../api/services/manufactureApi';
@@ -39,6 +40,10 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isSlaveIdDuplicate, setIsSlaveIdDuplicate] = useState(false);
   const [checkingSlaveId, setCheckingSlaveId] = useState(false);
+
+  // 🔥 NEW: 프로토콜 인스턴스 상태
+  const [availableInstances, setAvailableInstances] = useState<ProtocolInstance[]>([]);
+  const [isLoadingInstances, setIsLoadingInstances] = useState(false);
 
   // JSON 문자열 상태 (원활한 편집을 위해)
   const [metadataStr, setMetadataStr] = useState('');
@@ -144,6 +149,31 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   };
 
   /**
+   * 🔥 NEW: 프로토콜 인스턴스 목록 로드
+   */
+  const loadProtocolInstances = async (protocolId: number) => {
+    if (!protocolId) {
+      setAvailableInstances([]);
+      return;
+    }
+
+    try {
+      setIsLoadingInstances(true);
+      const response = await ProtocolApiService.getProtocolInstances(protocolId);
+      if (response.success && response.data) {
+        setAvailableInstances(response.data);
+      } else {
+        setAvailableInstances([]);
+      }
+    } catch (error) {
+      console.error('❌ 프로토콜 인스턴스 로드 실패:', error);
+      setAvailableInstances([]);
+    } finally {
+      setIsLoadingInstances(false);
+    }
+  };
+
+  /**
    * 특정 제조사의 모델 목록 로드
    */
   const loadModels = async (manufacturerName: string) => {
@@ -238,6 +268,18 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       setIsLoadingSites(false);
     }
   };
+
+  /**
+   * 🔥 NEW: 프로토콜 변경 감지하여 인스턴스 로드
+   */
+  useEffect(() => {
+    const pId = getCurrentProtocolId();
+    if (pId) {
+      loadProtocolInstances(pId);
+    } else {
+      setAvailableInstances([]);
+    }
+  }, [editData?.protocol_id, availableProtocols]);
 
   /**
    * 기본 프로토콜 목록 - API 호출 실패 시 백업용
@@ -904,6 +946,45 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                 </select>
               )}
             </div>
+
+            {/* 🔥 NEW: 프로토콜 인스턴스 선택 (인스턴스가 존재할 때만 표시) */}
+            {availableInstances.length > 0 && (
+              <div className="bi-field">
+                <label>연결 인스턴스 (Broker/VHost)</label>
+                {mode === 'view' ? (
+                  <div className="form-val">
+                    {editData?.instance_name ||
+                      availableInstances.find(i => i.id === editData?.protocol_instance_id)?.instance_name ||
+                      '-'}
+                  </div>
+                ) : (
+                  <select
+                    className="bi-select"
+                    value={editData?.protocol_instance_id || ''}
+                    onChange={(e) => {
+                      const val = e.target.value ? parseInt(e.target.value) : null;
+                      onUpdateField('protocol_instance_id', val);
+                      // 인스턴스 이름도 함께 업데이트 (표시용)
+                      const inst = availableInstances.find(i => i.id === val);
+                      if (inst) onUpdateField('instance_name', inst.instance_name);
+                    }}
+                    disabled={isLoadingInstances}
+                  >
+                    <option value="">자동 할당 / 기본값</option>
+                    {availableInstances.map(inst => (
+                      <option key={inst.id} value={inst.id}>
+                        {inst.instance_name} {inst.vhost ? `(${inst.vhost})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {mode !== 'view' && (
+                  <div className="hint-text">
+                    특정 브로커나 연결 인스턴스를 지정하려면 선택하세요.
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="bi-field">
               <label>{isRtuDevice ? '포트 *' : '엔드포인트 *'}</label>
