@@ -182,7 +182,7 @@ CREATE TABLE users (
     created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    last_activity DATETIME,
+    last_activity DATETIME, is_deleted TINYINT DEFAULT 0,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id),
@@ -2378,4 +2378,29 @@ CREATE TABLE protocol_instances (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL, broker_type VARCHAR(20) DEFAULT 'INTERNAL',
     
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE
+);
+CREATE TABLE permissions (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    category VARCHAR(50),
+    resource VARCHAR(50),
+    actions TEXT,            -- JSON 배열: ["read", "write", "delete"]
+    is_system INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE roles (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    is_system INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE role_permissions (
+    role_id VARCHAR(50),
+    permission_id VARCHAR(50),
+    PRIMARY KEY (role_id, permission_id),
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
 );
