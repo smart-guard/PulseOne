@@ -715,7 +715,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               <div className="title-row">
                 <h2>
                   {mode === 'create' ? '새 디바이스 추가' :
-                    mode === 'edit' ? '디바이스 편집' : '디바이스 상세'}
+                    mode === 'edit' ? `디바이스 편집 (ID: ${displayData?.id})` : `디바이스 상세 (ID: ${displayData?.id})`}
                 </h2>
                 {displayData?.connection_status && (
                   <span className={`status-indicator ${displayData.connection_status}`}>

@@ -776,6 +776,7 @@ app.use('/api/processes', processRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/data', dataRoutes);
+app.use('/api/system/backups', require('./routes/backups'));
 
 // 신규 추가: 제조사 및 모델 관리
 const manufacturerRoutes = require('./routes/manufacturers');

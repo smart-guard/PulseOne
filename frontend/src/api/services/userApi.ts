@@ -27,6 +27,7 @@ export interface User {
 export interface UserFilters {
     includeDeleted?: boolean;
     onlyDeleted?: boolean;
+    tenant_id?: number | string;
 }
 
 export interface UserStats {

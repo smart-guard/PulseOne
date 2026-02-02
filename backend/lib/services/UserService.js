@@ -16,9 +16,9 @@ class UserService extends BaseService {
     // 사용자 조회
     // ==========================================================================
 
-    async getAllUsers(tenantId = null) {
+    async getAllUsers(tenantId = null, filters = {}) {
         return await this.handleRequest(async () => {
-            const users = await this.repository.findAll(tenantId);
+            const users = await this.repository.findAll(tenantId, filters);
             return users.map(user => this.sanitizeUser(user));
         }, 'UserService.getAllUsers');
     }
