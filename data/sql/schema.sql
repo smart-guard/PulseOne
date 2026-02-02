@@ -389,30 +389,6 @@ CREATE TABLE protocols (
     -- 제약조건
     CONSTRAINT chk_category CHECK (category IN ('industrial', 'iot', 'building_automation', 'network', 'web'))
 );
-CREATE TABLE protocol_instances (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    protocol_id INTEGER NOT NULL,
-    instance_name VARCHAR(100) NOT NULL,
-    description TEXT,
-    
-    -- 인스턴스별 연결 정보 (vhost, broker ID/PW 등)
-    vhost VARCHAR(50) DEFAULT '/',
-    api_key VARCHAR(100),
-    api_key_updated_at DATETIME,
-    
-    connection_params TEXT,             -- JSON: 인스턴스 전용 상세 파라미터
-    
-    -- 상태 및 관리
-    is_enabled INTEGER DEFAULT 1,
-    status VARCHAR(20) DEFAULT 'STOPPED', -- RUNNING, STOPPED, ERROR
-    
-    -- 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
-    
-    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE
-);
 CREATE TABLE manufacturers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(100) NOT NULL UNIQUE,
@@ -542,7 +518,6 @@ CREATE TABLE devices (
     
     -- 프로토콜 설정 (외래키 사용)
     protocol_id INTEGER NOT NULL,
-    protocol_instance_id INTEGER,                      -- 연결된 프로토콜 인스턴스 (MQTT vhost 등)
     endpoint VARCHAR(255) NOT NULL,                      -- IP:Port 또는 연결 문자열
     config TEXT NOT NULL,                               -- JSON 형태 프로토콜별 설정
     
@@ -577,14 +552,13 @@ CREATE TABLE devices (
     -- 감사 정보
     created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, protocol_instance_id INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
     FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
     FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
-    FOREIGN KEY (protocol_instance_id) REFERENCES protocol_instances(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id),
     FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE SET NULL,
     FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE SET NULL,
@@ -810,7 +784,7 @@ CREATE TABLE template_devices (
     is_public INTEGER DEFAULT 1,                         -- 시스템 공유 여부
     created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, is_deleted TINYINT DEFAULT 0,
     FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE CASCADE,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT
 );
@@ -834,11 +808,10 @@ CREATE TABLE template_data_points (
     access_mode VARCHAR(10) DEFAULT 'read',
     unit VARCHAR(50),
     scaling_factor REAL DEFAULT 1.0,
-    scaling_offset REAL DEFAULT 0.0,
     is_writable INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
     sort_order INTEGER DEFAULT 0,
-    metadata TEXT,                                       -- JSON 형태
+    metadata TEXT, scaling_offset REAL DEFAULT 0.0, protocol_params TEXT, mapping_key VARCHAR(255),                                       -- JSON 형태
     FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE CASCADE
 );
 CREATE TABLE alarm_rules (
@@ -2383,3 +2356,26 @@ CREATE INDEX idx_export_target_mappings_point ON export_target_mappings(point_id
 CREATE INDEX idx_export_schedules_target_id ON export_schedules(target_id);
 CREATE INDEX idx_export_schedules_is_enabled ON export_schedules(is_enabled);
 CREATE INDEX idx_export_schedules_next_run_at ON export_schedules(next_run_at);
+CREATE TABLE protocol_instances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    protocol_id INTEGER NOT NULL,
+    instance_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    
+    -- 인스턴스별 연결 정보 (vhost, broker ID/PW 등)
+    vhost VARCHAR(50) DEFAULT '/',
+    api_key VARCHAR(100),
+    api_key_updated_at DATETIME,
+    
+    connection_params TEXT,             -- JSON: 인스턴스 전용 상세 파라미터
+    
+    -- 상태 및 관리
+    is_enabled INTEGER DEFAULT 1,
+    status VARCHAR(20) DEFAULT 'STOPPED', -- RUNNING, STOPPED, ERROR
+    
+    -- 메타데이터
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL, broker_type VARCHAR(20) DEFAULT 'INTERNAL',
+    
+    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE
+);
