@@ -364,7 +364,7 @@ CREATE TABLE IF NOT EXISTS data_points (
     -- 🔥 시간 정보
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    is_deleted TINYINT DEFAULT 0,
+    is_deleted TINYINT DEFAULT 0,                        -- ⬅️ Match live schema
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     
@@ -517,10 +517,10 @@ CREATE TABLE IF NOT EXISTS template_data_points (
     is_writable INTEGER DEFAULT 0,
     is_active INTEGER DEFAULT 1,
     sort_order INTEGER DEFAULT 0,
-    metadata TEXT,                                       -- JSON 형태
-    scaling_offset REAL DEFAULT 0.0,
-    protocol_params TEXT,
-    mapping_key VARCHAR(255),
+    metadata TEXT, 
+    scaling_offset REAL DEFAULT 0.0, 
+    protocol_params TEXT, 
+    mapping_key VARCHAR(255),                            -- JSON 형태
     FOREIGN KEY (template_device_id) REFERENCES template_devices(id) ON DELETE CASCADE
 );
 
