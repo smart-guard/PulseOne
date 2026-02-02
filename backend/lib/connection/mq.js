@@ -1,5 +1,6 @@
 const amqp = require('amqplib');
 const axios = require('axios');
+const mqtt = require('mqtt');
 const ConfigManager = require('../config/ConfigManager');
 
 class RabbitMQManager {
@@ -76,18 +77,28 @@ class RabbitMQManager {
     async connectInstance(instanceData) {
         if (!this.baseConfig.enabled) return;
 
-        const { id, vhost, instance_name } = instanceData;
+        const { id, vhost, instance_name, broker_type = 'INTERNAL', connection_params } = instanceData;
+        const params = typeof connection_params === 'string' ? JSON.parse(connection_params) : (connection_params || {});
 
-        // 이미 연결되어 있다면 기존 연결 반환 (또는 재연결 로직)
+        // Already connected?
         if (this.instanceConnections.has(id)) {
             const existing = this.instanceConnections.get(id);
             if (existing.connected) return existing;
         }
 
+        if (broker_type === 'EXTERNAL') {
+            return await this._connectExternalMqtt(id, instance_name, params);
+        } else {
+            return await this._connectInternalRabbit(id, instance_name, vhost);
+        }
+    }
+
+    /**
+     * [INTERNAL] RabbitMQ Connection Logic
+     */
+    async _connectInternalRabbit(id, instance_name, vhost) {
         try {
             console.log(`[Instance:${id}] RabbitMQ 연결 시도 (${vhost})`);
-
-            // 인스턴스 전용 URL (기본 계정 사용하되 Vhost만 격리)
             const instanceUrl = `amqp://${this.baseConfig.user}:${this.baseConfig.password}@${this.baseConfig.host}:${this.baseConfig.port}${vhost || '/'}`;
 
             const connection = await amqp.connect(instanceUrl);
@@ -96,6 +107,7 @@ class RabbitMQManager {
             const instanceInfo = {
                 id,
                 name: instance_name,
+                type: 'INTERNAL',
                 connection,
                 channel,
                 connected: true,
@@ -103,23 +115,75 @@ class RabbitMQManager {
             };
 
             connection.on('close', () => {
-                console.log(`[Instance:${id}] 연결 종료됨`);
+                console.log(`[Instance:${id}] RabbitMQ 연결 종료`);
                 instanceInfo.connected = false;
                 this.instanceConnections.delete(id);
             });
 
-            connection.on('error', (err) => {
-                console.error(`[Instance:${id}] 연결 오류:`, err.message);
-                instanceInfo.connected = false;
+            this.instanceConnections.set(id, instanceInfo);
+            return instanceInfo;
+        } catch (error) {
+            console.error(`[Instance:${id}] RabbitMQ 연결 실패:`, error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * [EXTERNAL] Standard MQTT Connection Logic
+     */
+    async _connectExternalMqtt(id, instance_name, params) {
+        try {
+            const host = params.host || 'localhost';
+            const port = params.port || 1883;
+            const url = `mqtt://${host}:${port}`;
+
+            console.log(`[Instance:${id}] External MQTT 연결 시도 (${url})`);
+
+            const client = mqtt.connect(url, {
+                username: params.username,
+                password: params.password,
+                reconnectPeriod: 5000,
+                connectTimeout: 10000
             });
 
-            this.instanceConnections.set(id, instanceInfo);
-            console.log(`[Instance:${id}] 연결 성공 (Vhost: ${vhost})`);
+            const instanceInfo = {
+                id,
+                name: instance_name,
+                type: 'EXTERNAL',
+                connection: client,
+                connected: false,
+                url
+            };
 
-            return instanceInfo;
+            return new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    client.end();
+                    reject(new Error('Connection Timeout'));
+                }, 10000);
 
+                client.once('connect', () => {
+                    clearTimeout(timeout);
+                    console.log(`[Instance:${id}] External MQTT 연결 성공`);
+                    instanceInfo.connected = true;
+                    this.instanceConnections.set(id, instanceInfo);
+                    resolve(instanceInfo);
+                });
+
+                client.once('error', (err) => {
+                    clearTimeout(timeout);
+                    console.error(`[Instance:${id}] External MQTT 오류:`, err.message);
+                    client.end();
+                    reject(err);
+                });
+
+                client.on('close', () => {
+                    console.log(`[Instance:${id}] External MQTT 연결 종료`);
+                    instanceInfo.connected = false;
+                    this.instanceConnections.delete(id);
+                });
+            });
         } catch (error) {
-            console.error(`[Instance:${id}] 연결 실패:`, error.message);
+            console.error(`[Instance:${id}] External MQTT 연결 실패:`, error.message);
             throw error;
         }
     }
@@ -131,8 +195,12 @@ class RabbitMQManager {
         const instance = this.instanceConnections.get(id);
         if (instance) {
             try {
-                if (instance.channel) await instance.channel.close();
-                if (instance.connection) await instance.connection.close();
+                if (instance.type === 'EXTERNAL') {
+                    if (instance.connection) instance.connection.end();
+                } else {
+                    if (instance.channel) await instance.channel.close();
+                    if (instance.connection) await instance.connection.close();
+                }
                 this.instanceConnections.delete(id);
                 console.log(`[Instance:${id}] 연결 해제 완료`);
             } catch (error) {

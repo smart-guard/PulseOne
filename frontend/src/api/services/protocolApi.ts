@@ -51,6 +51,7 @@ export interface ProtocolInstance {
   api_key?: string;
   api_key_updated_at?: string;
   connection_params?: Record<string, any>;
+  broker_type?: 'INTERNAL' | 'EXTERNAL';
   is_enabled: boolean;
   status: 'RUNNING' | 'STOPPED' | 'ERROR';
   created_at?: string;

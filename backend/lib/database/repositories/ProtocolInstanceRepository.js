@@ -96,8 +96,8 @@ class ProtocolInstanceRepository extends BaseRepository {
         const query = `
             INSERT INTO ${this.tableName} (
                 protocol_id, instance_name, description, vhost, api_key, api_key_updated_at, 
-                connection_params, is_enabled, status, tenant_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                connection_params, is_enabled, status, tenant_id, broker_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const params = [
@@ -110,7 +110,8 @@ class ProtocolInstanceRepository extends BaseRepository {
             typeof instanceData.connection_params === 'string' ? instanceData.connection_params : JSON.stringify(instanceData.connection_params || {}),
             instanceData.is_enabled !== undefined ? (instanceData.is_enabled ? 1 : 0) : 1,
             instanceData.status || 'STOPPED',
-            instanceData.tenant_id || null // 🔥 NEW: Tenant ID
+            instanceData.tenant_id || null, // 🔥 NEW: Tenant ID
+            instanceData.broker_type || 'INTERNAL' // 🔥 NEW: Broker Type
         ];
 
         const result = await this.executeNonQuery(query, params);

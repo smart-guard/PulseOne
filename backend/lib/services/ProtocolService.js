@@ -295,7 +295,7 @@ class ProtocolService extends BaseService {
      */
     async initializeInstances() {
         return await this.handleRequest(async () => {
-            const instances = await this.instanceRepository.findAll({ is_enabled: 1 });
+            const { items: instances } = await this.instanceRepository.findAll({ is_enabled: 1 });
             console.log(`[ProtocolService] ${instances.length}개의 활성 인스턴스 초기화 시작...`);
 
             for (const instance of instances) {

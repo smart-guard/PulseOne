@@ -61,7 +61,8 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
         description: '',
         vhost: '/',
         is_enabled: true,
-        tenant_id: null as number | null
+        tenant_id: null as number | null,
+        broker_type: 'INTERNAL' as 'INTERNAL' | 'EXTERNAL'
     });
     const [originalFormData, setOriginalFormData] = useState<any>(null);
 
@@ -134,7 +135,8 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
             description: '',
             vhost: '/',
             is_enabled: true,
-            tenant_id: null
+            tenant_id: null,
+            broker_type: 'INTERNAL'
         });
         setIsAdding(true);
         setEditingInstance(null);
@@ -146,7 +148,8 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
             description: instance.description || '',
             vhost: instance.vhost || '/',
             is_enabled: instance.is_enabled,
-            tenant_id: (instance as any).tenant_id || null
+            tenant_id: (instance as any).tenant_id || null,
+            broker_type: instance.broker_type || 'INTERNAL'
         };
         setFormData(data);
         setOriginalFormData(data); // Store original for change detection
@@ -168,6 +171,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                 const newTenant = tenants.find(t => t.id === formData.tenant_id)?.name || 'Shared';
                 changes.push(`소유 테넌트: ${oldTenant} ➔ ${newTenant}`);
             }
+            if (formData.broker_type !== originalFormData.broker_type) changes.push(`제어 모드: ${originalFormData.broker_type} ➔ ${formData.broker_type}`);
 
             if (changes.length === 0) {
                 await confirm({
@@ -400,6 +404,35 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
 
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
+                        <div className="form-group">
+                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>브로커 연결 모드</label>
+                            <div style={{ display: 'flex', gap: '20px', padding: '10px 0' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                                    <input
+                                        type="radio"
+                                        name="broker_type"
+                                        checked={formData.broker_type === 'INTERNAL'}
+                                        onChange={() => setFormData({ ...formData, broker_type: 'INTERNAL' })}
+                                    />
+                                    <strong>Internal</strong> (PulseOne 관리형)
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                                    <input
+                                        type="radio"
+                                        name="broker_type"
+                                        checked={formData.broker_type === 'EXTERNAL'}
+                                        onChange={() => setFormData({ ...formData, broker_type: 'EXTERNAL' })}
+                                    />
+                                    <strong>External</strong> (외부 표준 브로커)
+                                </label>
+                            </div>
+                            <div style={{ fontSize: '12px', color: 'var(--neutral-500)', marginTop: '-8px' }}>
+                                {formData.broker_type === 'INTERNAL'
+                                    ? 'PulseOne 내부 RabbitMQ 브로커를 사용하며 Vhost와 API Key로 격리됩니다.'
+                                    : 'AWS IoT, Azure EventGrid 또는 타사 MQTT 브로커와 직접 연동합니다.'}
+                            </div>
+                        </div>
+
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                             <div className="form-group">
                                 <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>인스턴스 이름</label>
@@ -412,18 +445,22 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                     style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)' }}
                                 />
                             </div>
-                            <div className="form-group">
-                                <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>Vhost (Virtual Host)</label>
-                                <input
-                                    type="text"
-                                    value={formData.vhost}
-                                    onChange={e => setFormData({ ...formData, vhost: e.target.value })}
-                                    placeholder="예: /client-a"
-                                    required
-                                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)' }}
-                                />
-                            </div>
+
+                            {formData.broker_type === 'INTERNAL' && (
+                                <div className="form-group">
+                                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>Vhost (Virtual Host)</label>
+                                    <input
+                                        type="text"
+                                        value={formData.vhost}
+                                        onChange={e => setFormData({ ...formData, vhost: e.target.value })}
+                                        placeholder="예: /client-a"
+                                        required
+                                        style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)' }}
+                                    />
+                                </div>
+                            )}
                         </div>
+
                         <div className="form-group">
                             <label style={{ display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700 }}>설명</label>
                             <textarea
@@ -433,6 +470,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)', minHeight: '80px', resize: 'vertical' }}
                             />
                         </div>
+
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <input
                                 type="checkbox"
@@ -461,14 +499,15 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                         </div>
                     </form>
                 </div>
-            ) : null}
-
-            {loading && instances.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px' }}>Loading...</div>
             ) : (
-                instances.length === 0 ? (
-                    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--neutral-400)' }}>
-                        등록된 인스턴스가 없습니다.
+                loading && instances.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px' }}>
+                        <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i> 로딩 중...
+                    </div>
+                ) : instances.length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: 'var(--neutral-400)', background: 'var(--neutral-50)', borderRadius: '12px', border: '1px dashed var(--neutral-300)' }}>
+                        <i className="fas fa-info-circle" style={{ display: 'block', fontSize: '24px', marginBottom: '12px' }}></i>
+                        등록된 인스턴스가 없습니다. '인스턴스 추가' 버튼을 눌러 새 연결을 만드세요.
                     </div>
                 ) : (
                     <>
@@ -477,9 +516,9 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                 <thead style={{ background: 'var(--neutral-50)', borderBottom: '1px solid var(--neutral-200)' }}>
                                     <tr>
                                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>상태</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>모드</th>
                                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>인스턴스명</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>Tenant</th>
-                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>Vhost</th>
+                                        <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>소유 테넌트</th>
                                         <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700 }}>API Key</th>
                                         <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700 }}>작업</th>
                                     </tr>
@@ -504,8 +543,28 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                                 </span>
                                             </td>
                                             <td style={{ padding: '12px 16px' }}>
+                                                <span style={{
+                                                    fontSize: '11px',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '12px',
+                                                    background: instance.broker_type === 'EXTERNAL' ? 'var(--warning-50)' : 'var(--neutral-100)',
+                                                    color: instance.broker_type === 'EXTERNAL' ? 'var(--warning-700)' : 'var(--neutral-500)',
+                                                    fontWeight: 800
+                                                }}>
+                                                    {instance.broker_type || 'INTERNAL'}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '12px 16px' }}>
                                                 <div style={{ fontWeight: 600 }}>{instance.instance_name}</div>
-                                                <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>{instance.description}</div>
+                                                {instance.broker_type !== 'EXTERNAL' ? (
+                                                    <div style={{ fontSize: '11px', color: 'var(--neutral-400)', marginTop: '2px' }}>
+                                                        <code>{instance.vhost}</code>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ fontSize: '11px', color: 'var(--warning-600)', marginTop: '2px' }}>
+                                                        <i className="fas fa-globe" style={{ fontSize: '10px' }}></i> External Broker
+                                                    </div>
+                                                )}
                                             </td>
                                             <td style={{ padding: '12px 16px' }}>
                                                 <span style={{
@@ -519,7 +578,6 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
                                                     {(instance as any).tenant_name || 'Shared (Global)'}
                                                 </span>
                                             </td>
-                                            <td style={{ padding: '12px 16px' }}><code>{instance.vhost}</code></td>
                                             <td style={{ padding: '12px 16px' }}>
                                                 {renderApiKey(instance.api_key)}
                                             </td>
@@ -561,6 +619,7 @@ const ProtocolInstanceManager: React.FC<ProtocolInstanceManagerProps> = ({ proto
             )}
         </div>
     );
+
 };
 
 export default ProtocolInstanceManager;
