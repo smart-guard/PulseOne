@@ -90,6 +90,12 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
             changes.push(`Port: ${oldPort} ➔ ${newPort}`);
         }
 
+        // Credential changes (EXTERNAL ONLY)
+        if (instance.broker_type === 'EXTERNAL') {
+            if (localParams.username !== originalParams.username) changes.push(`Username: ${originalParams.username || 'N/A'} ➔ ${localParams.username}`);
+            if (localParams.password !== originalParams.password) changes.push(`Password: 수정됨`);
+        }
+
         if (changes.length === 0) {
             await confirm({
                 title: '알림',
@@ -141,12 +147,14 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                         <div className="form-group">
-                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>Broker Host</label>
+                            <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>
+                                {instance.broker_type === 'EXTERNAL' ? 'External Broker Host' : 'Broker Host'}
+                            </label>
                             <input
                                 type="text"
-                                value={localParams.host || window.location.hostname}
+                                value={localParams.host || (instance.broker_type === 'EXTERNAL' ? '' : window.location.hostname)}
                                 onChange={(e) => setLocalParams({ ...localParams, host: e.target.value })}
-                                placeholder="e.g. 192.168.0.10"
+                                placeholder={instance.broker_type === 'EXTERNAL' ? "e.g. mqtt.example.com" : "e.g. 192.168.0.10"}
                                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)', fontSize: '13px' }}
                             />
                         </div>
@@ -161,17 +169,46 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                         </div>
                     </div>
 
+                    {instance.broker_type === 'EXTERNAL' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '-8px' }}>
+                            <div className="form-group">
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>MQTT Username</label>
+                                <input
+                                    type="text"
+                                    value={localParams.username || ''}
+                                    onChange={(e) => setLocalParams({ ...localParams, username: e.target.value })}
+                                    placeholder="Username"
+                                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)', fontSize: '13px' }}
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>MQTT Password</label>
+                                <input
+                                    type="password"
+                                    value={localParams.password || ''}
+                                    onChange={(e) => setLocalParams({ ...localParams, password: e.target.value })}
+                                    placeholder="Password"
+                                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-300)', fontSize: '13px' }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
                     <div className="form-group">
                         <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--neutral-500)', marginBottom: '4px', display: 'block' }}>Calculated Endpoint URL (MQTT)</label>
                         <div style={{ position: 'relative' }}>
                             <input
                                 type="text"
                                 readOnly
-                                value={`mqtt://${localParams.host || window.location.hostname}:${localParams.port || 1883}${instance.vhost}`}
+                                value={instance.broker_type === 'EXTERNAL'
+                                    ? `mqtt://${localParams.host || 'BROKER_ADDRESS'}:${localParams.port || 1883}`
+                                    : `mqtt://${localParams.host || window.location.hostname}:${localParams.port || 1883}${instance.vhost}`}
                                 style={{ width: '100%', background: 'var(--neutral-100)', padding: '10px', borderRadius: '8px', border: '1px solid var(--neutral-200)', fontSize: '13px', fontWeight: 700, color: 'var(--neutral-600)' }}
                             />
                             <div style={{ fontSize: '10px', color: 'var(--neutral-400)', marginTop: '4px' }}>
-                                * 외부 센서나 디바이스에서 접속할 때는 이 URL을 사용하세요.
+                                {instance.broker_type === 'EXTERNAL'
+                                    ? '* 외부 브로커 주소를 정확히 입력하십시오. Vhost 경로가 없는 표준 MQTT 연결을 사용합니다.'
+                                    : '* 외부 센서나 디바이스에서 접속할 때는 이 URL을 사용하세요.'}
                             </div>
                         </div>
                     </div>
@@ -182,24 +219,26 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                         gap: '12px'
                     }}>
                         {/* 1. API Key Section (Decorative Blue Box) */}
-                        <div style={{
-                            flex: 1,
-                            padding: '12px',
-                            background: 'var(--primary-50)',
-                            borderRadius: '12px',
-                            border: '1px solid var(--primary-200)'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary-800)' }}>Authentication Token (API Key)</label>
-                                <button onClick={handleReissueApiKey} disabled={loading} style={{ padding: '2px 6px', fontSize: '10px', background: '#fff', border: '1px solid var(--primary-300)', borderRadius: '4px', cursor: 'pointer' }}>재발급</button>
+                        {instance.broker_type === 'INTERNAL' && (
+                            <div style={{
+                                flex: 1,
+                                padding: '12px',
+                                background: 'var(--primary-50)',
+                                borderRadius: '12px',
+                                border: '1px solid var(--primary-200)'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                    <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--primary-800)' }}>Authentication Token (API Key)</label>
+                                    <button onClick={handleReissueApiKey} disabled={loading} style={{ padding: '2px 6px', fontSize: '10px', background: '#fff', border: '1px solid var(--primary-300)', borderRadius: '4px', cursor: 'pointer' }}>재발급</button>
+                                </div>
+                                <input
+                                    type="text"
+                                    readOnly
+                                    value={instance.api_key || 'N/A'}
+                                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: 'none', background: '#fff', fontFamily: 'monospace', fontWeight: 800, fontSize: '13px', textAlign: 'center' }}
+                                />
                             </div>
-                            <input
-                                type="text"
-                                readOnly
-                                value={instance.api_key || 'N/A'}
-                                style={{ width: '100%', padding: '8px', borderRadius: '6px', border: 'none', background: '#fff', fontFamily: 'monospace', fontWeight: 800, fontSize: '13px', textAlign: 'center' }}
-                            />
-                        </div>
+                        )}
 
                         {/* 2. Global Action Section (Outside the box) */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -228,7 +267,7 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                                 변경사항 저장
                             </button>
                             <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 600 }}>
-                                * 호스트/포트 저장 필수
+                                * 설정 저장 시 해당 {instance.broker_type === 'EXTERNAL' ? '브로커로 연결을 시도' : '호스트/포트 정보가 업데이트'}됩니다.
                             </span>
                         </div>
                     </div>
@@ -262,27 +301,51 @@ const MqttSecuritySlot: React.FC<MqttSecuritySlotProps> = ({ instance, onUpdate 
                             <p style={{ fontSize: '11px', color: 'var(--neutral-400)', margin: '4px 0 0 0' }}>API Key는 인스턴스 전용 비밀번호 역할을 병행합니다.</p>
                         </div>
 
-                        <div>
-                            <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>ISOLATION (VHOST/PATH)</p>
-                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '6px' }}>
-                                <div style={{ fontSize: '12px' }}>
-                                    <span style={{ color: 'var(--neutral-600)' }}>Vhost/Path:</span>
-                                    <code style={{ fontWeight: 800, marginLeft: '8px' }}>{instance.vhost}</code>
+                        {instance.broker_type === 'INTERNAL' && (
+                            <div>
+                                <p style={{ margin: '0 0 4px 0', fontSize: '11px', fontWeight: 700, color: 'var(--neutral-500)' }}>ISOLATION (VHOST/PATH)</p>
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '6px' }}>
+                                    <div style={{ fontSize: '12px' }}>
+                                        <span style={{ color: 'var(--neutral-600)' }}>Vhost/Path:</span>
+                                        <code style={{ fontWeight: 800, marginLeft: '8px' }}>{instance.vhost}</code>
+                                    </div>
+                                </div>
+                                <div style={{
+                                    background: 'white',
+                                    padding: '10px',
+                                    borderRadius: '8px',
+                                    border: '1px solid var(--neutral-100)',
+                                    fontSize: '11px',
+                                    color: 'var(--neutral-600)',
+                                    lineHeight: '1.5'
+                                }}>
+                                    <i className="fas fa-shield-alt" style={{ marginRight: '6px', color: 'var(--success-500)' }}></i>
+                                    <strong>Vhost 격리 기술 적용:</strong> 별도의 Topic Prefix(접두어) 설정이 필요 없습니다. 해당 Vhost 경로 자체로 논리적인 독립망을 보장하므로, 장치는 루트(/) 토픽을 자유롭게 사용해도 다른 서비스와 혼선되지 않습니다.
                                 </div>
                             </div>
+                        )}
+
+                        {instance.broker_type === 'EXTERNAL' && (
                             <div style={{
-                                background: 'white',
-                                padding: '10px',
-                                borderRadius: '8px',
-                                border: '1px solid var(--neutral-100)',
-                                fontSize: '11px',
-                                color: 'var(--neutral-600)',
-                                lineHeight: '1.5'
+                                background: 'var(--warning-50)',
+                                padding: '16px',
+                                borderRadius: '12px',
+                                border: '1px solid var(--warning-200)',
+                                fontSize: '12px',
+                                color: 'var(--warning-900)',
+                                lineHeight: '1.6'
                             }}>
-                                <i className="fas fa-shield-alt" style={{ marginRight: '6px', color: 'var(--success-500)' }}></i>
-                                <strong>Vhost 격리 기술 적용:</strong> 별도의 Topic Prefix(접두어) 설정이 필요 없습니다. 해당 Vhost 경로 자체로 논리적인 독립망을 보장하므로, 장치는 루트(/) 토픽을 자유롭게 사용해도 다른 서비스와 혼선되지 않습니다.
+                                <div style={{ fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <i className="fas fa-exclamation-triangle"></i> 외부 브로커 연결 주의사항
+                                </div>
+                                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                                    <li>입력한 Host와 Port로 PulseOne 서버가 직접 접속을 수행합니다.</li>
+                                    <li>방화벽 및 네트워크 접근 권한이 확보되어 있는지 확인하십시오.</li>
+                                    <li>외부 브로커의 토픽 구조는 수집기 드라이버 설정에 따라 결정됩니다.</li>
+                                    <li>SSL/TLS 연결 정보는 현재 기본 설정(Non-SSL)을 따릅니다.</li>
+                                </ul>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>

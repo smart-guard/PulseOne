@@ -40,6 +40,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isSlaveIdDuplicate, setIsSlaveIdDuplicate] = useState(false);
   const [checkingSlaveId, setCheckingSlaveId] = useState(false);
+  const [isAutoMatched, setIsAutoMatched] = useState(false);
 
   // 🔥 NEW: 프로토콜 인스턴스 상태
   const [availableInstances, setAvailableInstances] = useState<ProtocolInstance[]>([]);
@@ -161,7 +162,9 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
       setIsLoadingInstances(true);
       const response = await ProtocolApiService.getProtocolInstances(protocolId);
       if (response.success && response.data) {
-        setAvailableInstances(response.data);
+        // PaginatedResponse에서 items 추출 또는 배열인 경우 그대로 사용
+        const list = (response.data as any).items || (Array.isArray(response.data) ? response.data : []);
+        setAvailableInstances(list);
       } else {
         setAvailableInstances([]);
       }
@@ -497,6 +500,49 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
 
     return () => clearTimeout(timer);
   }, [editData?.site_id, editData?.endpoint, rtuConfig.slave_id, isRtuDevice]);
+
+  // 🔥 NEW: 엔드포인트 입력 시 자동 인스턴스 매칭
+  useEffect(() => {
+    if (mode === 'view' || editData?.protocol_type !== 'MQTT' || !editData?.endpoint || availableInstances.length === 0) {
+      return;
+    }
+
+    const endpoint = editData.endpoint.toLowerCase();
+
+    // 엔드포인트 문자열 내에 vhost 또는 호스트가 포함되어 있는지 확인
+    const matchedInstance = availableInstances.find(inst => {
+      const isExternal = inst.broker_type === 'EXTERNAL';
+      const params = typeof inst.connection_params === 'string'
+        ? JSON.parse(inst.connection_params)
+        : (inst.connection_params || {});
+
+      if (isExternal) {
+        // 외부 브로커: 호스트 주소가 엔드포인트에 포함되어 있는지 확인
+        if (!params.host) return false;
+        const host = params.host.toLowerCase();
+        return endpoint.includes(host);
+      } else {
+        // 내부 브로커: vhost 기반 매칭
+        if (!inst.vhost) return false;
+
+        // vhost 정규화 (양끝 공백 및 앞쪽 슬래시 제거 후 소문자화)
+        const normalizedVhost = inst.vhost.replace(/^\/+/, '').trim().toLowerCase();
+        if (!normalizedVhost) return false;
+
+        // 엔드포인트의 경로 부분에서 vhost 매칭 (예: mqtt://host/vhost)
+        // /vhost/ 형태거나 /vhost로 끝나는 경우 매칭
+        return endpoint.includes(`/${normalizedVhost}/`) ||
+          endpoint.endsWith(`/${normalizedVhost}`) ||
+          endpoint.endsWith(normalizedVhost);
+      }
+    });
+
+    if (matchedInstance && matchedInstance.id !== editData.protocol_instance_id) {
+      onUpdateField('protocol_instance_id', matchedInstance.id);
+      onUpdateField('instance_name', matchedInstance.instance_name);
+      setIsAutoMatched(true);
+    }
+  }, [editData?.endpoint, editData?.protocol_type, availableInstances]);
 
   // JSON 초기화
   useEffect(() => {
@@ -967,8 +1013,10 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                       // 인스턴스 이름도 함께 업데이트 (표시용)
                       const inst = availableInstances.find(i => i.id === val);
                       if (inst) onUpdateField('instance_name', inst.instance_name);
+                      setIsAutoMatched(false); // 수동으로 바꾸면 자동 매칭 표시 제거
                     }}
                     disabled={isLoadingInstances}
+                    style={isAutoMatched ? { borderColor: 'var(--primary-400)', backgroundColor: 'var(--primary-50)' } : {}}
                   >
                     <option value="">자동 할당 / 기본값</option>
                     {availableInstances.map(inst => (
@@ -979,8 +1027,12 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   </select>
                 )}
                 {mode !== 'view' && (
-                  <div className="hint-text">
-                    특정 브로커나 연결 인스턴스를 지정하려면 선택하세요.
+                  <div className="hint-text" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isAutoMatched ? 'var(--primary-600)' : 'inherit' }}>
+                    {isAutoMatched ? (
+                      <><i className="fas fa-magic" style={{ fontSize: '10px' }}></i> 엔드포인트 정보를 바탕으로 인스턴스가 자동 매칭되었습니다.</>
+                    ) : (
+                      '특정 브로커나 연결 인스턴스를 지정하려면 선택하세요.'
+                    )}
                   </div>
                 )}
               </div>
