@@ -25,6 +25,7 @@ class DeviceRepository extends BaseRepository {
                 .leftJoin('protocol_instances as pi', 'pi.id', 'd.protocol_instance_id')
                 .leftJoin('device_groups as dg', 'dg.id', 'd.device_group_id')
                 .leftJoin('sites as s', 's.id', 'd.site_id')
+                .leftJoin('tenants as t', 't.id', 'd.tenant_id')
                 .leftJoin('device_status as dst', 'dst.device_id', 'd.id')
                 .leftJoin('data_points as dp', 'dp.device_id', 'd.id')
                 .leftJoin('template_devices as td', 'td.id', 'd.template_device_id')
@@ -36,6 +37,7 @@ class DeviceRepository extends BaseRepository {
                     'pi.instance_name',
                     'dg.name as device_group_name',
                     's.name as site_name',
+                    't.company_name as tenant_name',
                     'td.name as template_name',
                     'dst.connection_status',
                     'dst.last_communication',

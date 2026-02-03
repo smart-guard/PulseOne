@@ -40,6 +40,7 @@ export interface Device {
   // 기본 정보
   id: number;
   tenant_id?: number;
+  tenant_name?: string; // 🔥 NEW: 멀티 테넌트 필터용
   site_id?: number;
   device_group_id?: number;
   device_group_name?: string;
