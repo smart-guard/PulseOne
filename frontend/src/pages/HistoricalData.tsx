@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import '../styles/base.css';
 import '../styles/historical-data.css';
+import { isBlobValue, getBlobDownloadUrl } from '../utils/dataUtils';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, YAxisProps
+} from 'recharts';
 
 interface HistoricalDataPoint {
   id: string;
+  realPointId?: number; // DB의 실제 ID
   deviceName: string;
   pointName: string;
   value: number | string | boolean;
@@ -36,16 +42,39 @@ interface AggregatedData {
   pointName: string;
 }
 
+// 메타데이터 인터페이스
+interface PointMetadata {
+  id: number;
+  name: string;
+  deviceId: number;
+  deviceName: string;
+  siteId: number;
+  siteName: string;
+}
+
+interface DeviceMetadata {
+  id: string; // deviceName
+  realId: number; // device_id
+  points: { id: number; name: string }[];
+}
+
+interface SiteMetadata {
+  id: string; // siteName
+  realId: number; // site_id
+  devices: DeviceMetadata[];
+}
+
 const HistoricalData: React.FC = () => {
   const [historicalData, setHistoricalData] = useState<HistoricalDataPoint[]>([]);
   const [aggregatedData, setAggregatedData] = useState<AggregatedData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [metadata, setMetadata] = useState<{ factories: SiteMetadata[] }>({ factories: [] });
   const [queryCondition, setQueryCondition] = useState<QueryCondition>({
     deviceIds: [],
-    pointNames: [],
+    pointNames: [], // This will now store point IDs as strings for consistency with the filter UI
     factories: [],
     categories: [],
-    qualities: ['good'],
+    qualities: ['good', 'uncertain', 'bad'],
     dateRange: {
       start: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24시간 전
       end: new Date()
@@ -53,7 +82,7 @@ const HistoricalData: React.FC = () => {
     aggregation: 'none',
     interval: '1h'
   });
-  
+
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -62,93 +91,157 @@ const HistoricalData: React.FC = () => {
   const [selectedPoints, setSelectedPoints] = useState<string[]>([]);
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
 
-  // 목업 데이터 생성
-  const generateMockData = useCallback(() => {
-    const factories = ['Seoul Factory', 'Busan Factory', 'Daegu Factory'];
-    const devices = ['PLC-001', 'PLC-002', 'HMI-001', 'Sensor-Array-01', 'Motor-Controller-01'];
-    const pointNames = ['Temperature', 'Pressure', 'Flow Rate', 'Level', 'Speed', 'Current', 'Voltage'];
-    const categories = ['Temperature', 'Pressure', 'Flow', 'Level', 'Speed', 'Electrical'];
-    const qualities: ('good' | 'bad' | 'uncertain')[] = ['good', 'bad', 'uncertain'];
 
-    const mockData: HistoricalDataPoint[] = [];
-    const startTime = queryCondition.dateRange.start.getTime();
-    const endTime = queryCondition.dateRange.end.getTime();
-    const timeStep = (endTime - startTime) / 500; // 500개 데이터 포인트
+  const getIntervalMs = (interval: string): number => {
+    switch (interval) {
+      case '1m': return 60 * 1000;
+      case '5m': return 5 * 60 * 1000;
+      case '15m': return 15 * 60 * 1000;
+      case '1h': return 60 * 60 * 1000;
+      case '6h': return 6 * 60 * 60 * 1000;
+      case '1d': return 24 * 60 * 60 * 1000;
+      default: return 60 * 60 * 1000;
+    }
+  };
 
-    for (let i = 0; i < 500; i++) {
-      const timestamp = new Date(startTime + i * timeStep);
-      const factory = factories[Math.floor(Math.random() * factories.length)];
-      const device = devices[Math.floor(Math.random() * devices.length)];
-      const pointName = pointNames[Math.floor(Math.random() * pointNames.length)];
-      const category = categories[Math.floor(Math.random() * categories.length)];
-      
-      let value: number | string | boolean;
-      let unit: string | undefined;
+  // 포인트 메타데이터 로드
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      try {
+        const response = await fetch('/api/data/points?limit=1000');
+        const result = await response.json();
 
-      switch (pointName) {
-        case 'Temperature':
-          value = +(Math.random() * 80 + 20).toFixed(1);
-          unit = '°C';
-          break;
-        case 'Pressure':
-          value = +(Math.random() * 5 + 1).toFixed(2);
-          unit = 'bar';
-          break;
-        case 'Flow Rate':
-          value = +(Math.random() * 100).toFixed(1);
-          unit = 'L/min';
-          break;
-        case 'Speed':
-          value = +(Math.random() * 1500 + 500).toFixed(0);
-          unit = 'rpm';
-          break;
-        case 'Current':
-          value = +(Math.random() * 20).toFixed(2);
-          unit = 'A';
-          break;
-        case 'Voltage':
-          value = +(Math.random() * 50 + 200).toFixed(1);
-          unit = 'V';
-          break;
-        case 'Level':
-          value = +(Math.random() * 100).toFixed(1);
-          unit = '%';
-          break;
-        default:
-          value = +(Math.random() * 100).toFixed(2);
+        if (result.success && result.data && result.data.items) {
+          const items = result.data.items;
+          const sitesMap = new Map<number, SiteMetadata>();
+
+          items.forEach((item: any) => {
+            const siteId = item.site_id || 1;
+            const siteName = item.site_name || `Site ${siteId}`;
+            const deviceId = item.device_id;
+            const deviceName = item.device_name;
+
+            if (!sitesMap.has(siteId)) {
+              sitesMap.set(siteId, {
+                id: siteName,
+                realId: siteId,
+                devices: []
+              });
+            }
+
+            const site = sitesMap.get(siteId)!;
+            let device = site.devices.find(d => d.realId === deviceId);
+
+            if (!device) {
+              device = {
+                id: deviceName,
+                realId: deviceId,
+                points: []
+              };
+              site.devices.push(device);
+            }
+
+            device.points.push({
+              id: item.id,
+              name: item.name
+            });
+          });
+
+          setMetadata({ factories: Array.from(sitesMap.values()) });
+        }
+      } catch (error) {
+        console.error('Failed to fetch metadata:', error);
+      }
+    };
+
+    fetchMetadata();
+  }, []);
+
+  // 데이터 로드
+  const loadHistoricalData = async () => {
+    setIsLoading(true);
+    setCurrentPage(1);
+
+    try {
+      const { pointNames, dateRange, interval, aggregation } = queryCondition;
+
+      // pointNames에 선택된 포인트 ID들이 들어있음
+      if (pointNames.length === 0) {
+        setHistoricalData([]);
+        setAggregatedData([]);
+        setTotalRecords(0);
+        return;
       }
 
-      mockData.push({
-        id: `hist_${i}`,
-        deviceName: device,
-        pointName,
-        value,
-        unit,
-        quality: qualities[Math.floor(Math.random() * qualities.length)],
-        timestamp,
-        factory,
-        deviceType: device.startsWith('PLC') ? 'PLC' : device.startsWith('HMI') ? 'HMI' : 'Sensor',
-        category
+      const params = new URLSearchParams({
+        point_ids: pointNames.join(','),
+        start_time: dateRange.start.toISOString(),
+        end_time: dateRange.end.toISOString(),
+        interval: (interval as string) === 'none' ? '' : interval,
+        aggregation: aggregation === 'none' ? 'mean' : aggregation
       });
+
+      const response = await fetch(`/api/data/historical?${params.toString()}`);
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        const { historical_data, data_points } = result.data;
+
+        // 데이터 매핑
+        const mappedData: HistoricalDataPoint[] = historical_data.map((item: any, index: number) => {
+          const pointDetail = data_points.find((p: any) => p.point_id === item.point_id);
+          return {
+            id: `hist_${index}`,
+            realPointId: pointDetail?.point_id,
+            timestamp: new Date(item.time),
+            deviceName: pointDetail?.device_name || 'Unknown',
+            deviceType: pointDetail?.device_name ? `ID: ${item.point_id}` : 'N/A',
+            pointName: pointDetail?.point_name || `Point ${item.point_id}`,
+            category: pointDetail?.point_name ? `ID: ${item.point_id}` : 'N/A',
+            value: item.value,
+            unit: pointDetail?.unit || '',
+            quality: item.quality || 'good',
+            factory: pointDetail?.site_name || 'N/A'
+          };
+        });
+
+        // 집계 모드인 경우 aggregatedData 설정
+        if (aggregation !== 'none') {
+          const mappedAggregated: AggregatedData[] = historical_data.map((item: any) => ({
+            timestamp: new Date(item.time),
+            value: item.value,
+            count: 1, // 백엔드에서 count를 주지 않으므로 1로 설정 (또는 백엔드 수정 필요)
+            pointName: data_points.find((p: any) => p.point_id === item.point_id)?.point_name || `Point ${item.point_id}`
+          }));
+          setAggregatedData(mappedAggregated);
+        } else {
+          setAggregatedData([]);
+        }
+
+        setHistoricalData(mappedData);
+        setTotalRecords(mappedData.length);
+        setTotalPages(Math.ceil(mappedData.length / pageSize));
+      }
+    } catch (error) {
+      console.error('Failed to load historical data:', error);
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    return mockData.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }, [queryCondition.dateRange]);
-
-  // 집계 데이터 생성
-  const generateAggregatedData = useCallback(() => {
+  // 집계 데이터 생성 보조 함수 (필터링된 데이터 기반)
+  const generateAggregatedFromData = (data: HistoricalDataPoint[]) => {
     if (queryCondition.aggregation === 'none') return [];
 
-    const rawData = generateMockData();
     const intervalMs = getIntervalMs(queryCondition.interval);
     const aggregatedMap = new Map<string, AggregatedData>();
 
-    rawData.forEach(point => {
+    data.forEach(point => {
       if (typeof point.value !== 'number') return;
-      
+
       const intervalStart = Math.floor(point.timestamp.getTime() / intervalMs) * intervalMs;
       const key = `${point.pointName}_${intervalStart}`;
-      
+
       if (!aggregatedMap.has(key)) {
         aggregatedMap.set(key, {
           timestamp: new Date(intervalStart),
@@ -176,43 +269,40 @@ const HistoricalData: React.FC = () => {
       }
     });
 
-    return Array.from(aggregatedMap.values()).sort((a, b) => 
+    return Array.from(aggregatedMap.values()).sort((a, b) =>
       a.timestamp.getTime() - b.timestamp.getTime()
     );
-  }, [queryCondition, generateMockData]);
-
-  const getIntervalMs = (interval: string): number => {
-    switch (interval) {
-      case '1m': return 60 * 1000;
-      case '5m': return 5 * 60 * 1000;
-      case '15m': return 15 * 60 * 1000;
-      case '1h': return 60 * 60 * 1000;
-      case '6h': return 6 * 60 * 60 * 1000;
-      case '1d': return 24 * 60 * 60 * 1000;
-      default: return 60 * 60 * 1000;
-    }
   };
 
-  // 데이터 로드
-  const loadHistoricalData = async () => {
-    setIsLoading(true);
-    try {
-      // 시뮬레이션 딜레이
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockData = generateMockData();
-      const aggregated = generateAggregatedData();
-      
-      setHistoricalData(mockData);
-      setAggregatedData(aggregated);
-      setTotalRecords(mockData.length);
-      setTotalPages(Math.ceil(mockData.length / pageSize));
-    } catch (error) {
-      console.error('Failed to load historical data:', error);
-    } finally {
-      setIsLoading(false);
-    }
+  // 차트 데이터 변환
+  const getChartData = () => {
+    const dataToUse = queryCondition.aggregation === 'none' ? historicalData : aggregatedData;
+    if (dataToUse.length === 0) return [];
+
+    // 타임스탬프별로 그룹화
+    const timeMap = new Map<number, any>();
+
+    dataToUse.forEach(item => {
+      const time = item.timestamp.getTime();
+      if (!timeMap.has(time)) {
+        timeMap.set(time, {
+          timestamp: time,
+          displayTime: item.timestamp.toLocaleString('ko-KR', {
+            month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+          })
+        });
+      }
+      const entry = timeMap.get(time);
+      entry[item.pointName] = item.value;
+    });
+
+    return Array.from(timeMap.values()).sort((a, b) => a.timestamp - b.timestamp);
   };
+
+  const chartColors = [
+    '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
+    '#ec4899', '#06b6d4', '#84cc16', '#6366f1', '#f43f5e'
+  ];
 
   // 초기 로드
   useEffect(() => {
@@ -232,12 +322,12 @@ const HistoricalData: React.FC = () => {
   // 데이터 내보내기
   const exportData = (format: 'csv' | 'json') => {
     const dataToExport = queryCondition.aggregation === 'none' ? historicalData : aggregatedData;
-    
+
     if (format === 'csv') {
-      const headers = queryCondition.aggregation === 'none' 
+      const headers = queryCondition.aggregation === 'none'
         ? ['Device', 'Point', 'Value', 'Unit', 'Quality', 'Timestamp', 'Factory']
         : ['Point', 'Timestamp', 'Value', 'Count'];
-      
+
       const csvContent = [
         headers.join(','),
         ...dataToExport.map(item => {
@@ -280,16 +370,51 @@ const HistoricalData: React.FC = () => {
     }
   };
 
+  const handleResetFilters = () => {
+    setQueryCondition(prev => ({
+      ...prev,
+      factories: [],
+      deviceIds: [],
+      pointNames: [],
+      qualities: ['good', 'uncertain', 'bad']
+    }));
+  };
+
+  // 필터링 가능한 메타데이터 계산 (계층적/Cascading)
+  const availableFactories = metadata.factories.map(f => f.id);
+
+  const availableDevices = React.useMemo(() => {
+    if (queryCondition.factories.length === 0) {
+      return [];
+    }
+    return metadata.factories
+      .filter(f => queryCondition.factories.includes(f.id))
+      .flatMap(f => f.devices.map(d => d.id));
+  }, [metadata, queryCondition.factories]);
+
+  const availablePoints = React.useMemo(() => {
+    if (queryCondition.deviceIds.length === 0) {
+      return [];
+    }
+
+    const points = metadata.factories
+      .flatMap(f => f.devices)
+      .filter(d => queryCondition.deviceIds.includes(d.id))
+      .flatMap(d => d.points);
+
+    // 중복 제거 및 형식 변환 (ID를 문자열로)
+    const uniquePoints = new Map<string, string>();
+    points.forEach(p => {
+      uniquePoints.set(String(p.id), p.name);
+    });
+
+    return Array.from(uniquePoints.entries()).map(([id, name]) => ({ id, name }));
+  }, [metadata, queryCondition.deviceIds]);
+
   // 페이지네이션
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
   const currentData = historicalData.slice(startIndex, endIndex);
-
-  // 고유 값들 추출
-  const uniqueFactories = [...new Set(historicalData.map(item => item.factory))];
-  const uniqueDevices = [...new Set(historicalData.map(item => item.deviceName))];
-  const uniquePoints = [...new Set(historicalData.map(item => item.pointName))];
-  const uniqueCategories = [...new Set(historicalData.map(item => item.category))];
 
   return (
     <div className="historical-data-container">
@@ -297,7 +422,7 @@ const HistoricalData: React.FC = () => {
       <div className="page-header">
         <h1 className="page-title">이력 데이터 조회</h1>
         <div className="page-actions">
-          <button 
+          <button
             className="btn btn-outline"
             onClick={loadHistoricalData}
             disabled={isLoading}
@@ -306,7 +431,7 @@ const HistoricalData: React.FC = () => {
             새로고침
           </button>
           <div className="export-buttons">
-            <button 
+            <button
               className="btn btn-primary"
               onClick={() => exportData('csv')}
               disabled={historicalData.length === 0}
@@ -314,7 +439,7 @@ const HistoricalData: React.FC = () => {
               <i className="fas fa-file-csv"></i>
               CSV 내보내기
             </button>
-            <button 
+            <button
               className="btn btn-primary"
               onClick={() => exportData('json')}
               disabled={historicalData.length === 0}
@@ -330,82 +455,90 @@ const HistoricalData: React.FC = () => {
       <div className="query-panel">
         <div className="query-section">
           <h3>조회 조건</h3>
-          
-          {/* 기본 조건 */}
-          <div className="basic-conditions">
-            <div className="condition-row">
-              <div className="condition-group">
-                <label>조회 기간</label>
-                <div className="date-range-container">
-                  <input
-                    type="datetime-local"
-                    value={queryCondition.dateRange.start.toISOString().slice(0, 16)}
-                    onChange={(e) => setQueryCondition(prev => ({
-                      ...prev,
-                      dateRange: { ...prev.dateRange, start: new Date(e.target.value) }
-                    }))}
-                    className="date-input"
-                  />
-                  <span className="date-separator">~</span>
-                  <input
-                    type="datetime-local"
-                    value={queryCondition.dateRange.end.toISOString().slice(0, 16)}
-                    onChange={(e) => setQueryCondition(prev => ({
-                      ...prev,
-                      dateRange: { ...prev.dateRange, end: new Date(e.target.value) }
-                    }))}
-                    className="date-input"
-                  />
-                </div>
-                
-                <div className="quick-date-buttons">
-                  <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(1)}>1시간</button>
-                  <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(6)}>6시간</button>
-                  <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(24)}>24시간</button>
-                  <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(24 * 7)}>7일</button>
-                  <button className="btn btn-sm btn-outline" onClick={() => setQuickDateRange(24 * 30)}>30일</button>
-                </div>
-              </div>
 
-              <div className="condition-group">
-                <label>집계 방식</label>
-                <select
-                  value={queryCondition.aggregation}
+          {/* 기본 조건 */}
+          <div className="query-filter-bar single-line">
+            <div className="filter-group date-range">
+              <label>조회 기간</label>
+              <div className="date-range-wrapper">
+                <input
+                  type="datetime-local"
+                  value={queryCondition.dateRange.start.toISOString().slice(0, 16)}
                   onChange={(e) => setQueryCondition(prev => ({
                     ...prev,
-                    aggregation: e.target.value as any
+                    dateRange: { ...prev.dateRange, start: new Date(e.target.value) }
                   }))}
-                  className="condition-select"
+                  className="date-input"
+                />
+                <span className="date-separator">~</span>
+                <input
+                  type="datetime-local"
+                  value={queryCondition.dateRange.end.toISOString().slice(0, 16)}
+                  onChange={(e) => setQueryCondition(prev => ({
+                    ...prev,
+                    dateRange: { ...prev.dateRange, end: new Date(e.target.value) }
+                  }))}
+                  className="date-input"
+                />
+              </div>
+            </div>
+
+            <div className="filter-group quick-ranges">
+              <label>빠른 설정</label>
+              <div className="quick-date-buttons">
+                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(1)}>1H</button>
+                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(6)}>6H</button>
+                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(24)}>1D</button>
+                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(24 * 7)}>7D</button>
+                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(24 * 30)}>30D</button>
+              </div>
+            </div>
+
+            <div className="filter-group">
+              <label>집계 방식</label>
+              <select
+                value={queryCondition.aggregation}
+                onChange={(e) => setQueryCondition(prev => ({
+                  ...prev,
+                  aggregation: e.target.value as any
+                }))}
+                className="condition-select"
+              >
+                <option value="none">원본</option>
+                <option value="avg">평균</option>
+                <option value="min">최소</option>
+                <option value="max">최대</option>
+              </select>
+            </div>
+
+            {queryCondition.aggregation !== 'none' && (
+              <div className="filter-group">
+                <label>간격</label>
+                <select
+                  value={queryCondition.interval}
+                  onChange={(e) => setQueryCondition(prev => ({
+                    ...prev,
+                    interval: e.target.value as any
+                  }))}
+                  className="condition-select interval-select"
                 >
-                  <option value="none">집계 안함 (원본 데이터)</option>
-                  <option value="avg">평균값</option>
-                  <option value="min">최소값</option>
-                  <option value="max">최대값</option>
-                  <option value="sum">합계</option>
-                  <option value="count">카운트</option>
+                  <option value="1m">1분</option>
+                  <option value="1h">1시간</option>
+                  <option value="1d">1일</option>
                 </select>
               </div>
+            )}
 
-              {queryCondition.aggregation !== 'none' && (
-                <div className="condition-group">
-                  <label>집계 간격</label>
-                  <select
-                    value={queryCondition.interval}
-                    onChange={(e) => setQueryCondition(prev => ({
-                      ...prev,
-                      interval: e.target.value as any
-                    }))}
-                    className="condition-select"
-                  >
-                    <option value="1m">1분</option>
-                    <option value="5m">5분</option>
-                    <option value="15m">15분</option>
-                    <option value="1h">1시간</option>
-                    <option value="6h">6시간</option>
-                    <option value="1d">1일</option>
-                  </select>
-                </div>
-              )}
+            <div className="filter-group search-action">
+              <label>&nbsp;</label>
+              <button
+                className="btn btn-primary search-btn"
+                onClick={loadHistoricalData}
+                disabled={isLoading}
+              >
+                <i className="fas fa-search"></i>
+                조회
+              </button>
             </div>
           </div>
 
@@ -422,129 +555,178 @@ const HistoricalData: React.FC = () => {
 
           {showAdvancedFilter && (
             <div className="advanced-conditions">
-              <div className="condition-row">
-                <div className="condition-group">
-                  <label>공장</label>
-                  <select
-                    multiple
-                    value={queryCondition.factories}
-                    onChange={(e) => setQueryCondition(prev => ({
-                      ...prev,
-                      factories: Array.from(e.target.selectedOptions, option => option.value)
-                    }))}
-                    className="condition-select multi-select"
-                  >
-                    {uniqueFactories.map(factory => (
-                      <option key={factory} value={factory}>{factory}</option>
+              <div className="hierarchical-filter-header">
+                <h3>고급 검색 조건</h3>
+                <button className="btn btn-xs btn-outline btn-reset" onClick={handleResetFilters}>
+                  <i className="fas fa-undo"></i> 전체 초기화
+                </button>
+              </div>
+
+              <div className="hierarchical-filter-container">
+                {/* 사이트 선택 */}
+                <div className="drilldown-column">
+                  <div className="column-header">
+                    <label>사이트 (공장)</label>
+                    <div className="column-actions">
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, factories: availableFactories, deviceIds: [], pointNames: [] }))}>전체</button>
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, factories: [], deviceIds: [], pointNames: [] }))}>해제</button>
+                    </div>
+                  </div>
+                  <div className="drilldown-list">
+                    {availableFactories.map(factory => (
+                      <div
+                        key={factory}
+                        className={`list-item ${queryCondition.factories.includes(factory) ? 'selected' : ''}`}
+                        onClick={() => {
+                          const next = queryCondition.factories.includes(factory)
+                            ? queryCondition.factories.filter(f => f !== factory)
+                            : [...queryCondition.factories, factory];
+                          setQueryCondition(prev => ({ ...prev, factories: next, deviceIds: [], pointNames: [] }));
+                        }}
+                      >
+                        <span className="checkbox"></span>
+                        <span className="item-text">{factory}</span>
+                      </div>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
-                <div className="condition-group">
-                  <label>디바이스</label>
-                  <select
-                    multiple
-                    value={queryCondition.deviceIds}
-                    onChange={(e) => setQueryCondition(prev => ({
-                      ...prev,
-                      deviceIds: Array.from(e.target.selectedOptions, option => option.value)
-                    }))}
-                    className="condition-select multi-select"
-                  >
-                    {uniqueDevices.map(device => (
-                      <option key={device} value={device}>{device}</option>
+                {/* 디바이스 선택 */}
+                <div className="drilldown-column">
+                  <div className="column-header">
+                    <label>디바이스</label>
+                    <div className="column-actions">
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, deviceIds: availableDevices, pointNames: [] }))}>전체</button>
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, deviceIds: [], pointNames: [] }))}>해제</button>
+                    </div>
+                  </div>
+                  <div className="drilldown-list">
+                    {availableDevices.map(device => (
+                      <div
+                        key={device}
+                        className={`list-item ${queryCondition.deviceIds.includes(device) ? 'selected' : ''}`}
+                        onClick={() => {
+                          const next = queryCondition.deviceIds.includes(device)
+                            ? queryCondition.deviceIds.filter(d => d !== device)
+                            : [...queryCondition.deviceIds, device];
+                          setQueryCondition(prev => ({ ...prev, deviceIds: next, pointNames: [] }));
+                        }}
+                      >
+                        <span className="checkbox"></span>
+                        <span className="item-text">{device}</span>
+                      </div>
                     ))}
-                  </select>
+                    {availableDevices.length === 0 && <div className="list-empty">공장을 먼저 선택하세요</div>}
+                  </div>
                 </div>
 
-                <div className="condition-group">
-                  <label>데이터 포인트</label>
-                  <select
-                    multiple
-                    value={queryCondition.pointNames}
-                    onChange={(e) => setQueryCondition(prev => ({
-                      ...prev,
-                      pointNames: Array.from(e.target.selectedOptions, option => option.value)
-                    }))}
-                    className="condition-select multi-select"
-                  >
-                    {uniquePoints.map(point => (
-                      <option key={point} value={point}>{point}</option>
+                {/* 데이터 포인트 선택 */}
+                <div className="drilldown-column">
+                  <div className="column-header">
+                    <label>데이터 포인트</label>
+                    <div className="column-actions">
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, pointNames: availablePoints.map(p => p.id) }))}>전체</button>
+                      <button onClick={() => setQueryCondition(prev => ({ ...prev, pointNames: [] }))}>해제</button>
+                    </div>
+                  </div>
+                  <div className="drilldown-list">
+                    {availablePoints.map(point => (
+                      <div
+                        key={point.id}
+                        className={`list-item ${queryCondition.pointNames.includes(point.id) ? 'selected' : ''}`}
+                        onClick={() => {
+                          const next = queryCondition.pointNames.includes(point.id)
+                            ? queryCondition.pointNames.filter(p => p !== point.id)
+                            : [...queryCondition.pointNames, point.id];
+                          setQueryCondition(prev => ({ ...prev, pointNames: next }));
+                        }}
+                      >
+                        <span className="checkbox"></span>
+                        <span className="item-text">{point.name}</span>
+                      </div>
                     ))}
-                  </select>
+                    {availablePoints.length === 0 && <div className="list-empty">디바이스를 먼저 선택하세요</div>}
+                  </div>
                 </div>
+              </div>
 
-                <div className="condition-group">
-                  <label>품질</label>
-                  <select
-                    multiple
-                    value={queryCondition.qualities}
-                    onChange={(e) => setQueryCondition(prev => ({
-                      ...prev,
-                      qualities: Array.from(e.target.selectedOptions, option => option.value)
-                    }))}
-                    className="condition-select multi-select"
-                  >
-                    <option value="good">양호</option>
-                    <option value="uncertain">불확실</option>
-                    <option value="bad">불량</option>
-                  </select>
+              <div className="quality-filter-row">
+                <label>데이터 품질</label>
+                <div className="filter-tags">
+                  {[
+                    { val: 'good', label: '양호' },
+                    { val: 'uncertain', label: '불확실' },
+                    { val: 'bad', label: '불량' }
+                  ].map(quality => (
+                    <button
+                      key={quality.val}
+                      className={`filter-tag ${queryCondition.qualities.includes(quality.val) ? 'active' : ''}`}
+                      onClick={() => {
+                        const next = queryCondition.qualities.includes(quality.val)
+                          ? queryCondition.qualities.filter(q => q !== quality.val)
+                          : [...queryCondition.qualities, quality.val];
+                        setQueryCondition(prev => ({ ...prev, qualities: next }));
+                      }}
+                    >
+                      {quality.label}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
           )}
 
-          <div className="query-actions">
-            <button 
-              className="btn btn-primary"
-              onClick={loadHistoricalData}
-              disabled={isLoading}
-            >
-              <i className="fas fa-search"></i>
-              조회
-            </button>
-          </div>
         </div>
       </div>
 
       {/* 결과 통계 */}
       <div className="result-stats">
         <div className="stats-info">
-          <span className="total-records">
-            총 {totalRecords.toLocaleString()}개 레코드
-          </span>
-          <span className="date-range-info">
-            ({queryCondition.dateRange.start.toLocaleString()} ~ {queryCondition.dateRange.end.toLocaleString()})
-          </span>
+          <div className="stats-item">
+            <span className="stats-label">TOTAL</span>
+            <span className="total-records">{totalRecords.toLocaleString()}</span>
+            <span className="stats-unit">REC</span>
+          </div>
+          <div className="stats-divider"></div>
+          <div className="stats-item date-range-display">
+            <i className="far fa-calendar-alt"></i>
+            <span className="date-text">{queryCondition.dateRange.start.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+            <span className="date-sep">~</span>
+            <span className="date-text">{queryCondition.dateRange.end.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+          </div>
           {queryCondition.aggregation !== 'none' && (
-            <span className="aggregation-info">
-              {queryCondition.aggregation.toUpperCase()} 집계 ({queryCondition.interval} 간격)
-            </span>
+            <>
+              <div className="stats-divider"></div>
+              <div className="stats-item aggregation-tag">
+                <span className="agg-mode">{queryCondition.aggregation.toUpperCase()}</span>
+                <span className="agg-interval">{queryCondition.interval}</span>
+              </div>
+            </>
           )}
         </div>
 
         <div className="view-controls">
-          <div className="view-mode-toggle">
+          <div className="view-mode-toggle-group">
             <button
-              className={`view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+              className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
             >
               <i className="fas fa-table"></i>
-              테이블
+              <span>테이블</span>
             </button>
             <button
-              className={`view-mode-btn ${viewMode === 'chart' ? 'active' : ''}`}
+              className={`view-toggle-btn ${viewMode === 'chart' ? 'active' : ''}`}
               onClick={() => setViewMode('chart')}
             >
               <i className="fas fa-chart-line"></i>
-              차트
+              <span>차트</span>
             </button>
             <button
-              className={`view-mode-btn ${viewMode === 'both' ? 'active' : ''}`}
+              className={`view-toggle-btn ${viewMode === 'both' ? 'active' : ''}`}
               onClick={() => setViewMode('both')}
             >
-              <i className="fas fa-th-large"></i>
-              둘다
+              <i className="fas fa-columns"></i>
+              <span>전체보기</span>
             </button>
           </div>
         </div>
@@ -563,62 +745,128 @@ const HistoricalData: React.FC = () => {
               <div className="chart-section">
                 <div className="chart-header">
                   <h3>시계열 차트</h3>
-                  <div className="chart-controls">
-                    <select
-                      multiple
-                      value={selectedPoints}
-                      onChange={(e) => setSelectedPoints(Array.from(e.target.selectedOptions, option => option.value))}
-                      className="point-selector"
-                    >
-                      {uniquePoints.map(point => (
-                        <option key={point} value={point}>{point}</option>
-                      ))}
-                    </select>
+                  <div className="point-tag-selector">
+                    {availablePoints.map(point => (
+                      <button
+                        key={point.id}
+                        className={`point-tag ${selectedPoints.includes(point.id) ? 'active' : ''}`}
+                        onClick={() => {
+                          if (selectedPoints.includes(point.id)) {
+                            setSelectedPoints(selectedPoints.filter(p => p !== point.id));
+                          } else {
+                            setSelectedPoints([...selectedPoints, point.id]);
+                          }
+                        }}
+                      >
+                        {point.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="chart-selection-actions">
+                    <button
+                      className="btn-chart-action"
+                      onClick={() => setSelectedPoints(availablePoints.map(p => p.id))}
+                    >전체 선택</button>
+                    <button
+                      className="btn-chart-action"
+                      onClick={() => setSelectedPoints([])}
+                    >선택 해제</button>
                   </div>
                 </div>
                 <div className="chart-container">
-                  <div className="chart-placeholder">
-                    <i className="fas fa-chart-line chart-icon"></i>
-                    <p>시계열 차트가 여기에 표시됩니다</p>
-                    <p className="text-sm text-neutral-500">
-                      {selectedPoints.length > 0 
-                        ? `${selectedPoints.length}개 포인트 선택됨` 
-                        : '표시할 데이터 포인트를 선택하세요'}
-                    </p>
-                  </div>
+                  {selectedPoints.length > 0 && (queryCondition.aggregation === 'none' ? historicalData : aggregatedData).length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={getChartData()} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                        <XAxis
+                          dataKey="displayTime"
+                          tick={{ fontSize: 11, fill: '#94a3b8' }}
+                          axisLine={{ stroke: '#e2e8f0' }}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11, fill: '#94a3b8' }}
+                          axisLine={{ stroke: '#e2e8f0' }}
+                          tickLine={false}
+                          domain={['auto', 'auto']}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: '8px',
+                            border: 'none',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            fontSize: '12px'
+                          }}
+                        />
+                        <Legend iconType="circle" />
+                        {selectedPoints.map((point, index) => (
+                          <Line
+                            key={point}
+                            type="monotone"
+                            dataKey={point}
+                            stroke={chartColors[index % chartColors.length]}
+                            strokeWidth={2}
+                            dot={{ r: 2, fill: chartColors[index % chartColors.length] }}
+                            activeDot={{ r: 5 }}
+                            animationDuration={300}
+                          />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="chart-placeholder">
+                      <i className="fas fa-chart-line chart-icon"></i>
+                      <p>시계열 차트가 여기에 표시됩니다</p>
+                      <p className="text-sm text-neutral-500">
+                        {selectedPoints.length > 0
+                          ? '표시할 데이터가 없습니다 (조회 조건을 확인하세요)'
+                          : '표시할 데이터 포인트를 선택하세요'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
             {(viewMode === 'table' || viewMode === 'both') && (
               <div className="table-section">
+                {viewMode === 'both' && (
+                  <div className="section-divider-header">
+                    <h3>상세 데이터 명세</h3>
+                  </div>
+                )}
                 <div className="data-table-container">
                   <table className="data-table">
                     <thead>
                       <tr>
                         {queryCondition.aggregation === 'none' ? (
                           <>
-                            <th>디바이스</th>
-                            <th>포인트명</th>
-                            <th>값</th>
-                            <th>품질</th>
-                            <th>타임스탬프</th>
-                            <th>공장</th>
+                            <th className="num-cell">No.</th>
+                            <th className="device-cell">디바이스</th>
+                            <th className="point-cell">포인트명</th>
+                            <th className="value-cell">값</th>
+                            <th className="quality-cell">품질</th>
+                            <th className="timestamp-cell">타임스탬프</th>
+                            <th className="factory-cell">공장</th>
                           </>
                         ) : (
                           <>
-                            <th>포인트명</th>
-                            <th>타임스탬프</th>
-                            <th>집계값</th>
-                            <th>데이터 수</th>
+                            <th className="num-cell">No.</th>
+                            <th className="point-cell">포인트명</th>
+                            <th className="timestamp-cell">타임스탬프</th>
+                            <th className="value-cell">집계값</th>
+                            <th className="count-cell">데이터 수</th>
                           </>
                         )}
                       </tr>
                     </thead>
                     <tbody>
                       {queryCondition.aggregation === 'none' ? (
-                        currentData.map(item => (
+                        currentData.map((item, index) => (
                           <tr key={item.id}>
+                            <td className="num-cell">
+                              {startIndex + index + 1}
+                            </td>
                             <td className="device-cell">
                               <div className="device-info">
                                 <span className="device-name">{item.deviceName}</span>
@@ -633,7 +881,13 @@ const HistoricalData: React.FC = () => {
                             </td>
                             <td className="value-cell">
                               <span className="data-value">
-                                {typeof item.value === 'number' ? item.value.toFixed(2) : String(item.value)}
+                                {isBlobValue(item.value) ? (
+                                  <a href={getBlobDownloadUrl(item.value as string)} className="blob-download-link" title="Download File">
+                                    <i className="fas fa-file-download"></i> FILE DATA
+                                  </a>
+                                ) : (
+                                  typeof item.value === 'number' ? item.value.toFixed(2) : String(item.value)
+                                )}
                                 {item.unit && <span className="unit">{item.unit}</span>}
                               </span>
                             </td>
@@ -651,6 +905,9 @@ const HistoricalData: React.FC = () => {
                       ) : (
                         aggregatedData.slice(startIndex, endIndex).map((item, index) => (
                           <tr key={`agg_${index}`}>
+                            <td className="num-cell">
+                              {startIndex + index + 1}
+                            </td>
                             <td className="point-cell">{item.pointName}</td>
                             <td className="timestamp-cell monospace">
                               {item.timestamp.toLocaleString()}
@@ -684,7 +941,7 @@ const HistoricalData: React.FC = () => {
                     <div className="pagination-info">
                       {startIndex + 1}-{Math.min(endIndex, totalRecords)} / {totalRecords} 항목
                     </div>
-                    
+
                     <div className="pagination-controls">
                       <select
                         value={pageSize}
@@ -714,11 +971,11 @@ const HistoricalData: React.FC = () => {
                       >
                         <i className="fas fa-angle-left"></i>
                       </button>
-                      
+
                       <span className="page-info">
                         {currentPage} / {totalPages}
                       </span>
-                      
+
                       <button
                         className="btn btn-sm"
                         disabled={currentPage === totalPages}

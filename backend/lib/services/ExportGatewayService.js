@@ -372,7 +372,7 @@ class ExportGatewayService extends BaseService {
 
             // 실시간 상태 및 프로세스 상태 병합
             const enrichedItems = await Promise.all(items.map(async (gw) => {
-                const liveStatus = await EdgeServerService.getLiveStatus(gw.id);
+                const liveStatus = await EdgeServerService.getLiveStatus(gw.id, 'gateway');
 
                 // 프로세스 감지 (crossPlatformManager에서 감지된 정보 활용)
                 const runningProcesses = await ProcessService.getAllStatus();

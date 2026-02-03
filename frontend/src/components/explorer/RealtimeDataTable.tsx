@@ -1,5 +1,6 @@
 import React from 'react';
 import Pagination from '../../components/common/Pagination';
+import { isBlobValue, getBlobDownloadUrl } from '../../utils/dataUtils';
 
 interface RealtimeValue {
     key: string;
@@ -107,7 +108,13 @@ const RealtimeDataTable: React.FC<RealtimeDataTableProps> = ({
                                 <div className="table-cell cell-value" data-label="현재값">
                                     <div className="value-display">
                                         <span className={`value ${dataPoint.quality || 'unknown'}`}>
-                                            {String(dataPoint.value || '—')}
+                                            {isBlobValue(dataPoint.value) ? (
+                                                <a href={getBlobDownloadUrl(dataPoint.value as string)} className="blob-download-link" title="Download File">
+                                                    <i className="fas fa-file-download"></i> FILE
+                                                </a>
+                                            ) : (
+                                                String(dataPoint.value || '—')
+                                            )}
                                             {dataPoint.unit && <span className="unit">{dataPoint.unit}</span>}
                                         </span>
                                     </div>

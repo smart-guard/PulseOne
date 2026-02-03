@@ -696,7 +696,16 @@ class DeviceRepository extends BaseRepository {
         try {
             return await this.knex('data_points as dp')
                 .leftJoin('current_values as cv', 'dp.id', 'cv.point_id')
-                .select('dp.*', 'cv.current_value', 'cv.quality', 'cv.value_timestamp as last_update')
+                .leftJoin('devices as d', 'dp.device_id', 'd.id')
+                .leftJoin('sites as s', 'd.site_id', 's.id')
+                .select(
+                    'dp.*',
+                    'cv.current_value',
+                    'cv.quality',
+                    'cv.value_timestamp as last_update',
+                    'd.name as device_name',
+                    's.name as site_name'
+                )
                 .where('dp.id', pointId)
                 .first();
         } catch (error) {

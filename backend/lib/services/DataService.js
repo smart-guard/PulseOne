@@ -278,7 +278,8 @@ class DataService extends BaseService {
                 data_points: pointDetails.map(p => ({
                     point_id: p.id,
                     point_name: p.name,
-                    device_name: p.device_info?.name || 'Unknown',
+                    device_name: p.device_name || 'Unknown',
+                    site_name: p.site_name || 'N/A',
                     data_type: p.data_type,
                     unit: p.unit
                 })),

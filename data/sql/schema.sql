@@ -2404,3 +2404,6 @@ CREATE TABLE role_permissions (
     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
     FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
 );
+CREATE TABLE backups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, filename TEXT NOT NULL UNIQUE, type TEXT DEFAULT 'full', status TEXT DEFAULT 'completed', size INTEGER DEFAULT 0, location TEXT DEFAULT '/app/data/backup', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, created_by TEXT, description TEXT, duration INTEGER, is_deleted INTEGER DEFAULT 0);
+CREATE INDEX idx_backups_created_at ON backups(created_at);
+CREATE INDEX idx_backups_status ON backups(status);

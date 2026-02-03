@@ -33,17 +33,13 @@ devices 테이블:
 #include "Common/Enums.h"
 #include "Drivers/Common/DriverFactory.h" // Plugin System Factory
 #include "Logging/LogManager.h"
-#include <algorithm>
-#include <climits>
-#include <future>
-#include <iomanip>
-#include <sstream>
-#include <thread>
-
 #ifdef HAS_NLOHMANN_JSON
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 #endif
+
+#include "Storage/BlobStore.h"
+#include "Workers/Protocol/MQTTTransferManager.h"
 
 using namespace std::chrono;
 using namespace PulseOne::Drivers;
@@ -1762,6 +1758,56 @@ bool MQTTWorker::ProcessReceivedMessage(const std::string &topic,
     LogMessage(LogLevel::DEBUG_LEVEL,
                "Received message from topic: " + topic +
                    " (size: " + std::to_string(payload.size()) + " bytes)");
+
+    // ✅ 대용량 데이터(Blob) 조각 확인 및 처리
+    // Topic: .../blob/{transfer_id}/{total}/{index}
+    if (topic.find("/blob/") != std::string::npos) {
+      std::vector<std::string> parts;
+      std::stringstream ss(topic);
+      std::string segment;
+      while (std::getline(ss, segment, '/')) {
+        parts.push_back(segment);
+      }
+
+      // 최소 4개 세그먼트 필요 (blob, id, total, index)
+      if (parts.size() >= 4) {
+        size_t blob_pos = 0;
+        for (size_t i = 0; i < parts.size(); ++i) {
+          if (parts[i] == "blob") {
+            blob_pos = i;
+            break;
+          }
+        }
+
+        if (blob_pos + 3 < parts.size()) {
+          std::string transfer_id = parts[blob_pos + 1];
+          int total = std::stoi(parts[blob_pos + 2]);
+          int index = std::stoi(parts[blob_pos + 3]);
+
+          std::vector<uint8_t> chunk(payload.begin(), payload.end());
+          auto complete_data =
+              PulseOne::Workers::Protocol::MQTTTransferManager::GetInstance()
+                  .AddChunk(transfer_id, total, index, chunk);
+
+          if (complete_data) {
+            // 전체 데이터 완성 -> 파일 저장
+            LogMessage(LogLevel::INFO,
+                       "MQTT Blob Reassembled. Saving to file...");
+            std::string file_uri =
+                PulseOne::Storage::BlobStore::GetInstance().SaveBlob(
+                    *complete_data, ".bin");
+
+            if (!file_uri.empty()) {
+              // 파일 정보를 파이프라인에 전송 (DataPoint 맵핑 없이 우선 전송)
+              LogMessage(LogLevel::INFO,
+                         "Sending blob URI to pipeline: " + file_uri);
+              SendMQTTDataToPipeline(topic, file_uri, nullptr);
+            }
+          }
+          return true; // 조각 메시지 처리는 여기서 종료
+        }
+      }
+    }
 
     // 🔥 새로 추가: 연관된 데이터포인트 찾기
     const DataPoint *related_point = FindDataPointByTopic(topic);
