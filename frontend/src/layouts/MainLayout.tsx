@@ -213,10 +213,9 @@ export const MainLayout: React.FC = () => {
                 <span className="menu-title">실시간 데이터 탐색기</span>
               </Link>
             </li>
-            {/* 임시로 숨김 - 개발 완료 후 활성화 예정
             <li className="menu-item">
-              <Link 
-                to="/data/realtime" 
+              <Link
+                to="/data/realtime"
                 className={`menu-link ${isActiveSubMenu('/data/realtime') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -225,11 +224,9 @@ export const MainLayout: React.FC = () => {
                 <span className="menu-title">실시간 모니터</span>
               </Link>
             </li>
-            */}
-            {/* 임시로 숨김 - 개발 완료 후 활성화 예정
             <li className="menu-item">
-              <Link 
-                to="/data/historical" 
+              <Link
+                to="/data/historical"
                 className={`menu-link ${isActiveSubMenu('/data/historical') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
@@ -238,7 +235,6 @@ export const MainLayout: React.FC = () => {
                 <span className="menu-title">이력 데이터</span>
               </Link>
             </li>
-            */}
             <li className="menu-item">
               <Link
                 to="/data/virtual-points"

@@ -92,7 +92,7 @@ class CrossPlatformManager {
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
                     logs: path.join(projectRoot, 'logs'),
-                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
+                    sqlite: path.join(projectRoot, 'data', 'db', 'pulseone.db'),
                     separator: '\\'
                 },
                 linux: {
@@ -103,7 +103,7 @@ class CrossPlatformManager {
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
                     logs: path.join(projectRoot, 'data', 'logs'),
-                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
+                    sqlite: path.join(projectRoot, 'data', 'db', 'pulseone.db'),
                     separator: '/'
                 },
                 darwin: {
@@ -114,7 +114,7 @@ class CrossPlatformManager {
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
                     logs: path.join(projectRoot, 'logs'),
-                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
+                    sqlite: path.join(projectRoot, 'data', 'db', 'pulseone.db'),
                     separator: '/'
                 }
             },
@@ -127,7 +127,7 @@ class CrossPlatformManager {
                     config: path.resolve(projectRoot, 'config'),
                     data: path.resolve(projectRoot, 'data'),
                     logs: path.resolve(projectRoot, 'logs'),
-                    sqlite: path.resolve(projectRoot, 'data', 'pulseone.db'),
+                    sqlite: path.resolve(projectRoot, 'data', 'db', 'pulseone.db'),
                     separator: '\\'
                 },
                 linux: {
@@ -138,7 +138,7 @@ class CrossPlatformManager {
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
                     logs: path.join(projectRoot, 'data', 'logs'),
-                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
+                    sqlite: path.join(projectRoot, 'data', 'db', 'pulseone.db'),
                     separator: '/'
                 },
                 darwin: {
@@ -149,7 +149,7 @@ class CrossPlatformManager {
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
                     logs: path.join(projectRoot, 'data', 'logs'),
-                    sqlite: path.join(projectRoot, 'data', 'pulseone.db'),
+                    sqlite: path.join(projectRoot, 'data', 'db', 'pulseone.db'),
                     separator: '/'
                 }
             }

@@ -9,6 +9,7 @@ import { DataApiService } from '../api/services/dataApi';
 import { DeviceApiService } from '../api/services/deviceApi';
 import '../styles/base.css';
 import '../styles/real-time-monitor.css';
+import { isBlobValue, getBlobDownloadUrl } from '../utils/dataUtils';
 
 interface RealTimeData {
   id: string;
@@ -42,7 +43,7 @@ const RealTimeMonitor: React.FC = () => {
   // =============================================================================
   // 🔧 State 관리
   // =============================================================================
-  
+
   const [allData, setAllData] = useState<RealTimeData[]>([]);
   const [filteredData, setFilteredData] = useState<RealTimeData[]>([]);
   const [selectedFactories, setSelectedFactories] = useState<string[]>(['all']);
@@ -54,20 +55,20 @@ const RealTimeMonitor: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedData, setSelectedData] = useState<RealTimeData[]>([]);
   const [showChart, setShowChart] = useState(false);
-  const [chartData, setChartData] = useState<{[key: string]: ChartData[]}>({});
+  const [chartData, setChartData] = useState<{ [key: string]: ChartData[] }>({});
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(2000);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  
+
   // 로딩 및 연결 상태
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  
+
   // 디바이스 및 데이터포인트 정보 (한 번만 로드)
   const [devices, setDevices] = useState<any[]>([]);
   const [dataPoints, setDataPoints] = useState<any[]>([]);
@@ -83,9 +84,9 @@ const RealTimeMonitor: React.FC = () => {
   const generateAlarmIfNeeded = (value: any, category: string) => {
     // 간단한 임계값 기반 알람 생성
     if (typeof value !== 'number') return undefined;
-    
+
     let threshold: { min?: number; max?: number } = {};
-    
+
     switch (category) {
       case 'Temperature':
         threshold = { min: 0, max: 80 };
@@ -108,21 +109,21 @@ const RealTimeMonitor: React.FC = () => {
       default:
         return undefined;
     }
-    
+
     if (threshold.min !== undefined && value < threshold.min) {
       return {
         level: 'medium' as const,
         message: `${category} 값이 최소 임계값(${threshold.min}) 미만입니다.`
       };
     }
-    
+
     if (threshold.max !== undefined && value > threshold.max) {
       return {
         level: 'high' as const,
         message: `${category} 값이 최대 임계값(${threshold.max})을 초과했습니다.`
       };
     }
-    
+
     return undefined;
   };
 
@@ -215,7 +216,7 @@ const RealTimeMonitor: React.FC = () => {
 
       if (response.success && response.data) {
         const realtimeValues = response.data.current_values || [];
-        
+
         console.log(`📡 백엔드에서 ${realtimeValues.length}개 데이터 수신`);
 
         if (realtimeValues.length === 0) {
@@ -224,16 +225,16 @@ const RealTimeMonitor: React.FC = () => {
           setIsConnected(true);
           return;
         }
-        
+
         // 실시간 값을 UI 형식으로 변환
         const transformedData: RealTimeData[] = realtimeValues.map((value: RealtimeValue) => {
           // 메타데이터에서 디바이스 정보 찾기
           const dataPoint = dataPoints.find(dp => dp.id === value.point_id);
           const device = devices.find(d => d.id === value.device_id || d.id === dataPoint?.device_id);
-          
+
           // 카테고리 추론
           const category = inferCategory(dataPoint?.name || value.point_name || 'Unknown');
-          
+
           return {
             id: `point_${value.point_id}`,
             key: `pulseone:${device?.name || 'unknown'}:${value.point_id}`,
@@ -261,8 +262,8 @@ const RealTimeMonitor: React.FC = () => {
             const prevItem = prevData.find(p => p.point_id === newItem.point_id);
             if (prevItem && newItem.dataType === 'number') {
               // 트렌드 계산
-              const trend = newItem.value > prevItem.value ? 'up' : 
-                           newItem.value < prevItem.value ? 'down' : 'stable';
+              const trend = newItem.value > prevItem.value ? 'up' :
+                newItem.value < prevItem.value ? 'down' : 'stable';
               return { ...newItem, trend };
             }
             return newItem;
@@ -272,7 +273,7 @@ const RealTimeMonitor: React.FC = () => {
 
         setIsConnected(true);
         setLastUpdate(new Date());
-        
+
         console.log(`✅ 실시간 데이터 ${transformedData.length}개 변환 완료`);
 
       } else {
@@ -283,7 +284,7 @@ const RealTimeMonitor: React.FC = () => {
       console.error('❌ 실시간 데이터 로드 실패:', err);
       setError(err instanceof Error ? err.message : '백엔드 API 연결 실패');
       setIsConnected(false);
-      
+
       // 에러 시 빈 배열로 설정
       setAllData([]);
     } finally {
@@ -302,7 +303,7 @@ const RealTimeMonitor: React.FC = () => {
     try {
       // 모든 포인트의 현재값을 가져와서 부드럽게 업데이트
       const pointIds = allData.map(item => item.point_id);
-      
+
       const response = await RealtimeApiService.getCurrentValues({
         point_ids: pointIds,
         limit: pointIds.length,
@@ -311,12 +312,12 @@ const RealTimeMonitor: React.FC = () => {
 
       if (response.success && response.data) {
         const updatedValues = response.data.current_values || [];
-        
+
         // 🔄 부드러운 상태 업데이트 (깜빡임 방지)
         setAllData(prev => prev.map(item => {
           const updated = updatedValues.find(uv => uv.point_id === item.point_id);
           if (updated) {
-            const trend = item.dataType === 'number' 
+            const trend = item.dataType === 'number'
               ? (updated.value > item.value ? 'up' : updated.value < item.value ? 'down' : 'stable')
               : 'stable';
 
@@ -450,7 +451,7 @@ const RealTimeMonitor: React.FC = () => {
     // 정렬
     filtered.sort((a, b) => {
       let comparison = 0;
-      
+
       switch (sortBy) {
         case 'name':
           comparison = a.displayName.localeCompare(b.displayName);
@@ -469,7 +470,7 @@ const RealTimeMonitor: React.FC = () => {
           comparison = a.factory.localeCompare(b.factory);
           break;
       }
-      
+
       return sortOrder === 'asc' ? comparison : -comparison;
     });
 
@@ -482,12 +483,12 @@ const RealTimeMonitor: React.FC = () => {
       const newFavorites = prev.includes(dataId)
         ? prev.filter(id => id !== dataId)
         : [...prev, dataId];
-      
+
       setAllData(prevData => prevData.map(item => ({
         ...item,
         isFavorite: newFavorites.includes(item.id)
       })));
-      
+
       return newFavorites;
     });
   };
@@ -504,6 +505,9 @@ const RealTimeMonitor: React.FC = () => {
   };
 
   const formatValue = (data: RealTimeData): string => {
+    if (isBlobValue(data.value)) {
+      return 'FILE DATA';
+    }
     if (data.dataType === 'boolean') {
       return data.value ? 'ON' : 'OFF';
     }
@@ -561,7 +565,7 @@ const RealTimeMonitor: React.FC = () => {
               <span>{isConnected ? '실시간 연결됨' : '연결 끊어짐'}</span>
               {isConnected && <span className="data-count">({allData.length}개)</span>}
             </div>
-            <button 
+            <button
               className="btn btn-outline"
               onClick={loadRealtimeData}
               disabled={isLoading}
@@ -579,7 +583,7 @@ const RealTimeMonitor: React.FC = () => {
           <div className="error-content">
             <i className="error-icon fas fa-exclamation-triangle"></i>
             <span className="error-message">{error}</span>
-            <button 
+            <button
               className="error-retry"
               onClick={() => {
                 setError(null);
@@ -678,10 +682,10 @@ const RealTimeMonitor: React.FC = () => {
           textAlign: 'center',
           boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
         }}>
-          <div style={{ 
-            fontSize: '14px', 
-            fontWeight: '600', 
-            color: isConnected ? '#10b981' : '#ef4444', 
+          <div style={{
+            fontSize: '14px',
+            fontWeight: '600',
+            color: isConnected ? '#10b981' : '#ef4444',
             marginBottom: '4px',
             display: 'flex',
             alignItems: 'center',
@@ -885,7 +889,13 @@ const RealTimeMonitor: React.FC = () => {
                 </div>
                 <div className="data-cell">
                   <span className={`data-value ${item.quality}`}>
-                    {formatValue(item)}
+                    {isBlobValue(item.value) ? (
+                      <a href={getBlobDownloadUrl(item.value as string)} className="blob-download-link" title="Download File">
+                        <i className="fas fa-file-download"></i> {formatValue(item)}
+                      </a>
+                    ) : (
+                      formatValue(item)
+                    )}
                   </span>
                 </div>
                 <div className="data-cell">
@@ -938,7 +948,13 @@ const RealTimeMonitor: React.FC = () => {
                   </h4>
                   <div className="card-value">
                     <span className={`value ${item.quality}`}>
-                      {formatValue(item)}
+                      {isBlobValue(item.value) ? (
+                        <a href={getBlobDownloadUrl(item.value as string)} className="blob-download-link" title="Download File">
+                          <i className="fas fa-file-download"></i> {formatValue(item)}
+                        </a>
+                      ) : (
+                        formatValue(item)
+                      )}
                     </span>
                     <i className={getTrendIcon(item.trend)}></i>
                   </div>
@@ -978,7 +994,13 @@ const RealTimeMonitor: React.FC = () => {
                 />
                 <span className="compact-name">{item.displayName}</span>
                 <span className={`compact-value ${item.quality}`}>
-                  {formatValue(item)}
+                  {isBlobValue(item.value) ? (
+                    <a href={getBlobDownloadUrl(item.value as string)} className="blob-download-link" title="Download File">
+                      <i className="fas fa-file-download"></i>
+                    </a>
+                  ) : (
+                    formatValue(item)
+                  )}
                 </span>
                 <i className={getTrendIcon(item.trend)}></i>
                 <span className="compact-time">{formatTimestamp(item.timestamp)}</span>
@@ -1001,7 +1023,7 @@ const RealTimeMonitor: React.FC = () => {
             </div>
             <h3 className="empty-state-title">표시할 데이터가 없습니다</h3>
             <p className="empty-state-description">
-              {filteredData.length === 0 
+              {filteredData.length === 0
                 ? '필터 조건을 변경하거나 실시간 연결을 확인해주세요'
                 : '다른 페이지를 확인해보세요'
               }
@@ -1022,7 +1044,7 @@ const RealTimeMonitor: React.FC = () => {
           <div className="pagination-info">
             {startIndex + 1}-{Math.min(endIndex, filteredData.length)} / {filteredData.length} 항목
           </div>
-          
+
           <div className="pagination-controls">
             <select
               value={itemsPerPage}
@@ -1049,11 +1071,11 @@ const RealTimeMonitor: React.FC = () => {
             >
               <i className="fas fa-angle-left"></i>
             </button>
-            
+
             <span className="page-info">
               {currentPage} / {totalPages}
             </span>
-            
+
             <button
               className="btn btn-sm"
               disabled={currentPage === totalPages}
@@ -1117,7 +1139,7 @@ const RealTimeMonitor: React.FC = () => {
               <div className="chart-legend">
                 {selectedData.filter(d => d.dataType === 'number').map(item => (
                   <div key={item.id} className="legend-item">
-                    <span className="legend-color" style={{backgroundColor: `hsl(${item.id.charCodeAt(0) * 137.5 % 360}, 70%, 50%)`}}></span>
+                    <span className="legend-color" style={{ backgroundColor: `hsl(${item.id.charCodeAt(0) * 137.5 % 360}, 70%, 50%)` }}></span>
                     <span className="legend-label">{item.displayName}</span>
                     <span className="legend-value">{formatValue(item)}</span>
                   </div>

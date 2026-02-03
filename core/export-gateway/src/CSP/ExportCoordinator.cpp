@@ -565,7 +565,7 @@ void ExportCoordinator::updateHeartbeat() {
     auto &db_manager = DbLib::DatabaseManager::getInstance();
     std::string query =
         "UPDATE edge_servers SET last_seen = CURRENT_TIMESTAMP, status = "
-        "'online' WHERE id = " +
+        "'active' WHERE id = " +
         std::to_string(gateway_id_);
 
     db_manager.executeNonQuery(query);

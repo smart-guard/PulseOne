@@ -903,7 +903,8 @@ const optionalRoutes = [
     { path: './routes/monitoring', mount: '/api/monitoring', name: 'System Monitoring' },
     { path: './routes/errors', mount: '/api/errors', name: 'Error Monitoring' },
     { path: './routes/backup', mount: '/api/backup', name: 'Backup/Restore' },
-    { path: './routes/websocket', mount: '/api/websocket', name: 'WebSocket Management' }
+    { path: './routes/websocket', mount: '/api/websocket', name: 'WebSocket Management' },
+    { path: './routes/blobs', mount: '/api/blobs', name: 'Blob Storage' }
 ];
 
 optionalRoutes.forEach(route => {
