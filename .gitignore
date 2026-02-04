@@ -11,6 +11,8 @@
 data/db/
 data/backup/
 data/temp/
+data/blobs/
+data/export/
 *.db-journal
 *.db-wal
 *.db-shm
@@ -174,6 +176,7 @@ collector_debug.log
 modbus_sim.log
 mqtt_sim.log
 test_*.js
+backend/temp_*.js
 next
 architecture.txt
 configs.txt
@@ -183,3 +186,4 @@ temp_fix.sh
 *.backup
 *.bak
 *.tmp
+*.bin
