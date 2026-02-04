@@ -46,6 +46,8 @@ struct S3Config {
   std::string secret_key;                            // 시크릿 키
   std::string bucket_name;                           // 버킷명
   std::string prefix = "";                           // 객체 키 접두사
+  std::string service_name =
+      "s3"; // 서명 서비스명 (기본값: s3, API Gateway 등은 execute-api)
 
   // 업로드 옵션
   std::string storage_class = "STANDARD";        // 스토리지 클래스
