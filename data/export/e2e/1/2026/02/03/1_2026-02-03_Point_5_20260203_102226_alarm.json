@@ -1,0 +1,1 @@
+[{"al":1,"alarm_status":"발생","bd":1,"des":"⚠️ [높음] WLS.SBV Out of Range: HIGH (Value: 360.00) [위치: Location for Pt 5, 시간: 2026-02-03 19:22:25] → 신속 점검 요망","nm":"Point_5","source":"PulseOne-CSPGateway","st":0,"tm":"2026-02-03 19:22:25","version":"2.0","vl":360.0}]

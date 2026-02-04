@@ -228,7 +228,7 @@ const RealTimeMonitor: React.FC = () => {
             dataType: (value.data_type || dataPoint?.data_type || 'string') as 'number' | 'boolean' | 'string',
             quality: value.quality as any,
             timestamp: new Date(value.timestamp),
-            trend: 'stable',
+            trend: 'stable' as const,
             customer: device?.tenant_name || 'My Company',
             factory: device?.site_name || extractFactory(device?.name || 'Main Factory'),
             device: device?.name || `Device ${deviceId}`,
@@ -508,10 +508,12 @@ const RealTimeMonitor: React.FC = () => {
     <div className="realtime-monitor-container">
       {/* 1. Page Header */}
       <div className="page-header">
-        <div className="page-title">
-          <i className="fas fa-microchip"></i>
-          실시간 데이터 모니터링
-          <div className="page-subtitle">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div className="page-title">
+            <i className="fas fa-microchip"></i>
+            실시간 데이터 모니터링
+          </div>
+          <div className="page-subtitle" style={{ marginLeft: '34px', color: '#666', fontSize: '14px' }}>
             산업 현장의 모든 센서 데이터를 1초 미만의 지연 시간으로 정밀 모니터링합니다.
           </div>
         </div>
@@ -520,88 +522,79 @@ const RealTimeMonitor: React.FC = () => {
       {/* 2. Query Panel (Drill Down + Controls) */}
       <div className="query-panel">
         <div className="query-section">
-          <h3>모니터링 조건</h3>
+          <div className="query-header-row" style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: showAdvancedFilter ? '16px' : '0' }}>
+            <h3 style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '15px', fontWeight: 600, color: '#334155' }}>모니터링 조건</h3>
 
-          <div className="query-filter-bar control-strip">
-            {/* 1. Left: Search (Primary Discovery) */}
-            <div className="filter-group search-group expanded">
-              <div className="search-container">
-                <i className="fas fa-search search-icon"></i>
-                <input
-                  type="text"
-                  className="rt-input"
-                  placeholder="포인트, 디바이스, 공장 검색..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* 2. Right: Operational Controls */}
-            <div className="control-actions-group">
-              <div className="control-item">
-                <span className="control-label">주기</span>
-                <select
-                  className="rt-select compact"
-                  value={refreshInterval}
-                  onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                  disabled={!autoRefresh}
-                >
-                  <option value={1000}>1초</option>
-                  <option value={2000}>2초</option>
-                  <option value={3000}>3초</option>
-                  <option value={5000}>5초</option>
-                </select>
-              </div>
-
-              <div className="control-divider"></div>
-
-              <div className="control-item">
-                <span className="control-label">라이브</span>
-                <label className="toggle-switch compact">
+            <div className="query-filter-bar control-strip" style={{ flex: 1, display: 'flex', alignItems: 'center', padding: 0, background: 'transparent', border: 'none', boxShadow: 'none', marginBottom: 0 }}>
+              {/* 1. Left: Search (Primary Discovery) */}
+              <div className="filter-group search-group expanded" style={{ margin: 0 }}>
+                <div className="search-container">
+                  <i className="fas fa-search search-icon"></i>
                   <input
-                    type="checkbox"
-                    checked={autoRefresh}
-                    onChange={(e) => setAutoRefresh(e.target.checked)}
+                    type="text"
+                    className="rt-input"
+                    placeholder="포인트, 디바이스, 공장 검색..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                   />
-                  <span className="toggle-slider"></span>
-                </label>
+                </div>
               </div>
 
-              <div className="control-divider"></div>
+              {/* 2. Right: Operational Controls */}
+              <div className="control-actions-group">
+                <div className="control-item">
+                  <span className="control-label">주기</span>
+                  <select
+                    className="rt-select compact"
+                    value={refreshInterval}
+                    onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                    disabled={!autoRefresh}
+                  >
+                    <option value={1000}>1초</option>
+                    <option value={2000}>2초</option>
+                    <option value={3000}>3초</option>
+                    <option value={5000}>5초</option>
+                  </select>
+                </div>
 
-              <button
-                className="btn-icon-only"
-                onClick={loadRealtimeData}
-                disabled={isLoading}
-                title="수동 새로고침"
-              >
-                <i className={`fas fa-sync-alt ${isLoading ? 'fa-spin' : ''}`}></i>
-              </button>
+                <div className="control-divider"></div>
 
-              <div className="control-divider"></div>
+                <div className="control-item">
+                  <span className="control-label">라이브</span>
+                  <label className="toggle-switch compact">
+                    <input
+                      type="checkbox"
+                      checked={autoRefresh}
+                      onChange={(e) => setAutoRefresh(e.target.checked)}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
 
-              <button
-                className={`btn-filter-toggle ${showAdvancedFilter ? 'active' : ''}`}
-                onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-                title="구조적 필터 열기"
-              >
-                <i className="fas fa-filter"></i>
-                <span>필터</span>
-                <i className={`fas fa-chevron-${showAdvancedFilter ? 'up' : 'down'} arrow`}></i>
-              </button>
+                <div className="control-divider"></div>
+
+                <button
+                  className="btn-icon-only"
+                  onClick={loadRealtimeData}
+                  disabled={isLoading}
+                  title="수동 새로고침"
+                >
+                  <i className={`fas fa-sync-alt ${isLoading ? 'fa-spin' : ''}`}></i>
+                </button>
+
+                <div className="control-divider"></div>
+
+                <button
+                  className={`btn-filter-toggle ${showAdvancedFilter ? 'active' : ''}`}
+                  onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+                  title="구조적 필터 열기"
+                >
+                  <i className="fas fa-filter"></i>
+                  <span>필터</span>
+                  <i className={`fas fa-chevron-${showAdvancedFilter ? 'up' : 'down'} arrow`}></i>
+                </button>
+              </div>
             </div>
-          </div>
-
-          {/* Advanced Drill Down Toggle */}
-          <div className="advanced-filter-toggle">
-            <button
-              className="btn btn-outline btn-sm"
-              onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-            >
-              <i className={`fas fa-chevron-${showAdvancedFilter ? 'up' : 'down'}`}></i>
-              고급 필터 (Site/Device/Point)
-            </button>
           </div>
 
           {showAdvancedFilter && (
@@ -792,15 +785,12 @@ const RealTimeMonitor: React.FC = () => {
         <div className="view-mode-toggle-group">
           <button className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} title="리스트 뷰">
             <i className="fas fa-list"></i>
-            <span>리스트</span>
           </button>
           <button className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')} title="그리드 뷰">
             <i className="fas fa-th-large"></i>
-            <span>그리드</span>
           </button>
           <button className={`view-toggle-btn ${viewMode === 'compact' ? 'active' : ''}`} onClick={() => setViewMode('compact')} title="컴팩트 뷰">
             <i className="fas fa-align-justify"></i>
-            <span>컴팩트</span>
           </button>
         </div>
       </div>

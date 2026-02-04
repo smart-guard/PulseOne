@@ -32,6 +32,14 @@ AlarmEvaluator::evaluate(const Database::Entities::AlarmRuleEntity &rule,
       },
       value);
 
+  // ✅ Entry Debug Log
+  if (rule.getId() == 202) {
+    LogManager::getInstance().Debug(
+        "[AlarmEvaluator] Evaluating Rule 202 - Extracted Value: " +
+        std::to_string(dbl_value) + ", AlarmType: " +
+        std::to_string(static_cast<int>(rule.getAlarmType())));
+  }
+
   if (rule.getAlarmType() ==
       Database::Entities::AlarmRuleEntity::AlarmType::ANALOG) {
     return evaluateAnalog(rule, dbl_value);
@@ -81,6 +89,16 @@ AlarmEvaluator::evaluateAnalog(const Database::Entities::AlarmRuleEntity &rule,
   }
 
   auto status = state_cache_.getAlarmStatus(rule.getId());
+
+  // ✅ Debug Log 추가
+  if (rule.getId() == 202 || triggered) {
+    LogManager::getInstance().Debug(
+        "[AlarmEvaluator] Rule " + std::to_string(rule.getId()) +
+        " Evaluation - Value: " + std::to_string(value) + ", Triggered: " +
+        (triggered ? "TRUE" : "FALSE") + ", Condition: " + eval.condition_met +
+        ", CacheActive: " + (status.is_active ? "TRUE" : "FALSE") +
+        ", OccurrenceID: " + std::to_string(status.occurrence_id));
+  }
 
   if (triggered && !status.is_active) {
     eval.should_trigger = true;

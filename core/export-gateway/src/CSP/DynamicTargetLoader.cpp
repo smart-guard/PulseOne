@@ -284,6 +284,10 @@ PulseOne::Export::DynamicTarget DynamicTargetLoader::createTargetFromEntity(
     target.id = entity.getId();
     target.name = entity.getName();
     target.type = entity.getTargetType();
+    std::transform(target.type.begin(), target.type.end(), target.type.begin(),
+                   ::toupper);
+    std::transform(target.type.begin(), target.type.end(), target.type.begin(),
+                   ::toupper);
     target.enabled = entity.isEnabled();
     target.execution_order =
         100; // Default runtime priority (obsolete DB field removed)

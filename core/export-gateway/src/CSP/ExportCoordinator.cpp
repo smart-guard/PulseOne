@@ -849,9 +849,13 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
       return results; // Return empty results as actual send is delayed
     }
 
-    std::cout << "[DEBUG][ExportCoordinator] handleAlarmEvent (즉시 전송): "
-              << alarm.nm << std::endl;
-    LogManager::getInstance().Info("알람 이벤트 처리 (즉시 전송): " + alarm.nm);
+    std::cout << "[v3.2.0 Debug][ExportCoordinator] handleAlarmEvent: "
+              << alarm.nm << " [extra_info=" << alarm.extra_info.dump() << "]"
+              << std::endl;
+    LogManager::getInstance().Info(
+        "[v3.2.0 Debug] [ExportCoordinator] 알람 이벤트 수신. Name: " +
+        alarm.nm + ", Condition: " + alarm.des +
+        ", Raw Extra: " + alarm.extra_info.dump());
 
     auto target_manager = getTargetManager();
     if (!target_manager) {
@@ -881,6 +885,34 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
 
     LogManager::getInstance().Info(
         "알람 즉시 전송 완료: " + std::to_string(results.size()) + "개 타겟");
+
+    // ✅ NEW: 자동 파일 업로드 처리 (v3.2.0)
+    if (alarm.extra_info.contains("file_ref")) {
+      std::string file_ref = alarm.extra_info["file_ref"].get<std::string>();
+      if (!file_ref.empty()) {
+        std::cout << "[v3.2.0 Debug] Automated file upload triggered for: "
+                  << file_ref << std::endl;
+
+        // file_ref는 "file:///app/data/blobs/20260203_..." 형식
+        std::string local_path = file_ref;
+        if (local_path.find("file://") == 0) {
+          local_path = local_path.substr(7);
+        }
+
+        LogManager::getInstance().Info(
+            "[v3.2.0 Debug] 자동 파일 업로드 트리거됨: " + local_path);
+
+        // 🚀 타겟 대상으로 파일 전송
+        auto file_results = target_manager->sendFileToTargets(local_path);
+
+        // 파일 전송 결과도 통합 (필요시)
+        for (const auto &fr : file_results) {
+          LogManager::getInstance().Info(
+              "   └─ 타겟 '" + fr.target_name + "' 파일 전송 " +
+              (fr.success ? "성공" : "실패: " + fr.error_message));
+        }
+      }
+    }
 
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("알람 이벤트 처리 실패: " +

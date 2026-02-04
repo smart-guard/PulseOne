@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS virtual_points (
         (scope_type = 'device' AND site_id IS NOT NULL AND device_id IS NOT NULL)
     ),
     CONSTRAINT chk_scope_type CHECK (scope_type IN ('tenant', 'site', 'device')),
-    CONSTRAINT chk_data_type CHECK (data_type IN ('bool', 'int', 'float', 'double', 'string')),
+    CONSTRAINT chk_data_type CHECK (data_type IN ('bool', 'int', 'float', 'double', 'string', 'datetime', 'json', 'binary', 'array', 'object')),
     CONSTRAINT chk_calculation_trigger CHECK (calculation_trigger IN ('timer', 'onchange', 'manual', 'event')),
     CONSTRAINT chk_execution_type CHECK (execution_type IN ('javascript', 'formula', 'aggregation', 'external')),
     CONSTRAINT chk_error_handling CHECK (error_handling IN ('return_null', 'return_zero', 'return_previous', 'throw_error'))

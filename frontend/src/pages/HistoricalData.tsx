@@ -454,103 +454,109 @@ const HistoricalData: React.FC = () => {
       {/* 검색 조건 패널 */}
       <div className="query-panel">
         <div className="query-section">
-          <h3>조회 조건</h3>
+          <div className="query-header-row" style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: showAdvancedFilter ? '16px' : '0' }}>
+            <h3 style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '15px', fontWeight: 600, color: '#334155' }}>조회 조건</h3>
 
-          {/* 기본 조건 */}
-          <div className="query-filter-bar single-line">
-            <div className="filter-group date-range">
-              <label>조회 기간</label>
-              <div className="date-range-wrapper">
-                <input
-                  type="datetime-local"
-                  value={queryCondition.dateRange.start.toISOString().slice(0, 16)}
-                  onChange={(e) => setQueryCondition(prev => ({
-                    ...prev,
-                    dateRange: { ...prev.dateRange, start: new Date(e.target.value) }
-                  }))}
-                  className="date-input"
-                />
-                <span className="date-separator">~</span>
-                <input
-                  type="datetime-local"
-                  value={queryCondition.dateRange.end.toISOString().slice(0, 16)}
-                  onChange={(e) => setQueryCondition(prev => ({
-                    ...prev,
-                    dateRange: { ...prev.dateRange, end: new Date(e.target.value) }
-                  }))}
-                  className="date-input"
-                />
+            {/* 기본 조건 */}
+            <div className="query-filter-bar single-line" style={{ marginBottom: 0 }}>
+              <div className="filter-group date-range">
+                <label>조회 기간</label>
+                <div className="date-range-wrapper">
+                  <input
+                    type="datetime-local"
+                    value={queryCondition.dateRange.start.toISOString().slice(0, 16)}
+                    onChange={(e) => setQueryCondition(prev => ({
+                      ...prev,
+                      dateRange: { ...prev.dateRange, start: new Date(e.target.value) }
+                    }))}
+                    className="date-input"
+                  />
+                  <span className="date-separator">~</span>
+                  <input
+                    type="datetime-local"
+                    value={queryCondition.dateRange.end.toISOString().slice(0, 16)}
+                    onChange={(e) => setQueryCondition(prev => ({
+                      ...prev,
+                      dateRange: { ...prev.dateRange, end: new Date(e.target.value) }
+                    }))}
+                    className="date-input"
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="filter-group quick-ranges">
-              <label>빠른 설정</label>
-              <div className="quick-date-buttons">
-                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(1)}>1H</button>
-                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(6)}>6H</button>
-                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(24)}>1D</button>
-                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(24 * 7)}>7D</button>
-                <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(24 * 30)}>30D</button>
+              <div className="filter-group quick-ranges">
+                <label>빠른 설정</label>
+                <div className="quick-date-buttons">
+                  <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(1)}>1H</button>
+                  <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(6)}>6H</button>
+                  <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(24)}>1D</button>
+                  <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(24 * 7)}>7D</button>
+                  <button className="btn btn-xs btn-outline" onClick={() => setQuickDateRange(24 * 30)}>30D</button>
+                </div>
               </div>
-            </div>
 
-            <div className="filter-group">
-              <label>집계 방식</label>
-              <select
-                value={queryCondition.aggregation}
-                onChange={(e) => setQueryCondition(prev => ({
-                  ...prev,
-                  aggregation: e.target.value as any
-                }))}
-                className="condition-select"
-              >
-                <option value="none">원본</option>
-                <option value="avg">평균</option>
-                <option value="min">최소</option>
-                <option value="max">최대</option>
-              </select>
-            </div>
-
-            {queryCondition.aggregation !== 'none' && (
               <div className="filter-group">
-                <label>간격</label>
+                <label>집계 방식</label>
                 <select
-                  value={queryCondition.interval}
+                  value={queryCondition.aggregation}
                   onChange={(e) => setQueryCondition(prev => ({
                     ...prev,
-                    interval: e.target.value as any
+                    aggregation: e.target.value as any
                   }))}
-                  className="condition-select interval-select"
+                  className="condition-select"
                 >
-                  <option value="1m">1분</option>
-                  <option value="1h">1시간</option>
-                  <option value="1d">1일</option>
+                  <option value="none">원본</option>
+                  <option value="avg">평균</option>
+                  <option value="min">최소</option>
+                  <option value="max">최대</option>
                 </select>
               </div>
-            )}
 
-            <div className="filter-group search-action">
-              <label>&nbsp;</label>
-              <button
-                className="btn btn-primary search-btn"
-                onClick={loadHistoricalData}
-                disabled={isLoading}
-              >
-                <i className="fas fa-search"></i>
-                조회
-              </button>
+              {queryCondition.aggregation !== 'none' && (
+                <div className="filter-group">
+                  <label>간격</label>
+                  <select
+                    value={queryCondition.interval}
+                    onChange={(e) => setQueryCondition(prev => ({
+                      ...prev,
+                      interval: e.target.value as any
+                    }))}
+                    className="condition-select interval-select"
+                  >
+                    <option value="1m">1분</option>
+                    <option value="1h">1시간</option>
+                    <option value="1d">1일</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="filter-group search-action" style={{ flexDirection: 'row', alignItems: 'flex-end', gap: '8px' }}>
+                <div>
+                  <label>&nbsp;</label>
+                  <button
+                    className="btn btn-primary search-btn"
+                    onClick={loadHistoricalData}
+                    disabled={isLoading}
+                  >
+                    <i className="fas fa-search"></i>
+                    조회
+                  </button>
+                </div>
+
+                {/* 고급 필터 버튼을 여기로 이동 */}
+                <div>
+                  <label>&nbsp;</label>
+                  <button
+                    className="btn btn-outline btn-sm search-btn" // search-btn 클래스 재사용하여 높이 맞춤
+                    onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+                    style={{ background: 'white' }}
+                  >
+                    <i className={`fas fa-chevron-${showAdvancedFilter ? 'up' : 'down'}`}></i>
+                    고급 필터
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-
-          {/* 고급 필터 */}
-          <div className="advanced-filter-toggle">
-            <button
-              className="btn btn-outline btn-sm"
-              onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-            >
-              <i className={`fas fa-chevron-${showAdvancedFilter ? 'up' : 'down'}`}></i>
-              고급 필터
-            </button>
           </div>
 
           {showAdvancedFilter && (

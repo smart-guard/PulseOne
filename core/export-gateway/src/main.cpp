@@ -116,7 +116,7 @@ PulseOne::Coordinator::ExportCoordinatorConfig loadCoordinatorConfig() {
 
     // 데이터베이스 설정
     config.database_path =
-        cfg_mgr.getOrDefault("DATABASE_PATH", "/app/data/db/pulseone.db");
+        cfg_mgr.getOrDefault("SQLITE_DB_PATH", "/app/data/db/pulseone.db");
 
     // Redis 설정
     config.redis_host = cfg_mgr.getOrDefault("REDIS_HOST", "localhost");

@@ -83,6 +83,12 @@ public:
                              const json &config) override;
 
   /**
+   * @brief 파일 업로드 ( v3.2.0 추가)
+   */
+  TargetSendResult sendFile(const std::string &local_path,
+                            const json &config) override;
+
+  /**
    * @brief 배치 알람 업로드 (단일 파일로 묶어서 전송)
    */
   std::vector<TargetSendResult>

@@ -197,15 +197,23 @@ S3UploadResult S3Client::executeUploadWithRetry(
 
       // AWS Signature V4 인증 헤더 생성
       auto timestamp = std::chrono::system_clock::now();
-
       std::unordered_map<std::string, std::string> headers;
-      // endpoint may contain https://, remove it for Host header
+
+      // endpoint may contain https:// and path, extract only the hostname for
+      // Host header
       std::string host = config_.endpoint;
-      if (host.find("https://") == 0)
-        host.erase(0, 8);
-      else if (host.find("http://") == 0)
-        host.erase(0, 7);
+      size_t protocol_pos = host.find("://");
+      if (protocol_pos != std::string::npos) {
+        host = host.substr(protocol_pos + 3);
+      }
+      size_t path_pos = host.find("/");
+      if (path_pos != std::string::npos) {
+        host = host.substr(0, path_pos);
+      }
       headers["host"] = host;
+      LOG_DEBUG("[v3.2.0 Debug] S3 Uploading to host: " + host +
+                ", bucket: " + config_.bucket_name);
+
       headers["content-type"] = content_type;
       headers["x-amz-date"] = formatTimestamp(timestamp);
       headers["x-amz-content-sha256"] = sha256Hash(content);
@@ -702,15 +710,28 @@ std::string S3Client::formatDate(
 }
 
 std::string S3Client::buildS3Url(const std::string &object_key) const {
-  std::string url;
+  std::string base_url = config_.endpoint;
+  if (!base_url.empty() && base_url.back() == '/') {
+    base_url.pop_back();
+  }
 
+  std::string url;
   if (config_.use_virtual_host_style) {
     // Virtual Host Style: https://bucket.s3.region.amazonaws.com/object
-    url = config_.endpoint + "/" + urlEncode(object_key, false);
+    url = base_url + "/" + urlEncode(object_key, false);
   } else {
     // Path Style: https://s3.region.amazonaws.com/bucket/object
-    url = config_.endpoint + "/" + config_.bucket_name + "/" +
+    url = base_url + "/" + config_.bucket_name + "/" +
           urlEncode(object_key, false);
+  }
+
+  // Normalize consecutive slashes (except the one after the protocol)
+  size_t proto_end = url.find("://");
+  if (proto_end != std::string::npos) {
+    std::string proto = url.substr(0, proto_end + 3);
+    std::string path_part = url.substr(proto_end + 3);
+    path_part = std::regex_replace(path_part, std::regex("//+"), "/");
+    url = proto + path_part;
   }
 
   return url;

@@ -26,15 +26,32 @@ void BlobStore::SetBaseDirectory(const std::string &path) {
 }
 
 std::string BlobStore::SaveBlob(const std::vector<uint8_t> &data,
-                                const std::string &extension) {
+                                const std::string &extension,
+                                const std::string &directory) {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (!EnsureDirectoryExists()) {
-    return "";
+  std::string target_dir = directory.empty() ? base_dir_ : directory;
+
+  // 디렉토리 존재 확인 및 생성 (Override 된 경우)
+  if (!directory.empty() && !std::filesystem::exists(directory)) {
+    try {
+      std::filesystem::create_directories(directory);
+    } catch (const std::exception &e) {
+      LogManager::getInstance().Error(
+          "Failed to create blob storage directory: " + directory +
+          " Error: " + e.what());
+      return "";
+    }
+  } else if (directory.empty()) {
+    // 기본 디렉토리 체크
+    if (!EnsureDirectoryExists()) {
+      return "";
+    }
   }
 
   std::string filename = GenerateUniqueFilename(extension);
-  std::filesystem::path full_path = std::filesystem::path(base_dir_) / filename;
+  std::filesystem::path full_path =
+      std::filesystem::path(target_dir) / filename;
 
   std::ofstream ofs(full_path, std::ios::binary);
   if (!ofs) {
@@ -54,9 +71,10 @@ std::string BlobStore::SaveBlob(const std::vector<uint8_t> &data,
 }
 
 std::string BlobStore::SaveBlob(const std::string &data,
-                                const std::string &extension) {
+                                const std::string &extension,
+                                const std::string &directory) {
   std::vector<uint8_t> vec(data.begin(), data.end());
-  return SaveBlob(vec, extension);
+  return SaveBlob(vec, extension, directory);
 }
 
 void BlobStore::Cleanup(uint32_t max_age_seconds) {

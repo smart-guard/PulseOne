@@ -32,15 +32,19 @@
 }
 
 /* 기본 조건 바 - 한 줄 레이아웃 */
+/* 기본 조건 바 - 한 줄 레이아웃 */
 .query-filter-bar.single-line {
   display: flex;
   gap: var(--space-4);
-  align-items: flex-start;
-  /* 상단 정렬로 라벨과 일치 */
+  align-items: center;
+  /* Center align items vertically */
   flex-wrap: nowrap;
-  /* 절대 줄바꿈 금지 */
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--neutral-100);
+  padding: 0;
+  /* Remove padding */
+  border: none;
+  /* Remove border */
+  flex: 1;
+  /* Take up remaining space */
 }
 
 .filter-group {
@@ -61,6 +65,8 @@
   letter-spacing: 0.1em;
   margin-bottom: 4px;
   display: block;
+  white-space: nowrap;
+  /* Prevent label wrapping */
 }
 
 .date-range-wrapper {
@@ -180,7 +186,8 @@
 
 /* 고급 필터 */
 .advanced-filter-toggle {
-  margin-bottom: var(--space-4);
+  margin-bottom: 0;
+  /* Remove margin */
 }
 
 .advanced-conditions {
@@ -1091,6 +1098,7 @@
 .data-table-container::-webkit-scrollbar-thumb:hover {
   background: var(--neutral-400);
 }
+
 /* 넘버링 컬럼 */
 .num-cell {
   width: 60px;

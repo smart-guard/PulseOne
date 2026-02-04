@@ -14,7 +14,7 @@ let simData = {
 
     // HMI-001 Simulation
     screen_status: 1, // 2001
-    active_alarms: 0, // 2002
+    active_alarms: 150, // 2002
     user_level: 1,    // 2003
 
     direction: 1
@@ -47,9 +47,13 @@ const vector = {
 
         // HMI-001
         if (addr === 2001) return simData.screen_status;
-        if (addr === 2002) return simData.active_alarms;
+        if (addr === 2002) {
+            console.log(`[Modbus] Read Addr 2002: ${simData.active_alarms}`);
+            return simData.active_alarms;
+        }
         if (addr === 2003) return simData.user_level;
 
+        console.log(`[Modbus] Read Unknown Addr ${addr}: 0`);
         return 0;
     },
     getInputRegister: (addr, unitID) => addr,

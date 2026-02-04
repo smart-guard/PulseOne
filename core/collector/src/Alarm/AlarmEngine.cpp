@@ -204,6 +204,12 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
   }
 
   for (const auto &rule : rules) {
+    // 🔥 [v3.2.0 Debug] Rule Loop start
+    LogManager::getInstance().Debug(
+        "[AlarmEngine] Checking Rule ID: " + std::to_string(rule.getId()) +
+        " for Point: " + std::to_string(tv.point_id) +
+        ", Enabled: " + (rule.isEnabled() ? "YES" : "NO"));
+
     if (!rule.isEnabled())
       continue;
 
@@ -232,6 +238,7 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
           ev.tenant_id = tenant_id;
           ev.condition_met = true;
           ev.location = getPointLocation(tv.point_id);
+          ev.extra_info = tv.metadata; // 🔥 메타데이터(file_ref 등) 전파
 
           events.push_back(ev);
           alarms_raised_.fetch_add(1);

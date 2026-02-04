@@ -43,7 +43,7 @@ namespace PulseOne {
 namespace Coordinator {
 
 struct ExportCoordinatorConfig {
-  std::string database_path = "/app/data/pulseone.db";
+  std::string database_path = "/app/data/db/pulseone.db";
   std::string redis_host = "localhost";
   int redis_port = 6379;
   std::string redis_password = "";

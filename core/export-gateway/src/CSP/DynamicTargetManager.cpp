@@ -575,6 +575,42 @@ DynamicTargetManager::sendAlarmToTarget(const std::string &target_name,
   return result;
 }
 
+std::vector<TargetSendResult>
+DynamicTargetManager::sendFileToTargets(const std::string &local_path) {
+  std::vector<TargetSendResult> results;
+
+  std::shared_lock<std::shared_mutex> lock(targets_mutex_);
+
+  for (size_t i = 0; i < targets_.size(); ++i) {
+    if (!targets_[i].enabled)
+      continue;
+
+    // export_mode가 ALARM 또는 EVENT인 경우에만 파일 전송 고려 (기본값)
+    // S3 핸들러 등에서 sendFile을 지원하는지 확인
+    auto it_handler = handlers_.find(targets_[i].name);
+    if (it_handler != handlers_.end() && it_handler->second) {
+      LogManager::getInstance().Info("[DynamicTargetManager] 파일 전송 시작: " +
+                                     targets_[i].name + " -> " + local_path);
+
+      auto result =
+          it_handler->second->sendFile(local_path, targets_[i].config);
+      result.target_name = targets_[i].name;
+      result.target_type = targets_[i].type;
+
+      results.push_back(result);
+
+      if (result.success) {
+        total_successes_++;
+        total_bytes_sent_ += result.content_size;
+      } else {
+        total_failures_++;
+      }
+    }
+  }
+
+  return results;
+}
+
 BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
     const std::vector<AlarmMessage> &alarms,
     const std::string &specific_target) {
