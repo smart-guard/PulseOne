@@ -572,6 +572,15 @@ Client::S3Config S3TargetHandler::buildS3Config(const json &config) const {
       // 기본값 혹은 설정된 값 유지
       s3_config.region = config.value("region", "us-east-1");
     }
+
+    // ✅ 서명 서비스명 자동 감지 (API Gateway 대응)
+    if (config.contains("service_name")) {
+      s3_config.service_name = config["service_name"].get<std::string>();
+    } else if (s3_config.endpoint.find("execute-api") != std::string::npos) {
+      s3_config.service_name = "execute-api";
+      LogManager::getInstance().Info("S3 Signing Service를 'execute-api'로 "
+                                     "자동 설정함 (API Gateway 감지)");
+    }
   } else {
     // 리전
     std::string region = config.value("region", "us-east-1");
@@ -598,6 +607,15 @@ Client::S3Config S3TargetHandler::buildS3Config(const json &config) const {
   // 컨텐츠 타입
   std::string content_type = config.value("content_type", "application/json");
   s3_config.content_type = expandEnvironmentVariables(content_type);
+
+  // ✅ v3.2.0: 서명 서비스명 (API Gateway 대응)
+  if (config.contains("service_name")) {
+    s3_config.service_name = config["service_name"].get<std::string>();
+  } else if (s3_config.endpoint.find("execute-api") != std::string::npos) {
+    s3_config.service_name = "execute-api";
+    LogManager::getInstance().Info(
+        "S3 Signing Service를 'execute-api'로 자동 설정함 (API Gateway 감지)");
+  }
 
   return s3_config;
 }

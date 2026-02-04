@@ -215,6 +215,31 @@ services:
     networks:
       - pulseone_network
 
+  export-gateway-mqtt:
+    build:
+      context: ..
+      dockerfile: core/export-gateway/Dockerfile.dev
+    restart: always
+    env_file:
+      - ../config/redis.env
+      - ../config/database.env
+      - ../config/messaging.env
+    environment:
+      - LOG_LEVEL=debug
+      - PULSEONE_CONFIG_DIR=/app/config
+      - PULSEONE_DATA_DIR=/app/data
+      - AUTO_RUN=true
+      - TZ=Asia/Seoul
+    volumes:
+      - ../core:/app/core
+      - ../config:/app/config
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - shared_libs:/app/core/shared/lib
+    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && ./core/export-gateway/bin/export-gateway --id 8"
+    networks:
+      - pulseone_network
+
 networks:
   pulseone_network:
     name: docker_default

@@ -867,13 +867,13 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
 
           /* Table */
           .dp-table-wrap { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: white; }
-          .dp-table-head { display: grid; grid-template-columns: 60px minmax(180px, 1fr) 100px 110px 70px 80px 120px 90px 120px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
+          .dp-table-head { display: grid; grid-template-columns: 60px minmax(200px, 2fr) 90px 100px 60px 70px 120px minmax(80px, 0.8fr) 110px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; }
           .th { padding: 10px 12px; display: flex; align-items: center; justify-content: center; }
           .th.col-id { border-right: 1px solid transparent; }
           .th.col-name { justify-content: flex-start; }
           
           .dp-table-body { flex: 1; overflow-y: auto; }
-          .tr { display: grid; grid-template-columns: 60px minmax(180px, 1fr) 100px 110px 70px 80px 120px 90px 120px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
+          .tr { display: grid; grid-template-columns: 60px minmax(200px, 2fr) 90px 100px 60px 70px 120px minmax(80px, 0.8fr) 110px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
           .tr:hover { background: #f8fafc; }
           .td { padding: 8px 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; text-align: center; }
           .td.col-id { border-right: 1px solid transparent; color: #94a3b8; font-family: monospace; font-size: 11px; }
@@ -939,7 +939,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
          .btn-sec { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; }
 
           @media (max-width: 1200px) {
-             .dp-table-head, .tr { grid-template-columns: 50px minmax(130px, 1fr) 80px 100px 60px 70px 100px 80px 120px; }
+             .dp-table-head, .tr { grid-template-columns: 50px minmax(150px, 1.5fr) 80px 90px 50px 60px 100px minmax(70px, 0.8fr) 100px; }
           }
       `}</style>
     </div>

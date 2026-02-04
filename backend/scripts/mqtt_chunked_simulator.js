@@ -4,7 +4,7 @@ const path = require('path');
 
 // Configuration
 // Connect to RabbitMQ via internal docker network hostname 'rabbitmq'
-const BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://rabbitmq:1883';
+const BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
 const DATA_TOPIC = 'vfd/data';
 const FILE_TOPIC = 'vfd/file';
 
@@ -23,20 +23,22 @@ fs.writeFileSync(DUMMY_FILE_PATH, buffer);
 client.on('connect', async () => {
     console.log('✅ Connected to Broker');
 
-    // 1. Publish Telemetry (Triggers Auto-Discovery for 'vfd/data')
-    const telemetryPayload = JSON.stringify({
-        value: 155.5, // > 150 to trigger alarm later
-        status: "critical",
-        timestamp: Date.now()
-    });
-    console.log(`📤 Sending Telemetry to ${DATA_TOPIC}: ${telemetryPayload}`);
-    client.publish(DATA_TOPIC, telemetryPayload, { qos: 1 });
-
-    // 2. Publish File in Chunks (Triggers Auto-Discovery for 'vfd/file' + Reassembly)
+    // 1. Generate fileId First
     const fileId = `file_${Date.now()}`;
     const filename = 'chunked_export.bin';
     const totalChunks = Math.ceil(FILE_SIZE / CHUNK_SIZE);
 
+    // 2. Publish Telemetry with file_ref (Triggers Auto-Discovery for 'vfd/data')
+    const telemetryPayload = JSON.stringify({
+        value: 155.5, // > 150 to trigger alarm later
+        status: "critical",
+        timestamp: Date.now(),
+        file_ref: fileId // Metadata for file association
+    });
+    console.log(`📤 Sending Telemetry to ${DATA_TOPIC}: ${telemetryPayload}`);
+    client.publish(DATA_TOPIC, telemetryPayload, { qos: 1 });
+
+    // 3. Publish File in Chunks (Triggers Auto-Discovery for 'vfd/file' + Reassembly)
     console.log(`📦 Starting File Transfer: ${filename} (${FILE_SIZE} bytes) to ${FILE_TOPIC}`);
 
     for (let i = 0; i < totalChunks; i++) {

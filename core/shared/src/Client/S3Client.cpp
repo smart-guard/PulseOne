@@ -493,7 +493,8 @@ std::string S3Client::createSignatureV4(
   // 5. Authorization 헤더 생성
   std::string date_str = formatDate(timestamp);
   std::string credential = config_.access_key + "/" + date_str + "/" +
-                           config_.region + "/s3/aws4_request";
+                           config_.region + "/" + config_.service_name +
+                           "/aws4_request";
 
   // Signed Headers 생성
   std::vector<std::string> header_keys;
@@ -605,7 +606,7 @@ std::string S3Client::createSigningKey(
 
   std::string k_date = hmacSha256Raw("AWS4" + config_.secret_key, date_str);
   std::string k_region = hmacSha256Raw(k_date, config_.region);
-  std::string k_service = hmacSha256Raw(k_region, "s3");
+  std::string k_service = hmacSha256Raw(k_region, config_.service_name);
   std::string k_signing = hmacSha256Raw(k_service, "aws4_request");
 
   return k_signing;
