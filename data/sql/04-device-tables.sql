@@ -353,6 +353,7 @@ CREATE TABLE IF NOT EXISTS data_points (
     
     -- 🔥 알람 관련 설정
     alarm_enabled INTEGER DEFAULT 0,
+    alarm_priority VARCHAR(20) DEFAULT 'medium',        -- std::string alarm_priority ✅
     high_alarm_limit REAL,
     low_alarm_limit REAL,
     alarm_deadband REAL DEFAULT 0.0,
@@ -370,7 +371,7 @@ CREATE TABLE IF NOT EXISTS data_points (
     
     -- 🔥 제약조건
     UNIQUE(device_id, address),
-    CONSTRAINT chk_data_type CHECK (data_type IN ('BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32', 'INT64', 'UINT64', 'FLOAT32', 'FLOAT64', 'STRING', 'UNKNOWN')),
+    CONSTRAINT chk_data_type CHECK (data_type IN ('BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32', 'INT64', 'UINT64', 'FLOAT', 'DOUBLE', 'FLOAT32', 'FLOAT64', 'STRING', 'BINARY', 'DATETIME', 'JSON', 'ARRAY', 'OBJECT', 'UNKNOWN')),
     CONSTRAINT chk_access_mode CHECK (access_mode IN ('read', 'write', 'read_write')),
     CONSTRAINT chk_retention_policy CHECK (retention_policy IN ('standard', 'extended', 'minimal', 'custom'))
 );
@@ -419,9 +420,9 @@ CREATE TABLE IF NOT EXISTS current_values (
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     
     -- 🔥 제약조건
-    CONSTRAINT chk_value_type CHECK (value_type IN ('bool', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float', 'double', 'string')),
-    CONSTRAINT chk_quality CHECK (quality IN ('good', 'bad', 'uncertain', 'not_connected', 'device_failure', 'sensor_failure', 'comm_failure', 'out_of_service')),
-    CONSTRAINT chk_alarm_state CHECK (alarm_state IN ('normal', 'high', 'low', 'critical', 'warning'))
+    CONSTRAINT chk_value_type CHECK (LOWER(value_type) IN ('bool', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float', 'double', 'string', 'float32', 'float64', 'datetime', 'json', 'binary', 'array', 'object')),
+    CONSTRAINT chk_quality CHECK (LOWER(quality) IN ('good', 'bad', 'uncertain', 'not_connected', 'device_failure', 'sensor_failure', 'comm_failure', 'out_of_service', 'unknown', 'manual', 'simulated', 'stale')),
+    CONSTRAINT chk_alarm_state CHECK (LOWER(alarm_state) IN ('normal', 'high', 'low', 'critical', 'warning', 'active', 'cleared', 'acknowledged'))
 );
 
 -- =============================================================================

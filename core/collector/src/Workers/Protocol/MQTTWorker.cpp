@@ -40,6 +40,7 @@ using json = nlohmann::json;
 
 #include "Storage/BlobStore.h"
 #include "Workers/Protocol/MQTTTransferManager.h"
+#include <algorithm>
 
 using namespace std::chrono;
 using namespace PulseOne::Drivers;
@@ -130,12 +131,22 @@ std::future<bool> MQTTWorker::Start() {
 
       // 1.1 [Auto-Registration] 설정된 베이스 토픽(와일드카드 포함) 자동 구독
       if (!mqtt_config_.topic.empty()) {
-        MQTTSubscription sub;
-        sub.topic = mqtt_config_.topic;
-        sub.qos = mqtt_config_.default_qos;
-        LogMessage(LogLevel::INFO,
-                   "자동 등록을 위한 베이스 토픽 구독: " + sub.topic);
-        AddSubscription(sub);
+        std::stringstream ss(mqtt_config_.topic);
+        std::string segment;
+        while (std::getline(ss, segment, ',')) {
+          // 공백 제거 (Trim)
+          segment.erase(0, segment.find_first_not_of(" \t\n\r\f\v"));
+          segment.erase(segment.find_last_not_of(" \t\n\r\f\v") + 1);
+
+          if (!segment.empty()) {
+            MQTTSubscription sub;
+            sub.topic = segment;
+            sub.qos = mqtt_config_.default_qos;
+            LogMessage(LogLevel::INFO,
+                       "자동 등록을 위한 베이스 토픽 구독: " + sub.topic);
+            AddSubscription(sub);
+          }
+        }
       }
 
       if (EstablishConnection()) {
@@ -231,12 +242,15 @@ bool MQTTWorker::EstablishConnection() {
     {
       std::lock_guard<std::mutex> lock(subscriptions_mutex_);
       for (const auto &[id, sub] : active_subscriptions_) {
+        LogMessage(LogLevel::INFO,
+                   "[MQTT_DEBUG] 🛰️ Subscribing to topic: " + sub.topic);
         if (mqtt_driver_->Subscribe(sub.topic, QosToInt(sub.qos))) {
-          LogMessage(LogLevel::DEBUG_LEVEL,
-                     "Auto-resubscribed to: " + sub.topic);
+          LogMessage(LogLevel::INFO,
+                     "[MQTT_DEBUG] ✅ Successfully subscribed to: " +
+                         sub.topic);
         } else {
           LogMessage(LogLevel::WARN,
-                     "Failed to auto-resubscribe to: " + sub.topic);
+                     "[MQTT_DEBUG] ❌ Failed to subscribe to: " + sub.topic);
         }
       }
     }
@@ -341,6 +355,24 @@ bool MQTTWorker::SendMQTTDataToPipeline(
       previous_values_[tv.point_id] = tv.value;
 
       tv.sequence_number = GetNextSequenceNumber();
+    } else if (device_info_.is_auto_registration_enabled) {
+      // 🔥 비-JSON 단일 토픽 자동 등록 지원
+      std::string inferred_type = "STRING"; // 기본적으로 문자열로 간주
+      std::string point_name = topic;
+      std::replace(point_name.begin(), point_name.end(), '/', '.');
+
+      uint32_t new_id =
+          RegisterNewDataPoint(point_name, topic, "", inferred_type);
+      if (new_id > 0) {
+        tv.point_id = new_id;
+        tv.source = point_name;
+        tv.value_changed = true;
+        tv.sequence_number = GetNextSequenceNumber();
+      } else {
+        tv.point_id = std::hash<std::string>{}(topic) % 100000;
+        tv.value_changed = true;
+        tv.sequence_number = GetNextSequenceNumber();
+      }
     } else {
       // DataPoint가 없는 경우 토픽을 기반으로 임시 ID 생성
       tv.point_id = std::hash<std::string>{}(topic) % 100000;
@@ -430,6 +462,19 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
 
               tv.sequence_number = GetNextSequenceNumber();
 
+              // 🔥 파일 레퍼런스 추출 및 메타데이터 주입
+              if (json_data.contains("file_ref")) {
+                std::string file_ref = json_data["file_ref"].get<std::string>();
+                tv.metadata["file_ref"] = file_ref;
+                LogMessage(
+                    LogLevel::INFO,
+                    "[v3.2.0 Debug] MQTT Migration: file_ref detected: " +
+                        file_ref);
+              } else {
+                LogMessage(LogLevel::DEBUG, "[v3.2.0 Debug] MQTT Migration: "
+                                            "file_ref NOT found in payload");
+              }
+
               values.push_back(tv);
             }
           } catch (const std::exception &e) {
@@ -476,8 +521,23 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
 
         // 등록되지 않은 경우 자동 등록 실행 (옵션 활성화 시)
         if (point_id == 0 && device_info_.is_auto_registration_enabled) {
-          point_id = RegisterNewDataPoint(topic_context + "/" + key,
-                                          topic_context, key);
+          std::string inferred_type = "FLOAT32";
+          if (value.is_string())
+            inferred_type = "STRING";
+          else if (value.is_boolean())
+            inferred_type = "BOOL";
+          else if (key.find("timestamp") != std::string::npos ||
+                   key.find("time") != std::string::npos) {
+            // 🔥 타임스탬프 관련 키는 DATETIME 타입으로 처리 유도 (UI 포맷팅
+            // 지원)
+            inferred_type = "DATETIME";
+          }
+
+          std::string point_name = topic_context + "." + key;
+          std::replace(point_name.begin(), point_name.end(), '/', '.');
+
+          point_id = RegisterNewDataPoint(point_name, topic_context, key,
+                                          inferred_type);
         }
 
         if (point_id == 0) {
@@ -539,7 +599,21 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
       }
 
       if (point_id == 0 && device_info_.is_auto_registration_enabled) {
-        point_id = RegisterNewDataPoint(topic_context, topic_context, "");
+        std::string inferred_type = "FLOAT32";
+        if (json_data.is_string())
+          inferred_type = "STRING";
+        else if (json_data.is_boolean())
+          inferred_type = "BOOL";
+        else if (topic_context.find("timestamp") != std::string::npos ||
+                 topic_context.find("time") != std::string::npos) {
+          inferred_type = "UINT64";
+        }
+
+        std::string point_name = topic_context;
+        std::replace(point_name.begin(), point_name.end(), '/', '.');
+
+        point_id =
+            RegisterNewDataPoint(point_name, topic_context, "", inferred_type);
       }
 
       if (point_id == 0) {
@@ -636,6 +710,44 @@ bool MQTTWorker::SendSingleTopicValueToPipeline(
       tv.change_threshold = data_point->log_deadband;
       tv.force_rdb_store = tv.value_changed;
 
+    } else if (device_info_.is_auto_registration_enabled) {
+      // 🔥 파일 포인트 등 개별 토픽 자동 등록 지원 (vfd/file 등)
+      std::string inferred_type = "FLOAT32";
+      std::visit(
+          [&inferred_type](const auto &v) {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, std::string>)
+              inferred_type = "STRING";
+            else if constexpr (std::is_same_v<T, bool>)
+              inferred_type = "BOOL";
+          },
+          value);
+
+      // 타임스탬프 감지
+      if (topic.find("timestamp") != std::string::npos ||
+          topic.find("time") != std::string::npos) {
+        inferred_type = "UINT64";
+      }
+
+      std::string point_name = topic;
+      std::replace(point_name.begin(), point_name.end(), '/', '.');
+
+      uint32_t new_id =
+          RegisterNewDataPoint(point_name, topic, "", inferred_type);
+      if (new_id > 0) {
+        tv.point_id = new_id;
+        tv.source = point_name;
+        tv.value_changed = true;
+        tv.sequence_number = GetNextSequenceNumber();
+      } else {
+        tv.point_id = std::hash<std::string>{}(topic) % 100000;
+        tv.value_changed = true;
+        tv.sequence_number = GetNextSequenceNumber();
+      }
+      tv.scaling_factor = 1.0;
+      tv.scaling_offset = 0.0;
+      tv.change_threshold = 0.0;
+      tv.force_rdb_store = true;
     } else {
       // DataPoint가 없는 경우 토픽 기반 임시 ID
       tv.point_id = std::hash<std::string>{}(topic) % 100000;
@@ -1342,6 +1454,12 @@ bool MQTTWorker::ParseMQTTConfig() {
           protocol_config_json.value("max_publish_queue_size", 10000);
     }
 
+    // 🔥 파일 저장 경로 설정 (선택사항)
+    if (protocol_config_json.contains("file_storage_path")) {
+      mqtt_config_.file_storage_path =
+          protocol_config_json.value("file_storage_path", "");
+    }
+
     // 🎉 성공 로그 - 실제 적용된 설정 표시 - 🔥 문자열 연결 수정
     std::string config_summary = "✅ MQTT config parsed successfully:\n";
     config_summary += "   🔌 Protocol settings (from ";
@@ -1755,13 +1873,15 @@ bool MQTTWorker::ProcessReceivedMessage(const std::string &topic,
       performance_metrics_.bytes_received += payload.size();
     }
 
-    LogMessage(LogLevel::DEBUG_LEVEL,
-               "Received message from topic: " + topic +
-                   " (size: " + std::to_string(payload.size()) + " bytes)");
+    LogMessage(LogLevel::INFO, "[MQTT_DEBUG] Received topic: " + topic +
+                                   " (size: " + std::to_string(payload.size()) +
+                                   " bytes)");
 
     // ✅ 대용량 데이터(Blob) 조각 확인 및 처리
     // Topic: .../blob/{transfer_id}/{total}/{index}
     if (topic.find("/blob/") != std::string::npos) {
+      LogMessage(LogLevel::INFO,
+                 "[MQTT_DEBUG] 🔍 Detected potential blob topic");
       std::vector<std::string> parts;
       std::stringstream ss(topic);
       std::string segment;
@@ -1785,23 +1905,34 @@ bool MQTTWorker::ProcessReceivedMessage(const std::string &topic,
           int index = std::stoi(parts[blob_pos + 3]);
 
           std::vector<uint8_t> chunk(payload.begin(), payload.end());
+          LogMessage(LogLevel::INFO, "[MQTT_DEBUG] 📦 Processing chunk: " +
+                                         std::to_string(index + 1) + "/" +
+                                         std::to_string(total) +
+                                         " for transfer: " + transfer_id);
           auto complete_data =
               PulseOne::Workers::Protocol::MQTTTransferManager::GetInstance()
                   .AddChunk(transfer_id, total, index, chunk);
 
           if (complete_data) {
-            // 전체 데이터 완성 -> 파일 저장
             LogMessage(LogLevel::INFO,
-                       "MQTT Blob Reassembled. Saving to file...");
+                       "[MQTT_DEBUG] ✨ All chunks received! Saving blob...");
+            // 🔥 Blob 저장 (기본값 ".bin", 경로 Override 가능)
             std::string file_uri =
                 PulseOne::Storage::BlobStore::GetInstance().SaveBlob(
-                    *complete_data, ".bin");
+                    *complete_data, ".bin", mqtt_config_.file_storage_path);
 
             if (!file_uri.empty()) {
-              // 파일 정보를 파이프라인에 전송 (DataPoint 맵핑 없이 우선 전송)
-              LogMessage(LogLevel::INFO,
-                         "Sending blob URI to pipeline: " + file_uri);
-              SendMQTTDataToPipeline(topic, file_uri, nullptr);
+              // 파일 URI를 포함한 데이터 포인트 생성 및 전송
+              std::string base_topic = topic.substr(0, topic.find("/blob/"));
+              PulseOne::Structs::DataValue val;
+              val = file_uri;
+
+              if (SendSingleTopicValueToPipeline(base_topic + "/file", val,
+                                                 1)) {
+                LogMessage(LogLevel::INFO,
+                           "Sent blob file URI to pipeline: " + file_uri +
+                               " (Topic: " + base_topic + ")");
+              }
             }
           }
           return true; // 조각 메시지 처리는 여기서 종료

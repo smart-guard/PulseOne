@@ -180,12 +180,18 @@ struct AlarmMessage {
         xl = j["xl"].get<std::string>();
 
       // 8. Capture ALL other fields for dynamic pass-through
+      if (j.contains("extra_info") && j["extra_info"].is_object()) {
+        for (auto &el : j["extra_info"].items()) {
+          extra_info[el.key()] = el.value();
+        }
+      }
+
       for (auto it = j.begin(); it != j.end(); ++it) {
         // Skip already mapped fields
         static const std::set<std::string> known_fields = {
-            "bd",  "site_id",  "nm",        "source_name", "vl",
-            "val", "tm",       "timestamp", "al",          "st",
-            "des", "point_id", "ty",        "il",          "xl"};
+            "bd", "site_id",   "nm", "source_name", "vl",  "val",
+            "tm", "timestamp", "al", "st",          "des", "point_id",
+            "ty", "il",        "xl", "extra_info"};
 
         if (known_fields.find(it.key()) == known_fields.end()) {
           if (it.value().is_primitive()) {

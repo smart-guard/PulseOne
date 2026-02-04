@@ -58,7 +58,7 @@ namespace DbLib {
  */
 struct DBLIB_API DatabaseConfig {
   std::string type = "SQLITE";
-  std::string sqlite_path = "pulseone.db";
+  std::string sqlite_path = "/app/data/db/pulseone.db";
 
   // Postgres
   std::string pg_host = "localhost";

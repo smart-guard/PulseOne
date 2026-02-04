@@ -105,6 +105,7 @@ struct AlarmEventData {
   std::string source_name;
   std::string location;
   std::string trigger_value;
+  nlohmann::json extra_info; // 🔥 추가 메타데이터 (file_ref 등)
 
   nlohmann::json toJson() const {
     nlohmann::json j;
@@ -122,6 +123,7 @@ struct AlarmEventData {
     j["source_name"] = source_name;
     j["location"] = location;
     j["trigger_value"] = trigger_value;
+    j["extra_info"] = extra_info;
     return j;
   }
 };

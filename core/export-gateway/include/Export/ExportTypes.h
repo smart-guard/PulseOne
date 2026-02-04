@@ -219,6 +219,14 @@ public:
   virtual bool validateConfig(const json &config,
                               std::vector<std::string> &errors) = 0;
 
+  // 🆕 v3.2.0 추가: 파일 전송 메서드
+  virtual TargetSendResult sendFile(const std::string &local_path,
+                                    const json &config) {
+    TargetSendResult result;
+    result.error_message = "File export not supported by this handler";
+    return result;
+  }
+
   // 선택적 메서드들 (기본 구현 제공)
   virtual bool initialize(const json & /* config */) { return true; }
   virtual void cleanup() { /* 기본: 아무 작업 없음 */ }

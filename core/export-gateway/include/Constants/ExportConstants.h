@@ -39,7 +39,7 @@ const std::string CHANNEL_ALARMS_ALL = "alarms:all";
 // =============================================================================
 namespace Config {
 // Database
-const std::string DB_PATH_DEFAULT = "/app/data/pulseone.db";
+const std::string DB_PATH_DEFAULT = "/app/data/db/pulseone.db";
 
 // Redis
 const std::string REDIS_HOST_DEFAULT = "localhost";

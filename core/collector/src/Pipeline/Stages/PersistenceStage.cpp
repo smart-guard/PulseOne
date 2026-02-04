@@ -63,6 +63,19 @@ bool PersistenceStage::Process(PipelineContext &context) {
                 .count();
         alarm_data.source_name = alarm.source_name;
         alarm_data.location = alarm.location;
+        alarm_data.extra_info =
+            alarm.extra_info; // 🔥 메타데이터(file_ref 등) 전파
+
+        if (alarm.extra_info.contains("file_ref")) {
+          LogManager::getInstance().Info(
+              "[v3.2.0 Debug] Metadata 'file_ref' detected: " +
+              alarm.extra_info["file_ref"].get<std::string>());
+        }
+
+        LogManager::getInstance().Info(
+            "[v3.2.0 Debug] [Persistence] Publishing Alarm Event: " +
+            alarm_data.message +
+            " [Extra Keys: " + alarm_data.extra_info.dump() + "]");
 
         redis_writer_->PublishAlarmEvent(alarm_data);
       }

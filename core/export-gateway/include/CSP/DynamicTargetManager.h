@@ -254,6 +254,14 @@ public:
                                      const AlarmMessage &alarm);
 
   /**
+   * @brief 파일 전송 (모든 활성 타겟으로)
+   * @param local_path 로컬 파일 경로
+   * @return 전송 결과 목록
+   */
+  std::vector<TargetSendResult>
+  sendFileToTargets(const std::string &local_path);
+
+  /**
    * @brief 배치 알람 전송 (타겟 핸들러의 sendAlarmBatch 호출)
    * @return 배치 처리 결과
    */

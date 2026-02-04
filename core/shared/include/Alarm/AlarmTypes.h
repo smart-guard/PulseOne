@@ -143,6 +143,8 @@ struct AlarmEvent {
   int site_id = 0; // 사이트 식별자 추가
   DataValue trigger_value;
   bool condition_met = false;
+  nlohmann::json extra_info =
+      nlohmann::json::object(); // 추가 메타데이터 (file_ref 등)
 
   // 생성자들
   AlarmEvent()

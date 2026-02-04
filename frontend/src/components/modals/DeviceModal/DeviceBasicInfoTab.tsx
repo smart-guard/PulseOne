@@ -28,6 +28,7 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   // ========================================================================
   const [availableProtocols, setAvailableProtocols] = useState<ProtocolInfo[]>([]);
   const [availableGroups, setAvailableGroups] = useState<DeviceGroup[]>([]);
+  const [showTopicEditor, setShowTopicEditor] = useState(false);
   const [availableCollectors, setAvailableCollectors] = useState<EdgeServer[]>([]);
   const [availableManufacturers, setAvailableManufacturers] = useState<Manufacturer[]>([]);
   const [availableModels, setAvailableModels] = useState<DeviceModel[]>([]);
@@ -1064,8 +1065,19 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
             {editData?.protocol_type === 'MQTT' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div className="bi-field">
-                  <label style={{ color: 'var(--primary-600)', fontWeight: 600 }}>
-                    <i className="fas fa-satellite-dish"></i> MQTT Base Topic *
+                  <label style={{ color: 'var(--primary-600)', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span><i className="fas fa-satellite-dish"></i> MQTT Base Topic(s) *</span>
+                    {mode !== 'view' && (
+                      <button
+                        type="button"
+                        className="mgmt-btn-link"
+                        onClick={() => setShowTopicEditor(true)}
+                        style={{ fontSize: '12px', fontWeight: 500 }}
+                      >
+                        <i className="fas fa-expand-alt" style={{ marginRight: '4px' }}></i>
+                        크게 보기 (Editor)
+                      </button>
+                    )}
                   </label>
                   {mode === 'view' ? (
                     <div className="form-val text-break" style={{ color: 'var(--primary-700)', fontWeight: 600 }}>
@@ -1073,19 +1085,35 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                     </div>
                   ) : (
                     <>
-                      <input
-                        type="text"
+                      <textarea
                         className="bi-input"
                         value={rtuConfig.topic || ''}
                         onChange={(e) => updateRtuConfig('topic', e.target.value)}
-                        placeholder="예: factory/line1/#"
-                        style={{ borderColor: 'var(--primary-300)', background: 'var(--primary-50)' }}
+                        placeholder="예: factory/data/#, factory/files/#"
+                        style={{
+                          borderColor: 'var(--primary-300)',
+                          background: 'var(--primary-50)',
+                          minHeight: '80px',
+                          resize: 'vertical',
+                          lineHeight: '1.5',
+                          padding: '8px'
+                        }}
                         required
                       />
                       <div className="hint-text">
-                        데이터 구독을 위한 <strong>최상위 토픽</strong>입니다. (예: <code>factory/1/#</code>)
+                        데이터 및 파일 수신을 위한 <strong>최상위 토픽</strong>입니다. 쉼표(,)로 구분하여 여러 토픽을 지정할 수 있습니다.
                       </div>
                     </>
+                  )}
+                  {showTopicEditor && (
+                    <TopicEditorModal
+                      initialValue={rtuConfig.topic || ''}
+                      onSave={(newValue) => {
+                        updateRtuConfig('topic', newValue);
+                        setShowTopicEditor(false);
+                      }}
+                      onClose={() => setShowTopicEditor(false)}
+                    />
                   )}
                 </div>
 
@@ -1099,10 +1127,10 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                       onChange={(e) => onUpdateSettings?.('is_auto_registration_enabled', e.target.checked)}
                       style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                     />
-                    <span><i className="fas fa-magic"></i> MQTT 자동 데이터 등록 (Auto-Discovery)</span>
+                    <i className="fas fa-magic" style={{ marginRight: '4px' }}></i> MQTT 자동 데이터 등록 (Auto-Discovery)
                   </label>
-                  <div className="hint-text" style={{ marginLeft: '24px' }}>
-                    수집 시 등록되지 않은 JSON 키를 <strong>데이터 포인트로 자동 등록</strong>합니다.
+                  <div className="hint-text" style={{ paddingLeft: '24px' }}>
+                    수집 시 등록되지 않은 JSON 키를 데이터 포인트로 자동 등록합니다.
                   </div>
                 </div>
               </div>
@@ -1572,6 +1600,131 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
           overflow-y: auto;
         }
       `}</style>
+    </div>
+  );
+};
+
+// ============================================================================
+// 🛠️ Topic Editor Modal Component
+// ============================================================================
+const TopicEditorModal: React.FC<{
+  initialValue: string;
+  onSave: (value: string) => void;
+  onClose: () => void;
+}> = ({ initialValue, onSave, onClose }) => {
+  const [value, setValue] = useState(() => {
+    // 쉼표로 구분된 값을 줄바꿈으로 변환하여 표시
+    return initialValue ? initialValue.split(',').map(s => s.trim()).join('\n') : '';
+  });
+
+  const handleSave = () => {
+    // 줄바꿈으로 구분된 값을 쉼표로 변환하여 저장
+    const processed = value
+      .split('\n')
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+      .join(', ');
+    onSave(processed);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      zIndex: 9999,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        width: '600px',
+        maxWidth: '90vw',
+        display: 'flex',
+        flexDirection: 'column',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+        animation: 'fadeIn 0.2s ease-out'
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: '1px solid #eee',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#333' }}>
+            <i className="fas fa-list-ul" style={{ marginRight: '8px', color: 'var(--primary-600)' }}></i>
+            Edit MQTT Topics
+          </h3>
+          <button
+            onClick={onClose}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '20px', color: '#999' }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="hint-text" style={{ marginBottom: '8px', color: '#666' }}>
+            각 토픽을 <strong>새로운 줄(Enter)</strong>에 입력하세요. 저장 시 자동으로 쉼표(,)로 구분되어 처리됩니다.
+          </div>
+          <textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            style={{
+              width: '100%',
+              height: '300px',
+              padding: '12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontSize: '14px',
+              fontFamily: 'monospace',
+              lineHeight: '1.5',
+              resize: 'none',
+              outline: 'none'
+            }}
+            placeholder="factory/data/#&#13;&#10;factory/files/#&#13;&#10;branch/A/sensors/#"
+            autoFocus
+          />
+          <div style={{ fontSize: '12px', color: '#888', textAlign: 'right' }}>
+            {value.split('\n').filter(s => s.trim().length > 0).length} Topics defined
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '16px 24px',
+          borderTop: '1px solid #eee',
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: '12px',
+          backgroundColor: '#f9f9f9',
+          borderBottomLeftRadius: '8px',
+          borderBottomRightRadius: '8px'
+        }}>
+          <button
+            onClick={onClose}
+            className="mgmt-btn-outline"
+            style={{ height: '36px', padding: '0 16px' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="mgmt-btn-primary"
+            style={{ height: '36px', padding: '0 24px' }}
+          >
+            Apply Changes
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

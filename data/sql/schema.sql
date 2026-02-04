@@ -127,7 +127,7 @@ CREATE TABLE system_settings (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
     -- 🔥 제약조건
-    CONSTRAINT chk_data_type CHECK (data_type IN ('string', 'integer', 'boolean', 'json', 'float'))
+    CONSTRAINT chk_data_type CHECK (data_type IN ('string', 'integer', 'boolean', 'json', 'float', 'datetime', 'binary'))
 );
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -704,6 +704,7 @@ CREATE TABLE data_points (
     
     -- 🔥 알람 관련 설정
     alarm_enabled INTEGER DEFAULT 0,
+    alarm_priority VARCHAR(20) DEFAULT 'medium',
     high_alarm_limit REAL,
     low_alarm_limit REAL,
     alarm_deadband REAL DEFAULT 0.0,
@@ -722,7 +723,7 @@ CREATE TABLE data_points (
     
     -- 🔥 제약조건
     UNIQUE(device_id, address),
-    CONSTRAINT chk_data_type CHECK (data_type IN ('BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32', 'INT64', 'UINT64', 'FLOAT32', 'FLOAT64', 'STRING', 'UNKNOWN')),
+    CONSTRAINT chk_data_type CHECK (data_type IN ('BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32', 'INT64', 'UINT64', 'FLOAT', 'DOUBLE', 'FLOAT32', 'FLOAT64', 'STRING', 'BINARY', 'DATETIME', 'JSON', 'ARRAY', 'OBJECT', 'UNKNOWN')),
     CONSTRAINT chk_access_mode CHECK (access_mode IN ('read', 'write', 'read_write')),
     CONSTRAINT chk_retention_policy CHECK (retention_policy IN ('standard', 'extended', 'minimal', 'custom'))
 );
@@ -766,8 +767,8 @@ CREATE TABLE current_values (
     
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     
-    -- 🔥 제약조건 (대소문자 구분 없이 처리하도록 LOWER() 사용 및 FLOAT32/64 추가)
-    CONSTRAINT chk_value_type CHECK (LOWER(value_type) IN ('bool', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float', 'double', 'string', 'float32', 'float64', 'json')),
+    -- 🔥 제약조건 (대소문자 구분 없이 처리하도록 LOWER() 사용 및 확장 타입 추가)
+    CONSTRAINT chk_value_type CHECK (LOWER(value_type) IN ('bool', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float', 'double', 'string', 'float32', 'float64', 'datetime', 'json', 'binary', 'array', 'object')),
     CONSTRAINT chk_quality CHECK (LOWER(quality) IN ('good', 'bad', 'uncertain', 'not_connected', 'device_failure', 'sensor_failure', 'comm_failure', 'out_of_service', 'unknown', 'manual', 'simulated', 'stale')),
     CONSTRAINT chk_alarm_state CHECK (LOWER(alarm_state) IN ('normal', 'high', 'low', 'critical', 'warning', 'active', 'cleared', 'acknowledged'))
 
@@ -1181,7 +1182,7 @@ CREATE TABLE virtual_points (
         (scope_type = 'device' AND site_id IS NOT NULL AND device_id IS NOT NULL)
     ),
     CONSTRAINT chk_scope_type CHECK (scope_type IN ('tenant', 'site', 'device')),
-    CONSTRAINT chk_data_type CHECK (data_type IN ('bool', 'int', 'float', 'double', 'string')),
+    CONSTRAINT chk_data_type CHECK (data_type IN ('bool', 'int', 'float', 'double', 'string', 'datetime', 'json', 'binary', 'array', 'object')),
     CONSTRAINT chk_calculation_trigger CHECK (calculation_trigger IN ('timer', 'onchange', 'manual', 'event')),
     CONSTRAINT chk_execution_type CHECK (execution_type IN ('javascript', 'formula', 'aggregation', 'external')),
     CONSTRAINT chk_error_handling CHECK (error_handling IN ('return_null', 'return_zero', 'return_previous', 'throw_error'))

@@ -33,16 +33,19 @@ public:
    * @return 저장된 파일의 file:// URI (실패 시 빈 문자열)
    */
   std::string SaveBlob(const std::vector<uint8_t> &data,
-                       const std::string &extension = ".bin");
+                       const std::string &extension = ".bin",
+                       const std::string &directory = "");
 
   /**
    * @brief 데이터를 파일로 저장 (문자열 버전)
    * @param data 저장할 문자열 데이터
    * @param extension 파일 확장자
+   * @param directory 저장할 디렉토리 (비어있으면 기본 경로 사용)
    * @return 저장된 파일의 file:// URI
    */
   std::string SaveBlob(const std::string &data,
-                       const std::string &extension = ".bin");
+                       const std::string &extension = ".bin",
+                       const std::string &directory = "");
 
   /**
    * @brief 오래된 임시 파일 정리

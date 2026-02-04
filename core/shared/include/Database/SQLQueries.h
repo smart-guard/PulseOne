@@ -16,58 +16,58 @@ namespace SQL {
 // 🎯 기타 공통 쿼리들
 // =============================================================================
 namespace Common {
-    
-    // 🔥 CHECK_TABLE_EXISTS - 기존 패턴과 일치 (이름 반환)
-    const std::string CHECK_TABLE_EXISTS = R"(
+
+// 🔥 CHECK_TABLE_EXISTS - 기존 패턴과 일치 (이름 반환)
+const std::string CHECK_TABLE_EXISTS = R"(
         SELECT name FROM sqlite_master 
         WHERE type='table' AND name = ?
     )";
-    
-    const std::string GET_TABLE_INFO = "PRAGMA table_info(?)";
-    
-    const std::string GET_FOREIGN_KEYS = "PRAGMA foreign_key_list(?)";
-    
-    const std::string ENABLE_FOREIGN_KEYS = "PRAGMA foreign_keys = ON";
-    
-    const std::string DISABLE_FOREIGN_KEYS = "PRAGMA foreign_keys = OFF";
-    
-    const std::string BEGIN_TRANSACTION = "BEGIN TRANSACTION";
-    
-    const std::string COMMIT_TRANSACTION = "COMMIT";
-    
-    const std::string ROLLBACK_TRANSACTION = "ROLLBACK";
-    
-    // 🔥 마지막 삽입 ID 조회 (SQLite)
-    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
-    
-    // 🔥 PostgreSQL용 (필요시 사용)
-    const std::string GET_LAST_INSERT_ID_POSTGRES = "SELECT lastval() as id";
-    
-    // 🔥 MySQL용 (필요시 사용)  
-    const std::string GET_LAST_INSERT_ID_MYSQL = "SELECT LAST_INSERT_ID() as id";
-    
-    // 🔥 현재 시간 조회
-    const std::string GET_CURRENT_TIMESTAMP = "SELECT datetime('now') as timestamp";
-    
-    // 🔥 데이터베이스 정보 조회
-    const std::string GET_DATABASE_VERSION = "SELECT sqlite_version() as version";
-    
-    // 🔥🔥🔥 별도의 카운트 전용 쿼리 (필요한 경우)
-    const std::string COUNT_TABLES = R"(
+
+const std::string GET_TABLE_INFO = "PRAGMA table_info(?)";
+
+const std::string GET_FOREIGN_KEYS = "PRAGMA foreign_key_list(?)";
+
+const std::string ENABLE_FOREIGN_KEYS = "PRAGMA foreign_keys = ON";
+
+const std::string DISABLE_FOREIGN_KEYS = "PRAGMA foreign_keys = OFF";
+
+const std::string BEGIN_TRANSACTION = "BEGIN TRANSACTION";
+
+const std::string COMMIT_TRANSACTION = "COMMIT";
+
+const std::string ROLLBACK_TRANSACTION = "ROLLBACK";
+
+// 🔥 마지막 삽입 ID 조회 (SQLite)
+const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+
+// 🔥 PostgreSQL용 (필요시 사용)
+const std::string GET_LAST_INSERT_ID_POSTGRES = "SELECT lastval() as id";
+
+// 🔥 MySQL용 (필요시 사용)
+const std::string GET_LAST_INSERT_ID_MYSQL = "SELECT LAST_INSERT_ID() as id";
+
+// 🔥 현재 시간 조회
+const std::string GET_CURRENT_TIMESTAMP = "SELECT datetime('now') as timestamp";
+
+// 🔥 데이터베이스 정보 조회
+const std::string GET_DATABASE_VERSION = "SELECT sqlite_version() as version";
+
+// 🔥🔥🔥 별도의 카운트 전용 쿼리 (필요한 경우)
+const std::string COUNT_TABLES = R"(
         SELECT COUNT(*) as count 
         FROM sqlite_master 
         WHERE type='table' AND name=?
     )";
-    
+
 } // namespace Common
 
 // =============================================================================
 // 🎯 DeviceRepository 쿼리들 - 현재 스키마 완전 반영
 // =============================================================================
 namespace Device {
-    
-    // 🔥🔥🔥 중요: protocol_id 사용, protocol_type 제거
-    const std::string FIND_ALL = R"(
+
+// 🔥🔥🔥 중요: protocol_id 사용, protocol_type 제거
+const std::string FIND_ALL = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -77,8 +77,8 @@ namespace Device {
         FROM devices 
         ORDER BY id
     )";
-    
-    const std::string FIND_BY_ID = R"(
+
+const std::string FIND_BY_ID = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -88,9 +88,9 @@ namespace Device {
         FROM devices 
         WHERE id = ?
     )";
-    
-    // 🔥🔥🔥 프로토콜 조회 - protocol_id 사용
-    const std::string FIND_BY_PROTOCOL_ID = R"(
+
+// 🔥🔥🔥 프로토콜 조회 - protocol_id 사용
+const std::string FIND_BY_PROTOCOL_ID = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -101,9 +101,9 @@ namespace Device {
         WHERE protocol_id = ? AND is_enabled = 1
         ORDER BY name
     )";
-    
-    // 🔥 프로토콜 타입별 조회 (JOIN 필요)
-    const std::string FIND_BY_PROTOCOL_TYPE = R"(
+
+// 🔥 프로토콜 타입별 조회 (JOIN 필요)
+const std::string FIND_BY_PROTOCOL_TYPE = R"(
         SELECT 
             d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id,
             d.name, d.description, d.device_type, d.manufacturer, d.model, d.serial_number,
@@ -115,8 +115,8 @@ namespace Device {
         WHERE p.protocol_type = ? AND d.is_enabled = 1
         ORDER BY d.name
     )";
-    
-    const std::string FIND_BY_TENANT = R"(
+
+const std::string FIND_BY_TENANT = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -127,8 +127,8 @@ namespace Device {
         WHERE tenant_id = ?
         ORDER BY name
     )";
-    
-    const std::string FIND_BY_SITE = R"(
+
+const std::string FIND_BY_SITE = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -139,9 +139,9 @@ namespace Device {
         WHERE site_id = ?
         ORDER BY name
     )";
-    
-    // 🔥 에지 서버별 조회 (컬렉터 필터링용)
-    const std::string FIND_BY_EDGE_SERVER = R"(
+
+// 🔥 에지 서버별 조회 (컬렉터 필터링용)
+const std::string FIND_BY_EDGE_SERVER = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -152,8 +152,8 @@ namespace Device {
         WHERE edge_server_id = ? AND is_enabled = 1
         ORDER BY name
     )";
-    
-    const std::string FIND_ENABLED = R"(
+
+const std::string FIND_ENABLED = R"(
         SELECT 
             d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id,
             d.name, d.description, d.device_type, d.manufacturer, d.model, d.serial_number,
@@ -165,8 +165,8 @@ namespace Device {
         WHERE d.is_enabled = 1
         ORDER BY p.protocol_type, d.name
     )";
-    
-    const std::string FIND_DISABLED = R"(
+
+const std::string FIND_DISABLED = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -177,9 +177,9 @@ namespace Device {
         WHERE is_enabled = 0
         ORDER BY updated_at DESC
     )";
-    
-    // 🔥🔥🔥 INSERT - 현재 스키마 필드들
-    const std::string INSERT = R"(
+
+// 🔥🔥🔥 INSERT - 현재 스키마 필드들
+const std::string INSERT = R"(
         INSERT INTO devices (
             tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -188,9 +188,9 @@ namespace Device {
             created_by, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
-    
-    // 🔥🔥🔥 UPDATE - 현재 스키마 필드들
-    const std::string UPDATE = R"(
+
+// 🔥🔥🔥 UPDATE - 현재 스키마 필드들
+const std::string UPDATE = R"(
         UPDATE devices SET 
             tenant_id = ?, site_id = ?, device_group_id = ?, edge_server_id = ?,
             name = ?, description = ?, device_type = ?, manufacturer = ?, model = ?, 
@@ -200,54 +200,57 @@ namespace Device {
             updated_at = ?
         WHERE id = ?
     )";
-    
-    const std::string UPDATE_STATUS = R"(
+
+const std::string UPDATE_STATUS = R"(
         UPDATE devices 
         SET is_enabled = ?, updated_at = ?
         WHERE id = ?
     )";
-    
-    const std::string UPDATE_ENDPOINT = R"(
+
+const std::string UPDATE_ENDPOINT = R"(
         UPDATE devices 
         SET endpoint = ?, updated_at = ?
         WHERE id = ?
     )";
-    
-    const std::string UPDATE_CONFIG = R"(
+
+const std::string UPDATE_CONFIG = R"(
         UPDATE devices 
         SET config = ?, updated_at = ?
         WHERE id = ?
     )";
-    
-    const std::string UPDATE_PROTOCOL = R"(
+
+const std::string UPDATE_PROTOCOL = R"(
         UPDATE devices 
         SET protocol_id = ?, updated_at = ?
         WHERE id = ?
     )";
-    
-    const std::string DELETE_BY_ID = "DELETE FROM devices WHERE id = ?";
-    
-    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM devices WHERE id = ?";
-    
-    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM devices";
-    
-    const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM devices WHERE is_enabled = 1";
-    
-    const std::string COUNT_BY_PROTOCOL_ID = "SELECT COUNT(*) as count FROM devices WHERE protocol_id = ?";
-    
-    // 🔥 프로토콜 분포 - JOIN 사용
-    const std::string GET_PROTOCOL_DISTRIBUTION = R"(
+
+const std::string DELETE_BY_ID = "DELETE FROM devices WHERE id = ?";
+
+const std::string EXISTS_BY_ID =
+    "SELECT COUNT(*) as count FROM devices WHERE id = ?";
+
+const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM devices";
+
+const std::string COUNT_ENABLED =
+    "SELECT COUNT(*) as count FROM devices WHERE is_enabled = 1";
+
+const std::string COUNT_BY_PROTOCOL_ID =
+    "SELECT COUNT(*) as count FROM devices WHERE protocol_id = ?";
+
+// 🔥 프로토콜 분포 - JOIN 사용
+const std::string GET_PROTOCOL_DISTRIBUTION = R"(
         SELECT p.protocol_type, p.display_name, COUNT(d.id) as count 
         FROM protocols p
         LEFT JOIN devices d ON p.id = d.protocol_id
         GROUP BY p.id, p.protocol_type, p.display_name
         ORDER BY count DESC
     )";
-    
-    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
-    
-    // 🔥🔥🔥 테이블 생성 - 현재 스키마 완전 반영
-    const std::string CREATE_TABLE = R"(
+
+const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+
+// 🔥🔥🔥 테이블 생성 - 현재 스키마 완전 반영
+const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS devices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tenant_id INTEGER NOT NULL,
@@ -290,9 +293,9 @@ namespace Device {
             FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT
         )
     )";
-    
-    // 🔥 device_details 뷰 조회
-    const std::string FIND_WITH_PROTOCOL_INFO = R"(
+
+// 🔥 device_details 뷰 조회
+const std::string FIND_WITH_PROTOCOL_INFO = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -303,8 +306,8 @@ namespace Device {
         FROM device_details 
         ORDER BY name
     )";
-    
-    const std::string FIND_BY_ID_WITH_PROTOCOL_INFO = R"(
+
+const std::string FIND_BY_ID_WITH_PROTOCOL_INFO = R"(
         SELECT 
             id, tenant_id, site_id, device_group_id, edge_server_id,
             name, description, device_type, manufacturer, model, serial_number,
@@ -315,16 +318,16 @@ namespace Device {
         FROM device_details 
         WHERE id = ?
     )";
-    
+
 } // namespace Device
 
 // =============================================================================
 // 🎯 DataPointRepository 쿼리들 - 현재 스키마 완전 일치
 // =============================================================================
 namespace DataPoint {
-    
-    // 🔥🔥🔥 FIND_ALL - 현재 스키마의 모든 필드 포함
-    const std::string FIND_ALL = R"(
+
+// 🔥🔥🔥 FIND_ALL - 현재 스키마의 모든 필드 포함
+const std::string FIND_ALL = R"(
         SELECT 
             -- 기본 식별 정보
             id, device_id, name, description, 
@@ -349,9 +352,9 @@ namespace DataPoint {
         FROM data_points 
         ORDER BY device_id, address
     )";
-    
-    // 🔥🔥🔥 FIND_BY_ID - 모든 필드 포함
-    const std::string FIND_BY_ID = R"(
+
+// 🔥🔥🔥 FIND_BY_ID - 모든 필드 포함
+const std::string FIND_BY_ID = R"(
         SELECT 
             id, device_id, name, description, 
             address, address_string, mapping_key,
@@ -363,8 +366,8 @@ namespace DataPoint {
         FROM data_points 
         WHERE id = ?
     )";
-    
-    const std::string FIND_BY_DEVICE_ID = R"(
+
+const std::string FIND_BY_DEVICE_ID = R"(
         SELECT 
             id, device_id, name, description, 
             address, address_string, mapping_key,
@@ -377,8 +380,8 @@ namespace DataPoint {
         WHERE device_id = ?
         ORDER BY address
     )";
-    
-    const std::string FIND_BY_DEVICE_ID_ENABLED = R"(
+
+const std::string FIND_BY_DEVICE_ID_ENABLED = R"(
         SELECT 
             id, device_id, name, description, 
             address, address_string, mapping_key,
@@ -391,8 +394,8 @@ namespace DataPoint {
         WHERE device_id = ? AND is_enabled = 1
         ORDER BY address
     )";
-    
-    const std::string FIND_BY_DEVICE_AND_ADDRESS = R"(
+
+const std::string FIND_BY_DEVICE_AND_ADDRESS = R"(
         SELECT 
             id, device_id, name, description, 
             address, address_string, mapping_key,
@@ -406,9 +409,9 @@ namespace DataPoint {
         ORDER BY created_at DESC
         LIMIT 1
     )";
-    
-    // 🔥🔥🔥 INSERT - 현재 스키마의 모든 필드
-    const std::string INSERT = R"(
+
+// 🔥🔥🔥 INSERT - 현재 스키마의 모든 필드
+const std::string INSERT = R"(
         INSERT INTO data_points (
             device_id, name, description, 
             address, address_string, mapping_key,
@@ -419,9 +422,9 @@ namespace DataPoint {
             created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
-    
-    // 🔥🔥🔥 UPDATE - 현재 스키마의 모든 필드
-    const std::string UPDATE = R"(
+
+// 🔥🔥🔥 UPDATE - 현재 스키마의 모든 필드
+const std::string UPDATE = R"(
         UPDATE data_points SET 
             device_id = ?, name = ?, description = ?, 
             address = ?, address_string = ?, mapping_key = ?,
@@ -432,33 +435,36 @@ namespace DataPoint {
             updated_at = ?
         WHERE id = ?
     )";
-    
-    // 기본 CRUD 작업
-    const std::string DELETE_BY_ID = "DELETE FROM data_points WHERE id = ?";
-    const std::string DELETE_BY_DEVICE_ID = "DELETE FROM data_points WHERE device_id = ?";
-    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM data_points WHERE id = ?";
-    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM data_points";
-    const std::string COUNT_BY_DEVICE = "SELECT COUNT(*) as count FROM data_points WHERE device_id = ?";
-    
-    // 통계 쿼리들
-    const std::string GET_COUNT_BY_DEVICE = R"(
+
+// 기본 CRUD 작업
+const std::string DELETE_BY_ID = "DELETE FROM data_points WHERE id = ?";
+const std::string DELETE_BY_DEVICE_ID =
+    "DELETE FROM data_points WHERE device_id = ?";
+const std::string EXISTS_BY_ID =
+    "SELECT COUNT(*) as count FROM data_points WHERE id = ?";
+const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM data_points";
+const std::string COUNT_BY_DEVICE =
+    "SELECT COUNT(*) as count FROM data_points WHERE device_id = ?";
+
+// 통계 쿼리들
+const std::string GET_COUNT_BY_DEVICE = R"(
         SELECT device_id, COUNT(*) as count 
         FROM data_points 
         GROUP BY device_id
         ORDER BY device_id
     )";
-    
-    const std::string GET_COUNT_BY_DATA_TYPE = R"(
+
+const std::string GET_COUNT_BY_DATA_TYPE = R"(
         SELECT data_type, COUNT(*) as count 
         FROM data_points 
         GROUP BY data_type
         ORDER BY count DESC
     )";
-    
-    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
-    
-    // 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
-    const std::string CREATE_TABLE = R"(
+
+const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+
+// 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
+const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS data_points (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_id INTEGER NOT NULL,
@@ -509,12 +515,13 @@ namespace DataPoint {
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
-            UNIQUE(device_id, address)
+            UNIQUE(device_id, address),
+            CONSTRAINT chk_data_type CHECK (data_type IN ('BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32', 'INT64', 'UINT64', 'FLOAT', 'DOUBLE', 'FLOAT32', 'FLOAT64', 'STRING', 'BINARY', 'DATETIME', 'JSON', 'ARRAY', 'OBJECT', 'UNKNOWN'))
         )
     )";
-    
-    // 🔥🔥🔥 실시간 값 조회 (current_values 테이블과 JOIN)
-    const std::string FIND_WITH_CURRENT_VALUES = R"(
+
+// 🔥🔥🔥 실시간 값 조회 (current_values 테이블과 JOIN)
+const std::string FIND_WITH_CURRENT_VALUES = R"(
         SELECT 
             -- data_points 모든 필드
             dp.id, dp.device_id, dp.name, dp.description, 
@@ -536,9 +543,9 @@ namespace DataPoint {
         WHERE dp.device_id = ?
         ORDER BY dp.address
     )";
-    
-    // 🔥 로깅 활성화된 포인트들만 조회
-    const std::string FIND_LOG_ENABLED = R"(
+
+// 🔥 로깅 활성화된 포인트들만 조회
+const std::string FIND_LOG_ENABLED = R"(
         SELECT 
             id, device_id, name, address, data_type,
             log_enabled, log_interval_ms, log_deadband,
@@ -548,8 +555,8 @@ namespace DataPoint {
         ORDER BY device_id, address
     )";
 
-    // 추가 쿼리들
-    const std::string FIND_BY_TAG = R"(
+// 추가 쿼리들
+const std::string FIND_BY_TAG = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
             is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
@@ -559,8 +566,8 @@ namespace DataPoint {
         WHERE tags LIKE ?
         ORDER BY device_id, address
     )";
-    
-    const std::string FIND_DISABLED = R"(
+
+const std::string FIND_DISABLED = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
             is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
@@ -570,13 +577,13 @@ namespace DataPoint {
         WHERE is_enabled = 0
         ORDER BY device_id, address
     )";
-    
-    const std::string DELETE_BY_DEVICE_IDS = R"(
+
+const std::string DELETE_BY_DEVICE_IDS = R"(
         DELETE FROM data_points 
         WHERE device_id IN (%s)
     )";
-    
-    const std::string UPSERT = R"(
+
+const std::string UPSERT = R"(
         INSERT OR REPLACE INTO data_points (
             id, device_id, name, description, address, address_string,
             data_type, access_mode, is_enabled, is_writable,
@@ -586,8 +593,8 @@ namespace DataPoint {
             created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
-    
-    const std::string UPDATE_BASIC_INFO = R"(
+
+const std::string UPDATE_BASIC_INFO = R"(
         UPDATE data_points SET 
             name = ?, description = ?, unit = ?, 
             scaling_factor = ?, scaling_offset = ?,
@@ -595,33 +602,37 @@ namespace DataPoint {
             updated_at = ?
         WHERE id = ?
     )";
-    
-    const std::string UPDATE_STATUS = R"(
+
+const std::string UPDATE_STATUS = R"(
         UPDATE data_points SET 
             is_enabled = ?, updated_at = ?
         WHERE id = ?
     )";
-    
-    const std::string UPDATE_LOG_CONFIG = R"(
+
+const std::string UPDATE_LOG_CONFIG = R"(
         UPDATE data_points SET 
             log_enabled = ?, log_interval_ms = ?, log_deadband = ?,
             updated_at = ?
         WHERE id = ?
     )";
-    
-    const std::string BULK_UPDATE_STATUS = R"(
+
+const std::string BULK_UPDATE_STATUS = R"(
         UPDATE data_points SET 
             is_enabled = ?, updated_at = ?
         WHERE id IN (%s)
     )";
-    
-    // 통계 관련
-    const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM data_points WHERE is_enabled = 1";
-    const std::string COUNT_DISABLED = "SELECT COUNT(*) as count FROM data_points WHERE is_enabled = 0";
-    const std::string COUNT_WRITABLE = "SELECT COUNT(*) as count FROM data_points WHERE is_writable = 1";
-    const std::string COUNT_LOG_ENABLED = "SELECT COUNT(*) as count FROM data_points WHERE log_enabled = 1";
-    
-    const std::string GET_STATS_BY_DEVICE = R"(
+
+// 통계 관련
+const std::string COUNT_ENABLED =
+    "SELECT COUNT(*) as count FROM data_points WHERE is_enabled = 1";
+const std::string COUNT_DISABLED =
+    "SELECT COUNT(*) as count FROM data_points WHERE is_enabled = 0";
+const std::string COUNT_WRITABLE =
+    "SELECT COUNT(*) as count FROM data_points WHERE is_writable = 1";
+const std::string COUNT_LOG_ENABLED =
+    "SELECT COUNT(*) as count FROM data_points WHERE log_enabled = 1";
+
+const std::string GET_STATS_BY_DEVICE = R"(
         SELECT 
             device_id,
             COUNT(*) as total_count,
@@ -632,8 +643,8 @@ namespace DataPoint {
         GROUP BY device_id
         ORDER BY device_id
     )";
-    
-    const std::string FIND_RECENTLY_CREATED = R"(
+
+const std::string FIND_RECENTLY_CREATED = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
             is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
@@ -643,8 +654,8 @@ namespace DataPoint {
         WHERE created_at >= datetime('now', '-? days')
         ORDER BY created_at DESC
     )";
-    
-    const std::string FIND_RECENTLY_UPDATED = R"(
+
+const std::string FIND_RECENTLY_UPDATED = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
             is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
@@ -654,22 +665,22 @@ namespace DataPoint {
         WHERE updated_at >= datetime('now', '-? days')
         ORDER BY updated_at DESC
     )";
-    
-    const std::string CHECK_DUPLICATE_ADDRESS = R"(
+
+const std::string CHECK_DUPLICATE_ADDRESS = R"(
         SELECT COUNT(*) as count 
         FROM data_points 
         WHERE device_id = ? AND address = ? AND id != ?
     )";
-    
-    const std::string FIND_DUPLICATE_NAMES = R"(
+
+const std::string FIND_DUPLICATE_NAMES = R"(
         SELECT name, COUNT(*) as count
         FROM data_points 
         WHERE device_id = ?
         GROUP BY name 
         HAVING COUNT(*) > 1
     )";
-    
-    const std::string FIND_BY_NAME_PATTERN = R"(
+
+const std::string FIND_BY_NAME_PATTERN = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
             is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
@@ -679,8 +690,8 @@ namespace DataPoint {
         WHERE name LIKE ? AND is_enabled = 1
         ORDER BY device_id, address
     )";
-    
-    const std::string FIND_BY_ADDRESS_RANGE = R"(
+
+const std::string FIND_BY_ADDRESS_RANGE = R"(
         SELECT 
             id, device_id, name, description, address, data_type, access_mode,
             is_enabled, unit, scaling_factor, scaling_offset, min_value, max_value,
@@ -690,8 +701,8 @@ namespace DataPoint {
         WHERE device_id = ? AND address BETWEEN ? AND ?
         ORDER BY address
     )";
-    
-    const std::string EXPORT_FOR_BACKUP = R"(
+
+const std::string EXPORT_FOR_BACKUP = R"(
         SELECT 
             device_id, name, description, address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
@@ -702,8 +713,8 @@ namespace DataPoint {
         WHERE device_id IN (%s)
         ORDER BY device_id, address
     )";
-    
-    const std::string COPY_TO_DEVICE = R"(
+
+const std::string COPY_TO_DEVICE = R"(
         INSERT INTO data_points (
             device_id, name, description, address, address_string, mapping_key,
             data_type, access_mode, is_enabled, is_writable,
@@ -723,13 +734,13 @@ namespace DataPoint {
         WHERE device_id = ?
     )";
 
-    const std::string FIND_LAST_CREATED_BY_DEVICE_ADDRESS = R"(
+const std::string FIND_LAST_CREATED_BY_DEVICE_ADDRESS = R"(
         SELECT id FROM data_points 
         WHERE device_id = ? AND address = ?
         ORDER BY created_at DESC LIMIT 1
     )";
-    
-    const std::string FIND_WRITABLE_POINTS = R"(
+
+const std::string FIND_WRITABLE_POINTS = R"(
         SELECT 
             id, device_id, name, description, address, address_string,
             data_type, access_mode, is_enabled, is_writable,
@@ -741,8 +752,8 @@ namespace DataPoint {
         WHERE is_writable = 1 AND is_enabled = 1
         ORDER BY device_id, address
     )";
-    
-    const std::string FIND_BY_DATA_TYPE = R"(
+
+const std::string FIND_BY_DATA_TYPE = R"(
         SELECT 
             id, device_id, name, description, address, address_string,
             data_type, access_mode, is_enabled, is_writable,
@@ -753,16 +764,16 @@ namespace DataPoint {
         FROM data_points 
         WHERE data_type = ? AND is_enabled = 1
         ORDER BY device_id, address
-    )";        
-    
+    )";
+
 } // namespace DataPoint
 
 // =============================================================================
 // 🎯 DeviceSettingsRepository 쿼리들 - 현재 스키마 완전 반영
 // =============================================================================
 namespace DeviceSettings {
-    
-    const std::string FIND_ALL = R"(
+
+const std::string FIND_ALL = R"(
         SELECT 
             device_id, polling_interval_ms, scan_rate_override, 
             connection_timeout_ms, read_timeout_ms, write_timeout_ms,
@@ -775,8 +786,8 @@ namespace DeviceSettings {
         FROM device_settings 
         ORDER BY device_id
     )";
-    
-    const std::string FIND_BY_ID = R"(
+
+const std::string FIND_BY_ID = R"(
         SELECT 
             device_id, polling_interval_ms, scan_rate_override, 
             connection_timeout_ms, read_timeout_ms, write_timeout_ms,
@@ -789,8 +800,8 @@ namespace DeviceSettings {
         FROM device_settings 
         WHERE device_id = ?
     )";
-    
-    const std::string FIND_BY_PROTOCOL = R"(
+
+const std::string FIND_BY_PROTOCOL = R"(
         SELECT 
             ds.device_id, ds.polling_interval_ms, ds.scan_rate_override, 
             ds.connection_timeout_ms, ds.read_timeout_ms, ds.write_timeout_ms,
@@ -806,8 +817,8 @@ namespace DeviceSettings {
         WHERE p.protocol_type = ?
         ORDER BY ds.device_id
     )";
-    
-    const std::string FIND_ACTIVE_DEVICES = R"(
+
+const std::string FIND_ACTIVE_DEVICES = R"(
         SELECT 
             ds.device_id, ds.polling_interval_ms, ds.scan_rate_override, 
             ds.connection_timeout_ms, ds.read_timeout_ms, ds.write_timeout_ms,
@@ -822,9 +833,9 @@ namespace DeviceSettings {
         WHERE d.is_enabled = 1
         ORDER BY ds.polling_interval_ms, ds.device_id
     )";
-    
-    // 🔥🔥🔥 UPSERT - 현재 스키마의 모든 필드
-    const std::string UPSERT = R"(
+
+// 🔥🔥🔥 UPSERT - 현재 스키마의 모든 필드
+const std::string UPSERT = R"(
         INSERT OR REPLACE INTO device_settings (
             device_id, polling_interval_ms, scan_rate_override, 
             connection_timeout_ms, read_timeout_ms, write_timeout_ms,
@@ -836,46 +847,48 @@ namespace DeviceSettings {
             created_at, updated_at, updated_by
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
-    
-    const std::string UPDATE_POLLING_INTERVAL = R"(
+
+const std::string UPDATE_POLLING_INTERVAL = R"(
         UPDATE device_settings 
         SET polling_interval_ms = ?, updated_at = ?
         WHERE device_id = ?
     )";
-    
-    const std::string UPDATE_CONNECTION_TIMEOUT = R"(
+
+const std::string UPDATE_CONNECTION_TIMEOUT = R"(
         UPDATE device_settings 
         SET connection_timeout_ms = ?, updated_at = ?
         WHERE device_id = ?
     )";
-    
-    const std::string UPDATE_RETRY_SETTINGS = R"(
+
+const std::string UPDATE_RETRY_SETTINGS = R"(
         UPDATE device_settings 
         SET max_retry_count = ?, retry_interval_ms = ?, updated_at = ?
         WHERE device_id = ?
     )";
-    
-    const std::string UPDATE_AUTO_REGISTRATION_ENABLED = R"(
+
+const std::string UPDATE_AUTO_REGISTRATION_ENABLED = R"(
         UPDATE device_settings 
         SET auto_registration_enabled = ?, updated_at = ?
         WHERE device_id = ?
     )";
-    
-    const std::string DELETE_BY_ID = "DELETE FROM device_settings WHERE device_id = ?";
-    
-    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM device_settings WHERE device_id = ?";
-    
-    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM device_settings";
-    
-    const std::string GET_POLLING_INTERVAL_DISTRIBUTION = R"(
+
+const std::string DELETE_BY_ID =
+    "DELETE FROM device_settings WHERE device_id = ?";
+
+const std::string EXISTS_BY_ID =
+    "SELECT COUNT(*) as count FROM device_settings WHERE device_id = ?";
+
+const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM device_settings";
+
+const std::string GET_POLLING_INTERVAL_DISTRIBUTION = R"(
         SELECT polling_interval_ms, COUNT(*) as count 
         FROM device_settings 
         GROUP BY polling_interval_ms
         ORDER BY polling_interval_ms
     )";
-    
-    // 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
-    const std::string CREATE_TABLE = R"(
+
+// 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
+const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS device_settings (
             device_id INTEGER PRIMARY KEY,
             
@@ -919,7 +932,7 @@ namespace DeviceSettings {
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
         )
     )";
-    
+
 } // namespace DeviceSettings
 
 // =============================================================================
@@ -927,8 +940,8 @@ namespace DeviceSettings {
 // =============================================================================
 namespace CurrentValue {
 
-    // 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
-    const std::string CREATE_TABLE = R"(
+// 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
+const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS current_values (
             point_id INTEGER PRIMARY KEY,
             -- 🔥 실제 값 (DataVariant 직렬화)
@@ -963,7 +976,7 @@ namespace CurrentValue {
         )
     )";
 
-    const std::string FIND_ALL = R"(
+const std::string FIND_ALL = R"(
         SELECT 
             point_id, current_value, raw_value, value_type,
             quality_code, quality,
@@ -973,8 +986,8 @@ namespace CurrentValue {
         FROM current_values 
         ORDER BY point_id
     )";
-    
-    const std::string FIND_BY_ID = R"(
+
+const std::string FIND_BY_ID = R"(
         SELECT 
             point_id, current_value, raw_value, value_type,
             quality_code, quality,
@@ -984,8 +997,8 @@ namespace CurrentValue {
         FROM current_values 
         WHERE point_id = ?
     )";
-    
-    const std::string FIND_BY_DEVICE_ID = R"(
+
+const std::string FIND_BY_DEVICE_ID = R"(
         SELECT 
             cv.point_id, cv.current_value, cv.raw_value, cv.value_type,
             cv.quality_code, cv.quality,
@@ -998,7 +1011,7 @@ namespace CurrentValue {
         ORDER BY dp.address
     )";
 
-    const std::string FIND_BY_IDS = R"(
+const std::string FIND_BY_IDS = R"(
         SELECT 
             point_id, current_value, raw_value, value_type,
             quality_code, quality,
@@ -1009,8 +1022,8 @@ namespace CurrentValue {
         WHERE point_id IN (%s)
         ORDER BY point_id
     )";
-    
-    const std::string FIND_BY_QUALITY_CODE = R"(
+
+const std::string FIND_BY_QUALITY_CODE = R"(
         SELECT 
             point_id, current_value, raw_value, value_type,
             quality_code, quality,
@@ -1022,7 +1035,7 @@ namespace CurrentValue {
         ORDER BY updated_at DESC
     )";
 
-    const std::string FIND_BY_QUALITY = R"(
+const std::string FIND_BY_QUALITY = R"(
         SELECT 
             point_id, current_value, raw_value, value_type,
             quality_code, quality,
@@ -1034,7 +1047,7 @@ namespace CurrentValue {
         ORDER BY updated_at DESC
     )";
 
-    const std::string FIND_STALE_VALUES = R"(
+const std::string FIND_STALE_VALUES = R"(
         SELECT 
             point_id, current_value, raw_value, value_type,
             quality_code, quality,
@@ -1046,7 +1059,7 @@ namespace CurrentValue {
         ORDER BY updated_at ASC
     )";
 
-    const std::string FIND_BAD_QUALITY_VALUES = R"(
+const std::string FIND_BAD_QUALITY_VALUES = R"(
         SELECT 
             point_id, current_value, raw_value, value_type,
             quality_code, quality,
@@ -1058,7 +1071,7 @@ namespace CurrentValue {
         ORDER BY updated_at DESC
     )";
 
-    const std::string UPSERT = R"(
+const std::string UPSERT = R"(
         INSERT OR REPLACE INTO current_values (
             point_id, current_value, raw_value, value_type,
             quality_code, quality,
@@ -1067,8 +1080,8 @@ namespace CurrentValue {
             read_count, write_count, error_count, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
-    
-    const std::string INSERT = R"(
+
+const std::string INSERT = R"(
         INSERT INTO current_values (
             point_id, current_value, raw_value, value_type,
             quality_code, quality,
@@ -1078,7 +1091,7 @@ namespace CurrentValue {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
-    const std::string UPDATE = R"(
+const std::string UPDATE = R"(
         UPDATE current_values SET 
             current_value = ?, raw_value = ?, value_type = ?,
             quality_code = ?, quality = ?,
@@ -1088,66 +1101,70 @@ namespace CurrentValue {
         WHERE point_id = ?
     )";
 
-    const std::string UPDATE_VALUE = R"(
+const std::string UPDATE_VALUE = R"(
         UPDATE current_values SET 
             current_value = ?, raw_value = ?, value_type = ?,
             value_timestamp = ?, updated_at = ?
         WHERE point_id = ?
     )";
 
-    const std::string UPDATE_QUALITY = R"(
+const std::string UPDATE_QUALITY = R"(
         UPDATE current_values SET 
             quality_code = ?, quality = ?, quality_timestamp = ?, updated_at = ?
         WHERE point_id = ?
     )";
 
-    const std::string UPDATE_STATISTICS = R"(
+const std::string UPDATE_STATISTICS = R"(
         UPDATE current_values SET 
             read_count = ?, write_count = ?, error_count = ?, updated_at = ?
         WHERE point_id = ?
     )";
 
-    const std::string INCREMENT_READ_COUNT = R"(
+const std::string INCREMENT_READ_COUNT = R"(
         UPDATE current_values SET 
             read_count = read_count + 1, last_read_time = ?, updated_at = ?
         WHERE point_id = ?
     )";
 
-    const std::string INCREMENT_WRITE_COUNT = R"(
+const std::string INCREMENT_WRITE_COUNT = R"(
         UPDATE current_values SET 
             write_count = write_count + 1, last_write_time = ?, updated_at = ?
         WHERE point_id = ?
     )";
 
-    const std::string INCREMENT_ERROR_COUNT = R"(
+const std::string INCREMENT_ERROR_COUNT = R"(
         UPDATE current_values SET 
             error_count = error_count + 1, updated_at = ?
         WHERE point_id = ?
     )";
-    
-    const std::string DELETE_BY_ID = "DELETE FROM current_values WHERE point_id = ?";
-    
-    const std::string DELETE_BY_DEVICE_ID = R"(
+
+const std::string DELETE_BY_ID =
+    "DELETE FROM current_values WHERE point_id = ?";
+
+const std::string DELETE_BY_DEVICE_ID = R"(
         DELETE FROM current_values 
         WHERE point_id IN (
             SELECT id FROM data_points WHERE device_id = ?
         )
     )";
 
-    const std::string DELETE_STALE_VALUES = R"(
+const std::string DELETE_STALE_VALUES = R"(
         DELETE FROM current_values 
         WHERE updated_at < ?
     )";
 
-    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM current_values WHERE point_id = ?";
+const std::string EXISTS_BY_ID =
+    "SELECT COUNT(*) as count FROM current_values WHERE point_id = ?";
 
-    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM current_values";
+const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM current_values";
 
-    const std::string COUNT_BY_QUALITY = "SELECT COUNT(*) as count FROM current_values WHERE quality = ?";
+const std::string COUNT_BY_QUALITY =
+    "SELECT COUNT(*) as count FROM current_values WHERE quality = ?";
 
-    const std::string COUNT_BY_QUALITY_CODE = "SELECT COUNT(*) as count FROM current_values WHERE quality_code = ?";
+const std::string COUNT_BY_QUALITY_CODE =
+    "SELECT COUNT(*) as count FROM current_values WHERE quality_code = ?";
 
-    const std::string GET_LATEST_VALUES = R"(
+const std::string GET_LATEST_VALUES = R"(
         SELECT 
             cv.point_id, dp.name as point_name, cv.current_value, cv.quality, cv.value_timestamp,
             d.name as device_name, p.protocol_type
@@ -1159,21 +1176,21 @@ namespace CurrentValue {
         ORDER BY cv.value_timestamp DESC
     )";
 
-    const std::string GET_QUALITY_DISTRIBUTION = R"(
+const std::string GET_QUALITY_DISTRIBUTION = R"(
         SELECT quality, COUNT(*) as count 
         FROM current_values 
         GROUP BY quality
         ORDER BY count DESC
     )";
 
-    const std::string GET_VALUE_TYPE_DISTRIBUTION = R"(
+const std::string GET_VALUE_TYPE_DISTRIBUTION = R"(
         SELECT value_type, COUNT(*) as count 
         FROM current_values 
         GROUP BY value_type
         ORDER BY count DESC
     )";
 
-    const std::string GET_STATISTICS_SUMMARY = R"(
+const std::string GET_STATISTICS_SUMMARY = R"(
         SELECT 
             COUNT(*) as total_count,
             AVG(read_count) as avg_reads,
@@ -1185,18 +1202,18 @@ namespace CurrentValue {
         FROM current_values
     )";
 
-    // 🔥 기존 테스트와 호환성을 위한 별칭들
-    const std::string FIND_BY_POINT_ID = FIND_BY_ID;
-    const std::string UPSERT_VALUE = UPSERT;
-    
+// 🔥 기존 테스트와 호환성을 위한 별칭들
+const std::string FIND_BY_POINT_ID = FIND_BY_ID;
+const std::string UPSERT_VALUE = UPSERT;
+
 } // namespace CurrentValue
 
 // =============================================================================
 // 🎯 ProtocolRepository 쿼리들 - 새로 추가된 protocols 테이블
 // =============================================================================
 namespace Protocol {
-    // 기본 CRUD 쿼리들 (기존)
-    const std::string FIND_ALL = R"(
+// 기본 CRUD 쿼리들 (기존)
+const std::string FIND_ALL = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1208,8 +1225,8 @@ namespace Protocol {
         FROM protocols 
         ORDER BY display_name
     )";
-    
-    const std::string FIND_BY_ID = R"(
+
+const std::string FIND_BY_ID = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1221,9 +1238,9 @@ namespace Protocol {
         FROM protocols 
         WHERE id = ?
     )";
-    
-    // 🔥 누락된 상수들 추가
-    const std::string FIND_BY_TYPE = R"(
+
+// 🔥 누락된 상수들 추가
+const std::string FIND_BY_TYPE = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1235,8 +1252,8 @@ namespace Protocol {
         FROM protocols 
         WHERE protocol_type = ?
     )";
-    
-    const std::string FIND_ACTIVE = R"(
+
+const std::string FIND_ACTIVE = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1249,8 +1266,8 @@ namespace Protocol {
         WHERE is_enabled = 1
         ORDER BY category, display_name
     )";
-    
-    const std::string FIND_SERIAL = R"(
+
+const std::string FIND_SERIAL = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1263,8 +1280,8 @@ namespace Protocol {
         WHERE uses_serial = 1 AND is_enabled = 1
         ORDER BY display_name
     )";
-    
-    const std::string FIND_BROKER_REQUIRED = R"(
+
+const std::string FIND_BROKER_REQUIRED = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1277,8 +1294,8 @@ namespace Protocol {
         WHERE requires_broker = 1 AND is_enabled = 1
         ORDER BY display_name
     )";
-    
-    const std::string FIND_BY_PORT = R"(
+
+const std::string FIND_BY_PORT = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1291,8 +1308,8 @@ namespace Protocol {
         WHERE default_port = ? AND is_enabled = 1
         ORDER BY display_name
     )";
-    
-    const std::string GET_CATEGORY_DISTRIBUTION = R"(
+
+const std::string GET_CATEGORY_DISTRIBUTION = R"(
         SELECT 
             category,
             COUNT(*) as count
@@ -1301,8 +1318,8 @@ namespace Protocol {
         GROUP BY category
         ORDER BY count DESC, category
     )";
-    
-    const std::string FIND_DEPRECATED = R"(
+
+const std::string FIND_DEPRECATED = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1315,8 +1332,8 @@ namespace Protocol {
         WHERE is_deprecated = 1
         ORDER BY display_name
     )";
-    
-    const std::string GET_API_LIST = R"(
+
+const std::string GET_API_LIST = R"(
         SELECT 
             protocol_type,
             display_name,
@@ -1325,9 +1342,9 @@ namespace Protocol {
         WHERE is_enabled = 1 AND is_deprecated = 0
         ORDER BY display_name
     )";
-    
-    // 기존 쿼리들 (이미 있던 것들)
-    const std::string FIND_ENABLED = R"(
+
+// 기존 쿼리들 (이미 있던 것들)
+const std::string FIND_ENABLED = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1340,8 +1357,8 @@ namespace Protocol {
         WHERE is_enabled = 1 AND is_deprecated = 0
         ORDER BY category, display_name
     )";
-    
-    const std::string FIND_BY_CATEGORY = R"(
+
+const std::string FIND_BY_CATEGORY = R"(
         SELECT 
             id, protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1354,8 +1371,8 @@ namespace Protocol {
         WHERE category = ? AND is_enabled = 1
         ORDER BY display_name
     )";
-    
-    const std::string CREATE_TABLE = R"(
+
+const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS protocols (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             
@@ -1398,7 +1415,7 @@ namespace Protocol {
         )
     )";
 
-    const std::string INSERT = R"(
+const std::string INSERT = R"(
         INSERT INTO protocols (
             protocol_type, display_name, description,
             default_port, uses_serial, requires_broker,
@@ -1409,8 +1426,8 @@ namespace Protocol {
             created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
-    
-    const std::string UPDATE = R"(
+
+const std::string UPDATE = R"(
         UPDATE protocols SET 
             protocol_type = ?, display_name = ?, description = ?,
             default_port = ?, uses_serial = ?, requires_broker = ?,
@@ -1421,95 +1438,104 @@ namespace Protocol {
             updated_at = ?
         WHERE id = ?
     )";
-    
-    const std::string DELETE_BY_ID = "DELETE FROM protocols WHERE id = ?";
-    
-    const std::string EXISTS_BY_ID = "SELECT COUNT(*) as count FROM protocols WHERE id = ?";
-    
-    const std::string EXISTS_BY_TYPE = "SELECT COUNT(*) as count FROM protocols WHERE protocol_type = ?";
-    
-    const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM protocols";
-    
-    const std::string COUNT_ENABLED = "SELECT COUNT(*) as count FROM protocols WHERE is_enabled = 1";
-    
-    const std::string GET_CATEGORIES = R"(
+
+const std::string DELETE_BY_ID = "DELETE FROM protocols WHERE id = ?";
+
+const std::string EXISTS_BY_ID =
+    "SELECT COUNT(*) as count FROM protocols WHERE id = ?";
+
+const std::string EXISTS_BY_TYPE =
+    "SELECT COUNT(*) as count FROM protocols WHERE protocol_type = ?";
+
+const std::string COUNT_ALL = "SELECT COUNT(*) as count FROM protocols";
+
+const std::string COUNT_ENABLED =
+    "SELECT COUNT(*) as count FROM protocols WHERE is_enabled = 1";
+
+const std::string GET_CATEGORIES = R"(
         SELECT DISTINCT category 
         FROM protocols 
         WHERE category IS NOT NULL AND is_enabled = 1
         ORDER BY category
     )";
-    
-    const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
-    
+
+const std::string GET_LAST_INSERT_ID = "SELECT last_insert_rowid() as id";
+
 } // namespace Protocol
 
 // =============================================================================
 // 🎯 동적 쿼리 빌더 헬퍼들
 // =============================================================================
 namespace QueryBuilder {
-    
-    /**
-     * @brief WHERE 절 생성 헬퍼
-     * @param conditions 조건들 (column=value 형태)
-     * @return WHERE 절 문자열
-     */
-    inline std::string buildWhereClause(const std::vector<std::pair<std::string, std::string>>& conditions) {
-        if (conditions.empty()) return "";
-        
-        std::string where_clause = " WHERE ";
-        for (size_t i = 0; i < conditions.size(); ++i) {
-            if (i > 0) where_clause += " AND ";
-            where_clause += conditions[i].first + " = '" + conditions[i].second + "'";
-        }
-        return where_clause;
-    }
-    
-    /**
-     * @brief ORDER BY 절 생성 헬퍼
-     * @param column 정렬할 컬럼
-     * @param direction ASC 또는 DESC
-     * @return ORDER BY 절 문자열
-     */
-    inline std::string buildOrderByClause(const std::string& column, const std::string& direction = "ASC") {
-        return " ORDER BY " + column + " " + direction;
-    }
-    
-    /**
-     * @brief LIMIT 절 생성 헬퍼
-     * @param limit 제한 수
-     * @param offset 오프셋 (기본값: 0)
-     * @return LIMIT 절 문자열
-     */
-    inline std::string buildLimitClause(int limit, int offset = 0) {
-        if (offset > 0) {
-            return " LIMIT " + std::to_string(limit) + " OFFSET " + std::to_string(offset);
-        } else {
-            return " LIMIT " + std::to_string(limit);
-        }
-    }
-    
-    /**
-     * @brief IN 절용 플레이스홀더 생성
-     * @param count 항목 개수
-     * @return IN 절 플레이스홀더 문자열 (?,?,?)
-     */
-    inline std::string buildInPlaceholders(int count) {
-        if (count <= 0) return "";
-        
-        std::string placeholders = "?";
-        for (int i = 1; i < count; ++i) {
-            placeholders += ",?";
-        }
-        return placeholders;
-    }
-    
+
+/**
+ * @brief WHERE 절 생성 헬퍼
+ * @param conditions 조건들 (column=value 형태)
+ * @return WHERE 절 문자열
+ */
+inline std::string buildWhereClause(
+    const std::vector<std::pair<std::string, std::string>> &conditions) {
+  if (conditions.empty())
+    return "";
+
+  std::string where_clause = " WHERE ";
+  for (size_t i = 0; i < conditions.size(); ++i) {
+    if (i > 0)
+      where_clause += " AND ";
+    where_clause += conditions[i].first + " = '" + conditions[i].second + "'";
+  }
+  return where_clause;
+}
+
+/**
+ * @brief ORDER BY 절 생성 헬퍼
+ * @param column 정렬할 컬럼
+ * @param direction ASC 또는 DESC
+ * @return ORDER BY 절 문자열
+ */
+inline std::string buildOrderByClause(const std::string &column,
+                                      const std::string &direction = "ASC") {
+  return " ORDER BY " + column + " " + direction;
+}
+
+/**
+ * @brief LIMIT 절 생성 헬퍼
+ * @param limit 제한 수
+ * @param offset 오프셋 (기본값: 0)
+ * @return LIMIT 절 문자열
+ */
+inline std::string buildLimitClause(int limit, int offset = 0) {
+  if (offset > 0) {
+    return " LIMIT " + std::to_string(limit) + " OFFSET " +
+           std::to_string(offset);
+  } else {
+    return " LIMIT " + std::to_string(limit);
+  }
+}
+
+/**
+ * @brief IN 절용 플레이스홀더 생성
+ * @param count 항목 개수
+ * @return IN 절 플레이스홀더 문자열 (?,?,?)
+ */
+inline std::string buildInPlaceholders(int count) {
+  if (count <= 0)
+    return "";
+
+  std::string placeholders = "?";
+  for (int i = 1; i < count; ++i) {
+    placeholders += ",?";
+  }
+  return placeholders;
+}
+
 } // namespace QueryBuilder
 
 // =============================================================================
 // 🎯 EdgeServerRepository 쿼리들 - 컬렉터 아이덴티티 관리
 // =============================================================================
 namespace EdgeServer {
-    const std::string FIND_ALL = R"(
+const std::string FIND_ALL = R"(
         SELECT id, tenant_id, server_name as name, factory_name, location,
                ip_address, port, registration_token, status,
                last_seen, version, created_at, updated_at
@@ -1518,7 +1544,7 @@ namespace EdgeServer {
         ORDER BY id
     )";
 
-    const std::string FIND_BY_ID = R"(
+const std::string FIND_BY_ID = R"(
         SELECT id, tenant_id, server_name as name, factory_name, location,
                ip_address, port, registration_token, status,
                last_seen, version, created_at, updated_at
@@ -1526,7 +1552,7 @@ namespace EdgeServer {
         WHERE id = ?
     )";
 
-    const std::string CREATE_TABLE = R"(
+const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS edge_servers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tenant_id INTEGER NOT NULL,
@@ -1545,7 +1571,7 @@ namespace EdgeServer {
 } // namespace EdgeServer
 
 } // namespace SQL
-} // namespace Database  
+} // namespace Database
 } // namespace PulseOne
 
 #endif // SQL_QUERIES_H

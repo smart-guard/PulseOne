@@ -22,6 +22,7 @@
 #include "Utils/ConfigManager.h"
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <regex>
 #include <sstream>
@@ -159,6 +160,89 @@ TargetSendResult S3TargetHandler::sendAlarm(const AlarmMessage &alarm,
 
   } catch (const std::exception &e) {
     result.error_message = "S3 업로드 예외: " + std::string(e.what());
+    LogManager::getInstance().Error(result.error_message);
+    failure_count_++;
+  }
+
+  return result;
+}
+
+TargetSendResult S3TargetHandler::sendFile(const std::string &local_path,
+                                           const json &config) {
+  TargetSendResult result;
+  result.target_type = PulseOne::Constants::Export::TargetType::S3;
+  result.target_name = getTargetName(config);
+  result.success = false;
+
+  try {
+    // 1. 파일 존재 확인
+    if (!std::filesystem::exists(local_path)) {
+      result.error_message = "파일이 존재하지 않음: " + local_path;
+      LogManager::getInstance().Error(result.error_message);
+      return result;
+    }
+
+    // 2. 버킷명 추출 및 클라이언트 획득
+    std::string bucket_name = extractBucketName(config);
+    auto client = getOrCreateClient(config, bucket_name);
+    if (!client) {
+      result.error_message = "S3 클라이언트 생성 실패";
+      LogManager::getInstance().Error(result.error_message);
+      return result;
+    }
+
+    // 3. 파일 내용 읽기
+    std::ifstream file(local_path, std::ios::binary);
+    if (!file.is_open()) {
+      result.error_message = "파일 열기 실패: " + local_path;
+      LogManager::getInstance().Error(result.error_message);
+      return result;
+    }
+
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+    file.close();
+
+    // 4. 객체 키 결정
+    std::string filename =
+        std::filesystem::path(local_path).filename().string();
+    std::string folder = config.value("folder", "blobs/");
+    if (!folder.empty() && folder.back() != '/')
+      folder += "/";
+    std::string object_key = folder + filename;
+
+    // 5. 업로드
+    std::string content_type = "application/octet-stream";
+    if (filename.find(".json") != std::string::npos) {
+      content_type = "application/json";
+    }
+
+    auto upload_result = client->upload(object_key, content, content_type,
+                                        {{"original_path", local_path}});
+
+    // 6. 결과 처리
+    result.success = upload_result.success;
+    result.status_code = upload_result.status_code;
+    result.response_time = std::chrono::milliseconds(
+        static_cast<long>(upload_result.upload_time_ms));
+    result.content_size = content.length();
+
+    if (upload_result.success) {
+      result.s3_object_key = object_key;
+      success_count_++;
+      total_bytes_uploaded_ += content.length();
+      LogManager::getInstance().Info("✅ S3 파일 업로드 성공: " + local_path +
+                                     " -> " + object_key);
+    } else {
+      result.error_message = upload_result.error_message;
+      failure_count_++;
+      LogManager::getInstance().Error("❌ S3 파일 업로드 실패: " + local_path +
+                                      " - " + result.error_message);
+    }
+
+    upload_count_++;
+  } catch (const std::exception &e) {
+    result.error_message = "S3 파일 업로드 예외: " + std::string(e.what());
     LogManager::getInstance().Error(result.error_message);
     failure_count_++;
   }
@@ -345,14 +429,10 @@ bool S3TargetHandler::validateConfig(const json &config,
   errors.clear();
 
   // 버킷명 검증
-  if (!config.contains("bucket_name")) {
-    errors.push_back("bucket_name 필드가 필수입니다");
-    return false;
-  }
-
   std::string bucket_name = extractBucketName(config);
   if (bucket_name.empty()) {
-    errors.push_back("bucket_name이 비어있습니다");
+    errors.push_back(
+        "bucket_name 또는 BucketName 필드가 필수이며 비어있을 수 없습니다");
     return false;
   }
 

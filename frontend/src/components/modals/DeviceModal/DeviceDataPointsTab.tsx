@@ -404,6 +404,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                 <optgroup label="8-bit / Others">
                   <option value="INT8">INT8 (1 byte)</option>
                   <option value="UINT8">UINT8 (1 byte)</option>
+                  <option value="DATETIME">DATETIME (Time)</option>
                   <option value="UNKNOWN">Unknown / Other</option>
                 </optgroup>
               </select>
@@ -750,7 +751,23 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               </div>
               <div className="td col-val">
                 {dp.current_value && dp.current_value.value !== undefined ? (
-                  <span className="val">{String(dp.current_value.value)}</span>
+                  <span className="val">
+                    {(dp.data_type === 'DATETIME' || dp.data_type === 'datetime' || dp.name.toLowerCase().includes('timestamp')) ? (
+                      (() => {
+                        const val = Number(dp.current_value.value);
+                        if (isNaN(val) || val <= 0) return String(dp.current_value.value);
+                        // ms 단위인지 s 단위인지 체크 (10^12 이상이면 ms로 간주)
+                        const d = new Date(val > 1000000000000 ? val : val * 1000);
+                        return d.toLocaleString('ko-KR', {
+                          year: 'numeric', month: '2-digit', day: '2-digit',
+                          hour: '2-digit', minute: '2-digit', second: '2-digit',
+                          hour12: false
+                        }).replace(/\. /g, '-').replace(/\./g, '');
+                      })()
+                    ) : (
+                      String(dp.current_value.value)
+                    )}
+                  </span>
                 ) : (
                   <span className="no-val">-</span>
                 )}

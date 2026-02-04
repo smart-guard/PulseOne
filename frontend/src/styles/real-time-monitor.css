@@ -333,8 +333,9 @@ input:checked+.toggle-slider:before {
 .view-toggle-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
+  justify-content: center;
+  gap: 0;
+  padding: 6px 12px;
   border: none;
   background: transparent;
   border-radius: var(--radius-md);
@@ -673,7 +674,7 @@ input:checked+.toggle-slider:before {
   align-items: center;
   padding: 0;
   border-bottom: 1px solid var(--neutral-100);
-  margin-bottom: var(--space-4);
+  margin-bottom: 0;
   background: transparent;
   width: 100%;
 }
@@ -721,7 +722,7 @@ input:checked+.toggle-slider:before {
   align-items: center;
   gap: 16px;
   background: white;
-  padding: 6px 16px;
+  padding: 3px 16px;
   border: 1px solid var(--neutral-200);
   border-radius: var(--radius-full);
   /* Capsule shape */

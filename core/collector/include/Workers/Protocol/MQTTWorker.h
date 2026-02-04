@@ -764,6 +764,7 @@ private:
     int connection_timeout_sec = 30;
     int max_retry_count = 3;
     MqttQoS default_qos = MqttQoS::AT_LEAST_ONCE;
+    std::string file_storage_path = ""; // 파일 저장 경로 (설정 가능)
   } mqtt_config_;
 
   // Worker 레벨 설정
