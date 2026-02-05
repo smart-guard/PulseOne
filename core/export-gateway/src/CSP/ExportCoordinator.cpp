@@ -893,10 +893,13 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
         std::cout << "[v3.2.0 Debug] Automated file upload triggered for: "
                   << file_ref << std::endl;
 
-        // file_ref는 "file:///app/data/blobs/20260203_..." 형식
+        // file_ref는 "file:///app/data/blobs/20260203_..." 형식 또는 단순 ID
         std::string local_path = file_ref;
         if (local_path.find("file://") == 0) {
           local_path = local_path.substr(7);
+        } else if (local_path.find("/") == std::string::npos) {
+          // 단순 ID인 경우 기본 경로 부여
+          local_path = "/app/data/blobs/" + local_path;
         }
 
         LogManager::getInstance().Info(

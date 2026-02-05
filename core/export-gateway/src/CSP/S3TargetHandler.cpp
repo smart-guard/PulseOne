@@ -1041,6 +1041,9 @@ S3TargetHandler::sendValueBatch(const std::vector<ValueMessage> &values,
                                 const json &config) {
 
   std::vector<TargetSendResult> results;
+  LogManager::getInstance().Info(
+      "[v3.2.0 Debug] S3TargetHandler::sendValueBatch called for: " +
+      getTargetName(config));
   if (values.empty())
     return results;
 

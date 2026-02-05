@@ -826,9 +826,15 @@ BatchTargetResult DynamicTargetManager::sendValueBatchToTargets(
     return batch_result;
   }
 
+  LogManager::getInstance().Info(
+      "[v3.2.0 Debug] sendValueBatchToTargets called for specific_target: " +
+      specific_target + ", values: " + std::to_string(values.size()));
   std::shared_lock<std::shared_mutex> lock(targets_mutex_);
 
   for (size_t i = 0; i < targets_.size(); ++i) {
+    LogManager::getInstance().Info(
+        "[v3.2.0 Debug] Checking target: " + targets_[i].name +
+        " (Enabled: " + (targets_[i].enabled ? "Yes" : "No") + ")");
     if (!targets_[i].enabled)
       continue;
 
@@ -845,13 +851,14 @@ BatchTargetResult DynamicTargetManager::sendValueBatchToTargets(
                         .get<std::string>();
     }
 
-    // "value" 또는 "batch" 모드여야 함
-    if (export_mode != ExportConst::ExportMode::VALUE &&
+    // "value" 또는 "batch" 모드여야 함 (단, 특정 타켓 지정시 예외 허용)
+    if (specific_target.empty() &&
+        export_mode != ExportConst::ExportMode::VALUE &&
         export_mode != ExportConst::ExportMode::BATCH) {
       continue;
     }
 
-    auto it_handler = handlers_.find(targets_[i].type);
+    auto it_handler = handlers_.find(targets_[i].name);
     if (it_handler == handlers_.end() || !it_handler->second) {
       continue;
     }

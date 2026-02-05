@@ -30,7 +30,7 @@ client.on('connect', async () => {
 
     // 2. Publish Telemetry with file_ref (Triggers Auto-Discovery for 'vfd/data')
     const telemetryPayload = JSON.stringify({
-        value: 155.5, // > 150 to trigger alarm later
+        value: 165.5, // > 150 to trigger alarm later
         status: "critical",
         timestamp: Date.now(),
         file_ref: fileId // Metadata for file association
