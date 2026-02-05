@@ -60,14 +60,15 @@ bool ConfigManager::doInitialize() {
   createSecurityEnvFile();
   createSecurityEnvFile();
   createSecretsDirectory();
-  ensureDataDirectories();
-
   // 3. 설정 파일들 로드
   loadMainConfig();
   loadAdditionalConfigs();
 
-  // 4. dataDir 설정
+  // 4. dataDir 설정 (설정 로드 후 실행하여 DATA_DIR 설정 반영)
   dataDir_ = findDataDirectory();
+
+  // 4.1 데이터 디렉토리 생성 및 보장
+  ensureDataDirectories();
 
   // 5. SecretManager 초기화 및 의존성 주입
   initializeSecretManager();
@@ -239,12 +240,12 @@ std::string ConfigManager::findDataDirectory() {
   std::cout << "[DEBUG] ConfigManager - DATA_DIR env: "
             << (data_dir_env ? data_dir_env : "nullptr") << std::endl;
 
-  if (pulseone_data_dir && FileSystem::DirectoryExists(pulseone_data_dir)) {
+  if (pulseone_data_dir) {
     std::cout << "[DEBUG] ConfigManager - Using PULSEONE_DATA_DIR: "
               << pulseone_data_dir << std::endl;
     return std::string(pulseone_data_dir);
   }
-  if (data_dir_env && FileSystem::DirectoryExists(data_dir_env)) {
+  if (data_dir_env) {
     std::cout << "[DEBUG] ConfigManager - Using DATA_DIR from env: "
               << data_dir_env << std::endl;
     return std::string(data_dir_env);
