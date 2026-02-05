@@ -613,13 +613,62 @@ std::optional<ExportDataPoint> ScheduledExporter::fetchPointData(
 
     ExportDataPoint point;
     point.point_id = point_id;
-    point.building_id =
-        data.value("bd", data.value("building_id", 0)); // bd 또는 building_id
-    point.point_name =
-        data.value("nm", data.value("point_name", "")); // nm 또는 point_name
-    point.value = data.value("vl", data.value("value", "")); // vl 또는 value
-    point.timestamp = data.value("tm_ms", data.value("timestamp", 0LL));
-    point.quality = data.value("st", data.value("quality", 0));
+
+    // Use safe type-checking and conversions for all potential type-mismatched
+    // fields
+    if (data.contains("bd") && data["bd"].is_number()) {
+      point.building_id = data["bd"].get<int>();
+    } else if (data.contains("bd") && data["bd"].is_string()) {
+      try {
+        point.building_id = std::stoi(data["bd"].get<std::string>());
+      } catch (...) {
+        point.building_id = 0;
+      }
+    } else if (data.contains("building_id") &&
+               data["building_id"].is_number()) {
+      point.building_id = data["building_id"].get<int>();
+    } else if (data.contains("building_id") &&
+               data["building_id"].is_string()) {
+      try {
+        point.building_id = std::stoi(data["building_id"].get<std::string>());
+      } catch (...) {
+        point.building_id = 0;
+      }
+    } else {
+      point.building_id = 0;
+    }
+
+    point.point_name = data.value("nm", data.value("point_name", ""));
+    point.value = data.value("vl", data.value("value", ""));
+
+    if (data.contains("tm_ms") && data["tm_ms"].is_number()) {
+      point.timestamp = data["tm_ms"].get<long long>();
+    } else if (data.contains("timestamp") && data["timestamp"].is_number()) {
+      point.timestamp = data["timestamp"].get<long long>();
+    } else {
+      point.timestamp = 0LL;
+    }
+
+    if (data.contains("st") && data["st"].is_number()) {
+      point.quality = data["st"].get<int>();
+    } else if (data.contains("st") && data["st"].is_string()) {
+      try {
+        point.quality = (int)data["st"].get<std::string>()[0];
+      } catch (...) {
+        point.quality = 0;
+      }
+    } else if (data.contains("quality") && data["quality"].is_number()) {
+      point.quality = data["quality"].get<int>();
+    } else if (data.contains("quality") && data["quality"].is_string()) {
+      try {
+        point.quality = (int)data["quality"].get<std::string>()[0];
+      } catch (...) {
+        point.quality = 0;
+      }
+    } else {
+      point.quality = 0;
+    }
+
     point.unit = data.value("unit", "");
 
     return point;

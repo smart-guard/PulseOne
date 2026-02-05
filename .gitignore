@@ -187,3 +187,14 @@ temp_fix.sh
 *.bak
 *.tmp
 *.bin
+
+# =============================================================================
+# Data and Logs
+# =============================================================================
+data/export/
+data/export_failed/
+data/blobs/
+data/logs/
+data/temp/
+data/db/*.db-shm
+data/db/*.db-wal

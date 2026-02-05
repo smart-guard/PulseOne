@@ -116,7 +116,7 @@ S3UploadResult S3Client::uploadJson(
   enhanced_metadata["x-amz-meta-source"] = "PulseOne";
   enhanced_metadata["x-amz-meta-type"] = "json-data";
 
-  return upload(object_key, json_content, "application/json; charset=utf-8",
+  return upload(object_key, json_content, "application/json",
                 enhanced_metadata);
 }
 
@@ -200,7 +200,8 @@ S3UploadResult S3Client::executeUploadWithRetry(
       std::unordered_map<std::string, std::string> headers;
 
       // endpoint may contain https:// and path, extract only the hostname for
-      // Host header
+      // Host header and path for signing
+      std::string endpoint_path = "";
       std::string host = config_.endpoint;
       size_t protocol_pos = host.find("://");
       if (protocol_pos != std::string::npos) {
@@ -208,15 +209,27 @@ S3UploadResult S3Client::executeUploadWithRetry(
       }
       size_t path_pos = host.find("/");
       if (path_pos != std::string::npos) {
+        endpoint_path = host.substr(path_pos);
+        if (!endpoint_path.empty() && endpoint_path.back() == '/') {
+          endpoint_path.pop_back();
+        }
         host = host.substr(0, path_pos);
       }
       headers["host"] = host;
-      LOG_DEBUG("[v3.2.0 Debug] S3 Uploading to host: " + host +
-                ", bucket: " + config_.bucket_name);
+      LogManager::getInstance().Info("[v3.2.0 Debug] S3 Host: " + host +
+                                     ", Path: " + endpoint_path +
+                                     ", Bucket: " + config_.bucket_name);
 
-      headers["content-type"] = content_type;
+      const std::string standard_content_type = "application/json";
+      headers["content-type"] = standard_content_type;
       headers["x-amz-date"] = formatTimestamp(timestamp);
       headers["x-amz-content-sha256"] = sha256Hash(content);
+
+      LogManager::getInstance().Info(
+          "[v3.2.0 Debug] S3 Final Headers to Sign:");
+      for (const auto &h : headers) {
+        LogManager::getInstance().Info("  " + h.first + ": " + h.second);
+      }
 
       // Storage Class 설정
       if (!config_.storage_class.empty()) {
@@ -233,21 +246,47 @@ S3UploadResult S3Client::executeUploadWithRetry(
       }
 
       // Authorization 헤더 생성
-      std::string uri = "/" + object_key;
+      // Canonical URI must include the full path sent to the server
+      std::string uri = endpoint_path + "/" + object_key;
       if (!config_.use_virtual_host_style) {
-        uri = "/" + config_.bucket_name + "/" + object_key;
+        uri = endpoint_path + "/" + config_.bucket_name + "/" + object_key;
       }
-      std::string auth_header =
-          createSignatureV4("PUT", uri, {}, headers, content, timestamp);
+
+      // Normalize slashes in uri
+      uri = std::regex_replace(uri, std::regex("//+"), "/");
+      LogManager::getInstance().Info("[v3.2.0 Debug] S3 Final URI: [" + uri +
+                                     "]");
+
+      // ✅ 헤더 정규화 (소문자로 변환 및 공백 제거)
+      std::unordered_map<std::string, std::string> normalized_headers;
+      for (const auto &h : headers) {
+        std::string key = h.first;
+        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+
+        std::string val = h.second;
+        // Trim whitespace
+        val.erase(0, val.find_first_not_of(" \t\n\r"));
+        val.erase(val.find_last_not_of(" \t\n\r") + 1);
+
+        normalized_headers[key] = val;
+      }
+
+      std::string auth_header = createSignatureV4(
+          "PUT", uri, {}, normalized_headers, content, timestamp);
       headers["Authorization"] = auth_header;
 
       // S3 URL 생성
       std::string s3_url = buildS3Url(object_key);
 
       // HTTP PUT 요청 실행
+      // ✅ S3 전송을 위한 헤더 맵 업데이트 (인증 정보 포함)
+      std::unordered_map<std::string, std::string> final_headers =
+          normalized_headers;
+      final_headers["authorization"] = auth_header;
+
       http_client_->setBaseUrl(""); // 전체 URL 사용
-      auto http_response =
-          http_client_->put(s3_url, content, content_type, headers);
+      auto http_response = http_client_->put(
+          s3_url, content, standard_content_type, final_headers);
 
       auto end_time = std::chrono::high_resolution_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -480,9 +519,17 @@ std::string S3Client::createSignatureV4(
   // 1. Canonical Request 생성
   std::string canonical_request =
       createCanonicalRequest(method, uri, query_params, headers, payload);
+  LogManager::getInstance().Info("[v3.2.0 Debug] S3 Canonical Request:\n[\n" +
+                                 canonical_request + "\n]");
 
   // 2. String to Sign 생성
   std::string string_to_sign = createStringToSign(canonical_request, timestamp);
+  LogManager::getInstance().Info("[v3.2.0 Debug] S3 String-to-Sign:\n[\n" +
+                                 string_to_sign + "\n]");
+
+  LogManager::getInstance().Info(
+      "[v3.2.0 Debug] S3 Credential Scope: " + formatDate(timestamp) + "/" +
+      config_.region + "/" + config_.service_name + "/aws4_request");
 
   // 3. Signing Key 생성 (Raw Bytes)
   std::string signing_key = createSigningKey(timestamp);
@@ -537,7 +584,10 @@ std::string S3Client::createCanonicalRequest(
   // We also normalize consecutive slashes to single slashes.
   std::string normalized_uri = uri;
   normalized_uri = std::regex_replace(normalized_uri, std::regex("//+"), "/");
-  std::string encoded_uri = urlEncode(normalized_uri, false);
+  std::string encoded_uri =
+      urlEncode(normalized_uri, false); // S3 path should NOT encode slashes
+  LogManager::getInstance().Info("[v3.2.0 Debug] Canonical URI: [" +
+                                 encoded_uri + "]");
   canonical << encoded_uri << "\n";
 
   // 3. Canonical Query String
@@ -593,8 +643,8 @@ std::string S3Client::createStringToSign(
 
   string_to_sign << "AWS4-HMAC-SHA256\n";
   string_to_sign << formatTimestamp(timestamp) << "\n";
-  string_to_sign << formatDate(timestamp) << "/" << config_.region
-                 << "/s3/aws4_request\n";
+  string_to_sign << formatDate(timestamp) << "/" << config_.region << "/"
+                 << config_.service_name << "/aws4_request\n";
   string_to_sign << sha256Hash(canonical_request);
 
   return string_to_sign.str();
@@ -623,7 +673,8 @@ std::string S3Client::urlEncode(const std::string &str,
     } else if (c == '/' && !encode_slash) {
       encoded << c;
     } else {
-      encoded << '%' << std::setw(2) << static_cast<unsigned char>(c);
+      encoded << '%' << std::setfill('0') << std::setw(2)
+              << static_cast<unsigned char>(c);
     }
   }
 

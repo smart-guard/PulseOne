@@ -351,6 +351,8 @@ HttpResponse HttpClient::executeWithCurl(
     }
 
     curl_easy_setopt(curl_handle_, CURLOPT_VERBOSE, 1L);
+    LOG_DEBUG("HttpClient::executeCurlRequest - Content-Type argument: [" +
+              content_type + "]");
 
     std::string response_body;
     curl_easy_setopt(curl_handle_, CURLOPT_WRITEFUNCTION, curlWriteCallback);
@@ -406,7 +408,11 @@ HttpResponse HttpClient::executeWithCurl(
       std::string header_str = header.first + ": " + header.second;
       header_list = curl_slist_append(header_list, header_str.c_str());
       LOG_DEBUG("  Header: " + header.first + ": " +
-                (header.first == "authorization" ? "***" : header.second));
+                (header.first == "authorization"
+                     ? (header.second.length() > 20
+                            ? header.second.substr(0, 20) + "..."
+                            : header.second)
+                     : header.second));
     }
 
     if (!options_.username.empty() && options_.bearer_token.empty()) {

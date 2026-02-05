@@ -477,8 +477,8 @@ const TargetManagementTab: React.FC = () => {
                                             <select
                                                 className="mgmt-select"
                                                 required
-                                                value={editingTarget?.target_type || 'http'}
-                                                onChange={e => { setEditingTarget({ ...editingTarget, target_type: e.target.value }); setHasChanges(true); }}
+                                                value={editingTarget?.target_type?.toLowerCase() || 'http'}
+                                                onChange={e => { setEditingTarget({ ...editingTarget, target_type: e.target.value.toLowerCase() }); setHasChanges(true); }}
                                             >
                                                 <option value="http">HTTP / HTTPS (Rest API)</option>
                                                 <option value="mqtt">MQTT Broker</option>
@@ -718,7 +718,7 @@ const TargetManagementTab: React.FC = () => {
                                             </>
                                         ) : (
                                             <div className="mgmt-alert info">
-                                                이 타겟 유형은 별도의 입력 폼을 제공하지 않습니다 ({editingTarget?.target_type}).
+                                                이 타겟 유형은 별도의 입력 폼을 제공하지 않습니다 ({editingTarget?.target_type?.toLowerCase()}).
                                                 오른쪽의 JSON 설정 창을 사용하여 직접 구성하세요.
                                             </div>
                                         )}
