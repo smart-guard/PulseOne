@@ -36,6 +36,8 @@
 #include "Schedule/ScheduledExporter.h"
 #include "Transform/PayloadTransformer.h"
 #include "Utils/ConfigManager.h"
+#include <shared_mutex>
+#include <unordered_map>
 
 // namespace Coordinator
 
@@ -227,6 +229,11 @@ private:
 
   std::thread batch_timer_thread_;
   std::atomic<bool> batch_timer_running_{false};
+
+  // ✅ In-Memory Cache for Performance (to avoid redundant DB lookups)
+  mutable std::shared_mutex cache_mutex_;
+  std::unordered_map<int, int> rule_to_point_cache_; // rule_id -> point_id
+  std::unordered_map<int, int> point_st_cache_; // point_id -> st (writable)
 };
 
 } // namespace Coordinator

@@ -285,12 +285,17 @@ HttpTargetHandler::getOrCreateClient(const json &config,
 }
 
 std::string HttpTargetHandler::extractUrl(const json &config) const {
+  std::string url = "";
   if (config.contains("endpoint") &&
       !config["endpoint"].get<std::string>().empty()) {
-    return config["endpoint"].get<std::string>();
+    url = config["endpoint"].get<std::string>();
+  } else if (config.contains("url") &&
+             !config["url"].get<std::string>().empty()) {
+    url = config["url"].get<std::string>();
   }
-  if (config.contains("url") && !config["url"].get<std::string>().empty()) {
-    return config["url"].get<std::string>();
+
+  if (!url.empty()) {
+    return ConfigManager::getInstance().expandVariables(url);
   }
   return "";
 }
@@ -566,17 +571,23 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
     std::string auth_type = auth.value("type", "none");
 
     if (auth_type == "bearer" && auth.contains("token")) {
-      headers[HttpConst::HEADER_AUTHORIZATION] =
-          "Bearer " + auth["token"].get<std::string>();
+      std::string token = ConfigManager::getInstance().expandVariables(
+          auth["token"].get<std::string>());
+      headers[HttpConst::HEADER_AUTHORIZATION] = "Bearer " + token;
     } else if (auth_type == "basic" && auth.contains("username") &&
                auth.contains("password")) {
-      std::string credentials = auth["username"].get<std::string>() + ":" +
-                                auth["password"].get<std::string>();
+      std::string username = ConfigManager::getInstance().expandVariables(
+          auth["username"].get<std::string>());
+      std::string password = ConfigManager::getInstance().expandVariables(
+          auth["password"].get<std::string>());
+      std::string credentials = username + ":" + password;
       headers[HttpConst::HEADER_AUTHORIZATION] =
           "Basic " + base64Encode(credentials);
     } else if (auth_type == "api_key" && auth.contains("key")) {
       std::string header_name = auth.value("header", "x-api-key");
-      headers[header_name] = auth["key"].get<std::string>();
+      std::string key = ConfigManager::getInstance().expandVariables(
+          auth["key"].get<std::string>());
+      headers[header_name] = key;
     }
   }
 

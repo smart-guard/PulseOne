@@ -1,13 +1,13 @@
 // frontend/src/pages/ConfigEditor/EnvFileEditor.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Space, Typography, Alert, message, Tooltip, Tag } from 'antd';
+import { Button, Space, Typography, Alert, message, Tooltip } from 'antd';
 import {
     SaveOutlined,
     UndoOutlined,
     FileTextOutlined,
     InfoCircleOutlined,
-    CheckCircleFilled,
-    WarningFilled
+    LockOutlined,
+    UnlockOutlined
 } from '@ant-design/icons';
 import { ConfigApiService } from '../../api/services/configApi';
 
@@ -72,6 +72,59 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
         message.info('변경 사항이 초기화되었습니다.');
     }, [originalContent]);
 
+    const handleEncrypt = async () => {
+        if (!textareaRef.current) return;
+
+        const start = textareaRef.current.selectionStart;
+        const end = textareaRef.current.selectionEnd;
+        const selectedText = content.substring(start, end);
+
+        if (!selectedText) {
+            message.warning('암호화할 텍스트를 선택해주세요.');
+            return;
+        }
+
+        try {
+            const response = await ConfigApiService.encryptSecret(selectedText);
+            if (response.success && response.data) {
+                const newContent = content.substring(0, start) + response.data.encrypted + content.substring(end);
+                setContent(newContent);
+                message.success('선택된 텍스트가 암호화되었습니다.');
+            }
+        } catch (err: any) {
+            message.error('암호화 실패: ' + err.message);
+        }
+    };
+
+    const handleDecrypt = async () => {
+        if (!textareaRef.current) return;
+
+        const start = textareaRef.current.selectionStart;
+        const end = textareaRef.current.selectionEnd;
+        const selectedText = content.substring(start, end);
+
+        if (!selectedText) {
+            message.warning('복호화할 텍스트(ENC:...)를 선택해주세요.');
+            return;
+        }
+
+        if (!selectedText.startsWith('ENC:')) {
+            message.warning('선택된 텍스트가 암호화된 형식(ENC:...)이 아닙니다.');
+            return;
+        }
+
+        try {
+            const response = await ConfigApiService.decryptSecret(selectedText);
+            if (response.success && response.data) {
+                const newContent = content.substring(0, start) + response.data.decrypted + content.substring(end);
+                setContent(newContent);
+                message.success('선택된 텍스트가 복호화되었습니다. (저장 전 다시 암호화하세요!)');
+            }
+        } catch (err: any) {
+            message.error('복호화 실패: ' + err.message);
+        }
+    };
+
     const handleScroll = () => {
         if (textareaRef.current && lineNumbersRef.current) {
             lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
@@ -80,6 +133,14 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
 
     const hasChanges = content !== originalContent;
     const lineCount = content.split('\n').length;
+
+    // Check if file is a secret file (security, credentials, etc.)
+    const isSecretFile = filename.toLowerCase().includes('security') ||
+        filename.toLowerCase().includes('secret') ||
+        filename.toLowerCase().includes('cred') ||
+        filename.toLowerCase().includes('password') ||
+        filename.toLowerCase().includes('key') ||
+        filename.endsWith('.env');
 
     return (
         <div className="editor-main-container">
@@ -102,6 +163,31 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
                     </Space>
 
                     <Space>
+                        {isSecretFile && (
+                            <>
+                                <Tooltip title="선택한 텍스트 암호화 (평문 -> ENC:...)">
+                                    <Button
+                                        type="text"
+                                        icon={<LockOutlined />}
+                                        onClick={handleEncrypt}
+                                        className="text-neutral-600 hover:text-blue-600 hover:bg-blue-50"
+                                    >
+                                        잠그기
+                                    </Button>
+                                </Tooltip>
+                                <Tooltip title="선택한 텍스트 복호화 (ENC:... -> 평문)">
+                                    <Button
+                                        type="text"
+                                        icon={<UnlockOutlined />}
+                                        onClick={handleDecrypt}
+                                        className="text-neutral-600 hover:text-green-600 hover:bg-green-50"
+                                    >
+                                        풀기
+                                    </Button>
+                                </Tooltip>
+                                <div className="w-px h-6 bg-neutral-200 mx-2" />
+                            </>
+                        )}
                         <Button
                             icon={<UndoOutlined />}
                             onClick={handleReset}
@@ -181,4 +267,3 @@ const EnvFileEditor: React.FC<EnvFileEditorProps> = ({ filename }) => {
 };
 
 export default EnvFileEditor;
-

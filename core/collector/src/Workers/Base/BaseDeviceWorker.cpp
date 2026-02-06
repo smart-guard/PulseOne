@@ -931,27 +931,45 @@ uint32_t BaseDeviceWorker::RegisterNewDataPoint(
       return 0;
     }
 
-    // 0. 고유 Address 생성 (UNIQUE 제약조건 위반 방지)
-    // 기존 포인트를 조회하여 최대 주소값을 찾고 +1 할당
+    // 0. DB 기반 중복 체크 및 고유 Address 생성
     int next_address = 0;
     try {
       auto existing_points =
           repo->findByDeviceId(std::stoi(device_info_.id), false);
       int max_addr = 0;
       for (const auto &pt : existing_points) {
-        // address가 문자열로 저장되어 있을 수도 있으나, Entity는 int
-        // GetAddress()를 가짐 하지만 DataPointEntity public 메서드 확인 필요.
-        // getter가 없다면 address 필드 접근 불가할 수 있음. DataPointEntity.h에
-        // 따르면 address_ 변수는 private이나 getter 없음? BaseEntity는 getter
-        // 없음. 그러나 JSON toJson()에서 "address" = address_ 를 사용함.
-        // FIXME: DataPointEntity에 getAddress()가 있는지 확인해야 함.
-        // 없다면 DB 쿼리로 해결해야 함.
-        // 일단 toJson()["address"]를 사용하여 우회하거나, DataPointEntity를
-        // 수정해야 함. 여기서는 toJson()을 사용하여 안전하게 접근.
+        // 🔥 중복 등록 방지 로직 (Name 또는 Topic+Key 중복 검사)
+        if (pt.getName() == name || (pt.getAddressString() == address_string &&
+                                     pt.getMappingKey() == mapping_key)) {
+          uint32_t existing_id = static_cast<uint32_t>(pt.getId());
+          LogMessage(LogLevel::INFO,
+                     "이미 존재하는 데이터포인트 발견 (DB): ID=" +
+                         std::to_string(existing_id));
 
-        // 성능상 toJson()은 비효율적일 수 있으나 Auto-Discovery 빈도를 고려하면
-        // 수용 가능.
-        int addr = pt.toJson()["address"].get<int>();
+          // 내부 캐시 동기화
+          {
+            std::lock_guard<std::mutex> lock(data_points_mutex_);
+            bool found_in_cache = false;
+            for (const auto &dp : data_points_) {
+              if (dp.id == std::to_string(existing_id)) {
+                found_in_cache = true;
+                break;
+              }
+            }
+            if (!found_in_cache) {
+              PulseOne::Structs::DataPoint dp;
+              dp.id = std::to_string(existing_id);
+              dp.name = pt.getName();
+              dp.address_string = pt.getAddressString();
+              dp.mapping_key = pt.getMappingKey();
+              dp.data_type = pt.getDataType();
+              data_points_.push_back(dp);
+            }
+          }
+          return existing_id;
+        }
+
+        int addr = pt.getAddress();
         if (addr > max_addr) {
           max_addr = addr;
         }
@@ -985,9 +1003,8 @@ uint32_t BaseDeviceWorker::RegisterNewDataPoint(
     entity.setMinValue(0);
     entity.setMaxValue(0);
 
-    LogMessage(LogLevel::DEBUG, "데이터포인트 등록 시도: Name=" + name +
-                                    ", Type=" + data_type +
-                                    ", NormalizedType=" + entity.getDataType());
+    LogMessage(LogLevel::DEBUG, "데이터포인트 신규 등록 시도: Name=" + name +
+                                    ", Type=" + data_type);
     if (!entity.isValid()) {
       LogMessage(LogLevel::LOG_ERROR,
                  "데이터포인트 엔티티 유효성 검사 실패: " + name);

@@ -24,6 +24,7 @@
 #include "Constants/ExportConstants.h" // ✅ Added Constants
 #include "Database/Entities/DataPointEntity.h"
 #include "Database/Entities/DeviceEntity.h"
+#include "Database/Repositories/AlarmRuleRepository.h"
 #include "Database/Repositories/DataPointRepository.h"
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/ExportTargetMappingRepository.h"
@@ -786,18 +787,84 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
   std::vector<ExportResult> results;
 
   try {
+    // ✅ 0. Point ID Enrichment (Fallback lookup from rule_id if missing)
+    if (alarm.point_id <= 0) {
+      try {
+        int rule_id = 0;
+        if (alarm.extra_info.contains("rule_id")) {
+          if (alarm.extra_info["rule_id"].is_number()) {
+            rule_id = alarm.extra_info["rule_id"].get<int>();
+          } else if (alarm.extra_info["rule_id"].is_string()) {
+            rule_id = std::stoi(alarm.extra_info["rule_id"].get<std::string>());
+          }
+        } else if (alarm.extra_info.contains("alarm_rule_id")) {
+          if (alarm.extra_info["alarm_rule_id"].is_number()) {
+            rule_id = alarm.extra_info["alarm_rule_id"].get<int>();
+          } else if (alarm.extra_info["alarm_rule_id"].is_string()) {
+            rule_id =
+                std::stoi(alarm.extra_info["alarm_rule_id"].get<std::string>());
+          }
+        }
+
+        if (rule_id > 0) {
+          // 🚀 [CACHE] 먼저 메모리 캐시 확인
+          {
+            std::shared_lock<std::shared_mutex> lock(cache_mutex_);
+            auto it = rule_to_point_cache_.find(rule_id);
+            if (it != rule_to_point_cache_.end()) {
+              alarm.point_id = it->second;
+            }
+          }
+
+          if (alarm.point_id <= 0) {
+            auto &factory =
+                PulseOne::Database::RepositoryFactory::getInstance();
+            auto rule_repo = factory.getAlarmRuleRepository();
+            if (rule_repo) {
+              auto rule_opt = rule_repo->findById(rule_id);
+              if (rule_opt.has_value()) {
+                auto target_id_opt = rule_opt->getTargetId();
+                if (target_id_opt.has_value() &&
+                    rule_opt->getTargetType() ==
+                        PulseOne::Alarm::TargetType::DATA_POINT) {
+                  alarm.point_id = target_id_opt.value();
+                  // 🚀 [CACHE] 캐시에 저장
+                  std::unique_lock<std::shared_mutex> lock(cache_mutex_);
+                  rule_to_point_cache_[rule_id] = alarm.point_id;
+                }
+              }
+            }
+          }
+        }
+      } catch (...) {
+      }
+    }
+
     // ✅ 1. Point Metadata Enrichment (st: Control Status mapping)
     if (alarm.point_id > 0) {
       try {
-        auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
-        auto point_repo = factory.getDataPointRepository();
-        if (point_repo) {
-          auto point_opt = point_repo->findById(alarm.point_id);
-          if (point_opt.has_value()) {
-            alarm.st = point_opt->isWritable()
-                           ? 1
-                           : 0; // ✅ 제어가능여부(0: Manual/Read-only, 1:
-                                // Auto/Writable)
+        // 🚀 [CACHE] 먼저 메모리 캐시 확인
+        bool found_in_cache = false;
+        {
+          std::shared_lock<std::shared_mutex> lock(cache_mutex_);
+          auto it = point_st_cache_.find(alarm.point_id);
+          if (it != point_st_cache_.end()) {
+            alarm.st = it->second;
+            found_in_cache = true;
+          }
+        }
+
+        if (!found_in_cache) {
+          auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+          auto point_repo = factory.getDataPointRepository();
+          if (point_repo) {
+            auto point_opt = point_repo->findById(alarm.point_id);
+            if (point_opt.has_value()) {
+              alarm.st = point_opt->isWritable() ? 1 : 0;
+              // 🚀 [CACHE] 캐시에 저장
+              std::unique_lock<std::shared_mutex> lock(cache_mutex_);
+              point_st_cache_[alarm.point_id] = alarm.st;
+            }
           }
         }
       } catch (...) {

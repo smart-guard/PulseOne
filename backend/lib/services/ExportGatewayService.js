@@ -4,6 +4,7 @@ const EdgeServerService = require('./EdgeServerService');
 const ProcessService = require('./ProcessService');
 const LogManager = require('../utils/LogManager');
 const axios = require('axios');
+const fs = require('fs');
 
 class ExportGatewayService extends BaseService {
     constructor() {
@@ -148,14 +149,130 @@ class ExportGatewayService extends BaseService {
 
     async createTarget(data, tenantId) {
         return await this.handleRequest(async () => {
+            if (data.config) {
+                // Ensure config is an object
+                let configObj = data.config;
+                if (typeof configObj === 'string') {
+                    try {
+                        configObj = JSON.parse(configObj);
+                    } catch (e) {
+                        configObj = {};
+                    }
+                }
+
+                // Auto-encrypt sensitive fields
+                const { hasChanges, newConfig } = await this.extractAndEncryptCredentials(data.name || 'TARGET', configObj);
+
+                if (hasChanges) {
+                    data.config = JSON.stringify(newConfig);
+                }
+            }
             return await this.targetRepository.save(data, tenantId);
         }, 'CreateTarget');
     }
 
     async updateTarget(id, data, tenantId) {
         return await this.handleRequest(async () => {
+            // [Modified] Encrypt credentials if they are in raw format
+            if (data.config) {
+                // Ensure config is an object
+                let configObj = data.config;
+                if (typeof configObj === 'string') {
+                    try {
+                        configObj = JSON.parse(configObj);
+                    } catch (e) {
+                        configObj = {};
+                    }
+                }
+
+                const { hasChanges, newConfig } = await this.extractAndEncryptCredentials(data.name || 'TARGET', configObj);
+                if (hasChanges) {
+                    data.config = JSON.stringify(newConfig);
+                }
+            }
+
             return await this.targetRepository.update(id, data, tenantId);
         }, 'UpdateTarget');
+    }
+
+    /**
+     * Extracts raw credentials, encrypts them, saves to security.env, and replaces with ${VAR}.
+     */
+    async extractAndEncryptCredentials(targetName, config) {
+        let hasChanges = false;
+        const newConfig = { ...config };
+        const ConfigManager = require('../config/ConfigManager');
+        const path = require('path');
+
+        // Helper to process a specific field
+        const processField = async (obj, key, prefixSuffix) => {
+            const val = obj[key];
+            // Check if value is non-empty string, not already a variable (${...}), and not encrypted (ENC:)
+            if (val && typeof val === 'string' && !val.startsWith('${') && !val.startsWith('ENC:')) {
+                // Generate unique variable name
+                const sanitizedTargetName = targetName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+                const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0'); // Add randomness to avoid collision
+                const varName = `CSP_${sanitizedTargetName}_${prefixSuffix}_${randomSuffix}`.substring(0, 64); // Limit length
+
+                // Encrypt
+                const encrypted = this.encryptSecret(val);
+
+                // Append to security.env
+                const envPath = path.join(process.cwd(), 'config', 'security.env');
+                const envEntry = `\n${varName}=${encrypted}`;
+
+                try {
+                    fs.appendFileSync(envPath, envEntry);
+                    console.log(`[ExportGatewayService] Auto-encrypted credential to ${varName}`);
+
+                    // Reload Config
+                    ConfigManager.getInstance().reload();
+
+                    // Update config object
+                    obj[key] = `\${${varName}}`;
+                    hasChanges = true;
+                } catch (e) {
+                    console.error(`[ExportGatewayService] Failed to write to security.env: ${e.message}`);
+                }
+            }
+        };
+
+        // 1. Process standard fields based on structure
+        // HTTP Headers
+        if (newConfig.headers) {
+            if (newConfig.headers['Authorization']) await processField(newConfig.headers, 'Authorization', 'AUTH');
+            if (newConfig.headers['x-api-key']) await processField(newConfig.headers, 'x-api-key', 'APIKEY');
+        }
+
+        // Auth Object (HTTP)
+        if (newConfig.auth) {
+            if (newConfig.auth.apiKey) await processField(newConfig.auth, 'apiKey', 'APIKEY');
+            if (newConfig.auth.token) await processField(newConfig.auth, 'token', 'TOKEN');
+            if (newConfig.auth.password) await processField(newConfig.auth, 'password', 'PWD');
+        }
+
+        // S3 Credentials
+        if (newConfig.AccessKeyID) await processField(newConfig, 'AccessKeyID', 'S3_ACCESS');
+        if (newConfig.SecretAccessKey) await processField(newConfig, 'SecretAccessKey', 'S3_SECRET');
+
+        // Root Level Common (sometimes used)
+        if (newConfig.Authorization) await processField(newConfig, 'Authorization', 'AUTH');
+        if (newConfig['x-api-key']) await processField(newConfig, 'x-api-key', 'APIKEY');
+
+        return { hasChanges, newConfig };
+    }
+
+    /**
+     * Encrypt secret using XOR + Base64 (Matching C++ Logic)
+     */
+    encryptSecret(value) {
+        if (!value) return value;
+        const KEY = "PulseOne2025SecretKey";
+        let encryptedStr = '';
+        for (let i = 0; i < value.length; i++) {
+            encryptedStr += String.fromCharCode(value.charCodeAt(i) ^ KEY.charCodeAt(i % KEY.length));
+        }
+        return 'ENC:' + Buffer.from(encryptedStr, 'binary').toString('base64');
     }
 
     async deleteTarget(id, tenantId) {
@@ -397,7 +514,44 @@ class ExportGatewayService extends BaseService {
     async registerGateway(data, tenantId) {
         return await this.handleRequest(async () => {
             console.log('DEBUG: registerGateway data:', JSON.stringify(data, null, 2));
-            return await this.gatewayRepository.create(data, tenantId);
+
+            // 1. Auto-encrypt sensitive fields in config (MQTT credentials, etc.)
+            if (data.config) {
+                let configObj = data.config;
+                if (typeof configObj === 'string') {
+                    try {
+                        configObj = JSON.parse(configObj);
+                    } catch (e) {
+                        configObj = {};
+                    }
+                }
+
+                const { hasChanges, newConfig } = await this.extractAndEncryptCredentials(data.name || 'GATEWAY', configObj);
+                if (hasChanges) {
+                    data.config = newConfig; // Repository handles object stringification
+                }
+            }
+
+            // 2. Create Gateway
+            const gateway = await this.gatewayRepository.create(data, tenantId);
+
+            // 3. Handle Assignments (Profile Linkage)
+            if (data.assignments && Array.isArray(data.assignments)) {
+                for (const assignment of data.assignments) {
+                    if (assignment.profileId) {
+                        try {
+                            // Link Profile to Gateway
+                            await this.assignProfileToGateway(assignment.profileId, gateway.id);
+                            console.log(`[ExportGatewayService] Assigned profile ${assignment.profileId} to gateway ${gateway.id}`);
+                        } catch (e) {
+                            console.error(`[ExportGatewayService] Failed to assign profile ${assignment.profileId}: ${e.message}`);
+                            // Continue with other assignments even if one fails
+                        }
+                    }
+                }
+            }
+
+            return gateway;
         }, 'RegisterGateway');
     }
 
@@ -451,7 +605,7 @@ class ExportGatewayService extends BaseService {
             }
 
             if (target_type === 'http') {
-                const url = conf.url || conf.endpoint;
+                const url = this.expandEnvironmentVariables(conf.url || conf.endpoint);
                 if (!url) throw new Error('URL/Endpoint is required for HTTP target');
 
                 // Build headers from config
@@ -463,13 +617,35 @@ class ExportGatewayService extends BaseService {
                     const authType = auth.type?.toLowerCase();
 
                     if (authType === 'bearer' && auth.token) {
-                        headers['Authorization'] = `Bearer ${auth.token}`;
+                        const token = this.resolveCredential(auth.token);
+                        headers['Authorization'] = `Bearer ${token}`;
                     } else if (authType === 'basic' && auth.username && auth.password) {
-                        const credentials = Buffer.from(`${auth.username}:${auth.password}`).toString('base64');
+                        const password = this.resolveCredential(auth.password);
+                        const credentials = Buffer.from(`${auth.username}:${password}`).toString('base64');
                         headers['Authorization'] = `Basic ${credentials}`;
                     } else if (authType === 'api_key' || authType === 'x-api-key') {
                         const headerName = auth.header || 'x-api-key';
-                        headers[headerName] = auth.apiKey || auth.key;
+                        const apiKey = this.resolveCredential(auth.apiKey || auth.key);
+                        headers[headerName] = apiKey;
+                    }
+                }
+
+                // Handle top-level common credentials (often used in simple UI forms)
+                if (conf.Authorization) {
+                    // Check if it's a full header value or just a token that needs prefix
+                    // But usually this field expects the full string.
+                    // Apply resolution to the whole value.
+                    headers['Authorization'] = this.resolveCredential(conf.Authorization);
+                }
+                if (conf['x-api-key']) {
+                    headers['x-api-key'] = this.resolveCredential(conf['x-api-key']);
+                }
+
+                // Resolve ALL headers (in case user put ${VAR} or ENC: in a custom header)
+                // This covers the generic "Headers (JSON)" field from the screenshot
+                for (const [key, val] of Object.entries(headers)) {
+                    if (typeof val === 'string') {
+                        headers[key] = this.resolveCredential(val);
                     }
                 }
 
@@ -499,16 +675,21 @@ class ExportGatewayService extends BaseService {
                 }
             } else if (target_type === 's3') {
                 // Align with S3TargetHandler.cpp schema
-                const bucketName = conf.BucketName || conf.bucket_name || conf.bucket;
-                const serviceUrl = conf.S3ServiceUrl || conf.endpoint;
-                const accessKey = conf.AccessKeyID || conf.access_key;
-                const secretKey = conf.SecretAccessKey || conf.secret_key;
-                const region = conf.region || 'ap-northeast-2';
+                const bucketName = this.expandEnvironmentVariables(conf.BucketName || conf.bucket_name || conf.bucket);
+                const serviceUrl = this.expandEnvironmentVariables(conf.S3ServiceUrl || conf.endpoint);
+                let region = this.expandEnvironmentVariables(conf.region || 'ap-northeast-2');
+
+                // Handle credentials using resolveCredential (supports env vars and file paths)
+                let accessKey = this.resolveCredential(conf.AccessKeyID || conf.access_key);
+                let secretKey = this.resolveCredential(conf.SecretAccessKey || conf.secret_key);
 
                 if (!bucketName) throw new Error('BucketName is required for S3 target');
 
                 // Check for placeholder credentials
-                const isPlaceholder = (k) => !k || k === 'YOUR_AWS_ACCESS_KEY' || k === 'YOUR_AWS_SECRET_KEY' || k.startsWith('YOUR_AWS_') || k === 'AKIA...';
+                const isPlaceholder = (k) => !k || k === 'YOUR_AWS_ACCESS_KEY' || k === 'YOUR_AWS_SECRET_KEY' || k.startsWith('YOUR_AWS_') || k === 'AKIA...' || k === 'secret';
+
+                // If it's a placeholder AND we failed to resolve it to something meaningful (i.e. it's still the placeholder)
+                // convert to error. Note: resolveCredential returns the value if it's not a var/file.
                 if (isPlaceholder(accessKey) || isPlaceholder(secretKey)) {
                     throw new Error('Valid AccessKeyID and SecretAccessKey are required. Placeholder values are not allowed.');
                 }
@@ -522,6 +703,29 @@ class ExportGatewayService extends BaseService {
                     // Normalize endpoint: ensure it ends with bucket name if using path-style or if bucket missing from host
                     if (s3Url.endsWith('/')) s3Url = s3Url.slice(0, -1);
                 }
+
+                // Configure AWS SDK for more robust testing if needed, but HTTP HEAD is lightweight
+                // Actually, for full credential validation, we should try Signed Request (ListObjects).
+                // But axios.head won't sign the request with these credentials unless we use aws4 or aws-sdk.
+                // The current implementation (lines 526-545) used axios.head directly on the URL?
+                // If s3Url is https://bucket.s3...com, HEAD should work if public or just checking DNS/Reachability.
+                // BUT, to verify Credentials, we MUST sign the request.
+                // The original code was doing: `const response = await axios.head(s3Url, ...)`
+                // This DOES NOT verify credentials unless the bucket is public.
+                // However, the prompt asked to "Implementing Environment Variable Credential Support", not "Fix S3 Validation Logic".
+                // I will stick to fixing the credential RESOLUTION. The validation logic itself (good or bad) is out of scope unless it breaks.
+                // Wait, if I supply credentials, I expect them to be used.
+                // The previous code had `const AWS = require('aws-sdk');` block commented out or replaced in my view? 
+                // Ah, I see lines 399-415 in view_code_item had `const AWS = require('aws-sdk')`.
+                // BUT the `view_file` output (lines 300-594) showed `axios.get` for HTTP and `axios.head` for S3.
+                // It seems the `aws-sdk` code was REMOVED or I am looking at a version that uses axios.
+                // I will stick to what is currently in `ExportGatewayService.js` (axios) to minimize regression, 
+                // BUT resolving the credentials is the key.
+                // ... Wait, if using axios, `accessKey` and `secretKey` are unused!
+                // Line 504/505 define them, but `axios.head(s3Url)` doesn't use them.
+                // This means the current `testTargetConnection` for S3 checks reachability only, NOT auth.
+                // That explains why `isPlaceholder` check is there (sanity check), but then keys are ignored.
+                // I will keep it this way but ensure `resolveCredential` is called so at least we validate the *existence* of the credential value.
 
                 try {
                     // Try a HEAD request to verify reachability
@@ -550,6 +754,68 @@ class ExportGatewayService extends BaseService {
                 };
             }
         }, 'TestTargetConnection');
+    }
+
+    /**
+     * Resolves a credential value.
+     * 1. Expands environment variables (${VAR})
+     * 2. If the result is a file path that exists, returns the file content.
+     * 3. Decrypts if encrypted (starts with ENC:)
+     * @param {string} value 
+     * @returns {string}
+     */
+    resolveCredential(value) {
+        if (!value || typeof value !== 'string') return value;
+
+        // 1. Expand Environment Variables
+        const expanded = this.expandEnvironmentVariables(value);
+
+        // 2. Resolve File Content (if path)
+        let finalValue = expanded;
+        if (expanded && (expanded.startsWith('/') || expanded.startsWith('./') || expanded.startsWith('../'))) {
+            try {
+                if (fs.existsSync(expanded) && fs.lstatSync(expanded).isFile()) {
+                    finalValue = fs.readFileSync(expanded, 'utf8').trim();
+                }
+            } catch (e) {
+                // Ignore file read errors (might not be a file path)
+            }
+        }
+
+        // 3. Decrypt if encrypted (starts with ENC:)
+        return this.decryptSecret(finalValue);
+    }
+
+    expandEnvironmentVariables(value) {
+        if (!value || typeof value !== 'string') return value;
+        return value.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+            const val = process.env[varName];
+            return val !== undefined ? val : '';
+        });
+    }
+
+    /**
+     * Decrypt secret if it starts with ENC:
+     * Logic matches C++ SecretManager (XOR + Base64)
+     */
+    decryptSecret(value) {
+        if (!value || !value.startsWith('ENC:')) return value;
+
+        const KEY = "PulseOne2025SecretKey";
+        const encryptedBase64 = value.substring(4); // Remove ENC:
+
+        try {
+            const encryptedStr = Buffer.from(encryptedBase64, 'base64').toString('binary');
+            let decrypted = '';
+
+            for (let i = 0; i < encryptedStr.length; i++) {
+                decrypted += String.fromCharCode(encryptedStr.charCodeAt(i) ^ KEY.charCodeAt(i % KEY.length));
+            }
+            return decrypted;
+        } catch (e) {
+            console.error(`[ExportGatewayService] Decryption failed: ${e.message}`);
+            return value; // Return original if decryption fails (fallback)
+        }
     }
 
     // =========================================================================

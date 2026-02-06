@@ -93,6 +93,27 @@ const ExportGatewaySettings: React.FC = () => {
         return () => clearInterval(interval);
     }, [fetchData]);
 
+    const handleDeleteGateway = async (gateway: Gateway) => {
+        try {
+            await exportGatewayApi.deleteGateway(gateway.id);
+            await confirm({
+                title: '삭제 완료',
+                message: '게이트웨이가 성공적으로 삭제되었습니다.',
+                showCancelButton: false,
+                confirmButtonType: 'success'
+            });
+            fetchData();
+        } catch (e) {
+            console.error(e);
+            await confirm({
+                title: '삭제 실패',
+                message: '삭제 중 오류가 발생했습니다.',
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
+        }
+    };
+
     const onlineCount = gateways.filter(gw => gw.live_status?.status === 'online').length;
 
     return (
@@ -229,6 +250,7 @@ const ExportGatewaySettings: React.FC = () => {
                                 setEditingGateway(gw);
                                 setIsRegModalOpen(true);
                             }}
+                            onDelete={handleDeleteGateway}
                             pagination={pagination}
                             onPageChange={setPage}
                             assignments={assignments}
@@ -263,6 +285,7 @@ const ExportGatewaySettings: React.FC = () => {
                     allPoints={allPoints}
                     assignments={editingGateway ? (Object.entries(assignments).find(([k]) => String(k) === String(editingGateway.id))?.[1] || []) : []}
                     schedules={schedules}
+                    onDelete={handleDeleteGateway}
                 />
 
             </ManagementLayout>

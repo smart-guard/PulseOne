@@ -10,6 +10,7 @@
 #include "Constants/ExportConstants.h"
 #include "Logging/LogManager.h"
 #include "Transform/PayloadTransformer.h"
+#include "Utils/ConfigManager.h"
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
@@ -77,7 +78,8 @@ bool MqttTargetHandler::initialize(const json &config) {
     cached_config_ = config;
 
     // 브로커 연결 정보 파싱
-    std::string broker_host = config["broker_host"].get<std::string>();
+    std::string broker_host = ConfigManager::getInstance().expandVariables(
+        config["broker_host"].get<std::string>());
     int broker_port =
         config.value("broker_port", MqttConstants::DEFAULT_TCP_PORT);
     bool ssl_enabled = config.value("ssl_enabled", false);
@@ -426,8 +428,10 @@ bool MqttTargetHandler::connectToBroker(const json &config) {
       connOpts.set_automatic_reconnect(false);
 
       // 인증 설정
-      std::string username = config.value("username", "");
-      std::string password = config.value("password", "");
+      std::string username = ConfigManager::getInstance().expandVariables(
+          config.value("username", ""));
+      std::string password = ConfigManager::getInstance().expandVariables(
+          config.value("password", ""));
 
       if (!username.empty()) {
         connOpts.set_user_name(username);

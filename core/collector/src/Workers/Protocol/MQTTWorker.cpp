@@ -41,6 +41,7 @@ using json = nlohmann::json;
 #include "Storage/BlobStore.h"
 #include "Workers/Protocol/MQTTTransferManager.h"
 #include <algorithm>
+#include <unordered_set>
 
 using namespace std::chrono;
 using namespace PulseOne::Drivers;
@@ -400,17 +401,14 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
   try {
     std::vector<PulseOne::Structs::TimestampedValue> values;
     bool has_mapped_points = false;
+    std::unordered_set<std::string> handled_keys;
 
-    // 1. 설정된 DataPoint 매핑 확인 (JSONPath)
+    // 1. 사전 매핑된 포인트(Mapping Key 기반) 처리
     {
       std::lock_guard<std::mutex> lock(data_points_mutex_);
-
       for (const auto &point : data_points_) {
-        // 토픽이 일치하고 매핑 키가 있는 경우
         if (point.address_string == topic_context &&
             !point.mapping_key.empty()) {
-          has_mapped_points = true;
-
           try {
             std::string path = point.mapping_key;
             // 단순 점 표기법 및 대괄호를 JSON Pointer로 변환 (예:
@@ -429,16 +427,18 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
             nlohmann::json::json_pointer ptr(path);
             if (json_data.contains(ptr)) {
               const auto &val = json_data.at(ptr);
+              has_mapped_points = true;
+              handled_keys.insert(point.mapping_key); // 처리된 키 기록
 
               PulseOne::Structs::TimestampedValue tv;
               tv.timestamp = std::chrono::system_clock::now();
               tv.quality = PulseOne::Enums::DataQuality::GOOD;
-              tv.source = point.name; // Use semantic name (Hybrid Strategy)
+              tv.source = point.name;            // Use semantic name
               tv.point_id = std::stoi(point.id); // DataPoint ID 사용
 
               // 값 변환 로직
               if (val.is_number_integer()) {
-                tv.value = val.get<int64_t>(); // int64_t 그대로 저장
+                tv.value = val.get<int64_t>();
               } else if (val.is_number_float()) {
                 tv.value = val.get<double>();
               } else if (val.is_boolean()) {
@@ -459,20 +459,12 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
               }
 
               previous_values_[tv.point_id] = tv.value;
-
               tv.sequence_number = GetNextSequenceNumber();
 
-              // 🔥 파일 레퍼런스 추출 및 메타데이터 주입
+              // 🔥 파일 레퍼런스 추출
               if (json_data.contains("file_ref")) {
-                std::string file_ref = json_data["file_ref"].get<std::string>();
-                tv.metadata["file_ref"] = file_ref;
-                LogMessage(
-                    LogLevel::INFO,
-                    "[v3.2.0 Debug] MQTT Migration: file_ref detected: " +
-                        file_ref);
-              } else {
-                LogMessage(LogLevel::DEBUG, "[v3.2.0 Debug] MQTT Migration: "
-                                            "file_ref NOT found in payload");
+                tv.metadata["file_ref"] =
+                    json_data["file_ref"].get<std::string>();
               }
 
               values.push_back(tv);
@@ -485,24 +477,13 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
       }
     }
 
-    // 매핑된 포인트가 있었다면 그 결과만 전송 (비었더라도 자동 탐색 안 함)
-    if (has_mapped_points) {
-      if (!values.empty()) {
-        return SendValuesToPipelineWithLogging(
-            values,
-            "MQTT Mapped: " + topic_context + " (" +
-                std::to_string(values.size()) + " points)",
-            priority);
-      }
-      return true; // 매핑은 됨 (값 못 찾음)
-    }
-
-    // 2. 매핑된 포인트가 없는 경우: 기존 자동 탐색(Auto-Discovery) 로직 수행
+    // 2. 매핑되지 않은 키들에 대해 자동 탐색(Auto-Discovery) 수행
     auto timestamp = std::chrono::system_clock::now();
-
     if (json_data.is_object()) {
       for (auto &[key, value] : json_data.items()) {
-        PulseOne::Structs::TimestampedValue tv;
+        // 이미 매핑 loop에서 처리된 키는 스킵
+        if (handled_keys.count(key))
+          continue;
 
         // [Auto-Registration] DB에 등록된 포인트인지 확인
         uint32_t point_id = 0;
@@ -528,23 +509,34 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
             inferred_type = "BOOL";
           else if (key.find("timestamp") != std::string::npos ||
                    key.find("time") != std::string::npos) {
-            // 🔥 타임스탬프 관련 키는 DATETIME 타입으로 처리 유도 (UI 포맷팅
-            // 지원)
             inferred_type = "DATETIME";
           }
 
           std::string point_name = topic_context + "." + key;
           std::replace(point_name.begin(), point_name.end(), '/', '.');
 
+          LogMessage(LogLevel::INFO, "[Auto-Discovery] New key detected: " +
+                                         key + " in topic " + topic_context);
           point_id = RegisterNewDataPoint(point_name, topic_context, key,
                                           inferred_type);
         }
 
-        if (point_id == 0) {
-          // 자동 등록 비활성화 상태이거나 등록 실패 시 스킵
+        if (point_id == 0)
           continue;
-        }
 
+        // 이미 handled_keys에 있는 것은 아니지만, point_id가 매핑 loop에서
+        // 처리되었을 수 있음 (드문 경우)
+        bool already_sent = false;
+        for (const auto &v : values) {
+          if (v.point_id == point_id) {
+            already_sent = true;
+            break;
+          }
+        }
+        if (already_sent)
+          continue;
+
+        PulseOne::Structs::TimestampedValue tv;
         if (value.is_number_integer()) {
           int64_t int64_val = value.get<int64_t>();
           if (int64_val >= INT_MIN && int64_val <= INT_MAX) {
@@ -578,11 +570,12 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
 
         previous_values_[tv.point_id] = tv.value;
         tv.sequence_number = GetNextSequenceNumber();
-
         values.push_back(tv);
       }
     } else {
-      // 단일 값 처리
+      // 단일 값 처리 (JSON이 객체가 아닌 경우)
+      // 이 부분은 기존 로직을 유지하며, handled_keys는 객체 키에만 해당하므로
+      // 영향을 주지 않음.
       PulseOne::Structs::TimestampedValue tv;
       uint32_t point_id = 0;
       {

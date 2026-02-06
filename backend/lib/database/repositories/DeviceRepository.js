@@ -229,6 +229,21 @@ class DeviceRepository extends BaseRepository {
                 .first();
 
             if (settings) {
+                // Map DB boolean fields (no 'is_') to frontend fields (with 'is_')
+                const booleanFields = [
+                    'keep_alive_enabled', 'data_validation_enabled',
+                    'outlier_detection_enabled', 'deadband_enabled',
+                    'detailed_logging_enabled', 'performance_monitoring_enabled',
+                    'diagnostic_mode_enabled', 'communication_logging_enabled',
+                    'auto_registration_enabled'
+                ];
+
+                booleanFields.forEach(f => {
+                    if (settings[f] !== undefined) {
+                        settings[`is_${f}`] = settings[f] === 1 || settings[f] === true;
+                    }
+                });
+
                 device.settings = settings;
             }
 
@@ -328,18 +343,22 @@ class DeviceRepository extends BaseRepository {
                     initialSettings.polling_interval_ms = deviceData.polling_interval || 1000;
                 }
 
-                // Boolean fields to integer (0/1)
-                const booleanFields = [
-                    'is_keep_alive_enabled', 'is_data_validation_enabled',
-                    'is_outlier_detection_enabled', 'is_deadband_enabled',
-                    'is_detailed_logging_enabled', 'is_performance_monitoring_enabled',
-                    'is_diagnostic_mode_enabled', 'is_communication_logging_enabled',
-                    'is_auto_registration_enabled'
-                ];
+                // Map frontend settings fields (with 'is_') to database fields (no 'is_')
+                const booleanMapping = {
+                    'is_keep_alive_enabled': 'keep_alive_enabled',
+                    'is_data_validation_enabled': 'data_validation_enabled',
+                    'is_outlier_detection_enabled': 'outlier_detection_enabled',
+                    'is_deadband_enabled': 'deadband_enabled',
+                    'is_detailed_logging_enabled': 'detailed_logging_enabled',
+                    'is_performance_monitoring_enabled': 'performance_monitoring_enabled',
+                    'is_diagnostic_mode_enabled': 'diagnostic_mode_enabled',
+                    'is_communication_logging_enabled': 'communication_logging_enabled',
+                    'is_auto_registration_enabled': 'auto_registration_enabled'
+                };
 
-                booleanFields.forEach(f => {
-                    if (initialSettings[f] !== undefined) {
-                        initialSettings[f] = initialSettings[f] ? 1 : 0;
+                Object.entries(booleanMapping).forEach(([frontendField, dbField]) => {
+                    if (deviceData.settings[frontendField] !== undefined) {
+                        initialSettings[dbField] = deviceData.settings[frontendField] ? 1 : 0;
                     }
                 });
 
@@ -473,18 +492,24 @@ class DeviceRepository extends BaseRepository {
                         }
                     });
 
-                    // Boolean fields to integer (0/1)
-                    const booleanFields = [
-                        'is_keep_alive_enabled', 'is_data_validation_enabled',
-                        'is_outlier_detection_enabled', 'is_deadband_enabled',
-                        'is_detailed_logging_enabled', 'is_performance_monitoring_enabled',
-                        'is_diagnostic_mode_enabled', 'is_communication_logging_enabled',
-                        'is_auto_registration_enabled'
-                    ];
+                    // Map frontend settings fields (with 'is_') to database fields (no 'is_')
+                    const booleanMapping = {
+                        'is_keep_alive_enabled': 'keep_alive_enabled',
+                        'is_data_validation_enabled': 'data_validation_enabled',
+                        'is_outlier_detection_enabled': 'outlier_detection_enabled',
+                        'is_deadband_enabled': 'deadband_enabled',
+                        'is_detailed_logging_enabled': 'detailed_logging_enabled',
+                        'is_performance_monitoring_enabled': 'performance_monitoring_enabled',
+                        'is_diagnostic_mode_enabled': 'diagnostic_mode_enabled',
+                        'is_communication_logging_enabled': 'communication_logging_enabled',
+                        'is_auto_registration_enabled': 'auto_registration_enabled'
+                    };
 
-                    booleanFields.forEach(f => {
-                        if (settingsToUpdate[f] !== undefined) {
-                            settingsToUpdate[f] = settingsToUpdate[f] ? 1 : 0;
+                    Object.entries(booleanMapping).forEach(([frontendField, dbField]) => {
+                        if (updateData.settings[frontendField] !== undefined) {
+                            settingsToUpdate[dbField] = updateData.settings[frontendField] ? 1 : 0;
+                            // Remove the old field if it exists in settingsToUpdate (from allowedSettingsFields logic)
+                            delete settingsToUpdate[frontendField];
                         }
                     });
 

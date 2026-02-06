@@ -87,7 +87,7 @@ const std::string FIND_ACTIVE = R"(
             context_data, source_name, location, created_at, updated_at,
             device_id, point_id, category, tags
         FROM alarm_occurrences 
-        WHERE state = 'ACTIVE'
+        WHERE UPPER(state) IN ('ACTIVE', 'ACKNOWLEDGED')
         ORDER BY occurrence_time DESC
     )";
 

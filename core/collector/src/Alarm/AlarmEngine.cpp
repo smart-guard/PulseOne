@@ -6,7 +6,10 @@
 #include "Alarm/AlarmEvaluator.h"
 #include "Alarm/AlarmRuleRegistry.h"
 #include "Alarm/AlarmStateCache.h"
+#include "Database/Entities/DataPointEntity.h"
+#include "Database/Entities/DeviceEntity.h"
 #include "Database/Repositories/DataPointRepository.h"
+#include "Database/Repositories/DeviceRepository.h"
 #include "Database/RepositoryFactory.h"
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
@@ -87,8 +90,10 @@ void AlarmEngine::initializeRepositories() {
   alarm_rule_repo_ = repo_factory.getAlarmRuleRepository();
   alarm_occurrence_repo_ = repo_factory.getAlarmOccurrenceRepository();
   data_point_repo_ = repo_factory.getDataPointRepository();
+  device_repo_ = repo_factory.getDeviceRepository();
 
-  if (!alarm_rule_repo_ || !alarm_occurrence_repo_ || !data_point_repo_) {
+  if (!alarm_rule_repo_ || !alarm_occurrence_repo_ || !data_point_repo_ ||
+      !device_repo_) {
     LogManager::getInstance().Error(
         "Failed to initialize necessary repositories for AlarmEngine");
   }
@@ -223,6 +228,8 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
           AlarmEvent ev;
           ev.device_id = getDeviceIdForPoint(tv.point_id);
           ev.point_id = tv.point_id;
+          ev.site_id = getSiteIdForPoint(tv.point_id);
+          ev.source_name = getPointName(tv.point_id);
           ev.rule_id = rule.getId();
           ev.occurrence_id = *occ_id;
           ev.current_value = tv.value;
@@ -249,16 +256,19 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
           AlarmEvent ev;
           ev.device_id = getDeviceIdForPoint(tv.point_id);
           ev.point_id = tv.point_id;
+          ev.site_id = getSiteIdForPoint(tv.point_id);
+          ev.source_name = getPointName(tv.point_id);
           ev.rule_id = rule.getId();
           ev.current_value = tv.value;
           ev.alarm_type = convertToAlarmType(rule.getAlarmType());
           ev.severity = rule.getSeverity();
-          ev.message = "Cleared: " + rule.getName();
+          ev.message = rule.getName() + " cleared";
           ev.state = AlarmState::CLEARED;
           ev.timestamp = std::chrono::system_clock::now();
           ev.occurrence_time = eval.timestamp;
           ev.tenant_id = tenant_id;
           ev.condition_met = false;
+          ev.location = getPointLocation(tv.point_id);
 
           events.push_back(ev);
           alarms_cleared_.fetch_add(1);
@@ -467,7 +477,84 @@ int AlarmEngine::getDeviceIdForPoint(int point_id) {
   return 0;
 }
 
+int AlarmEngine::getSiteIdForPoint(int point_id) {
+  if (point_id <= 0)
+    return 0;
+  int device_id = getDeviceIdForPoint(point_id);
+  if (device_id <= 0)
+    return 0;
+
+  {
+    std::shared_lock<std::shared_mutex> lock(device_cache_mutex_);
+    auto it = device_site_cache_.find(device_id);
+    if (it != device_site_cache_.end()) {
+      return it->second;
+    }
+  }
+
+  if (!device_repo_)
+    return 0;
+
+  try {
+    auto device = device_repo_->findById(device_id);
+    if (device.has_value()) {
+      int site_id = device->getSiteId();
+      std::unique_lock<std::shared_mutex> lock(device_cache_mutex_);
+      device_site_cache_[device_id] = site_id;
+      return site_id;
+    }
+  } catch (...) {
+  }
+
+  return 0;
+}
+
+std::string AlarmEngine::getPointName(int point_id) {
+  if (point_id <= 0)
+    return "";
+
+  {
+    std::shared_lock<std::shared_mutex> lock(device_cache_mutex_);
+    auto it = point_name_cache_.find(point_id);
+    if (it != point_name_cache_.end()) {
+      return it->second;
+    }
+  }
+
+  if (!data_point_repo_)
+    return "";
+
+  try {
+    auto point = data_point_repo_->findById(point_id);
+    if (point.has_value()) {
+      std::string name = point->getName();
+      std::unique_lock<std::shared_mutex> lock(device_cache_mutex_);
+      point_name_cache_[point_id] = name;
+      return name;
+    }
+  } catch (...) {
+  }
+
+  return "Point_" + std::to_string(point_id);
+}
+
 std::string AlarmEngine::getPointLocation(int point_id) {
+  if (point_id <= 0)
+    return "";
+
+  if (!data_point_repo_)
+    return "Location for Pt " + std::to_string(point_id);
+
+  try {
+    auto point = data_point_repo_->findById(point_id);
+    if (point.has_value()) {
+      std::string desc = point->getDescription();
+      if (!desc.empty())
+        return desc;
+    }
+  } catch (...) {
+  }
+
   return "Location for Pt " + std::to_string(point_id);
 }
 

@@ -14,7 +14,7 @@ if (isNaN(address)) {
 async function forceUpdate() {
     try {
         console.log(`📡 Connecting to Modbus simulator on localhost:50502...`);
-        await client.connectTCP('127.0.0.1', { port: 50502 });
+        await client.connectTCP('simulator-modbus', { port: 50502 });
         await client.setID(1);
 
         if (type === 'coil') {

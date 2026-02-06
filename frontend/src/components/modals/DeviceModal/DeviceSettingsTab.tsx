@@ -86,8 +86,11 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
             <input
               type="number"
               className="st-input"
-              value={currentValue}
-              onChange={(e) => updateSetting(key, parseFloat(e.target.value) || 0)}
+              value={currentValue ?? ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                updateSetting(key, val === '' ? '' : parseFloat(val));
+              }}
               min={min}
               max={max}
               step={step || 1}
@@ -162,6 +165,7 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
                 is_communication_logging_enabled: false,
                 is_outlier_detection_enabled: false,
                 is_deadband_enabled: true,
+                is_auto_registration_enabled: false,
               };
               setLocalSettings(defaultSettings);
               Object.entries(defaultSettings).forEach(([key, value]) => {
@@ -245,7 +249,16 @@ const DeviceSettingsTab: React.FC<DeviceSettingsTabProps> = ({
       {/* 하단 전체 너비 섹션: 로깅 및 진단 */}
       <div className="st-grid-row" style={{ marginTop: '4px' }}>
         <div className="st-card" style={{ gridColumn: 'span 3' }}>
-          <h3><i className="fas fa-shield-alt" style={{ color: '#64748b' }}></i> 로깅 및 진단 시스템</h3>
+          <div className="st-row" style={{ gap: '24px', marginBottom: '8px' }}>
+            <div style={{ flex: 1 }}>
+              {(editData?.protocol_type === 'MQTT' || device?.protocol_type === 'MQTT') &&
+                renderToggleField('MQTT 자동 데이터 등록 (Auto-Discovery)', 'is_auto_registration_enabled', '수집 시 미등록 JSON 키를 데이터 포인트로 자동 등록')
+              }
+            </div>
+            <div style={{ flex: 1 }}></div>
+            <div style={{ flex: 1 }}></div>
+          </div>
+          <div className="divider" style={{ marginBottom: '12px' }}></div>
           <div className="st-row" style={{ gap: '24px' }}>
             <div style={{ flex: 1 }}>{renderToggleField('성능 모니터링', 'is_performance_monitoring_enabled', '응답시간 및 처리량 통계 수집')}</div>
             <div style={{ flex: 1 }}>{renderToggleField('통신 패킷 로깅', 'is_communication_logging_enabled', 'TX/RX 원시 패킷 기록 (디버깅용)')}</div>

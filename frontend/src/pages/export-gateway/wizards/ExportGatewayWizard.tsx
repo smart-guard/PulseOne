@@ -24,9 +24,10 @@ interface ExportGatewayWizardProps {
     editingGateway?: Gateway | null;
     assignments?: Assignment[];
     schedules?: ExportSchedule[];
+    onDelete?: (gateway: Gateway) => Promise<void>; // [NEW] Delete handler for edit mode
 }
 
-const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onClose, onSuccess, profiles, targets, templates, allPoints, editingGateway, assignments = [], schedules = [] }) => {
+const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onClose, onSuccess, profiles, targets, templates, allPoints, editingGateway, assignments = [], schedules = [], onDelete }) => {
     const { confirm } = useConfirmContext();
     const [currentStep, setCurrentStep] = useState(0);
     const [loading, setLoading] = useState(false);
@@ -35,6 +36,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
     const prevVisibleRef = React.useRef(visible);
     const prevEditingIdRef = React.useRef<number | undefined>(editingGateway?.id);
     const hydratedTargetIdRef = React.useRef<number | null>(null);
+    const lastMappedProfileIdRef = React.useRef<number | null>(null);
 
     // Step Data
     const [gatewayData, setGatewayData] = useState({
@@ -253,6 +255,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 if (myAssignments.length > 0) {
                     const assign = myAssignments[0];
                     setSelectedProfileId(assign.profile_id);
+                    lastMappedProfileIdRef.current = assign.profile_id;
                     setProfileMode('existing');
 
                     // Find Target linked to this Profile (Backward Lookup)
@@ -286,42 +289,55 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 setTransmissionMode('EVENT');
                             }
                         }
-                    }
 
-                    // [NEW] Fetch existing mappings for edit mode
-                    if (linkedTargets.length > 0) {
-                        (async () => {
-                            try {
-                                const mRes = await exportGatewayApi.getTargetMappings(linkedTargets[0].id);
-                                if (mRes.success && mRes.data) {
-                                    setMappings(mRes.data);
+                        // [NEW] Fetch existing mappings for edit mode
+                        if (linkedTargets.length > 0) {
+                            (async () => {
+                                try {
+                                    const mRes = await exportGatewayApi.getTargetMappings(linkedTargets[0].id);
+                                    if (mRes.success && mRes.data) {
+                                        setMappings(mRes.data);
+                                    }
+                                } catch (err) {
+                                    console.error("Failed to fetch existing mappings", err);
                                 }
-                            } catch (err) {
-                                console.error("Failed to fetch existing mappings", err);
-                            }
-                        })();
+                            })();
+                        }
+                    } else {
+                        // [FALLBACK] No targets linked (or deleted), but Profile is assigned.
+                        // Generate default mappings from the Profile's data points so the UI is not empty.
+                        const p = profiles.find(x => x.id === assign.profile_id);
+                        if (p) {
+                            const initialMappings = (p.data_points || []).map((dp: any) => ({
+                                point_id: dp.id,
+                                site_id: dp.site_id || dp.building_id || 0,
+                                target_field_name: dp.name,
+                                is_enabled: true,
+                                conversion_config: { scale: 1, offset: 0 }
+                            }));
+                            setMappings(initialMappings);
+                        }
                     }
+                } else if (isOpening) {
+                    // REGISTRATION MODE (Only reset on initial open)
+                    setGatewayData({ name: '', ip_address: '127.0.0.1', description: '', subscription_mode: 'all', config: {} });
+                    setProfileMode('existing');
+                    setSelectedProfileId(null);
+                    setMappings([]);
+                    setTargetMode('new');
+                    setSelectedTargetIds([]);
+                    setTargetData({
+                        name: '',
+                        config_http: [{ url: '', method: 'POST', auth_type: 'NONE', headers: { Authorization: '' }, auth: { type: 'x-api-key', apiKey: '' }, execution_order: 0 }],
+                        config_mqtt: [{ url: '', topic: 'pulseone/data', execution_order: 0 }],
+                        config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }]
+                    });
+                    setScheduleData({ schedule_name: '', cron_expression: '*/1 * * * *', data_range: 'minute', lookback_periods: 1 });
+                    setTransmissionMode('INTERVAL');
+                    setCurrentStep(0);
                 }
-            } else if (isOpening) {
-                // REGISTRATION MODE (Only reset on initial open)
-                setGatewayData({ name: '', ip_address: '127.0.0.1', description: '', subscription_mode: 'all' });
-                setProfileMode('existing');
-                setSelectedProfileId(null);
-                setMappings([]);
-                setTargetMode('new');
-                setSelectedTargetIds([]);
-                setTargetData({
-                    name: '',
-                    config_http: [{ url: '', method: 'POST', auth_type: 'NONE', headers: { Authorization: '' }, auth: { type: 'x-api-key', apiKey: '' }, execution_order: 0 }],
-                    config_mqtt: [{ url: '', topic: 'pulseone/data', execution_order: 0 }],
-                    config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }]
-                });
-                setScheduleData({ schedule_name: '', cron_expression: '*/1 * * * *', data_range: 'minute', lookback_periods: 1 });
-                setTransmissionMode('INTERVAL');
-                setCurrentStep(0);
             }
-        }
-    }, [visible, editingGateway, assignments, targets, templates, schedules]);
+        }, [visible, editingGateway, assignments, targets, templates, schedules]);
 
 
     // [NEW] Auto-generate mappings when target configs change or profile is selected
@@ -340,20 +356,26 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             }
         }
         // [SCENARIO B] Existing Profile selected
-        else if (profileMode === 'existing' && selectedProfileId && mappings.length === 0 && !editingGateway) {
-            const p = profiles.find(x => x.id === selectedProfileId);
-            if (p) {
-                const initialMappings = (p.data_points || []).map((dp: any) => ({
-                    point_id: dp.id,
-                    site_id: dp.site_id || dp.building_id || 0,
-                    target_field_name: dp.name,
-                    is_enabled: true,
-                    conversion_config: { scale: 1, offset: 0 }
-                }));
-                setMappings(initialMappings);
+        else if (profileMode === 'existing' && selectedProfileId) {
+            // DETECT EXPLICIT CHANGE: If selectedProfileId differs from what we last mapped, REFRESH.
+            if (selectedProfileId !== lastMappedProfileIdRef.current) {
+                const p = profiles.find(x => x.id === selectedProfileId);
+                if (p) {
+                    console.log(`[Wizard] Profile changed (${lastMappedProfileIdRef.current} -> ${selectedProfileId}). Regenerating mappings...`);
+                    const initialMappings = (p.data_points || []).map((dp: any) => ({
+                        point_id: dp.id,
+                        site_id: dp.site_id || dp.building_id || 0,
+                        target_field_name: dp.name,
+                        is_enabled: true,
+                        conversion_config: { scale: 1, offset: 0 }
+                    }));
+
+                    setMappings(initialMappings);
+                    lastMappedProfileIdRef.current = selectedProfileId;
+                }
             }
         }
-    }, [profileMode, newProfileData.data_points, selectedProfileId, mappings.length, profiles, editingGateway]);
+    }, [profileMode, newProfileData.data_points, selectedProfileId, profiles]);
 
 
     const steps = [
@@ -736,6 +758,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                 {mappings.map((m, i) => {
                                                                     const point = allPoints.find(p => p.id === m.point_id) ||
                                                                         p.data_points?.find((dp: any) => dp.id === m.point_id);
+
                                                                     let conv: any = {};
                                                                     try { conv = typeof m.conversion_config === 'string' ? JSON.parse(m.conversion_config) : (m.conversion_config || {}); } catch { }
 
@@ -1489,7 +1512,28 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 </div>
 
                 <div className="wizard-footer" style={{ padding: '16px 32px', borderTop: '1px solid var(--neutral-100)', display: 'flex', justifyContent: 'space-between', marginTop: 'auto' }}>
-                    <Button onClick={onClose} disabled={loading}>취소</Button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <Button onClick={onClose} disabled={loading}>취소</Button>
+                        {editingGateway && onDelete && (
+                            <Button
+                                danger
+                                onClick={async () => {
+                                    const confirmed = await confirm({
+                                        title: '게이트웨이 삭제',
+                                        message: `"${editingGateway.name}" 게이트웨이를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
+                                        confirmText: '삭제',
+                                        confirmButtonType: 'danger'
+                                    });
+                                    if (confirmed && onDelete) {
+                                        await onDelete(editingGateway);
+                                        onClose();
+                                    }
+                                }}
+                            >
+                                삭제
+                            </Button>
+                        )}
+                    </div>
                     <Space>
                         {currentStep > 0 && <Button onClick={handlePrev} disabled={loading}>이전</Button>}
                         {currentStep < steps.length - 1 ? (

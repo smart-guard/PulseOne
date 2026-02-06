@@ -1123,37 +1123,38 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
     {
       std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
 
-      // [DEBUG] 매핑 상태 로깅
+      // [DEBUG] 매핑 상태 로깅 (상세)
       if (target_point_site_mappings_.count(target.id)) {
         auto &m = target_point_site_mappings_[target.id];
         LogManager::getInstance().Info(
             "[DEBUG] Target " + std::to_string(target.id) +
-            " override map size: " + std::to_string(m.size()));
+            " override map size: " + std::to_string(m.size()) +
+            ", Incoming PointID: " + std::to_string(alarm.point_id));
+
         if (m.count(alarm.point_id)) {
+          lookup_site_id = m.at(alarm.point_id);
           LogManager::getInstance().Info(
               "[DEBUG] Point " + std::to_string(alarm.point_id) +
-              " override found: " + std::to_string(m.at(alarm.point_id)));
+              " override FOUND! New SiteID: " + std::to_string(lookup_site_id));
         } else {
           LogManager::getInstance().Info("[DEBUG] Point " +
                                          std::to_string(alarm.point_id) +
-                                         " override NOT found");
+                                         " override NOT found in map keys.");
+          // Print first few keys for debugging
+          int count = 0;
+          std::string keys = "";
+          for (const auto &pair : m) {
+            keys += std::to_string(pair.first) + ", ";
+            if (++count > 5)
+              break;
+          }
+          LogManager::getInstance().Info("[DEBUG] First 5 keys in map: " +
+                                         keys);
         }
       } else {
         LogManager::getInstance().Info("[DEBUG] Target " +
                                        std::to_string(target.id) +
-                                       " has NO override map");
-      }
-
-      auto it1 = target_point_site_mappings_.find(target.id);
-      if (it1 != target_point_site_mappings_.end()) {
-        auto it2 = it1->second.find(alarm.point_id);
-        if (it2 != it1->second.end()) {
-          lookup_site_id = it2->second;
-          LogManager::getInstance().Debug(
-              "포인트 매핑에 의한 Site ID 오버라이드: " +
-              std::to_string(alarm.site_id) + " -> " +
-              std::to_string(lookup_site_id));
-        }
+                                       " has NO override map loaded.");
       }
     }
 

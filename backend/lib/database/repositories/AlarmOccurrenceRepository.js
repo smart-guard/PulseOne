@@ -237,7 +237,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
                     'vp.name as virtual_point_name'
                 )
                 .where('ao.tenant_id', tenantId || 1)
-                .where('ao.state', 'active')
+                .whereIn('ao.state', ['active', 'ACTIVE'])
                 .orderBy('ao.occurrence_time', 'desc');
 
             return (items || []).map(item => this.parseAlarmOccurrence(item));
@@ -339,7 +339,7 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 )
                 .where('ao.tenant_id', tenantId || 1)
                 .where('ao.device_id', validDeviceId)
-                .where('ao.state', 'active')
+                .whereIn('ao.state', ['active', 'ACTIVE'])
                 .orderBy('ao.occurrence_time', 'desc');
 
             return (items || []).map(item => this.parseAlarmOccurrence(item));
