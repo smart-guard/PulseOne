@@ -45,10 +45,21 @@ namespace PulseOne {
 namespace Coordinator {
 
 struct ExportCoordinatorConfig {
-  std::string database_path = "/app/data/db/pulseone.db";
+  // Database Configuration (Centralized) - No hardcoded defaults
+  std::string database_type = "";
+  std::string database_path = "";
+
+  // Dynamic settings (Must be provided via Env or Config)
+  std::string db_host = "";
+  int db_port = 0;
+  std::string db_name = "";
+  std::string db_user = "";
+  std::string db_pass = "";
+
   std::string redis_host = "localhost";
   int redis_port = 6379;
   std::string redis_password = "";
+  int redis_db_index = 0;
   std::vector<std::string> alarm_channels = {"alarms:all"};
   std::vector<std::string> alarm_patterns;
   int alarm_worker_threads = 4;
@@ -93,6 +104,7 @@ struct ExportCoordinatorStats {
   std::chrono::system_clock::time_point start_time;
   std::chrono::system_clock::time_point last_export_time;
 
+  using json = nlohmann::json;
   json to_json() const {
     auto now = std::chrono::system_clock::now();
     auto uptime =
@@ -177,6 +189,11 @@ public:
   void checkAlarmBatchTimeout();
   void sendValueSnapshot();
 
+  /**
+   * @brief 알람 메시지 메타데이터 보정 (Point Name, Site ID, Status 등)
+   */
+  void enrichAlarmMetadata(PulseOne::CSP::AlarmMessage &alarm);
+
 private:
   void startBatchTimers();
   void stopBatchTimers();
@@ -193,6 +210,13 @@ private:
       const PulseOne::CSP::TargetSendResult &target_result) const;
   void updateStats(const ExportResult &result);
   std::string getDatabasePath() const;
+
+  /**
+   * @brief 수동 전송 결과를 Redis에 게시
+   */
+  void sendManualExportResult(const std::string &target_name, bool success,
+                              const std::string &error_message,
+                              const nlohmann::json &payload);
 
   ExportCoordinatorConfig config_;
   std::atomic<bool> is_running_{false};

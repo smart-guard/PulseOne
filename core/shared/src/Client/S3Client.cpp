@@ -467,6 +467,10 @@ void S3Client::updateConfig(const S3Config &new_config) {
 
 bool S3Client::testConnection() {
   try {
+    if (!http_client_) {
+      LOG_ERROR("S3 testConnection failed: HttpClient not initialized");
+      return false;
+    }
     // 간단한 ListBucket 요청으로 연결 테스트
     auto timestamp = std::chrono::system_clock::now();
 

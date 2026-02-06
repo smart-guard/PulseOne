@@ -58,10 +58,12 @@ build/
 # -----------------------------------------------------------------------------
 # Build Artifacts & Binaries
 # -----------------------------------------------------------------------------
-core/*/build/
-core/*/bin/
-core/*/lib/
-core/collector/tests/bin/
+core/**/build*/
+core/**/bin*/
+core/**/lib*/
+core/**/obj/
+core/**/Debug*/
+core/**/Release*/
 Debug/
 Release/
 x64/
@@ -76,6 +78,10 @@ x86/
 *.pdb
 *.ilk
 *.d
+*.out
+*.pid
+*.socket
+core/export-gateway/test_json_order
 
 # -----------------------------------------------------------------------------
 # Logs & Temporary Files

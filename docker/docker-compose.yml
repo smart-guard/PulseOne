@@ -11,12 +11,8 @@ services:
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     environment:
-      - DATABASE_TYPE=POSTGRESQL
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DATABASE=pulseone
-      - POSTGRES_USER=pulseone
-      - POSTGRES_PASSWORD=yourpassword
+      - DATABASE_TYPE=SQLITE
+      - SQLITE_PATH=/app/data/db/pulseone.db
       - TZ=Asia/Seoul
     volumes:
       - ../frontend:/app
@@ -44,8 +40,7 @@ services:
       - ../config/security.env
       - ../config/collector.env
     depends_on:
-      postgres:
-        condition: service_healthy
+
       rabbitmq:
         condition: service_started
     healthcheck:
@@ -104,7 +99,7 @@ services:
       - ../config:/app/config
       - ../core:/app/core
     tty: true
-    command: /bin/bash -c "cd /app/core/collector && ./bin/pulseone-collector"
+    command: /bin/bash -c "make -C core/collector && ./core/collector/bin/pulseone-collector"
 
   simulator-modbus:
     image: node:20-slim
@@ -146,6 +141,16 @@ services:
     networks:
       - pulseone_network
 
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - pulseone_network
+
   influxdb:
     image: influxdb:2.7
     restart: always
@@ -163,26 +168,6 @@ services:
       TZ: Asia/Seoul
     volumes:
       - influxdb_data:/var/lib/influxdb2
-
-  postgres:
-    image: postgres:14
-    restart: always
-    environment:
-      POSTGRES_USER: pulseone
-      POSTGRES_PASSWORD: yourpassword
-      POSTGRES_DB: pulseone
-      TZ: Asia/Seoul
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U pulseone" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    volumes:
-      - ../data/sql/schema_postgres_minimal.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - pulseone_network
 
   export-gateway:
     build:
@@ -206,38 +191,13 @@ services:
       - ../data:/app/data
       - ../logs:/app/logs
       - shared_libs:/app/core/shared/lib
-    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && ./core/export-gateway/bin/export-gateway --id 12"
+    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && make -C core/export-gateway clean-all && make -C core/export-gateway && ./core/export-gateway/scripts/gateway_launcher.sh"
     deploy:
       resources:
         limits:
           memory: 8G
         reservations:
           memory: 1G
-    networks:
-      - pulseone_network
-
-  export-gateway-mqtt:
-    build:
-      context: ..
-      dockerfile: core/export-gateway/Dockerfile.dev
-    restart: always
-    env_file:
-      - ../config/redis.env
-      - ../config/database.env
-      - ../config/messaging.env
-    environment:
-      - LOG_LEVEL=debug
-      - PULSEONE_CONFIG_DIR=/app/config
-      - PULSEONE_DATA_DIR=/app/data
-      - AUTO_RUN=true
-      - TZ=Asia/Seoul
-    volumes:
-      - ../core:/app/core
-      - ../config:/app/config
-      - ../data:/app/data
-      - ../logs:/app/logs
-      - shared_libs:/app/core/shared/lib
-    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && ./core/export-gateway/bin/export-gateway --id 8"
     networks:
       - pulseone_network
 
@@ -249,3 +209,4 @@ networks:
 volumes:
   influxdb_data:
   shared_libs:
+  redis_data:

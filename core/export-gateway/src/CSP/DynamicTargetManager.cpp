@@ -1218,8 +1218,13 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
                                       " -> " + mapped_name);
     }
 
-    // [FIX] 빌딩 ID 매핑이 있으면 적용, 없으면 lookup_site_id(280) 적용
-    if (mapped_bd > 0) {
+    // [FIX] 수동 전송시 유저 입력 우선, 아니면 매핑값 적용, 없으면
+    // lookup_site_id 적용
+    if (alarm.manual_override && alarm.bd > 0) {
+      mapped_alarm.bd = alarm.bd;
+      LogManager::getInstance().Info("[PRIORITY] Manual BD preserved: " +
+                                     std::to_string(alarm.bd));
+    } else if (mapped_bd > 0) {
       mapped_alarm.bd = mapped_bd;
       LogManager::getInstance().Debug(
           "빌딩 ID 매핑 적용: " + std::to_string(alarm.site_id) + " -> " +
