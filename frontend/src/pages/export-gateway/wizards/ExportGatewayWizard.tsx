@@ -318,26 +318,27 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             setMappings(initialMappings);
                         }
                     }
-                } else if (isOpening) {
-                    // REGISTRATION MODE (Only reset on initial open)
-                    setGatewayData({ name: '', ip_address: '127.0.0.1', description: '', subscription_mode: 'all', config: {} });
-                    setProfileMode('existing');
-                    setSelectedProfileId(null);
-                    setMappings([]);
-                    setTargetMode('new');
-                    setSelectedTargetIds([]);
-                    setTargetData({
-                        name: '',
-                        config_http: [{ url: '', method: 'POST', auth_type: 'NONE', headers: { Authorization: '' }, auth: { type: 'x-api-key', apiKey: '' }, execution_order: 0 }],
-                        config_mqtt: [{ url: '', topic: 'pulseone/data', execution_order: 0 }],
-                        config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }]
-                    });
-                    setScheduleData({ schedule_name: '', cron_expression: '*/1 * * * *', data_range: 'minute', lookback_periods: 1 });
-                    setTransmissionMode('INTERVAL');
-                    setCurrentStep(0);
                 }
+            } else if (isOpening) {
+                // REGISTRATION MODE (Only reset on initial open)
+                setGatewayData({ name: '', ip_address: '127.0.0.1', description: '', subscription_mode: 'all', config: {} });
+                setProfileMode('existing');
+                setSelectedProfileId(null);
+                setMappings([]);
+                setTargetMode('new');
+                setSelectedTargetIds([]);
+                setTargetData({
+                    name: '',
+                    config_http: [{ url: '', method: 'POST', auth_type: 'NONE', headers: { Authorization: '' }, auth: { type: 'x-api-key', apiKey: '' }, execution_order: 0 }],
+                    config_mqtt: [{ url: '', topic: 'pulseone/data', execution_order: 0 }],
+                    config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }]
+                });
+                setScheduleData({ schedule_name: '', cron_expression: '*/1 * * * *', data_range: 'minute', lookback_periods: 1 });
+                setTransmissionMode('INTERVAL');
+                setCurrentStep(0);
             }
-        }, [visible, editingGateway, assignments, targets, templates, schedules]);
+        }
+    }, [visible, editingGateway, assignments, targets, templates, schedules]);
 
 
     // [NEW] Auto-generate mappings when target configs change or profile is selected
