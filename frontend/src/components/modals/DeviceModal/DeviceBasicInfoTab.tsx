@@ -11,7 +11,8 @@ import { CollectorApiService, EdgeServer } from '../../../api/services/collector
 import { ManufactureApiService } from '../../../api/services/manufactureApi';
 import { SiteApiService } from '../../../api/services/siteApi';
 import { Manufacturer, DeviceModel } from '../../../types/manufacturing';
-import { Site } from '../../../types/common';
+import { Site, Tenant } from '../../../types/common';
+import { TenantApiService } from '../../../api/services/tenantApi';
 import { DeviceBasicInfoTabProps } from './types';
 import '../../../styles/management.css';
 
@@ -33,12 +34,14 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   const [availableManufacturers, setAvailableManufacturers] = useState<Manufacturer[]>([]);
   const [availableModels, setAvailableModels] = useState<DeviceModel[]>([]);
   const [availableSites, setAvailableSites] = useState<Site[]>([]);
+  const [availableTenants, setAvailableTenants] = useState<Tenant[]>([]);
   const [isLoadingProtocols, setIsLoadingProtocols] = useState(false);
   const [isLoadingGroups, setIsLoadingGroups] = useState(false);
   const [isLoadingCollectors, setIsLoadingCollectors] = useState(false);
   const [isLoadingManufacturers, setIsLoadingManufacturers] = useState(false);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isLoadingSites, setIsLoadingSites] = useState(false);
+  const [isLoadingTenants, setIsLoadingTenants] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isSlaveIdDuplicate, setIsSlaveIdDuplicate] = useState(false);
   const [checkingSlaveId, setCheckingSlaveId] = useState(false);
@@ -258,14 +261,46 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
   };
 
   /**
+   * 테넌트 목록 로드 (시스템 어드민용)
+   */
+  const loadTenants = async () => {
+    try {
+      setIsLoadingTenants(true);
+      const response = await TenantApiService.getTenants({ limit: 1000 });
+      if (response.success && response.data) {
+        setAvailableTenants(response.data.items || []);
+      }
+    } catch (error) {
+      // 403/401 등 권한 없음 에러는 무시 (일반 사용자는 테넌트 목록 볼 필요 없음)
+      setAvailableTenants([]);
+    } finally {
+      setIsLoadingTenants(false);
+    }
+  };
+
+  /**
    * 사이트 목록 로드
    */
-  const loadSites = async () => {
+  const loadSites = async (tenantId?: number) => {
     try {
       setIsLoadingSites(true);
-      const response = await SiteApiService.getSites({ limit: 100 });
+      const params: any = { limit: 100 };
+
+      // 테넌트 ID 필터링 (명시적 인자 우선, 없으면 editData에서 참조)
+      const targetTenantId = tenantId !== undefined ? tenantId : editData?.tenant_id;
+      if (targetTenantId) {
+        params.tenant_id = targetTenantId;
+      }
+
+      const response = await SiteApiService.getSites(params);
       if (response.success && response.data) {
         setAvailableSites(response.data.items || []);
+
+        // 사이트가 로드되었는데 현재 선택된 site_id가 목록에 없으면 초기화 (테넌트 변경 시)
+        if (editData?.site_id && response.data.items && !response.data.items.find(s => s.id === editData.site_id)) {
+          // 상위에서 처리하거나 사용자가 다시 선택하게 둠
+          // onUpdateField('site_id', ''); // 초기화가 안전할 수 있음
+        }
       }
     } catch (error) {
       console.error('❌ 사이트 목록 로드 실패:', error);
@@ -480,8 +515,18 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
     loadGroups();
     loadCollectors();
     loadManufacturers();
-    loadSites();
+    loadAvailableProtocols();
+    loadGroups();
+    loadCollectors();
+    loadManufacturers();
+    loadTenants(); // 권한 있는 경우만 로드됨
+    // loadSites는 tenant_id 변경 시 useEffect에서 호출
   }, []);
+
+  // 테넌트 변경 시 사이트 목록 갱신
+  useEffect(() => {
+    loadSites(editData?.tenant_id);
+  }, [editData?.tenant_id]);
 
   // 제조사 변경 시 모델 목록 로드 (내부적으로 캐시하거나 필요 시 사용)
   useEffect(() => {
@@ -640,6 +685,30 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
         <div className="bi-card">
           <h3>📋 기본 정보</h3>
           <div className="bi-form-stack">
+            {/* 시스템 관리자용 테넌트 선택 (목록이 있을 때만 표시) */}
+            {availableTenants.length > 0 && (
+              <div className="bi-field">
+                <label>고객사 (Tenant)</label>
+                {mode === 'view' ? (
+                  <div className="form-val">{availableTenants.find(t => t.id === displayData?.tenant_id)?.company_name || displayData?.tenant_id || 'N/A'}</div>
+                ) : (
+                  <select
+                    className="bi-select"
+                    value={editData?.tenant_id || ''}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      onUpdateField('tenant_id', val);
+                      onUpdateField('site_id', ''); // 테넌트 변경 시 사이트 초기화
+                    }}
+                  >
+                    <option value="">고객사를 선택하세요</option>
+                    {availableTenants.map(t => (
+                      <option key={t.id} value={t.id}>{t.company_name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
             <div className="bi-field">
               <label>디바이스명 *</label>
               {mode === 'view' ? (

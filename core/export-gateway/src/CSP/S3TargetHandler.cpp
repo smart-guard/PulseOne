@@ -28,6 +28,47 @@
 #include <regex>
 #include <sstream>
 
+// Helper for manual decryption of ENV variables (since
+// SecretManager::decryptValue is private)
+static std::string base64Decode(const std::string &encoded_value) {
+  static const int T[128] = {
+      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
+      52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
+      -1, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
+      -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+      41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1};
+  std::string result;
+  int val = 0, valb = -8;
+  for (unsigned char c : encoded_value) {
+    if (T[c] == -1)
+      break;
+    val = (val << 6) + T[c];
+    valb += 6;
+    if (valb >= 0) {
+      result.push_back(char((val >> valb) & 0xFF));
+      valb -= 8;
+    }
+  }
+  return result;
+}
+
+static std::string decryptSecret(const std::string &value) {
+  if (value.find("ENC:") != 0)
+    return value;
+  std::string payload = value.substr(4);
+  std::string decoded = base64Decode(payload);
+  std::string key = "PulseOne2025SecretKey";
+  std::string result = decoded;
+  size_t key_len = key.length();
+  for (size_t i = 0; i < result.length(); ++i) {
+    result[i] ^= key[i % key_len];
+  }
+  return result;
+}
+
 namespace PulseOne {
 namespace CSP {
 
@@ -564,6 +605,15 @@ Client::S3Config S3TargetHandler::buildS3Config(const json &config) const {
                                      s3_config.endpoint);
     }
 
+    // ✅ 명시적 설정 지원 (v3.2.0)
+    if (config.contains("use_virtual_host_style")) {
+      s3_config.use_virtual_host_style =
+          config["use_virtual_host_style"].get<bool>();
+      LogManager::getInstance().Info(
+          "S3 Virtual Host Style 명시적 설정: " +
+          std::string(s3_config.use_virtual_host_style ? "true" : "false"));
+    }
+
     // URL에서 Region 추출 시도 (예: https://s3.ap-northeast-2.amazonaws.com)
     std::regex region_regex("s3\\.([a-z0-9-]+)\\.amazonaws\\.com");
     std::smatch match;
@@ -609,13 +659,27 @@ Client::S3Config S3TargetHandler::buildS3Config(const json &config) const {
   std::string content_type = config.value("content_type", "application/json");
   s3_config.content_type = expandEnvironmentVariables(content_type);
 
-  // ✅ v3.2.0: 서명 서비스명 (API Gateway 대응)
   if (config.contains("service_name")) {
     s3_config.service_name = config["service_name"].get<std::string>();
   } else if (s3_config.endpoint.find("execute-api") != std::string::npos) {
     s3_config.service_name = "execute-api";
     LogManager::getInstance().Info(
         "S3 Signing Service를 'execute-api'로 자동 설정함 (API Gateway 감지)");
+  }
+
+  // 사용자 정의 헤더 (API Key) 처리
+  if (config.contains("x-api-key")) {
+    s3_config.custom_headers["x-api-key"] =
+        decryptSecret(ConfigManager::getInstance().expandVariables(
+            config["x-api-key"].get<std::string>()));
+  } else if (config.contains("AwsApiKey")) {
+    s3_config.custom_headers["x-api-key"] =
+        decryptSecret(ConfigManager::getInstance().expandVariables(
+            config["AwsApiKey"].get<std::string>()));
+  } else if (config.contains("aws_api_key")) {
+    s3_config.custom_headers["x-api-key"] =
+        decryptSecret(ConfigManager::getInstance().expandVariables(
+            config["aws_api_key"].get<std::string>()));
   }
 
   return s3_config;
@@ -653,10 +717,10 @@ void S3TargetHandler::loadCredentials(const json &config,
 
   // 2. 직접 설정에서 로드 (AccessKeyID / SecretAccessKey 우선)
   if (config.contains("AccessKeyID") && config.contains("SecretAccessKey")) {
-    s3_config.access_key = config_manager.expandVariables(
-        config["AccessKeyID"].get<std::string>());
-    s3_config.secret_key = config_manager.expandVariables(
-        config["SecretAccessKey"].get<std::string>());
+    s3_config.access_key = decryptSecret(config_manager.expandVariables(
+        config["AccessKeyID"].get<std::string>()));
+    s3_config.secret_key = decryptSecret(config_manager.expandVariables(
+        config["SecretAccessKey"].get<std::string>()));
 
     // [보안 강화] 값이 파일 경로(예: /secrets/key)인 경우 파일 내용을 읽어 사용
     // 일반적인 AWS Key는 'AKIA...'로 시작하므로 '/'로 시작하면 파일로 간주
@@ -690,10 +754,10 @@ void S3TargetHandler::loadCredentials(const json &config,
   }
 
   if (config.contains("access_key") && config.contains("secret_key")) {
-    s3_config.access_key =
-        config_manager.expandVariables(config["access_key"].get<std::string>());
-    s3_config.secret_key =
-        config_manager.expandVariables(config["secret_key"].get<std::string>());
+    s3_config.access_key = decryptSecret(config_manager.expandVariables(
+        config["access_key"].get<std::string>()));
+    s3_config.secret_key = decryptSecret(config_manager.expandVariables(
+        config["secret_key"].get<std::string>()));
 
     // [보안 강화] 파일 경로 처리 (위와 동일)
     if (!s3_config.access_key.empty() && s3_config.access_key[0] == '/') {
@@ -727,13 +791,13 @@ void S3TargetHandler::loadCredentials(const json &config,
   std::string access_key =
       config_manager.getSecret(credential_prefix + "ACCESS_KEY");
   if (!access_key.empty()) {
-    s3_config.access_key = access_key;
+    s3_config.access_key = decryptSecret(access_key);
   }
 
   std::string secret_key =
       config_manager.getSecret(credential_prefix + "SECRET_KEY");
   if (!secret_key.empty()) {
-    s3_config.secret_key = secret_key;
+    s3_config.secret_key = decryptSecret(secret_key);
   }
 
   if (s3_config.access_key.empty() || s3_config.secret_key.empty()) {
@@ -752,9 +816,8 @@ std::string S3TargetHandler::generateObjectKey(const AlarmMessage &alarm,
   if (config.contains("ObjectKeyTemplate")) {
     template_str = config["ObjectKeyTemplate"].get<std::string>();
   } else {
-    template_str = config.value(
-        "object_key_template",
-        "{building_id}/{date}/{point_name}_{timestamp}_alarm.json");
+    template_str = config.value("object_key_template",
+                                "{building_id}/{date}/{timestamp}.json");
   }
   template_str = expandEnvironmentVariables(template_str);
 
@@ -905,13 +968,25 @@ S3TargetHandler::buildMetadata(const AlarmMessage &alarm,
   std::unordered_map<std::string, std::string> metadata;
 
   // 기본 메타데이터
+  auto to_ascii = [](const std::string &str) -> std::string {
+    std::string res;
+    for (unsigned char c : str) {
+      if (c < 128)
+        res += (char)c;
+      else
+        res += '_'; // 비-ASCII 문자는 언더스코어로 대체하여 서명 오류 방지
+    }
+    return res;
+  };
+
   metadata["building-id"] = std::to_string(alarm.bd);
-  metadata["point-name"] = alarm.nm;
+  metadata["point-name"] = to_ascii(alarm.nm);
   metadata["alarm-flag"] = std::to_string(alarm.al);
-  metadata["alarm-status"] = alarm.get_alarm_status_string();
+  metadata["alarm-status"] = (alarm.al == 1) ? "OCCUR" : "CLEAR";
   metadata["upload-timestamp"] = getCurrentTimestamp();
   metadata["source"] = "PulseOne-CSPGateway";
   metadata["version"] = "2.0";
+  metadata["content-language"] = "ko-KR"; // 고정값 처리
 
   // 압축 정보
   if (config.value("compression_enabled", false)) {
@@ -927,6 +1002,11 @@ S3TargetHandler::buildMetadata(const AlarmMessage &alarm,
       if (value.is_string()) {
         std::string expanded_value =
             expandTemplate(value.get<std::string>(), alarm);
+
+        // v3.2.1: Resolve environment variables and decrypt if necessary
+        expanded_value = decryptSecret(
+            ConfigManager::getInstance().expandVariables(expanded_value));
+
         metadata[key] = expanded_value;
       }
     }

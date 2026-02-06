@@ -24,6 +24,7 @@ const ManualTestTab: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentMapping, setCurrentMapping] = useState<any>(null);
     const [testValue, setTestValue] = useState<string | number>('');
+    const [testAlValue, setTestAlValue] = useState<number>(0);
     const [showJsonPreview, setShowJsonPreview] = useState(false);
     const [editableJson, setEditableJson] = useState<string>('');
 
@@ -87,7 +88,7 @@ const ManualTestTab: React.FC = () => {
                 "mx": [100],
                 "tm": `${new Date().toISOString().replace('T', ' ').split('.')[0]}.000`,
                 "st": 1,
-                "al": 0,
+                "al": testAlValue,
                 "des": "Manual Export Triggered"
             }
         ];
@@ -95,7 +96,7 @@ const ManualTestTab: React.FC = () => {
         let formattedJson = JSON.stringify(jsonPayload, null, 2);
         formattedJson = formattedJson.replace(/\[\s+([-+]?[0-9]*\.?[0-9]+)\s+\]/g, '[$1]');
         setEditableJson(formattedJson);
-    }, [currentMapping, testValue]);
+    }, [currentMapping, testValue, testAlValue]);
 
     const fetchGatewayMappings = async (gwId: number) => {
         setLoading(true);
@@ -154,6 +155,7 @@ const ManualTestTab: React.FC = () => {
         const latestInfo = (point as any)?.latest_value;
         const initialVal = latestInfo !== undefined ? latestInfo : 0;
         setTestValue(initialVal);
+        setTestAlValue(0);
         setIsModalOpen(true);
     };
 
@@ -184,6 +186,7 @@ const ManualTestTab: React.FC = () => {
                 target_name: "ALL",
                 point_id: currentMapping.point_id,
                 value: typeof testValue === 'string' ? parseFloat(testValue) : testValue,
+                al: testAlValue,
                 ...overrides
             });
 
@@ -398,6 +401,23 @@ const ManualTestTab: React.FC = () => {
                                 />
                                 <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                                     실제 포인트의 최근 값을 불러왔습니다. 변경하여 전송할 수 있습니다.
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <label style={{ fontWeight: 700 }}>알람 상태 값 (al Override)</label>
+                                <Radio.Group
+                                    value={testAlValue}
+                                    onChange={e => setTestAlValue(e.target.value)}
+                                    buttonStyle="solid"
+                                    size="large"
+                                >
+                                    <Radio.Button value={0}>0 (정상)</Radio.Button>
+                                    <Radio.Button value={1}>1 (알람)</Radio.Button>
+                                    <Radio.Button value={2}>2 (주의)</Radio.Button>
+                                </Radio.Group>
+                                <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                    알람 상태(al) 값을 강제로 지정하여 전송합니다.
                                 </div>
                             </div>
                         </div>

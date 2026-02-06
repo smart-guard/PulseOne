@@ -391,12 +391,47 @@ class DeviceService extends BaseService {
     async createDevice(deviceData, tenantId, user = null) {
         return await this.handleRequest(async () => {
             // System Admin인 경우 body의 tenant_id를 우선 사용 (테넌트 간 이동/생성 지원)
-            const targetTenantId = (user && user.role === 'system_admin' && deviceData.tenant_id)
+            let targetTenantId = (user && user.role === 'system_admin' && deviceData.tenant_id)
                 ? deviceData.tenant_id
                 : tenantId;
 
+            // [FIX] tenant_id가 없고 site_id가 있으면 Site에서 조회하여 Tenant ID 획득
+            if (!targetTenantId && deviceData.site_id) {
+                try {
+                    const siteRepo = RepositoryFactory.getInstance().getRepository('SiteRepository');
+                    // findById(id) 호출 (Tenant ID가 없으므로 null 전달하여 전역 조회 시도)
+                    const site = await siteRepo.findById(deviceData.site_id);
+                    if (site && site.tenant_id) {
+                        targetTenantId = site.tenant_id;
+                    }
+                } catch (ignore) {
+                    // Site 조회 실패 시 무시
+                }
+            }
+
+            // [FIX] 여전히 없으면 System Admin은 Root Tenant(1)로 기본 설정
+            if (!targetTenantId && user && user.role === 'system_admin') {
+                targetTenantId = 1;
+            }
+
             if (!targetTenantId) {
                 throw new Error('Tenant ID is required for device creation');
+            }
+
+
+            // [FIX] Normalize data types (allow lowercase number -> FLOAT32)
+            if (deviceData.data_points && Array.isArray(deviceData.data_points)) {
+                deviceData.data_points.forEach(dp => {
+                    if (dp.data_type) {
+                        const type = String(dp.data_type).toUpperCase();
+                        if (type === 'NUMBER') dp.data_type = 'FLOAT32';
+                        else if (type === 'BOOLEAN') dp.data_type = 'BOOL';
+                        else if (type === 'STRING') dp.data_type = 'STRING';
+                        else dp.data_type = type;
+                    } else {
+                        dp.data_type = 'FLOAT32'; // Default
+                    }
+                });
             }
 
             // 한도 체크
@@ -430,6 +465,21 @@ class DeviceService extends BaseService {
             if (!oldDevice) {
                 this.logger.warn(`⚠️ [DeviceService] Device ${id} not found for tenant ${tenantId}`);
                 throw new Error('Device not found');
+            }
+
+            // [FIX] Normalize data types (allow lowercase number -> FLOAT32)
+            if (updateData.data_points && Array.isArray(updateData.data_points)) {
+                updateData.data_points.forEach(dp => {
+                    if (dp.data_type) {
+                        const type = String(dp.data_type).toUpperCase();
+                        if (type === 'NUMBER') dp.data_type = 'FLOAT32';
+                        else if (type === 'BOOLEAN') dp.data_type = 'BOOL';
+                        else if (type === 'STRING') dp.data_type = 'STRING';
+                        else dp.data_type = type;
+                    } else {
+                        dp.data_type = 'FLOAT32'; // Default
+                    }
+                });
             }
 
             // DB 업데이트 실행

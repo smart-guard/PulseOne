@@ -41,7 +41,7 @@ class EdgeServerRepository extends BaseRepository {
             if (tenantId) {
                 query.where('es.tenant_id', tenantId);
             }
-            query.where('es.server_type', 'collector');
+            // query.where('es.server_type', 'collector'); // [Fix] Allow Gateways too
             const item = await query.first();
             return this._parseItem(item);
         } catch (error) {

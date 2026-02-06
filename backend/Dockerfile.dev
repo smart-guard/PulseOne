@@ -24,6 +24,12 @@ RUN apt-get update && apt-get install -y \
     libmodbus-dev \
     libhiredis-dev \
     libmariadb-dev \
+    libpqxx-dev \
+    libpq-dev \
+    libpaho-mqtt-dev \
+    libpaho-mqtt1.3 \
+    libpaho-mqttpp-dev \
+    libpaho-mqttpp3-1 \
     && rm -rf /var/lib/apt/lists/*
 
 # hiredis (Redis 클라이언트) 빌드 설치 (버전 호환성 보장)

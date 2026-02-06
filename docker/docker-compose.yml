@@ -193,6 +193,7 @@ services:
       - ../config/redis.env
       - ../config/database.env
       - ../config/messaging.env
+      - ../config/security.env
     environment:
       - LOG_LEVEL=debug
       - PULSEONE_CONFIG_DIR=/app/config
@@ -205,7 +206,7 @@ services:
       - ../data:/app/data
       - ../logs:/app/logs
       - shared_libs:/app/core/shared/lib
-    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && ./core/export-gateway/bin/export-gateway --id 6"
+    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && ./core/export-gateway/bin/export-gateway --id 12"
     deploy:
       resources:
         limits:

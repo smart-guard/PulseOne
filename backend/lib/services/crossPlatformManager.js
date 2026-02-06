@@ -943,11 +943,12 @@ class CrossPlatformManager {
             gatewayId
         });
 
-        // ✅ Docker Environment Handling
-        if (this.isDocker) {
-            this.log('INFO', 'Docker 환경 감지: Export Gateway 컨테이너 시작 시도');
-            return await this.controlDockerContainer('export-gateway', 'start', gatewayId);
-        }
+        // [MODIFIED] Docker Environment Handling Removed
+        // We want to spawn processes directly even in Docker to support multi-instance (per ID)
+        // if (this.isDocker) {
+        //    this.log('INFO', 'Docker 환경 감지: Export Gateway 컨테이너 시작 시도');
+        //    return await this.controlDockerContainer('export-gateway', 'start', gatewayId);
+        // }
 
         try {
             const gatewayExists = await this.fileExists(this.paths.exportGateway);
@@ -1039,11 +1040,11 @@ class CrossPlatformManager {
     async stopExportGateway(gatewayId = null) {
         this.log('INFO', 'Export Gateway 중지 요청', { gatewayId });
 
-        // ✅ Docker Environment Handling
-        if (this.isDocker) {
-            this.log('INFO', 'Docker 환경 감지: Export Gateway 컨테이너 중지 시도');
-            return await this.controlDockerContainer('export-gateway', 'stop', gatewayId);
-        }
+        // [MODIFIED] Docker Environment Handling Removed
+        // if (this.isDocker) {
+        //    this.log('INFO', 'Docker 환경 감지: Export Gateway 컨테이너 중지 시도');
+        //    return await this.controlDockerContainer('export-gateway', 'stop', gatewayId);
+        // }
 
         try {
             const processes = await this.getRunningProcesses();
@@ -1067,10 +1068,10 @@ class CrossPlatformManager {
     async restartExportGateway(gatewayId = null) {
         this.log('INFO', 'Export Gateway 재시작 요청', { gatewayId });
 
-        // ✅ Docker Environment Handling
-        if (this.isDocker) {
-            return await this.controlDockerContainer('export-gateway', 'restart', gatewayId);
-        }
+        // [MODIFIED] Docker Environment Handling Removed
+        // if (this.isDocker) {
+        //    return await this.controlDockerContainer('export-gateway', 'restart', gatewayId);
+        // }
 
         const stopResult = await this.stopExportGateway(gatewayId);
         if (!stopResult.success && stopResult.error !== '실행 중인 게이트웨이가 없습니다') {

@@ -31,6 +31,46 @@
 #include <regex>
 #include <sstream>
 
+// Helper for manual decryption of ENV variables
+static std::string base64Decode(const std::string &encoded_value) {
+  static const int T[128] = {
+      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 62, -1, -1, -1, 63,
+      52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1, -1, -1, -1, -1, -1,
+      -1, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
+      15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1, -1,
+      -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+      41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1};
+  std::string result;
+  int val = 0, valb = -8;
+  for (unsigned char c : encoded_value) {
+    if (T[c] == -1)
+      break;
+    val = (val << 6) + T[c];
+    valb += 6;
+    if (valb >= 0) {
+      result.push_back(char((val >> valb) & 0xFF));
+      valb -= 8;
+    }
+  }
+  return result;
+}
+
+static std::string decryptSecret(const std::string &value) {
+  if (value.find("ENC:") != 0)
+    return value;
+  std::string payload = value.substr(4);
+  std::string decoded = base64Decode(payload);
+  std::string key = "PulseOne2025SecretKey";
+  std::string result = decoded;
+  size_t key_len = key.length();
+  for (size_t i = 0; i < result.length(); ++i) {
+    result[i] ^= key[i % key_len];
+  }
+  return result;
+}
+
 namespace PulseOne {
 namespace CSP {
 
@@ -295,7 +335,7 @@ std::string HttpTargetHandler::extractUrl(const json &config) const {
   }
 
   if (!url.empty()) {
-    return ConfigManager::getInstance().expandVariables(url);
+    return decryptSecret(ConfigManager::getInstance().expandVariables(url));
   }
   return "";
 }
@@ -380,6 +420,22 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
     // 요청 구성
     auto headers = buildRequestHeaders(config);
     std::string request_body = buildRequestBody(alarm, config);
+
+    // ✅ [v3.2.0 Debug] 요청 정보 상세 출력
+    LogManager::getInstance().Info("[v3.2.0 Debug] HTTP Request: " + method +
+                                   " " + endpoint);
+    for (const auto &h : headers) {
+      std::string val = h.second;
+      if (h.first == "x-api-key" || h.first == "apiKey" ||
+          h.first == "Authorization" || h.first == "authorization") {
+        if (val.length() > 6) {
+          val = val.substr(0, 3) + "..." + val.substr(val.length() - 3);
+        } else {
+          val = "***";
+        }
+      }
+      LogManager::getInstance().Info("  - " + h.first + ": " + val);
+    }
 
     // HTTP 요청 실행
     Client::HttpResponse response;
@@ -571,22 +627,28 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
     std::string auth_type = auth.value("type", "none");
 
     if (auth_type == "bearer" && auth.contains("token")) {
-      std::string token = ConfigManager::getInstance().expandVariables(
-          auth["token"].get<std::string>());
+      std::string token =
+          decryptSecret(ConfigManager::getInstance().expandVariables(
+              auth["token"].get<std::string>()));
       headers[HttpConst::HEADER_AUTHORIZATION] = "Bearer " + token;
     } else if (auth_type == "basic" && auth.contains("username") &&
                auth.contains("password")) {
-      std::string username = ConfigManager::getInstance().expandVariables(
-          auth["username"].get<std::string>());
-      std::string password = ConfigManager::getInstance().expandVariables(
-          auth["password"].get<std::string>());
+      std::string username =
+          decryptSecret(ConfigManager::getInstance().expandVariables(
+              auth["username"].get<std::string>()));
+      std::string password =
+          decryptSecret(ConfigManager::getInstance().expandVariables(
+              auth["password"].get<std::string>()));
       std::string credentials = username + ":" + password;
       headers[HttpConst::HEADER_AUTHORIZATION] =
           "Basic " + base64Encode(credentials);
-    } else if (auth_type == "api_key" && auth.contains("key")) {
+    } else if ((auth_type == "api_key" || auth_type == "x-api-key") &&
+               (auth.contains("key") || auth.contains("apiKey"))) {
       std::string header_name = auth.value("header", "x-api-key");
-      std::string key = ConfigManager::getInstance().expandVariables(
-          auth["key"].get<std::string>());
+      std::string key_field = auth.contains("key") ? "key" : "apiKey";
+      std::string key =
+          decryptSecret(ConfigManager::getInstance().expandVariables(
+              auth[key_field].get<std::string>()));
       headers[header_name] = key;
     }
   }
@@ -595,7 +657,10 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
   if (config.contains("headers") && config["headers"].is_object()) {
     for (auto &[key, value] : config["headers"].items()) {
       if (value.is_string()) {
-        headers[key] = value.get<std::string>();
+        std::string expanded_value =
+            decryptSecret(ConfigManager::getInstance().expandVariables(
+                value.get<std::string>()));
+        headers[key] = expanded_value;
       }
     }
   }

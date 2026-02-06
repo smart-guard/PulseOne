@@ -677,6 +677,25 @@ void ExportCoordinator::handleCommandEvent(const std::string &channel,
     LogManager::getInstance().Info("Gateway 명령 수신: " + message);
 
     auto j = nlohmann::json::parse(message);
+
+    // ✅ ID 필터링: serverId가 있고, gateway_id_와 다르면 무시 (v3.2.1)
+    if (j.contains("serverId")) {
+      std::string server_id_str;
+      if (j["serverId"].is_string()) {
+        server_id_str = j["serverId"].get<std::string>();
+      } else if (j["serverId"].is_number()) {
+        server_id_str = std::to_string(j["serverId"].get<int>());
+      }
+
+      if (!server_id_str.empty() &&
+          server_id_str != std::to_string(gateway_id_)) {
+        LogManager::getInstance().Debug(
+            "다른 게이트웨이 명령 무시 (Target ID: " + server_id_str +
+            ", My ID: " + std::to_string(gateway_id_) + ")");
+        return;
+      }
+    }
+
     std::string command = j.value("command", "");
     nlohmann::json payload =
         j.contains("payload") ? j["payload"] : nlohmann::json::object();
@@ -1189,7 +1208,45 @@ ExportCoordinator::handleManualExport(const std::string &target_name,
     // 2. AlarmMessage 준비 (매핑 및 템플릿 지원)
     PulseOne::CSP::AlarmMessage alarm;
     alarm.point_id = point_id;
-    alarm.site_id = val_json.value("bd", val_json.value("site_id", 0));
+
+    // UI 명령 데이터에서 먼저 찾고, 없으면 Redis 데이터에서 찾음
+    int initial_bd = data.value(
+        "site_id",
+        data.value("bd", val_json.value("bd", val_json.value("site_id", 0))));
+
+    // 🕵️ DB Fallback: UI와 Redis 모두 site_id가 없으면 DB 직접 조회 추가 (수동
+    // 테스트 안정성 강화)
+    if (initial_bd <= 0) {
+      try {
+        auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+        if (factory.isInitialized() || factory.initialize()) {
+          auto point_repo = factory.getDataPointRepository();
+          if (point_repo) {
+            auto point = point_repo->findById(point_id);
+            if (point.has_value()) {
+              int device_id = point->getDeviceId();
+              auto device_repo = factory.getDeviceRepository();
+              if (device_repo) {
+                auto device = device_repo->findById(device_id);
+                if (device.has_value()) {
+                  initial_bd = device->getSiteId();
+                  LogManager::getInstance().Info(
+                      "[DB-FALLBACK] Point " + std::to_string(point_id) +
+                      " -> Device " + std::to_string(device_id) + " -> Site " +
+                      std::to_string(initial_bd) + " (DB 조회 성공)");
+                }
+              }
+            }
+          }
+        }
+      } catch (const std::exception &e) {
+        LogManager::getInstance().Warn("[DB-FALLBACK] DB 조회 실패: " +
+                                       std::string(e.what()));
+      }
+    }
+
+    alarm.site_id = initial_bd;
+    alarm.bd = initial_bd; // ✅ Start with input BD instead of default 101
     alarm.nm = val_json.value("nm", val_json.value("point_name", ""));
 
     // 값 파싱 (문자열 또는 숫자 대응) 및 페이로드 오버라이드 지원
