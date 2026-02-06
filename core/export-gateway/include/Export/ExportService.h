@@ -30,13 +30,12 @@
 
 using json = nlohmann::json;
 
+#include "CSP/FileTargetHandler.h"
+#include "CSP/HttpTargetHandler.h"
+#include "CSP/S3TargetHandler.h"
+
 // Forward declarations
 namespace PulseOne {
-namespace CSP {
-class HttpTargetHandler;
-class S3TargetHandler;
-class FileTargetHandler;
-} // namespace CSP
 namespace Shared {
 namespace Data {
 struct CurrentValue;

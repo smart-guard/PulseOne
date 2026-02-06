@@ -270,6 +270,18 @@ NC = \033[0m
 EVENT_SOURCES = $(wildcard $(SRC_DIR)/Event/*.cpp)
 EVENT_OBJECTS = $(EVENT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 
+# 🆕 Gateway Model 디렉토리
+MODEL_SOURCES = $(wildcard $(SRC_DIR)/Gateway/Model/*.cpp)
+MODEL_OBJECTS = $(MODEL_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+
+# 🆕 Gateway Service 디렉토리
+SERVICE_SOURCES = $(wildcard $(SRC_DIR)/Gateway/Service/*.cpp)
+SERVICE_OBJECTS = $(SERVICE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+
+# 🆕 Gateway Target 디렉토리
+TARGET_SOURCES = $(wildcard $(SRC_DIR)/Gateway/Target/*.cpp)
+TARGET_OBJECTS = $(TARGET_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+
 # 🆕 Schedule 디렉토리 (ScheduledExporter)
 SCHEDULE_SOURCES = $(wildcard $(SRC_DIR)/Schedule/*.cpp)
 SCHEDULE_OBJECTS = $(SCHEDULE_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
@@ -297,7 +309,7 @@ MAIN_SOURCES = $(SRC_DIR)/main.cpp
 MAIN_OBJECT = $(BUILD_DIR)/main.o
 
 # 📦 전체 오브젝트 파일 (EVENT_OBJECTS로 변경) ✅
-ALL_OBJECTS = $(EVENT_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECT)
+ALL_OBJECTS = $(EVENT_OBJECTS) $(MODEL_OBJECTS) $(SERVICE_OBJECTS) $(TARGET_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECT)
 
 # 🎯 최종 실행 파일
 TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)

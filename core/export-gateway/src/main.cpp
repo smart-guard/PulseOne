@@ -31,6 +31,14 @@
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 
+// ✅ Refactored Services
+#include "Client/RedisClientImpl.h"
+#include "Gateway/Service/GatewayContext.h"
+#include "Gateway/Service/GatewayService.h"
+#include "Gateway/Service/TargetRegistry.h"
+#include "Gateway/Service/TargetRunner.h"
+#include "Schedule/ScheduledExporter.h"
+
 // ✅ 데이터베이스 및 레포지토리 팩토리 (추가)
 #include "Database/RepositoryFactory.h"
 #include "DatabaseManager.hpp"
@@ -75,7 +83,9 @@ void print_usage(const char *program_name) {
   std::cout << "  --test-all          모든 기능 테스트\n\n";
   std::cout << "서비스 옵션:\n";
   std::cout << "  --daemon            데몬 모드로 실행 (기본값)\n";
-  std::cout << "  --interactive       대화형 모드로 실행\n\n";
+  std::cout << "  --interactive       대화형 모드로 실행\n";
+  std::cout
+      << "  --list-gateways     DB에서 활성 게이트웨이 ID 목록만 출력\n\n";
 }
 
 std::vector<int> parseBuildingIds(const std::string &building_ids_str) {
@@ -115,8 +125,15 @@ PulseOne::Coordinator::ExportCoordinatorConfig loadCoordinatorConfig() {
     auto &cfg_mgr = ConfigManager::getInstance();
 
     // 데이터베이스 설정
+    config.database_type = cfg_mgr.getOrDefault("DB_TYPE", "SQLITE");
     config.database_path =
         cfg_mgr.getOrDefault("SQLITE_DB_PATH", "/app/data/db/pulseone.db");
+
+    config.db_host = cfg_mgr.getOrDefault("DB_PRIMARY_HOST", "localhost");
+    config.db_port = std::stoi(cfg_mgr.getOrDefault("DB_PRIMARY_PORT", "5432"));
+    config.db_name = cfg_mgr.getOrDefault("DB_PRIMARY_NAME", "pulseone");
+    config.db_user = cfg_mgr.getOrDefault("DB_PRIMARY_USER", "pulseone");
+    config.db_pass = cfg_mgr.getOrDefault("DB_PRIMARY_PASS", "");
 
     // Redis 설정
     config.redis_host = cfg_mgr.getOrDefault("REDIS_HOST", "localhost");
@@ -213,32 +230,28 @@ void logLoadedConfig(
 /**
  * @brief 테스트: 단일 알람 전송
  */
-void testSingleAlarm() {
+void testSingleAlarm(PulseOne::Gateway::Service::ITargetRunner &runner) {
   std::cout << "\n=== 단일 알람 테스트 ===\n";
 
   try {
-    // DynamicTargetManager 싱글턴 사용
-    auto &manager = DynamicTargetManager::getInstance();
-
     // 테스트 알람 생성
-    AlarmMessage alarm;
+    PulseOne::Gateway::Model::AlarmMessage alarm;
     alarm.bd = 1001;
     alarm.nm = "TEST_POINT_001";
     alarm.vl = 85.5;
     alarm.al = 1;
     alarm.st = 1;
-    alarm.tm = std::to_string(
-        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S");
+    alarm.tm = ss.str();
 
     LogManager::getInstance().Info("테스트 알람 전송: " + alarm.nm);
 
-    // ✅ 수정: DB 로드를 위해 start() 호출 추가
-    if (!manager.isRunning()) {
-      manager.start();
-    }
-
-    // ✅ 수정: sendAlarmToTargets() 사용
-    auto results = manager.sendAlarmToTargets(alarm);
+    // ✅ 수정: TargetRunner를 직접 사용
+    auto results = runner.sendAlarm(alarm);
 
     std::cout << "전송 결과:\n";
     std::cout << "  총 타겟 수: " << results.size() << "\n";
@@ -249,11 +262,12 @@ void testSingleAlarm() {
     for (const auto &result : results) {
       if (result.success) {
         success_count++;
-        std::cout << "  ✅ " << result.target_name << " - 성공\n";
+        std::cout << "  ✅ " << result.target_name << " (" << result.target_type
+                  << ") - 성공\n";
       } else {
         failure_count++;
-        std::cout << "  ❌ " << result.target_name
-                  << " - 실패: " << result.error_message << "\n";
+        std::cout << "  ❌ " << result.target_name << " (" << result.target_type
+                  << ") - 실패: " << result.error_message << "\n";
       }
     }
 
@@ -270,19 +284,12 @@ void testSingleAlarm() {
 /**
  * @brief 테스트: 타겟 목록 출력
  */
-void testTargets() {
+void testTargets(PulseOne::Gateway::Service::ITargetRegistry &registry) {
   std::cout << "\n=== 타겟 목록 ===\n";
 
   try {
-    auto &manager = DynamicTargetManager::getInstance();
-
-    // ✅ DB 로드를 위해 start() 호출 추가 (테스트 모드용)
-    if (!manager.isRunning()) {
-      manager.start();
-    }
-
-    // ✅ 수정: getAllTargets() 사용하여 타겟 정보 추출
-    auto targets = manager.getAllTargets();
+    // ✅ 수정: TargetRegistry를 직접 사용
+    auto targets = registry.getAllTargets();
 
     std::cout << "총 타겟 수: " << targets.size() << "\n\n";
 
@@ -305,39 +312,36 @@ void testTargets() {
 /**
  * @brief 테스트: 연결 테스트
  */
-void testConnection() {
+void testConnection(PulseOne::Gateway::Service::ITargetRunner &runner,
+                    PulseOne::Gateway::Service::ITargetRegistry &registry) {
   std::cout << "\n=== 연결 테스트 ===\n";
 
   try {
-    auto &manager = DynamicTargetManager::getInstance();
+    auto targets = registry.getAllTargets();
 
-    // ✅ 수정: healthCheck() 사용
-    auto health = manager.healthCheck();
-
-    std::cout << "시스템 상태: " << health["status"].get<std::string>() << "\n";
-    std::cout << "Redis 연결: "
-              << (health["redis_connected"].get<bool>() ? "✅" : "❌") << "\n";
-    std::cout << "총 타겟: " << health["total_targets"].get<int>() << "\n";
-    std::cout << "활성 타겟: " << health["enabled_targets"].get<int>() << "\n";
-    std::cout << "정상 타겟: " << health["healthy_targets"].get<int>()
-              << "\n\n";
+    std::cout << "총 타겟 수: " << targets.size() << "\n";
 
     // 개별 타겟 테스트를 위한 테스트 알람 전송
-    AlarmMessage test_alarm;
+    PulseOne::Gateway::Model::AlarmMessage test_alarm;
     test_alarm.bd = 1001;
     test_alarm.nm = "CONNECTION_TEST";
     test_alarm.vl = 1.0;
     test_alarm.al = 0;
     test_alarm.st = 0;
-    test_alarm.tm = std::to_string(
-        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S");
+    test_alarm.tm = ss.str();
 
     std::cout << "개별 타겟 연결 테스트:\n";
-    auto results = manager.sendAlarmToTargets(test_alarm);
+    auto results = runner.sendAlarm(test_alarm);
 
     int success_count = 0;
     for (const auto &result : results) {
-      std::cout << (result.success ? "✅" : "❌") << " " << result.target_name;
+      std::cout << (result.success ? "✅" : "❌") << " " << result.target_name
+                << " (" << result.target_type << ")";
       if (!result.success) {
         std::cout << " (" << result.error_message << ")";
       }
@@ -358,18 +362,18 @@ void testConnection() {
 /**
  * @brief 테스트: 스케줄 실행
  */
-void testSchedule(PulseOne::Coordinator::ExportCoordinator &coordinator) {
+void testSchedule() {
   std::cout << "\n========================================\n";
   std::cout << "스케줄 Export 테스트\n";
   std::cout << "========================================\n";
 
   try {
-    // getComponentStatus() 사용
-    auto status = coordinator.getComponentStatus();
+    // ScheduledExporter 직접 확인
+    auto &scheduled_exporter =
+        PulseOne::Schedule::ScheduledExporter::getInstance();
 
     std::cout << "ScheduledExporter 상태: "
-              << (status["scheduled_exporter"].get<bool>() ? "실행 중"
-                                                           : "중지됨")
+              << (scheduled_exporter.isRunning() ? "실행 중" : "중지됨")
               << "\n";
 
     std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -384,13 +388,13 @@ void testSchedule(PulseOne::Coordinator::ExportCoordinator &coordinator) {
 /**
  * @brief 통계 출력
  */
-void printStatistics(PulseOne::Coordinator::ExportCoordinator &coordinator) {
+void printStatistics(PulseOne::Gateway::Service::ITargetRunner &runner) {
   std::cout << "\n========================================\n";
-  std::cout << "Export 통계\n";
+  std::cout << "Export 통계 (Gateway V2)\n";
   std::cout << "========================================\n";
 
   try {
-    auto stats = coordinator.getStats();
+    auto stats = runner.getStats();
 
     std::cout << "전체 Export: " << stats.total_exports << "\n";
     std::cout << "성공: " << stats.successful_exports << "\n";
@@ -403,13 +407,18 @@ void printStatistics(PulseOne::Coordinator::ExportCoordinator &coordinator) {
                 << success_rate << "%\n";
     }
 
-    std::cout << "\n알람 이벤트: " << stats.alarm_events << "\n";
-    std::cout << "알람 Export: " << stats.alarm_exports << "\n";
+    std::cout << "\n알람 Export: " << stats.alarm_exports << "\n";
     std::cout << "스케줄 실행: " << stats.schedule_executions << "\n";
     std::cout << "스케줄 Export: " << stats.schedule_exports << "\n";
 
     std::cout << "\n평균 처리 시간: " << std::fixed << std::setprecision(2)
               << stats.avg_processing_time_ms << "ms\n";
+
+    auto now = std::chrono::system_clock::now();
+    auto uptime =
+        std::chrono::duration_cast<std::chrono::seconds>(now - stats.start_time)
+            .count();
+    std::cout << "Uptime: " << uptime << " seconds\n";
 
     std::cout << "========================================\n";
 
@@ -421,7 +430,7 @@ void printStatistics(PulseOne::Coordinator::ExportCoordinator &coordinator) {
 /**
  * @brief 데몬 모드 실행
  */
-void runDaemonMode(ExportCoordinator &coordinator) {
+void runDaemonMode(PulseOne::Gateway::Service::GatewayService &service) {
   LogManager::getInstance().Info("데몬 모드 시작");
   std::cout << "데몬 모드로 실행 중...\n";
   std::cout << "종료하려면 Ctrl+C를 누르세요.\n\n";
@@ -430,13 +439,15 @@ void runDaemonMode(ExportCoordinator &coordinator) {
   int stats_counter = 0;
   const int stats_interval = 60;
 
+  auto &runner = service.getContext().getRunner();
+
   while (!g_shutdown_requested.load()) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
     // 통계 출력
     stats_counter++;
     if (stats_counter >= stats_interval) {
-      printStatistics(coordinator);
+      printStatistics(runner);
       stats_counter = 0;
     }
   }
@@ -447,7 +458,8 @@ void runDaemonMode(ExportCoordinator &coordinator) {
 /**
  * @brief 대화형 모드 실행
  */
-void runInteractiveMode(ExportCoordinator &coordinator) {
+void runInteractiveMode(PulseOne::Gateway::Service::ITargetRunner &runner,
+                        PulseOne::Gateway::Service::ITargetRegistry &registry) {
   LogManager::getInstance().Info("대화형 모드 시작");
   std::cout << "대화형 모드로 실행 중...\n";
   std::cout << "명령어: status, test, targets, schedule, quit\n\n";
@@ -460,15 +472,15 @@ void runInteractiveMode(ExportCoordinator &coordinator) {
     if (command == "quit" || command == "exit") {
       break;
     } else if (command == "status") {
-      printStatistics(coordinator);
+      printStatistics(runner);
     } else if (command == "test") {
-      testSingleAlarm();
+      testSingleAlarm(runner);
     } else if (command == "targets") {
-      testTargets();
+      testTargets(registry);
     } else if (command == "schedule") {
-      testSchedule(coordinator);
+      testSchedule();
     } else if (command == "connection") {
-      testConnection();
+      testConnection(runner, registry);
     } else if (command == "help") {
       std::cout << "명령어:\n";
       std::cout << "  status      - 통계 출력\n";
@@ -489,6 +501,7 @@ void runInteractiveMode(ExportCoordinator &coordinator) {
  * @brief 메인 함수 - v2.0 아키텍처
  */
 int main(int argc, char **argv) {
+  std::cout << "🔥🔥🔥 GATEWAY BINARY EXECUTING 🔥🔥🔥" << std::endl;
   try {
     std::string config_path = "";
     std::string gateway_id = "default";
@@ -498,6 +511,7 @@ int main(int argc, char **argv) {
     bool test_schedule = false;
     bool test_connection = false;
     bool test_all = false;
+    bool list_gateways = false;
 
     // 아규먼트 파싱
     for (int i = 1; i < argc; ++i) {
@@ -510,6 +524,8 @@ int main(int argc, char **argv) {
         return 0;
       } else if (arg == "--interactive") {
         interactive = true;
+      } else if (arg == "--list-gateways") {
+        list_gateways = true;
       } else if (arg.find("--config=") == 0) {
         config_path = arg.substr(9);
       } else if (arg == "--id" && i + 1 < argc) {
@@ -552,13 +568,20 @@ int main(int argc, char **argv) {
     {
       auto &db_manager = DbLib::DatabaseManager::getInstance();
       DbLib::DatabaseConfig db_config;
-      db_config.type = "SQLITE";
+      db_config.type = config.database_type;
       db_config.sqlite_path = config.database_path;
+
+      // PostgreSQL 설정
+      db_config.pg_host = config.db_host;
+      db_config.pg_port = config.db_port;
+      db_config.pg_db = config.db_name;
+      db_config.pg_user = config.db_user;
+      db_config.pg_pass = config.db_pass;
+
       db_config.use_redis = false;
 
       if (!db_manager.initialize(db_config)) {
-        LogManager::getInstance().Error(
-            "DatabaseManager 초기화 실패 (경로: " + config.database_path + ")");
+        LogManager::getInstance().Error("DatabaseManager 초기화 실패");
         return 1;
       }
 
@@ -566,6 +589,23 @@ int main(int argc, char **argv) {
         LogManager::getInstance().Error("RepositoryFactory 초기화 실패");
         return 1;
       }
+
+      // 🚀 Discovery Mode: 게이트웨이 목록 출력 후 종료
+      if (list_gateways) {
+        auto &db_manager = DbLib::DatabaseManager::getInstance();
+        std::string query = "SELECT id FROM edge_servers WHERE server_type = "
+                            "'gateway' AND is_deleted = 0";
+        std::vector<std::vector<std::string>> results;
+        if (db_manager.executeQuery(query, results)) {
+          for (const auto &row : results) {
+            if (!row.empty())
+              std::cout << row[0] << " ";
+          }
+          std::cout << std::endl;
+        }
+        return 0;
+      }
+
       LogManager::getInstance().Info(
           "✅ 전역 데이터베이스 및 레포지토리 초기화 완료");
     }
@@ -573,82 +613,77 @@ int main(int argc, char **argv) {
     // 1.5 ExportLogService 시작 (비동기 로그 저장)
     PulseOne::Export::ExportLogService::getInstance().start();
 
-    // 게이트웨이 ID를 매니저에게도 전달 (테스트 모드용)
+    // 2. Gateway Service Components Initialization
+    int gw_id = 0;
     try {
-      if (gateway_id != "default") {
-        DynamicTargetManager::getInstance().setGatewayId(std::stoi(gateway_id));
-      }
+      if (gateway_id != "default")
+        gw_id = std::stoi(gateway_id);
     } catch (...) {
     }
 
-    // 단독 테스트 모드들
-    if (test_alarm) {
-      testSingleAlarm();
-      return 0;
-    }
-    if (test_targets) {
-      testTargets();
-      return 0;
-    }
-    if (test_connection) {
-      testConnection();
-      return 0;
-    }
-
-    // 2. ExportCoordinator 생성
-    PulseOne::Coordinator::ExportCoordinator coordinator(config);
-
-    // 하트비트를 위한 게이트웨이 ID 설정
-    try {
-      if (gateway_id != "default") {
-        coordinator.setGatewayId(std::stoi(gateway_id));
-      }
-    } catch (...) {
-      LogManager::getInstance().Warn("잘못된 게이트웨이 ID 형식: " +
-                                     gateway_id);
-    }
-
-    // 3. ExportCoordinator 시작
-    if (!coordinator.start()) {
-      std::cerr << "ExportCoordinator 시작 실패\n";
+    auto registry =
+        std::make_unique<PulseOne::Gateway::Service::TargetRegistry>(gw_id);
+    if (!registry->loadFromDatabase()) {
+      LogManager::getInstance().Error("TargetRegistry 로드 실패");
       return 1;
     }
 
-    if (test_schedule) {
-      testSchedule(coordinator);
+    auto runner =
+        std::make_unique<PulseOne::Gateway::Service::TargetRunner>(*registry);
+
+    // 단독 테스트 모드들
+    if (test_alarm) {
+      testSingleAlarm(*runner);
       return 0;
     }
-    if (test_all) {
-      testConnection();
-      testTargets();
-      testSingleAlarm();
-      testSchedule(coordinator);
+    if (test_targets) {
+      testTargets(*registry);
+      return 0;
+    }
+    if (test_connection) {
+      testConnection(*runner, *registry);
       return 0;
     }
 
-    std::cout << "ExportCoordinator 시작 완료 ✅ (ID: " << gateway_id
-              << ")\n\n";
+    auto redis_client = std::make_unique<RedisClientImpl>();
+    redis_client->connect(config.redis_host, config.redis_port,
+                          config.redis_password);
+    redis_client->select(0);
 
-    // 4. 상태 확인
-    auto status = coordinator.getComponentStatus();
-    std::cout << "시스템 상태:\n";
-    std::cout << "  - Running: " << (coordinator.isRunning() ? "Yes" : "No")
-              << "\n";
+    auto context = std::make_unique<PulseOne::Gateway::Service::GatewayContext>(
+        gw_id, std::move(redis_client), std::move(registry), std::move(runner));
 
-    // 5. 실행 모드
+    PulseOne::Gateway::Service::GatewayService service(std::move(context));
+
+    if (!service.start()) {
+      std::cerr << "GatewayService 시작 실패\n";
+      return 1;
+    }
+
+    // ScheduledExporter (Legacy support/integration)
+    PulseOne::Schedule::ScheduledExporterConfig schedule_config;
+    schedule_config.redis_host = config.redis_host;
+    schedule_config.redis_port = config.redis_port;
+    schedule_config.redis_password = config.redis_password;
+    auto &scheduled_exporter =
+        PulseOne::Schedule::ScheduledExporter::getInstance(schedule_config);
+    scheduled_exporter.start();
+
+    std::cout << "GatewayService 시작 완료 ✅ (ID: " << gateway_id << ")\n\n";
+
     if (interactive) {
-      runInteractiveMode(coordinator);
+      runInteractiveMode(service.getContext().getRunner(),
+                         service.getContext().getRegistry());
     } else {
-      runDaemonMode(coordinator);
+      runDaemonMode(service);
     }
 
-    // 7. 정리
-    coordinator.stop();
+    scheduled_exporter.stop();
+    service.stop();
     PulseOne::Export::ExportLogService::getInstance().stop();
     std::cout << "\nExport Gateway 종료 완료 (ID: " << gateway_id << ")\n";
 
     return 0;
-
   } catch (const std::exception &e) {
     std::cerr << "심각한 에러: " << e.what() << "\n";
     return 1;

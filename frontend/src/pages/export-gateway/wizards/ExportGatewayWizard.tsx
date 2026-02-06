@@ -204,15 +204,14 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
     const isHydratingRef = React.useRef(false);
 
+    // [REFINED] Robust Hydration Logic: Runs whenever required data changes until fully hydrated for current ID
     useEffect(() => {
-        // [GUARD] If not visible, do nothing. If already iterating same ID, skip.
         if (!visible) {
+            // Reset state when closing
             if (prevVisibleRef.current) {
-                // Just closed: Clean up
                 prevVisibleRef.current = false;
                 prevEditingIdRef.current = undefined;
                 hydratedTargetIdRef.current = null;
-                // Full Reset
                 setGatewayData({ name: '', ip_address: '127.0.0.1', description: '', subscription_mode: 'all', config: {} });
                 setProfileMode('existing');
                 setSelectedProfileId(null);
@@ -222,105 +221,11 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             return;
         }
 
-        // Detect if this is a "New Open" or "ID Change"
-        const isOpening = !prevVisibleRef.current && visible;
-        const isIdChanged = editingGateway?.id !== prevEditingIdRef.current;
+        prevVisibleRef.current = visible;
 
-        if (isOpening || isIdChanged) {
-            console.log('--- [Wizard] Hydration Triggered ---', { isOpening, isIdChanged, id: editingGateway?.id });
-
-            // Update refs
-            prevVisibleRef.current = visible;
-            if (editingGateway) {
-                prevEditingIdRef.current = editingGateway.id;
-                // EDIT MODE
-                isHydratingRef.current = true;
-                setGatewayData({
-                    name: editingGateway.name,
-                    ip_address: editingGateway.ip_address,
-                    description: editingGateway.description || '',
-                    subscription_mode: editingGateway.subscription_mode || 'all',
-                    config: editingGateway.config || {}
-                });
-
-                // Find Assignments
-                // NOTE: We assume assignments prop is already filtered for this gateway or we find it
-                // The parent passes `assignments={assignments[selectedGateway.id]}` usually?
-                // Actually parent passes `assignments` as `record<number, Assignment[]>` or just `Assignment[]`?
-                // I need to check how it's passed in ExportGatewaySettings.tsx.
-                // It was: assignments={assignments[selectedGateway?.id || 0] || []} likely.
-                // Let's assume standard array. If it's undefined, we handle it.
-
-                const myAssignments = assignments || [];
-                if (myAssignments.length > 0) {
-                    const assign = myAssignments[0];
-                    setSelectedProfileId(assign.profile_id);
-                    lastMappedProfileIdRef.current = assign.profile_id;
-                    setProfileMode('existing');
-
-                    // Find Target linked to this Profile (Backward Lookup)
-                    // In PulseOne, Target -> Profile. Assignment -> Profile.
-                    // So we find Targets that have this profile_id.
-                    const linkedTargets = targets.filter(t => t.profile_id === assign.profile_id);
-
-                    if (linkedTargets.length > 0) {
-                        setTargetMode('existing');
-                        setSelectedTargetIds(linkedTargets.map(t => t.id));
-
-                        // Hydrate Schedule from the FIRST target for simplicity (1:N UI limit)
-                        const primaryTarget = linkedTargets[0];
-                        if (primaryTarget.template_id) {
-                            setSelectedTemplateId(primaryTarget.template_id);
-                            setTemplateMode('existing');
-                        }
-
-                        // Try to find schedule for this target
-                        if (schedules && schedules.length > 0) {
-                            const linkedSchedule = schedules.find(s => s.target_id === primaryTarget.id);
-                            if (linkedSchedule) {
-                                setTransmissionMode('INTERVAL');
-                                setScheduleData({
-                                    schedule_name: linkedSchedule.schedule_name,
-                                    cron_expression: linkedSchedule.cron_expression,
-                                    data_range: (linkedSchedule.data_range as any) || 'minute',
-                                    lookback_periods: linkedSchedule.lookback_periods || 1
-                                });
-                            } else {
-                                setTransmissionMode('EVENT');
-                            }
-                        }
-
-                        // [NEW] Fetch existing mappings for edit mode
-                        if (linkedTargets.length > 0) {
-                            (async () => {
-                                try {
-                                    const mRes = await exportGatewayApi.getTargetMappings(linkedTargets[0].id);
-                                    if (mRes.success && mRes.data) {
-                                        setMappings(mRes.data);
-                                    }
-                                } catch (err) {
-                                    console.error("Failed to fetch existing mappings", err);
-                                }
-                            })();
-                        }
-                    } else {
-                        // [FALLBACK] No targets linked (or deleted), but Profile is assigned.
-                        // Generate default mappings from the Profile's data points so the UI is not empty.
-                        const p = profiles.find(x => x.id === assign.profile_id);
-                        if (p) {
-                            const initialMappings = (p.data_points || []).map((dp: any) => ({
-                                point_id: dp.id,
-                                site_id: dp.site_id || dp.building_id || 0,
-                                target_field_name: dp.name,
-                                is_enabled: true,
-                                conversion_config: { scale: 1, offset: 0 }
-                            }));
-                            setMappings(initialMappings);
-                        }
-                    }
-                }
-            } else if (isOpening) {
-                // REGISTRATION MODE (Only reset on initial open)
+        // If not in Edit mode, just handle initial open reset if needed
+        if (!editingGateway) {
+            if (hydratedTargetIdRef.current !== -1) { // -1 marks "New registration mode"
                 setGatewayData({ name: '', ip_address: '127.0.0.1', description: '', subscription_mode: 'all', config: {} });
                 setProfileMode('existing');
                 setSelectedProfileId(null);
@@ -336,7 +241,85 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 setScheduleData({ schedule_name: '', cron_expression: '*/1 * * * *', data_range: 'minute', lookback_periods: 1 });
                 setTransmissionMode('INTERVAL');
                 setCurrentStep(0);
+                hydratedTargetIdRef.current = -1;
             }
+            return;
+        }
+
+        const currentId = editingGateway.id;
+
+        // Skip if already hydrated for this ID
+        if (hydratedTargetIdRef.current === currentId) {
+            // Potentially handle live updates to 'assignments' even after hydration? 
+            // Usually, we only want initial hydration to let user edit.
+            return;
+        }
+
+        // Check if data is ready for hydration
+        const myAssignments = assignments || [];
+        if (myAssignments.length === 0) {
+            console.log(`[Wizard] Waiting for assignments for Gateway ${currentId}...`);
+            return;
+        }
+
+        console.log(`[Wizard] Hydrating Gateway ${currentId}...`);
+        prevEditingIdRef.current = currentId;
+
+        // Base Data
+        setGatewayData({
+            name: editingGateway.name,
+            ip_address: editingGateway.ip_address,
+            description: editingGateway.description || '',
+            subscription_mode: editingGateway.subscription_mode || 'all',
+            config: editingGateway.config || {}
+        });
+
+        // Profile & Targets
+        const assign = myAssignments[0];
+        setSelectedProfileId(assign.profile_id);
+        lastMappedProfileIdRef.current = assign.profile_id;
+        setProfileMode('existing');
+
+        const linkedTargets = targets.filter(t => t.profile_id === assign.profile_id);
+        if (linkedTargets.length > 0) {
+            setTargetMode('existing');
+            setSelectedTargetIds(linkedTargets.map(t => t.id));
+
+            const primaryTarget = linkedTargets[0];
+
+            // Template
+            if (primaryTarget.template_id) {
+                setSelectedTemplateId(primaryTarget.template_id);
+                setTemplateMode('existing');
+            }
+
+            // Schedule
+            const linkedSchedule = schedules.find(s => s.target_id === primaryTarget.id);
+            if (linkedSchedule) {
+                setTransmissionMode('INTERVAL');
+                setScheduleData({
+                    schedule_name: linkedSchedule.schedule_name,
+                    cron_expression: linkedSchedule.cron_expression,
+                    data_range: (linkedSchedule.data_range as any) || 'minute',
+                    lookback_periods: linkedSchedule.lookback_periods || 1
+                });
+            } else {
+                setTransmissionMode('EVENT');
+            }
+
+            // Mappings (Async)
+            (async () => {
+                try {
+                    const mRes = await exportGatewayApi.getTargetMappings(primaryTarget.id);
+                    if (mRes.success && mRes.data) {
+                        setMappings(mRes.data);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch existing mappings", err);
+                }
+            })();
+
+            hydratedTargetIdRef.current = currentId; // Mark as done
         }
     }, [visible, editingGateway, assignments, targets, templates, schedules]);
 
@@ -464,7 +447,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             if (targetMode === 'existing') {
                 finalTargetIds = selectedTargetIds;
 
-                // [NEW] Update existing targets if edited in the UI
+                // [FIXED] Update existing targets with ALL fields (profile, template, mode, config)
                 await Promise.all(selectedTargetIds.map(async (tid) => {
                     const editedConfigs = editingTargets[tid]; // This is an Array
                     if (editedConfigs && editedConfigs.length > 0) {
@@ -474,10 +457,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             priorityMap[tid.toString()] = priority;
 
                             await exportGatewayApi.updateTarget(tid, {
-                                config: editedConfigs
+                                profile_id: profileId, // [NEW] Ensure target stays on current profile
+                                config: editedConfigs,
+                                template_id: templateId || undefined,
+                                export_mode: transmissionMode === 'EVENT' ? 'REALTIME' : 'batched'
                             });
                         } catch (err) {
-                            console.error(`Failed to update target config for ${tid}`, err);
+                            console.error(`Failed to update target for ${tid}`, err);
                         }
                     }
 

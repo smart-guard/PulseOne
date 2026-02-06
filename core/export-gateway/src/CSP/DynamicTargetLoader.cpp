@@ -301,6 +301,18 @@ PulseOne::Export::DynamicTarget DynamicTargetLoader::createTargetFromEntity(
       target.config = target.config[0];
     }
 
+    // Export Mode 우선순위: Config > Entity Column
+    if (!target.config.contains(ExportConst::ConfigKeys::EXPORT_MODE)) {
+      target.config[ExportConst::ConfigKeys::EXPORT_MODE] =
+          entity.getExportMode();
+    }
+
+    // 만약 여전히 비어있다면 기본값 ALARM
+    if (target.config.value(ExportConst::ConfigKeys::EXPORT_MODE, "").empty()) {
+      target.config[ExportConst::ConfigKeys::EXPORT_MODE] =
+          ExportConst::ExportMode::ALARM;
+    }
+
     // 기본 설정 주입
     if (!target.config.contains(ExportConst::ConfigKeys::MAX_QUEUE_SIZE))
       target.config[ExportConst::ConfigKeys::MAX_QUEUE_SIZE] = 1000;
@@ -310,9 +322,6 @@ PulseOne::Export::DynamicTarget DynamicTargetLoader::createTargetFromEntity(
       target.config[ExportConst::ConfigKeys::FLUSH_INTERVAL] = 5000;
     if (!target.config.contains(ExportConst::ConfigKeys::RETRY_COUNT))
       target.config[ExportConst::ConfigKeys::RETRY_COUNT] = 3;
-    if (!target.config.contains(ExportConst::ConfigKeys::EXPORT_MODE))
-      target.config[ExportConst::ConfigKeys::EXPORT_MODE] =
-          ExportConst::ExportMode::ALARM;
 
     // 템플릿 적용
     if (entity.getTemplateId().has_value()) {

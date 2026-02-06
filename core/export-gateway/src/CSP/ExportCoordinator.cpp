@@ -128,6 +128,10 @@ ExportCoordinator::ExportCoordinator(const ExportCoordinatorConfig &config)
     redis_client_ = std::make_unique<RedisClientImpl>();
     redis_client_->connect(config_.redis_host, config_.redis_port,
                            config_.redis_password);
+
+    // Redis DB 선택 (기본값 DB 0 사용 - 하트비트/명령어 가시성 확보)
+    redis_client_->select(0);
+    LogManager::getInstance().Info("Redis DB 선택: 0 (Default)");
   } catch (const std::exception &e) {
 
     LogManager::getInstance().Error("Redis 클라이언트 초기화 실패: " +
@@ -701,16 +705,45 @@ void ExportCoordinator::handleCommandEvent(const std::string &channel,
         j.contains("payload") ? j["payload"] : nlohmann::json::object();
 
     if (command == PulseOne::Constants::Export::Command::MANUAL_EXPORT) {
-      std::string target_name =
-          payload.value(PulseOne::Constants::Export::JsonKeys::TARGET_NAME, "");
+      // 🚀 멀티 타겟 지원 (targets 배열 또는 targetName 단일 필드 모두 대응)
+      std::vector<std::string> requested_names;
+
+      if (payload.contains("targets") && payload["targets"].is_array()) {
+        for (const auto &t : payload["targets"]) {
+          if (t.is_string())
+            requested_names.push_back(t.get<std::string>());
+        }
+      } else {
+        std::string single_target = payload.value(
+            PulseOne::Constants::Export::JsonKeys::TARGET_NAME, "");
+        if (!single_target.empty())
+          requested_names.push_back(single_target);
+      }
+
       int target_id =
           payload.value(PulseOne::Constants::Export::JsonKeys::TARGET_ID, 0);
+      auto target_manager = getTargetManager();
 
-      if (target_name == PulseOne::Constants::Export::JsonKeys::ALL_TARGETS ||
-          target_name == "all") { // "all" for backward compatibility
-        auto target_manager = getTargetManager();
+      // 전체 전송 모드 체크
+      bool is_all = false;
+      for (const auto &name : requested_names) {
+        if (name == PulseOne::Constants::Export::JsonKeys::ALL_TARGETS ||
+            name == "all") {
+          is_all = true;
+          break;
+        }
+      }
+
+      if (is_all) {
         if (target_manager) {
           auto all_targets = target_manager->getAllTargets();
+          // 우선순위 정렬 (all의 경우 전체를 순회하므로 이미 정렬되어 있을 수
+          // 있으나 명시적으로 정렬)
+          std::sort(all_targets.begin(), all_targets.end(),
+                    [](const auto &a, const auto &b) {
+                      return a.execution_order < b.execution_order;
+                    });
+
           bool overall_success = true;
           std::string error_summary = "";
 
@@ -725,67 +758,53 @@ void ExportCoordinator::handleCommandEvent(const std::string &channel,
               error_summary += target.name + ": " + res.error_message;
             }
           }
-
-          if (redis_client_ && redis_client_->isConnected()) {
-            nlohmann::json res_payload;
-            res_payload[PulseOne::Constants::Export::JsonKeys::SUCCESS] =
-                overall_success;
-            res_payload[PulseOne::Constants::Export::JsonKeys::ERROR] =
-                error_summary;
-            res_payload[PulseOne::Constants::Export::JsonKeys::TARGET] =
-                PulseOne::Constants::Export::JsonKeys::ALL_TARGETS;
-            res_payload[PulseOne::Constants::Export::JsonKeys::COMMAND_ID] =
-                payload.value(PulseOne::Constants::Export::JsonKeys::COMMAND_ID,
-                              "");
-            nlohmann::json res_msg;
-            res_msg[PulseOne::Constants::Export::JsonKeys::COMMAND] =
-                PulseOne::Constants::Export::Command::MANUAL_EXPORT_RESULT;
-            res_msg[PulseOne::Constants::Export::JsonKeys::PAYLOAD] =
-                res_payload;
-            redis_client_->publish(
-                PulseOne::Constants::Export::Redis::CHANNEL_CMD_GATEWAY_RESULT,
-                res_msg.dump());
-          }
+          sendManualExportResult(
+              PulseOne::Constants::Export::JsonKeys::ALL_TARGETS,
+              overall_success, error_summary, payload);
         }
         return;
       }
 
-      if (target_name.empty() && target_id > 0 && target_repo_) {
+      // 개별 타겟 리스트 처리
+      if (requested_names.empty() && target_id > 0 && target_repo_) {
         auto target = target_repo_->findById(target_id);
-        if (target.has_value()) {
-          target_name = target->getName();
-        }
+        if (target.has_value())
+          requested_names.push_back(target->getName());
       }
 
-      if (target_name.empty()) {
+      if (requested_names.empty()) {
         LogManager::getInstance().Error(
             "수동 전송 실패: 타겟 이름 또는 ID가 없습니다.");
         return;
       }
 
-      auto result = handleManualExport(target_name, payload);
+      // 🚀 우선순위 정렬을 위해 DynamicTarget 정보 가져오기
+      std::vector<PulseOne::Export::DynamicTarget> targets_to_process;
+      if (target_manager) {
+        for (const auto &name : requested_names) {
+          auto t = target_manager->getTarget(name);
+          if (t.has_value()) {
+            targets_to_process.push_back(t.value());
+          } else {
+            // 정보가 없으면 기본값으로라도 추가 (이름 기반 처리 보장)
+            PulseOne::Export::DynamicTarget dt;
+            dt.name = name;
+            dt.execution_order = 999;
+            targets_to_process.push_back(dt);
+          }
+        }
+      }
 
-      // Publish result to redis so UI can show it
-      if (redis_client_ && redis_client_->isConnected()) {
-        nlohmann::json res_payload;
-        res_payload[PulseOne::Constants::Export::JsonKeys::SUCCESS] =
-            result.success;
-        res_payload[PulseOne::Constants::Export::JsonKeys::ERROR] =
-            result.error_message;
-        res_payload[PulseOne::Constants::Export::JsonKeys::TARGET] =
-            target_name;
-        res_payload[PulseOne::Constants::Export::JsonKeys::COMMAND_ID] =
-            payload.value(PulseOne::Constants::Export::JsonKeys::COMMAND_ID,
-                          "");
+      // 정렬 (execution_order 오름차순)
+      std::sort(targets_to_process.begin(), targets_to_process.end(),
+                [](const auto &a, const auto &b) {
+                  return a.execution_order < b.execution_order;
+                });
 
-        nlohmann::json res_msg;
-        res_msg[PulseOne::Constants::Export::JsonKeys::COMMAND] =
-            PulseOne::Constants::Export::Command::MANUAL_EXPORT_RESULT;
-        res_msg[PulseOne::Constants::Export::JsonKeys::PAYLOAD] = res_payload;
-
-        redis_client_->publish(
-            PulseOne::Constants::Export::Redis::CHANNEL_CMD_GATEWAY_RESULT,
-            res_msg.dump());
+      for (const auto &target : targets_to_process) {
+        auto result = handleManualExport(target.name, payload);
+        sendManualExportResult(target.name, result.success,
+                               result.error_message, payload);
       }
     } else {
       LogManager::getInstance().Warn("지원되지 않는 명령: " + command);
@@ -806,124 +825,16 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
   std::vector<ExportResult> results;
 
   try {
-    // ✅ 0. Point ID Enrichment (Fallback lookup from rule_id if missing)
-    if (alarm.point_id <= 0) {
-      try {
-        int rule_id = 0;
-        if (alarm.extra_info.contains("rule_id")) {
-          if (alarm.extra_info["rule_id"].is_number()) {
-            rule_id = alarm.extra_info["rule_id"].get<int>();
-          } else if (alarm.extra_info["rule_id"].is_string()) {
-            rule_id = std::stoi(alarm.extra_info["rule_id"].get<std::string>());
-          }
-        } else if (alarm.extra_info.contains("alarm_rule_id")) {
-          if (alarm.extra_info["alarm_rule_id"].is_number()) {
-            rule_id = alarm.extra_info["alarm_rule_id"].get<int>();
-          } else if (alarm.extra_info["alarm_rule_id"].is_string()) {
-            rule_id =
-                std::stoi(alarm.extra_info["alarm_rule_id"].get<std::string>());
-          }
-        }
-
-        if (rule_id > 0) {
-          // 🚀 [CACHE] 먼저 메모리 캐시 확인
-          {
-            std::shared_lock<std::shared_mutex> lock(cache_mutex_);
-            auto it = rule_to_point_cache_.find(rule_id);
-            if (it != rule_to_point_cache_.end()) {
-              alarm.point_id = it->second;
-            }
-          }
-
-          if (alarm.point_id <= 0) {
-            auto &factory =
-                PulseOne::Database::RepositoryFactory::getInstance();
-            auto rule_repo = factory.getAlarmRuleRepository();
-            if (rule_repo) {
-              auto rule_opt = rule_repo->findById(rule_id);
-              if (rule_opt.has_value()) {
-                auto target_id_opt = rule_opt->getTargetId();
-                if (target_id_opt.has_value() &&
-                    rule_opt->getTargetType() ==
-                        PulseOne::Alarm::TargetType::DATA_POINT) {
-                  alarm.point_id = target_id_opt.value();
-                  // 🚀 [CACHE] 캐시에 저장
-                  std::unique_lock<std::shared_mutex> lock(cache_mutex_);
-                  rule_to_point_cache_[rule_id] = alarm.point_id;
-                }
-              }
-            }
-          }
-        }
-      } catch (...) {
-      }
-    }
-
-    // ✅ 1. Point Metadata Enrichment (st: Control Status mapping)
-    if (alarm.point_id > 0) {
-      try {
-        // 🚀 [CACHE] 먼저 메모리 캐시 확인
-        bool found_in_cache = false;
-        {
-          std::shared_lock<std::shared_mutex> lock(cache_mutex_);
-          auto it = point_st_cache_.find(alarm.point_id);
-          if (it != point_st_cache_.end()) {
-            alarm.st = it->second;
-            found_in_cache = true;
-          }
-        }
-
-        if (!found_in_cache) {
-          auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
-          auto point_repo = factory.getDataPointRepository();
-          if (point_repo) {
-            auto point_opt = point_repo->findById(alarm.point_id);
-            if (point_opt.has_value()) {
-              alarm.st = point_opt->isWritable() ? 1 : 0;
-              // 🚀 [CACHE] 캐시에 저장
-              std::unique_lock<std::shared_mutex> lock(cache_mutex_);
-              point_st_cache_[alarm.point_id] = alarm.st;
-            }
-          }
-        }
-      } catch (...) {
-      }
-    }
-
-    // ✅ 2. Site ID Enrichment (Resolving site_id from point_id if missing)
-    if (alarm.site_id <= 0 && alarm.point_id > 0) {
-      try {
-        auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
-        auto point_repo = factory.getDataPointRepository();
-        auto device_repo = factory.getDeviceRepository();
-
-        if (point_repo && device_repo) {
-          auto point_opt = point_repo->findById(alarm.point_id);
-          if (point_opt.has_value()) {
-            int device_id = point_opt->getDeviceId();
-            auto device_opt = device_repo->findById(device_id);
-            if (device_opt.has_value()) {
-              alarm.site_id = device_opt->getSiteId();
-              LogManager::getInstance().Debug(
-                  "알람 사이트 정보 보정 완료: point=" +
-                  std::to_string(alarm.point_id) +
-                  ", site=" + std::to_string(alarm.site_id));
-            }
-          }
-        }
-      } catch (const std::exception &e) {
-        LogManager::getInstance().Warn("사이트 ID 보정 중 오류: " +
-                                       std::string(e.what()));
-      }
-    }
+    // ✅ 메타데이터 통합 보정 (Point, Name, Site ID, BD, ST)
+    enrichAlarmMetadata(alarm);
 
     // Batching Logic Support
     if (config_.enable_alarm_batching) {
       std::lock_guard<std::mutex> lock(batch_mutex_);
       pending_alarms_.push_back(alarm);
-      std::cout
-          << "[DEBUG][ExportCoordinator] Alarm enqueued to batch. Queue size: "
-          << pending_alarms_.size() << std::endl;
+      std::cout << "[DEBUG][ExportCoordinator] Alarm enqueued to batch. "
+                   "Queue size: "
+                << pending_alarms_.size() << std::endl;
       LogManager::getInstance().Debug(
           "[ExportCoordinator] Alarm enqueued to batch. Queue size: " +
           std::to_string(pending_alarms_.size()));
@@ -979,7 +890,8 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
         std::cout << "[v3.2.0 Debug] Automated file upload triggered for: "
                   << file_ref << std::endl;
 
-        // file_ref는 "file:///app/data/blobs/20260203_..." 형식 또는 단순 ID
+        // file_ref는 "file:///app/data/blobs/20260203_..." 형식 또는 단순
+        // ID
         std::string local_path = file_ref;
         if (local_path.find("file://") == 0) {
           local_path = local_path.substr(7);
@@ -1002,7 +914,6 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
         }
       }
     }
-
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("알람 이벤트 처리 실패: " +
                                     std::string(e.what()));
@@ -1017,8 +928,8 @@ void ExportCoordinator::flushAlarmBatch() {
     // Move pending alarms to local batch to minimize lock time
     std::lock_guard<std::mutex> lock(batch_mutex_);
     if (pending_alarms_.empty()) {
-      LogManager::getInstance().Debug(
-          "[ExportCoordinator] flushAlarmBatch called but no alarms pending");
+      LogManager::getInstance().Debug("[ExportCoordinator] flushAlarmBatch "
+                                      "called but no alarms pending");
       return;
     }
     batch_to_send = std::move(pending_alarms_);
@@ -1198,56 +1109,38 @@ ExportCoordinator::handleManualExport(const std::string &target_name,
 
     std::string redis_key = "point:" + std::to_string(point_id) + ":latest";
     std::string val_json_str = redis_client_->get(redis_key);
-    if (val_json_str.empty()) {
-      result.error_message = "Redis 데이터를 찾을 수 없음: " + redis_key;
-      return result;
-    }
+    nlohmann::json val_json = nlohmann::json::object();
 
-    auto val_json = nlohmann::json::parse(val_json_str);
+    if (!val_json_str.empty()) {
+      try {
+        val_json = nlohmann::json::parse(val_json_str);
+      } catch (...) {
+        LogManager::getInstance().Warn("Redis JSON 파싱 실패: " + redis_key);
+      }
+    }
 
     // 2. AlarmMessage 준비 (매핑 및 템플릿 지원)
     PulseOne::CSP::AlarmMessage alarm;
     alarm.point_id = point_id;
 
     // UI 명령 데이터에서 먼저 찾고, 없으면 Redis 데이터에서 찾음
-    int initial_bd = data.value(
-        "site_id",
-        data.value("bd", val_json.value("bd", val_json.value("site_id", 0))));
-
-    // 🕵️ DB Fallback: UI와 Redis 모두 site_id가 없으면 DB 직접 조회 추가 (수동
-    // 테스트 안정성 강화)
+    int initial_bd = data.value("bd", 0);
     if (initial_bd <= 0) {
-      try {
-        auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
-        if (factory.isInitialized() || factory.initialize()) {
-          auto point_repo = factory.getDataPointRepository();
-          if (point_repo) {
-            auto point = point_repo->findById(point_id);
-            if (point.has_value()) {
-              int device_id = point->getDeviceId();
-              auto device_repo = factory.getDeviceRepository();
-              if (device_repo) {
-                auto device = device_repo->findById(device_id);
-                if (device.has_value()) {
-                  initial_bd = device->getSiteId();
-                  LogManager::getInstance().Info(
-                      "[DB-FALLBACK] Point " + std::to_string(point_id) +
-                      " -> Device " + std::to_string(device_id) + " -> Site " +
-                      std::to_string(initial_bd) + " (DB 조회 성공)");
-                }
-              }
-            }
-          }
-        }
-      } catch (const std::exception &e) {
-        LogManager::getInstance().Warn("[DB-FALLBACK] DB 조회 실패: " +
-                                       std::string(e.what()));
-      }
+      initial_bd = data.value("site_id", 0);
     }
 
+    if (initial_bd <= 0) {
+      initial_bd = val_json.value("bd", val_json.value("site_id", 0));
+    }
+
+    // 🕵️ DB Fallback: UI와 Redis 모두 site_id가 없으면 DB 직접 조회
+    // 추가 (통합 보정 활용)
     alarm.site_id = initial_bd;
-    alarm.bd = initial_bd; // ✅ Start with input BD instead of default 101
+    alarm.bd = initial_bd;
     alarm.nm = val_json.value("nm", val_json.value("point_name", ""));
+
+    // 통합 메타데이터 보정 로직 호출
+    enrichAlarmMetadata(alarm);
 
     // 값 파싱 (문자열 또는 숫자 대응) 및 페이로드 오버라이드 지원
     try {
@@ -1284,7 +1177,12 @@ ExportCoordinator::handleManualExport(const std::string &target_name,
     alarm.st = data.value("st", val_json.value("st", 1));
     alarm.des = data.value("des", std::string("Manual Export Triggered"));
 
-    // 3. DynamicTargetManager를 통해 전송 (매핑 포인트 이름 자동 적용)
+    // 🚀 [IMPORTANT] Override flag for manual data validation
+    // (telling TargetManager to trust this data)
+    alarm.manual_override = true;
+
+    // 3. DynamicTargetManager를 통해 전송 (매핑 포인트 이름 자동
+    // 적용)
     auto target_manager = getTargetManager();
     if (!target_manager) {
       result.error_message = "TargetManager 초기화 안 됨";
@@ -1300,22 +1198,40 @@ ExportCoordinator::handleManualExport(const std::string &target_name,
     // 4. 결과 변환 및 통계 업데이트
     result = convertTargetSendResult(send_res);
     updateStats(result);
-    // ✅ 수동 전송 기록 로그 저장 (UI 히스토리용)
-    logExportResult(result, &alarm);
-
-    if (result.success) {
-      LogManager::getInstance().Info("수동 전송 완료: " + target_name);
-    } else {
-      LogManager::getInstance().Error("수동 전송 실패 [" + target_name +
-                                      "]: " + result.error_message);
-    }
-
+    return result;
   } catch (const std::exception &e) {
-    result.error_message = "수동 전송 중 예외: " + std::string(e.what());
+    result.error_message = "수동 전송 실패: " + std::string(e.what());
     LogManager::getInstance().Error(result.error_message);
+    return result;
   }
+}
 
-  return result;
+void ExportCoordinator::sendManualExportResult(const std::string &target_name,
+                                               bool success,
+                                               const std::string &error_message,
+                                               const nlohmann::json &payload) {
+  if (!redis_client_ || !redis_client_->isConnected())
+    return;
+
+  try {
+    nlohmann::json res_payload;
+    res_payload[PulseOne::Constants::Export::JsonKeys::SUCCESS] = success;
+    res_payload[PulseOne::Constants::Export::JsonKeys::ERROR] = error_message;
+    res_payload[PulseOne::Constants::Export::JsonKeys::TARGET] = target_name;
+    res_payload[PulseOne::Constants::Export::JsonKeys::COMMAND_ID] =
+        payload.value(PulseOne::Constants::Export::JsonKeys::COMMAND_ID, "");
+
+    nlohmann::json res_msg;
+    res_msg[PulseOne::Constants::Export::JsonKeys::COMMAND] =
+        PulseOne::Constants::Export::Command::MANUAL_EXPORT_RESULT;
+    res_msg[PulseOne::Constants::Export::JsonKeys::PAYLOAD] = res_payload;
+
+    redis_client_->publish(
+        PulseOne::Constants::Export::Redis::CHANNEL_CMD_GATEWAY_RESULT,
+        res_msg.dump());
+  } catch (...) {
+    LogManager::getInstance().Error("수동 전송 결과 게시 실패");
+  }
 }
 
 // =============================================================================
@@ -1372,8 +1288,8 @@ ExportCoordinatorStats ExportCoordinator::getStats() const {
     current_stats.total_exports += sub_stats.total_processed;
     current_stats.alarm_events += sub_stats.total_processed;
 
-    // 성공/실패 합산 (EventSubscriber는 현재 성공만 카운트하거나 실패는 따로
-    // 관리)
+    // 성공/실패 합산 (EventSubscriber는 현재 성공만 카운트하거나
+    // 실패는 따로 관리)
     current_stats.successful_exports += sub_stats.total_processed;
     current_stats.failed_exports += sub_stats.total_failed;
   }
@@ -1596,6 +1512,102 @@ void ExportCoordinator::updateStats(const ExportResult &result) {
 
 std::string ExportCoordinator::getDatabasePath() const {
   return ConfigManager::getInstance().getSQLiteDbPath();
+}
+
+void ExportCoordinator::enrichAlarmMetadata(
+    PulseOne::CSP::AlarmMessage &alarm) {
+  // ✅ 0. Point ID Enrichment (Fallback lookup from rule_id if
+  // missing)
+  if (alarm.point_id <= 0) {
+    try {
+      int rule_id = 0;
+      if (alarm.extra_info.contains("rule_id")) {
+        if (alarm.extra_info["rule_id"].is_number()) {
+          rule_id = alarm.extra_info["rule_id"].get<int>();
+        } else if (alarm.extra_info["rule_id"].is_string()) {
+          rule_id = std::stoi(alarm.extra_info["rule_id"].get<std::string>());
+        }
+      } else if (alarm.extra_info.contains("alarm_rule_id")) {
+        if (alarm.extra_info["alarm_rule_id"].is_number()) {
+          rule_id = alarm.extra_info["alarm_rule_id"].get<int>();
+        } else if (alarm.extra_info["alarm_rule_id"].is_string()) {
+          rule_id =
+              std::stoi(alarm.extra_info["alarm_rule_id"].get<std::string>());
+        }
+      }
+      alarm.rule_id = rule_id; // Store rule_id for potential use
+
+      if (rule_id > 0) {
+        // 🚀 [CACHE] 먼저 메모리 캐시 확인
+        {
+          std::shared_lock<std::shared_mutex> lock(cache_mutex_);
+          auto it = rule_to_point_cache_.find(rule_id);
+          if (it != rule_to_point_cache_.end()) {
+            alarm.point_id = it->second;
+          }
+        }
+
+        if (alarm.point_id <= 0) {
+          auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+          auto rule_repo = factory.getAlarmRuleRepository();
+          if (rule_repo) {
+            auto rule_opt = rule_repo->findById(rule_id);
+            if (rule_opt.has_value()) {
+              auto target_id_opt = rule_opt->getTargetId();
+              if (target_id_opt.has_value() &&
+                  rule_opt->getTargetType() ==
+                      PulseOne::Alarm::TargetType::DATA_POINT) {
+                alarm.point_id = target_id_opt.value();
+                // 🚀 [CACHE] 캐시에 저장
+                std::unique_lock<std::shared_mutex> lock(cache_mutex_);
+                rule_to_point_cache_[rule_id] = alarm.point_id;
+              }
+            }
+          }
+        }
+      }
+    } catch (...) {
+    }
+  }
+
+  // If point_id is still not set, or if it's set, proceed with
+  // further enrichment
+  if (alarm.point_id <= 0)
+    return;
+
+  try {
+    auto &factory = PulseOne::Database::RepositoryFactory::getInstance();
+    auto point_repo = factory.getDataPointRepository();
+    auto device_repo = factory.getDeviceRepository();
+
+    if (point_repo) {
+      auto point_opt = point_repo->findById(alarm.point_id);
+      if (point_opt.has_value()) {
+        // st (Status) enrichment
+        if (alarm.st <= 0) { // Only enrich if not already set
+          alarm.st = point_opt->isWritable() ? 1 : 0;
+        }
+
+        // nm (Name) enrichment
+        if (alarm.nm.empty()) {
+          alarm.nm = point_opt->getName();
+        }
+
+        if (alarm.site_id <= 0 && device_repo) {
+          int device_id = point_opt->getDeviceId();
+          auto device_opt = device_repo->findById(device_id);
+          if (device_opt.has_value()) {
+            alarm.site_id = device_opt->getSiteId();
+          }
+        }
+      }
+    }
+
+    if (alarm.bd <= 0 && alarm.site_id > 0) {
+      alarm.bd = alarm.site_id;
+    }
+  } catch (...) {
+  }
 }
 
 } // namespace Coordinator

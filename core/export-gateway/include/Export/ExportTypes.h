@@ -40,32 +40,12 @@
 // visibility/usage)
 using json = nlohmann::json;
 
-#include "CSP/AlarmMessage.h"
+#include "Gateway/Model/AlarmMessage.h"
+#include "Gateway/Model/ValueMessage.h"
 
-namespace PulseOne {
-namespace CSP {
-
-/**
- * @brief Value Message Structure for Data Scanning (C# ValueMessage
- * compatibility)
- */
-struct ValueMessage {
-  int bd = 0;     // Building ID
-  std::string nm; // Point Name
-  std::string vl; // Value (String format to support Double/String flexibility)
-  std::string tm; // Timestamp (yyyy-MM-dd HH:mm:ss.fff)
-  int st = 0;     // Status (Communication Status)
-  std::string ty = "dbl"; // Type (dbl or str), default: dbl
-
-  // JSON Serialization
-  json to_json() const {
-    return json{{"bd", bd}, {"nm", nm}, {"vl", vl},
-                {"tm", tm}, {"st", st}, {"ty", ty}};
-  }
-};
-
-} // namespace CSP
-} // namespace PulseOne
+// [DEPRECATED] ValueMessage moved to Gateway/Model/ValueMessage.h
+// Logic preserved here via namespace alias in ValueMessage.h
+// namespace CSP { struct ValueMessage { ... }; }
 
 // [REMOVE] json을 헤더에서 제거하여 컴파일 메모리 사용량 절감 (Original Comment
 // preserved but alias moved up)
@@ -513,9 +493,9 @@ struct BatchTargetResult {
  * @brief 핸들러 등록 매크로
  */
 #define REGISTER_TARGET_HANDLER(type_name, handler_class)                      \
-  static bool register_##handler_class = []() {                                \
-    TargetHandlerFactory::getInstance().registerHandler(                       \
-        type_name, []() -> std::unique_ptr<ITargetHandler> {                   \
+  [[maybe_unused]] static bool register_##handler_class = []() {               \
+    PulseOne::Export::TargetHandlerFactory::getInstance().registerHandler(     \
+        type_name, []() -> std::unique_ptr<PulseOne::Export::ITargetHandler> { \
           return std::make_unique<handler_class>();                            \
         });                                                                    \
     return true;                                                               \
