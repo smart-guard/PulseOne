@@ -199,6 +199,18 @@ class ExportGatewayService extends BaseService {
      * Extracts raw credentials, encrypts them, saves to security.env, and replaces with ${VAR}.
      */
     async extractAndEncryptCredentials(targetName, config) {
+        // [Fix] Handle Array Configurations (Recursively)
+        if (Array.isArray(config)) {
+            let anyChanges = false;
+            const newArray = [];
+            for (let i = 0; i < config.length; i++) {
+                const { hasChanges, newConfig } = await this.extractAndEncryptCredentials(targetName, config[i]);
+                if (hasChanges) anyChanges = true;
+                newArray.push(newConfig);
+            }
+            return { hasChanges: anyChanges, newConfig: newArray };
+        }
+
         let hasChanges = false;
         const newConfig = { ...config };
         const ConfigManager = require('../config/ConfigManager');
@@ -210,18 +222,21 @@ class ExportGatewayService extends BaseService {
             // Check if value is non-empty string, not already a variable (${...}), and not encrypted (ENC:)
             if (val && typeof val === 'string' && !val.startsWith('${') && !val.startsWith('ENC:')) {
                 // Generate unique variable name
-                const sanitizedTargetName = targetName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase();
+                // [Fix] Remove CSP_ prefix and collapse multiple underscores
+                const sanitizedTargetName = targetName.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toUpperCase();
                 const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0'); // Add randomness to avoid collision
-                const varName = `CSP_${sanitizedTargetName}_${prefixSuffix}_${randomSuffix}`.substring(0, 64); // Limit length
+                const varName = `${sanitizedTargetName}_${prefixSuffix}_${randomSuffix}`.substring(0, 64); // Limit length
 
                 // Encrypt
                 const encrypted = this.encryptSecret(val);
 
                 // Append to security.env
-                const envPath = path.join(process.cwd(), 'config', 'security.env');
+                // [Fix] Path resolution: process.cwd() is /app/backend, config is at /app/config
+                const envPath = path.join(process.cwd(), '../config', 'security.env');
                 const envEntry = `\n${varName}=${encrypted}`;
 
                 try {
+                    // console.log(`[ExportGatewayService] Writing secret to ${envPath}`);
                     fs.appendFileSync(envPath, envEntry);
                     console.log(`[ExportGatewayService] Auto-encrypted credential to ${varName}`);
 
@@ -232,7 +247,7 @@ class ExportGatewayService extends BaseService {
                     obj[key] = `\${${varName}}`;
                     hasChanges = true;
                 } catch (e) {
-                    console.error(`[ExportGatewayService] Failed to write to security.env: ${e.message}`);
+                    console.error(`[ExportGatewayService] Failed to write to security.env at ${envPath}: ${e.message}`);
                 }
             }
         };

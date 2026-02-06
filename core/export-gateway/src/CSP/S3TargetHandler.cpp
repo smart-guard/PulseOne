@@ -823,11 +823,15 @@ std::string S3TargetHandler::expandTemplate(const std::string &template_str,
     minute = alarm.tm.substr(14, 2);
     second = alarm.tm.substr(17, 2);
     date_str = year + month + day;
-    ts_str = year + month + day + "_" + hour + minute + second;
+    // [Mod] User Request: No underscore in timestamp (YYYYMMDDHHMMSS)
+    ts_str = year + month + day + hour + minute + second;
   }
 
   result = std::regex_replace(result, std::regex("\\{timestamp\\}"), ts_str);
   result = std::regex_replace(result, std::regex("\\{date\\}"), date_str);
+  // [New] Support {site_id} as alias for building_id
+  result = std::regex_replace(result, std::regex("\\{site_id\\}"),
+                              std::to_string(alarm.bd));
   result = std::regex_replace(result, std::regex("\\{year\\}"), year);
   result = std::regex_replace(result, std::regex("\\{month\\}"), month);
   result = std::regex_replace(result, std::regex("\\{day\\}"), day);
