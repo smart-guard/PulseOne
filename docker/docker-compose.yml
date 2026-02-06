@@ -95,16 +95,16 @@ services:
       - LOG_LEVEL=debug
       - INFLUXDB_BUCKET=history
       - TZ=Asia/Seoul
-    command: /bin/bash -c "cd /app/core/collector && ./bin/pulseone-collector"
+    networks:
+      - pulseone_network
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ../data:/app/data
       - ../config:/app/config
       - ../core:/app/core
-    networks:
-      - pulseone_network
     tty: true
+    command: /bin/bash -c "cd /app/core/collector && ./bin/pulseone-collector"
 
   simulator-modbus:
     image: node:20-slim

@@ -56,4 +56,36 @@ router.put('/files/:filename', async (req, res) => {
     }
 });
 
+// 4. 시크릿 암호화
+router.post('/encrypt', (req, res) => {
+    try {
+        const { value } = req.body;
+        if (!value) {
+            return res.status(400).json({ success: false, error: 'Value is required' });
+        }
+
+        const encrypted = service.encryptSecret(value);
+        res.json({ success: true, data: { encrypted } });
+    } catch (error) {
+        logger.error('ConfigAPI', `Encryption failed: ${error.message}`);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 5. 시크릿 복호화
+router.post('/decrypt', (req, res) => {
+    try {
+        const { value } = req.body;
+        if (!value) {
+            return res.status(400).json({ success: false, error: 'Value is required' });
+        }
+
+        const decrypted = service.decryptSecret(value);
+        res.json({ success: true, data: { decrypted } });
+    } catch (error) {
+        logger.error('ConfigAPI', `Decryption failed: ${error.message}`);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;

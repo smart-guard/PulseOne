@@ -465,4 +465,3 @@ CREATE TABLE IF NOT EXISTS virtual_point_logs (
 
 CREATE INDEX IF NOT EXISTS idx_virtual_point_logs_point_id ON virtual_point_logs(point_id);
 CREATE INDEX IF NOT EXISTS idx_virtual_point_logs_created_at ON virtual_point_logs(created_at);
-```

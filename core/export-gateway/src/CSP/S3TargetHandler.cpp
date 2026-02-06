@@ -17,6 +17,7 @@
 #include "Client/S3Client.h"
 #include "Constants/ExportConstants.h"
 #include "Logging/LogManager.h"
+#include "Security/SecretManager.h"
 #include "Transform/PayloadTransformer.h"
 #include "Utils/ClientCacheManager.h"
 #include "Utils/ConfigManager.h"
@@ -625,14 +626,16 @@ void S3TargetHandler::loadCredentials(const json &config,
   auto &config_manager = ConfigManager::getInstance();
 
   // 1. 파일에서 자격증명 로드 (최우선)
+  // config["access_key_file"]이 ${VAR} 형태일 수 있으므로 확장 필요
   if (config.contains("access_key_file") &&
       config.contains("secret_key_file")) {
     try {
-      std::string access_key_config =
-          config["access_key_file"].get<std::string>();
-      std::string secret_key_config =
-          config["secret_key_file"].get<std::string>();
+      std::string access_key_config = config_manager.expandVariables(
+          config["access_key_file"].get<std::string>());
+      std::string secret_key_config = config_manager.expandVariables(
+          config["secret_key_file"].get<std::string>());
 
+      // getSecret는 키(이름) 또는 파일 경로를 받아 처리
       std::string access_key = config_manager.getSecret(access_key_config);
       std::string secret_key = config_manager.getSecret(secret_key_config);
 
@@ -654,6 +657,34 @@ void S3TargetHandler::loadCredentials(const json &config,
         config["AccessKeyID"].get<std::string>());
     s3_config.secret_key = config_manager.expandVariables(
         config["SecretAccessKey"].get<std::string>());
+
+    // [보안 강화] 값이 파일 경로(예: /secrets/key)인 경우 파일 내용을 읽어 사용
+    // 일반적인 AWS Key는 'AKIA...'로 시작하므로 '/'로 시작하면 파일로 간주
+    if (!s3_config.access_key.empty() && s3_config.access_key[0] == '/') {
+      try {
+        auto secureVal =
+            PulseOne::Security::SecretManager::getInstance().getSecretFromFile(
+                s3_config.access_key);
+        if (!secureVal.empty()) {
+          s3_config.access_key = secureVal.get();
+        }
+      } catch (...) {
+        // Ignore failure, keep original path or empty
+      }
+    }
+    if (!s3_config.secret_key.empty() && s3_config.secret_key[0] == '/') {
+      try {
+        auto secureVal =
+            PulseOne::Security::SecretManager::getInstance().getSecretFromFile(
+                s3_config.secret_key);
+        if (!secureVal.empty()) {
+          s3_config.secret_key = secureVal.get();
+        }
+      } catch (...) {
+        // Ignore failure
+      }
+    }
+
     LogManager::getInstance().Info("✅ S3 자격증명(S3 Service) 설정에서 로드");
     return;
   }
@@ -663,6 +694,29 @@ void S3TargetHandler::loadCredentials(const json &config,
         config_manager.expandVariables(config["access_key"].get<std::string>());
     s3_config.secret_key =
         config_manager.expandVariables(config["secret_key"].get<std::string>());
+
+    // [보안 강화] 파일 경로 처리 (위와 동일)
+    if (!s3_config.access_key.empty() && s3_config.access_key[0] == '/') {
+      try {
+        auto secureVal =
+            PulseOne::Security::SecretManager::getInstance().getSecretFromFile(
+                s3_config.access_key);
+        if (!secureVal.empty())
+          s3_config.access_key = secureVal.get();
+      } catch (...) {
+      }
+    }
+    if (!s3_config.secret_key.empty() && s3_config.secret_key[0] == '/') {
+      try {
+        auto secureVal =
+            PulseOne::Security::SecretManager::getInstance().getSecretFromFile(
+                s3_config.secret_key);
+        if (!secureVal.empty())
+          s3_config.secret_key = secureVal.get();
+      } catch (...) {
+      }
+    }
+
     LogManager::getInstance().Info("✅ S3 자격증명 설정에서 로드");
     return;
   }

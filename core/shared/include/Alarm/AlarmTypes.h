@@ -598,19 +598,19 @@ struct AlarmStatistics {
 inline std::string alarmTypeToString(AlarmType type) {
   switch (type) {
   case AlarmType::ANALOG:
-    return "ANALOG";
+    return "analog";
   case AlarmType::DIGITAL:
-    return "DIGITAL";
+    return "digital";
   case AlarmType::SCRIPT:
-    return "SCRIPT";
+    return "script";
   case AlarmType::COMPOUND:
-    return "COMPOUND";
+    return "compound";
   case AlarmType::COMMUNICATION:
-    return "COMMUNICATION";
+    return "communication";
   case AlarmType::QUALITY:
-    return "QUALITY";
+    return "quality";
   default:
-    return "ANALOG";
+    return "analog";
   }
 }
 
@@ -634,17 +634,17 @@ inline AlarmType stringToAlarmType(const std::string &str) {
 inline std::string severityToString(AlarmSeverity severity) {
   switch (severity) {
   case AlarmSeverity::INFO:
-    return "INFO";
+    return "info";
   case AlarmSeverity::LOW:
-    return "LOW";
+    return "low";
   case AlarmSeverity::MEDIUM:
-    return "MEDIUM";
+    return "medium";
   case AlarmSeverity::HIGH:
-    return "HIGH";
+    return "high";
   case AlarmSeverity::CRITICAL:
-    return "CRITICAL";
+    return "critical";
   default:
-    return "MEDIUM";
+    return "medium";
   }
 }
 
@@ -666,19 +666,19 @@ inline AlarmSeverity stringToSeverity(const std::string &str) {
 inline std::string stateToString(AlarmState state) {
   switch (state) {
   case AlarmState::INACTIVE:
-    return "INACTIVE";
+    return "inactive";
   case AlarmState::ACTIVE:
-    return "ACTIVE";
+    return "active";
   case AlarmState::ACKNOWLEDGED:
-    return "ACKNOWLEDGED";
+    return "acknowledged";
   case AlarmState::CLEARED:
-    return "CLEARED";
+    return "cleared";
   case AlarmState::SUPPRESSED:
-    return "SUPPRESSED";
+    return "suppressed";
   case AlarmState::SHELVED:
-    return "SHELVED";
+    return "shelved";
   default:
-    return "ACTIVE";
+    return "active";
   }
 }
 
@@ -702,17 +702,17 @@ inline AlarmState stringToState(const std::string &str) {
 inline std::string digitalTriggerToString(DigitalTrigger trigger) {
   switch (trigger) {
   case DigitalTrigger::ON_TRUE:
-    return "ON_TRUE";
+    return "on_true";
   case DigitalTrigger::ON_FALSE:
-    return "ON_FALSE";
+    return "on_false";
   case DigitalTrigger::ON_CHANGE:
-    return "ON_CHANGE";
+    return "on_change";
   case DigitalTrigger::ON_RISING:
-    return "ON_RISING";
+    return "on_rising";
   case DigitalTrigger::ON_FALLING:
-    return "ON_FALLING";
+    return "on_falling";
   default:
-    return "ON_CHANGE";
+    return "on_change";
   }
 }
 
@@ -734,13 +734,13 @@ inline DigitalTrigger stringToDigitalTrigger(const std::string &str) {
 inline std::string targetTypeToString(TargetType type) {
   switch (type) {
   case TargetType::DATA_POINT:
-    return "DATA_POINT";
+    return "data_point";
   case TargetType::VIRTUAL_POINT:
-    return "VIRTUAL_POINT";
+    return "virtual_point";
   case TargetType::GROUP:
-    return "GROUP";
+    return "group";
   default:
-    return "DATA_POINT";
+    return "data_point";
   }
 }
 
@@ -758,17 +758,17 @@ inline TargetType stringToTargetType(const std::string &str) {
 inline std::string analogAlarmLevelToString(AnalogAlarmLevel level) {
   switch (level) {
   case AnalogAlarmLevel::NORMAL:
-    return "NORMAL";
+    return "normal";
   case AnalogAlarmLevel::LOW_LOW:
-    return "LOW_LOW";
+    return "low_low";
   case AnalogAlarmLevel::LOW:
-    return "LOW";
+    return "low";
   case AnalogAlarmLevel::HIGH:
-    return "HIGH";
+    return "high";
   case AnalogAlarmLevel::HIGH_HIGH:
-    return "HIGH_HIGH";
+    return "high_high";
   default:
-    return "NORMAL";
+    return "normal";
   }
 }
 

@@ -14,6 +14,7 @@ interface GatewayListTabProps {
     loading: boolean;
     onRefresh: () => Promise<void>;
     onEdit: (gateway: Gateway) => void;
+    onDelete: (gateway: Gateway) => Promise<void>;
     pagination: any;
     onPageChange: (page: number) => void;
     assignments: Record<number, Assignment[]>;
@@ -27,6 +28,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
     loading,
     onRefresh,
     onEdit,
+    onDelete,
     pagination,
     onPageChange,
     assignments,
@@ -40,8 +42,6 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const { confirm } = useConfirmContext();
 
-    // Removed internal fetchData and useEffect as data is now passed via props
-
     const handleAction = async (gwId: number, action: (gw: Gateway) => Promise<void>) => {
         setActionLoading(gwId);
         try {
@@ -49,6 +49,28 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             if (gw) await action(gw);
         } finally {
             setActionLoading(null);
+        }
+    };
+
+    const handleDelete = async (gw: Gateway) => {
+        const confirmed = await confirm({
+            title: '게이트웨이 삭제',
+            message: `"${gw.name}" 게이트웨이를 정말 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
+            confirmText: '삭제',
+            confirmButtonType: 'danger'
+        });
+        if (!confirmed) return;
+
+        try {
+            await onDelete(gw);
+            onRefresh();
+        } catch (e: any) {
+            await confirm({
+                title: '삭제 실패',
+                message: e.message || '삭제 중 오류가 발생했습니다.',
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
         }
     };
 
@@ -223,9 +245,24 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                     <div className="mgmt-grid">
                         {displayGateways.map(gw => (
                             <div key={gw.id} className="mgmt-card gateway-card">
-                                <div className="mgmt-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                    <div className="mgmt-card-title" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        <h4 style={{ margin: 0, fontSize: '15px' }}>{gw.name}</h4>
+                                <div className="mgmt-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                                    <div className="mgmt-card-title" style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <h4 style={{ margin: 0, fontSize: '15px' }}>{gw.name}</h4>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <div className={`badge ${gw.live_status?.status === 'online' ? 'success' : 'neutral'}`}>
+                                                    <i className={`fas fa-circle`} style={{ fontSize: '8px', marginRight: '5px' }} />
+                                                    {gw.live_status?.status === 'online' ? 'ONLINE' : 'OFFLINE'}
+                                                </div>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDelete(gw); }}
+                                                    style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: '0 4px' }}
+                                                    title="삭제"
+                                                >
+                                                    <i className="fas fa-trash-alt hover-danger" />
+                                                </button>
+                                            </div>
+                                        </div>
                                         {gw.description && (
                                             <div style={{ fontSize: '12px', color: 'var(--neutral-500)', fontWeight: 400, marginTop: '2px' }}>
                                                 {gw.description}
@@ -237,10 +274,6 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                                 EXPORT GATEWAY
                                             </span>
                                         </div>
-                                    </div>
-                                    <div className={`badge ${gw.live_status?.status === 'online' ? 'success' : 'neutral'}`}>
-                                        <i className={`fas fa-circle`} style={{ fontSize: '8px', marginRight: '5px' }} />
-                                        {gw.live_status?.status === 'online' ? 'ONLINE' : 'OFFLINE'}
                                     </div>
                                 </div>
 
@@ -354,6 +387,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                     setIsDetailModalOpen(false);
                     onEdit(gw);
                 }}
+                onDelete={handleDelete}
             />
         </div>
     );
@@ -368,7 +402,8 @@ const GatewayDetailModal: React.FC<{
     allProfiles: ExportProfile[];
     schedules: ExportSchedule[];
     onEdit: (gateway: Gateway) => void;
-}> = ({ visible, onClose, gateway, allAssignments, targets, allProfiles, schedules, onEdit }) => {
+    onDelete: (gateway: Gateway) => void;
+}> = ({ visible, onClose, gateway, allAssignments, targets, allProfiles, schedules, onEdit, onDelete }) => {
     if (!gateway) return null;
 
     // Derived info with fallback for names
@@ -390,17 +425,20 @@ const GatewayDetailModal: React.FC<{
             open={visible}
             onCancel={onClose}
             title={null}
-            footer={[
-                <button
-                    key="edit"
-                    className="btn btn-outline"
-                    onClick={() => { onClose(); onEdit(gateway); }}
-                    style={{ marginRight: '8px', border: '1px solid #e2e8f0' }}
-                >
-                    <i className="fas fa-magic" style={{ marginRight: '6px', color: 'var(--primary-600)' }} /> 설정 수정
-                </button>,
-                <button key="close" className="btn btn-primary" onClick={onClose} style={{ minWidth: '100px' }}>닫기</button>
-            ]}
+            footer={
+                <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%', gap: '12px' }}>
+                    <button
+                        className="btn btn-outline"
+                        onClick={() => { onClose(); onEdit(gateway); }}
+                        style={{ border: '1px solid #e2e8f0' }}
+                    >
+                        <i className="fas fa-magic" style={{ marginRight: '6px', color: 'var(--primary-600)' }} /> 설정 수정
+                    </button>
+                    <button className="btn btn-primary" onClick={onClose} style={{ minWidth: '80px' }}>
+                        닫기
+                    </button>
+                </div>
+            }
             width={800}
             centered
             getContainer={() => document.body}

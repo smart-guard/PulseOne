@@ -293,6 +293,38 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
         }
       });
 
+      // 1.5. 상세 설정(Settings) 비교
+      if (editData.settings) {
+        const oldSettings = device.settings || {};
+        const newSettings = editData.settings as any;
+
+        const settingsFields = [
+          { key: 'is_auto_registration_enabled', label: '자동 데이터 등록 (Auto-Discovery)', isBool: true },
+          { key: 'polling_interval_ms', label: '수집 간격', unit: 'ms' },
+          { key: 'max_retry_count', label: '최대 재시도', unit: '회' }
+        ];
+
+        settingsFields.forEach(f => {
+          const oldV = oldSettings[f.key];
+          const newV = newSettings[f.key];
+
+          if (String(oldV ?? '') !== String(newV ?? '')) {
+            let oStr = oldV ?? '-';
+            let nStr = newV ?? '-';
+
+            if (f.isBool) {
+              oStr = oldV ? 'ON' : 'OFF';
+              nStr = newV ? 'ON' : 'OFF';
+            } else if (f.unit) {
+              oStr = `${oStr}${f.unit}`;
+              nStr = `${nStr}${f.unit}`;
+            }
+
+            changes.push(`- 상세설정(${f.label}): ${oStr} → ${nStr}`);
+          }
+        });
+      }
+
       // 2. 데이터포인트 변경 감지
       const added = dataPoints.filter(dp => !originalDataPoints.some(o => o.id === dp.id));
       const removed = originalDataPoints.filter(o => !dataPoints.some(dp => dp.id === o.id));

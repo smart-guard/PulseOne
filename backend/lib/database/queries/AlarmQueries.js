@@ -507,7 +507,7 @@ class AlarmQueries {
 
         DELETE: 'DELETE FROM alarm_occurrences WHERE id = ?',
 
-        // 활성 알람 조회 - acknowledged 필터링 지원
+        // 활성 알람 조회 - acknowledged 필터링 지원 (대소문자 무관)
         FIND_ACTIVE: `
             SELECT 
                 ao.*,
@@ -525,7 +525,7 @@ class AlarmQueries {
             LEFT JOIN data_points dp ON dp.id = ao.point_id
             LEFT JOIN sites s ON d.site_id = s.id
             LEFT JOIN virtual_points vp ON vp.id = ao.point_id
-            WHERE ao.tenant_id = ? AND ao.state = 'active'
+            WHERE ao.tenant_id = ? AND UPPER(ao.state) = 'ACTIVE'
             ORDER BY ao.occurrence_time DESC
         `,
 
@@ -667,7 +667,7 @@ class AlarmQueries {
             LEFT JOIN alarm_rules ar ON ao.rule_id = ar.id
             WHERE ao.tenant_id = ? 
               AND ao.device_id = ?  -- INTEGER 비교
-              AND ao.state = 'active'
+              AND ao.state IN ('active', 'ACTIVE')
             ORDER BY ao.occurrence_time DESC
         `,
 
@@ -759,7 +759,7 @@ class AlarmQueries {
         STATS_SUMMARY: `
             SELECT 
                 COUNT(*) as total_occurrences,
-                SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as active_alarms,
+                SUM(CASE WHEN UPPER(state) = 'ACTIVE' THEN 1 ELSE 0 END) as active_alarms,
                 SUM(CASE WHEN acknowledged_time IS NULL THEN 1 ELSE 0 END) as unacknowledged_alarms,
                 SUM(CASE WHEN acknowledged_time IS NOT NULL THEN 1 ELSE 0 END) as acknowledged_alarms,
                 SUM(CASE WHEN cleared_time IS NOT NULL THEN 1 ELSE 0 END) as cleared_alarms
@@ -771,7 +771,7 @@ class AlarmQueries {
         STATS_TODAY: `
             SELECT 
                 COUNT(*) as today_total,
-                SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as today_active,
+                SUM(CASE WHEN UPPER(state) = 'ACTIVE' THEN 1 ELSE 0 END) as today_active,
                 SUM(CASE WHEN acknowledged_time IS NULL THEN 1 ELSE 0 END) as today_unacknowledged,
                 SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as today_critical,
                 SUM(CASE WHEN severity = 'major' OR severity = 'high' THEN 1 ELSE 0 END) as today_major,
@@ -787,7 +787,7 @@ class AlarmQueries {
             SELECT 
                 severity,
                 COUNT(*) as count,
-                SUM(CASE WHEN state = 'active' THEN 1 ELSE 0 END) as active_count
+                SUM(CASE WHEN UPPER(state) = 'ACTIVE' THEN 1 ELSE 0 END) as active_count
             FROM alarm_occurrences 
             WHERE tenant_id = ? 
             GROUP BY severity

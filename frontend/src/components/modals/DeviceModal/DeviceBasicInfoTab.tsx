@@ -871,8 +871,11 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   <input
                     type="number"
                     className="bi-input"
-                    value={editData?.polling_interval || (isRtuDevice ? 2000 : 1000)}
-                    onChange={(e) => onUpdateField('polling_interval', parseInt(e.target.value))}
+                    value={editData?.polling_interval ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      onUpdateField('polling_interval', val === '' ? '' : parseInt(val));
+                    }}
                     min="100"
                     step="100"
                   />
@@ -886,8 +889,11 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   <input
                     type="number"
                     className="bi-input"
-                    value={editData?.timeout || (isRtuDevice ? 3000 : 5000)}
-                    onChange={(e) => onUpdateField('timeout', parseInt(e.target.value))}
+                    value={editData?.timeout ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      onUpdateField('timeout', val === '' ? '' : parseInt(val));
+                    }}
                     min="1000"
                     step="1000"
                   />
@@ -904,8 +910,11 @@ const DeviceBasicInfoTab: React.FC<DeviceBasicInfoTabProps> = ({
                   <input
                     type="number"
                     className="bi-input"
-                    value={editData?.retry_count || 3}
-                    onChange={(e) => onUpdateField('retry_count', parseInt(e.target.value))}
+                    value={editData?.retry_count ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      onUpdateField('retry_count', val === '' ? '' : parseInt(val));
+                    }}
                     min="0"
                     max="10"
                     style={{ width: '60px' }}

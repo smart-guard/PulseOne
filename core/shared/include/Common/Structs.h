@@ -1669,6 +1669,8 @@ struct DeviceInfo {
         is_performance_monitoring_enabled ? "true" : "false";
     driver_config.properties["diagnostic_mode_enabled"] =
         is_diagnostic_mode_enabled ? "true" : "false";
+    driver_config.properties["auto_registration_enabled"] =
+        is_auto_registration_enabled ? "true" : "false";
 
     // =======================================================================
     // 🔥 마지막에 JSON config의 properties 복사 (오버라이드 가능)

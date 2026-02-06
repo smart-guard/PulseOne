@@ -113,6 +113,49 @@ class ConfigEditorService {
 
         return safePath;
     }
+
+    /**
+     * 시크릿 암호화 (XOR + Base64)
+     * C++ SecretManager와 동일한 로직/키 사용
+     */
+    encryptSecret(value) {
+        if (!value) return '';
+
+        const KEY = "PulseOne2025SecretKey";
+        let encrypted = '';
+
+        // XOR Encryption
+        for (let i = 0; i < value.length; i++) {
+            encrypted += String.fromCharCode(value.charCodeAt(i) ^ KEY.charCodeAt(i % KEY.length));
+        }
+
+        // Base64 Encoding
+        const encoded = Buffer.from(encrypted, 'binary').toString('base64');
+        return `ENC:${encoded}`;
+    }
+
+    /**
+     * 시크릿 복호화
+     */
+    decryptSecret(value) {
+        if (!value || !value.startsWith('ENC:')) return value;
+
+        const KEY = "PulseOne2025SecretKey";
+        const encryptedBase64 = value.substring(4); // Remove ENC:
+
+        try {
+            const encryptedStr = Buffer.from(encryptedBase64, 'base64').toString('binary');
+            let decrypted = '';
+
+            for (let i = 0; i < encryptedStr.length; i++) {
+                decrypted += String.fromCharCode(encryptedStr.charCodeAt(i) ^ KEY.charCodeAt(i % KEY.length));
+            }
+            return decrypted;
+        } catch (e) {
+            this.logger.error('ConfigEditor', `Decryption failed: ${e.message}`);
+            throw new Error('Invalid encrypted value');
+        }
+    }
 }
 
 module.exports = ConfigEditorService;

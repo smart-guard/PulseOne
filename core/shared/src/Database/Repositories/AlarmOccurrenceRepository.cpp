@@ -23,6 +23,7 @@
 #include "DatabaseAbstractionLayer.hpp"
 #include "Logging/LogManager.h"
 #include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <sstream>
 
@@ -534,7 +535,7 @@ AlarmOccurrenceRepository::findByRuleId(int rule_id, bool active_only) {
 
     if (active_only) {
       size_t order_pos = query.find("ORDER BY");
-      std::string active_clause = "AND state = 'active' ";
+      std::string active_clause = "AND UPPER(state) = 'ACTIVE' ";
 
       if (order_pos != std::string::npos) {
         query.insert(order_pos, active_clause);
@@ -584,7 +585,10 @@ AlarmOccurrenceRepository::findByTenant(int tenant_id,
     std::string where_clause = "WHERE tenant_id = " + std::to_string(tenant_id);
 
     if (!state_filter.empty()) {
-      where_clause += " AND state = '" + state_filter + "'";
+      std::string upper_filter = state_filter;
+      std::transform(upper_filter.begin(), upper_filter.end(),
+                     upper_filter.begin(), ::toupper);
+      where_clause += " AND UPPER(state) = '" + upper_filter + "'";
     }
     where_clause += " ";
 

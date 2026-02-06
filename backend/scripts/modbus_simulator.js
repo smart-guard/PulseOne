@@ -8,6 +8,9 @@ let simData = {
     srs: 0,  // WLS.SRS (인식 상태)
     scs: 0,  // WLS.SCS (통신 상태)
 
+    // E2E Test
+    digital_test: 0, // 99
+
     // Analog (Holdings)
     sss: 85, // WLS.SSS (신호 강도: -5 ~ 100)
     sbv: 36, // WLS.SBV (배터리 전압: 20 ~ 100)
@@ -33,12 +36,14 @@ setInterval(() => {
 
 const vector = {
     getCoil: (addr, unitID) => {
+        if (addr === 99) return simData.digital_test === 1;
         if (addr === 100) return simData.pv === 1;
         if (addr === 101) return simData.srs === 1;
         if (addr === 102) return simData.scs === 1;
         return false;
     },
     getHoldingRegister: (addr, unitID) => {
+        if (addr === 99) return simData.digital_test;
         if (addr === 100) return simData.pv;
         if (addr === 101) return simData.srs;
         if (addr === 102) return simData.scs;
@@ -59,6 +64,7 @@ const vector = {
     getInputRegister: (addr, unitID) => addr,
     setRegister: (addr, value, unitID) => {
         console.log(`[Modbus Simulator] Write Register: Addr=${addr}, Value=${value}`);
+        if (addr === 99) simData.digital_test = value;
         if (addr === 100) simData.pv = value;
         if (addr === 101) simData.srs = value;
         if (addr === 102) simData.scs = value;
@@ -74,6 +80,7 @@ const vector = {
     },
     setCoil: (addr, value, unitID) => {
         console.log(`[Modbus Simulator] Write Coil: Addr=${addr}, Value=${value}`);
+        if (addr === 99) simData.digital_test = value ? 1 : 0;
         if (addr === 100) simData.pv = value ? 1 : 0;
         if (addr === 101) simData.srs = value ? 1 : 0;
         if (addr === 102) simData.scs = value ? 1 : 0;

@@ -344,6 +344,10 @@ const std::string FIND_ALL = R"(
             -- 🔥 로깅 및 수집 설정
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
             
+            -- 🔥 품질 및 알람 설정
+            quality_check_enabled, range_check_enabled, rate_of_change_limit,
+            alarm_enabled, alarm_priority,
+            
             -- 🔥 메타데이터
             group_name, tags, metadata, protocol_params,
             
@@ -361,6 +365,8 @@ const std::string FIND_BY_ID = R"(
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            quality_check_enabled, range_check_enabled, rate_of_change_limit,
+            alarm_enabled, alarm_priority,
             group_name, tags, metadata, protocol_params,
             created_at, updated_at
         FROM data_points 
@@ -374,6 +380,8 @@ const std::string FIND_BY_DEVICE_ID = R"(
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            quality_check_enabled, range_check_enabled, rate_of_change_limit,
+            alarm_enabled, alarm_priority,
             group_name, tags, metadata, protocol_params,
             created_at, updated_at
         FROM data_points 
@@ -388,6 +396,8 @@ const std::string FIND_BY_DEVICE_ID_ENABLED = R"(
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            quality_check_enabled, range_check_enabled, rate_of_change_limit,
+            alarm_enabled, alarm_priority,
             group_name, tags, metadata, protocol_params,
             created_at, updated_at
         FROM data_points 
@@ -402,6 +412,8 @@ const std::string FIND_BY_DEVICE_AND_ADDRESS = R"(
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            quality_check_enabled, range_check_enabled, rate_of_change_limit,
+            alarm_enabled, alarm_priority,
             group_name, tags, metadata, protocol_params,
             created_at, updated_at
         FROM data_points 
@@ -418,9 +430,11 @@ const std::string INSERT = R"(
             data_type, access_mode, is_enabled, is_writable,
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
+            quality_check_enabled, range_check_enabled, rate_of_change_limit,
+            alarm_enabled, alarm_priority,
             group_name, tags, metadata, protocol_params,
             created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
 // 🔥🔥🔥 UPDATE - 현재 스키마의 모든 필드
@@ -431,6 +445,8 @@ const std::string UPDATE = R"(
             data_type = ?, access_mode = ?, is_enabled = ?, is_writable = ?,
             unit = ?, scaling_factor = ?, scaling_offset = ?, min_value = ?, max_value = ?,
             log_enabled = ?, log_interval_ms = ?, log_deadband = ?, polling_interval_ms = ?,
+            quality_check_enabled = ?, range_check_enabled = ?, rate_of_change_limit = ?,
+            alarm_enabled = ?, alarm_priority = ?,
             group_name = ?, tags = ?, metadata = ?, protocol_params = ?,
             updated_at = ?
         WHERE id = ?
@@ -529,6 +545,8 @@ const std::string FIND_WITH_CURRENT_VALUES = R"(
             dp.data_type, dp.access_mode, dp.is_enabled, dp.is_writable,
             dp.unit, dp.scaling_factor, dp.scaling_offset, dp.min_value, dp.max_value,
             dp.log_enabled, dp.log_interval_ms, dp.log_deadband, dp.polling_interval_ms,
+            dp.quality_check_enabled, dp.range_check_enabled, dp.rate_of_change_limit,
+            dp.alarm_enabled, dp.alarm_priority,
             dp.group_name, dp.tags, dp.metadata, dp.protocol_params,
             dp.created_at, dp.updated_at,
             

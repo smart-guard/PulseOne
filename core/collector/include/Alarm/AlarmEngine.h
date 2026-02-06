@@ -148,6 +148,8 @@ private:
 
   // 유틸리티
   int getDeviceIdForPoint(int point_id);
+  int getSiteIdForPoint(int point_id);
+  std::string getPointName(int point_id);
   std::string getPointLocation(int point_id);
   AlarmType convertToAlarmType(const AlarmRuleEntity::AlarmType &entity_type);
   TriggerCondition determineTriggerCondition(const AlarmRuleEntity &rule,
@@ -167,6 +169,7 @@ private:
   std::shared_ptr<AlarmRuleRepository> alarm_rule_repo_;
   std::shared_ptr<AlarmOccurrenceRepository> alarm_occurrence_repo_;
   std::shared_ptr<Database::Repositories::DataPointRepository> data_point_repo_;
+  std::shared_ptr<Database::Repositories::DeviceRepository> device_repo_;
 
   // 신규 컴포넌트들
   std::unique_ptr<AlarmRuleRegistry> registry_;
@@ -191,6 +194,8 @@ private:
       last_check_times_;
   std::unordered_map<int, int64_t> rule_occurrence_map_;
   std::unordered_map<int, int> point_device_cache_;
+  std::unordered_map<int, std::string> point_name_cache_;
+  std::unordered_map<int, int> device_site_cache_;
   mutable std::shared_mutex device_cache_mutex_;
 
   // 통계
