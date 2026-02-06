@@ -43,7 +43,7 @@ namespace CSP {
  */
 struct AlarmMessage {
   // C# 필드 직접 매핑
-  int bd = 101;                ///< Building ID (default 101)
+  int bd = 0;                  ///< Building ID (default 0)
   std::string ty = "num";      ///< Type (num, bit 등)
   std::string nm;              ///< Point Name
   double vl = 0.0;             ///< Value

@@ -127,7 +127,7 @@ CREATE TABLE system_settings (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
     -- 🔥 제약조건
-    CONSTRAINT chk_data_type CHECK (data_type IN ('string', 'integer', 'boolean', 'json', 'float', 'datetime', 'binary'))
+    CONSTRAINT chk_data_type CHECK (data_type IN ('string', 'integer', 'boolean', 'json', 'float'))
 );
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -704,7 +704,6 @@ CREATE TABLE data_points (
     
     -- 🔥 알람 관련 설정
     alarm_enabled INTEGER DEFAULT 0,
-    alarm_priority VARCHAR(20) DEFAULT 'medium',
     high_alarm_limit REAL,
     low_alarm_limit REAL,
     alarm_deadband REAL DEFAULT 0.0,
@@ -717,13 +716,13 @@ CREATE TABLE data_points (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
-    is_deleted BOOLEAN DEFAULT 0,
+    is_deleted BOOLEAN DEFAULT 0, alarm_priority VARCHAR(20) DEFAULT 'medium',
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     
     -- 🔥 제약조건
     UNIQUE(device_id, address),
-    CONSTRAINT chk_data_type CHECK (data_type IN ('BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32', 'INT64', 'UINT64', 'FLOAT', 'DOUBLE', 'FLOAT32', 'FLOAT64', 'STRING', 'BINARY', 'DATETIME', 'JSON', 'ARRAY', 'OBJECT', 'UNKNOWN')),
+    CONSTRAINT chk_data_type CHECK (data_type IN ('BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32', 'INT64', 'UINT64', 'FLOAT32', 'FLOAT64', 'STRING', 'UNKNOWN')),
     CONSTRAINT chk_access_mode CHECK (access_mode IN ('read', 'write', 'read_write')),
     CONSTRAINT chk_retention_policy CHECK (retention_policy IN ('standard', 'extended', 'minimal', 'custom'))
 );
@@ -767,8 +766,8 @@ CREATE TABLE current_values (
     
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     
-    -- 🔥 제약조건 (대소문자 구분 없이 처리하도록 LOWER() 사용 및 확장 타입 추가)
-    CONSTRAINT chk_value_type CHECK (LOWER(value_type) IN ('bool', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float', 'double', 'string', 'float32', 'float64', 'datetime', 'json', 'binary', 'array', 'object')),
+    -- 🔥 제약조건 (대소문자 구분 없이 처리하도록 LOWER() 사용 및 FLOAT32/64 추가)
+    CONSTRAINT chk_value_type CHECK (LOWER(value_type) IN ('bool', 'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float', 'double', 'string', 'float32', 'float64', 'json')),
     CONSTRAINT chk_quality CHECK (LOWER(quality) IN ('good', 'bad', 'uncertain', 'not_connected', 'device_failure', 'sensor_failure', 'comm_failure', 'out_of_service', 'unknown', 'manual', 'simulated', 'stale')),
     CONSTRAINT chk_alarm_state CHECK (LOWER(alarm_state) IN ('normal', 'high', 'low', 'critical', 'warning', 'active', 'cleared', 'acknowledged'))
 
@@ -1182,7 +1181,7 @@ CREATE TABLE virtual_points (
         (scope_type = 'device' AND site_id IS NOT NULL AND device_id IS NOT NULL)
     ),
     CONSTRAINT chk_scope_type CHECK (scope_type IN ('tenant', 'site', 'device')),
-    CONSTRAINT chk_data_type CHECK (data_type IN ('bool', 'int', 'float', 'double', 'string', 'datetime', 'json', 'binary', 'array', 'object')),
+    CONSTRAINT chk_data_type CHECK (data_type IN ('bool', 'int', 'float', 'double', 'string')),
     CONSTRAINT chk_calculation_trigger CHECK (calculation_trigger IN ('timer', 'onchange', 'manual', 'event')),
     CONSTRAINT chk_execution_type CHECK (execution_type IN ('javascript', 'formula', 'aggregation', 'external')),
     CONSTRAINT chk_error_handling CHECK (error_handling IN ('return_null', 'return_zero', 'return_previous', 'throw_error'))
@@ -1980,6 +1979,55 @@ CREATE TABLE export_profile_assignments (
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,
     FOREIGN KEY (gateway_id) REFERENCES edge_servers(id) ON DELETE CASCADE
 );
+CREATE TABLE protocol_instances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    protocol_id INTEGER NOT NULL,
+    instance_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    
+    -- 인스턴스별 연결 정보 (vhost, broker ID/PW 등)
+    vhost VARCHAR(50) DEFAULT '/',
+    api_key VARCHAR(100),
+    api_key_updated_at DATETIME,
+    
+    connection_params TEXT,             -- JSON: 인스턴스 전용 상세 파라미터
+    
+    -- 상태 및 관리
+    is_enabled INTEGER DEFAULT 1,
+    status VARCHAR(20) DEFAULT 'STOPPED', -- RUNNING, STOPPED, ERROR
+    
+    -- 메타데이터
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL, broker_type VARCHAR(20) DEFAULT 'INTERNAL',
+    
+    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE
+);
+CREATE TABLE permissions (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    category VARCHAR(50),
+    resource VARCHAR(50),
+    actions TEXT,            -- JSON 배열: ["read", "write", "delete"]
+    is_system INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE roles (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    is_system INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE role_permissions (
+    role_id VARCHAR(50),
+    permission_id VARCHAR(50),
+    PRIMARY KEY (role_id, permission_id),
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+);
+CREATE TABLE backups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, filename TEXT NOT NULL UNIQUE, type TEXT DEFAULT 'full', status TEXT DEFAULT 'completed', size INTEGER DEFAULT 0, location TEXT DEFAULT '/app/data/backup', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, created_by TEXT, description TEXT, duration INTEGER, is_deleted INTEGER DEFAULT 0);
 CREATE INDEX idx_tenants_company_code ON tenants(company_code);
 CREATE INDEX idx_tenants_active ON tenants(is_active);
 CREATE INDEX idx_tenants_subscription ON tenants(subscription_status);
@@ -2190,6 +2238,20 @@ CREATE INDEX idx_export_logs_target_time ON export_logs(target_id, timestamp DES
 CREATE INDEX idx_export_schedules_enabled ON export_schedules(is_enabled);
 CREATE INDEX idx_export_schedules_next_run ON export_schedules(next_run_at);
 CREATE INDEX idx_export_schedules_target ON export_schedules(target_id);
+CREATE INDEX idx_virtual_point_logs_point_id ON virtual_point_logs(point_id);
+CREATE INDEX idx_virtual_point_logs_created_at ON virtual_point_logs(created_at);
+CREATE INDEX idx_export_targets_type ON export_targets(target_type);
+CREATE INDEX idx_export_targets_profile ON export_targets(profile_id);
+CREATE INDEX idx_export_targets_enabled ON export_targets(is_enabled);
+CREATE INDEX idx_export_targets_name ON export_targets(name);
+CREATE INDEX idx_export_targets_template ON export_targets(template_id);
+CREATE INDEX idx_export_target_mappings_target ON export_target_mappings(target_id);
+CREATE INDEX idx_export_target_mappings_point ON export_target_mappings(point_id);
+CREATE INDEX idx_export_schedules_target_id ON export_schedules(target_id);
+CREATE INDEX idx_export_schedules_is_enabled ON export_schedules(is_enabled);
+CREATE INDEX idx_export_schedules_next_run_at ON export_schedules(next_run_at);
+CREATE INDEX idx_backups_created_at ON backups(created_at);
+CREATE INDEX idx_backups_status ON backups(status);
 CREATE VIEW v_export_targets_with_templates AS
 SELECT 
     t.id,
@@ -2345,66 +2407,3 @@ BEGIN
     )
     WHERE id = OLD.profile_id;
 END;
-CREATE INDEX idx_virtual_point_logs_point_id ON virtual_point_logs(point_id);
-CREATE INDEX idx_virtual_point_logs_created_at ON virtual_point_logs(created_at);
-CREATE INDEX idx_export_targets_type ON export_targets(target_type);
-CREATE INDEX idx_export_targets_profile ON export_targets(profile_id);
-CREATE INDEX idx_export_targets_enabled ON export_targets(is_enabled);
-CREATE INDEX idx_export_targets_name ON export_targets(name);
-CREATE INDEX idx_export_targets_template ON export_targets(template_id);
-CREATE INDEX idx_export_target_mappings_target ON export_target_mappings(target_id);
-CREATE INDEX idx_export_target_mappings_point ON export_target_mappings(point_id);
-CREATE INDEX idx_export_schedules_target_id ON export_schedules(target_id);
-CREATE INDEX idx_export_schedules_is_enabled ON export_schedules(is_enabled);
-CREATE INDEX idx_export_schedules_next_run_at ON export_schedules(next_run_at);
-CREATE TABLE protocol_instances (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    protocol_id INTEGER NOT NULL,
-    instance_name VARCHAR(100) NOT NULL,
-    description TEXT,
-    
-    -- 인스턴스별 연결 정보 (vhost, broker ID/PW 등)
-    vhost VARCHAR(50) DEFAULT '/',
-    api_key VARCHAR(100),
-    api_key_updated_at DATETIME,
-    
-    connection_params TEXT,             -- JSON: 인스턴스 전용 상세 파라미터
-    
-    -- 상태 및 관리
-    is_enabled INTEGER DEFAULT 1,
-    status VARCHAR(20) DEFAULT 'STOPPED', -- RUNNING, STOPPED, ERROR
-    
-    -- 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL, broker_type VARCHAR(20) DEFAULT 'INTERNAL',
-    
-    FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE
-);
-CREATE TABLE permissions (
-    id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    category VARCHAR(50),
-    resource VARCHAR(50),
-    actions TEXT,            -- JSON 배열: ["read", "write", "delete"]
-    is_system INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE roles (
-    id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    is_system INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE role_permissions (
-    role_id VARCHAR(50),
-    permission_id VARCHAR(50),
-    PRIMARY KEY (role_id, permission_id),
-    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
-    FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
-);
-CREATE TABLE backups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, filename TEXT NOT NULL UNIQUE, type TEXT DEFAULT 'full', status TEXT DEFAULT 'completed', size INTEGER DEFAULT 0, location TEXT DEFAULT '/app/data/backup', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, created_by TEXT, description TEXT, duration INTEGER, is_deleted INTEGER DEFAULT 0);
-CREATE INDEX idx_backups_created_at ON backups(created_at);
-CREATE INDEX idx_backups_status ON backups(status);

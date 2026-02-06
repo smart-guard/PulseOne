@@ -424,7 +424,11 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
         const priorityMap: Record<string, number> = {};
 
         try {
-            // 1. Create/Update Gateway
+            // 1. Create/Update Gateway (Ensure ID exists first)
+            if (!gatewayId) {
+                const res = await exportGatewayApi.registerGateway(gatewayData);
+                gatewayId = res.data?.id;
+            }
 
             if (!gatewayId) throw new Error("게이트웨이 ID 확보 실패");
 
@@ -434,8 +438,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 const pRes = await exportGatewayApi.createProfile({
                     name: newProfileData.name,
                     description: newProfileData.description,
-                    data_points: newProfileData.data_points, // ID Array or Object Array? Service expects usually IDs or Objects.
-                    // API expects data_points as array.
+                    data_points: newProfileData.data_points,
                     is_enabled: true
                 });
                 profileId = pRes.data?.id;
@@ -472,7 +475,6 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
                             await exportGatewayApi.updateTarget(tid, {
                                 config: editedConfigs
-                                // v3.2: We NO LONGER update global execution_order here
                             });
                         } catch (err) {
                             console.error(`Failed to update target config for ${tid}`, err);
@@ -491,11 +493,11 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             } else {
                 // Create targets for each configured protocol and each config item
                 for (const proto of selectedProtocols) {
-                    const protoKey = `config_${proto.toLowerCase()} ` as 'config_http' | 'config_mqtt' | 'config_s3';
+                    const protoKey = `config_${proto.toLowerCase()}` as 'config_http' | 'config_mqtt' | 'config_s3';
                     const configs = targetData[protoKey] || [];
 
                     for (const [cIdx, cfg] of configs.entries()) {
-                        const targetName = configs.length > 1 ? `${targetData.name}_${proto}_${cIdx + 1} ` : `${targetData.name}_${proto} `;
+                        const targetName = configs.length > 1 ? `${targetData.name}_${proto}_${cIdx + 1}` : `${targetData.name}_${proto}`;
 
                         const tRes = await exportGatewayApi.createTarget({
                             name: targetName,
@@ -503,7 +505,6 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             profile_id: profileId,
                             template_id: templateId || undefined,
                             config: [cfg], // Save as array of one
-                            // execution_order: cfg.execution_order || (cIdx + 1), // Deprecated global order
                             is_enabled: true,
                             export_mode: transmissionMode === 'EVENT' ? 'REALTIME' : 'batched'
                         });
@@ -527,7 +528,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 for (const tid of finalTargetIds) {
                     await exportGatewayApi.createSchedule({
                         target_id: tid,
-                        schedule_name: scheduleData.schedule_name || `${gatewayData.name} _Schedule`,
+                        schedule_name: scheduleData.schedule_name || `${gatewayData.name}_Schedule`,
                         cron_expression: scheduleData.cron_expression,
                         data_range: scheduleData.data_range,
                         lookback_periods: 1,
@@ -536,12 +537,6 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 }
             }
 
-            await confirm({ title: '설정 완료', message: '게이트웨이 및 전송 설정이 완료되었습니다.', showCancelButton: false, confirmButtonType: 'success' });
-            onSuccess();
-        } catch (e) {
-            console.error(e);
-            await confirm({ title: '설정 실패', message: '저장 중 오류가 발생했습니다. 로그를 확인해주세요.', showCancelButton: false, confirmButtonType: 'danger' });
-        } finally {
             // 6. Finalize/Update Gateway with the Priority Map
             const finalGatewayData = {
                 ...gatewayData,
@@ -551,13 +546,15 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 }
             };
 
-            if (gatewayId) {
-                await exportGatewayApi.updateGateway(gatewayId, finalGatewayData);
-            } else {
-                const res = await exportGatewayApi.registerGateway(finalGatewayData);
-                gatewayId = res.data?.id;
-            }
+            // Ensure ID is passed for update
+            await exportGatewayApi.updateGateway(gatewayId, finalGatewayData);
 
+            await confirm({ title: '설정 완료', message: '게이트웨이 및 전송 설정이 완료되었습니다.', showCancelButton: false, confirmButtonType: 'success' });
+            onSuccess();
+        } catch (e) {
+            console.error(e);
+            await confirm({ title: '설정 실패', message: '저장 중 오류가 발생했습니다. 로그를 확인해주세요.', showCancelButton: false, confirmButtonType: 'danger' });
+        } finally {
             setLoading(false);
         }
     };

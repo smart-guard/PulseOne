@@ -66,6 +66,9 @@ struct S3Config {
   int max_retries = 3;       // 최대 재시도 횟수
   int retry_delay_ms = 1000; // 재시도 지연시간
 
+  // 사용자 정의 헤더 (x-api-key 등)
+  std::unordered_map<std::string, std::string> custom_headers;
+
   bool isValid() const {
     return !access_key.empty() && !secret_key.empty() && !bucket_name.empty();
   }

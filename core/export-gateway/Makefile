@@ -134,6 +134,17 @@ endif
 # 🔥 3순위: 시스템 include
 INCLUDES += -I/usr/local/include
 
+# 🔥 4순위: pkg-config 기반 include (hiredis, curl, openssl 등)
+ifeq ($(HAS_HIREDIS),1)
+    INCLUDES += $(shell pkg-config --cflags hiredis 2>/dev/null)
+endif
+ifeq ($(HAS_CURL),1)
+    INCLUDES += $(shell pkg-config --cflags libcurl 2>/dev/null)
+endif
+ifeq ($(HAS_OPENSSL),1)
+    INCLUDES += $(shell pkg-config --cflags openssl 2>/dev/null)
+endif
+
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
     INCLUDES += -I$(MINGW_PREFIX)/include
 endif

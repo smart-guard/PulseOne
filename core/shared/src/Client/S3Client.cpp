@@ -245,6 +245,11 @@ S3UploadResult S3Client::executeUploadWithRetry(
         }
       }
 
+      // 사용자 정의 헤더 추가 (x-api-key 등)
+      for (const auto &custom : config_.custom_headers) {
+        headers[custom.first] = custom.second;
+      }
+
       // Authorization 헤더 생성
       // Canonical URI must include the full path sent to the server
       std::string uri = endpoint_path + "/" + object_key;

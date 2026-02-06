@@ -1103,63 +1103,60 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
   auto start_time = std::chrono::high_resolution_clock::now();
 
   try {
-    // ✅ 1. 포인트 이름 매핑 (target_field_name)
+    // ✅ 1. 포인트 이름 매핑
     std::string mapped_name;
     {
       std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
-      auto it1 = target_point_mappings_.find(target.id);
-      if (it1 != target_point_mappings_.end()) {
-        auto it2 = it1->second.find(alarm.point_id);
-        if (it2 != it1->second.end()) {
-          mapped_name = it2->second;
+      if (target_point_mappings_.count(target.id)) {
+        auto &m = target_point_mappings_[target.id];
+        if (m.count(alarm.point_id)) {
+          mapped_name = m.at(alarm.point_id);
+          LogManager::getInstance().Info("[DEBUG-MAPPING] NAME FOUND: Point " +
+                                         std::to_string(alarm.point_id) +
+                                         " -> " + mapped_name);
+        } else {
+          LogManager::getInstance().Info(
+              "[DEBUG-MAPPING] NAME NOT FOUND for Point: " +
+              std::to_string(alarm.point_id));
         }
+      } else {
+        LogManager::getInstance().Info(
+            "[DEBUG-MAPPING] No point mappings for target ID: " +
+            std::to_string(target.id));
       }
     }
 
-    // ✅ 1.5. 포인트 기반 Site ID 오버라이드 (override site_id from point
-    // mapping) 포인트 매핑 엔티티에 site_id가 설정되어 있으면, 알람의 원본
-    // site_id를 덮어씀
+    // ✅ 1.5. 포인트 기반 Site ID 오버라이드
     int lookup_site_id = alarm.site_id;
     {
       std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
 
-      // [DEBUG] 매핑 상태 로깅 (상세)
       if (target_point_site_mappings_.count(target.id)) {
         auto &m = target_point_site_mappings_[target.id];
         LogManager::getInstance().Info(
-            "[DEBUG] Target " + std::to_string(target.id) +
-            " override map size: " + std::to_string(m.size()) +
-            ", Incoming PointID: " + std::to_string(alarm.point_id));
+            "[DEBUG-MAPPING] Target " + std::to_string(target.id) +
+            " mapping check: PointID=" + std::to_string(alarm.point_id) +
+            ", MapSize=" + std::to_string(m.size()));
 
         if (m.count(alarm.point_id)) {
           lookup_site_id = m.at(alarm.point_id);
           LogManager::getInstance().Info(
-              "[DEBUG] Point " + std::to_string(alarm.point_id) +
-              " override FOUND! New SiteID: " + std::to_string(lookup_site_id));
+              "[DEBUG-MAPPING] OVERRIDE SUCCESS! Point " +
+              std::to_string(alarm.point_id) +
+              " -> SiteID: " + std::to_string(lookup_site_id));
         } else {
-          LogManager::getInstance().Info("[DEBUG] Point " +
-                                         std::to_string(alarm.point_id) +
-                                         " override NOT found in map keys.");
-          // Print first few keys for debugging
-          int count = 0;
-          std::string keys = "";
-          for (const auto &pair : m) {
-            keys += std::to_string(pair.first) + ", ";
-            if (++count > 5)
-              break;
-          }
-          LogManager::getInstance().Info("[DEBUG] First 5 keys in map: " +
-                                         keys);
+          LogManager::getInstance().Info(
+              "[DEBUG-MAPPING] Point override NOT found for ID: " +
+              std::to_string(alarm.point_id));
         }
       } else {
-        LogManager::getInstance().Info("[DEBUG] Target " +
-                                       std::to_string(target.id) +
-                                       " has NO override map loaded.");
+        LogManager::getInstance().Info(
+            "[DEBUG-MAPPING] No point-site mappings for target ID: " +
+            std::to_string(target.id));
       }
     }
 
-    // ✅ 2. 빌딩 ID 매핑 (Hierarchical: Point Mapping -> Site Mapping -> Config
-    // Mapping)
+    // ✅ 2. 빌딩 ID 매핑
     std::string mapped_bd_str;
     // int mapped_bd_int = 0; // Unused variable removed
 
@@ -1173,6 +1170,13 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
           auto it2 = it1->second.find(lookup_site_id); // ✅ lookup_site_id 사용
           if (it2 != it1->second.end()) {
             mapped_bd_str = it2->second;
+            LogManager::getInstance().Info(
+                "[DEBUG-MAPPING] SITE-TO-BD FOUND: SiteID " +
+                std::to_string(lookup_site_id) + " -> BD: " + mapped_bd_str);
+          } else {
+            LogManager::getInstance().Info(
+                "[DEBUG-MAPPING] SITE-TO-BD NOT FOUND for SiteID: " +
+                std::to_string(lookup_site_id));
           }
         }
       }
@@ -1190,6 +1194,9 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
             target.config[ExportConst::ConfigKeys::SITE_MAPPING][site_id_str];
         mapped_bd_str = val.is_number() ? std::to_string(val.get<int>())
                                         : val.get<std::string>();
+        LogManager::getInstance().Info(
+            "[DEBUG-MAPPING] CONFIG-TO-BD FOUND: SiteID " + site_id_str +
+            " -> BD: " + mapped_bd_str);
       }
     }
 

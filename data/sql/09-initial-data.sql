@@ -1,498 +1,333 @@
--- =============================================================================
--- backend/lib/database/schemas/08-initial-data.sql  
--- 초기 데이터 및 샘플 데이터 (SQLite 버전) - 실제 스키마 100% 호환
--- PulseOne v2.1.0 완전 호환, C++ SQLQueries.h 완전 반영
--- =============================================================================
-
--- 스키마 버전 기록
-INSERT OR IGNORE INTO schema_versions (version, description) 
-VALUES ('2.1.0', 'Complete PulseOne v2.1.0 schema - C++ SQLQueries.h compatible');
-
--- =============================================================================
--- 1. 테넌트 생성 (먼저 - sites가 참조)
--- =============================================================================
-INSERT OR IGNORE INTO tenants (
-    id, company_name, company_code, domain, 
-    contact_name, contact_email, contact_phone,
-    subscription_plan, subscription_status,
-    max_edge_servers, max_data_points, max_users,
-    is_active
-) VALUES 
-(1, 'Smart Factory Korea', 'SFK001', 'smartfactory.pulseone.io', 
- 'Factory Manager', 'manager@smartfactory.co.kr', '+82-2-1234-5678',
- 'professional', 'active', 10, 10000, 50, 1),
-
-(2, 'Global Manufacturing Inc', 'GMI002', 'global-mfg.pulseone.io',
- 'Operations Director', 'ops@globalmfg.com', '+1-555-0123',
- 'enterprise', 'active', 50, 100000, 200, 1),
-
-(3, 'Demo Corporation', 'DEMO', 'demo.pulseone.io', 
- 'Demo Manager', 'demo@pulseone.com', '+82-10-0000-0000',
- 'starter', 'trial', 3, 1000, 10, 1),
-
-(4, 'Test Factory Ltd', 'TEST', 'test.pulseone.io',
- 'Test Engineer', 'test@testfactory.com', '+82-31-9999-8888', 
- 'professional', 'active', 5, 5000, 25, 1);
-
--- =============================================================================
--- 2. 사이트 생성 (devices가 참조하는 ID들과 일치)
--- =============================================================================
-INSERT OR IGNORE INTO sites (
-    id, tenant_id, name, code, site_type, location, description, is_active
-) VALUES 
-(1, 1, 'Seoul Main Factory', 'SMF001', 'factory', 'Seoul Industrial Complex', 'Main manufacturing facility', 1),
-(2, 1, 'Busan Secondary Plant', 'BSP002', 'factory', 'Busan Industrial Park', 'Secondary production facility', 1),
-(3, 2, 'New York Plant', 'NYP003', 'factory', 'New York Industrial Zone', 'East Coast Manufacturing Plant', 1),
-(4, 2, 'Detroit Automotive Plant', 'DAP004', 'factory', 'Detroit, MI', 'Automotive Manufacturing Plant', 1),
-(5, 3, 'Demo Factory', 'DEMO005', 'factory', 'Demo Location', 'Demonstration facility', 1),
-(6, 4, 'Test Facility', 'TEST006', 'factory', 'Test Location', 'Testing and R&D facility', 1);
--- =============================================================================
--- 3. 프로토콜 테이블 생성 및 데이터 삽입
--- =============================================================================
-INSERT OR IGNORE INTO protocols (
-    id, protocol_type, display_name, description,
-    default_port, uses_serial, requires_broker,
-    supported_operations, supported_data_types, connection_params,
-    default_polling_interval, default_timeout, max_concurrent_connections,
-    is_enabled, is_deprecated, min_firmware_version,
-    category, vendor, standard_reference
-) VALUES
--- ID=1: MODBUS_TCP
-(1, 'MODBUS_TCP', 'Modbus TCP/IP', 'Industrial protocol over Ethernet',
- 502, 0, 0,
- '["read_coils", "read_discrete_inputs", "read_holding_registers", "read_input_registers", "write_single_coil", "write_single_register", "write_multiple_coils", "write_multiple_registers"]',
- '["boolean", "int16", "uint16", "int32", "uint32", "float32"]',
- '{"slave_id": {"type": "integer", "default": 1, "min": 1, "max": 247}, "timeout_ms": {"type": "integer", "default": 3000}, "byte_order": {"type": "string", "default": "big_endian"}}',
- 1000, 3000, 10, 1, 0, '1.0',
- 'industrial', 'Modbus Organization', 'Modbus Application Protocol V1.1b3'),
-
--- ID=2: BACNET 
-(2, 'BACNET', 'BACnet/IP', 'Building automation and control networks',
- 47808, 0, 0,
- '["read_property", "write_property", "read_property_multiple", "who_is", "i_am", "subscribe_cov"]',
- '["boolean", "int32", "uint32", "float32", "string", "enumerated", "bitstring"]',
- '{"device_id": {"type": "integer", "default": 1001}, "network": {"type": "integer", "default": 1}, "max_apdu": {"type": "integer", "default": 1476}}',
- 5000, 10000, 5, 1, 0, '1.0',
- 'building_automation', 'ASHRAE', 'ANSI/ASHRAE 135-2020'),
-
--- ID=3: MQTT
-(3, 'MQTT', 'MQTT v3.1.1', 'Lightweight messaging protocol for IoT',
- 1883, 0, 1,
- '["publish", "subscribe", "unsubscribe", "ping", "connect", "disconnect"]',
- '["boolean", "int32", "float32", "string", "json", "binary"]',
- '{"client_id": {"type": "string", "default": "pulseone_client"}, "username": {"type": "string"}, "password": {"type": "string"}, "keep_alive": {"type": "integer", "default": 60}}',
- 0, 5000, 100, 1, 0, '3.1.1',
- 'iot', 'MQTT.org', 'MQTT v3.1.1 OASIS Standard'),
-
--- ID=4: ETHERNET_IP
-(4, 'ETHERNET_IP', 'EtherNet/IP', 'Industrial Ethernet communication protocol',
- 44818, 0, 0,
- '["explicit_messaging", "implicit_messaging", "forward_open", "forward_close", "get_attribute_single", "set_attribute_single"]',
- '["boolean", "int8", "int16", "int32", "uint8", "uint16", "uint32", "float32", "string"]',
- '{"connection_type": {"type": "string", "default": "explicit"}, "assembly_instance": {"type": "integer", "default": 100}, "originator_to_target": {"type": "integer", "default": 500}, "target_to_originator": {"type": "integer", "default": 500}}',
- 200, 1000, 20, 1, 0, '1.0',
- 'industrial', 'ODVA', 'EtherNet/IP Specification Volume 1 & 2'),
-
--- ID=5: MODBUS_RTU (직렬 통신용)
-(5, 'MODBUS_RTU', 'Modbus RTU', 'Modbus over serial communication',
- NULL, 1, 0,
- '["read_coils", "read_discrete_inputs", "read_holding_registers", "read_input_registers", "write_single_coil", "write_single_register", "write_multiple_coils", "write_multiple_registers"]',
- '["boolean", "int16", "uint16", "int32", "uint32", "float32"]',
- '{"slave_id": {"type": "integer", "default": 1}, "baud_rate": {"type": "integer", "default": 9600}, "parity": {"type": "string", "default": "none"}, "data_bits": {"type": "integer", "default": 8}, "stop_bits": {"type": "integer", "default": 1}}',
- 1000, 3000, 1, 1, 0, '1.0',
- 'industrial', 'Modbus Organization', 'Modbus over Serial Line V1.02');
-
--- =============================================================================
--- 4. 디바이스 생성 (현재 스키마에 맞춤 - protocol_id 외래키 사용)
--- =============================================================================
-INSERT OR IGNORE INTO devices (
-    tenant_id, site_id, name, description, device_type, manufacturer, model,
-    protocol_id, endpoint, config, polling_interval, timeout, retry_count,
-    is_enabled
-) VALUES 
--- Smart Factory Korea 디바이스들 (site_id = 1)
-(1, 1, 'PLC-001', 'Main production line PLC', 'PLC', 'Siemens', 'S7-1515F',
- 1, '192.168.1.10:502', 
- '{"slave_id": 1, "timeout_ms": 3000, "byte_order": "big_endian", "unit_id": 1}',
- 1000, 3000, 3, 1),
-
-(1, 1, 'HMI-001', 'Operator HMI panel', 'HMI', 'Schneider Electric', 'Harmony GT2512',
- 1, '192.168.1.11:502',
- '{"slave_id": 2, "timeout_ms": 3000, "screen_size": "12_inch", "unit_id": 2}',
- 2000, 3000, 3, 1),
-
-(1, 1, 'ROBOT-001', 'Automated welding robot', 'ROBOT', 'KUKA', 'KR 16-3 F',
- 1, '192.168.1.12:502',
- '{"slave_id": 3, "timeout_ms": 2000, "coordinate_system": "world", "unit_id": 3}',
- 500, 2000, 5, 1),
-
-(1, 1, 'VFD-001', 'Conveyor motor VFD', 'INVERTER', 'ABB', 'ACS580-01',
- 1, '192.168.1.13:502',
- '{"slave_id": 4, "timeout_ms": 3000, "motor_rated_power": "15kW", "unit_id": 4}',
- 1000, 3000, 3, 1),
-
-(1, 1, 'HVAC-001', 'Main air handling unit', 'CONTROLLER', 'Honeywell', 'Spyder',
- 2, '192.168.1.30:47808',
- '{"device_id": 1001, "network": 1, "max_apdu": 1476, "segmentation": "segmented_both"}',
- 5000, 10000, 3, 1),
-
-(1, 1, 'METER-001', 'Main facility power meter', 'METER', 'Schneider Electric', 'PowerLogic PM8000',
- 1, '192.168.1.40:502',
- '{"slave_id": 10, "timeout_ms": 3000, "measurement_class": "0.2S", "unit_id": 10}',
- 5000, 3000, 3, 1),
-
--- Global Manufacturing 디바이스들 (site_id = 3)  
-(2, 3, 'PLC-NY-001', 'New York plant main PLC', 'PLC', 'Rockwell Automation', 'CompactLogix 5380',
- 1, '10.0.1.10:502',
- '{"slave_id": 1, "timeout_ms": 3000, "communication_format": "RTU_over_TCP", "unit_id": 1}',
- 1000, 3000, 3, 1),
-
-(2, 3, 'ROBOT-NY-001', 'Assembly robot station 1', 'ROBOT', 'Fanuc', 'R-2000iD/210F',
- 4, '10.0.1.15:44818',
- '{"connection_type": "explicit", "assembly_instance": 100, "originator_to_target": 500, "target_to_originator": 500}',
- 200, 1000, 5, 1),
-
--- Demo/Test 디바이스들 (site_id = 5, 6)
-(3, 5, 'DEMO-PLC-001', 'Demo PLC for training', 'PLC', 'Demo Manufacturer', 'Demo-PLC-v2',
- 1, '192.168.100.10:502',
- '{"slave_id": 1, "timeout_ms": 3000, "demo_mode": true, "unit_id": 1}',
- 2000, 3000, 3, 1),
-
-(3, 5, 'DEMO-IOT-001', 'IoT gateway for wireless sensors', 'GATEWAY', 'Generic IoT', 'MultiProtocol-GW',
- 3, 'mqtt://192.168.100.20:1883',
- '{"client_id": "demo_gateway", "username": "demo_user", "password": "demo_pass", "keep_alive": 60}',
- 0, 5000, 3, 1),
-
-(4, 6, 'TEST-PLC-001', 'Advanced test PLC for R&D', 'PLC', 'Test Systems', 'TestPLC-Pro',
- 1, '192.168.200.10:502',
- '{"slave_id": 1, "timeout_ms": 3000, "test_mode": true, "advanced_diagnostics": true, "unit_id": 1}',
- 1000, 3000, 3, 1);
-
--- =============================================================================
--- 5. 데이터 포인트 생성 (C++ SQLQueries.h 스키마 완전 반영)
--- =============================================================================
-INSERT OR IGNORE INTO data_points (
-    device_id, name, description, address, data_type, access_mode, unit,
-    scaling_factor, scaling_offset, min_value, max_value, is_enabled,
-    log_enabled, log_interval_ms, polling_interval_ms, group_name, tags, metadata
-) VALUES 
--- PLC-001 (device_id = 1) 데이터 포인트들
-(1, 'Production_Count', 'Production counter', 1001, 'UINT32', 'read', 'pcs',
- 1.0, 0.0, 0.0, 999999.0, 1, 1, 5000, 0, 'production', '["production", "counter"]', '{"importance": "high"}'),
-
-(1, 'Line_Speed', 'Line speed sensor', 1002, 'FLOAT32', 'read', 'm/min',
- 0.1, 0.0, 0.0, 100.0, 1, 1, 1000, 0, 'production', '["speed", "line"]', '{"sensor_type": "encoder"}'),
-
-(1, 'Motor_Current', 'Motor current sensor', 1003, 'FLOAT32', 'read', 'A',
- 0.01, 0.0, 0.0, 50.0, 1, 1, 1000, 0, 'electrical', '["current", "motor"]', '{"sensor_model": "CT-100A"}'),
-
-(1, 'Temperature', 'Process temperature', 1004, 'FLOAT32', 'read', '°C',
- 0.1, 0.0, -40.0, 150.0, 1, 1, 2000, 0, 'environmental', '["temperature", "process"]', '{"sensor_location": "heat_exchanger"}'),
-
-(1, 'Emergency_Stop', 'Emergency stop button', 1005, 'BOOL', 'read', '',
- 1.0, 0.0, 0.0, 1.0, 1, 1, 0, 0, 'safety', '["emergency", "stop", "safety"]', '{"critical": true}'),
-
--- HMI-001 (device_id = 2) 데이터 포인트들
-(2, 'Screen_Status', 'HMI screen status', 2001, 'UINT16', 'read', '',
- 1.0, 0.0, 0.0, 255.0, 1, 1, 5000, 0, 'interface', '["screen", "hmi"]', '{"screen_type": "main"}'),
-
-(2, 'Active_Alarms', 'Number of active alarms', 2002, 'UINT16', 'read', 'count',
- 1.0, 0.0, 0.0, 100.0, 1, 1, 2000, 0, 'alarms', '["alarms", "active"]', '{"priority": "high"}'),
-
-(2, 'User_Level', 'Current user access level', 2003, 'UINT16', 'read', '',
- 1.0, 0.0, 0.0, 5.0, 1, 1, 10000, 0, 'security', '["user", "access"]', '{"levels": "0=guest,1=operator,2=engineer,3=admin"}'),
-
--- ROBOT-001 (device_id = 3) 데이터 포인트들
-(3, 'Robot_X_Position', 'Robot X position', 3001, 'FLOAT32', 'read', 'mm',
- 0.01, 0.0, -1611.0, 1611.0, 1, 1, 500, 0, 'position', '["robot", "position", "x-axis"]', '{"coordinate_system": "world"}'),
-
-(3, 'Robot_Y_Position', 'Robot Y position', 3003, 'FLOAT32', 'read', 'mm',
- 0.01, 0.0, -1611.0, 1611.0, 1, 1, 500, 0, 'position', '["robot", "position", "y-axis"]', '{"coordinate_system": "world"}'),
-
-(3, 'Robot_Z_Position', 'Robot Z position', 3005, 'FLOAT32', 'read', 'mm',
- 0.01, 0.0, -1000.0, 2000.0, 1, 1, 500, 0, 'position', '["robot", "position", "z-axis"]', '{"coordinate_system": "world"}'),
-
-(3, 'Welding_Current', 'Welding current', 3007, 'FLOAT32', 'read', 'A',
- 0.1, 0.0, 0.0, 350.0, 1, 1, 1000, 0, 'welding', '["welding", "current"]', '{"welding_process": "MIG"}'),
-
--- HVAC-001 (device_id = 5) 데이터 포인트들
-(5, 'Zone1_Temperature', 'Production Zone 1 Temperature', 1, 'FLOAT32', 'read', '°C',
- 1.0, 0.0, -10.0, 50.0, 1, 1, 3000, 0, 'hvac', '["temperature", "zone1"]', '{"zone": "production_area_1"}'),
-
-(5, 'Zone1_Humidity', 'Production Zone 1 Humidity', 2, 'FLOAT32', 'read', '%RH',
- 1.0, 0.0, 0.0, 100.0, 1, 1, 3000, 0, 'hvac', '["humidity", "zone1"]', '{"zone": "production_area_1"}'),
-
--- METER-001 (device_id = 6) 데이터 포인트들
-(6, 'Active_Power', 'Active power consumption', 1001, 'FLOAT32', 'read', 'kW',
- 0.01, 0.0, 0.0, 1000.0, 1, 1, 2000, 0, 'energy', '["power", "active"]', '{"meter_type": "PM8000"}'),
-
-(6, 'Reactive_Power', 'Reactive power', 1003, 'FLOAT32', 'read', 'kVAR',
- 0.01, 0.0, -500.0, 500.0, 1, 1, 2000, 0, 'energy', '["power", "reactive"]', '{"meter_type": "PM8000"}'),
-
-(6, 'Power_Factor', 'Power factor', 1005, 'FLOAT32', 'read', '',
- 0.001, 0.0, 0.0, 1.0, 1, 1, 5000, 0, 'energy', '["power", "factor"]', '{"meter_type": "PM8000"}');
-
--- =============================================================================
--- 6. 현재값 초기화 (C++ SQLQueries.h 스키마에 맞춤)
--- =============================================================================
-INSERT OR IGNORE INTO current_values (
-    point_id, current_value, raw_value, value_type, quality_code, quality, 
-    value_timestamp, quality_timestamp, last_log_time, last_read_time, last_write_time,
-    read_count, write_count, error_count, updated_at
-) VALUES 
--- PLC-001 현재값들 (point_id 1-5)
-(1, '{"value": 15847}', '{"value": 15847}', 'uint32', 0, 'good', 
- datetime('now', '-5 minutes'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 45, 0, 0, datetime('now')),
-
-(2, '{"value": 18.5}', '{"value": 185}', 'float', 0, 'good', 
- datetime('now', '-1 minute'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 120, 0, 0, datetime('now')),
-
-(3, '{"value": 28.7}', '{"value": 2870}', 'float', 0, 'good', 
- datetime('now', '-30 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 89, 0, 0, datetime('now')),
-
-(4, '{"value": 23.8}', '{"value": 238}', 'float', 0, 'good', 
- datetime('now', '-2 minutes'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 67, 0, 0, datetime('now')),
-
-(5, '{"value": false}', '{"value": false}', 'bool', 0, 'good', 
- datetime('now', '-10 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 5, 0, 0, datetime('now')),
-
--- HMI-001 현재값들 (point_id 6-8)
-(6, '{"value": 1}', '{"value": 1}', 'uint16', 0, 'good', 
- datetime('now', '-30 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 23, 0, 0, datetime('now')),
-
-(7, '{"value": 2}', '{"value": 2}', 'uint16', 0, 'good', 
- datetime('now', '-15 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 15, 0, 0, datetime('now')),
-
-(8, '{"value": 2}', '{"value": 2}', 'uint16', 0, 'good', 
- datetime('now', '-45 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 8, 0, 0, datetime('now')),
-
--- ROBOT-001 현재값들 (point_id 9-12)
-(9, '{"value": 145.67}', '{"value": 14567}', 'float', 0, 'good', 
- datetime('now', '-5 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 234, 0, 0, datetime('now')),
-
-(10, '{"value": -287.23}', '{"value": -28723}', 'float', 0, 'good', 
- datetime('now', '-5 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 234, 0, 0, datetime('now')),
-
-(11, '{"value": 856.45}', '{"value": 85645}', 'float', 0, 'good', 
- datetime('now', '-5 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 234, 0, 0, datetime('now')),
-
-(12, '{"value": 185.4}', '{"value": 1854}', 'float', 0, 'good', 
- datetime('now', '-2 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 156, 0, 0, datetime('now')),
-
--- HVAC-001 현재값들 (point_id 13-14)
-(13, '{"value": 22.3}', '{"value": 22.3}', 'float', 0, 'good', 
- datetime('now', '-3 minutes'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 42, 0, 0, datetime('now')),
-
-(14, '{"value": 58.2}', '{"value": 58.2}', 'float', 0, 'good', 
- datetime('now', '-2 minutes'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 38, 0, 0, datetime('now')),
-
--- METER-001 현재값들 (point_id 15-17)
-(15, '{"value": 847.5}', '{"value": 84750}', 'float', 0, 'good', 
- datetime('now', '-1 minute'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 28, 0, 0, datetime('now')),
-
-(16, '{"value": 125.3}', '{"value": 12530}', 'float', 0, 'good', 
- datetime('now', '-1 minute'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 28, 0, 0, datetime('now')),
-
-(17, '{"value": 0.985}', '{"value": 985}', 'float', 0, 'good', 
- datetime('now', '-30 seconds'), datetime('now'), datetime('now'), datetime('now'), datetime('now'),
- 18, 0, 0, datetime('now'));
-
--- =============================================================================
--- 7. 디바이스 설정 초기화 (device_settings 테이블)
--- =============================================================================
-INSERT OR IGNORE INTO device_settings (
-    device_id, polling_interval_ms, connection_timeout_ms, read_timeout_ms, write_timeout_ms,
-    max_retry_count, retry_interval_ms, backoff_multiplier, backoff_time_ms, max_backoff_time_ms,
-    keep_alive_enabled, keep_alive_interval_s, keep_alive_timeout_s,
-    data_validation_enabled, outlier_detection_enabled, deadband_enabled,
-    detailed_logging_enabled, performance_monitoring_enabled, diagnostic_mode_enabled,
-    read_buffer_size, write_buffer_size, queue_size
-) VALUES 
--- PLC-001 설정
-(1, 1000, 10000, 5000, 5000, 3, 5000, 1.5, 60000, 300000, 1, 30, 10, 1, 0, 1, 0, 1, 0, 1024, 1024, 100),
--- HMI-001 설정  
-(2, 2000, 10000, 5000, 5000, 3, 5000, 1.5, 60000, 300000, 1, 30, 10, 1, 0, 1, 0, 1, 0, 1024, 1024, 100),
--- ROBOT-001 설정
-(3, 500, 10000, 2000, 2000, 5, 3000, 1.5, 60000, 300000, 1, 15, 5, 1, 1, 1, 1, 1, 1, 2048, 2048, 200),
--- VFD-001 설정
-(4, 1000, 10000, 5000, 5000, 3, 5000, 1.5, 60000, 300000, 1, 30, 10, 1, 0, 1, 0, 1, 0, 1024, 1024, 100),
--- HVAC-001 설정
-(5, 5000, 15000, 10000, 10000, 3, 10000, 2.0, 120000, 600000, 1, 60, 20, 1, 0, 1, 0, 1, 0, 1024, 1024, 50),
--- METER-001 설정
-(6, 5000, 10000, 5000, 5000, 3, 5000, 1.5, 60000, 300000, 1, 30, 10, 1, 0, 1, 0, 1, 0, 1024, 1024, 100);
-
--- =============================================================================
--- 8. 디바이스 상태 초기화 (device_status 테이블)
--- =============================================================================
-INSERT OR IGNORE INTO device_status (
-    device_id, connection_status, last_communication, connection_established_at,
-    error_count, last_error, last_error_time, consecutive_error_count,
-    response_time, min_response_time, max_response_time, throughput_ops_per_sec,
-    total_requests, successful_requests, failed_requests, uptime_percentage,
-    firmware_version, hardware_info, diagnostic_data, cpu_usage, memory_usage
-) VALUES 
--- PLC-001 상태
-(1, 'connected', datetime('now', '-1 minute'), datetime('now', '-1 hour'),
- 0, NULL, NULL, 0, 15, 8, 45, 2.5, 1500, 1500, 0, 99.9,
- 'V16.0.3', '{"cpu": "S7-1515F", "memory": "512MB"}', '{"last_scan": "normal"}', 25.3, 68.5),
-
--- HMI-001 상태
-(2, 'connected', datetime('now', '-30 seconds'), datetime('now', '-2 hours'),
- 0, NULL, NULL, 0, 25, 12, 78, 1.8, 800, 800, 0, 99.5,
- 'V2.1.4', '{"screen": "12inch", "memory": "256MB"}', '{"display": "active"}', 18.7, 45.2),
-
--- ROBOT-001 상태
-(3, 'connected', datetime('now', '-5 seconds'), datetime('now', '-30 minutes'),
- 0, NULL, NULL, 0, 8, 5, 25, 5.2, 3500, 3500, 0, 100.0,
- 'V8.3.2', '{"axes": 6, "payload": "16kg"}', '{"position": "active"}', 42.1, 72.8),
-
--- VFD-001 상태  
-(4, 'connected', datetime('now', '-1 minute'), datetime('now', '-45 minutes'),
- 0, NULL, NULL, 0, 20, 10, 55, 1.2, 600, 600, 0, 99.8,
- 'V1.5.8', '{"power": "15kW", "voltage": "480V"}', '{"drive": "running"}', 15.2, 38.9),
-
--- HVAC-001 상태
-(5, 'connected', datetime('now', '-3 minutes'), datetime('now', '-6 hours'),
- 0, NULL, NULL, 0, 45, 25, 120, 0.8, 200, 200, 0, 98.5,
- 'V3.2.1', '{"zones": 4, "capacity": "50kW"}', '{"system": "auto"}', 8.5, 28.3),
-
--- METER-001 상태
-(6, 'connected', datetime('now', '-1 minute'), datetime('now', '-8 hours'),
- 0, NULL, NULL, 0, 35, 20, 85, 1.0, 400, 400, 0, 99.2,
- 'V2.8.5', '{"class": "0.2S", "ct_ratio": "1000:1"}', '{"measurement": "active"}', 12.8, 35.7);
-
--- =============================================================================
--- 9. 가상포인트 생성
--- =============================================================================
-INSERT OR IGNORE INTO virtual_points (
-    tenant_id, scope_type, site_id, name, description, formula, data_type, unit,
-    calculation_interval, calculation_trigger, is_enabled
-) VALUES 
-(1, 'site', 1, 'Production_Efficiency', 'Overall production efficiency calculation', 
- 'const production = getValue("Production_Count"); return (production / 20000) * 100;', 
- 'float', '%', 5000, 'timer', 1),
-
-(1, 'site', 1, 'Energy_Per_Unit', 'Energy consumption per unit', 
- 'const power = 847.5; const production = getValue("Production_Count"); return power / production;', 
- 'float', 'kW/unit', 10000, 'timer', 1),
-
-(1, 'site', 1, 'Overall_Equipment_Effectiveness', 'OEE calculation for production line', 
- 'const availability = 95; const performance = getValue("Line_Speed") / 50 * 100; const quality = 98; return (availability * performance * quality) / 10000;', 
- 'float', '%', 15000, 'timer', 1),
-
-(2, 'site', 3, 'Assembly_Throughput', 'Assembly line throughput', 
- 'const cycleTime = 45; return 3600 / cycleTime;', 
- 'float', 'units/hour', 5000, 'timer', 1),
-
-(3, 'site', 5, 'Demo_Performance', 'Demo performance index', 
- 'return Math.sin(Date.now() / 10000) * 50 + 75;', 
- 'float', '%', 2000, 'timer', 1),
-
-(4, 'site', 6, 'Test_Metric', 'Test calculation metric', 
- 'return Math.random() * 100;', 
- 'float', '%', 3000, 'timer', 1);
-
--- =============================================================================
--- 10. 알람 규칙 생성
--- =============================================================================
-INSERT OR IGNORE INTO alarm_rules (
-    tenant_id, name, description, target_type, target_id, alarm_type, severity,
-    high_limit, low_limit, deadband, message_template, notification_enabled,
-    is_enabled, escalation_enabled, escalation_max_level, category, tags
-) VALUES 
--- Smart Factory Korea 알람들
-(1, 'Temperature_High_Alarm', 'PLC 온도 과열 알람', 'data_point', 4, 'analog', 'high',
- 35.0, 15.0, 2.0, '온도 알람: {value}°C (임계값: {limit}°C)', 1, 1, 0, 3, 'process', '["temperature", "plc", "production"]'),
-
-(1, 'Motor_Current_Overload', '모터 전류 과부하 알람', 'data_point', 3, 'analog', 'critical',
- 30.0, NULL, 1.0, '모터 과부하: {value}A (한계: {limit}A)', 1, 1, 0, 3, 'process', '["current", "motor", "safety"]'),
-
-(1, 'Emergency_Stop_Active', '비상정지 버튼 활성화 알람', 'data_point', 5, 'digital', 'critical',
- NULL, NULL, 0.0, '🚨 비상정지 활성화됨!', 1, 1, 0, 3, 'safety', '["emergency", "stop", "critical"]'),
-
-(1, 'HVAC_Zone1_Temperature', 'HVAC 구역1 온도 알람', 'data_point', 13, 'analog', 'medium',
- 28.0, 18.0, 1.5, 'Zone1 온도 이상: {value}°C', 1, 1, 0, 3, 'hvac', '["temperature", "zone1", "hvac"]'),
-
-(1, 'Production_Line_Speed', '생산라인 속도 알람', 'data_point', 2, 'analog', 'medium',
- 25.0, 5.0, 1.0, '라인 속도 이상: {value} m/min', 1, 1, 0, 3, 'process', '["speed", "production", "line"]'),
-
-(1, 'Robot_Position_Limit', '로봇 위치 제한 알람', 'data_point', 9, 'analog', 'high',
- 1500.0, -1500.0, 10.0, '로봇 X축 위치 제한 초과: {value}mm', 1, 1, 0, 3, 'safety', '["robot", "position", "limit"]'),
-
-(1, 'Power_Consumption_High', '전력 소비 과다 알람', 'data_point', 15, 'analog', 'medium',
- 900.0, NULL, 50.0, '전력 소비 과다: {value}kW', 1, 1, 0, 3, 'energy', '["power", "consumption", "energy"]');
-
--- =============================================================================
--- 11. JavaScript 함수 라이브러리 
--- =============================================================================
-INSERT OR IGNORE INTO javascript_functions (
-    tenant_id, name, description, category, function_code, parameters, return_type
-) VALUES 
-(1, 'average', 'Calculate average of values', 'math',
- 'function average(...values) { return values.reduce((a, b) => a + b, 0) / values.length; }',
- '[{"name": "values", "type": "number[]", "required": true}]', 'number'),
-
-(1, 'oeeCalculation', 'Calculate Overall Equipment Effectiveness', 'engineering',
- 'function oeeCalculation(availability, performance, quality) { return (availability / 100) * (performance / 100) * (quality / 100) * 100; }',
- '[{"name": "availability", "type": "number"}, {"name": "performance", "type": "number"}, {"name": "quality", "type": "number"}]', 'number'),
-
-(1, 'powerFactorCorrection', 'Calculate power factor correction', 'electrical',
- 'function powerFactorCorrection(activePower, reactivePower) { return activePower / Math.sqrt(activePower * activePower + reactivePower * reactivePower); }',
- '[{"name": "activePower", "type": "number"}, {"name": "reactivePower", "type": "number"}]', 'number'),
-
-(1, 'productionEfficiency', 'Calculate production efficiency for automotive line', 'custom',
- 'function productionEfficiency(actual, target, hours) { return (actual / target) * 100; }',
- '[{"name": "actual", "type": "number"}, {"name": "target", "type": "number"}, {"name": "hours", "type": "number"}]', 'number'),
-
-(1, 'energyIntensity', 'Calculate energy intensity per unit', 'custom',
- 'function energyIntensity(totalEnergy, productionCount) { return productionCount > 0 ? totalEnergy / productionCount : 0; }',
- '[{"name": "totalEnergy", "type": "number"}, {"name": "productionCount", "type": "number"}]', 'number');
--- =============================================================================
--- 12. 시스템 로그 기록
--- =============================================================================
-INSERT OR IGNORE INTO system_logs (
-    log_level, module, message, details, created_at
-) VALUES 
-('INFO', 'database', 'Complete initial data loading with C++ schema compatibility', 
- '{"tables_populated": 12, "protocols": 5, "devices": 11, "data_points": 17, "current_values": 17, "device_settings": 6, "device_status": 6, "virtual_points": 6, "alarm_rules": 7, "js_functions": 5, "schema_version": "2.1.0"}',
- datetime('now')),
-
-('INFO', 'protocols', 'Protocol support initialized', 
- '{"modbus_tcp": 1, "bacnet": 2, "mqtt": 3, "ethernet_ip": 4, "modbus_rtu": 5}',
- datetime('now')),
-
-('INFO', 'devices', 'Sample devices created with protocol_id foreign keys and complete settings', 
- '{"smart_factory": 6, "global_manufacturing": 2, "demo": 2, "test": 1, "total": 11, "all_configured": true}',
- datetime('now')),
-
-('INFO', 'datapoints', 'Data points created with C++ SQLQueries.h compatibility', 
- '{"total_points": 17, "log_enabled": 17, "data_types": ["BOOL", "UINT16", "UINT32", "FLOAT32"], "schema_compatible": true}',
- datetime('now'));
-
--- =============================================================================
--- 초기 데이터 로딩 완료 - C++ SQLQueries.h 100% 호환
--- =============================================================================
--- ✅ protocol_id 외래키 완전 해결
--- ✅ current_values 테이블 C++ 스키마 정확히 반영
--- ✅ data_points 테이블 SQLQueries.h 완전 호환
--- ✅ device_settings, device_status 테이블 완전 구현
--- ✅ 모든 데이터 타입 C++ enum과 일치 (BOOL, UINT16, UINT32, FLOAT32)
--- ✅ JSON 형태 데이터 올바른 형식으로 저장
--- ✅ 현실적인 산업 환경 시뮬레이션 데이터
--- ✅ 완전한 통계 카운터 및 성능 지표 포함
+INSERT INTO schema_versions VALUES(1,'2.1.0','2026-01-29 07:52:15','Complete PulseOne v2.1.0 schema - C++ SQLQueries.h compatible');
+INSERT INTO schema_versions VALUES(2,'2.1.0','2026-01-29 07:55:48','Complete PulseOne v2.1.0 schema - C++ SQLQueries.h compatible');
+INSERT INTO schema_versions VALUES(3,'2.1.0','2026-01-29 09:38:43','Complete PulseOne v2.1.0 schema - C++ SQLQueries.h compatible');
+INSERT INTO tenants VALUES(1,'Smart Factory Korea','SFK001','smartfactory.pulseone.io','Factory Manager','manager@smartfactory.co.kr','+82-2-1234-5678','professional','active',10,10000,50,'monthly',NULL,NULL,NULL,1,'UTC','USD','en','2026-01-29 07:52:15','2026-01-29 07:52:15',0);
+INSERT INTO tenants VALUES(2,'Global Manufacturing Inc','GMI002','global-mfg.pulseone.io','Operations Director','ops@globalmfg.com','+1-555-0123','enterprise','active',50,100000,200,'monthly',NULL,NULL,NULL,1,'UTC','USD','en','2026-01-29 07:52:15','2026-01-29 07:52:15',0);
+INSERT INTO tenants VALUES(3,'Demo Corporation','DEMO','demo.pulseone.io','Demo Manager','demo@pulseone.com','+82-10-0000-0000','starter','trial',3,1000,10,'monthly',NULL,NULL,NULL,1,'UTC','USD','en','2026-01-29 07:52:15','2026-01-29 07:52:15',0);
+INSERT INTO tenants VALUES(4,'Test Factory Ltd','TEST','test.pulseone.io','Test Engineer','test@testfactory.com','+82-31-9999-8888','professional','active',5,5000,25,'monthly',NULL,NULL,NULL,1,'UTC','USD','en','2026-01-29 07:52:15','2026-01-29 07:52:15',0);
+INSERT INTO edge_servers VALUES(1,1,'Main Collector','collector',NULL,'Seoul Main Factory',NULL,'collector',NULL,NULL,8080,NULL,'docker-collector-1:70a33d',NULL,NULL,'active','2026-02-06 04:32:31','2026-02-06 04:32:31','2.1.0',0.0,0.0,0.0,0,NULL,NULL,1,1,'2026-01-29 07:55:48','2026-01-29 07:55:48',0,1,100,1000,'all');
+INSERT INTO edge_servers VALUES(2,2,'NY Collector','collector',NULL,'New York Plant',NULL,'10.0.1.5',NULL,NULL,8080,NULL,NULL,NULL,NULL,'active',NULL,NULL,'2.1.0',0.0,0.0,0.0,0,NULL,NULL,1,1,'2026-01-29 07:55:48','2026-01-29 07:55:48',0,3,100,1000,'all');
+INSERT INTO edge_servers VALUES(3,3,'Demo Collector','collector',NULL,'Demo Factory',NULL,'192.168.100.20',NULL,NULL,8080,NULL,NULL,NULL,NULL,'active',NULL,NULL,'2.1.0',0.0,0.0,0.0,0,NULL,NULL,1,1,'2026-01-29 07:55:48','2026-01-29 07:55:48',0,5,100,1000,'all');
+INSERT INTO edge_servers VALUES(4,4,'Test Collector','collector',NULL,'Test Facility',NULL,'192.168.200.20',NULL,NULL,8080,NULL,NULL,NULL,NULL,'active',NULL,NULL,'2.1.0',0.0,0.0,0.0,0,NULL,NULL,1,1,'2026-01-29 07:55:48','2026-01-29 07:55:48',0,6,100,1000,'all');
+INSERT INTO edge_servers VALUES(6,1,'Insite Gateway','gateway','',NULL,NULL,'127.0.0.1',NULL,NULL,8080,NULL,NULL,NULL,NULL,'active',NULL,NULL,NULL,0.0,0.0,0.0,0,'{"target_priorities":{"18":3,"19":1}}',NULL,1,1,'2026-02-06 04:01:25','2026-02-06 04:07:55',0,2,100,1000,'selective');
+INSERT INTO edge_servers VALUES(7,1,'VerificationGateway','gateway',NULL,NULL,NULL,'127.0.0.1',NULL,NULL,8080,NULL,NULL,NULL,NULL,'pending',NULL,NULL,NULL,0.0,0.0,0.0,0,'{}',NULL,1,1,'2026-01-31 03:03:09','2026-01-31 03:03:13',1,NULL,100,1000,'all');
+INSERT INTO edge_servers VALUES(12,1,'insite 운영 게이트웨이','gateway','',NULL,NULL,'127.0.0.1',NULL,NULL,8080,NULL,NULL,NULL,NULL,'active','2026-02-06 04:32:33',NULL,NULL,0.0,0.0,0.0,0,'{"target_priorities":{"10":3,"21":1}}',NULL,1,1,'2026-02-06 04:01:07','2026-02-06 04:08:26',0,2,100,1000,'selective');
+INSERT INTO system_settings VALUES(1,'backup.auto_enabled','false',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789924);
+INSERT INTO system_settings VALUES(2,'backup.schedule_time','02:00',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
+INSERT INTO system_settings VALUES(3,'backup.retention_days','3130',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
+INSERT INTO system_settings VALUES(4,'backup.include_logs','true',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
+INSERT INTO users VALUES(1,NULL,'admin','admin@pulseone.com','$2b$10$6p9f6q8q8q8q8q8q8q8q8u','Administrator',NULL,NULL,NULL,NULL,NULL,NULL,'system_admin',NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,0,1,0,0,NULL,NULL,0,'UTC','ko','light',NULL,NULL,'2026-01-29 23:05:10','2026-01-29 23:05:10',NULL,0);
+INSERT INTO users VALUES(2,1,'sfk_admin','admin@smartfactory.co.kr','$2b$10$EpjXWzO2yzcaEUPPP5PRLOJHWLgH6Cq7.V/vV5V6V7V8V9V0V1V2V','강지훈',NULL,NULL,NULL,'관리팀','팀장',NULL,'company_admin',NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,0,1,0,0,NULL,NULL,0,'UTC','en','light',NULL,NULL,'2026-02-02 12:51:20','2026-02-02 12:51:20',NULL,0);
+INSERT INTO users VALUES(3,1,'sfk_engineer','engineer1@smartfactory.co.kr','$2b$10$EpjXWzO2yzcaEUPPP5PRLOJHWLgH6Cq7.V/vV5V6V7V8V9V0V1V2V','이동욱',NULL,NULL,NULL,'기술지원팀','대리',NULL,'engineer',NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,0,1,0,0,NULL,NULL,0,'UTC','en','light',NULL,NULL,'2026-02-02 12:51:20','2026-02-02 12:51:20',NULL,0);
+INSERT INTO users VALUES(4,1,'sfk_operator','operator1@smartfactory.co.kr','$2b$10$EpjXWzO2yzcaEUPPP5PRLOJHWLgH6Cq7.V/vV5V6V7V8V9V0V1V2V','김철수',NULL,NULL,NULL,'생산1팀','사원',NULL,'operator',NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,0,1,0,0,NULL,NULL,0,'UTC','en','light',NULL,NULL,'2026-02-02 12:51:20','2026-02-02 12:51:20',NULL,0);
+INSERT INTO users VALUES(5,1,'sfk_viewer','viewer1@smartfactory.co.kr','$2b$10$EpjXWzO2yzcaEUPPP5PRLOJHWLgH6Cq7.V/vV5V6V7V8V9V0V1V2V','박영희',NULL,NULL,NULL,'기능관리팀','사원',NULL,'viewer',NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,0,1,0,0,NULL,NULL,0,'UTC','en','light',NULL,NULL,'2026-02-02 12:51:20','2026-02-02 12:51:20',NULL,0);
+INSERT INTO users VALUES(7,2,'gmi_engineer','eng@globalmfg.com','$2b$10$EpjXWzO2yzcaEUPPP5PRLOJHWLgH6Cq7.V/vV5V6V7V8V9V0V1V2V','Jane Doe',NULL,NULL,NULL,'Maintenance','Senior Engineer',NULL,'engineer',NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,0,1,0,0,NULL,NULL,0,'UTC','en','light',NULL,NULL,'2026-02-02 12:51:20','2026-02-02 12:51:20',NULL,0);
+INSERT INTO sites VALUES(1,1,NULL,'Seoul Main Factory','SMF001','factory','Main manufacturing facility','Seoul Industrial Complex',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO sites VALUES(2,1,NULL,'Busan Secondary Plant','BSP002','factory','Secondary production facility','Busan Industrial Park',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO sites VALUES(3,2,NULL,'New York Plant','NYP003','factory','East Coast Manufacturing Plant','New York Industrial Zone',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO sites VALUES(4,2,NULL,'Detroit Automotive Plant','DAP004','factory','Automotive Manufacturing Plant','Detroit, MI',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO sites VALUES(5,3,NULL,'Demo Factory','DEMO005','factory','Demonstration facility','Demo Location',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO sites VALUES(6,4,NULL,'Test Facility','TEST006','factory','Testing and R&D facility','Test Location',NULL,NULL,NULL,NULL,NULL,NULL,'UTC','USD','en',NULL,NULL,NULL,NULL,NULL,NULL,'MON-FRI',NULL,NULL,NULL,NULL,0,NULL,0,1,0,1,1,NULL,NULL,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO protocols VALUES(1,'MODBUS_TCP','Modbus TCP/IP','Industrial protocol over Ethernet',502,0,0,'["read_coils", "read_discrete_inputs", "read_holding_registers", "read_input_registers", "write_single_coil", "write_single_register", "write_multiple_coils", "write_multiple_registers"]','["boolean", "int16", "uint16", "int32", "uint32", "float32"]','{"slave_id": {"type": "integer", "default": 1, "min": 1, "max": 247}, "timeout_ms": {"type": "integer", "default": 3000}, "byte_order": {"type": "string", "default": "big_endian"}}','{}',1000,3000,10,1,0,'1.0','industrial','Modbus Organization','Modbus Application Protocol V1.1b3','2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO protocols VALUES(2,'BACNET','BACnet/IP','Building automation and control networks',47808,0,0,'["read_property", "write_property", "read_property_multiple", "who_is", "i_am", "subscribe_cov"]','["boolean", "int32", "uint32", "float32", "string", "enumerated", "bitstring"]','{"device_id": {"type": "integer", "default": 1001}, "network": {"type": "integer", "default": 1}, "max_apdu": {"type": "integer", "default": 1476}}','{}',5000,10000,5,1,0,'1.0','building_automation','ASHRAE','ANSI/ASHRAE 135-2020','2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO protocols VALUES(3,'MQTT','MQTT v3.1.1','Lightweight messaging protocol for IoT',1883,0,1,'["publish", "subscribe", "unsubscribe", "ping", "connect", "disconnect"]','["boolean", "int32", "float32", "string", "json", "binary"]','{"client_id":{"type":"string","default":"pulseone_client"},"username":{"type":"string"},"password":{"type":"string"},"keep_alive":{"type":"integer","default":60},"broker_enabled":false,"broker_api_key":"key_jx9vwv7k0_ml4h113y","broker_api_key_updated_at":"2026-02-02T01:08:25.438Z","broker_username":"admin","broker_password":"1234"}','{}',0,5000,100,1,0,'3.1.1','iot','MQTT.org','MQTT v3.1.1 OASIS Standard','2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO protocols VALUES(4,'ETHERNET_IP','EtherNet/IP','Industrial Ethernet communication protocol',44818,0,0,'["explicit_messaging", "implicit_messaging", "forward_open", "forward_close", "get_attribute_single", "set_attribute_single"]','["boolean", "int8", "int16", "int32", "uint8", "uint16", "uint32", "float32", "string"]','{"connection_type": {"type": "string", "default": "explicit"}, "assembly_instance": {"type": "integer", "default": 100}, "originator_to_target": {"type": "integer", "default": 500}, "target_to_originator": {"type": "integer", "default": 500}}','{}',200,1000,20,1,0,'1.0','industrial','ODVA','EtherNet/IP Specification Volume 1 & 2','2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO protocols VALUES(5,'MODBUS_RTU','Modbus RTU','Modbus over serial communication',NULL,1,0,'["read_coils", "read_discrete_inputs", "read_holding_registers", "read_input_registers", "write_single_coil", "write_single_register", "write_multiple_coils", "write_multiple_registers"]','["boolean", "int16", "uint16", "int32", "uint32", "float32"]','{"slave_id": {"type": "integer", "default": 1}, "baud_rate": {"type": "integer", "default": 9600}, "parity": {"type": "string", "default": "none"}, "data_bits": {"type": "integer", "default": 8}, "stop_bits": {"type": "integer", "default": 1}}','{}',1000,3000,1,1,0,'1.0','industrial','Modbus Organization','Modbus over Serial Line V1.02','2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO protocols VALUES(13,'BLE_BEACON','BLE Beacon','Bluetooth Low Energy Beaconing',NULL,0,0,'["read"]','["BOOL", "INT32", "FLOAT32", "STRING"]','{"uuid": {"type": "string"}}','{}',1000,3000,100,1,0,'4.0','iot','Bluetooth SIG','Bluetooth Core Specification 4.0','2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO protocols VALUES(14,'BACNET_IP','BACnet/IP',NULL,NULL,0,0,NULL,NULL,NULL,'{}',1000,5000,1,1,0,NULL,NULL,NULL,NULL,'2026-02-01 05:41:24','2026-02-01 05:41:24');
+INSERT INTO manufacturers VALUES(1,'LS Electric','Global total solution provider in electric power and automation','South Korea','https://www.lselectric.co.kr',NULL,1,0,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO manufacturers VALUES(2,'Siemens','German multinational technology conglomerate','Germany','https://www.siemens.com',NULL,1,0,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO manufacturers VALUES(3,'Schneider Electric','French multinational company specializing in digital automation and energy management','France','https://www.se.com',NULL,1,0,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO manufacturers VALUES(4,'ABB','Swedish-Swiss multinational corporation operating mainly in robotics, power, heavy electrical equipment, and automation technology','Switzerland','https://new.abb.com',NULL,1,0,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO manufacturers VALUES(5,'Delta Electronics','Taiwanese electronics manufacturing company','Taiwan','https://www.deltaww.com',NULL,1,0,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO device_models VALUES(1,1,'XGT Series','XGK-CPUS','PLC','LS Electric XGT Series Programmable Logic Controller',NULL,NULL,NULL,1,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO device_models VALUES(2,1,'iS7 Inverter','SV-iS7','INVERTER','LS Electric iS7 Series High Performance Inverter',NULL,NULL,NULL,1,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO device_models VALUES(3,2,'S7-1200','CPU 1214C','PLC','Siemens SIMATIC S7-1200 Compact Controller',NULL,NULL,NULL,1,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO device_models VALUES(4,3,'PowerLogic PM8000','METSEPM8000','METER','Schneider Electric PowerLogic PM8000 series power meter',NULL,NULL,NULL,1,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO devices VALUES(2,1,1,NULL,1,'HMI-001',NULL,'HMI','PulseOne',NULL,NULL,NULL,1,'172.18.0.7:50502','{"slave_id": 1}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-29 09:55:07','2026-01-29 09:55:07',NULL);
+INSERT INTO devices VALUES(200,1,1,NULL,1,'E2E-Device',NULL,'PLC',NULL,NULL,NULL,NULL,2,'127.0.0.1:502','{}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-01-31 12:38:16','2026-01-31 12:38:16',NULL);
+INSERT INTO devices VALUES(300,1,1,NULL,1,'MQTT-Test-Device',NULL,'SENSOR',NULL,NULL,NULL,NULL,3,'tcp://rabbitmq:1883','{"topic":"vfd/#"}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-02-04 03:30:01','2026-02-04 03:30:01',9);
+INSERT INTO devices VALUES(12345,1,1,0,0,'Simulated BACnet Controller','Test Device (Simulation Mode)','CONTROLLER','','','',NULL,14,'192.168.1.255:47808','{"model_name":"PulseOne-Sim-BAC-01","vendor_id":"123"}',1000,3000,3,NULL,'2026-02-01 21:16:49','2026-02-01 21:16:49',NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,0,'2026-02-01 21:16:49','2026-02-01 21:16:49',NULL);
+INSERT INTO devices VALUES(12346,1,2,NULL,1,'insite 운영 테스트',NULL,'PLC','LS Electric',NULL,NULL,NULL,1,'172.18.0.7:50502','{"slave_id":1}',1000,3000,3,NULL,NULL,NULL,NULL,NULL,1,0,0,100,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'2026-02-06 04:03:15','2026-02-06 04:03:15',NULL);
+INSERT INTO device_settings VALUES(1,1000,NULL,1,10000,5000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,0,1024,1024,100,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO device_settings VALUES(2,1000,NULL,1,10000,3000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,0,1024,1024,100,'2026-01-29 09:50:46','2026-01-29 09:50:46',NULL);
+INSERT INTO device_settings VALUES(3,500,NULL,1,10000,2000,2000,10,5,3000,1.5,60000,300000,1,15,5,1,1,1,1,1,1,0,0,2048,2048,200,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO device_settings VALUES(4,1000,NULL,1,10000,5000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,0,1024,1024,100,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO device_settings VALUES(5,5000,NULL,1,15000,10000,10000,10,3,10000,2,120000,600000,1,60,20,1,0,1,0,1,0,0,0,1024,1024,50,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO device_settings VALUES(6,5000,NULL,1,10000,5000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,0,1024,1024,100,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO device_settings VALUES(300,1000,NULL,1,10000,5000,5000,10,3,5000,1.5,60000,300000,1,30,10,1,0,1,0,1,0,0,1,1024,1024,100,'2026-02-04 04:11:44','2026-02-04 04:11:44',NULL);
+INSERT INTO device_status VALUES(1,'connected','2026-01-29 07:51:15','2026-01-29 06:52:15',0,NULL,NULL,0,15,8,45,2.5,1500,1500,0,99.9000000000000056,'V16.0.3','{"cpu": "S7-1515F", "memory": "512MB"}','{"last_scan": "normal"}',25.30000000000000071,68.5,'2026-01-29 07:52:15');
+INSERT INTO device_status VALUES(2,'connected','2026-02-06 04:32:41','2026-01-29 05:52:15',0,NULL,NULL,0,10,12,78,1.800000000000000044,140997,140997,0,99.5,'V2.1.4','{"screen": "12inch", "memory": "256MB"}','{"display": "active"}',18.69999999999999929,45.20000000000000285,'2026-02-06 04:32:41');
+INSERT INTO device_status VALUES(3,'connected','2026-01-29 07:52:10','2026-01-29 07:22:15',0,NULL,NULL,0,8,5,25,5.200000000000000177,3500,3500,0,100.0,'V8.3.2','{"axes": 6, "payload": "16kg"}','{"position": "active"}',42.10000000000000142,72.79999999999999716,'2026-01-29 07:52:15');
+INSERT INTO device_status VALUES(4,'connected','2026-01-29 07:51:15','2026-01-29 07:07:15',0,NULL,NULL,0,20,10,55,1.199999999999999956,600,600,0,99.7999999999999972,'V1.5.8','{"power": "15kW", "voltage": "480V"}','{"drive": "running"}',15.19999999999999929,38.89999999999999858,'2026-01-29 07:52:15');
+INSERT INTO device_status VALUES(5,'connected','2026-01-29 07:49:15','2026-01-29 01:52:15',0,NULL,NULL,0,45,25,120,0.8000000000000000444,200,200,0,98.5,'V3.2.1','{"zones": 4, "capacity": "50kW"}','{"system": "auto"}',8.5,28.30000000000000071,'2026-01-29 07:52:15');
+INSERT INTO device_status VALUES(6,'connected','2026-01-29 07:51:15','2026-01-28 23:52:15',0,NULL,NULL,0,35,20,85,1.0,400,400,0,99.2000000000000028,'V2.8.5','{"class": "0.2S", "ct_ratio": "1000:1"}','{"measurement": "active"}',12.80000000000000071,35.70000000000000285,'2026-01-29 07:52:15');
+INSERT INTO device_status VALUES(11,'connected','2026-01-29 09:09:31',NULL,0,NULL,NULL,0,7,NULL,NULL,0.0,786,786,0,0.0,NULL,NULL,NULL,NULL,NULL,'2026-01-29 09:09:31');
+INSERT INTO device_status VALUES(15,'connected','2026-01-29 09:55:22',NULL,0,NULL,NULL,0,8,NULL,NULL,0.0,569,569,0,0.0,NULL,NULL,NULL,NULL,NULL,'2026-01-29 09:55:22');
+INSERT INTO device_status VALUES(200,'connected','2026-01-31 12:26:55',NULL,0,NULL,NULL,0,6,NULL,NULL,0.0,4426,4426,0,0.0,NULL,NULL,NULL,NULL,NULL,'2026-01-31 12:26:55');
+INSERT INTO device_status VALUES(300,'connected','2026-02-05 07:37:19',NULL,0,NULL,NULL,0,0,NULL,NULL,0.0,10,10,0,0.0,NULL,NULL,NULL,NULL,NULL,'2026-02-05 07:37:19');
+INSERT INTO device_status VALUES(12346,'connected','2026-02-06 04:32:40',NULL,0,NULL,NULL,0,4,NULL,NULL,0.0,546,546,0,0.0,NULL,NULL,NULL,NULL,NULL,'2026-02-06 04:32:40');
+INSERT INTO data_points VALUES(1,2,'WLS.PV',NULL,100,'CO:100','value','BOOL','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,1000,1,1,0.0,NULL,NULL,NULL,NULL,1,NULL,NULL,0.0,'standard',1,'2026-01-29 09:55:07','2026-01-29 09:55:07',0,'medium');
+INSERT INTO data_points VALUES(2,2,'WLS.SRS',NULL,101,'CO:101','data','BOOL','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,1000,1,1,0.0,NULL,NULL,NULL,NULL,1,NULL,NULL,0.0,'standard',1,'2026-01-29 09:55:07','2026-01-29 09:55:07',0,'medium');
+INSERT INTO data_points VALUES(3,2,'WLS.SCS',NULL,102,'CO:102',NULL,'BOOL','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,1000,1,1,0.0,NULL,NULL,NULL,NULL,1,NULL,NULL,0.0,'standard',1,'2026-01-29 09:55:07','2026-01-29 09:55:07',0,'medium');
+INSERT INTO data_points VALUES(4,2,'WLS.SSS',NULL,200,'HR:200',NULL,'UINT16','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,1000,1,1,0.0,NULL,NULL,NULL,NULL,1,NULL,NULL,0.0,'standard',1,'2026-01-29 09:55:07','2026-01-29 09:55:07',0,'medium');
+INSERT INTO data_points VALUES(5,2,'WLS.SBV',NULL,201,'HR:201',NULL,'UINT16','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,1000,1,1,0.0,NULL,NULL,NULL,NULL,1,NULL,NULL,0.0,'standard',1,'2026-01-29 09:55:07','2026-01-29 09:55:07',0,'medium');
+INSERT INTO data_points VALUES(2001,200,'E2E-Point',NULL,1,NULL,NULL,'FLOAT32','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,0,1,1,0.0,NULL,NULL,NULL,NULL,1,NULL,NULL,0.0,'standard',1,'2026-01-31 12:38:16','2026-01-31 12:38:16',0,'medium');
+INSERT INTO data_points VALUES(2008,12346,'fire',NULL,100,NULL,NULL,'FLOAT32','read',1,0,NULL,1.0,0.0,0.0,0.0,1,0,0.0,0,1,1,0.0,NULL,NULL,NULL,NULL,0,NULL,NULL,0.0,'standard',1,'2026-02-06 04:03:18','2026-02-06 04:03:18',0,'medium');
+INSERT INTO current_values VALUES(1,'{"value":0.0}','{"value":0.0}',NULL,'double',1,'good','2026-02-06T04:32:41.118Z',NULL,NULL,NULL,NULL,0,0,0,0,'normal',0,0,NULL,'2026-02-06T04:32:41.119Z');
+INSERT INTO current_values VALUES(2,'{"value":0.0}','{"value":0.0}',NULL,'double',1,'good','2026-02-06T04:32:41.121Z',NULL,NULL,NULL,NULL,0,0,0,0,'normal',0,0,NULL,'2026-02-06T04:32:41.121Z');
+INSERT INTO current_values VALUES(3,'{"value":0.0}','{"value":0.0}',NULL,'double',1,'good','2026-02-06T04:32:41.123Z',NULL,NULL,NULL,NULL,0,0,0,0,'normal',0,0,NULL,'2026-02-06T04:32:41.123Z');
+INSERT INTO current_values VALUES(4,'{"value":80.0}','{"value":80.0}',NULL,'double',1,'good','2026-02-06T04:32:41.125Z',NULL,NULL,NULL,NULL,0,0,0,0,'normal',0,0,NULL,'2026-02-06T04:32:41.125Z');
+INSERT INTO current_values VALUES(5,'{"value":360.0}','{"value":360.0}',NULL,'double',1,'good','2026-02-06T04:32:41.128Z',NULL,NULL,NULL,NULL,0,0,0,0,'normal',0,0,NULL,'2026-02-06T04:32:41.128Z');
+INSERT INTO current_values VALUES(2002,'{"value":155.5}','{"value":155.5}',NULL,'double',1,'good','2026-02-04T04:09:03.781Z',NULL,NULL,NULL,NULL,0,0,0,0,'normal',0,0,NULL,'2026-02-04T04:09:03.784Z');
+INSERT INTO current_values VALUES(2008,'{"value":0.0}','{"value":0.0}',NULL,'double',1,'good','2026-02-06T04:32:40.500Z',NULL,NULL,NULL,NULL,0,0,0,0,'normal',0,0,NULL,'2026-02-06T04:32:40.501Z');
+INSERT INTO current_values VALUES(32730,'{"value":"blob://vfd_data_20260204.bin"}','{"value":"blob://vfd_data_20260204.bin"}',NULL,'string',1,'good','2026-02-05T07:37:18.978Z',NULL,NULL,NULL,NULL,0,0,0,0,'normal',0,0,NULL,'2026-02-05T07:37:18.980Z');
+INSERT INTO template_devices VALUES(1,1,'XGT Standard Modbus TCP','Standard template for LS XGT PLC using Modbus TCP',1,'{"slave_id": 1, "byte_order": "big_endian"}',1000,3000,1,NULL,'2026-01-29 07:55:48','2026-01-29 07:55:48',0);
+INSERT INTO template_devices VALUES(2,2,'iS7 Inverter Basic','Basic monitoring and control for iS7 Inverter',1,'{"slave_id": 1, "byte_order": "big_endian"}',1000,3000,1,NULL,'2026-01-29 07:55:48','2026-01-29 07:55:48',0);
+INSERT INTO template_devices VALUES(3,3,'S7-1200 Standard','Standard monitoring for Siemens S7-1200',1,'{"slave_id": 1, "byte_order": "big_endian"}',1000,3000,1,NULL,'2026-01-29 07:55:48','2026-01-29 07:55:48',0);
+INSERT INTO template_devices VALUES(21,3,'S7-1200 Native S7','Monitoring Siemens S7-1200 via S7 Protocol',5,'{"rack": 0, "slot": 1}',1000,3000,1,NULL,'2026-01-29 09:38:43','2026-01-29 09:38:43',0);
+INSERT INTO template_device_settings VALUES(1,1000,10000,5000,5000,3);
+INSERT INTO template_device_settings VALUES(2,1000,10000,5000,5000,3);
+INSERT INTO template_device_settings VALUES(3,1000,10000,5000,5000,3);
+INSERT INTO template_device_settings VALUES(21,1000,10000,5000,5000,3);
+INSERT INTO template_data_points VALUES(1,1,'CPU_Status',NULL,0,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(2,1,'Run_Stop',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(3,1,'Error_Code',NULL,2,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(4,1,'Input_W0',NULL,100,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(5,1,'Output_W0',NULL,200,NULL,'UINT16','read_write','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(6,2,'Frequency',NULL,1,NULL,'FLOAT32','read','Hz',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(7,2,'Output_Current',NULL,2,NULL,'FLOAT32','read','A',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(8,2,'Output_Voltage',NULL,3,NULL,'FLOAT32','read','V',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(9,2,'DC_Link_Voltage',NULL,4,NULL,'FLOAT32','read','V',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(10,2,'Status_Word',NULL,10,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(11,2,'Control_Word',NULL,11,NULL,'UINT16','read_write','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(12,3,'Status',NULL,0,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(13,3,'Run_Mode',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(14,3,'Process_Value',NULL,10,NULL,'FLOAT32','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(15,3,'Setpoint',NULL,12,NULL,'FLOAT32','read_write','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(23,14,'CPU_Status',NULL,1,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(24,14,'Memory_Usage',NULL,10,NULL,'UINT16','read','%',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(25,14,'Temperature',NULL,20,NULL,'FLOAT32','read','°C',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(26,14,'Input_DI0',NULL,100,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(27,14,'Output_DQ0',NULL,200,NULL,'BOOL','read_write','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(28,13,'Frequency_Command',NULL,1,NULL,'UINT16','read_write','Hz',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(29,13,'Output_Frequency',NULL,10,NULL,'UINT16','read','Hz',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(30,13,'Output_Current',NULL,11,NULL,'UINT16','read','A',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(31,13,'DC_Link_Voltage',NULL,12,NULL,'UINT16','read','V',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(32,13,'Drive_Status',NULL,13,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(33,13,'Error_Code',NULL,14,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(34,6,'Sys_RunMode',NULL,0,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(35,6,'Sys_Error',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(36,6,'Cycle_Time_Avg',NULL,10,NULL,'UINT32','read','us',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(37,6,'Total_Counter',NULL,100,NULL,'UINT32','read','pcs',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(38,7,'CPU_RUN',NULL,0,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(39,7,'CPU_ERR',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(40,7,'R000_Start',NULL,1000,NULL,'BOOL','read_write','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(41,7,'DM000_Result',NULL,2000,NULL,'INT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(42,5,'Input_X01',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(43,5,'Input_X02',NULL,2,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(44,5,'Input_X03',NULL,3,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(45,5,'Output_Y01',NULL,101,NULL,'BOOL','read_write','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(46,5,'Output_Y02',NULL,102,NULL,'BOOL','read_write','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(47,5,'D0_Internal_Value',NULL,200,NULL,'INT16','read_write','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(48,10,'Freq_Cmd',NULL,1,NULL,'UINT16','read_write','Hz',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(49,10,'Out_Freq',NULL,2,NULL,'UINT16','read','Hz',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(50,11,'Run_Status',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(51,11,'Main_Temp',NULL,2,NULL,'FLOAT32','read','°C',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(52,12,'Sys_Ready',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(53,12,'Prod_Count',NULL,2,NULL,'UINT32','read','pcs',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(54,15,'Logic_Active',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(55,15,'Process_Step',NULL,2,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(56,16,'Diag_Code',NULL,1,NULL,'UINT16','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(57,16,'Health_Score',NULL,2,NULL,'UINT16','read','%',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(58,17,'Load_Peak',NULL,1,NULL,'FLOAT32','read','kW',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(59,17,'Efficiency',NULL,2,NULL,'FLOAT32','read','%',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(60,18,'Billing_Data',NULL,1,NULL,'FLOAT32','read','kWh',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(61,18,'Peak_Demand',NULL,2,NULL,'FLOAT32','read','kW',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(62,19,'Primary_Active',NULL,1,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(63,19,'Sync_Status',NULL,2,NULL,'BOOL','read','',1.0,0,1,0,NULL,0.0,NULL,NULL);
+INSERT INTO template_data_points VALUES(64,1,'MQTT Test Point',NULL,0,'sensors/temp','FLOAT32','read',NULL,1.0,0,1,0,'{"unit":"C"}',0.0,'{"qos":1,"retained":true}','val');
+INSERT INTO alarm_rules VALUES(23,1,'WLS.SRS State Change',NULL,'data_point',2,NULL,'digital',NULL,NULL,NULL,NULL,0.0,0.0,'on_change',NULL,NULL,NULL,NULL,'medium',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-29 10:38:36','2026-01-29 10:38:36',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_rules VALUES(24,1,'WLS.SCS State Change',NULL,'data_point',3,NULL,'digital',NULL,NULL,NULL,NULL,0.0,0.0,'on_change',NULL,NULL,NULL,NULL,'medium',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-29 10:38:36','2026-01-29 10:38:36',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_rules VALUES(25,1,'WLS.SSS Out of Range',NULL,'data_point',4,NULL,'analog',NULL,100.0,0.0,NULL,0.0,0.0,NULL,NULL,NULL,NULL,NULL,'high',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-29 10:38:36','2026-01-29 10:38:36',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_rules VALUES(26,1,'WLS.SBV Out of Range',NULL,'data_point',5,NULL,'analog',NULL,15.0,10.0,NULL,0.0,0.0,NULL,NULL,NULL,NULL,NULL,'high',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-29 10:38:36','2026-01-29 10:38:36',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_rules VALUES(200,1,'E2E_ALARM_RULE',NULL,'data_point',200,NULL,'digital',NULL,NULL,NULL,NULL,0.0,0.0,'on_true',NULL,NULL,NULL,NULL,'critical',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-31 11:06:22','2026-01-31 11:06:22',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_rules VALUES(201,1,'E2E-High-Alarm',NULL,'data_point',2001,NULL,'analog',NULL,50.0,NULL,NULL,0.0,0.0,NULL,NULL,NULL,NULL,NULL,'critical',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-01-31 12:38:16','2026-01-31 12:38:16',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_rules VALUES(3001,1,'MQTT-Temp-High',NULL,'POINT',3001,NULL,'LIMIT_HIGH',NULL,150.0,NULL,NULL,0.0,0.0,NULL,NULL,NULL,NULL,'Temp High {{value}}','critical',100,0,0,1,NULL,1,0,0,NULL,NULL,1,0,'2026-02-04 03:31:55','2026-02-04 03:31:55',NULL,NULL,NULL,0,NULL,0,3,NULL,NULL,NULL,0);
+INSERT INTO alarm_occurrences VALUES(208,26,1,'2026-02-06 13:23:31','360.0','HIGH','WLS.SBV Out of Range: HIGH (Value: 360.00)','high','active',NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,0,NULL,'{}','','','2026-02-06 04:23:31','2026-02-06 04:23:31',2,5,NULL,NULL);
+INSERT INTO javascript_functions VALUES(1,1,'average',NULL,'Calculate average of values','function average(...values) { return values.reduce((a, b) => a + b, 0) / values.length; }','math','[{"name": "values", "type": "number[]", "required": true}]','number',0,NULL,NULL,NULL,1,0,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO javascript_functions VALUES(2,1,'oeeCalculation',NULL,'Calculate Overall Equipment Effectiveness','function oeeCalculation(availability, performance, quality) { return (availability / 100) * (performance / 100) * (quality / 100) * 100; }','engineering','[{"name": "availability", "type": "number"}, {"name": "performance", "type": "number"}, {"name": "quality", "type": "number"}]','number',0,NULL,NULL,NULL,1,0,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO javascript_functions VALUES(3,1,'powerFactorCorrection',NULL,'Calculate power factor correction','function powerFactorCorrection(activePower, reactivePower) { return activePower / Math.sqrt(activePower * activePower + reactivePower * reactivePower); }','electrical','[{"name": "activePower", "type": "number"}, {"name": "reactivePower", "type": "number"}]','number',0,NULL,NULL,NULL,1,0,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO javascript_functions VALUES(4,1,'productionEfficiency',NULL,'Calculate production efficiency for automotive line','function productionEfficiency(actual, target, hours) { return (actual / target) * 100; }','custom','[{"name": "actual", "type": "number"}, {"name": "target", "type": "number"}, {"name": "hours", "type": "number"}]','number',0,NULL,NULL,NULL,1,0,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO javascript_functions VALUES(5,1,'energyIntensity',NULL,'Calculate energy intensity per unit','function energyIntensity(totalEnergy, productionCount) { return productionCount > 0 ? totalEnergy / productionCount : 0; }','custom','[{"name": "totalEnergy", "type": "number"}, {"name": "productionCount", "type": "number"}]','number',0,NULL,NULL,NULL,1,0,'2026-01-29 07:52:15','2026-01-29 07:52:15',NULL);
+INSERT INTO virtual_points VALUES(1,1,'site',1,NULL,'Production_Efficiency','Overall production efficiency calculation','const production = getValue("Production_Count"); return (production / 20000) * 100;','float','%',5000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO virtual_points VALUES(2,1,'site',1,NULL,'Energy_Per_Unit','Energy consumption per unit','const power = 847.5; const production = getValue("Production_Count"); return power / production;','float','kW/unit',10000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO virtual_points VALUES(3,1,'site',1,NULL,'Overall_Equipment_Effectiveness','OEE calculation for production line','const availability = 95; const performance = getValue("Line_Speed") / 50 * 100; const quality = 98; return (availability * performance * quality) / 10000;','float','%',15000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO virtual_points VALUES(4,2,'site',3,NULL,'Assembly_Throughput','Assembly line throughput','const cycleTime = 45; return 3600 / cycleTime;','float','units/hour',5000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO virtual_points VALUES(5,3,'site',5,NULL,'Demo_Performance','Demo performance index','return Math.sin(Date.now() / 10000) * 50 + 75;','float','%',2000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO virtual_points VALUES(6,4,'site',6,NULL,'Test_Metric','Test calculation metric','return Math.random() * 100;','float','%',3000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:52:15','2026-01-29 07:52:15');
+INSERT INTO virtual_points VALUES(7,1,'site',1,NULL,'Production_Efficiency','Overall production efficiency calculation','const production = getValue("Production_Count"); return (production / 20000) * 100;','float','%',5000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO virtual_points VALUES(8,1,'site',1,NULL,'Energy_Per_Unit','Energy consumption per unit','const power = 847.5; const production = getValue("Production_Count"); return power / production;','float','kW/unit',10000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO virtual_points VALUES(9,1,'site',1,NULL,'Overall_Equipment_Effectiveness','OEE calculation for production line','const availability = 95; const performance = getValue("Line_Speed") / 50 * 100; const quality = 98; return (availability * performance * quality) / 10000;','float','%',15000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO virtual_points VALUES(10,2,'site',3,NULL,'Assembly_Throughput','Assembly line throughput','const cycleTime = 45; return 3600 / cycleTime;','float','units/hour',5000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO virtual_points VALUES(11,3,'site',5,NULL,'Demo_Performance','Demo performance index','return Math.sin(Date.now() / 10000) * 50 + 75;','float','%',2000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO virtual_points VALUES(12,4,'site',6,NULL,'Test_Metric','Test calculation metric','return Math.random() * 100;','float','%',3000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 07:55:48','2026-01-29 07:55:48');
+INSERT INTO virtual_points VALUES(13,1,'site',1,NULL,'Production_Efficiency','Overall production efficiency calculation','const production = getValue("Production_Count"); return (production / 20000) * 100;','float','%',5000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 09:38:43','2026-01-29 09:38:43');
+INSERT INTO virtual_points VALUES(14,1,'site',1,NULL,'Energy_Per_Unit','Energy consumption per unit','const power = 847.5; const production = getValue("Production_Count"); return power / production;','float','kW/unit',10000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 09:38:43','2026-01-29 09:38:43');
+INSERT INTO virtual_points VALUES(15,1,'site',1,NULL,'Overall_Equipment_Effectiveness','OEE calculation for production line','const availability = 95; const performance = getValue("Line_Speed") / 50 * 100; const quality = 98; return (availability * performance * quality) / 10000;','float','%',15000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 09:38:43','2026-01-29 09:38:43');
+INSERT INTO virtual_points VALUES(16,2,'site',3,NULL,'Assembly_Throughput','Assembly line throughput','const cycleTime = 45; return 3600 / cycleTime;','float','units/hour',5000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 09:38:43','2026-01-29 09:38:43');
+INSERT INTO virtual_points VALUES(17,3,'site',5,NULL,'Demo_Performance','Demo performance index','return Math.sin(Date.now() / 10000) * 50 + 75;','float','%',2000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 09:38:43','2026-01-29 09:38:43');
+INSERT INTO virtual_points VALUES(18,4,'site',6,NULL,'Test_Metric','Test calculation metric','return Math.random() * 100;','float','%',3000,'timer',1,NULL,NULL,'javascript',NULL,0,'return_null',NULL,0,0.0,NULL,NULL,5000,10000,3,1,NULL,0,1,5000,0,1,0,NULL,NULL,0.0,0,NULL,'2026-01-29 09:38:43','2026-01-29 09:38:43');
+INSERT INTO system_logs VALUES(1,NULL,NULL,'INFO','database',NULL,'Complete initial data loading with C++ schema compatibility',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"tables_populated": 12, "protocols": 5, "devices": 11, "data_points": 17, "current_values": 17, "device_settings": 6, "device_status": 6, "virtual_points": 6, "alarm_rules": 7, "js_functions": 5, "schema_version": "2.1.0"}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 07:52:15');
+INSERT INTO system_logs VALUES(2,NULL,NULL,'INFO','protocols',NULL,'Protocol support initialized',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"modbus_tcp": 1, "bacnet": 2, "mqtt": 3, "ethernet_ip": 4, "modbus_rtu": 5}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 07:52:15');
+INSERT INTO system_logs VALUES(3,NULL,NULL,'INFO','devices',NULL,'Sample devices created with protocol_id foreign keys and complete settings',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"smart_factory": 6, "global_manufacturing": 2, "demo": 2, "test": 1, "total": 11, "all_configured": true}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 07:52:15');
+INSERT INTO system_logs VALUES(4,NULL,NULL,'INFO','datapoints',NULL,'Data points created with C++ SQLQueries.h compatibility',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"total_points": 17, "log_enabled": 17, "data_types": ["BOOL", "UINT16", "UINT32", "FLOAT32"], "schema_compatible": true}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 07:52:15');
+INSERT INTO system_logs VALUES(5,NULL,NULL,'INFO','database',NULL,'Complete initial data loading with C++ schema compatibility',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"tables_populated": 12, "protocols": 5, "devices": 11, "data_points": 17, "current_values": 17, "device_settings": 6, "device_status": 6, "virtual_points": 6, "alarm_rules": 7, "js_functions": 5, "schema_version": "2.1.0"}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 07:55:48');
+INSERT INTO system_logs VALUES(6,NULL,NULL,'INFO','protocols',NULL,'Protocol support initialized',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"modbus_tcp": 1, "bacnet": 2, "mqtt": 3, "ethernet_ip": 4, "modbus_rtu": 5}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 07:55:48');
+INSERT INTO system_logs VALUES(7,NULL,NULL,'INFO','devices',NULL,'Sample devices created with protocol_id foreign keys and complete settings',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"smart_factory": 6, "global_manufacturing": 2, "demo": 2, "test": 1, "total": 11, "all_configured": true}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 07:55:48');
+INSERT INTO system_logs VALUES(8,NULL,NULL,'INFO','datapoints',NULL,'Data points created with C++ SQLQueries.h compatibility',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"total_points": 17, "log_enabled": 17, "data_types": ["BOOL", "UINT16", "UINT32", "FLOAT32"], "schema_compatible": true}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 07:55:48');
+INSERT INTO system_logs VALUES(9,NULL,NULL,'INFO','database',NULL,'Complete initial data loading with C++ schema compatibility',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"tables_populated": 12, "protocols": 5, "devices": 11, "data_points": 17, "current_values": 17, "device_settings": 6, "device_status": 6, "virtual_points": 6, "alarm_rules": 7, "js_functions": 5, "schema_version": "2.1.0"}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 09:38:43');
+INSERT INTO system_logs VALUES(10,NULL,NULL,'INFO','protocols',NULL,'Protocol support initialized',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"modbus_tcp": 1, "bacnet": 2, "mqtt": 3, "ethernet_ip": 4, "modbus_rtu": 5}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 09:38:43');
+INSERT INTO system_logs VALUES(11,NULL,NULL,'INFO','devices',NULL,'Sample devices created with protocol_id foreign keys and complete settings',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"smart_factory": 6, "global_manufacturing": 2, "demo": 2, "test": 1, "total": 11, "all_configured": true}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 09:38:43');
+INSERT INTO system_logs VALUES(12,NULL,NULL,'INFO','datapoints',NULL,'Data points created with C++ SQLQueries.h compatibility',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'{"total_points": 17, "log_enabled": 17, "data_types": ["BOOL", "UINT16", "UINT32", "FLOAT32"], "schema_compatible": true}',NULL,NULL,NULL,NULL,NULL,'2026-01-29 09:38:43');
+INSERT INTO export_profiles VALUES(3,'insite 알람셋',NULL,1,'2026-02-06 04:00:04','2026-02-06 04:00:04',NULL,0,NULL,'[{"id":1,"name":"WLS.PV","device":"HMI-001","address":100,"site_id":280,"scale":1,"offset":0,"target_field_name":"ENVS_1.FIFR_1.VDSDC_1:WLS.PV"},{"id":2,"name":"WLS.SRS","device":"HMI-001","address":101,"site_id":280,"scale":1,"offset":0,"target_field_name":"ENVS_1.FIFR_1.VDSDC_1:WLS.SRS"},{"id":3,"name":"WLS.SCS","device":"HMI-001","address":102,"site_id":280,"scale":1,"offset":0,"target_field_name":"ENVS_1.FIFR_1.VDSDC_1:WLS.SCS"},{"id":4,"name":"WLS.SSS","device":"HMI-001","address":200,"site_id":280,"scale":1,"offset":0,"target_field_name":"ENVS_1.FIFR_1.VDSDC_1:WLS.SSS"},{"id":5,"name":"WLS.SBV","device":"HMI-001","address":201,"site_id":280,"scale":1,"offset":0,"target_field_name":"ENVS_1.FIFR_1.VDSDC_1:WLS.SBV"}]');
+INSERT INTO export_profiles VALUES(103,'insite 운영 프로파일',NULL,1,'2026-02-06 03:59:17','2026-02-06 03:59:17',NULL,0,NULL,'[{"id":2008,"name":"fire","device_name":"insite 운영 테스트","site_id":20,"site_name":"System","data_type":"FLOAT32","unit":"","address":1001,"target_field_name":"FIFR_1.F_1:OP.SST","scale":1,"offset":0}]');
+INSERT INTO export_profile_points VALUES(7,100,200,0,NULL,1,'2026-01-31 11:18:22',NULL);
+INSERT INTO payload_templates VALUES(1,'Insite 기본 템플릿','insite','Insite 빌딩 모니터링 시스템용 기본 템플릿','[{"bd":"{{bd}}","ty":"{{ty}}","nm":"{{nm}}","vl":"{{vl}}","tm":"{{tm}}","st":"{{st}}","al":"{{al}}","des":"{{des}}","il":"{{il}}","xl":"{{xl}}","mi":"{{mi}}","mx":"{{mx}}"}]',1,'2026-01-29 07:52:15','2026-01-29 10:50:27');
+INSERT INTO export_logs VALUES(274,'alarm_export',NULL,10,NULL,NULL,'[{"al":1,"bd":1,"des":"⚠️ [높음] WLS.SBV Out of Range: HIGH (Value: 360.00) [위치: Location for Pt 5, 시간: 2026-02-06 13:23:31] → 신속 점검 요망","il":"","mi":[],"mx":[],"nm":"WLS.SBV","st":0,"tm":"2026-02-06 13:23:31","ty":"num","vl":360.0,"xl":""}]','','failure',403,'HTTP 403: {"message":"Forbidden"}','','',88,'2026-02-06 13:23:31','');
+INSERT INTO export_logs VALUES(275,'alarm_export',NULL,NULL,NULL,NULL,'[{"al":1,"bd":1,"des":"⚠️ [높음] WLS.SBV Out of Range: HIGH (Value: 360.00) [위치: Location for Pt 5, 시간: 2026-02-06 13:23:31] → 신속 점검 요망","il":"","mi":[],"mx":[],"nm":"WLS.SBV","st":0,"tm":"2026-02-06 13:23:31","ty":"num","vl":360.0,"xl":""}]','','failure',403,'HTTP 403: {"message":"The request signature we calculated does not match the signature you provided. Check you...','','',51,'2026-02-06 13:23:31','');
+INSERT INTO export_logs VALUES(276,'alarm_export',NULL,NULL,NULL,NULL,'[{"al":1,"bd":1,"des":"⚠️ [높음] WLS.SBV Out of Range: HIGH (Value: 360.00) [위치: Location for Pt 5, 시간: 2026-02-06 13:23:31] → 신속 점검 요망","il":"","mi":[],"mx":[],"nm":"WLS.SBV","st":0,"tm":"2026-02-06 13:23:31","ty":"num","vl":360.0,"xl":""}]','','failure',403,'HTTP 403: {"message":"Forbidden"}','','',43,'2026-02-06 13:23:31','');
+INSERT INTO export_logs VALUES(277,'alarm_export',NULL,21,NULL,NULL,'[{"al":1,"bd":1,"des":"⚠️ [높음] WLS.SBV Out of Range: HIGH (Value: 360.00) [위치: Location for Pt 5, 시간: 2026-02-06 13:23:31] → 신속 점검 요망","il":"","mi":[],"mx":[],"nm":"WLS.SBV","st":0,"tm":"2026-02-06 13:23:31","ty":"num","vl":360.0,"xl":""}]','','failure',403,'HTTP 403: {"message":"The request signature we calculated does not match the signature you provided. Check you...','','',42,'2026-02-06 13:23:31','');
+INSERT INTO export_targets VALUES(10,103,'Insite API Gateway(prod)','HTTP',NULL,1,'[{"url":"https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/alarm","method":"POST","headers":{"Content-Type":"application/json","x-api-key":"${HTTP_APIKEY_0818}","Authorization":"${HTTP_AUTH_5729}"},"timeout":10000,"execution_order":3}]',NULL,'on_change',0,100,0,'2026-02-06 04:02:34','2026-02-06 04:08:26');
+INSERT INTO export_targets VALUES(18,3,'insite API Gateway(stg)','HTTP',NULL,1,'[{"url":"https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/alarm","method":"POST","headers":{"Content-Type":"application/json","x-api-key":"${INSITE_API_GATEWAY_STG_APIKEY_4732}","Authorization":"${INSITE_API_GATEWAY_STG_AUTH_5850}"},"timeout":10000,"retry":3,"retryDelay":2000,"execution_order":3}]',NULL,'on_change',0,100,0,'2026-02-06 04:03:25','2026-02-06 04:07:55');
+INSERT INTO export_targets VALUES(19,3,'insite S3(stg)','S3',NULL,1,'[{"bucket_name":"hdcl-csp-stg","AccessKeyID":"${INSITE_S3_STG_S3_ACCESS_8503}","SecretAccessKey":"${INSITE_S3_STG_S3_SECRET_3105}","S3ServiceUrl":"https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/alarm","region":"ap-northeast-2","Folder":"e2e-s3","execution_order":1}]',NULL,'on_change',0,100,0,'2026-02-06 04:03:32','2026-02-06 04:07:55');
+INSERT INTO export_targets VALUES(21,103,'insite S3(prod)','S3',NULL,1,'[{"url":"https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/alarm","bucket_name":"hdcl-csp-prod","AccessKeyID":"${INSITE_S3_PROD_S3_ACCESS_8155}","SecretAccessKey":"${INSITE_S3_PROD_S3_SECRET_9885}","S3ServiceUrl":"https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/alarm","region":"ap-northeast-2","Folder":"e2e-s3","execution_order":1}]',NULL,'on_change',0,100,0,'2026-02-06 04:02:47','2026-02-06 04:08:26');
+INSERT INTO export_target_mappings VALUES(8,16,1,1,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV','','{"scale":1,"offset":0}',1,'2026-01-29 10:08:20');
+INSERT INTO export_target_mappings VALUES(9,16,2,1,'ENVS_1.FIFR_1.VDSDC_1:WLS.SRS','','{"scale":1,"offset":0}',1,'2026-01-29 10:08:20');
+INSERT INTO export_target_mappings VALUES(10,16,3,1,'ENVS_1.FIFR_1.VDSDC_1:WLS.SCS','','{"scale":1,"offset":0}',1,'2026-01-29 10:08:20');
+INSERT INTO export_target_mappings VALUES(11,16,4,1,'ENVS_1.FIFR_1.VDSDC_1:WLS.SSS','','{"scale":1,"offset":0}',1,'2026-01-29 10:08:20');
+INSERT INTO export_target_mappings VALUES(12,16,5,1,'ENVS_1.FIFR_1.VDSDC_1:WLS.SBV','','{"scale":1,"offset":0}',1,'2026-01-29 10:08:20');
+INSERT INTO export_target_mappings VALUES(36,13,1,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV','WLS.PV Primary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(37,13,2,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.SRS','WLS.SRS Primary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(38,13,3,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.SCS','WLS.SCS Primary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(39,13,4,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.SSS','WLS.SSS Primary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(40,13,5,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.SBV','WLS.SBV Primary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(41,14,1,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV','WLS.PV Secondary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(42,14,2,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.SRS','WLS.SRS Secondary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(43,14,3,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.SCS','WLS.SCS Secondary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(44,14,4,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.SSS','WLS.SSS Secondary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(45,14,5,NULL,'ENVS_1.FIFR_1.VDSDC_1:WLS.SBV','WLS.SBV Secondary',NULL,1,'2026-01-29 10:14:45');
+INSERT INTO export_target_mappings VALUES(122,1001,2001,1,NULL,NULL,NULL,1,'2026-01-31 12:38:16');
+INSERT INTO export_target_mappings VALUES(123,1002,2001,1,NULL,NULL,NULL,1,'2026-01-31 12:38:16');
+INSERT INTO export_target_mappings VALUES(124,1001,4,NULL,'WLS.SSS_File_Test',NULL,NULL,1,'2026-01-31 14:04:36');
+INSERT INTO export_target_mappings VALUES(125,1002,4,NULL,'WLS.SSS_MQTT_Test',NULL,NULL,1,'2026-01-31 14:04:36');
+INSERT INTO export_target_mappings VALUES(149,17,1,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(150,15,1,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(151,17,2,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SRS','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(152,15,2,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SRS','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(153,17,3,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SCS','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(154,15,3,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SCS','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(155,17,4,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SSS','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(156,15,4,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SSS','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(157,17,5,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SBV','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(158,15,5,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SBV','','{"scale":1,"offset":0}',1,'2026-02-06 04:03:17');
+INSERT INTO export_target_mappings VALUES(160,11,2008,20,'FIFR_1.F_1:OP.SST','','{"scale":1,"offset":0}',1,'2026-02-06 04:04:41');
+INSERT INTO export_target_mappings VALUES(161,18,2,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SRS','','{"scale":1,"offset":0}',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(162,19,2,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SRS','','{"scale":1,"offset":0}',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(163,18,3,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SCS','','{"scale":1,"offset":0}',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(164,19,3,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SCS','','{"scale":1,"offset":0}',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(165,18,4,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SSS','','{"scale":1,"offset":0}',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(166,19,4,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SSS','','{"scale":1,"offset":0}',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(167,18,5,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SBV','','{"scale":1,"offset":0}',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(168,19,5,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.SBV','','{"scale":1,"offset":0}',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(169,18,1,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV','','null',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(170,19,1,280,'ENVS_1.FIFR_1.VDSDC_1:WLS.PV','','null',1,'2026-02-06 04:07:55');
+INSERT INTO export_target_mappings VALUES(171,10,2008,20,'FIFR_1.F_1:OP.SST','','{"scale":1,"offset":0}',1,'2026-02-06 04:08:26');
+INSERT INTO export_target_mappings VALUES(172,21,2008,20,'FIFR_1.F_1:OP.SST','','{"scale":1,"offset":0}',1,'2026-02-06 04:08:26');
+INSERT INTO export_profile_assignments VALUES(12,3,6,1,'2026-02-06 04:04:21');
+INSERT INTO export_profile_assignments VALUES(13,103,12,1,'2026-02-06 04:04:21');
+INSERT INTO protocol_instances VALUES(9,3,'A','','/A','344f78f665d271c8497bcc15414168b8','2026-02-02T04:23:42.594Z','{}',1,'STOPPED','2026-02-02 04:23:42','2026-02-02 04:42:41',NULL,'INTERNAL');
+INSERT INTO permissions VALUES('view_dashboard','대시보드 조회','시스템 현황 대시보드를 조회할 수 있는 권한','조회','dashboard','["read"]',1,'2026-02-02 12:53:10');
+INSERT INTO permissions VALUES('manage_devices','디바이스 관리','디바이스 등록, 수정, 삭제 및 제어 권한','관리','devices','["read", "write", "delete"]',1,'2026-02-02 12:53:10');
+INSERT INTO permissions VALUES('manage_alarms','알람 관리','알람 규칙 설정 및 알람 이력 관리 권한','관리','alarms','["read", "write", "delete"]',1,'2026-02-02 12:53:10');
+INSERT INTO permissions VALUES('manage_users','사용자 관리','사용자 계정 생성, 수정, 삭제 및 권한 할당 권한','관리','users','["read", "write", "delete"]',1,'2026-02-02 12:53:10');
+INSERT INTO permissions VALUES('view_reports','보고서 조회','수집 데이터 보고서 및 통계 자료 조회 권한','조회','reports','["read"]',1,'2026-02-02 12:53:10');
+INSERT INTO permissions VALUES('export_data','데이터 내보내기','수집 데이터를 외부 파일(CSV, Excel 등)로 추출하는 권한','데이터','data','["read", "execute"]',1,'2026-02-02 12:53:10');
+INSERT INTO permissions VALUES('system_settings','시스템 설정','시스템 환경 설정 및 네트워크 설정 변경 권한','시스템','settings','["read", "write"]',1,'2026-02-02 12:53:10');
+INSERT INTO permissions VALUES('backup_restore','백업/복원','데이터베이스 백업 생성 및 시스템 복원 권한','시스템','backup','["read", "execute"]',1,'2026-02-02 12:53:10');
+INSERT INTO permissions VALUES('manage_tenants','고객사 관리','테넌트(고객사) 정보 및 라이선스 관리 권한','시스템','tenants','["read", "write", "delete"]',1,'2026-02-02 12:53:10');
+INSERT INTO permissions VALUES('manage_roles','권한 관리','시스템 역할(Role) 및 세부 권한 정의 권한','시스템','permissions','["read", "write", "delete"]',1,'2026-02-02 12:53:10');
+INSERT INTO roles VALUES('system_admin','시스템 관리자','시스템 전체 리소스 및 모든 테넌트에 대한 전체 제어 권한',1,'2026-02-02 12:53:10','2026-02-02 12:53:10');
+INSERT INTO roles VALUES('company_admin','고객사 관리자','해당 테넌트(고객사) 내의 모든 리소스 및 사용자 관리 권한',1,'2026-02-02 12:53:10','2026-02-02 12:53:10');
+INSERT INTO roles VALUES('manager','운영 관리자','현장 운영 및 사용자 관리를 포함한 일반적인 관리 권한',1,'2026-02-02 12:53:10','2026-02-02 12:53:10');
+INSERT INTO roles VALUES('engineer','엔지니어','디바이스 설정 및 알람 규칙 관리 등 기술적인 운영 권한',1,'2026-02-02 12:53:10','2026-02-02 12:53:10');
+INSERT INTO roles VALUES('operator','운전원','실시간 모니터링 및 디바이스 상태 확인 권한',1,'2026-02-02 12:53:10','2026-02-02 12:53:10');
+INSERT INTO roles VALUES('viewer','조회자','데이터 및 보고서 조회만 가능한 제한된 권한',1,'2026-02-02 12:53:10','2026-02-02 12:53:10');
+INSERT INTO role_permissions VALUES('system_admin','backup_restore');
+INSERT INTO role_permissions VALUES('system_admin','export_data');
+INSERT INTO role_permissions VALUES('system_admin','manage_alarms');
+INSERT INTO role_permissions VALUES('system_admin','manage_devices');
+INSERT INTO role_permissions VALUES('system_admin','manage_roles');
+INSERT INTO role_permissions VALUES('system_admin','manage_tenants');
+INSERT INTO role_permissions VALUES('system_admin','manage_users');
+INSERT INTO role_permissions VALUES('system_admin','system_settings');
+INSERT INTO role_permissions VALUES('system_admin','view_dashboard');
+INSERT INTO role_permissions VALUES('system_admin','view_reports');
+INSERT INTO role_permissions VALUES('company_admin','backup_restore');
+INSERT INTO role_permissions VALUES('company_admin','export_data');
+INSERT INTO role_permissions VALUES('company_admin','manage_alarms');
+INSERT INTO role_permissions VALUES('company_admin','manage_devices');
+INSERT INTO role_permissions VALUES('company_admin','manage_roles');
+INSERT INTO role_permissions VALUES('company_admin','manage_users');
+INSERT INTO role_permissions VALUES('company_admin','system_settings');
+INSERT INTO role_permissions VALUES('company_admin','view_dashboard');
+INSERT INTO role_permissions VALUES('company_admin','view_reports');
+INSERT INTO role_permissions VALUES('manager','view_dashboard');
+INSERT INTO role_permissions VALUES('manager','manage_devices');
+INSERT INTO role_permissions VALUES('manager','manage_alarms');
+INSERT INTO role_permissions VALUES('manager','manage_users');
+INSERT INTO role_permissions VALUES('manager','view_reports');
+INSERT INTO role_permissions VALUES('manager','export_data');
+INSERT INTO role_permissions VALUES('engineer','view_dashboard');
+INSERT INTO role_permissions VALUES('engineer','manage_devices');
+INSERT INTO role_permissions VALUES('engineer','manage_alarms');
+INSERT INTO role_permissions VALUES('engineer','view_reports');
+INSERT INTO role_permissions VALUES('operator','view_dashboard');
+INSERT INTO role_permissions VALUES('operator','manage_devices');
+INSERT INTO role_permissions VALUES('viewer','view_dashboard');
+INSERT INTO role_permissions VALUES('viewer','view_reports');
+INSERT INTO backups VALUES(1,'수동 백업 (21:47)','pulseone_20260202_214750.db','full','completed',1400000,'/app/data/backup','2026-02-02 21:47:50',NULL,'작업 전 수동 백업',NULL,0);
+INSERT INTO backups VALUES(2,'자동 백업 (01-29)','pulseone_backup_2026-01-29T13-04-28-597Z.db','full','completed',1500000,'/app/data/backup','2026-01-29 22:04:28',NULL,'시스템 자동 백업',NULL,0);
+INSERT INTO backups VALUES(3,'자동 백업 (02-02)','pulseone_backup_2026-02-02T09-39-32-227Z.db','full','completed',4000,'/app/data/backup','2026-02-02 09:39:32',NULL,'시스템 자동 백업',NULL,0);
+INSERT INTO backups VALUES(4,'백업 (01-31)','pulseone_backup_20260131_1852.db','full','completed',1400000,'/app/data/backup','2026-01-31 18:52:00',NULL,'주간 백업',NULL,0);
+INSERT INTO backups VALUES(5,'백업 (02-02)','pulseone_backup_20260202_142543.db','full','completed',1400000,'/app/data/backup','2026-02-02 14:22:00',NULL,'일일 백업',NULL,0);
+INSERT INTO backups VALUES(6,'도커 베이스라인 (01-31)','pulseone_backup_docker_20260131.db','full','completed',1400000,'/app/data/backup','2026-01-31 18:55:00',NULL,'초기 도커 환경 베이스라인',NULL,0);
+INSERT INTO backups VALUES(7,'RBAC 베이스라인 (02-02)','pulseone_baseline_rbac_20260202_215550.db','full','completed',1500000,'/app/data/backup','2026-02-02 21:55:50',NULL,'RBAC 도입 완료 공식 베이스라인',NULL,0);
+INSERT INTO sqlite_sequence VALUES('payload_templates',5);
+INSERT INTO sqlite_sequence VALUES('schema_versions',3);
+INSERT INTO sqlite_sequence VALUES('tenants',4);
+INSERT INTO sqlite_sequence VALUES('sites',6);
+INSERT INTO sqlite_sequence VALUES('protocols',14);
+INSERT INTO sqlite_sequence VALUES('virtual_points',18);
+INSERT INTO sqlite_sequence VALUES('alarm_rules',3001);
+INSERT INTO sqlite_sequence VALUES('javascript_functions',15);
+INSERT INTO sqlite_sequence VALUES('system_logs',12);
+INSERT INTO sqlite_sequence VALUES('edge_servers',12);
+INSERT INTO sqlite_sequence VALUES('manufacturers',5);
+INSERT INTO sqlite_sequence VALUES('device_models',4);
+INSERT INTO sqlite_sequence VALUES('template_devices',23);
+INSERT INTO sqlite_sequence VALUES('template_data_points',65);
+INSERT INTO sqlite_sequence VALUES('export_profiles',103);
+INSERT INTO sqlite_sequence VALUES('export_profile_points',7);
+INSERT INTO sqlite_sequence VALUES('export_targets',1002);
+INSERT INTO sqlite_sequence VALUES('export_profile_assignments',13);
+INSERT INTO sqlite_sequence VALUES('devices',12346);
+INSERT INTO sqlite_sequence VALUES('data_points',2008);
+INSERT INTO sqlite_sequence VALUES('export_target_mappings',172);
+INSERT INTO sqlite_sequence VALUES('alarm_occurrences',208);
+INSERT INTO sqlite_sequence VALUES('export_schedules',4);
+INSERT INTO sqlite_sequence VALUES('export_logs',277);
+INSERT INTO sqlite_sequence VALUES('users',13);
+INSERT INTO sqlite_sequence VALUES('protocol_instances',9);
+INSERT INTO sqlite_sequence VALUES('backups',7);
+INSERT INTO sqlite_sequence VALUES('system_settings',4);

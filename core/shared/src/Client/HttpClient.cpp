@@ -407,12 +407,20 @@ HttpResponse HttpClient::executeWithCurl(
     for (const auto &header : merged_headers) {
       std::string header_str = header.first + ": " + header.second;
       header_list = curl_slist_append(header_list, header_str.c_str());
-      LOG_DEBUG("  Header: " + header.first + ": " +
-                (header.first == "authorization"
-                     ? (header.second.length() > 20
-                            ? header.second.substr(0, 20) + "..."
-                            : header.second)
-                     : header.second));
+      // [SECURITY] Mask sensitive headers
+      std::string log_value = header.second;
+      std::string lower_key = header.first;
+      std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(),
+                     ::tolower);
+
+      if (lower_key.find("key") != std::string::npos ||
+          lower_key.find("auth") != std::string::npos ||
+          lower_key.find("token") != std::string::npos ||
+          lower_key.find("secret") != std::string::npos) {
+        log_value = "********";
+      }
+
+      LOG_DEBUG("  Header: " + header.first + ": " + log_value);
     }
 
     if (!options_.username.empty() && options_.bearer_token.empty()) {
