@@ -48,6 +48,10 @@ bool GatewayService::start() {
   // 3. Register and Start Event Subscriber
   event_dispatcher_->registerHandlers(*event_subscriber_);
 
+  // ✅ Instance specific command channel (v3.2.1)
+  event_subscriber_->subscribeChannel("cmd:gateway:" +
+                                      std::to_string(context_->getGatewayId()));
+
   // Update selective subscription if needed
   auto device_ids = context_->getRegistry().getAssignedDeviceIds();
   if (!device_ids.empty()) {

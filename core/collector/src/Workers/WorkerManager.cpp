@@ -33,8 +33,16 @@ WorkerManager::WorkerManager() {
     scheduler_ = std::make_shared<WorkerScheduler>(registry_, redis_writer_);
     monitor_ = std::make_shared<WorkerMonitor>(registry_);
 
-    // Initialize BACnet Discovery Service
+    // Check RepositoryFactory status before initializing discovery service
     auto &repo_factory = Database::RepositoryFactory::getInstance();
+    if (!repo_factory.isInitialized()) {
+      LogManager::getInstance().Warn("WorkerManager - RepositoryFactory not "
+                                     "initialized. Skipping discovery "
+                                     "service setup.");
+      return;
+    }
+
+    // Initialize BACnet Discovery Service
     bacnet_discovery_service_ = std::make_shared<BACnetDiscoveryService>(
         repo_factory.getDeviceRepository(),
         repo_factory.getDataPointRepository(),

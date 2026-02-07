@@ -9,6 +9,9 @@
 #include "Event/EventSubscriber.h"
 #include "Gateway/Service/GatewayContext.h"
 #include <memory>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <vector>
 
 namespace PulseOne {
 namespace Gateway {
@@ -41,6 +44,12 @@ private:
   void sendManualExportResult(const std::string &target_name, bool success,
                               const std::string &error_message,
                               const nlohmann::json &payload);
+
+  /**
+   * @brief 통합 로깅 처리
+   */
+  void logExportResult(const PulseOne::Export::TargetSendResult &result,
+                       const PulseOne::CSP::AlarmMessage *alarm = nullptr);
 };
 
 } // namespace Service

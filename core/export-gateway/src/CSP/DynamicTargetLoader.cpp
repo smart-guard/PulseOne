@@ -206,6 +206,11 @@ DynamicTargetLoader::loadMappings(
       if (m.getPointId().has_value()) {
         data.target_point_mappings[m.getTargetId()][m.getPointId().value()] =
             m.getTargetFieldName();
+        data.target_point_scales[m.getTargetId()][m.getPointId().value()] =
+            m.getScale();
+        data.target_point_offsets[m.getTargetId()][m.getPointId().value()] =
+            m.getOffset();
+
         if (m.getSiteId().has_value()) {
           data.target_point_site_mappings[m.getTargetId()]
                                          [m.getPointId().value()] =

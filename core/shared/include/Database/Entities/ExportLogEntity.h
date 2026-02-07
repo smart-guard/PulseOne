@@ -76,6 +76,8 @@ public:
     return timestamp_;
   }
   std::string getClientInfo() const { return client_info_; }
+  int getGatewayId() const { return gateway_id_; }
+  std::string getSentPayload() const { return sent_payload_; }
 
   // =======================================================================
   // Setter (inline 허용)
@@ -155,6 +157,14 @@ public:
     client_info_ = info;
     markModified();
   }
+  void setGatewayId(int gateway_id) {
+    gateway_id_ = gateway_id;
+    markModified();
+  }
+  void setSentPayload(const std::string &payload) {
+    sent_payload_ = payload;
+    markModified();
+  }
 
   // =======================================================================
   // 비즈니스 로직 (선언만, cpp에서 구현)
@@ -222,6 +232,8 @@ private:
   int processing_time_ms_ = 0;                      // 처리 시간 (ms)
   std::chrono::system_clock::time_point timestamp_; // 로그 시각
   std::string client_info_;                         // 클라이언트 정보
+  int gateway_id_ = 0;                              // 게이트웨이 ID
+  std::string sent_payload_;                        // 전송된 페이로드
 };
 
 } // namespace Entities

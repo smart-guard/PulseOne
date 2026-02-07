@@ -70,6 +70,9 @@ S3TargetHandler::sendAlarm(const PulseOne::Gateway::Model::AlarmMessage &alarm,
     auto upload_res =
         client->upload(key, content, "application/json", metadata);
     result.success = upload_res.isSuccess();
+    result.sent_payload = content;
+    result.response_body =
+        upload_res.error_message; // S3 usually has error message for failures
     if (result.success) {
       upload_count_++;
       success_count_++;
@@ -236,7 +239,8 @@ std::shared_ptr<PulseOne::Client::S3Client>
 S3TargetHandler::getOrCreateClient(const json &config,
                                    const std::string &bucket_name) {
   PulseOne::Client::S3Config s3_config;
-  s3_config.endpoint = config.value("endpoint", s3_config.endpoint);
+  s3_config.endpoint = config.value(
+      "endpoint", config.value("S3ServiceUrl", s3_config.endpoint));
   s3_config.region = config.value("region", s3_config.region);
 
   // 시크릿 해석 (ConfigManager 활용)
@@ -372,18 +376,49 @@ std::string S3TargetHandler::expandTemplate(
 }
 
 void S3TargetHandler::expandTemplateVariables(
-    json &template_json,
-    const PulseOne::Gateway::Model::AlarmMessage &alarm) const {
+    json &template_json, const PulseOne::Gateway::Model::AlarmMessage &alarm,
+    const json &config) const {
   auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-  auto context = transformer.createContext(alarm);
+
+  std::string target_field_name = "";
+  std::string target_description = "";
+  std::string converted_value = "";
+
+  // ✅ v3.2.1: 타겟 설정(config)의 field_mappings에서 현재 포인트의 매핑 정보를
+  // 찾음
+  if (config.contains("field_mappings") &&
+      config["field_mappings"].is_array()) {
+    for (const auto &m : config["field_mappings"]) {
+      if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
+        target_field_name = m.value("target_field", "");
+        break;
+      }
+    }
+  }
+
+  auto context = transformer.createContext(alarm, target_field_name,
+                                           target_description, converted_value);
   template_json = transformer.transform(template_json, context);
 }
 
 void S3TargetHandler::expandTemplateVariables(
-    json &template_json,
-    const PulseOne::Gateway::Model::ValueMessage &value) const {
+    json &template_json, const PulseOne::Gateway::Model::ValueMessage &value,
+    const json &config) const {
   auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-  auto context = transformer.createContext(value);
+
+  std::string target_field_name = "";
+
+  if (config.contains("field_mappings") &&
+      config["field_mappings"].is_array()) {
+    for (const auto &m : config["field_mappings"]) {
+      if (m.contains("point_id") && m["point_id"] == value.bd) {
+        target_field_name = m.value("target_field", "");
+        break;
+      }
+    }
+  }
+
+  auto context = transformer.createContext(value, target_field_name);
   template_json = transformer.transform(template_json, context);
 }
 
@@ -397,7 +432,7 @@ std::string S3TargetHandler::buildJsonContent(
       (config["body_template"].is_object() ||
        config["body_template"].is_array())) {
     content = config["body_template"];
-    expandTemplateVariables(content, alarm);
+    expandTemplateVariables(content, alarm, config);
 
     // ✅ 객체인 경우 배열로 래핑하여 일관성 유지
     if (content.is_object()) {

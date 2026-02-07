@@ -285,6 +285,12 @@ private:
   void handleSystemEvent(const std::string &channel,
                          const std::string &message);
 
+  /**
+   * @brief 수동 데이터 전송 이벤트 처리 (v3.2.1)
+   */
+  void handleManualExportEvent(const std::string &channel,
+                               const std::string &message);
+
   // =========================================================================
   // 백그라운드 스레드 루프
   // =========================================================================

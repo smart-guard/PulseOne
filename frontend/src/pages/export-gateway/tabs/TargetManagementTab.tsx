@@ -627,15 +627,15 @@ const TargetManagementTab: React.FC = () => {
                                         ) : editingTarget?.target_type?.toLowerCase() === 's3' ? (
                                             <>
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>S3 Service URL</label>
+                                                    <label>S3 Endpoint (Service URL)</label>
                                                     <input
                                                         type="text"
                                                         className="mgmt-input"
                                                         placeholder="https://s3.ap-northeast-2.amazonaws.com"
-                                                        value={getConfigObject(editingTarget.config).S3ServiceUrl || ''}
+                                                        value={getConfigObject(editingTarget.config).endpoint || getConfigObject(editingTarget.config).S3ServiceUrl || ''}
                                                         onChange={e => {
                                                             const c = getConfigObject(editingTarget.config);
-                                                            const newConfig = { ...c, S3ServiceUrl: e.target.value };
+                                                            const newConfig = { ...c, endpoint: e.target.value };
                                                             setEditingTarget({ ...editingTarget, config: JSON.stringify(newConfig, null, 2) });
                                                             setHasChanges(true);
                                                         }}

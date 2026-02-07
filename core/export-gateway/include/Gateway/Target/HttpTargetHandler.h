@@ -94,12 +94,14 @@ private:
   std::string getCurrentTimestamp() const;
   std::string generateRequestId() const;
 
-  void expandTemplateVariables(
-      json &template_json,
-      const PulseOne::Gateway::Model::AlarmMessage &alarm) const;
-  void expandTemplateVariables(
-      json &template_json,
-      const PulseOne::Gateway::Model::ValueMessage &value) const;
+  void
+  expandTemplateVariables(json &template_json,
+                          const PulseOne::Gateway::Model::AlarmMessage &alarm,
+                          const json &config) const;
+  void
+  expandTemplateVariables(json &template_json,
+                          const PulseOne::Gateway::Model::ValueMessage &value,
+                          const json &config) const;
 
   std::string base64Encode(const std::string &input) const;
 };

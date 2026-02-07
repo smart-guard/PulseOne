@@ -32,6 +32,10 @@ public:
         target_point_mappings;
     std::unordered_map<int, std::unordered_map<int, int>>
         target_point_site_mappings;
+    std::unordered_map<int, std::unordered_map<int, double>>
+        target_point_scales;
+    std::unordered_map<int, std::unordered_map<int, double>>
+        target_point_offsets;
     std::unordered_map<int, std::unordered_map<int, std::string>>
         target_site_mappings;
 

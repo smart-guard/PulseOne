@@ -85,16 +85,6 @@ WorkerFactory::CreateWorker(const Database::Entities::DeviceEntity &device) {
     // 🔥 DeviceSettings를 DriverConfig properties로 동기화
     device_info.SyncToDriverConfig();
 
-    LogManager::getInstance().Info("[WorkerFactory] After SyncToDriverConfig:");
-    LogManager::getInstance().Info(
-        "  read_timeout_ms (opt): " +
-        (device_info.read_timeout_ms.has_value()
-             ? std::to_string(device_info.read_timeout_ms.value())
-             : "null"));
-    LogManager::getInstance().Info(
-        "  Properties size: " +
-        std::to_string(device_info.driver_config.properties.size()));
-
     // Worker 생성
     std::unique_ptr<BaseDeviceWorker> worker;
     try {

@@ -29,6 +29,7 @@
 #include "Database/Repositories/DeviceRepository.h"
 #include "Database/Repositories/ExportTargetMappingRepository.h"
 #include "Database/Repositories/ExportTargetRepository.h"
+#include "Database/Repositories/SiteRepository.h"
 #include "Database/RepositoryFactory.h"
 #include "Export/ExportTypes.h"
 #include "Logging/LogManager.h"
@@ -750,6 +751,8 @@ void ExportCoordinator::handleCommandEvent(const std::string &channel,
           for (const auto &target : all_targets) {
             if (!target.enabled)
               continue;
+
+            // ✅ 개별 타겟 이름으로 호출 (target_name="ALL"이 아닌 실제 이름)
             auto res = handleManualExport(target.name, payload);
             if (!res.success) {
               overall_success = false;
@@ -1250,18 +1253,24 @@ void ExportCoordinator::logExportResult(
     using namespace PulseOne::Database::Entities;
 
     ExportLogEntity log_entity;
-    log_entity.setLogType("alarm_export");
+    log_entity.setLogType(alarm_message ? "alarm_export" : "manual_export");
     log_entity.setTargetId(result.target_id);
     log_entity.setStatus(result.success ? "success" : "failure");
     log_entity.setHttpStatusCode(result.http_status_code);
     log_entity.setErrorMessage(result.error_message);
     log_entity.setProcessingTimeMs(
         static_cast<int>(result.processing_time.count()));
+    log_entity.setGatewayId(gateway_id_); // 🆕 Gateway ID 로깅 추가
+    log_entity.setGatewayId(gateway_id_); // 🆕 Gateway ID 로깅 추가
 
     if (alarm_message) {
       log_entity.setSourceValue(
           nlohmann::json::array({alarm_message->to_json()}).dump());
     }
+
+    // 🆕 Added enrichment fields
+    log_entity.setConvertedValue(result.sent_payload);
+    log_entity.setResponseData(result.response_data);
 
     log_repo_->save(log_entity);
 
@@ -1472,6 +1481,8 @@ ExportResult ExportCoordinator::convertTargetSendResult(
   result.http_status_code = target_result.status_code;
   result.processing_time = target_result.response_time;
   result.data_size = target_result.content_size;
+  result.sent_payload = target_result.sent_payload;   // 🆕 Added
+  result.response_data = target_result.response_body; // 🆕 Added
 
   try {
     if (target_repo_) {
@@ -1584,20 +1595,84 @@ void ExportCoordinator::enrichAlarmMetadata(
       auto point_opt = point_repo->findById(alarm.point_id);
       if (point_opt.has_value()) {
         // st (Status) enrichment
-        if (alarm.st <= 0) { // Only enrich if not already set
-          alarm.st = point_opt->isWritable() ? 1 : 0;
-        }
-
-        // nm (Name) enrichment
         if (alarm.nm.empty()) {
           alarm.nm = point_opt->getName();
         }
 
-        if (alarm.site_id <= 0 && device_repo) {
-          int device_id = point_opt->getDeviceId();
-          auto device_opt = device_repo->findById(device_id);
-          if (device_opt.has_value()) {
+        // is_control (Intelligence)
+        // 1. 기본값: DB의 설정(is_writable) 사용
+        bool is_control = point_opt->isWritable();
+
+        // 2. Intelligence: 프로토콜별 자동 감지 로직
+        // (DB 설정이 누락되어 있어도 프로토콜 특성상 제어 가능하면 제어
+        // 가능으로 판별)
+        if (!is_control) {
+          if (point_opt->isModbusPoint()) {
+            // [Modbus] Function Code Inference
+            std::string fc_str = point_opt->getProtocolParam("function_code");
+            if (!fc_str.empty()) {
+              try {
+                int fc = std::stoi(fc_str);
+                // FC 1 (Coils), 3 (Holding Registers)는 구조적으로 제어 가능
+                if (fc == 1 || fc == 3 || fc == 5 || fc == 6 || fc == 15 ||
+                    fc == 16) {
+                  is_control = true;
+                }
+              } catch (...) {
+              }
+            }
+          } else if (point_opt->isBacnetPoint()) {
+            // [BACnet] Object Type Inference
+            // Output(1, 4, 14) & Value(2, 5, 19) objects are writable
+            std::string obj_type_str =
+                point_opt->getProtocolParam("object_type");
+            if (!obj_type_str.empty()) {
+              try {
+                int obj_type = std::stoi(obj_type_str);
+                if (obj_type == 1 || obj_type == 2 || // Analog Output/Value
+                    obj_type == 4 || obj_type == 5 || // Binary Output/Value
+                    obj_type == 14 ||
+                    obj_type == 19) { // Multi-State Output/Value
+                  is_control = true;
+                }
+              } catch (...) {
+              }
+            }
+          } else if (point_opt->isMqttPoint()) {
+            // [MQTT] Topic Keyword Inference
+            // "set", "cmd", "command", "req" in topic implies control
+            std::string topic = point_opt->getAddressString();
+            std::transform(topic.begin(), topic.end(), topic.begin(),
+                           ::tolower);
+            if (topic.find("set") != std::string::npos ||
+                topic.find("cmd") != std::string::npos ||
+                topic.find("command") != std::string::npos ||
+                topic.find("req") != std::string::npos ||
+                topic.find("write") != std::string::npos) {
+              is_control = true;
+            }
+          }
+        }
+
+        alarm.extra_info["is_control"] = is_control ? "1" : "0";
+        int device_id = point_opt->getDeviceId();
+        auto device_opt = device_repo->findById(device_id);
+        if (device_opt.has_value()) {
+          alarm.extra_info["device_name"] = device_opt->getName();
+
+          if (alarm.site_id <= 0) {
             alarm.site_id = device_opt->getSiteId();
+          }
+        }
+      }
+
+      // site_name enrichment
+      if (alarm.site_id > 0) {
+        auto site_repo = factory.getSiteRepository();
+        if (site_repo) {
+          auto site_opt = site_repo->findById(alarm.site_id);
+          if (site_opt.has_value()) {
+            alarm.extra_info["site_name"] = site_opt->getName();
           }
         }
       }

@@ -349,6 +349,8 @@ const std::string CREATE_TABLE = R"(
             processing_time_ms INTEGER,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             client_info TEXT,
+            gateway_id INTEGER,
+            sent_payload TEXT,
             
             FOREIGN KEY (service_id) REFERENCES protocol_services(id) ON DELETE SET NULL,
             FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE SET NULL,
@@ -368,7 +370,8 @@ const std::string CREATE_INDEXES = R"(
 const std::string FIND_ALL = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, 
+               client_info, gateway_id, sent_payload
         FROM export_logs
         ORDER BY timestamp DESC LIMIT 1000
     )";
@@ -376,14 +379,16 @@ const std::string FIND_ALL = R"(
 const std::string FIND_BY_ID = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, 
+               client_info, gateway_id, sent_payload
         FROM export_logs WHERE id = ?
     )";
 
 const std::string FIND_BY_TIME_RANGE = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, 
+               client_info, gateway_id, sent_payload
         FROM export_logs
         WHERE timestamp BETWEEN ? AND ?
         ORDER BY timestamp DESC
@@ -393,8 +398,9 @@ const std::string INSERT = R"(
         INSERT INTO export_logs (
             log_type, service_id, target_id, mapping_id, point_id,
             source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            response_data, http_status_code, processing_time_ms, timestamp, 
+            client_info, gateway_id, sent_payload
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
 const std::string UPDATE = R"(
@@ -402,7 +408,7 @@ const std::string UPDATE = R"(
             log_type = ?, service_id = ?, target_id = ?, mapping_id = ?, point_id = ?,
             source_value = ?, converted_value = ?, status = ?, error_message = ?,
             error_code = ?, response_data = ?, http_status_code = ?,
-            processing_time_ms = ?, client_info = ?
+            processing_time_ms = ?, client_info = ?, gateway_id = ?, sent_payload = ?
         WHERE id = ?
     )";
 
@@ -415,7 +421,8 @@ const std::string EXISTS_BY_ID =
 const std::string FIND_BY_TARGET_ID = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, 
+               client_info, gateway_id, sent_payload
         FROM export_logs
         WHERE target_id = ?
         ORDER BY timestamp DESC LIMIT ?
@@ -424,7 +431,8 @@ const std::string FIND_BY_TARGET_ID = R"(
 const std::string FIND_BY_STATUS = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, 
+               client_info, gateway_id, sent_payload
         FROM export_logs
         WHERE status = ?
         ORDER BY timestamp DESC LIMIT ?
@@ -433,7 +441,8 @@ const std::string FIND_BY_STATUS = R"(
 const std::string FIND_RECENT = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, 
+               client_info, gateway_id, sent_payload
         FROM export_logs
         WHERE timestamp >= datetime('now', '-' || ? || ' hours')
         ORDER BY timestamp DESC LIMIT ?
@@ -442,7 +451,8 @@ const std::string FIND_RECENT = R"(
 const std::string FIND_RECENT_FAILURES = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, 
+               client_info, gateway_id, sent_payload
         FROM export_logs
         WHERE status = 'failed' AND timestamp >= datetime('now', '-' || ? || ' hours')
         ORDER BY timestamp DESC LIMIT ?
@@ -451,7 +461,8 @@ const std::string FIND_RECENT_FAILURES = R"(
 const std::string FIND_BY_POINT_ID = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, 
+               client_info, gateway_id, sent_payload
         FROM export_logs
         WHERE point_id = ?
         ORDER BY timestamp DESC LIMIT ?

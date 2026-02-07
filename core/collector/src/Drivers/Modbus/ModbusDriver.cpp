@@ -11,9 +11,13 @@
 #include "Drivers/Modbus/ModbusPerformance.h"
 #include "Logging/LogManager.h"
 #include <algorithm>
+#include <arpa/inet.h>
 #include <chrono>
+#include <cstring>
 #include <iostream>
+#include <netdb.h>
 #include <sstream>
+#include <sys/socket.h>
 #include <thread>
 
 namespace PulseOne {
@@ -977,9 +981,34 @@ bool ModbusDriver::SetupModbusConnection() {
     std::string host = config_.endpoint.substr(0, pos);
     int port = std::stoi(config_.endpoint.substr(pos + 1));
 
-    modbus_ctx_ = modbus_new_tcp(host.c_str(), port);
-    logger_->Info("🔗 Setting up Modbus TCP connection to " + host + ":" +
-                  std::to_string(port));
+    // Hostname Resolution for Docker (libmodbus often requires IP)
+    struct addrinfo hints, *res;
+    int status;
+    char ipstr[INET_ADDRSTRLEN];
+    std::string resolved_host = host;
+
+    std::memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; // Force IPv4
+    hints.ai_socktype = SOCK_STREAM;
+
+    if ((status = getaddrinfo(host.c_str(), NULL, &hints, &res)) == 0) {
+      struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
+      void *addr = &(ipv4->sin_addr);
+      if (inet_ntop(res->ai_family, addr, ipstr, sizeof ipstr)) {
+        resolved_host = std::string(ipstr);
+        if (host != resolved_host) {
+          logger_->Info("RESOLVED Hostname: " + host + " -> " + resolved_host);
+        }
+      }
+      freeaddrinfo(res);
+    } else {
+      logger_->Warn("Failed to resolve hostname: " + host + " (" +
+                    gai_strerror(status) + ")");
+    }
+
+    modbus_ctx_ = modbus_new_tcp(resolved_host.c_str(), port);
+    logger_->Info("🔗 Setting up Modbus TCP connection to " + resolved_host +
+                  ":" + std::to_string(port));
   } else {
     // RTU 방식 - 시리얼 포트
     // 🔥 RTU 설정은 properties에서 가져오기

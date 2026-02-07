@@ -281,10 +281,28 @@ void EventSubscriber::routeMessage(const std::string &channel,
     handleAlarmEvent(channel, message);
   } else if (channel.find("schedule:") == 0) {
     handleScheduleEvent(channel, message);
-  } else if (channel.find("system:") == 0) {
-    handleSystemEvent(channel, message);
+  } else if (channel.find("cmd:gateway:") == 0) {
+    handleManualExportEvent(channel, message);
   } else {
     LogManager::getInstance().Debug("처리되지 않은 채널: " + channel);
+  }
+}
+
+void EventSubscriber::handleManualExportEvent(const std::string &channel,
+                                              const std::string &message) {
+  try {
+    LogManager::getInstance().Info("수동 전송 명령 수신: " + channel);
+
+    // CommandEventHandler가 이미 cmd:* 패턴을 통해
+    // Coordinator::handleCommandEvent를 호출함. 하지만 EventSubscriber 수준에서
+    // 추가 로깅이나 Gateway ID 검증이 필요할 수 있음. 여기서는 기본적으로
+    // 파싱해서 유효성만 체크하고, AlarmMessage로 변환 가능한 경우
+    // processAlarm으로 넘기거나 별도 핸들러를 호출할 수 있음.
+
+    // Coordinator에서 handleCommandEvent를 통해 처리하도록 위임됨.
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error("Manual Export 이벤트 처리 실패: " +
+                                    std::string(e.what()));
   }
 }
 
@@ -664,7 +682,7 @@ bool EventSubscriber::initializeRedisConnection() {
       return false;
     }
 
-    is_connected_ = true; // ✅ 추가!
+    is_connected_ = true;
     LogManager::getInstance().Info("Redis 연결 성공");
     return true;
 

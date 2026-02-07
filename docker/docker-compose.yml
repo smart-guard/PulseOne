@@ -99,7 +99,7 @@ services:
       - ../config:/app/config
       - ../core:/app/core
     tty: true
-    command: /bin/bash -c "make -C core/collector && ./core/collector/bin/pulseone-collector"
+    command: /bin/bash -c "make -j10 all && ./bin/pulseone-collector"
 
   simulator-modbus:
     image: node:20-slim
@@ -191,7 +191,7 @@ services:
       - ../data:/app/data
       - ../logs:/app/logs
       - shared_libs:/app/core/shared/lib
-    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && make -C core/export-gateway clean-all && make -C core/export-gateway && ./core/export-gateway/scripts/gateway_launcher.sh"
+    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && make -C core/shared && make -C core/export-gateway clean-all && make -C core/export-gateway && ./core/export-gateway/scripts/gateway_launcher.sh"
     deploy:
       resources:
         limits:

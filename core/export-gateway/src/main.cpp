@@ -610,6 +610,23 @@ int main(int argc, char **argv) {
           "✅ 전역 데이터베이스 및 레포지토리 초기화 완료");
     }
 
+    // 1.2 CSP DynamicTargetManager 초기화 및 시작 (EventSubscriber 종속성)
+    {
+      auto &csp_manager = PulseOne::CSP::DynamicTargetManager::getInstance();
+      int gw_id_int = 0;
+      try {
+        if (gateway_id != "default")
+          gw_id_int = std::stoi(gateway_id);
+      } catch (...) {
+      }
+      csp_manager.setGatewayId(gw_id_int);
+      if (!csp_manager.start()) {
+        LogManager::getInstance().Error("CSP DynamicTargetManager 시작 실패");
+        return 1;
+      }
+      LogManager::getInstance().Info("✅ CSP DynamicTargetManager 시작 완료");
+    }
+
     // 1.5 ExportLogService 시작 (비동기 로그 저장)
     PulseOne::Export::ExportLogService::getInstance().start();
 

@@ -89,6 +89,8 @@ struct ExportResult {
   int http_status_code = 0;
   std::chrono::milliseconds processing_time{0};
   size_t data_size = 0;
+  std::string sent_payload;  // 🆕 Added for enrichment
+  std::string response_data; // 🆕 Added for enrichment
 };
 
 struct ExportCoordinatorStats {

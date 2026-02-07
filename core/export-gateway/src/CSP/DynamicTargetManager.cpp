@@ -328,6 +328,8 @@ bool DynamicTargetManager::loadFromDatabase() {
         target_point_mappings_ = std::move(data.target_point_mappings);
         target_point_site_mappings_ =
             std::move(data.target_point_site_mappings);
+        target_point_scales_ = std::move(data.target_point_scales);
+        target_point_offsets_ = std::move(data.target_point_offsets);
         target_site_mappings_ = std::move(data.target_site_mappings);
       }
 
@@ -1075,8 +1077,9 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
 
   const auto &target = targets_[index];
 
-  // ✅ 타겟 이름 먼저 설정
+  // ✅ 타겟 정보 설정
   result.target_name = target.name;
+  result.target_id = target.id; // ✅ Target ID 보장 (v3.2.0)
   result.target_type = target.type;
 
   auto handler_it = handlers_.find(target.name);
@@ -1103,8 +1106,10 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
   auto start_time = std::chrono::high_resolution_clock::now();
 
   try {
-    // ✅ 1. 포인트 이름 매핑
+    // ✅ 1. 포인트 이름/Scale/Offset 매핑
     std::string mapped_name;
+    double applied_scale = 1.0;
+    double applied_offset = 0.0;
     {
       std::shared_lock<std::shared_mutex> m_lock(mappings_mutex_);
       if (target_point_mappings_.count(target.id)) {
@@ -1114,15 +1119,25 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
           LogManager::getInstance().Info("[DEBUG-MAPPING] NAME FOUND: Point " +
                                          std::to_string(alarm.point_id) +
                                          " -> " + mapped_name);
-        } else {
-          LogManager::getInstance().Info(
-              "[DEBUG-MAPPING] NAME NOT FOUND for Point: " +
-              std::to_string(alarm.point_id));
         }
-      } else {
-        LogManager::getInstance().Info(
-            "[DEBUG-MAPPING] No point mappings for target ID: " +
-            std::to_string(target.id));
+      }
+
+      if (target_point_scales_.count(target.id)) {
+        auto &m = target_point_scales_[target.id];
+        if (m.count(alarm.point_id)) {
+          applied_scale = m.at(alarm.point_id);
+          LogManager::getInstance().Info("[DEBUG-MAPPING] SCALE FOUND: " +
+                                         std::to_string(applied_scale));
+        }
+      }
+
+      if (target_point_offsets_.count(target.id)) {
+        auto &m = target_point_offsets_[target.id];
+        if (m.count(alarm.point_id)) {
+          applied_offset = m.at(alarm.point_id);
+          LogManager::getInstance().Info("[DEBUG-MAPPING] OFFSET FOUND: " +
+                                         std::to_string(applied_offset));
+        }
       }
     }
 
@@ -1212,6 +1227,17 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
 
     // ✅ 3. 매핑된 알람 메시지 생성
     AlarmMessage mapped_alarm = alarm;
+
+    // Scale/Offset 적용
+    if (applied_scale != 1.0 || applied_offset != 0.0) {
+      mapped_alarm.vl = (alarm.vl * applied_scale) + applied_offset;
+      LogManager::getInstance().Debug(
+          "값 보정 적용: " + std::to_string(alarm.vl) + " -> " +
+          std::to_string(mapped_alarm.vl) +
+          " (Scale=" + std::to_string(applied_scale) +
+          ", Offset=" + std::to_string(applied_offset) + ")");
+    }
+
     if (!mapped_name.empty()) {
       mapped_alarm.nm = mapped_name;
       LogManager::getInstance().Debug("포인트 이름 매핑 적용: " + alarm.nm +

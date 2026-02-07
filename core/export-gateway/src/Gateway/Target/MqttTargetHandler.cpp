@@ -175,7 +175,7 @@ std::string MqttTargetHandler::generateTopic(
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) const {
   if (config.contains("topic_template")) {
-    return expandTemplateVariables(config["topic_template"], alarm);
+    return expandTemplateVariables(config["topic_template"], alarm, config);
   }
   std::string topic_val = config.value(
       "topic", "pulseone/alarms/" + std::to_string(alarm.bd) + "/" + alarm.nm);
@@ -188,7 +188,19 @@ std::string MqttTargetHandler::generatePayload(
   if (config.contains("body_template")) {
     json temp = config["body_template"];
     auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-    auto context = transformer.createContext(alarm);
+
+    std::string target_field_name = "";
+    if (config.contains("field_mappings") &&
+        config["field_mappings"].is_array()) {
+      for (const auto &m : config["field_mappings"]) {
+        if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
+          target_field_name = m.value("target_field", "");
+          break;
+        }
+      }
+    }
+
+    auto context = transformer.createContext(alarm, target_field_name);
     return transformer.transform(temp, context).dump();
   }
   return alarm.to_json().dump();
@@ -212,8 +224,10 @@ TargetSendResult MqttTargetHandler::publishMessage(const std::string &topic,
     auto msg = mqtt::make_message(topic, payload, qos, retain);
     mqtt_client_->publish(msg)->wait();
     result.success = true;
+    result.sent_payload = payload;
   } catch (const mqtt::exception &exc) {
     result.error_message = "MQTT Publish Error: " + std::string(exc.what());
+    result.sent_payload = payload;
     is_connected_ = false; // Flag for reconnection
   }
 #else
@@ -225,9 +239,22 @@ TargetSendResult MqttTargetHandler::publishMessage(const std::string &topic,
 
 std::string MqttTargetHandler::expandTemplateVariables(
     const std::string &template_str,
-    const PulseOne::Gateway::Model::AlarmMessage &alarm) const {
+    const PulseOne::Gateway::Model::AlarmMessage &alarm,
+    const json &config) const {
   auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-  auto context = transformer.createContext(alarm);
+
+  std::string target_field_name = "";
+  if (config.contains("field_mappings") &&
+      config["field_mappings"].is_array()) {
+    for (const auto &m : config["field_mappings"]) {
+      if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
+        target_field_name = m.value("target_field", "");
+        break;
+      }
+    }
+  }
+
+  auto context = transformer.createContext(alarm, target_field_name);
   return transformer.transformString(template_str, context);
 }
 

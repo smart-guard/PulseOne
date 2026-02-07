@@ -80,9 +80,10 @@ private:
                                   const std::string &payload, int qos,
                                   bool retain);
 
-  std::string expandTemplateVariables(
-      const std::string &template_str,
-      const PulseOne::Gateway::Model::AlarmMessage &alarm) const;
+  std::string
+  expandTemplateVariables(const std::string &template_str,
+                          const PulseOne::Gateway::Model::AlarmMessage &alarm,
+                          const json &config) const;
 };
 
 } // namespace Target

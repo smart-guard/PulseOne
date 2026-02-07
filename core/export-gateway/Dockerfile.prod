@@ -43,6 +43,10 @@ COPY core/export-gateway/ ./core/export-gateway/
 COPY core/shared/ ./core/shared/
 COPY core/collector/include/ ./core/collector/include/
 
+# 🔥 Build Shared Libraries First
+WORKDIR /src/core/shared
+RUN make -j$(nproc)
+
 # Build
 WORKDIR /src/core/export-gateway
 RUN make -j$(nproc)

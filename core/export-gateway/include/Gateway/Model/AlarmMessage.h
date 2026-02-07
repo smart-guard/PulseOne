@@ -31,7 +31,8 @@ struct AlarmMessage {
   // Fields mapped from legacy C#
   int bd = 0;                  ///< Building ID
   std::string ty = "num";      ///< Type (num, bit, etc.)
-  std::string nm;              ///< Point Name
+  std::string nm;              ///< Point Name (Mapped)
+  std::string original_nm;     ///< Original Collector Point Name
   double vl = 0.0;             ///< Value
   std::string il = "";         ///< Info Limit
   std::string xl = "";         ///< Extra Limit

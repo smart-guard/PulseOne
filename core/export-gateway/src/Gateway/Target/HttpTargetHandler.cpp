@@ -203,6 +203,7 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
       client->post(url, body, HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
   result.success = response.isSuccess();
   result.status_code = response.status_code;
+  result.sent_payload = body;
   result.response_body = response.body;
   return result;
 }
@@ -222,6 +223,8 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
       client->post(url, body, HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
   result.success = response.isSuccess();
   result.status_code = response.status_code;
+  result.sent_payload = body;
+  result.response_body = response.body;
   return result;
 }
 
@@ -264,7 +267,7 @@ std::string HttpTargetHandler::buildRequestBody(
     const PulseOne::Gateway::Model::AlarmMessage &alarm, const json &config) {
   if (config.contains("body_template")) {
     json temp = config["body_template"];
-    expandTemplateVariables(temp, alarm);
+    expandTemplateVariables(temp, alarm, config);
     return temp.dump();
   }
   return alarm.to_json().dump();
@@ -301,18 +304,42 @@ std::string HttpTargetHandler::generateRequestId() const {
 }
 
 void HttpTargetHandler::expandTemplateVariables(
-    json &template_json,
-    const PulseOne::Gateway::Model::AlarmMessage &alarm) const {
+    json &template_json, const PulseOne::Gateway::Model::AlarmMessage &alarm,
+    const json &config) const {
   auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-  auto context = transformer.createContext(alarm);
+
+  std::string target_field_name = "";
+  if (config.contains("field_mappings") &&
+      config["field_mappings"].is_array()) {
+    for (const auto &m : config["field_mappings"]) {
+      if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
+        target_field_name = m.value("target_field", "");
+        break;
+      }
+    }
+  }
+
+  auto context = transformer.createContext(alarm, target_field_name);
   template_json = transformer.transform(template_json, context);
 }
 
 void HttpTargetHandler::expandTemplateVariables(
-    json &template_json,
-    const PulseOne::Gateway::Model::ValueMessage &value) const {
+    json &template_json, const PulseOne::Gateway::Model::ValueMessage &value,
+    const json &config) const {
   auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-  auto context = transformer.createContext(value);
+
+  std::string target_field_name = "";
+  if (config.contains("field_mappings") &&
+      config["field_mappings"].is_array()) {
+    for (const auto &m : config["field_mappings"]) {
+      if (m.contains("point_id") && m["point_id"] == value.bd) {
+        target_field_name = m.value("target_field", "");
+        break;
+      }
+    }
+  }
+
+  auto context = transformer.createContext(value, target_field_name);
   template_json = transformer.transform(template_json, context);
 }
 
