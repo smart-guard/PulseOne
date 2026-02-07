@@ -109,6 +109,9 @@ void EventDispatcher::handleCommandEvent(const std::string &channel,
                                          const std::string &message) {
   try {
     auto j = nlohmann::json::parse(message);
+    LogManager::getInstance().Info(
+        "EventDispatcher: Received command on channel [" + channel +
+        "]: " + message);
 
     // ServerId check
     if (j.contains("serverId")) {
@@ -132,6 +135,9 @@ void EventDispatcher::handleCommandEvent(const std::string &channel,
 }
 
 void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
+  LogManager::getInstance().Info(
+      "EventDispatcher: Starting handleManualExport with payload: " +
+      payload.dump());
   try {
     std::vector<std::string> target_names;
     if (payload.contains("targets") && payload["targets"].is_array()) {
@@ -161,6 +167,9 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
       LogManager::getInstance().Warn("Manual export: No available targets");
       return;
     }
+    LogManager::getInstance().Info("Manual export: Expanded target list: " +
+                                   std::to_string(target_names.size()) +
+                                   " targets");
 
     // Prepare AlarmMessage for enrichment
     PulseOne::CSP::AlarmMessage alarm;
@@ -234,6 +243,9 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
     }
     alarm.des = payload.value("des", "Manual Export Triggered");
     alarm.manual_override = true;
+    LogManager::getInstance().Info(
+        "Manual export: Starting execution loop for " +
+        std::to_string(target_names.size()) + " targets");
 
     // Execute export for each target
     for (const auto &name : target_names) {
@@ -335,6 +347,9 @@ void EventDispatcher::logExportResult(
     }
 
     log_entity.setConvertedValue(result.sent_payload);
+    log_entity.setSentPayload(result.sent_payload);   // [v3.2.0] New field
+    log_entity.setGatewayId(context_.getGatewayId()); // [v3.2.0] New field
+
     log_entity.setStatus(result.success ? "success" : "failed");
     log_entity.setHttpStatusCode(result.status_code);
     log_entity.setErrorMessage(result.error_message);

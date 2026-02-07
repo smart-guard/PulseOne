@@ -15,11 +15,29 @@
 #include <algorithm>
 #include <ctime>
 #include <iomanip>
+#include <iostream>
 #include <sstream>
 
 namespace PulseOne {
 namespace Database {
 namespace Repositories {
+
+// =============================================================================
+// 생성자 및 소멸자
+// =============================================================================
+
+ExportLogRepository::ExportLogRepository()
+    : IRepository<ExportLogEntity>("ExportLogRepository") {
+  initializeDependencies();
+
+  if (logger_) {
+    logger_->Info("📝 ExportLogRepository initialized (Extended)");
+    logger_->Info("✅ Cache enabled: " +
+                  std::string(isCacheEnabled() ? "YES" : "NO"));
+  }
+}
+
+ExportLogRepository::~ExportLogRepository() = default;
 
 // =============================================================================
 // ✨ 신규: 시간대별 고급 통계
@@ -1781,6 +1799,13 @@ ExportLogRepository::entityToParams(const ExportLogEntity &entity) {
   params["timestamp"] = oss.str();
 
   params["client_info"] = entity.getClientInfo();
+
+  // [v3.2.0] Debug Logging
+  LogManager::getInstance().Info(
+      "[DEBUG] entityToParams: gateway_id=" +
+      std::to_string(entity.getGatewayId()) +
+      ", sent_payload_len=" + std::to_string(entity.getSentPayload().length()));
+
   params["gateway_id"] =
       entity.getGatewayId() > 0 ? std::to_string(entity.getGatewayId()) : "";
   params["sent_payload"] = entity.getSentPayload();
