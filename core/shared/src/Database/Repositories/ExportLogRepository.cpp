@@ -693,15 +693,16 @@ bool ExportLogRepository::save(ExportLogEntity &entity) {
     //     log_type, service_id, target_id, mapping_id, point_id,
     //     source_value, converted_value, status, error_message, error_code,
     //     response_data, http_status_code, processing_time_ms, timestamp,
-    //     client_info
-    // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    //     client_info, gateway_id, sent_payload
+    // ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
     std::vector<std::string> insert_order = {
         "log_type",           "service_id",    "target_id",
         "mapping_id",         "point_id",      "source_value",
         "converted_value",    "status",        "error_message",
         "error_code",         "response_data", "http_status_code",
-        "processing_time_ms", "timestamp",     "client_info"};
+        "processing_time_ms", "timestamp",     "client_info",
+        "gateway_id",         "sent_payload"};
 
     // ✅ 순서대로 파라미터 치환
     for (const auto &key : insert_order) {
@@ -715,7 +716,8 @@ bool ExportLogRepository::save(ExportLogEntity &entity) {
           // 빈 값 처리
           if (key == "service_id" || key == "target_id" ||
               key == "mapping_id" || key == "point_id" ||
-              key == "http_status_code" || key == "processing_time_ms") {
+              key == "http_status_code" || key == "processing_time_ms" ||
+              key == "gateway_id") { // Added gateway_id
             // 정수형: NULL
             query.replace(pos, 1, "NULL");
           } else {
@@ -759,7 +761,8 @@ bool ExportLogRepository::update(const ExportLogEntity &entity) {
         "mapping_id",         "point_id",      "source_value",
         "converted_value",    "status",        "error_message",
         "error_code",         "response_data", "http_status_code",
-        "processing_time_ms", "timestamp",     "client_info"};
+        "processing_time_ms", "timestamp",     "client_info",
+        "gateway_id",         "sent_payload"}; // Added gateway_id, sent_payload
 
     // ✅ 순서대로 파라미터 치환
     for (const auto &key : update_order) {
@@ -773,7 +776,8 @@ bool ExportLogRepository::update(const ExportLogEntity &entity) {
           // 빈 값 처리
           if (key == "service_id" || key == "target_id" ||
               key == "mapping_id" || key == "point_id" ||
-              key == "http_status_code" || key == "processing_time_ms") {
+              key == "http_status_code" || key == "processing_time_ms" ||
+              key == "gateway_id") { // Added gateway_id
             query.replace(pos, 1, "NULL");
           } else {
             query.replace(pos, 1, "''");
@@ -1696,6 +1700,19 @@ ExportLogEntity ExportLogRepository::mapRowToEntity(
       entity.setTimestamp(std::chrono::system_clock::now());
     }
 
+    // -----------------------------------------------------------------
+    // 9. 게이트웨이 및 페이로드 정보 (v3.2.0 추가)
+    // -----------------------------------------------------------------
+    it = row.find("gateway_id");
+    if (it != row.end()) {
+      entity.setGatewayId(safeStoi(it->second, 0));
+    }
+
+    it = row.find("sent_payload");
+    if (it != row.end()) {
+      entity.setSentPayload(it->second);
+    }
+
     // =================================================================
     // 매핑 완료 - 디버그 로그
     // =================================================================
@@ -1764,6 +1781,9 @@ ExportLogRepository::entityToParams(const ExportLogEntity &entity) {
   params["timestamp"] = oss.str();
 
   params["client_info"] = entity.getClientInfo();
+  params["gateway_id"] =
+      entity.getGatewayId() > 0 ? std::to_string(entity.getGatewayId()) : "";
+  params["sent_payload"] = entity.getSentPayload();
 
   return params;
 }

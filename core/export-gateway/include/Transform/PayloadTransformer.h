@@ -30,6 +30,7 @@ struct TransformContext {
   // 공통 필드
   int building_id = 0;
   std::string point_name;
+  std::string original_point_name;
   std::string value;
   std::string timestamp;
   int status = 0;

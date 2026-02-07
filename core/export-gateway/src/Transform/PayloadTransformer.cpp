@@ -59,11 +59,11 @@ PayloadTransformer::transformString(const std::string &template_str,
 // =============================================================================
 
 json PayloadTransformer::getInsiteDefaultTemplate() {
-  return json{{"controlpoint", "{{target_field_name}}"},
-              {"description", "{{target_description}}"},
-              {"value", "{{converted_value}}"},
-              {"time", "{{timestamp_iso8601}}"},
-              {"status", "{{alarm_status}}"}};
+  return json{{"site_id", "{{site_id}}"},
+              {"target_key", "{{target_key}}"},
+              {"measured_value", "{{measured_value}}"},
+              {"timestamp", "{{timestamp}}"},
+              {"status_code", "{{status_code}}"}};
 }
 
 json PayloadTransformer::getHDCDefaultTemplate() {
@@ -84,10 +84,18 @@ json PayloadTransformer::getBEMSDefaultTemplate() {
 }
 
 json PayloadTransformer::getGenericDefaultTemplate() {
-  return json{{"bd", "{{bd}}"}, {"ty", "{{ty}}"},   {"nm", "{{nm}}"},
-              {"vl", "{{vl}}"}, {"tm", "{{tm}}"},   {"st", "{{st}}"},
-              {"al", "{{al}}"}, {"des", "{{des}}"}, {"il", "{{il}}"},
-              {"xl", "{{xl}}"}, {"mi", "{{mi}}"},   {"mx", "{{mx}}"}};
+  return json{{"site_id", "{{site_id}}"},
+              {"type", "{{type}}"},
+              {"target_key", "{{target_key}}"},
+              {"measured_value", "{{measured_value}}"},
+              {"timestamp", "{{timestamp}}"},
+              {"status_code", "{{status_code}}"},
+              {"alarm_level", "{{alarm_level}}"},
+              {"target_description", "{{target_description}}"},
+              {"mi", "{{mi}}"},
+              {"mx", "{{mx}}"},
+              {"il", "{{il}}"},
+              {"xl", "{{xl}}"}};
 }
 
 json PayloadTransformer::getDefaultTemplateForSystem(
@@ -128,6 +136,7 @@ TransformContext PayloadTransformer::createContext(
   context.timestamp_iso8601 = toISO8601(alarm.tm);
   context.timestamp_unix_ms = toUnixTimestampMs(alarm.tm);
   context.alarm_status = getAlarmStatusString(alarm.al, alarm.st);
+  context.original_point_name = alarm.original_nm;
 
   // 추가 필드 (il, xl 등) - JSON 타입 보전을 위해 dump() 사용하지 않고 원본값
   // 유지 고려
@@ -215,22 +224,50 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
   vars["timestamp_unix_ms"] = std::to_string(context.timestamp_unix_ms);
   vars["alarm_status"] = context.alarm_status;
 
+  // 신규 변수 및 별칭
+  vars["original_name"] = context.point_name;
+  vars["site_id"] = std::to_string(context.building_id);
+
+  // ✅ 인간 친화적 별칭 (Alias) 추가
+  vars["target_key"] = context.target_field_name.empty()
+                           ? context.point_name
+                           : context.target_field_name;
+  vars["mapping_name"] = vars["target_key"];
+  vars["measured_value"] =
+      context.converted_value.empty() ? context.value : context.converted_value;
+  vars["point_value"] = vars["measured_value"];
+  vars["status_code"] = std::to_string(context.status);
+  vars["alarm_level"] = std::to_string(context.alarm_flag);
+  vars["timestamp"] = context.timestamp_iso8601;
+
+  vars["target_description"] = context.target_description.empty()
+                                   ? context.description
+                                   : context.target_description;
+
+  // Metadata & Intelligence (New)
+  vars["site_name"] = context.custom_vars.count("site_name")
+                          ? context.custom_vars.at("site_name")
+                          : "";
+  vars["device_name"] = context.custom_vars.count("device_name")
+                            ? context.custom_vars.at("device_name")
+                            : "";
+  vars["is_control"] = context.custom_vars.count("is_control")
+                           ? context.custom_vars.at("is_control")
+                           : "0";
+  vars["is_writable"] = vars["is_control"];
+  vars["data_type"] = vars["type"];
+
   // 하위 호환성 (nm, vl, al 등 짧은 이름들 - 사용자 템플릿용)
   vars["bd"] = vars["building_id"];
-  vars["nm"] = vars["point_name"];
-  vars["vl"] = vars["value"];
-  vars["tm"] = vars["timestamp_iso8601"];
-  vars["st"] = vars["status"];
-  vars["al"] = vars["alarm_flag"];
-  vars["des"] = vars["description"];
+  vars["des"] = vars["target_description"];
   vars["ty"] = vars["type"];
 
-  // UI용 별칭 (사용자 가이드 호환)
-  vars["device_name"] = vars["bd"];
-  vars["point_name"] = vars["nm"];
-  vars["value"] = vars["vl"];
-  vars["timestamp"] = vars["tm"];
-  vars["description"] = vars["des"];
+  // Old Aliases (Keep for compatibility)
+  vars["nm"] = vars["target_key"];
+  vars["vl"] = vars["measured_value"];
+  vars["tm"] = vars["timestamp"];
+  vars["st"] = vars["status_code"];
+  vars["al"] = vars["alarm_level"];
 
   // 추가 필드 (il, xl 등)
   vars["il"] =
@@ -360,9 +397,32 @@ void PayloadTransformer::expandJsonRecursive(
     obj = str;
 
   } else if (obj.is_object()) {
-    for (auto &[key, value] : obj.items()) {
+    json new_obj = json::object();
+    for (auto it = obj.begin(); it != obj.end(); ++it) {
+      std::string key = it.key();
+
+      // ✅ Key Expansion 지원
+      for (const auto &[v_key, v_value] : variables) {
+        std::string pattern2 = "{{" + v_key + "}}";
+        size_t pos = 0;
+        while ((pos = key.find(pattern2, pos)) != std::string::npos) {
+          key.replace(pos, pattern2.length(), v_value);
+          pos += v_value.length();
+        }
+
+        std::string pattern1 = "{" + v_key + "}";
+        pos = 0;
+        while ((pos = key.find(pattern1, pos)) != std::string::npos) {
+          key.replace(pos, pattern1.length(), v_value);
+          pos += v_value.length();
+        }
+      }
+
+      json value = it.value();
       expandJsonRecursive(value, variables);
+      new_obj[key] = value;
     }
+    obj = new_obj;
   } else if (obj.is_array()) {
     for (auto &item : obj) {
       expandJsonRecursive(item, variables);

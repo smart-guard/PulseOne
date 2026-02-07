@@ -13,6 +13,87 @@ const extractItems = (data: any): any[] => {
     return [];
 };
 
+const VARIABLE_CATEGORIES = [
+    {
+        name: '매핑 (Target Mapping)',
+        items: [
+            { label: '매핑 명칭 (TARGET KEY)', value: '{{target_key}}', desc: '프로파일 탭에서 설정한 데이터의 최종 이름' },
+            { label: '데이터 값 (VALUE)', value: '{{measured_value}}', desc: 'Scale/Offset이 반영된 실제 측정값' },
+            { label: '타켓 설명 (DESC)', value: '{{target_description}}', desc: '프로파일에서 설정한 데이터 설명' }
+        ]
+    },
+    {
+        name: '수집기 원본 (Collector)',
+        items: [
+            { label: '건물 ID', value: '{{site_id}}', desc: '원본 건물(Building) ID' },
+            { label: '포인트 ID', value: '{{point_id}}', desc: '원본 포인트(Point) ID' },
+            { label: '원본 이름', value: '{{original_name}}', desc: '수집기 내부 원본 포인트명' },
+            { label: '데이터 타입', value: '{{type}}', desc: 'num:숫자, bit:디지털, str:문자열' }
+        ]
+    },
+    {
+        name: '상태 및 알람 (Status)',
+        items: [
+            { label: '통신 상태', value: '{{status_code}}', desc: '0:정상, 1:통신끊김' },
+            { label: '알람 등급', value: '{{alarm_level}}', desc: '0:정상, 1:주의, 2:경고' },
+            { label: '알람 상태명', value: '{{alarm_status}}', desc: 'NORMAL, WARNING, CRITICAL 등' }
+        ]
+    },
+    {
+        name: '범위 및 한계 (Ranges)',
+        items: [
+            { label: '계측 범위(Min)', value: '{{mi}}', desc: '미터링 최소 한계값' },
+            { label: '계측 범위(Max)', value: '{{mx}}', desc: '미터링 최대 한계값' },
+            { label: '정보 한계', value: '{{il}}', desc: '임계치 정보(Information Limit)' },
+            { label: '위험 한계', value: '{{xl}}', desc: '임계치 위험(Extra Limit)' }
+        ]
+    },
+    {
+        name: '시간 (Timestamp)',
+        items: [
+            { label: '표준 시간', value: '{{timestamp}}', desc: 'YYYY-MM-DD HH:mm:ss.fff' },
+            { label: 'ISO8601', value: '{{timestamp_iso8601}}', desc: '표준 시각 포맷' },
+            { label: 'Unix (ms)', value: '{{timestamp_unix_ms}}', desc: '1970년 기준 밀리초' }
+        ]
+    }
+];
+
+const SAMPLE_DATA: Record<string, any> = {
+    // New Aliases
+    target_key: "PRO_FILE_TARGET_KEY",
+    mapping_name: "PRO_FILE_TARGET_KEY",
+    measured_value: "45.2 (MEASURED_VALUE)",
+    point_value: "45.2 (MEASURED_VALUE)",
+    target_description: "프로파일에 정의된 데이터 설명",
+    site_id: "280 (SITE_ID)",
+    status_code: "0 (NORMAL)",
+    alarm_level: "1 (WARNING)",
+    timestamp: new Date().toISOString().replace('T', ' ').split('.')[0],
+    type: "num",
+
+    // Backward Compatibility
+    nm: "PRO_FILE_TARGET_KEY",
+    vl: "45.2 (MEASURED_VALUE)",
+    tm: new Date().toISOString().replace('T', ' ').split('.')[0],
+    des: "프로파일에 정의된 데이터 설명",
+    bd: "280 (SITE_ID)",
+    st: "0 (NORMAL)",
+    al: "1 (WARNING)",
+    ty: "num",
+
+    // Others
+    point_id: "1024",
+    original_name: "PUMP_01_STS",
+    original_nm: "PUMP_01_STS",
+    timestamp_iso8601: new Date().toISOString(),
+    timestamp_unix_ms: Date.now(),
+    alarm_status: "WARNING",
+    il: "-",
+    xl: "1",
+    mi: "[0]",
+    mx: "[100]"
+};
+
 interface ExportGatewayWizardProps {
     visible: boolean;
     onClose: () => void;
@@ -58,8 +139,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
     const [newTemplateData, setNewTemplateData] = useState({
         name: '',
         system_type: 'custom',
-        template_json: '{\n  "device": "{device_name}",\n  "point": "{point_name}",\n  "value": {value},\n  "timestamp": "{timestamp}"\n}'
+        template_json: '{\n  "site_id": "{{site_id}}",\n  "type": "{{type}}",\n  "target_key": "{{target_key}}",\n  "measured_value": "{{measured_value}}",\n  "timestamp": "{{timestamp}}"\n}'
     });
+    const [templateEditMode, setTemplateEditMode] = useState<'simple' | 'advanced'>('advanced');
+    const [templateSimpleMappings, setTemplateSimpleMappings] = useState<{ key: string; value: string }[]>([]);
+    const [templateIsWrappedInArray, setTemplateIsWrappedInArray] = useState(false);
+    const [lastFocusedTemplateElement, setLastFocusedTemplateElement] = useState<{ id: string, index?: number, field?: 'key' | 'value' } | null>(null);
 
     // Target & Mode State
     const [transmissionMode, setTransmissionMode] = useState<'INTERVAL' | 'EVENT'>('INTERVAL');
@@ -77,7 +162,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             execution_order: 0
         }] as any[],
         config_mqtt: [{ url: '', topic: 'pulseone/data', execution_order: 0 }] as any[],
-        config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }] as any[]
+        config_s3: [{ endpoint: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }] as any[]
     });
 
     const [editingTargets, setEditingTargets] = useState<Record<number, any>>({});
@@ -236,7 +321,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     name: '',
                     config_http: [{ url: '', method: 'POST', auth_type: 'NONE', headers: { Authorization: '' }, auth: { type: 'x-api-key', apiKey: '' }, execution_order: 0 }],
                     config_mqtt: [{ url: '', topic: 'pulseone/data', execution_order: 0 }],
-                    config_s3: [{ S3ServiceUrl: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }]
+                    config_s3: [{ endpoint: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }]
                 });
                 setScheduleData({ schedule_name: '', cron_expression: '*/1 * * * *', data_range: 'minute', lookback_periods: 1 });
                 setTransmissionMode('INTERVAL');
@@ -924,11 +1009,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 }}>
                                                     {(() => {
                                                         const raw = templates.find(t => t.id === selectedTemplateId)?.template_json;
+                                                        if (raw === undefined || raw === null) return '선택된 템플릿 정보가 없습니다.';
                                                         try {
                                                             const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
                                                             return JSON.stringify(parsed, null, 2);
                                                         } catch {
-                                                            return raw;
+                                                            return typeof raw === 'string' ? raw : JSON.stringify(raw);
                                                         }
                                                     })()}
                                                 </pre>
@@ -937,13 +1023,121 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                     )}
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    <Input placeholder="템플릿 명칭" value={newTemplateData.name} onChange={e => setNewTemplateData({ ...newTemplateData, name: e.target.value })} />
-                                    <Input.TextArea
-                                        style={{ fontFamily: 'monospace', height: '300px' }}
-                                        value={newTemplateData.template_json}
-                                        onChange={e => setNewTemplateData({ ...newTemplateData, template_json: e.target.value })}
-                                    />
+                                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '15px' }}>
+                                    <div style={{ display: 'flex', gap: '15px' }}>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>템플릿 명칭</div>
+                                            <Input
+                                                size="large"
+                                                placeholder="예: 표준 JSON 페이로드"
+                                                value={newTemplateData.name}
+                                                onChange={e => setNewTemplateData({ ...newTemplateData, name: e.target.value })}
+                                            />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>시스템 유형</div>
+                                            <Input
+                                                size="large"
+                                                placeholder="예: AWS IoT, MS Azure 등"
+                                                value={newTemplateData.system_type}
+                                                onChange={e => setNewTemplateData({ ...newTemplateData, system_type: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ padding: '12px', background: '#f0faff', borderRadius: '8px', border: '1px solid #e6f7ff', fontSize: '11px', color: '#0050b3', lineHeight: '1.6' }}>
+                                        <i className="fas fa-info-circle" style={{ marginRight: '8px' }} />
+                                        <strong>엔지니어 가이드:</strong> <code>{"{{target_key}}"}</code>를 사용하여 프로파일의 <b>Target Key</b>를 주입하세요. 범용 설계를 위해 사이트별 고정 변수가 아닌 메타데이터 중심의 스키마를 권장합니다.
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                            <span style={{ fontWeight: 700, fontSize: '13px' }}>페이로드 구성</span>
+                                            <Radio.Group
+                                                size="small"
+                                                value={templateEditMode}
+                                                onChange={e => setTemplateEditMode(e.target.value)}
+                                            >
+                                                <Radio.Button value="simple">빌더 (Simple)</Radio.Button>
+                                                <Radio.Button value="advanced">코드 (Advanced)</Radio.Button>
+                                            </Radio.Group>
+                                        </div>
+                                    </div>
+
+                                    <div className="variable-tray-v2" style={{ padding: '8px', background: '#f5f5f5', borderRadius: '8px', border: '1px solid #eee' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            {VARIABLE_CATEGORIES.map(cat => (
+                                                <div key={cat.name} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#999', minWidth: '80px' }}>{cat.name}</span>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                        {cat.items.map(v => (
+                                                            <button
+                                                                key={v.value}
+                                                                type="button"
+                                                                className="mgmt-badge neutral"
+                                                                style={{ cursor: 'pointer', border: '1px solid #ddd', fontSize: '9px', padding: '1px 6px', borderRadius: '4px', background: '#fff' }}
+                                                                onClick={() => {
+                                                                    const insertVar = v.value;
+                                                                    if (templateEditMode === 'advanced') {
+                                                                        const textarea = document.getElementById('new-template-textarea') as HTMLTextAreaElement;
+                                                                        if (textarea) {
+                                                                            const start = textarea.selectionStart;
+                                                                            const end = textarea.selectionEnd;
+                                                                            textarea.setRangeText(insertVar, start, end, 'end');
+                                                                            textarea.focus();
+                                                                            setNewTemplateData({ ...newTemplateData, template_json: textarea.value });
+                                                                        }
+                                                                    }
+                                                                    // Simple mode insertion logic could be added here if templateSimpleMappings is used
+                                                                }}
+                                                                title={v.desc}
+                                                            >
+                                                                {v.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '15px', flex: 1, minHeight: 0 }}>
+                                        <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column' }}>
+                                            {templateEditMode === 'advanced' ? (
+                                                <Input.TextArea
+                                                    id="new-template-textarea"
+                                                    style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px', background: '#fcfcfc' }}
+                                                    value={typeof newTemplateData.template_json === 'string' ? newTemplateData.template_json : JSON.stringify(newTemplateData.template_json, null, 2)}
+                                                    onChange={e => setNewTemplateData({ ...newTemplateData, template_json: e.target.value })}
+                                                />
+                                            ) : (
+                                                <div style={{ flex: 1, border: '1px solid #d9d9d9', borderRadius: '6px', background: '#fff', padding: '20px', textAlign: 'center', color: '#999' }}>
+                                                    마법사에서는 'Advanced' 모드만 지원합니다.<br />상세 빌더는 [템플릿 관리] 탭을 이용해주세요.
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div style={{ flex: 1, background: '#1e272e', borderRadius: '8px', padding: '12px', overflowY: 'auto' }}>
+                                            <div style={{ fontSize: '11px', color: '#55efc4', fontWeight: 700, marginBottom: '8px' }}>PREVIEW</div>
+                                            <pre style={{ margin: 0, fontSize: '11px', color: '#abb2bf', whiteSpace: 'pre-wrap' }}>
+                                                {(() => {
+                                                    try {
+                                                        let preview = typeof newTemplateData.template_json === 'string' ? newTemplateData.template_json : JSON.stringify(newTemplateData.template_json, null, 2);
+                                                        Object.entries(SAMPLE_DATA).forEach(([k, v]) => {
+                                                            preview = preview.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v));
+                                                            preview = preview.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+                                                        });
+                                                        try {
+                                                            return JSON.stringify(JSON.parse(preview), null, 2);
+                                                        } catch {
+                                                            return preview;
+                                                        }
+                                                    } catch {
+                                                        return "JSON Error";
+                                                    }
+                                                })()}
+                                            </pre>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -1323,11 +1517,11 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                     </div>
                                                     <Input
                                                         style={{ marginBottom: '8px' }}
-                                                        placeholder="S3 Service URL (예: https://s3.ap-northeast-2.amazonaws.com)"
-                                                        value={c.S3ServiceUrl}
+                                                        placeholder="S3 Endpoint / Service URL (예: https://s3.ap-northeast-2.amazonaws.com)"
+                                                        value={c.endpoint || c.S3ServiceUrl || ''}
                                                         onChange={e => {
                                                             const next = [...targetData.config_s3];
-                                                            next[i].S3ServiceUrl = e.target.value;
+                                                            next[i].endpoint = e.target.value;
                                                             setTargetData({ ...targetData, config_s3: next });
                                                         }}
                                                     />
@@ -1379,7 +1573,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                     )}
                                                 </div>
                                             ))}
-                                            <Button type="dashed" block onClick={() => setTargetData({ ...targetData, config_s3: [...targetData.config_s3, { S3ServiceUrl: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '', execution_order: totalTargetCount + 1 }] })}>
+                                            <Button type="dashed" block onClick={() => setTargetData({ ...targetData, config_s3: [...targetData.config_s3, { endpoint: '', BucketName: '', Folder: '', AccessKeyID: '', SecretAccessKey: '', execution_order: totalTargetCount + 1 }] })}>
                                                 + S3 스토리지 추가
                                             </Button>
                                         </div>

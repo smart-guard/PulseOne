@@ -455,6 +455,11 @@ private:
   std::unordered_map<int, std::unordered_map<int, int>>
       target_point_site_mappings_;
 
+  // ✅ 포인트별 Scale/Offset 캐시: target_id -> { point_id -> value }
+  std::unordered_map<int, std::unordered_map<int, double>> target_point_scales_;
+  std::unordered_map<int, std::unordered_map<int, double>>
+      target_point_offsets_;
+
   // ✅ 사이트 매핑 캐시: target_id -> { site_id -> external_building_id }
   std::unordered_map<int, std::unordered_map<int, std::string>>
       target_site_mappings_;

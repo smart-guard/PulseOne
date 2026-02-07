@@ -9,8 +9,8 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 # 플랫폼 감지
 UNAME_S := $(shell uname -s)
-NPROC := 1
-MAKEFLAGS += -j1
+NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)
+MAKEFLAGS += -rR
 DEBUG := 1
 
 # 플랫폼별 설정
@@ -189,6 +189,7 @@ SHARED_LIBS += -lpulseone-client
 SHARED_LIBS += -lpulseone-common
 SHARED_LIBS += -lpulseone-security
 SHARED_LIBS += -lpulseone-dblib
+# SHARED_LIBS += -lpulseone-loglib (Common에 통합됨)
 CXXFLAGS += -DHAS_SHARED_LIBS=1
 else
 SHARED_LIBS :=
@@ -432,7 +433,7 @@ $(TARGET): $(ALL_OBJECTS) $(MAIN_OBJECT) | $(BIN_DIR)
 	@echo -e "Size: $(CYAN)$(shell du -h $(BIN_DIR)/$(TARGET) 2>/dev/null | cut -f1 || echo 'N/A')$(NC)"
 
 # 컴파일 규칙 (.c 추가)
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | create-dirs
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $(dir $@)
 	@echo -e "$(YELLOW)⚙️ Compiling $<$(NC)"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@

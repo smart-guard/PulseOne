@@ -105,6 +105,24 @@ bool DatabaseManager::connectSQLite() {
   int result = sqlite3_open(db_path.c_str(), &sqlite_conn_);
   if (result == SQLITE_OK) {
     log(1, "SQLite connection successful: " + db_path);
+
+    // 🔥 v3.2 - Concurrency Stabilization
+    // 1. Set busy timeout (wait for locks up to 5 seconds)
+    sqlite3_busy_timeout(sqlite_conn_, 5000);
+
+    // 2. Enable WAL mode for better multi-process concurrency
+    char *err_wal = nullptr;
+    sqlite3_exec(sqlite_conn_, "PRAGMA journal_mode=WAL;", nullptr, nullptr,
+                 &err_wal);
+    if (err_wal) {
+      log(2, "Failed to set SQLite WAL mode: " + std::string(err_wal));
+      sqlite3_free(err_wal);
+    }
+
+    // 3. Set synchronous mode to NORMAL (safe with WAL)
+    sqlite3_exec(sqlite_conn_, "PRAGMA synchronous=NORMAL;", nullptr, nullptr,
+                 nullptr);
+
     return true;
   }
 

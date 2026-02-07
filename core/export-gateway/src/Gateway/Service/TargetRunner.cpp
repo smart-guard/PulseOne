@@ -64,6 +64,7 @@ TargetSendResult TargetRunner::sendAlarmToTarget(
   }
 
   const auto &target = *target_opt;
+  result.target_id = target.id;
   result.target_type = target.type;
 
   auto *protector = getOrCreateProtector(target.name, target.config);
@@ -212,6 +213,12 @@ bool TargetRunner::executeSend(
   }
 
   result = handler->sendAlarm(alarm, target.config);
+
+  // Restore target identity (handlers might overwrite/ignore these)
+  result.target_id = target.id;
+  result.target_name = target.name;
+  result.target_type = target.type;
+
   return result.success;
 }
 

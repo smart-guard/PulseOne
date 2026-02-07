@@ -22,12 +22,7 @@ class ExportLogRepository extends BaseRepository {
             const query = this.knex(`${this.tableName} as l`)
                 .leftJoin('export_targets as t', 'l.target_id', 't.id')
                 .leftJoin('export_profiles as p', 't.profile_id', 'p.id')
-                .leftJoin('export_profile_assignments as pa', function () {
-                    this.on('t.profile_id', '=', 'pa.profile_id')
-                        .andOn('pa.is_active', '=', 1);
-                })
-                .leftJoin('edge_servers as g', 'pa.gateway_id', 'g.id')
-                .distinct() // ✅ FIX: Prevent duplicates from multiple profile assignments
+                .leftJoin('edge_servers as g', 'l.gateway_id', 'g.id')
                 .select(
                     'l.*',
                     't.name as target_name',
@@ -64,7 +59,7 @@ class ExportLogRepository extends BaseRepository {
             }
 
             if (filters.gateway_id) {
-                query.where('pa.gateway_id', filters.gateway_id);
+                query.where('l.gateway_id', filters.gateway_id);
             }
 
             // Get total count
@@ -95,11 +90,7 @@ class ExportLogRepository extends BaseRepository {
             const query = this.knex(`${this.tableName} as l`)
                 .leftJoin('export_targets as t', 'l.target_id', 't.id')
                 .leftJoin('export_profiles as p', 't.profile_id', 'p.id')
-                .leftJoin('export_profile_assignments as pa', function () {
-                    this.on('t.profile_id', '=', 'pa.profile_id')
-                        .andOn('pa.is_active', '=', 1);
-                })
-                .leftJoin('edge_servers as g', 'pa.gateway_id', 'g.id');
+                .leftJoin('edge_servers as g', 'l.gateway_id', 'g.id');
 
             if (filters.date_from) {
                 query.where('l.timestamp', '>=', filters.date_from);
@@ -122,7 +113,7 @@ class ExportLogRepository extends BaseRepository {
             }
 
             if (filters.gateway_id) {
-                query.where('pa.gateway_id', filters.gateway_id);
+                query.where('l.gateway_id', filters.gateway_id);
             }
 
             const stats = await query.select(

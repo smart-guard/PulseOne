@@ -72,12 +72,14 @@ private:
   expandTemplate(const std::string &template_str,
                  const PulseOne::Gateway::Model::AlarmMessage &alarm) const;
 
-  void expandTemplateVariables(
-      json &template_json,
-      const PulseOne::Gateway::Model::AlarmMessage &alarm) const;
-  void expandTemplateVariables(
-      json &template_json,
-      const PulseOne::Gateway::Model::ValueMessage &value) const;
+  void
+  expandTemplateVariables(json &template_json,
+                          const PulseOne::Gateway::Model::AlarmMessage &alarm,
+                          const json &config) const;
+  void
+  expandTemplateVariables(json &template_json,
+                          const PulseOne::Gateway::Model::ValueMessage &value,
+                          const json &config) const;
 
   std::string
   buildJsonContent(const PulseOne::Gateway::Model::AlarmMessage &alarm,

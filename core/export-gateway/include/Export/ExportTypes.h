@@ -78,8 +78,10 @@ public:
   int retry_count = 0;
 
   // 타겟 정보
+  int target_id = 0;
   std::string target_name = "";
   std::string target_type = "";
+  std::string sent_payload = "";
 
   // HTTP 관련 필드들
   int status_code = 0;
