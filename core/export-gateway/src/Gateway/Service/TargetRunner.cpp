@@ -79,7 +79,11 @@ TargetSendResult TargetRunner::sendAlarmToTarget(
         std::chrono::milliseconds(target.execution_delay_ms));
   }
 
+  LogManager::getInstance().Info(
+      "TargetRunner: Applying mappings for target: " + target_name);
   auto processed_alarm = applyMappings(target, alarm);
+  LogManager::getInstance().Info(
+      "TargetRunner: Mappings applied, executing send");
 
   auto start_time = std::chrono::steady_clock::now();
 
