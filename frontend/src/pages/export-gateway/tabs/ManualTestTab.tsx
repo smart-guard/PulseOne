@@ -105,9 +105,14 @@ const ManualTestTab: React.FC = () => {
 
             // Basic Replacements (This makes it consistent with TemplateManagementTab preview)
             // Note: In a real C++ engine, this is done more robustly. Here we do simple string replacement for preview.
+
+            // Find point to get data_type
+            const point = allPoints.find(p => p.id === currentMapping.point_id);
+            const dataType = point?.data_type || 'num';
+
             const replacements: Record<string, any> = {
                 '{{site_id}}': currentMapping.site_id || 1,
-                '{{type}}': 'num',
+                '{{type}}': dataType,
                 '{{target_key}}': currentMapping.target_field_name,
                 '{{measured_value}}': val,
                 '{{timestamp}}': `${new Date().toISOString().replace('T', ' ').split('.')[0]}.000`,
@@ -127,7 +132,8 @@ const ManualTestTab: React.FC = () => {
                 '{{tm}}': `${new Date().toISOString().replace('T', ' ').split('.')[0]}.000`,
                 '{{st}}': 1,
                 '{{al}}': testAlValue,
-                '{{des}}': "Manual Export Triggered"
+                '{{des}}': "Manual Export Triggered",
+                '{{ty}}': dataType
             };
 
             // Replace all placeholders
@@ -143,6 +149,22 @@ const ManualTestTab: React.FC = () => {
                 }
 
                 jsonStr = jsonStr.replace(new RegExp(key, 'g'), String(value));
+            });
+
+            // Handle Smart Logic {{map:source:trueVal:falseVal}}
+            // Regex: {{map:([^:]+):([^:]+):([^:]+)}}
+            jsonStr = jsonStr.replace(/\{\{map:([^:]+):([^:]+):([^:]+)\}\}/g, (match, source, trueVal, falseVal) => {
+                let sourceVal: any;
+
+                // Determine source value based on variable name
+                if (source === 'alarm_level' || source === 'al') sourceVal = testAlValue;
+                else if (source === 'status_code' || source === 'st') sourceVal = 0; // Default normal
+                else if (source === 'measured_value' || source === 'vl') sourceVal = val;
+                else sourceVal = 0;
+
+                // Logic: 0 is false, anything else is true
+                const isTrue = Number(sourceVal) !== 0;
+                return isTrue ? trueVal : falseVal;
             });
 
             try {
@@ -173,8 +195,8 @@ const ManualTestTab: React.FC = () => {
             };
         }
 
-        setEditableJson(JSON.stringify(finalPayload, null, 2));
-    }, [currentMapping, testValue, testAlValue, targets, templates]);
+        setEditableJson(JSON.stringify(finalPayload, null, 4));
+    }, [currentMapping, templates, targets, testValue, testAlValue, allPoints]);
 
     const fetchGatewayMappings = async (gwId: number) => {
         setLoading(true);

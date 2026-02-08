@@ -5,8 +5,23 @@
  * @date 2026-02-06
  */
 
-#include "Gateway/Target/HttpTargetHandler.h"
-#include "Client/HttpClient.h"
+#include "Security/SecretManager.h"
+
+// ... existing includes ...
+
+// 1. Expand variables (e.g. ${MY_API_KEY} -> actual key or path)
+std::string expanded_value = config_manager.expandVariables(value);
+
+// 2. Decrypt if the value is encrypted (ENC:...)
+// Exposed via SecretManager::decryptEncodedValue
+std::string final_value =
+    Security::SecretManager::getInstance().decryptEncodedValue(expanded_value);
+
+headers[key] = final_value;
+}
+}
+return headers;
+}
 #include "Constants/ExportConstants.h"
 #include "Gateway/Model/AlarmMessage.h"
 #include "Logging/LogManager.h"
@@ -234,6 +249,10 @@ std::unordered_map<std::string, std::string>
 HttpTargetHandler::buildRequestHeaders(const json &config) {
   std::unordered_map<std::string, std::string> headers;
   headers[HttpConst::HEADER_ACCEPT] = HttpConst::CONTENT_TYPE_JSON;
+  // [Modified] User request: Make User-Agent configurable (Default:
+  // PulseOne-ExportGateway/1.0)
+  headers[HttpConst::HEADER_USER_AGENT] =
+      config.value("user_agent", "PulseOne-ExportGateway/1.0");
 
   // Custom headers support with Secret expansion
   if (config.contains("headers") && config["headers"].is_object()) {

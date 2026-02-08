@@ -166,6 +166,13 @@ public:
    */
   bool refreshSecret(const std::string &secret_name = "");
 
+  /**
+   * @brief ENC: 접두사가 있는 암호화된 문자열을 복호화 (없으면 그대로 반환)
+   * @param value 잠재적 암호화 문자열
+   * @return 복호화된 문자열
+   */
+  std::string decryptEncodedValue(const std::string &value) const;
+
   // ==========================================================================
   // CSP Gateway 전용 편의 메서드들
   // ==========================================================================
