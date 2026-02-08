@@ -57,6 +57,7 @@ bool EdgeServerRepository::save(EdgeServerEntity &entity) {
     data["ip_address"] = entity.getIpAddress();
     data["port"] = std::to_string(entity.getPort());
     data["status"] = entity.isEnabled() ? "active" : "inactive";
+    data["subscription_mode"] = entity.getSubscriptionMode();
     data["config"] = entity.getConfig().dump();
     data["updated_at"] =
         RepositoryHelpers::formatTimestamp(std::chrono::system_clock::now());
@@ -135,6 +136,8 @@ EdgeServerEntity EdgeServerRepository::mapRowToEntity(
       entity.setIpAddress(row.at("ip_address"));
     if (row.count("port"))
       entity.setPort(std::stoi(row.at("port")));
+    if (row.count("subscription_mode"))
+      entity.setSubscriptionMode(row.at("subscription_mode"));
     if (row.count("config") && !row.at("config").empty())
       entity.setConfig(json::parse(row.at("config")));
   } catch (const std::exception &e) {
