@@ -4,7 +4,10 @@
  */
 
 #include "Gateway/Service/GatewayService.h"
-#include "Logging/LogManager.h"
+#include "Common/LogManager.h"
+#include "Database/Repositories/EdgeServerRepository.h"
+#include "Database/RepositoryFactory.h"
+#include "Gateway/Service/EventDispatcher.h"
 #include "Schedule/ScheduledExporter.h"
 
 namespace PulseOne {
@@ -52,9 +55,33 @@ bool GatewayService::start() {
   event_subscriber_->subscribeChannel("cmd:gateway:" +
                                       std::to_string(context_->getGatewayId()));
 
-  // ✅ Explicitly subscribe to global alarms (Fix for missing alarms when
-  // command channel exists)
-  event_subscriber_->subscribeChannel("alarms:all");
+  // ✅ DB-driven Subscription Mode
+  try {
+    auto repo = PulseOne::Database::RepositoryFactory::getInstance()
+                    .getEdgeServerRepository();
+    auto gateway_entity = repo->findById(context_->getGatewayId());
+
+    if (gateway_entity) {
+      std::string sub_mode = gateway_entity->getSubscriptionMode();
+      LogManager::getInstance().Info("Gateway Subscription Mode: " + sub_mode);
+
+      if (sub_mode == "all") { // Explicit global subscription
+        event_subscriber_->subscribeChannel("alarms:all");
+        LogManager::getInstance().Info(
+            "Subscribed to global alarms (alarms:all)");
+      } else {
+        LogManager::getInstance().Info(
+            "Running in SELECTIVE subscription mode (assigned devices only)");
+      }
+    } else {
+      LogManager::getInstance().Warn(
+          "Failed to load Gateway Entity from DB. ID: " +
+          std::to_string(context_->getGatewayId()));
+    }
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error("Failed to load subscription config: " +
+                                    std::string(e.what()));
+  }
 
   // Update selective subscription if needed
   auto device_ids = context_->getRegistry().getAssignedDeviceIds();
