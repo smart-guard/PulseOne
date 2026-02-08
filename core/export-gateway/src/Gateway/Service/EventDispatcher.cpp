@@ -81,6 +81,10 @@ void EventDispatcher::registerHandlers(
 }
 
 void EventDispatcher::handleAlarm(const PulseOne::CSP::AlarmMessage &alarm) {
+  LogManager::getInstance().Info(
+      "[TRACE-1-RECEIVE] Alarm received via EventDispatcher: PointId=" +
+      std::to_string(alarm.point_id) + " (" + alarm.point_name + ")");
+
   // 1. 전송 실행
   auto results = context_.getRunner().sendAlarm(alarm);
 
@@ -112,6 +116,9 @@ void EventDispatcher::handleCommandEvent(const std::string &channel,
     LogManager::getInstance().Info(
         "EventDispatcher: Received command on channel [" + channel +
         "]: " + message);
+
+    LogManager::getInstance().Info("[TRACE-1-RECEIVE] Manual Export Command: " +
+                                   channel);
 
     // ServerId check
     if (j.contains("serverId")) {
@@ -149,6 +156,11 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
       if (!name.empty())
         target_names.push_back(name);
     }
+
+    LogManager::getInstance().Info(
+        "[TRACE-2-PARSE] Manual Export Data: PointId=" +
+        std::to_string(payload.value("point_id", 0)) +
+        ", Targets=" + std::to_string(target_names.size()));
 
     bool is_all = std::find(target_names.begin(), target_names.end(), "all") !=
                   target_names.end();
@@ -244,6 +256,11 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
     }
     alarm.description = payload.value("des", "Manual Export Triggered");
     alarm.manual_override = true;
+
+    LogManager::getInstance().Info(
+        "[TRACE-3-ENRICH] Manual Export Enriched: Point=" + alarm.point_name +
+        ", Site=" + std::to_string(alarm.site_id) +
+        ", Value=" + std::to_string(alarm.measured_value));
     LogManager::getInstance().Info(
         "Manual export: Starting execution loop for " +
         std::to_string(target_names.size()) + " targets");
@@ -278,6 +295,9 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
       }
 
       // Execute Send
+      LogManager::getInstance().Info(
+          "[TRACE-4-SEND] Dispatching to Target: " + name +
+          " (MappedName=" + target_alarm.point_name + ")");
       auto res = context_.getRunner().sendAlarmToTarget(name, target_alarm);
 
       // Ensure target_id is populated in result for enrichment (Manual export
