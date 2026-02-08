@@ -53,6 +53,10 @@ public:
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config) override;
 
+  TargetSendResult
+  sendValue(const PulseOne::Gateway::Model::ValueMessage &value,
+            const json &config);
+
   bool testConnection(const json &config) override;
   std::string getHandlerType() const override { return "S3"; }
   bool validateConfig(const json &config,

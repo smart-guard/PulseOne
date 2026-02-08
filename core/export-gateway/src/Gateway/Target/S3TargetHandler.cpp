@@ -106,8 +106,148 @@ std::vector<TargetSendResult> S3TargetHandler::sendValueBatch(
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config) {
   std::vector<TargetSendResult> results;
-  // Batch upload logic...
+
+  // Reuse ITargetHandler default behavior which loops and calls sendValue
+  // However, ITargetHandler::sendValueBatch does a loop calling sendValue.
+  // We need to implement sendValue as well if we rely on loop.
+  // Given S3 pattern, we might want to upload individual files per value OR one
+  // big file. Legacy C# behavior: usually maps values to individual files if
+  // template is used. Let's rely on ITargetHandler default for now which calls
+  // sendValue. But wait, sendValue is NOT implemented in ITargetHandler base
+  // (virtual). So we MUST implement sendValue.
+
+  for (const auto &val : values) {
+    results.push_back(sendValue(val, config));
+  }
   return results;
+}
+
+TargetSendResult
+S3TargetHandler::sendValue(const PulseOne::Gateway::Model::ValueMessage &value,
+                           const json &config) {
+  TargetSendResult result;
+  result.target_type = "S3";
+  result.target_name = getTargetName(config);
+
+  try {
+    std::string bucket = extractBucketName(config);
+    auto client = getOrCreateClient(config, bucket);
+    if (!client) {
+      result.error_message = "Failed to create S3 client";
+      return result;
+    }
+
+    // Key Generation
+    // Default template: {building_id}/{date}/{timestamp}_{point_id}.json
+    std::string template_str =
+        config.value("object_key_template",
+                     "{building_id}/{date}/{timestamp}_{point_id}.json");
+    if (config.contains("ObjectKeyTemplate")) {
+      template_str = config["ObjectKeyTemplate"].get<std::string>();
+    }
+    template_str = expandEnvironmentVariables(template_str);
+
+    // Manual Template Expansion for Value (since generic expandTemplate takes
+    // AlarmMessage)
+    std::string object_key = template_str;
+    object_key = std::regex_replace(object_key, std::regex("\\{building_id\\}"),
+                                    std::to_string(value.site_id));
+    object_key = std::regex_replace(object_key, std::regex("\\{site_id\\}"),
+                                    std::to_string(value.site_id));
+    object_key = std::regex_replace(object_key, std::regex("\\{point_id\\}"),
+                                    std::to_string(value.point_id));
+
+    std::string val_str = value.measured_value;
+    object_key =
+        std::regex_replace(object_key, std::regex("\\{value\\}"), val_str);
+
+    // Time handling
+    std::string ts_str = generateTimestampString();
+    std::string date_str = generateDateString();
+    // Parse value.timestamp if possible, otherwise use current time
+    if (value.timestamp.length() >= 19) {
+      std::string y = value.timestamp.substr(0, 4);
+      std::string m = value.timestamp.substr(5, 2);
+      std::string d = value.timestamp.substr(8, 2);
+      date_str = y + m + d; // S3 usually prefers yyyymmdd or yyyy/mm/dd
+      // Actually generateDateString returns YYYYMMDD based on current time.
+      // Let's trust the function or parse.
+      // For consistency with existing alarm logic, try to use event time.
+      // But here we'll keep it simple: event time components
+      ts_str = y + m + d + value.timestamp.substr(11, 2) +
+               value.timestamp.substr(14, 2) + value.timestamp.substr(17, 2);
+    }
+    object_key =
+        std::regex_replace(object_key, std::regex("\\{timestamp\\}"), ts_str);
+    object_key =
+        std::regex_replace(object_key, std::regex("\\{date\\}"), date_str);
+
+    // Path cleanup
+    object_key = std::regex_replace(object_key, std::regex("//+"), "/");
+
+    // Prefix support
+    std::string prefix;
+    if (config.contains("Folder"))
+      prefix = config["Folder"].get<std::string>();
+    else if (config.contains("prefix"))
+      prefix = config["prefix"].get<std::string>();
+
+    if (!prefix.empty()) {
+      prefix = expandEnvironmentVariables(prefix);
+      if (prefix.back() != '/')
+        prefix += "/";
+      object_key = prefix + object_key;
+    }
+    while (!object_key.empty() && object_key[0] == '/')
+      object_key = object_key.substr(1);
+
+    // Build content
+    json content;
+    if (config.contains("body_template")) {
+      content = config["body_template"];
+      expandTemplateVariables(content, value, config);
+    } else {
+      // Default Value JSON
+      content["building_id"] = value.site_id;
+      content["point_id"] = value.point_id;
+      content["value"] = value.measured_value;
+      content["timestamp"] = value.timestamp;
+      content["quality"] = value.status_code;
+    }
+
+    std::string final_content;
+    if (content.is_object() && !config.value("flat_json", false)) {
+      final_content = json::array({content}).dump(2);
+    } else {
+      final_content =
+          content.is_string() ? content.get<std::string>() : content.dump(2);
+    }
+
+    // Metadata
+    std::unordered_map<std::string, std::string> metadata;
+    metadata["building_id"] = std::to_string(value.site_id);
+    metadata["point_id"] = std::to_string(value.point_id);
+    metadata["timestamp"] = value.timestamp;
+
+    auto upload_res =
+        client->upload(object_key, final_content, "application/json", metadata);
+    result.success = upload_res.isSuccess();
+    result.sent_payload = final_content;
+    result.response_body = upload_res.error_message;
+
+    if (result.success) {
+      upload_count_++;
+      success_count_++;
+      total_bytes_uploaded_ += final_content.length();
+    } else {
+      result.error_message = "S3 upload failed: " + upload_res.error_message;
+      failure_count_++;
+    }
+  } catch (const std::exception &e) {
+    result.error_message = std::string("S3 exception: ") + e.what();
+    failure_count_++;
+  }
+  return result;
 }
 
 bool S3TargetHandler::testConnection(const json &config) {
