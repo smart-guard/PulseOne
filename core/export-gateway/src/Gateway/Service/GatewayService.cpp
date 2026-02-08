@@ -52,6 +52,10 @@ bool GatewayService::start() {
   event_subscriber_->subscribeChannel("cmd:gateway:" +
                                       std::to_string(context_->getGatewayId()));
 
+  // ✅ Explicitly subscribe to global alarms (Fix for missing alarms when
+  // command channel exists)
+  event_subscriber_->subscribeChannel("alarms:all");
+
   // Update selective subscription if needed
   auto device_ids = context_->getRegistry().getAssignedDeviceIds();
   if (!device_ids.empty()) {

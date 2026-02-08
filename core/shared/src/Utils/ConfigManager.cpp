@@ -807,7 +807,9 @@ std::string ConfigManager::getSQLiteDbPath() const {
     std::string data_dir = getDataDirectory();
     std::cout << "[DEBUG] ConfigManager - data_dir for joining: " << data_dir
               << std::endl;
-    db_path = Path::Join(Path::Join(data_dir, "db"), "pulseone.db");
+    // db_path가 상대 경로일 경우 data_dir와 결합
+    // 사용자가 설정한 경로를 존중하도록 수정 (기존 하드코딩 제거)
+    db_path = Path::Join(data_dir, db_path);
   }
 
   std::cout << "[DEBUG] ConfigManager - Final SQLite DB Path: " << db_path
