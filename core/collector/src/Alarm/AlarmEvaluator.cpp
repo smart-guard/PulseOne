@@ -74,6 +74,13 @@ AlarmEvaluator::evaluateAnalog(const Database::Entities::AlarmRuleEntity &rule,
   double l_limit = rule.getLowLimit().value_or(-1e18);
   double ll_limit = rule.getLowLowLimit().value_or(-1e18);
 
+  if (rule.getId() == 3003) {
+    LogManager::getInstance().Debug(
+        "[DEBUG-VERIFY] Rule 3003 Checks - Value: " + std::to_string(value) +
+        ", L_Limit: " + std::to_string(l_limit) +
+        ", IsLow: " + ((value <= l_limit) ? "TRUE" : "FALSE"));
+  }
+
   if (value >= hh_limit) {
     triggered = true;
     eval.condition_met = "HIGH_HIGH";
@@ -91,7 +98,7 @@ AlarmEvaluator::evaluateAnalog(const Database::Entities::AlarmRuleEntity &rule,
   auto status = state_cache_.getAlarmStatus(rule.getId());
 
   // ✅ Debug Log 추가
-  if (rule.getId() == 202 || triggered) {
+  if (rule.getId() == 202 || rule.getId() == 3003 || triggered) {
     LogManager::getInstance().Debug(
         "[AlarmEvaluator] Rule " + std::to_string(rule.getId()) +
         " Evaluation - Value: " + std::to_string(value) + ", Triggered: " +

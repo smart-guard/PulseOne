@@ -4,7 +4,7 @@ const ModbusRTU = require('modbus-serial');
 // 시뮬레이션 데이터 상태 (나이키빌딩 소방수신기 시뮬레이션)
 let simData = {
     // Digital (Coils)
-    pv: 0,   // WLS.PV (접점 감지)
+    pv: 20,   // WLS.PV (접점 감지) // Clear Alarm (Safe > 10)
     srs: 0,  // WLS.SRS (인식 상태)
     scs: 0,  // WLS.SCS (통신 상태)
 
@@ -53,17 +53,17 @@ const vector = {
         // HMI-001
         if (addr === 2001) return simData.screen_status;
         if (addr === 2002) {
-            console.log(`[Modbus] Read Addr 2002: ${simData.active_alarms}`);
+            // console.log(`[Modbus] Read Addr 2002: ${ simData.active_alarms } `);
             return simData.active_alarms;
         }
         if (addr === 2003) return simData.user_level;
 
-        console.log(`[Modbus] Read Unknown Addr ${addr}: 0`);
+        // console.log(`[Modbus] Read Unknown Addr ${ addr }: 0`);
         return 0;
     },
     getInputRegister: (addr, unitID) => addr,
     setRegister: (addr, value, unitID) => {
-        console.log(`[Modbus Simulator] Write Register: Addr=${addr}, Value=${value}`);
+        console.log(`[Modbus Simulator] Write Register: Addr = ${addr}, Value = ${value} `);
         if (addr === 99) simData.digital_test = value;
         if (addr === 100) simData.pv = value;
         if (addr === 101) simData.srs = value;
@@ -79,7 +79,7 @@ const vector = {
         return;
     },
     setCoil: (addr, value, unitID) => {
-        console.log(`[Modbus Simulator] Write Coil: Addr=${addr}, Value=${value}`);
+        console.log(`[Modbus Simulator] Write Coil: Addr = ${addr}, Value = ${value} `);
         if (addr === 99) simData.digital_test = value ? 1 : 0;
         if (addr === 100) simData.pv = value ? 1 : 0;
         if (addr === 101) simData.srs = value ? 1 : 0;
@@ -96,27 +96,17 @@ const serverTCP = new ModbusRTU.ServerTCP(vector, {
 });
 
 serverTCP.on('initialized', () => {
-    console.log(`🚀 Nike Building Modbus TCP Simulator initialized on port ${parseInt(process.env.MODBUS_PORT) || 50502}`);
+    console.log(`🚀 Nike Building Modbus TCP Simulator initialized on port ${parseInt(process.env.MODBUS_PORT) || 50502} `);
 });
 
 serverTCP.on('connection', (client) => {
-    console.log(`[Modbus Simulator] Client connected: ${client.remoteAddress}`);
+    console.log(`[Modbus Simulator] Client connected: ${client.remoteAddress} `);
 });
 
 serverTCP.on('error', (err) => {
-    console.error(`[Modbus Simulator] Error: ${err.message}`);
+    console.error(`[Modbus Simulator]Error: ${err.message} `);
 });
 
 console.log('🚀 Modbus TCP Simulator started');
 console.log('    - Digital (Coils): 100(PV), 101(SRS), 102(SCS)');
 console.log('    - Analog (Holdings): 200(SSS), 201(SBV)');
-
-/*
-// Keep the process alive
-setInterval(() => {
-    simData.pv = simData.pv === 0 ? 1 : 0;
-    simData.srs = simData.srs === 0 ? 1 : 0;
-    simData.sss = 120 + Math.floor(Math.random() * 10);
-    console.log(`[Modbus Simulator] Values updated: PV=${simData.pv}, SSS=${simData.sss}`);
-}, 10000);
-*/

@@ -323,8 +323,8 @@ std::optional<int64_t> AlarmEngine::raiseAlarm(const AlarmRuleEntity &rule,
     occ.setPointId(point_id);
     occ.setDeviceId(getDeviceIdForPoint(point_id));
 
-    auto id = alarm_occurrence_repo_->save(occ);
-    if (id > 0) {
+    if (alarm_occurrence_repo_->save(occ)) {
+      auto id = occ.getId();
       cache_->setAlarmStatus(rule.getId(), true, id);
       return id;
     }

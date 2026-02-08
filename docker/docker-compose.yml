@@ -87,6 +87,7 @@ services:
     environment:
       - COLLECTOR_ID=1
       - PULSEONE_DATA_DIR=/app/data
+      - SQLITE_PATH=/app/data/db/pulseone.db
       - LOG_LEVEL=debug
       - INFLUXDB_BUCKET=history
       - TZ=Asia/Seoul
@@ -99,7 +100,7 @@ services:
       - ../config:/app/config
       - ../core:/app/core
     tty: true
-    command: /bin/bash -c "make -j10 all && ./bin/pulseone-collector"
+    command: /bin/bash -c "rm -f /app/data/pulseone.db && make -j10 -C ../shared all && make -j10 all && ./bin/pulseone-collector"
 
   simulator-modbus:
     image: node:20-slim
