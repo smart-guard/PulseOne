@@ -378,36 +378,64 @@ HttpResponse HttpClient::executeWithCurl(
     }
 
     struct curl_slist *header_list = nullptr;
-    std::unordered_map<std::string, std::string> merged_headers;
 
-    // Helper to add header with lowercase key
-    auto add_normalized = [&](const std::string &k, const std::string &v) {
-      std::string lower_k = k;
-      std::transform(lower_k.begin(), lower_k.end(), lower_k.begin(),
-                     ::tolower);
-      merged_headers[lower_k] = v;
+    // Case-insensitive comparison helper
+    auto case_insensitive_equal = [](const std::string &a,
+                                     const std::string &b) {
+      return std::equal(
+          a.begin(), a.end(), b.begin(), b.end(),
+          [](char a, char b) { return tolower(a) == tolower(b); });
     };
 
-    for (const auto &header : default_headers_) {
-      add_normalized(header.first, header.second);
+    // 1. Start with valid default headers
+    std::vector<std::pair<std::string, std::string>> final_headers;
+    for (const auto &kv : default_headers_) {
+      bool overridden = false;
+      for (const auto &override_kv : headers) {
+        if (case_insensitive_equal(kv.first, override_kv.first)) {
+          overridden = true;
+          break;
+        }
+      }
+      if (!overridden) {
+        final_headers.push_back(kv);
+      }
     }
 
-    for (const auto &header : headers) {
-      add_normalized(header.first, header.second);
+    // 2. Add all user headers (overrides) preserving their casing
+    for (const auto &kv : headers) {
+      final_headers.push_back(kv);
     }
 
+    // 3. Special handling for content-type and authorization from args
     if (!content_type.empty()) {
-      add_normalized("content-type", content_type);
+      // Remove existing content-type if present
+      auto it = std::remove_if(
+          final_headers.begin(), final_headers.end(),
+          [&](const std::pair<std::string, std::string> &kv) {
+            return case_insensitive_equal(kv.first, "content-type");
+          });
+      final_headers.erase(it, final_headers.end());
+      final_headers.push_back({"Content-Type", content_type});
     }
 
     if (!options_.bearer_token.empty()) {
-      add_normalized("authorization", "Bearer " + options_.bearer_token);
+      auto it = std::remove_if(
+          final_headers.begin(), final_headers.end(),
+          [&](const std::pair<std::string, std::string> &kv) {
+            return case_insensitive_equal(kv.first, "authorization");
+          });
+      final_headers.erase(it, final_headers.end());
+      final_headers.push_back(
+          {"Authorization", "Bearer " + options_.bearer_token});
     }
 
-    for (const auto &header : merged_headers) {
+    // 4. Build curl list
+    for (const auto &header : final_headers) {
       std::string header_str = header.first + ": " + header.second;
       header_list = curl_slist_append(header_list, header_str.c_str());
-      // [SECURITY] Mask sensitive headers
+
+      // [SECURITY] Mask sensitive headers for logging
       std::string log_value = header.second;
       std::string lower_key = header.first;
       std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(),

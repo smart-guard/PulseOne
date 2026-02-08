@@ -238,7 +238,7 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
   // [Modified] User request: Make User-Agent configurable (Default:
   // PulseOne-ExportGateway/1.0)
   headers[HttpConst::HEADER_USER_AGENT] =
-      config.value("user_agent", "PulseOne-ExportGateway/1.0");
+      config.value("user_agent", "iCos5/1.1");
 
   // Custom headers support with Secret expansion
   if (config.contains("headers") && config["headers"].is_object()) {
@@ -265,6 +265,65 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
       headers[key] = final_value;
     }
   }
+
+  // [v3.2.1] Auth support (x-api-key)
+  // [v3.2.1] Auth support (x-api-key)
+  LogManager::getInstance().Info("[DEBUG] config contains auth? " +
+                                 std::to_string(config.contains("auth")));
+  if (config.contains("auth")) {
+    LogManager::getInstance().Info("[DEBUG] auth type: " +
+                                   std::string(config["auth"].type_name()));
+    LogManager::getInstance().Info("[DEBUG] auth dump: " +
+                                   config["auth"].dump());
+  }
+
+  if (config.contains("auth") && config["auth"].is_object()) {
+    json auth = config["auth"];
+    std::string type = auth.value("type", "");
+    LogManager::getInstance().Info("[DEBUG] Auth type: " + type);
+
+    if (type == "x-api-key") {
+      std::string key = auth.value("apiKey", "");
+      LogManager::getInstance().Info("[DEBUG] Raw apiKey: " + key);
+
+      if (!key.empty()) {
+        std::string expanded =
+            ConfigManager::getInstance().expandVariables(key);
+        LogManager::getInstance().Info("[DEBUG] Expanded apiKey: " + expanded);
+
+        std::string final_value =
+            Security::SecretManager::getInstance().decryptEncodedValue(
+                expanded);
+        // Log masked final value
+        std::string masked =
+            (final_value.length() > 4)
+                ? final_value.substr(0, 2) + "..." +
+                      final_value.substr(final_value.length() - 2)
+                : "****";
+        LogManager::getInstance().Info("[DEBUG] Final decrypted key: " +
+                                       masked);
+
+        headers["x-api-key"] = final_value;
+      } else {
+        LogManager::getInstance().Warn("[DEBUG] apiKey key is empty");
+      }
+    } else if (type == "bearer") {
+      std::string token = auth.value("token", "");
+      if (!token.empty()) {
+        std::string expanded =
+            ConfigManager::getInstance().expandVariables(token);
+        std::string final_value =
+            Security::SecretManager::getInstance().decryptEncodedValue(
+                expanded);
+        headers["Authorization"] = "Bearer " + final_value;
+      }
+    } else {
+      LogManager::getInstance().Warn("[DEBUG] Unknown auth type: " + type);
+    }
+  } else {
+    LogManager::getInstance().Warn("[DEBUG] Auth block missing or not object");
+  }
+
   return headers;
 }
 
