@@ -336,12 +336,10 @@ std::string HttpTargetHandler::buildRequestBody(
     return alarm.extra_info.is_null() ? "{}" : alarm.extra_info.dump();
   }
 
-  if (config.contains("body_template")) {
-    json temp = config["body_template"];
-    expandTemplateVariables(temp, alarm, config);
-    return temp.dump();
-  }
-  return alarm.to_json().dump();
+  // Unified Payload Builder Delegation
+  return PulseOne::Transform::PayloadTransformer::getInstance()
+      .buildPayload(alarm, config)
+      .dump();
 }
 
 std::string HttpTargetHandler::buildRequestBody(

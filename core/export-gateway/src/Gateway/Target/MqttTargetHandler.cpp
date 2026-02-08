@@ -193,25 +193,10 @@ std::string MqttTargetHandler::generatePayload(
     return alarm.extra_info.is_null() ? "{}" : alarm.extra_info.dump();
   }
 
-  if (config.contains("body_template")) {
-    json temp = config["body_template"];
-    auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-
-    std::string target_field_name = "";
-    if (config.contains("field_mappings") &&
-        config["field_mappings"].is_array()) {
-      for (const auto &m : config["field_mappings"]) {
-        if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
-          target_field_name = m.value("target_field", "");
-          break;
-        }
-      }
-    }
-
-    auto context = transformer.createContext(alarm, target_field_name);
-    return transformer.transform(temp, context).dump();
-  }
-  return alarm.to_json().dump();
+  // Unified Payload Builder Delegation
+  return PulseOne::Transform::PayloadTransformer::getInstance()
+      .buildPayload(alarm, config)
+      .dump();
 }
 
 TargetSendResult MqttTargetHandler::publishMessage(const std::string &topic,

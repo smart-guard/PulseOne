@@ -551,76 +551,23 @@ void S3TargetHandler::expandTemplateVariables(
 void S3TargetHandler::expandTemplateVariables(
     json &template_json, const PulseOne::Gateway::Model::ValueMessage &value,
     const json &config) const {
-  auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-
-  std::string target_field_name = "";
-
-  if (config.contains("field_mappings") &&
-      config["field_mappings"].is_array()) {
-    for (const auto &m : config["field_mappings"]) {
-      if (m.contains("point_id") && m["point_id"] == value.point_id) {
-        target_field_name = m.value("target_field", "");
-        break;
-      }
-    }
-  }
-
-  auto context = transformer.createContext(value, target_field_name);
-  template_json = transformer.transform(template_json, context);
-  LogManager::getInstance().Info("[TRACE-TRANSFORM-S3] Final Value Payload: " +
-                                 template_json.dump());
+  // DEPRECATED: Logic moved to PayloadTransformer::buildPayload
 }
 
 std::string S3TargetHandler::buildJsonContent(
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) const {
-  // [v3.2.1] Manual Override RAW Bypass
+  // [v3.2.1] Manual Override RAW Bypass (PRESERVED)
   if (alarm.manual_override) {
     LogManager::getInstance().Info(
         "[S3] Manual Override active: Sending RAW payload.");
     return alarm.extra_info.is_null() ? "{}" : alarm.extra_info.dump(2);
   }
 
-  json content;
-
-  // ✅ v3.2.0: Payload Template 지원 (Object or Array)
-  if (config.contains("body_template") &&
-      (config["body_template"].is_object() ||
-       config["body_template"].is_array())) {
-    content = config["body_template"];
-    expandTemplateVariables(content, alarm, config);
-
-    // ✅ 객체인 경우 배열로 래핑하여 일관성 유지
-    if (content.is_object()) {
-      return json::array({content}).dump(2);
-    }
-    return content.dump(2);
-  }
-
-  // 기본 알람 데이터
-  content["building_id"] = alarm.site_id;
-  content["point_name"] = alarm.point_name;
-  content["value"] = alarm.measured_value;
-  content["timestamp"] = alarm.timestamp;
-  content["alarm_flag"] = alarm.alarm_level;
-  content["status"] = alarm.status_code;
-  content["description"] = alarm.description;
-
-  // 메타데이터
-  content["source"] = "PulseOne-CSPGateway";
-  content["version"] = "2.0";
-  content["upload_timestamp"] = getCurrentTimestamp();
-  content["alarm_status"] = alarm.get_alarm_status_string();
-
-  // 사용자 정의 필드
-  if (config.contains("additional_fields") &&
-      config["additional_fields"].is_object()) {
-    for (auto &[key, value] : config["additional_fields"].items()) {
-      content[key] = value;
-    }
-  }
-
-  return content.dump(2);
+  // [v3.0.0] Unified Payload Builder Delegation
+  return PulseOne::Transform::PayloadTransformer::getInstance()
+      .buildPayload(alarm, config)
+      .dump(2);
 }
 
 std::unordered_map<std::string, std::string> S3TargetHandler::buildMetadata(

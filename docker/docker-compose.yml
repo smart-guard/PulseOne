@@ -185,6 +185,7 @@ services:
       - PULSEONE_CONFIG_DIR=/app/config
       - PULSEONE_DATA_DIR=/app/data
       - AUTO_RUN=true
+      - SQLITE_PATH=/app/data/db/pulseone.db
       - TZ=Asia/Seoul
     volumes:
       - ../core:/app/core
@@ -192,7 +193,7 @@ services:
       - ../data:/app/data
       - ../logs:/app/logs
       - shared_libs:/app/core/shared/lib
-    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && make -j10 -C core/shared && make -j10 -C core/export-gateway && ./core/export-gateway/scripts/gateway_launcher.sh"
+    command: /bin/bash -c "apt-get update && apt-get install -y libpqxx-dev libpq-dev libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && make -C core/shared clean && make -C core/export-gateway clean && make -j10 -C core/shared && make -j10 -C core/export-gateway && chmod +x core/export-gateway/bin/export-gateway && ./core/export-gateway/scripts/gateway_launcher.sh"
     deploy:
       resources:
         limits:

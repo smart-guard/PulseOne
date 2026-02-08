@@ -330,17 +330,33 @@ PulseOne::Export::DynamicTarget DynamicTargetLoader::createTargetFromEntity(
     // 템플릿 적용
     if (entity.getTemplateId().has_value()) {
       int tmpl_id = entity.getTemplateId().value();
+      LogManager::getInstance().Info(
+          "[DEBUG-TEMPLATE] Target: " + target.name +
+          " has template_id: " + std::to_string(tmpl_id));
+
       if (templates.count(tmpl_id)) {
-        // Original expected json map, but now we have Entity map.
-        // We need to parse json string from entity.
         try {
-          target.config[ExportConst::ConfigKeys::BODY_TEMPLATE] =
-              json::parse(templates.at(tmpl_id).getTemplateJson());
-        } catch (...) {
+          std::string raw_json = templates.at(tmpl_id).getTemplateJson();
+          LogManager::getInstance().Info("[DEBUG-TEMPLATE] Parsing raw JSON: " +
+                                         raw_json);
+
+          target.config["body_template"] = json::parse(raw_json);
+          LogManager::getInstance().Info(
+              "[DEBUG-TEMPLATE] Injected body_template into config");
+        } catch (const std::exception &e) {
           LogManager::getInstance().Warn(
-              "Template parsing failed for target: " + target.name);
+              "Template parsing failed for target: " + target.name + " - " +
+              std::string(e.what()));
         }
+      } else {
+        LogManager::getInstance().Warn(
+            "[DEBUG-TEMPLATE] Template ID " + std::to_string(tmpl_id) +
+            " not found in map (Map size: " + std::to_string(templates.size()) +
+            ")");
       }
+    } else {
+      LogManager::getInstance().Info("[DEBUG-TEMPLATE] Target: " + target.name +
+                                     " has NO template_id");
     }
 
     // 매핑 적용
