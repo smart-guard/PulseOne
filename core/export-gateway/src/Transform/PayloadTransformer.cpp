@@ -37,6 +37,80 @@ json PayloadTransformer::transform(const json &template_json,
   }
 }
 
+// =============================================================================
+// [v3.0.0] Unified Payload Builder
+// =============================================================================
+
+json PayloadTransformer::buildPayload(const AlarmMessage &alarm,
+                                      const json &config) {
+  json content;
+
+  // 1. Template-based Transformation
+  if (config.contains("body_template")) {
+    // LogManager::getInstance().Info("[DEBUG-TRANSFORM] Config contains
+    // body_template");
+
+    if (config["body_template"].is_object() ||
+        config["body_template"].is_array()) {
+      content = config["body_template"];
+
+      // 1-1. Determine Target Field Name
+      std::string target_field_name = "";
+      if (config.contains("field_mappings") &&
+          config["field_mappings"].is_array()) {
+        for (const auto &m : config["field_mappings"]) {
+          if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
+            target_field_name = m.value("target_field_name", "");
+            // Fallback for legacy key
+            if (target_field_name.empty()) {
+              target_field_name = m.value("target_field", "");
+            }
+            break;
+          }
+        }
+      }
+
+      // 1-2. Create Context & Transform
+      auto context = createContext(alarm, target_field_name);
+      content = transform(content, context);
+
+      // 1-3. Wrap Object in Array (Standard Consistency)
+      // 1-3. Wrap Object in Array (Standard Consistency) -> REMOVED
+      // We must respect the template structure. If template is Object, return
+      // Object.
+      return content;
+    }
+  }
+
+  // 2. Default Transformation (Fallback)
+  // LogManager::getInstance().Warn("[DEBUG-TRANSFORM] Using Default Payload
+  // Structure");
+
+  content["building_id"] = alarm.site_id;
+  content["point_name"] = alarm.point_name;
+  content["value"] = alarm.measured_value;
+  content["timestamp"] = alarm.timestamp;
+  content["alarm_flag"] = alarm.alarm_level;
+  content["status"] = alarm.status_code;
+  content["description"] = alarm.description;
+
+  content["source"] = "PulseOne-CSPGateway";
+  content["version"] = "2.0";
+  content["upload_timestamp"] = toISO8601(""); // Current time
+  content["alarm_status"] =
+      getAlarmStatusString(alarm.alarm_level, alarm.status_code);
+
+  // 3. Additional Fields
+  if (config.contains("additional_fields") &&
+      config["additional_fields"].is_object()) {
+    for (auto &[key, value] : config["additional_fields"].items()) {
+      content[key] = value;
+    }
+  }
+
+  return content;
+}
+
 std::string
 PayloadTransformer::transformString(const std::string &template_str,
                                     const TransformContext &context) {

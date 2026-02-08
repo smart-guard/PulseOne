@@ -16,13 +16,15 @@ else
     IS_WINDOWS := 0
 endif
 
+# Include directories
+INCLUDES = -Iinclude -Isrc -I../shared/include
+# Compiler flags
+CFLAGS = $(INCLUDES) -std=c11 -Wall -Wextra -O2 -fPIC
+CXXFLAGS = $(INCLUDES) -std=c++17 -Wall -Wextra -O2 -fPIC
+
 # 컴파일러 설정
 CXX = g++
 CC = gcc
-
-# 기본 컴파일 플래그
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -fPIC
-CFLAGS = -std=c11 -Wall -Wextra -O2 -fPIC
 
 # Windows 크로스 컴파일 지원
 ifeq ($(CROSS_COMPILE_WINDOWS),1)

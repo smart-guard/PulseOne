@@ -77,45 +77,43 @@ public:
   }
 
   int getMaxDataPoints() const { return max_data_points_; }
-  max_data_points_ = count;
-  markModified();
-}
+  void setMaxDataPoints(int count) {
+    max_data_points_ = count;
+    markModified();
+  }
 
-const std::string &
-getSubscriptionMode() const {
-  return subscription_mode_;
-}
-void setSubscriptionMode(const std::string &mode) {
-  subscription_mode_ = mode;
-  markModified();
-}
+  const std::string &getSubscriptionMode() const { return subscription_mode_; }
+  void setSubscriptionMode(const std::string &mode) {
+    subscription_mode_ = mode;
+    markModified();
+  }
 
-std::chrono::system_clock::time_point getCreatedAt() const {
-  return created_at_;
-}
-std::chrono::system_clock::time_point getUpdatedAt() const {
-  return updated_at_;
-}
+  std::chrono::system_clock::time_point getCreatedAt() const {
+    return created_at_;
+  }
+  std::chrono::system_clock::time_point getUpdatedAt() const {
+    return updated_at_;
+  }
 
-const json &getConfig() const { return config_; }
-void setConfig(const json &config) {
-  config_ = config;
-  markModified();
-}
+  const json &getConfig() const { return config_; }
+  void setConfig(const json &config) {
+    config_ = config;
+    markModified();
+  }
 
 private:
-int tenant_id_;
-std::string name_;
-std::string description_;
-std::string ip_address_;
-int port_;
-bool is_enabled_;
-int max_devices_;
-int max_data_points_;
-std::string subscription_mode_;
-json config_;
-std::chrono::system_clock::time_point created_at_;
-std::chrono::system_clock::time_point updated_at_;
+  int tenant_id_;
+  std::string name_;
+  std::string description_;
+  std::string ip_address_;
+  int port_;
+  bool is_enabled_;
+  int max_devices_;
+  int max_data_points_;
+  std::string subscription_mode_;
+  json config_;
+  std::chrono::system_clock::time_point created_at_;
+  std::chrono::system_clock::time_point updated_at_;
 };
 
 } // namespace Entities

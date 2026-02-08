@@ -113,7 +113,9 @@ void FileTargetHandler::createDirectoriesForFile(
 std::string FileTargetHandler::buildFileContent(
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) const {
-  return alarm.to_json().dump();
+  return PulseOne::Transform::PayloadTransformer::getInstance()
+      .buildPayload(alarm, config)
+      .dump(2);
 }
 
 bool FileTargetHandler::writeFile(const std::string &file_path,

@@ -72,6 +72,9 @@ public:
   std::string transformString(const std::string &template_str,
                               const TransformContext &context);
 
+  // [v3.0.0] Unified Payload Builder (Refactored from S3TargetHandler)
+  json buildPayload(const AlarmMessage &alarm, const json &config);
+
   // 시스템별 기본 템플릿
   json getInsiteDefaultTemplate();
   json getHDCDefaultTemplate();

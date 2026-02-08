@@ -4,10 +4,10 @@
  */
 
 #include "Gateway/Service/GatewayService.h"
-#include "Common/LogManager.h"
 #include "Database/Repositories/EdgeServerRepository.h"
 #include "Database/RepositoryFactory.h"
 #include "Gateway/Service/EventDispatcher.h"
+#include "Logging/LogManager.h"
 #include "Schedule/ScheduledExporter.h"
 
 namespace PulseOne {
