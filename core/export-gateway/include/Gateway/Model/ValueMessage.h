@@ -21,16 +21,43 @@ using json = nlohmann::json;
  * @brief Value Message Structure (v3.5 compatibility)
  */
 struct ValueMessage {
-  int bd = 0;             ///< Building ID
-  std::string nm;         ///< Point Name
-  std::string vl;         ///< Value (String format for flexibility)
-  std::string tm;         ///< Timestamp (yyyy-MM-dd HH:mm:ss.fff)
-  int st = 0;             ///< Status (Communication Status)
-  std::string ty = "dbl"; ///< Type (dbl or str)
+  int site_id = 0;
+  int point_id = 0;
+  std::string point_name;
+  std::string measured_value;
+  std::string timestamp;
+  int status_code = 0;
+  std::string data_type = "dbl";
+
+  json extra_info;
 
   json to_json() const {
-    return json{{"bd", bd}, {"nm", nm}, {"vl", vl},
-                {"tm", tm}, {"st", st}, {"ty", ty}};
+    json j = json{
+        {"site_id", site_id},
+        {"point_id", point_id},
+        {"point_name", point_name},
+        {"measured_value", measured_value},
+        {"timestamp", timestamp},
+        {"status_code", status_code},
+        {"data_type", data_type},
+        {"is_control", (data_type == "bit" || data_type == "bool") ? 1 : 0},
+        // Legacy fields for backward compatibility
+        {"bd", site_id},
+        {"nm", point_name},
+        {"vl", measured_value},
+        {"tm", timestamp},
+        {"st", status_code},
+        {"ty", data_type}};
+
+    // Merge extra_info into the top level for harvesting
+    if (!extra_info.is_null() && extra_info.is_object()) {
+      for (auto it = extra_info.begin(); it != extra_info.end(); ++it) {
+        if (!j.contains(it.key())) {
+          j[it.key()] = it.value();
+        }
+      }
+    }
+    return j;
   }
 };
 

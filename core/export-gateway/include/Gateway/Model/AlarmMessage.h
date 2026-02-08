@@ -28,24 +28,20 @@ using json = nlohmann::json;
  * @brief Gateway AlarmMessage structure (PulseOne::Gateway::Model)
  */
 struct AlarmMessage {
-  // Fields mapped from legacy C#
-  int bd = 0;                  ///< Building ID
-  std::string ty = "num";      ///< Type (num, bit, etc.)
-  std::string nm;              ///< Point Name (Mapped)
-  std::string original_nm;     ///< Original Collector Point Name
-  double vl = 0.0;             ///< Value
-  std::string il = "";         ///< Info Limit
-  std::string xl = "";         ///< Extra Limit
-  std::vector<double> mi = {}; ///< Min array
-  std::vector<double> mx = {}; ///< Max array
-  std::string tm;              ///< Timestamp (yyyy-MM-dd HH:mm:ss.fff)
-  int st = 1;                  ///< Comm Status (1: Normal)
-  int al = 0;                  ///< Alarm Status (1: Occur, 0: Clear)
-  std::string des;             ///< Description
+  // [v3.2.0] Agnostic Descriptive Fields
+  int site_id = 0;
+  std::string data_type = "num";
+  std::string point_name;
+  std::string original_name;
+  double measured_value = 0.0;
+  std::string timestamp;
+  int status_code = 1;
+  int alarm_level = 0;
+  std::string description;
 
   // Internal Logic Fields
+  // Internal Logic Fields
   int point_id = 0;
-  int site_id = 0;
   int rule_id = 0;
   bool manual_override = false;
   json extra_info = json::object();

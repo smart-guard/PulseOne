@@ -321,6 +321,8 @@ void HttpTargetHandler::expandTemplateVariables(
 
   auto context = transformer.createContext(alarm, target_field_name);
   template_json = transformer.transform(template_json, context);
+  LogManager::getInstance().Info(
+      "[TRACE-TRANSFORM-HTTP] Final Alarm Payload: " + template_json.dump());
 }
 
 void HttpTargetHandler::expandTemplateVariables(
@@ -332,7 +334,7 @@ void HttpTargetHandler::expandTemplateVariables(
   if (config.contains("field_mappings") &&
       config["field_mappings"].is_array()) {
     for (const auto &m : config["field_mappings"]) {
-      if (m.contains("point_id") && m["point_id"] == value.bd) {
+      if (m.contains("point_id") && m["point_id"] == value.point_id) {
         target_field_name = m.value("target_field", "");
         break;
       }
@@ -341,6 +343,8 @@ void HttpTargetHandler::expandTemplateVariables(
 
   auto context = transformer.createContext(value, target_field_name);
   template_json = transformer.transform(template_json, context);
+  LogManager::getInstance().Info(
+      "[TRACE-TRANSFORM-HTTP] Final Value Payload: " + template_json.dump());
 }
 
 std::string HttpTargetHandler::base64Encode(const std::string &input) const {

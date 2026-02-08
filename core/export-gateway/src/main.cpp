@@ -236,19 +236,19 @@ void testSingleAlarm(PulseOne::Gateway::Service::ITargetRunner &runner) {
   try {
     // 테스트 알람 생성
     PulseOne::Gateway::Model::AlarmMessage alarm;
-    alarm.bd = 1001;
-    alarm.nm = "TEST_POINT_001";
-    alarm.vl = 85.5;
-    alarm.al = 1;
-    alarm.st = 1;
+    alarm.site_id = 1001;
+    alarm.point_name = "TEST_POINT_001";
+    alarm.measured_value = 85.5;
+    alarm.alarm_level = 1;
+    alarm.status_code = 1;
 
     auto now = std::chrono::system_clock::now();
-    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    auto time_t = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
-    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S");
-    alarm.tm = ss.str();
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+    alarm.timestamp = ss.str();
 
-    LogManager::getInstance().Info("테스트 알람 전송: " + alarm.nm);
+    LogManager::getInstance().Info("테스트 알람 전송: " + alarm.point_name);
 
     // ✅ 수정: TargetRunner를 직접 사용
     auto results = runner.sendAlarm(alarm);
@@ -323,17 +323,17 @@ void testConnection(PulseOne::Gateway::Service::ITargetRunner &runner,
 
     // 개별 타겟 테스트를 위한 테스트 알람 전송
     PulseOne::Gateway::Model::AlarmMessage test_alarm;
-    test_alarm.bd = 1001;
-    test_alarm.nm = "CONNECTION_TEST";
-    test_alarm.vl = 1.0;
-    test_alarm.al = 0;
-    test_alarm.st = 0;
+    test_alarm.site_id = 1001;
+    test_alarm.point_name = "CONNECTION_TEST";
+    test_alarm.measured_value = 1.0;
+    test_alarm.alarm_level = 0;
+    test_alarm.status_code = 0;
 
     auto now = std::chrono::system_clock::now();
-    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    auto time_t = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
-    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %H:%M:%S");
-    test_alarm.tm = ss.str();
+    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+    test_alarm.timestamp = ss.str();
 
     std::cout << "개별 타겟 연결 테스트:\n";
     auto results = runner.sendAlarm(test_alarm);

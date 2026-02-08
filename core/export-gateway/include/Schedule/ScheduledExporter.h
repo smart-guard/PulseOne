@@ -55,12 +55,18 @@ struct ExportDataPoint {
   int64_t timestamp = 0;
   int quality = 0;
   std::string unit;
+  json extra_info;
 
   json to_json() const {
-    return json{{"point_id", point_id},     {"building_id", building_id},
-                {"point_name", point_name}, {"mapped_name", mapped_name},
-                {"value", value},           {"timestamp", timestamp},
-                {"quality", quality},       {"unit", unit}};
+    return json::object({{"point_id", point_id},
+                         {"building_id", building_id},
+                         {"point_name", point_name},
+                         {"mapped_name", mapped_name},
+                         {"value", value},
+                         {"timestamp", timestamp},
+                         {"quality", quality},
+                         {"unit", unit},
+                         {"extra_info", extra_info}});
   }
 };
 

@@ -38,8 +38,8 @@ while true; do
         for GID in $CURRENT_IDS; do
             if [[ "$GID" =~ ^[0-9]+$ ]]; then # 숫자 형태인지 확인
                 if [ -z "${RUNNING_PIDS[$GID]}" ] || ! kill -0 "${RUNNING_PIDS[$GID]}" 2>/dev/null; then
-                    echo "🎬 [AUTO] Launching Gateway Instance ID: $GID"
-                    "$BIN_PATH" --id "$GID" > "$LOG_DIR/gateway_$GID.log" 2>&1 &
+                    echo "🎬 [$(date +'%Y-%m-%d %H:%M:%S')] [AUTO] Launching Gateway Instance ID: $GID"
+                    "$BIN_PATH" --id "$GID" >> "$LOG_DIR/gateway_$GID.log" 2>&1 &
                     RUNNING_PIDS[$GID]=$!
                     echo "✅ Instance $GID started with PID ${RUNNING_PIDS[$GID]}"
                 fi

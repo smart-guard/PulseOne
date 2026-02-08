@@ -671,6 +671,9 @@ std::optional<ExportDataPoint> ScheduledExporter::fetchPointData(
 
     point.unit = data.value("unit", "");
 
+    // [v3.0.0] Zero-Assumption: Store full raw data for token harvesting
+    point.extra_info = data;
+
     return point;
 
   } catch (const std::exception &e) {
@@ -696,19 +699,22 @@ bool ScheduledExporter::sendDataToTarget(
     std::vector<PulseOne::CSP::ValueMessage> values;
     for (const auto &point : data_points) {
       PulseOne::CSP::ValueMessage msg;
-      msg.bd = point.building_id;
-      msg.nm = point.mapped_name.empty() ? point.point_name : point.mapped_name;
-      msg.vl = point.value;
+      msg.site_id = point.building_id;
+      msg.point_id = point.point_id;
+      msg.point_name =
+          point.mapped_name.empty() ? point.point_name : point.mapped_name;
+      msg.measured_value = point.value;
 
       // Timestamp 변환 (ms -> yyyy-MM-dd HH:mm:ss.fff)
       std::time_t tt = point.timestamp / 1000;
       std::tm *tm_info = std::gmtime(&tt);
       char buf[32];
       std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm_info);
-      msg.tm = buf;
+      msg.timestamp = buf;
 
-      msg.st = point.quality;
-      msg.ty = "dbl"; // Default type
+      msg.status_code = point.quality;
+      msg.data_type = "dbl";             // Default type
+      msg.extra_info = point.extra_info; // [v3.0.0] Propagate raw metadata
 
       values.push_back(std::move(msg));
     }
@@ -1239,12 +1245,14 @@ void ScheduledExporter::processFailedExports() {
         std::vector<PulseOne::CSP::ValueMessage> values;
         for (const auto &v_json : values_json) {
           PulseOne::CSP::ValueMessage v;
-          v.bd = v_json.value("bd", 0);
-          v.nm = v_json.value("nm", "");
-          v.vl = v_json.value("vl", "");
-          v.tm = v_json.value("tm", "");
-          v.st = v_json.value("st", 0);
-          v.ty = v_json.value("ty", "");
+          v.site_id = v_json.value("site_id", v_json.value("bd", 0));
+          v.point_id = v_json.value("point_id", 0);
+          v.point_name = v_json.value("point_name", v_json.value("nm", ""));
+          v.measured_value =
+              v_json.value("measured_value", v_json.value("vl", ""));
+          v.timestamp = v_json.value("timestamp", v_json.value("tm", ""));
+          v.status_code = v_json.value("status_code", v_json.value("st", 0));
+          v.data_type = v_json.value("data_type", v_json.value("ty", ""));
           values.push_back(v);
         }
 
@@ -1264,13 +1272,13 @@ void ScheduledExporter::processFailedExports() {
         std::vector<PulseOne::CSP::AlarmMessage> alarms;
         for (const auto &a_json : alarms_json) {
           PulseOne::CSP::AlarmMessage a;
-          a.bd = a_json.value("bd", 0);
-          a.nm = a_json.value("nm", "");
-          a.vl = a_json.value("vl", 0.0);
-          a.tm = a_json.value("tm", "");
-          a.al = a_json.value("al", 0);
-          a.st = a_json.value("st", 0);
-          a.des = a_json.value("des", "");
+          a.site_id = a_json.value("bd", 0);
+          a.point_name = a_json.value("nm", "");
+          a.measured_value = a_json.value("vl", 0.0);
+          a.timestamp = a_json.value("tm", "");
+          a.alarm_level = a_json.value("al", 0);
+          a.status_code = a_json.value("st", 0);
+          a.description = a_json.value("des", "");
           alarms.push_back(a);
         }
 

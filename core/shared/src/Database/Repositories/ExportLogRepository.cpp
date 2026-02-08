@@ -146,32 +146,39 @@ ExportLogRepository::getErrorTypeStatistics(int target_id, int hours,
     std::string query;
     if (target_id > 0) {
       query = SQL::ExportLog::GET_ERROR_TYPE_STATISTICS_BY_TARGET;
-      // ? 를 값으로 교체
-      size_t pos = 0;
+      // ? 를 값으로 교체 (순서대로)
+      size_t search_pos = 0;
       // 첫 번째 ? → hours
-      pos = query.find('?', pos);
+      size_t pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
-        query.replace(pos, 1, std::to_string(hours));
+        std::string val = std::to_string(hours);
+        query.replace(pos, 1, val);
+        search_pos = pos + val.length();
       }
       // 두 번째 ? → target_id
-      pos = query.find('?', pos);
+      pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
-        query.replace(pos, 1, std::to_string(target_id));
+        std::string val = std::to_string(target_id);
+        query.replace(pos, 1, val);
+        search_pos = pos + val.length();
       }
       // 세 번째 ? → limit
-      pos = query.find('?', pos);
+      pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
         query.replace(pos, 1, std::to_string(limit));
       }
     } else {
       query = SQL::ExportLog::GET_ERROR_TYPE_STATISTICS_ALL;
+      size_t search_pos = 0;
       // 첫 번째 ? → hours
-      size_t pos = query.find('?');
+      size_t pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
-        query.replace(pos, 1, std::to_string(hours));
+        std::string val = std::to_string(hours);
+        query.replace(pos, 1, val);
+        search_pos = pos + val.length();
       }
       // 두 번째 ? → limit
-      pos = query.find('?', pos);
+      pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
         query.replace(pos, 1, std::to_string(limit));
       }
@@ -232,29 +239,36 @@ ExportLogRepository::getPointPerformanceStats(int target_id, int hours,
     std::string query;
     if (target_id > 0) {
       query = SQL::ExportLog::GET_POINT_PERFORMANCE_STATS_BY_TARGET;
-      size_t pos = 0;
+      size_t search_pos = 0;
       // 첫 번째 ? → hours
-      pos = query.find('?', pos);
+      size_t pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
-        query.replace(pos, 1, std::to_string(hours));
+        std::string val = std::to_string(hours);
+        query.replace(pos, 1, val);
+        search_pos = pos + val.length();
       }
       // 두 번째 ? → target_id
-      pos = query.find('?', pos);
+      pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
-        query.replace(pos, 1, std::to_string(target_id));
+        std::string val = std::to_string(target_id);
+        query.replace(pos, 1, val);
+        search_pos = pos + val.length();
       }
       // 세 번째 ? → limit
-      pos = query.find('?', pos);
+      pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
         query.replace(pos, 1, std::to_string(limit));
       }
     } else {
       query = SQL::ExportLog::GET_POINT_PERFORMANCE_STATS_ALL;
-      size_t pos = query.find('?');
+      size_t search_pos = 0;
+      size_t pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
-        query.replace(pos, 1, std::to_string(hours));
+        std::string val = std::to_string(hours);
+        query.replace(pos, 1, val);
+        search_pos = pos + val.length();
       }
-      pos = query.find('?', pos);
+      pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
         query.replace(pos, 1, std::to_string(limit));
       }
@@ -331,19 +345,24 @@ TargetHealthCheck ExportLogRepository::getTargetHealthCheck(int target_id) {
     std::string query = SQL::ExportLog::GET_TARGET_HEALTH_CHECK;
 
     // 첫 번째 ?
-    size_t pos = query.find('?');
+    size_t search_pos = 0;
+    size_t pos = query.find('?', search_pos);
     if (pos != std::string::npos) {
-      query.replace(pos, 1, std::to_string(target_id));
+      std::string val = std::to_string(target_id);
+      query.replace(pos, 1, val);
+      search_pos = pos + val.length();
     }
 
     // 두 번째 ?
-    pos = query.find('?', pos);
+    pos = query.find('?', search_pos);
     if (pos != std::string::npos) {
-      query.replace(pos, 1, std::to_string(target_id));
+      std::string val = std::to_string(target_id);
+      query.replace(pos, 1, val);
+      search_pos = pos + val.length();
     }
 
     // 세 번째 ?
-    pos = query.find('?', pos);
+    pos = query.find('?', search_pos);
     if (pos != std::string::npos) {
       query.replace(pos, 1, std::to_string(target_id));
     }
@@ -703,6 +722,9 @@ bool ExportLogRepository::save(ExportLogEntity &entity) {
       return false;
     }
 
+    LogManager::getInstance().Info(
+        "[TRACE] ExportLogRepository::save - Saving log type: " +
+        entity.getLogType());
     auto params = entityToParams(entity);
     std::string query = SQL::ExportLog::INSERT;
 
@@ -723,26 +745,29 @@ bool ExportLogRepository::save(ExportLogEntity &entity) {
         "gateway_id",         "sent_payload"};
 
     // ✅ 순서대로 파라미터 치환
+    size_t search_pos = 0;
     for (const auto &key : insert_order) {
-      size_t pos = query.find('?');
+      size_t pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
         auto it = params.find(key);
+        std::string replacement;
         if (it != params.end() && !it->second.empty()) {
-          query.replace(
-              pos, 1, "'" + RepositoryHelpers::escapeString(it->second) + "'");
+          replacement = "'" + RepositoryHelpers::escapeString(it->second) + "'";
         } else {
           // 빈 값 처리
           if (key == "service_id" || key == "target_id" ||
               key == "mapping_id" || key == "point_id" ||
               key == "http_status_code" || key == "processing_time_ms" ||
-              key == "gateway_id") { // Added gateway_id
+              key == "gateway_id") {
             // 정수형: NULL
-            query.replace(pos, 1, "NULL");
+            replacement = "NULL";
           } else {
             // 문자열: 빈 문자열
-            query.replace(pos, 1, "''");
+            replacement = "''";
           }
         }
+        query.replace(pos, 1, replacement);
+        search_pos = pos + replacement.length();
       }
     }
 
@@ -783,24 +808,27 @@ bool ExportLogRepository::update(const ExportLogEntity &entity) {
         "gateway_id",         "sent_payload"}; // Added gateway_id, sent_payload
 
     // ✅ 순서대로 파라미터 치환
+    size_t search_pos = 0;
     for (const auto &key : update_order) {
-      size_t pos = query.find('?');
+      size_t pos = query.find('?', search_pos);
       if (pos != std::string::npos) {
         auto it = params.find(key);
+        std::string replacement;
         if (it != params.end() && !it->second.empty()) {
-          query.replace(
-              pos, 1, "'" + RepositoryHelpers::escapeString(it->second) + "'");
+          replacement = "'" + RepositoryHelpers::escapeString(it->second) + "'";
         } else {
           // 빈 값 처리
           if (key == "service_id" || key == "target_id" ||
               key == "mapping_id" || key == "point_id" ||
               key == "http_status_code" || key == "processing_time_ms" ||
-              key == "gateway_id") { // Added gateway_id
-            query.replace(pos, 1, "NULL");
+              key == "gateway_id") {
+            replacement = "NULL";
           } else {
-            query.replace(pos, 1, "''");
+            replacement = "''";
           }
         }
+        query.replace(pos, 1, replacement);
+        search_pos = pos + replacement.length();
       }
     }
 
@@ -1799,12 +1827,6 @@ ExportLogRepository::entityToParams(const ExportLogEntity &entity) {
   params["timestamp"] = oss.str();
 
   params["client_info"] = entity.getClientInfo();
-
-  // [v3.2.0] Debug Logging
-  LogManager::getInstance().Info(
-      "[DEBUG] entityToParams: gateway_id=" +
-      std::to_string(entity.getGatewayId()) +
-      ", sent_payload_len=" + std::to_string(entity.getSentPayload().length()));
 
   params["gateway_id"] =
       entity.getGatewayId() > 0 ? std::to_string(entity.getGatewayId()) : "";

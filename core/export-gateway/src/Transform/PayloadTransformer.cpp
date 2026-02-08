@@ -16,7 +16,7 @@ namespace PulseOne {
 namespace Transform {
 
 PayloadTransformer::PayloadTransformer() {
-  LogManager::getInstance().Debug("PayloadTransformer 초기화");
+  // noise log removed
 }
 
 // =============================================================================
@@ -119,34 +119,32 @@ TransformContext PayloadTransformer::createContext(
     const std::string &target_description, const std::string &converted_value) {
 
   TransformContext context;
-  context.building_id = alarm.bd;
-  context.point_name = alarm.nm;
-  context.value = std::to_string(alarm.vl);
-  context.timestamp = alarm.tm;
-  context.status = alarm.st;
-  context.type = "num"; // 알람은 보통 숫자 기반임
+  context.building_id = alarm.site_id;
+  context.point_name = alarm.point_name;
+  context.value = std::to_string(alarm.measured_value);
+  context.timestamp = alarm.timestamp;
+  context.status = alarm.status_code;
+  context.type = alarm.data_type;
 
-  context.alarm_flag = alarm.al;
-  context.description = alarm.des;
+  context.alarm_flag = alarm.alarm_level;
+  context.description = alarm.description;
 
   context.target_field_name = target_field_name;
   context.target_description = target_description;
   context.converted_value = converted_value;
 
-  context.timestamp_iso8601 = toISO8601(alarm.tm);
-  context.timestamp_unix_ms = toUnixTimestampMs(alarm.tm);
-  context.alarm_status = getAlarmStatusString(alarm.al, alarm.st);
-  context.original_point_name = alarm.original_nm;
+  context.timestamp_iso8601 = toISO8601(alarm.timestamp);
+  context.timestamp_unix_ms = toUnixTimestampMs(alarm.timestamp);
+  context.alarm_status =
+      getAlarmStatusString(alarm.alarm_level, alarm.status_code);
+  context.original_point_name = alarm.original_name;
 
-  // 추가 필드 (il, xl 등) - JSON 타입 보전을 위해 dump() 사용하지 않고 원본값
-  // 유지 고려
-  context.custom_vars["il"] = alarm.il;
-  context.custom_vars["xl"] = alarm.xl;
-  context.custom_vars["mi"] = json(alarm.mi).dump(); // "[0]"
-  context.custom_vars["mx"] = json(alarm.mx).dump(); // "[1]"
+  LogManager::getInstance().Info(
+      "[TRACE-TRANSFORM] Value Context created for " + context.point_name +
+      " (Value: " + context.value + ")");
 
-  // extra_info 필드들을 모두 custom_vars에 주입하여 즉시 사용 가능하게 함
-  if (!alarm.extra_info.is_null()) {
+  // [v3.0.0] Zero-Assumption Harvesting Logic
+  if (!alarm.extra_info.is_null() && alarm.extra_info.is_object()) {
     for (auto it = alarm.extra_info.begin(); it != alarm.extra_info.end();
          ++it) {
       if (it.value().is_primitive()) {
@@ -167,12 +165,12 @@ TransformContext PayloadTransformer::createContext(
     const std::string &target_description, const std::string &converted_value) {
 
   TransformContext context;
-  context.building_id = value.bd;
-  context.point_name = value.nm;
-  context.value = value.vl;
-  context.timestamp = value.tm;
-  context.status = value.st;
-  context.type = value.ty;
+  context.building_id = value.site_id;
+  context.point_name = value.point_name;
+  context.value = value.measured_value;
+  context.timestamp = value.timestamp;
+  context.status = value.status_code;
+  context.type = value.data_type;
 
   context.alarm_flag = 0; // 주기 데이터는 알람 아님
 
@@ -180,14 +178,26 @@ TransformContext PayloadTransformer::createContext(
   context.target_description = target_description;
   context.converted_value = converted_value;
 
-  context.timestamp_iso8601 = toISO8601(value.tm);
-  context.timestamp_unix_ms = toUnixTimestampMs(value.tm);
+  context.timestamp_iso8601 = toISO8601(value.timestamp);
+  context.timestamp_unix_ms = toUnixTimestampMs(value.timestamp);
 
-  // 추가 필드 (기본값)
-  context.custom_vars["il"] = "-";
-  context.custom_vars["xl"] = "1";
-  context.custom_vars["mi"] = "[0]";
-  context.custom_vars["mx"] = "[1]";
+  LogManager::getInstance().Info(
+      "[TRACE-TRANSFORM] Value Context created for " + context.point_name +
+      " (Value: " + context.value + ")");
+
+  // [v3.0.0] Zero-Assumption Harvesting for Periodic Data
+  if (!value.extra_info.is_null() && value.extra_info.is_object()) {
+    for (auto it = value.extra_info.begin(); it != value.extra_info.end();
+         ++it) {
+      if (it.value().is_primitive()) {
+        context.custom_vars[it.key()] = it.value().is_string()
+                                            ? it.value().get<std::string>()
+                                            : it.value().dump();
+      } else {
+        context.custom_vars[it.key()] = it.value().dump();
+      }
+    }
+  }
 
   context.alarm_status = "NORMAL";
 
@@ -228,7 +238,7 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
   vars["original_name"] = context.point_name;
   vars["site_id"] = std::to_string(context.building_id);
 
-  // ✅ 인간 친화적 별칭 (Alias) 추가
+  // ✅ 인간 친화적 별칭 (Alias) 추가 (v3.2.0 Agnostic Standard)
   vars["target_key"] = context.target_field_name.empty()
                            ? context.point_name
                            : context.target_field_name;
@@ -244,7 +254,7 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
                                    ? context.description
                                    : context.target_description;
 
-  // Metadata & Intelligence (New)
+  // Metadata & Intelligence
   vars["site_name"] = context.custom_vars.count("site_name")
                           ? context.custom_vars.at("site_name")
                           : "";
@@ -257,19 +267,17 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
   vars["is_writable"] = vars["is_control"];
   vars["data_type"] = vars["type"];
 
-  // 하위 호환성 (nm, vl, al 등 짧은 이름들 - 사용자 템플릿용)
-  vars["bd"] = vars["building_id"];
-  vars["des"] = vars["target_description"];
-  vars["ty"] = vars["type"];
-
-  // Old Aliases (Keep for compatibility)
+  // [v3.2.0] Legacy Aliases - KEEP for template compatibility
+  vars["bd"] = vars["site_id"];
   vars["nm"] = vars["target_key"];
   vars["vl"] = vars["measured_value"];
-  vars["tm"] = vars["timestamp"];
+  vars["tm"] = context.timestamp;
   vars["st"] = vars["status_code"];
   vars["al"] = vars["alarm_level"];
+  vars["des"] = vars["target_description"];
+  vars["ty"] = vars["data_type"];
 
-  // 추가 필드 (il, xl 등)
+  // Internal short keys (il, xl, mi, mx) - required by some templates
   vars["il"] =
       context.custom_vars.count("il") ? context.custom_vars.at("il") : "-";
   vars["xl"] =
@@ -277,11 +285,19 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
   vars["mi"] =
       context.custom_vars.count("mi") ? context.custom_vars.at("mi") : "[0]";
   vars["mx"] =
-      context.custom_vars.count("mx") ? context.custom_vars.at("mx") : "[1]";
+      context.custom_vars.count("mx") ? context.custom_vars.at("mx") : "[100]";
 
-  // 커스텀 변수
+  // [v3.0.0] Zero-Assumption Token Pool (Automatically turn all custom_vars
+  // into tokens)
   for (const auto &[key, value] : context.custom_vars) {
-    vars[key] = value;
+    if (!vars.count(key)) {
+      vars[key] = value;
+    }
+    // Also support double-brace format explicitly in the map for
+    // legacy/specific template cases Note: expandJsonRecursive already handles
+    // {{key}}, so this is for string-based transformString calls
+    vars["{{" + key + "}}"] = value;
+    vars["{" + key + "}"] = value;
   }
 
   // 함수형 변수

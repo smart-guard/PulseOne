@@ -92,21 +92,21 @@ bool isValidAlarmMessageExtended(const AlarmMessage &alarm) {
   }
 
   // 확장 검증
-  if (alarm.nm.empty()) {
+  if (alarm.point_name.empty()) {
     LogManager::getInstance().Error("알람 메시지에 포인트명이 없습니다");
     return false;
   }
 
-  if (alarm.bd <= 0) {
+  if (alarm.site_id <= 0) {
     LogManager::getInstance().Error("유효하지 않은 빌딩 ID: " +
-                                    std::to_string(alarm.bd));
+                                    std::to_string(alarm.site_id));
     return false;
   }
 
   // 알람 플래그 검증 (0=해제, 1=발생)
-  if (alarm.al < 0 || alarm.al > 1) {
+  if (alarm.alarm_level < 0 || alarm.alarm_level > 1) {
     LogManager::getInstance().Error("유효하지 않은 알람 플래그: " +
-                                    std::to_string(alarm.al));
+                                    std::to_string(alarm.alarm_level));
     return false;
   }
 
@@ -198,37 +198,41 @@ std::string replaceVariables(const std::string &template_str,
                              const AlarmMessage &alarm) {
   std::string result = template_str;
 
-  // ✅ icos C# AlarmMessage 필드 치환: bd, nm, vl, tm, al, st, des
+  // icos C# AlarmMessage 필드 치환: site_id, point_name, measured_value,
+  // timestamp, alarm_level, status_code, description
   std::regex building_regex(R"(\{building_id\}|\{bd\})");
-  result = std::regex_replace(result, building_regex, std::to_string(alarm.bd));
+  result =
+      std::regex_replace(result, building_regex, std::to_string(alarm.site_id));
 
   std::regex point_regex(R"(\{point_name\}|\{nm\})");
-  result = std::regex_replace(result, point_regex, alarm.nm);
+  result = std::regex_replace(result, point_regex, alarm.point_name);
 
   std::regex value_regex(R"(\{value\}|\{vl\})");
-  result = std::regex_replace(result, value_regex, std::to_string(alarm.vl));
+  result = std::regex_replace(result, value_regex,
+                              std::to_string(alarm.measured_value));
 
   std::regex status_regex(R"(\{status\}|\{st\})");
-  result = std::regex_replace(result, status_regex, std::to_string(alarm.st));
+  result = std::regex_replace(result, status_regex,
+                              std::to_string(alarm.status_code));
 
   std::regex alarm_flag_regex(R"(\{alarm_flag\}|\{al\})");
-  result =
-      std::regex_replace(result, alarm_flag_regex, std::to_string(alarm.al));
+  result = std::regex_replace(result, alarm_flag_regex,
+                              std::to_string(alarm.alarm_level));
 
   std::regex description_regex(R"(\{description\}|\{des\})");
-  result = std::regex_replace(result, description_regex, alarm.des);
+  result = std::regex_replace(result, description_regex, alarm.description);
 
   // 타임스탬프 처리
   std::regex timestamp_regex(R"(\{timestamp\}|\{tm\})");
   std::string timestamp_str;
-  if (alarm.tm.empty()) {
+  if (alarm.timestamp.empty()) {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
     ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
     timestamp_str = ss.str();
   } else {
-    timestamp_str = alarm.tm;
+    timestamp_str = alarm.timestamp;
   }
   result = std::regex_replace(result, timestamp_regex, timestamp_str);
 
@@ -246,13 +250,13 @@ json createAlarmJson(const AlarmMessage &alarm) {
 
   // ✅ icos C# AlarmMessage 포맷 그대로 사용
   json j;
-  j["bd"] = alarm.bd;                               // Building ID
-  j["nm"] = alarm.nm;                               // Point Name
-  j["vl"] = alarm.vl;                               // Value
-  j["tm"] = alarm.tm.empty() ? ss.str() : alarm.tm; // Timestamp
-  j["al"] = alarm.al;   // Alarm Status (1=발생, 0=해제)
-  j["st"] = alarm.st;   // Communication Status
-  j["des"] = alarm.des; // Description
+  j["bd"] = alarm.site_id;                                        // Building ID
+  j["nm"] = alarm.point_name;                                     // Point Name
+  j["vl"] = alarm.measured_value;                                 // Value
+  j["tm"] = alarm.timestamp.empty() ? ss.str() : alarm.timestamp; // Timestamp
+  j["al"] = alarm.alarm_level;  // Alarm Status (1=발생, 0=해제)
+  j["st"] = alarm.status_code;  // Communication Status
+  j["des"] = alarm.description; // Description
 
   return j;
 }
@@ -290,11 +294,11 @@ std::string createAlarmCsv(const AlarmMessage &alarm) {
 
   std::stringstream csv;
   // ✅ icos 필드 순서: bd, nm, vl, tm, al, st, des
-  csv << alarm.bd << ","
-      << "\"" << alarm.nm << "\"," << alarm.vl << ","
-      << "\"" << (alarm.tm.empty() ? ss.str() : alarm.tm) << "\"," << alarm.al
-      << "," << alarm.st << ","
-      << "\"" << alarm.des << "\"";
+  csv << alarm.site_id << ","
+      << "\"" << alarm.point_name << "\"," << alarm.measured_value << ","
+      << "\"" << (alarm.timestamp.empty() ? ss.str() : alarm.timestamp) << "\","
+      << alarm.alarm_level << "," << alarm.status_code << ","
+      << "\"" << alarm.description << "\"";
 
   return csv.str();
 }
@@ -312,13 +316,17 @@ std::string createAlarmXml(const AlarmMessage &alarm) {
   xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
       << "<alarm>\n"
       // ✅ icos XML 태그: bd, nm, vl, tm, al, st, des
-      << "  <bd>" << alarm.bd << "</bd>\n"
-      << "  <nm>" << escapeXmlText(alarm.nm) << "</nm>\n"
-      << "  <vl>" << alarm.vl << "</vl>\n"
-      << "  <tm>" << (alarm.tm.empty() ? ss.str() : alarm.tm) << "</tm>\n"
-      << "  <al>" << alarm.al << "</al>\n"
-      << "  <st>" << alarm.st << "</st>\n"
-      << "  <des>" << escapeXmlText(alarm.des) << "</des>\n"
+      << "  <site_id>" << alarm.site_id << "</site_id>\n"
+      << "  <point_name>" << escapeXmlText(alarm.point_name)
+      << "</point_name>\n"
+      << "  <measured_value>" << alarm.measured_value << "</measured_value>\n"
+      << "  <timestamp>"
+      << (alarm.timestamp.empty() ? ss.str() : alarm.timestamp)
+      << "</timestamp>\n"
+      << "  <alarm_level>" << alarm.alarm_level << "</alarm_level>\n"
+      << "  <status_code>" << alarm.status_code << "</status_code>\n"
+      << "  <description>" << escapeXmlText(alarm.description)
+      << "</description>\n"
       << "</alarm>";
 
   return xml.str();

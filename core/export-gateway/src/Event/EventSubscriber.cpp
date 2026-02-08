@@ -35,13 +35,7 @@ namespace Event {
 EventSubscriber::EventSubscriber(const EventSubscriberConfig &config)
     : config_(config) {
 
-  LogManager::getInstance().Info("EventSubscriber v3.0 초기화 시작");
-  LogManager::getInstance().Info(
-      "구독 채널: " + std::to_string(config_.subscribe_channels.size()) + "개");
-  LogManager::getInstance().Info(
-      "워커 스레드: " + std::to_string(config_.worker_thread_count) + "개");
-  LogManager::getInstance().Info(
-      "✅ 통합 이벤트 처리: alarms, schedule, system, custom");
+  // noise logs removed
 }
 
 EventSubscriber::~EventSubscriber() {
@@ -652,14 +646,14 @@ void EventSubscriber::processAlarm(const PulseOne::CSP::AlarmMessage &alarm) {
     }
   }
 
-  LogManager::getInstance().Info("알람 처리 완료: " + alarm.nm + " (" +
+  LogManager::getInstance().Info("알람 처리 완료: " + alarm.point_name + " (" +
                                  std::to_string(success_count) + "/" +
                                  std::to_string(results.size()) + " 타겟)");
 }
 
 bool EventSubscriber::filterAlarm(
     const PulseOne::CSP::AlarmMessage &alarm) const {
-  if (alarm.nm.empty()) {
+  if (alarm.point_name.empty()) {
     return false;
   }
 

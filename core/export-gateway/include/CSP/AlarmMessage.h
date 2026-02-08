@@ -8,8 +8,10 @@
 
 #include "Gateway/Model/AlarmMessage.h"
 
+namespace PulseOne {
 namespace CSP {
 using AlarmMessage = PulseOne::Gateway::Model::AlarmMessage;
 }
+} // namespace PulseOne
 
 #endif // CSP_ALARM_MESSAGE_H
