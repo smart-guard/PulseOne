@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Space, Select, Button, Tag, Modal, Input, Radio } from 'antd';
-import exportGatewayApi, { Gateway, Assignment, ExportTarget, DataPoint } from '../../../api/services/exportGatewayApi';
+import exportGatewayApi, { Gateway, Assignment, ExportTarget, DataPoint, PayloadTemplate } from '../../../api/services/exportGatewayApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 
 
@@ -15,6 +15,7 @@ const extractItemsRef = (data: any) => {
 const ManualTestTab: React.FC = () => {
     const [gateways, setGateways] = useState<Gateway[]>([]);
     const [targets, setTargets] = useState<ExportTarget[]>([]);
+    const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
     const [allPoints, setAllPoints] = useState<DataPoint[]>([]);
     const [assignments, setAssignments] = useState<Record<number, Assignment[]>>({});
 
@@ -34,14 +35,16 @@ const ManualTestTab: React.FC = () => {
     useEffect(() => {
         const fetchInitialData = async () => {
             try {
-                const [gwRes, targetsRes, pointsRes] = await Promise.all([
+                const [gwRes, targetsRes, pointsRes, templatesRes] = await Promise.all([
                     exportGatewayApi.getGateways({ page: 1, limit: 100 }),
                     exportGatewayApi.getTargets(),
-                    exportGatewayApi.getDataPoints()
+                    exportGatewayApi.getDataPoints(),
+                    exportGatewayApi.getTemplates()
                 ]);
 
                 setGateways(gwRes.data?.items || []);
                 targetsRes.data ? setTargets(extractItemsRef(targetsRes.data)) : setTargets([]);
+                setTemplates(templatesRes.data || []);
                 // DataPoints might be array or items
                 if (pointsRes) {
                     if (Array.isArray(pointsRes)) setAllPoints(pointsRes);
@@ -71,13 +74,90 @@ const ManualTestTab: React.FC = () => {
         }
     };
 
+    // Dynamic Payload Generation based on Template
     useEffect(() => {
         if (!currentMapping) return;
 
         const val = typeof testValue === 'string' ? parseFloat(testValue) || 0 : testValue;
 
-        const jsonPayload = [
-            {
+        // 1. Find the target to get the template_id
+        // We use the first target in the list as the primary one for the template preview
+        const firstTargetInfo = currentMapping.target_names?.[0];
+        const targetId = firstTargetInfo?.id; // We need to ensure we pass ID in fetchGatewayMappings
+        const target = targets.find(t => t.id === targetId);
+
+        let templateJson: any = null;
+
+        // 2. Find the template
+        if (target && target.template_id) {
+            const template = templates.find(t => t.id === target.template_id);
+            if (template) {
+                templateJson = template.template_json;
+            }
+        }
+
+        // 3. Construct Payload
+        let finalPayload: any;
+
+        if (templateJson) {
+            // Use Template Structure
+            let jsonStr = typeof templateJson === 'string' ? templateJson : JSON.stringify(templateJson);
+
+            // Basic Replacements (This makes it consistent with TemplateManagementTab preview)
+            // Note: In a real C++ engine, this is done more robustly. Here we do simple string replacement for preview.
+            const replacements: Record<string, any> = {
+                '{{site_id}}': currentMapping.site_id || 1,
+                '{{type}}': 'num',
+                '{{target_key}}': currentMapping.target_field_name,
+                '{{measured_value}}': val,
+                '{{timestamp}}': `${new Date().toISOString().replace('T', ' ').split('.')[0]}.000`,
+                '{{is_control}}': 1,
+                '{{status_code}}': 0,
+                '{{alarm_level}}': testAlValue,
+                '{{target_description}}': "Manual Export Triggered",
+                '{{il}}': "-",
+                '{{xl}}': "-",
+                '{{mi}}': 0,
+                '{{mx}}': 100,
+
+                // Legacy / Compatibility keys if used in template
+                '{{bd}}': currentMapping.site_id || 1,
+                '{{nm}}': currentMapping.target_field_name,
+                '{{vl}}': val,
+                '{{tm}}': `${new Date().toISOString().replace('T', ' ').split('.')[0]}.000`,
+                '{{st}}': 1,
+                '{{al}}': testAlValue,
+                '{{des}}': "Manual Export Triggered"
+            };
+
+            // Replace all placeholders
+            Object.entries(replacements).forEach(([key, value]) => {
+                // Replace quoted string placeholders: "{{key}}" -> value (if value is number, it becomes number)
+                // If value is string, it stays string.
+                // This simple Replace isn't perfect for all JSON types but works for the standard template format.
+
+                if (typeof value === 'number') {
+                    // Try to replace quoted version first to unquote numbers if they were quoted in template
+                    // e.g. "val": "{{val}}" -> "val": 123
+                    jsonStr = jsonStr.replace(new RegExp(`"${key}"`, 'g'), String(value));
+                }
+
+                jsonStr = jsonStr.replace(new RegExp(key, 'g'), String(value));
+            });
+
+            try {
+                finalPayload = JSON.parse(jsonStr);
+            } catch (e) {
+                console.error("Failed to parse template JSON after substitution", e);
+                // Fallback if template is broken
+                finalPayload = {
+                    "error": "Template parsing failed",
+                    "raw": jsonStr
+                };
+            }
+        } else {
+            // Fallback: Default Insite Structure (Object, No Array) - Matching the previous 'fix'
+            finalPayload = {
                 "bd": currentMapping.site_id || 1,
                 "ty": "num",
                 "nm": currentMapping.target_field_name,
@@ -90,13 +170,11 @@ const ManualTestTab: React.FC = () => {
                 "st": 1,
                 "al": testAlValue,
                 "des": "Manual Export Triggered"
-            }
-        ];
+            };
+        }
 
-        let formattedJson = JSON.stringify(jsonPayload, null, 2);
-        formattedJson = formattedJson.replace(/\[\s+([-+]?[0-9]*\.?[0-9]+)\s+\]/g, '[$1]');
-        setEditableJson(formattedJson);
-    }, [currentMapping, testValue, testAlValue]);
+        setEditableJson(JSON.stringify(finalPayload, null, 2));
+    }, [currentMapping, testValue, testAlValue, targets, templates]);
 
     const fetchGatewayMappings = async (gwId: number) => {
         setLoading(true);
@@ -120,6 +198,7 @@ const ManualTestTab: React.FC = () => {
                     }
                     if (!pointGroups[m.point_id].target_names.some((tn: any) => tn.name === target.name)) {
                         pointGroups[m.point_id].target_names.push({
+                            id: target.id,  // Add ID so we can lookup template later
                             name: target.name,
                             type: target.target_type
                         });
@@ -187,6 +266,7 @@ const ManualTestTab: React.FC = () => {
                 point_id: currentMapping.point_id,
                 value: typeof testValue === 'string' ? parseFloat(testValue) : testValue,
                 al: testAlValue,
+                raw_payload: JSON.parse(editableJson),
                 ...overrides
             });
 

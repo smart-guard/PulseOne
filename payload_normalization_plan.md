@@ -15,8 +15,9 @@ This document outlines the evidence-based plan to align the Export Gateway with 
 - **구독 방식:** Redis에서 `device:<id>:alarms` 채널을 **선택적 구독(Selective Subscription)**하여, 자신이 "소유"한 디바이스의 알람만 처리함.
 
 ### C. 수동 전송(Manual Export) 경로
-`core/export-gateway/src/CSP/ExportCoordinator.cpp` 확인 결과:
-- **동작:** Redis의 `point:<id>:latest`에서 최신값을 읽어오며, 자동 알람 전송과 동일한 정규화(Normalization) 로직을 공유함.
+`core/export-gateway/src/Gateway/Service/EventDispatcher.cpp` 수정:
+- **동작:** 유저가 보낸 페이로드를 `alarm.extra_info`에 담아 **일체의 가공(Enrichment) 및 템플릿 변환(Transformation)을 건너뛰고** 그대로(RAW) 전송함.
+- **원칙:** 수동 전송은 유저의 테스트 데이터를 단 한 글자도 바꾸지 않는 "Zero-Transformation" 경로를 따름.
 
 ---
 

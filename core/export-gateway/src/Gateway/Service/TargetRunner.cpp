@@ -88,11 +88,19 @@ TargetSendResult TargetRunner::sendAlarmToTarget(
         std::chrono::milliseconds(target.execution_delay_ms));
   }
 
-  LogManager::getInstance().Info(
-      "TargetRunner: Applying mappings for target: " + target_name);
-  auto processed_alarm = applyMappings(target, alarm);
-  LogManager::getInstance().Info(
-      "TargetRunner: Mappings applied, executing send");
+  // [v3.2.1] Manual Override: Skip ALL mappings/enrichment for manual tests.
+  PulseOne::Gateway::Model::AlarmMessage processed_alarm;
+  if (alarm.manual_override) {
+    LogManager::getInstance().Info(
+        "TargetRunner: Manual Override active, bypassing mappings.");
+    processed_alarm = alarm;
+  } else {
+    processed_alarm = applyMappings(target, alarm);
+    LogManager::getInstance().Info(
+        "[ALARM_ENRICH] Mappings applied for " + target_name +
+        ": PointName=" + processed_alarm.point_name +
+        ", SiteID=" + std::to_string(processed_alarm.site_id));
+  }
 
   auto start_time = std::chrono::steady_clock::now();
 

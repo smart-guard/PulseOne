@@ -20,25 +20,21 @@ namespace Entities {
 // =============================================================================
 
 PayloadTemplateEntity::PayloadTemplateEntity()
-    : BaseEntity<PayloadTemplateEntity>()
-    , is_active_(true) {
+    : BaseEntity<PayloadTemplateEntity>(), is_active_(true) {}
+
+PayloadTemplateEntity::PayloadTemplateEntity(int id) : PayloadTemplateEntity() {
+  setId(id);
 }
 
-PayloadTemplateEntity::PayloadTemplateEntity(int id)
-    : PayloadTemplateEntity() {
-    setId(id);
-}
-
-PayloadTemplateEntity::~PayloadTemplateEntity() {
-}
+PayloadTemplateEntity::~PayloadTemplateEntity() {}
 
 // =============================================================================
 // Repository 패턴
 // =============================================================================
 
-std::shared_ptr<Repositories::PayloadTemplateRepository> 
+std::shared_ptr<Repositories::PayloadTemplateRepository>
 PayloadTemplateEntity::getRepository() const {
-    return RepositoryFactory::getInstance().getPayloadTemplateRepository();
+  return RepositoryFactory::getInstance().getPayloadTemplateRepository();
 }
 
 // =============================================================================
@@ -46,35 +42,39 @@ PayloadTemplateEntity::getRepository() const {
 // =============================================================================
 
 json PayloadTemplateEntity::parseTemplate() const {
-    try {
-        if (template_json_.empty()) {
-            return json::object();
-        }
-        return json::parse(template_json_);
-    } catch (const std::exception& e) {
-        LogManager::getInstance().Error(
-            "PayloadTemplateEntity::parseTemplate failed: " + std::string(e.what()));
-        return json::object();
+  try {
+    if (template_json_.empty()) {
+      return json::object();
     }
+    return json::parse(template_json_);
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error(
+        "PayloadTemplateEntity::parseTemplate failed: " +
+        std::string(e.what()));
+    return json::object();
+  }
 }
 
 bool PayloadTemplateEntity::validate() const {
-    if (name_.empty()) return false;
-    if (system_type_.empty()) return false;
-    if (template_json_.empty()) return false;
-    
-    // JSON 유효성 검사
-    try {
-        json::parse(template_json_);
-    } catch (...) {
-        return false;
-    }
-    
-    return true;
+  if (name_.empty())
+    return false;
+  if (system_type_.empty())
+    return false;
+  if (template_json_.empty())
+    return false;
+
+  // JSON 유효성 검사
+  try {
+    json::parse(template_json_);
+  } catch (...) {
+    return false;
+  }
+
+  return true;
 }
 
 std::string PayloadTemplateEntity::getEntityTypeName() const {
-    return "PayloadTemplateEntity";
+  return "PayloadTemplateEntity";
 }
 
 // =============================================================================
@@ -82,63 +82,63 @@ std::string PayloadTemplateEntity::getEntityTypeName() const {
 // =============================================================================
 
 json PayloadTemplateEntity::toJson() const {
-    json j;
-    
-    try {
-        j["id"] = getId();
-        j["name"] = name_;
-        j["system_type"] = system_type_;
-        j["description"] = description_;
-        j["template_json"] = template_json_;
-        j["is_active"] = is_active_;
-        j["created_at"] = timestampToString(getCreatedAt());
-        j["updated_at"] = timestampToString(getUpdatedAt());
-        
-    } catch (const std::exception&) {
-        // JSON 생성 실패 시 기본 객체 반환
-    }
-    
-    return j;
+  json j;
+
+  try {
+    j["id"] = getId();
+    j["name"] = name_;
+    j["system_type"] = system_type_;
+    j["description"] = description_;
+    j["template_json"] = template_json_;
+    j["is_active"] = is_active_;
+    j["created_at"] = timestampToString(getCreatedAt());
+    j["updated_at"] = timestampToString(getUpdatedAt());
+
+  } catch (const std::exception &) {
+    // JSON 생성 실패 시 기본 객체 반환
+  }
+
+  return j;
 }
 
-bool PayloadTemplateEntity::fromJson(const json& data) {
-    try {
-        if (data.contains("id")) {
-            setId(data["id"].get<int>());
-        }
-        if (data.contains("name")) {
-            name_ = data["name"].get<std::string>();
-        }
-        if (data.contains("system_type")) {
-            system_type_ = data["system_type"].get<std::string>();
-        }
-        if (data.contains("description")) {
-            description_ = data["description"].get<std::string>();
-        }
-        if (data.contains("template_json")) {
-            template_json_ = data["template_json"].get<std::string>();
-        }
-        if (data.contains("is_active")) {
-            is_active_ = data["is_active"].get<bool>();
-        }
-        
-        markModified();
-        return true;
-        
-    } catch (const std::exception&) {
-        return false;
+bool PayloadTemplateEntity::fromJson(const json &data) {
+  try {
+    if (data.contains("id")) {
+      setId(data["id"].get<int>());
     }
+    if (data.contains("name")) {
+      name_ = data["name"].get<std::string>();
+    }
+    if (data.contains("system_type")) {
+      system_type_ = data["system_type"].get<std::string>();
+    }
+    if (data.contains("description")) {
+      description_ = data["description"].get<std::string>();
+    }
+    if (data.contains("template_json")) {
+      template_json_ = data["template_json"].get<std::string>();
+    }
+    if (data.contains("is_active")) {
+      is_active_ = data["is_active"].get<bool>();
+    }
+
+    markModified();
+    return true;
+
+  } catch (const std::exception &) {
+    return false;
+  }
 }
 
 std::string PayloadTemplateEntity::toString() const {
-    std::ostringstream oss;
-    oss << "PayloadTemplateEntity[";
-    oss << "id=" << getId();
-    oss << ", name=" << name_;
-    oss << ", system_type=" << system_type_;
-    oss << ", active=" << (is_active_ ? "true" : "false");
-    oss << "]";
-    return oss.str();
+  std::ostringstream oss;
+  oss << "PayloadTemplateEntity[";
+  oss << "id=" << getId();
+  oss << ", name=" << name_;
+  oss << ", system_type=" << system_type_;
+  oss << ", active=" << (is_active_ ? "true" : "false");
+  oss << "]";
+  return oss.str();
 }
 
 // =============================================================================
@@ -146,73 +146,71 @@ std::string PayloadTemplateEntity::toString() const {
 // =============================================================================
 
 bool PayloadTemplateEntity::loadFromDatabase() {
-    if (getId() <= 0) {
-        return false;
+  if (getId() <= 0) {
+    return false;
+  }
+
+  try {
+    auto repo = getRepository();
+    if (repo) {
+      auto loaded = repo->findById(getId());
+      if (loaded.has_value()) {
+        *this = loaded.value();
+        markSaved();
+        return true;
+      }
     }
-    
-    try {
-        auto repo = getRepository();
-        if (repo) {
-            auto loaded = repo->findById(getId());
-            if (loaded.has_value()) {
-                *this = loaded.value();
-                markSaved();
-                return true;
-            }
-        }
-        return false;
-    } catch (const std::exception& e) {
-        markError();
-        return false;
-    }
+    return false;
+  } catch (const std::exception &e) {
+    markError();
+    return false;
+  }
 }
 
 bool PayloadTemplateEntity::saveToDatabase() {
-    try {
-        auto repo = getRepository();
-        if (repo) {
-            bool success = false;
-            if (getId() <= 0) {
-                success = repo->save(*this);
-            } else {
-                success = repo->update(*this);
-            }
-            
-            if (success) {
-                markSaved();
-            }
-            return success;
-        }
-        return false;
-    } catch (const std::exception& e) {
-        markError();
-        return false;
+  try {
+    auto repo = getRepository();
+    if (repo) {
+      bool success = false;
+      if (getId() <= 0) {
+        success = repo->save(*this);
+      } else {
+        success = repo->update(*this);
+      }
+
+      if (success) {
+        markSaved();
+      }
+      return success;
     }
+    return false;
+  } catch (const std::exception &e) {
+    markError();
+    return false;
+  }
 }
 
-bool PayloadTemplateEntity::updateToDatabase() {
-    return saveToDatabase();
-}
+bool PayloadTemplateEntity::updateToDatabase() { return saveToDatabase(); }
 
 bool PayloadTemplateEntity::deleteFromDatabase() {
-    if (getId() <= 0) {
-        return false;
+  if (getId() <= 0) {
+    return false;
+  }
+
+  try {
+    auto repo = getRepository();
+    if (repo) {
+      bool success = repo->deleteById(getId());
+      if (success) {
+        markDeleted();
+      }
+      return success;
     }
-    
-    try {
-        auto repo = getRepository();
-        if (repo) {
-            bool success = repo->deleteById(getId());
-            if (success) {
-                markDeleted();
-            }
-            return success;
-        }
-        return false;
-    } catch (const std::exception& e) {
-        markError();
-        return false;
-    }
+    return false;
+  } catch (const std::exception &e) {
+    markError();
+    return false;
+  }
 }
 
 } // namespace Entities

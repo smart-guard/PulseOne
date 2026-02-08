@@ -250,6 +250,8 @@ std::vector<std::string> EventSubscriber::getRegisteredHandlers() const {
 
 void EventSubscriber::routeMessage(const std::string &channel,
                                    const std::string &message) {
+  LogManager::getInstance().Info("[TRACE-0-REDIS-RECEIVE] Channel: " + channel +
+                                 " | Msg: " + message);
   // 1. 커스텀 핸들러 검색 (우선순위 부여)
   {
     std::lock_guard<std::mutex> lock(handler_mutex_);

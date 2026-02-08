@@ -681,6 +681,27 @@ void ExportCoordinator::handleCommandEvent(const std::string &channel,
   try {
     LogManager::getInstance().Info("Gateway 명령 수신: " + message);
 
+    // ✅ [Fix v3.2.1] Subscription Filtering: Ignore commands for other
+    // gateways EventSubscriber subscribes to "cmd:*" which broadcasts to ALL
+    // instances. We must filter by channel name if it targets a specific
+    // gateway.
+    if (channel.find("cmd:gateway:") == 0) {
+      std::string target_id_str =
+          channel.substr(12); // "cmd:gateway:" length is 12
+      try {
+        int target_id = std::stoi(target_id_str);
+        if (target_id != gateway_id_) {
+          LogManager::getInstance().Debug(
+              "다른 게이트웨이 명령 무시 (Channel: " + channel +
+              ", My ID: " + std::to_string(gateway_id_) + ")");
+          return;
+        }
+      } catch (...) {
+        // ID 파싱 실패 시 안전하게 무시하거나 로그만 남기고 진행
+        LogManager::getInstance().Warn("Channel ID 파싱 실패: " + channel);
+      }
+    }
+
     auto j = nlohmann::json::parse(message);
 
     // ✅ ID 필터링: serverId가 있고, gateway_id_와 다르면 무시 (v3.2.1)

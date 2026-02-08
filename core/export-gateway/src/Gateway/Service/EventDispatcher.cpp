@@ -82,14 +82,25 @@ void EventDispatcher::registerHandlers(
 
 void EventDispatcher::handleAlarm(const PulseOne::CSP::AlarmMessage &alarm) {
   LogManager::getInstance().Info(
-      "[TRACE-1-RECEIVE] Alarm received via EventDispatcher: PointId=" +
-      std::to_string(alarm.point_id) + " (" + alarm.point_name + ")");
+      "[ALARM_RECEIVE] From Redis: Point=" + std::to_string(alarm.point_id) +
+      " (" + alarm.point_name + ")");
+
+  LogManager::getInstance().Info(
+      "[ALARM_PARSE] Internal State: Site=" + std::to_string(alarm.site_id) +
+      ", Point=" + alarm.point_name +
+      ", Value=" + std::to_string(alarm.measured_value) +
+      ", Level=" + std::to_string(alarm.alarm_level) + ", Status=" +
+      std::to_string(alarm.status_code) + ", Timestamp=" + alarm.timestamp);
 
   // 1. 전송 실행
   auto results = context_.getRunner().sendAlarm(alarm);
 
   // 2. 결과 로깅
   for (const auto &result : results) {
+    LogManager::getInstance().Info(
+        "[ALARM_SEND] Target Dispatch: " + result.target_name +
+        " | Success: " + (result.success ? "YES" : "NO") +
+        " | Code: " + std::to_string(result.status_code));
     logExportResult(result, &alarm);
   }
 }
@@ -118,7 +129,7 @@ void EventDispatcher::handleCommandEvent(const std::string &channel,
         "]: " + message);
 
     LogManager::getInstance().Info("[TRACE-1-RECEIVE] Manual Export Command: " +
-                                   channel);
+                                   channel + " | Raw: " + message);
 
     // ServerId check
     if (j.contains("serverId")) {
@@ -162,8 +173,16 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
         std::to_string(payload.value("point_id", 0)) +
         ", Targets=" + std::to_string(target_names.size()));
 
-    bool is_all = std::find(target_names.begin(), target_names.end(), "all") !=
-                  target_names.end();
+    bool is_all = false;
+    for (const auto &name : target_names) {
+      std::string upper_name = name;
+      std::transform(upper_name.begin(), upper_name.end(), upper_name.begin(),
+                     ::toupper);
+      if (upper_name == "ALL") {
+        is_all = true;
+        break;
+      }
+    }
 
     if (is_all) {
       auto targets = context_.getRegistry().getAllTargets();
@@ -183,84 +202,30 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
                                    std::to_string(target_names.size()) +
                                    " targets");
 
-    // Prepare AlarmMessage for enrichment
+    // [v3.2.2] Manual Export Payload Integrity:
+    // Prioritize 'raw_payload' as the absolute source of truth.
+    nlohmann::json raw_source_full =
+        payload.contains("raw_payload") ? payload["raw_payload"] : payload;
+    nlohmann::json raw_source_for_struct = raw_source_full;
+
+    if (raw_source_full.is_array() && !raw_source_full.empty()) {
+      raw_source_for_struct =
+          raw_source_full[0]; // Use first element for struct fields
+    }
+
     PulseOne::CSP::AlarmMessage alarm;
-    int point_id = payload.value("point_id", 0);
-
-    if (point_id > 0) {
-      alarm.point_id = point_id;
-
-      // Redis에서 최신값 및 기본 메타데이터 조회
-      if (context_.getRedisClient() &&
-          context_.getRedisClient()->isConnected()) {
-        std::string redis_key = "point:" + std::to_string(point_id) + ":latest";
-        std::string val_json_str = context_.getRedisClient()->get(redis_key);
-        if (!val_json_str.empty()) {
-          try {
-            auto val_json = nlohmann::json::parse(val_json_str);
-            alarm.point_name =
-                val_json.value("nm", val_json.value("point_name", ""));
-            alarm.site_id = val_json.value("bd", val_json.value("site_id", 0));
-
-            // Handle both 'vl' (standard) and 'value' (snapshots)
-            std::string val_key = val_json.contains("value") ? "value" : "vl";
-            if (val_json.contains(val_key)) {
-              if (val_json[val_key].is_number()) {
-                alarm.measured_value = val_json[val_key].get<double>();
-              } else if (val_json[val_key].is_string()) {
-                alarm.measured_value =
-                    std::stod(val_json[val_key].get<std::string>());
-              }
-            }
-          } catch (...) {
-            LogManager::getInstance().Warn(
-                "Manual export: Failed to parse Redis value for point " +
-                std::to_string(point_id));
-          }
-        }
-      }
-
-      // Database fallback for base metadata if still missing
-      if (alarm.point_name.empty() || alarm.site_id == 0) {
-        try {
-          auto &repo_factory =
-              PulseOne::Database::RepositoryFactory::getInstance();
-          if (repo_factory.isInitialized()) {
-            auto point_repo = repo_factory.getDataPointRepository();
-            auto point_opt = point_repo->findById(point_id);
-            if (point_opt.has_value()) {
-              if (alarm.point_name.empty())
-                alarm.point_name = point_opt->getName();
-              if (alarm.site_id == 0) {
-                auto device_repo = repo_factory.getDeviceRepository();
-                auto device_opt =
-                    device_repo->findById(point_opt->getDeviceId());
-                if (device_opt.has_value()) {
-                  alarm.site_id = device_opt->getSiteId();
-                }
-              }
-            }
-          }
-        } catch (const std::exception &e) {
-          LogManager::getInstance().Error("Manual export: DB fallback error: " +
-                                          std::string(e.what()));
-        }
-      }
-    }
-
-    // Payload overrides (Manual trigger bypass)
-    if (payload.contains("value")) {
-      alarm.measured_value = payload["value"].is_number()
-                                 ? payload["value"].get<double>()
-                                 : alarm.measured_value;
-    }
-    alarm.description = payload.value("des", "Manual Export Triggered");
+    alarm.from_json(raw_source_for_struct);
     alarm.manual_override = true;
+    alarm.extra_info = raw_source_full; // [CRITICAL] Preserve full array/object
+                                        // for transmission
+
+    if (alarm.description.empty()) {
+      alarm.description = "Manual Export Triggered";
+    }
 
     LogManager::getInstance().Info(
-        "[TRACE-3-ENRICH] Manual Export Enriched: Point=" + alarm.point_name +
-        ", Site=" + std::to_string(alarm.site_id) +
-        ", Value=" + std::to_string(alarm.measured_value));
+        "[TRACE-3-ENRICH] Manual Export Ready (RAW Bypass): Point=" +
+        alarm.point_name + ", Site=" + std::to_string(alarm.site_id));
     LogManager::getInstance().Info(
         "Manual export: Starting execution loop for " +
         std::to_string(target_names.size()) + " targets");
@@ -268,7 +233,7 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
     // Execute export for each target
     for (const auto &name : target_names) {
       LogManager::getInstance().Info("Executing manual export: Target=" + name +
-                                     ", Point=" + std::to_string(point_id));
+                                     ", Point=" + alarm.point_name);
 
       // Create a dedicated alarm message for this target to apply specific
       // overrides
@@ -280,15 +245,15 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
         int target_id = target_opt->id;
 
         // 1. Target Key (FieldName) Override
-        std::string mapped_name =
-            context_.getRegistry().getTargetFieldName(target_id, point_id);
+        std::string mapped_name = context_.getRegistry().getTargetFieldName(
+            target_id, alarm.point_id);
         if (!mapped_name.empty()) {
           target_alarm.point_name = mapped_name;
         }
 
         // 2. Site ID Override
         int override_site_id =
-            context_.getRegistry().getOverrideSiteId(target_id, point_id);
+            context_.getRegistry().getOverrideSiteId(target_id, alarm.point_id);
         if (override_site_id > 0) {
           target_alarm.site_id = override_site_id;
         }
@@ -308,7 +273,8 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
 
       // Log and Notify
       logExportResult(res, &target_alarm);
-      sendManualExportResult(name, res.success, res.error_message, payload);
+      sendManualExportResult(name, res.success, res.error_message, payload,
+                             res.target_id);
     }
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("Manual export internal error: " +
@@ -319,10 +285,12 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
 void EventDispatcher::sendManualExportResult(const std::string &target_name,
                                              bool success,
                                              const std::string &error_message,
-                                             const nlohmann::json &payload) {
+                                             const nlohmann::json &payload,
+                                             int target_id) {
   if (context_.getRedisClient() && context_.getRedisClient()->isConnected()) {
     json result;
     result["targetName"] = target_name;
+    result["targetId"] = target_id;
     result["success"] = success;
     result["errorMessage"] = error_message;
     result["payload"] = payload;
@@ -351,7 +319,7 @@ void EventDispatcher::logExportResult(
                               : (alarm ? "alarm_export" : "manual_export"));
     log_entity.setServiceId(context_.getGatewayId());
 
-    // Target ID 조회
+    // Target ID 및 이름 저장 (ID 매칭 실패 시 에러 메시지에 상세 기록)
     if (result.target_id > 0) {
       log_entity.setTargetId(result.target_id);
     } else if (!result.target_name.empty()) {
@@ -362,8 +330,17 @@ void EventDispatcher::logExportResult(
     }
 
     if (alarm) {
+      // [v3.2.1] Manual Override RAW Bypass: send EXACTLY what the user
+      // provided.
+      if (alarm->manual_override) {
+        LogManager::getInstance().Info(
+            "[TRACE-TRANSFORM-HTTP] Manual Override: Sending RAW payload.");
+        log_entity.setSourceValue(
+            alarm->extra_info.is_null() ? "{}" : alarm->extra_info.dump());
+      } else {
+        log_entity.setSourceValue(alarm->to_json().dump());
+      }
       log_entity.setPointId(alarm->point_id);
-      log_entity.setSourceValue(alarm->to_json().dump());
     } else {
       // Manual Export: Use a simple indicator as the source
       log_entity.setSourceValue("{\"manual\":true}");

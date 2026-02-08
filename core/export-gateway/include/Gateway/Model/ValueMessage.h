@@ -32,12 +32,18 @@ struct ValueMessage {
   json extra_info;
 
   json to_json() const {
-    // [v3.2.1] Engine Standard Format (Used for Logs, Templates, and UI)
-    json j =
-        json{{"bd", site_id},   {"nm", point_name},  {"vl", measured_value},
-             {"tm", timestamp}, {"st", status_code}, {"ty", data_type}};
+    // [v3.2.1] Engine Standard Format (Tokens for Templates)
+    json j = json{
+        {"bd", site_id},
+        {"nm", point_name},
+        {"vl", measured_value},
+        {"tm", timestamp},
+        {"st", status_code},
+        {"ty", data_type},
+        {"point_id", point_id},
+        {"is_control", (data_type == "bit" || data_type == "bool") ? 1 : 0}};
 
-    // Metadata Harvesting (mi, mx, il, xl 등 필수 필드 포함)
+    // Metadata Harvesting (mi, mx, il, xl 등)
     if (!extra_info.is_null() && extra_info.is_object()) {
       for (auto it = extra_info.begin(); it != extra_info.end(); ++it) {
         if (!j.contains(it.key())) {

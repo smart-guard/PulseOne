@@ -16,7 +16,7 @@
 #include <queue>
 #include <thread>
 
-#ifdef HAS_PAHO_MQTT
+#if defined(HAS_PAHO_MQTT) && (HAS_PAHO_MQTT == 1)
 #include <mqtt/async_client.h>
 #define MQTT_AVAILABLE 1
 #else

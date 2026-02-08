@@ -430,6 +430,13 @@ void S3TargetHandler::expandTemplateVariables(
 std::string S3TargetHandler::buildJsonContent(
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) const {
+  // [v3.2.1] Manual Override RAW Bypass
+  if (alarm.manual_override) {
+    LogManager::getInstance().Info(
+        "[S3] Manual Override active: Sending RAW payload.");
+    return alarm.extra_info.is_null() ? "{}" : alarm.extra_info.dump(2);
+  }
+
   json content;
 
   // ✅ v3.2.0: Payload Template 지원 (Object or Array)

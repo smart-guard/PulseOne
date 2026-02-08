@@ -43,7 +43,7 @@ private:
   void handleManualExport(const nlohmann::json &payload);
   void sendManualExportResult(const std::string &target_name, bool success,
                               const std::string &error_message,
-                              const nlohmann::json &payload);
+                              const nlohmann::json &payload, int target_id = 0);
 
   /**
    * @brief 통합 로깅 처리
