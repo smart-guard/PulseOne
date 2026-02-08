@@ -186,17 +186,18 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
         if (!val_json_str.empty()) {
           try {
             auto val_json = nlohmann::json::parse(val_json_str);
-            alarm.nm = val_json.value("nm", val_json.value("point_name", ""));
+            alarm.point_name =
+                val_json.value("nm", val_json.value("point_name", ""));
             alarm.site_id = val_json.value("bd", val_json.value("site_id", 0));
-            alarm.bd = alarm.site_id;
 
             // Handle both 'vl' (standard) and 'value' (snapshots)
             std::string val_key = val_json.contains("value") ? "value" : "vl";
             if (val_json.contains(val_key)) {
               if (val_json[val_key].is_number()) {
-                alarm.vl = val_json[val_key].get<double>();
+                alarm.measured_value = val_json[val_key].get<double>();
               } else if (val_json[val_key].is_string()) {
-                alarm.vl = std::stod(val_json[val_key].get<std::string>());
+                alarm.measured_value =
+                    std::stod(val_json[val_key].get<std::string>());
               }
             }
           } catch (...) {
@@ -208,7 +209,7 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
       }
 
       // Database fallback for base metadata if still missing
-      if (alarm.nm.empty() || alarm.site_id == 0) {
+      if (alarm.point_name.empty() || alarm.site_id == 0) {
         try {
           auto &repo_factory =
               PulseOne::Database::RepositoryFactory::getInstance();
@@ -216,15 +217,14 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
             auto point_repo = repo_factory.getDataPointRepository();
             auto point_opt = point_repo->findById(point_id);
             if (point_opt.has_value()) {
-              if (alarm.nm.empty())
-                alarm.nm = point_opt->getName();
+              if (alarm.point_name.empty())
+                alarm.point_name = point_opt->getName();
               if (alarm.site_id == 0) {
                 auto device_repo = repo_factory.getDeviceRepository();
                 auto device_opt =
                     device_repo->findById(point_opt->getDeviceId());
                 if (device_opt.has_value()) {
                   alarm.site_id = device_opt->getSiteId();
-                  alarm.bd = alarm.site_id;
                 }
               }
             }
@@ -238,10 +238,11 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
 
     // Payload overrides (Manual trigger bypass)
     if (payload.contains("value")) {
-      alarm.vl = payload["value"].is_number() ? payload["value"].get<double>()
-                                              : alarm.vl;
+      alarm.measured_value = payload["value"].is_number()
+                                 ? payload["value"].get<double>()
+                                 : alarm.measured_value;
     }
-    alarm.des = payload.value("des", "Manual Export Triggered");
+    alarm.description = payload.value("des", "Manual Export Triggered");
     alarm.manual_override = true;
     LogManager::getInstance().Info(
         "Manual export: Starting execution loop for " +
@@ -265,7 +266,7 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
         std::string mapped_name =
             context_.getRegistry().getTargetFieldName(target_id, point_id);
         if (!mapped_name.empty()) {
-          target_alarm.nm = mapped_name;
+          target_alarm.point_name = mapped_name;
         }
 
         // 2. Site ID Override
@@ -273,7 +274,6 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
             context_.getRegistry().getOverrideSiteId(target_id, point_id);
         if (override_site_id > 0) {
           target_alarm.site_id = override_site_id;
-          target_alarm.bd = override_site_id;
         }
       }
 
@@ -321,6 +321,9 @@ void EventDispatcher::logExportResult(
   try {
     using namespace PulseOne::Database::Entities;
 
+    LogManager::getInstance().Info("[TRACE] EventDispatcher::logExportResult - "
+                                   "Enqueuing log for target: " +
+                                   result.target_name);
     ExportLogEntity log_entity;
     bool is_manual = alarm && alarm->manual_override;
     log_entity.setLogType(is_manual

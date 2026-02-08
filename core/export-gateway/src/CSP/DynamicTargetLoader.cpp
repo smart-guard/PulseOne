@@ -230,8 +230,7 @@ std::vector<ExportTargetEntity> DynamicTargetLoader::fetchTargets(
   if (!repo)
     return {};
 
-  LogManager::getInstance().Debug("fetchTargets - Gateway ID: " +
-                                  std::to_string(gateway_id_));
+  // redundant debug logs removed
 
   if (gateway_id_ > 0) {
     auto &db_manager = DbLib::DatabaseManager::getInstance();
@@ -239,7 +238,7 @@ std::vector<ExportTargetEntity> DynamicTargetLoader::fetchTargets(
                         "WHERE gateway_id = " +
                         std::to_string(gateway_id_);
 
-    LogManager::getInstance().Debug("Query: " + query);
+    // query dump removed
 
     std::vector<std::vector<std::string>> result;
     if (db_manager.executeQuery(query, result) && !result.empty()) {

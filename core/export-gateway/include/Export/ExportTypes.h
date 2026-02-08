@@ -511,8 +511,9 @@ struct BatchTargetResult {
  * @brief 알람 메시지 유효성 검증
  */
 inline bool isValidAlarmMessage(const PulseOne::CSP::AlarmMessage &alarm) {
-  // 실제 AlarmMessage 필드: bd, nm, vl, tm, al, st, des
-  return !alarm.nm.empty() && alarm.bd > 0;
+  // 실제 AlarmMessage 필드: site_id, point_name, measured_value, timestamp,
+  // alarm_level, status, description
+  return !alarm.point_name.empty() && alarm.site_id > 0;
 }
 
 /**

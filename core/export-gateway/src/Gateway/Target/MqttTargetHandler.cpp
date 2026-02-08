@@ -73,7 +73,7 @@ std::vector<TargetSendResult> MqttTargetHandler::sendValueBatch(
     TargetSendResult res;
     res.target_type = "MQTT";
     std::string topic =
-        config.value("topic", "pulseone/values/" + std::to_string(v.bd));
+        config.value("topic", "pulseone/values/" + std::to_string(v.site_id));
     std::string payload = v.to_json().dump();
     res = publishMessage(topic, payload, config.value("qos", 0), false);
     results.push_back(res);
@@ -177,8 +177,9 @@ std::string MqttTargetHandler::generateTopic(
   if (config.contains("topic_template")) {
     return expandTemplateVariables(config["topic_template"], alarm, config);
   }
-  std::string topic_val = config.value(
-      "topic", "pulseone/alarms/" + std::to_string(alarm.bd) + "/" + alarm.nm);
+  std::string topic_val =
+      config.value("topic", "pulseone/alarms/" + std::to_string(alarm.site_id) +
+                                "/" + alarm.point_name);
   return ConfigManager::getInstance().expandVariables(topic_val);
 }
 
@@ -255,7 +256,10 @@ std::string MqttTargetHandler::expandTemplateVariables(
   }
 
   auto context = transformer.createContext(alarm, target_field_name);
-  return transformer.transformString(template_str, context);
+  std::string result = transformer.transformString(template_str, context);
+  LogManager::getInstance().Info(
+      "[TRACE-TRANSFORM-MQTT] Final Alarm Payload: " + result);
+  return result;
 }
 
 REGISTER_TARGET_HANDLER("MQTT", MqttTargetHandler);

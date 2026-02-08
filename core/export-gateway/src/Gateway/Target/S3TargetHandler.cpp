@@ -321,14 +321,15 @@ std::string S3TargetHandler::expandTemplate(
 
   // 알람 변수 치환
   result = std::regex_replace(result, std::regex("\\{building_id\\}"),
-                              std::to_string(alarm.bd));
-  result = std::regex_replace(result, std::regex("\\{point_name\\}"), alarm.nm);
+                              std::to_string(alarm.site_id));
+  result = std::regex_replace(result, std::regex("\\{point_name\\}"),
+                              alarm.point_name);
   result = std::regex_replace(result, std::regex("\\{value\\}"),
-                              std::to_string(alarm.vl));
+                              std::to_string(alarm.measured_value));
   result = std::regex_replace(result, std::regex("\\{alarm_flag\\}"),
-                              std::to_string(alarm.al));
+                              std::to_string(alarm.alarm_level));
   result = std::regex_replace(result, std::regex("\\{status\\}"),
-                              std::to_string(alarm.st));
+                              std::to_string(alarm.status_code));
 
   // 타임스탬프 변수 초기값 (fallback: 현재 시간)
   std::string year = generateYearString();
@@ -340,14 +341,14 @@ std::string S3TargetHandler::expandTemplate(
   std::string date_str = generateDateString();
   std::string ts_str = generateTimestampString();
 
-  // 발생 시간(alarm.tm: yyyy-MM-dd HH:mm:ss.fff)이 있으면 해당 값 사용
-  if (alarm.tm.length() >= 19) {
-    year = alarm.tm.substr(0, 4);
-    month = alarm.tm.substr(5, 2);
-    day = alarm.tm.substr(8, 2);
-    hour = alarm.tm.substr(11, 2);
-    minute = alarm.tm.substr(14, 2);
-    second = alarm.tm.substr(17, 2);
+  // 발생 시간(alarm.timestamp: yyyy-MM-dd HH:mm:ss.fff)이 있으면 해당 값 사용
+  if (alarm.timestamp.length() >= 19) {
+    year = alarm.timestamp.substr(0, 4);
+    month = alarm.timestamp.substr(5, 2);
+    day = alarm.timestamp.substr(8, 2);
+    hour = alarm.timestamp.substr(11, 2);
+    minute = alarm.timestamp.substr(14, 2);
+    second = alarm.timestamp.substr(17, 2);
     date_str = year + month + day;
     // [Mod] User Request: No underscore in timestamp (YYYYMMDDHHMMSS)
     ts_str = year + month + day + hour + minute + second;
@@ -357,7 +358,7 @@ std::string S3TargetHandler::expandTemplate(
   result = std::regex_replace(result, std::regex("\\{date\\}"), date_str);
   // [New] Support {site_id} as alias for building_id
   result = std::regex_replace(result, std::regex("\\{site_id\\}"),
-                              std::to_string(alarm.bd));
+                              std::to_string(alarm.site_id));
   result = std::regex_replace(result, std::regex("\\{year\\}"), year);
   result = std::regex_replace(result, std::regex("\\{month\\}"), month);
   result = std::regex_replace(result, std::regex("\\{day\\}"), day);
@@ -399,6 +400,8 @@ void S3TargetHandler::expandTemplateVariables(
   auto context = transformer.createContext(alarm, target_field_name,
                                            target_description, converted_value);
   template_json = transformer.transform(template_json, context);
+  LogManager::getInstance().Info("[TRACE-TRANSFORM-S3] Final Alarm Payload: " +
+                                 template_json.dump());
 }
 
 void S3TargetHandler::expandTemplateVariables(
@@ -411,7 +414,7 @@ void S3TargetHandler::expandTemplateVariables(
   if (config.contains("field_mappings") &&
       config["field_mappings"].is_array()) {
     for (const auto &m : config["field_mappings"]) {
-      if (m.contains("point_id") && m["point_id"] == value.bd) {
+      if (m.contains("point_id") && m["point_id"] == value.point_id) {
         target_field_name = m.value("target_field", "");
         break;
       }
@@ -420,6 +423,8 @@ void S3TargetHandler::expandTemplateVariables(
 
   auto context = transformer.createContext(value, target_field_name);
   template_json = transformer.transform(template_json, context);
+  LogManager::getInstance().Info("[TRACE-TRANSFORM-S3] Final Value Payload: " +
+                                 template_json.dump());
 }
 
 std::string S3TargetHandler::buildJsonContent(
@@ -442,13 +447,13 @@ std::string S3TargetHandler::buildJsonContent(
   }
 
   // 기본 알람 데이터
-  content["building_id"] = alarm.bd;
-  content["point_name"] = alarm.nm;
-  content["value"] = alarm.vl;
-  content["timestamp"] = alarm.tm;
-  content["alarm_flag"] = alarm.al;
-  content["status"] = alarm.st;
-  content["description"] = alarm.des;
+  content["building_id"] = alarm.site_id;
+  content["point_name"] = alarm.point_name;
+  content["value"] = alarm.measured_value;
+  content["timestamp"] = alarm.timestamp;
+  content["alarm_flag"] = alarm.alarm_level;
+  content["status"] = alarm.status_code;
+  content["description"] = alarm.description;
 
   // 메타데이터
   content["source"] = "PulseOne-CSPGateway";
@@ -471,9 +476,9 @@ std::unordered_map<std::string, std::string> S3TargetHandler::buildMetadata(
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) const {
   std::unordered_map<std::string, std::string> metadata;
-  metadata["building_id"] = std::to_string(alarm.bd);
-  metadata["point_name"] = alarm.nm;
-  metadata["timestamp"] = alarm.tm;
+  metadata["building_id"] = std::to_string(alarm.site_id);
+  metadata["point_name"] = alarm.point_name;
+  metadata["timestamp"] = alarm.timestamp;
   return metadata;
 }
 

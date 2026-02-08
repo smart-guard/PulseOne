@@ -66,7 +66,7 @@ void ExportLogService::stop() {
 
 void ExportLogService::enqueueLog(const ExportLogEntity &log) {
   if (!running_) {
-    return; // 서비스가 실행 중이 아니면 무시 (혹은 저장 실패 처리)
+    return; // 서비스가 실행 중이 아니면 무시
   }
 
   // 큐 용량 제한 확인 (try_push 사용)
@@ -87,6 +87,9 @@ void ExportLogService::enqueueLog(const ExportLogEntity &log) {
 size_t ExportLogService::getQueueSize() const { return queue_.size(); }
 
 void ExportLogService::workerLoop() {
+  LogManager::getInstance().Info("[TRACE] ExportLogService::workerLoop [this=" +
+                                 std::to_string((uintptr_t)this) +
+                                 "] - Thread started");
   // Repository 인스턴스는 워커 스레드 내에서 얻거나, 멤버로 유지해도 됨.
   // RepositoryFactory는 싱글톤이고 thread-safe 가정.
   auto repo = PulseOne::Database::RepositoryFactory::getInstance()
@@ -100,7 +103,6 @@ void ExportLogService::workerLoop() {
 
   while (running_ || !queue_.empty()) {
     // 배치로 가져오기 (타임아웃 1초)
-    // running_이 false가 되어도 큐에 남은 데이터는 처리하고 종료함
     std::vector<ExportLogEntity> batch =
         queue_.pop_batch(BATCH_SIZE, BATCH_TIMEOUT_MS);
 
@@ -132,11 +134,10 @@ void ExportLogService::saveBatch(std::vector<ExportLogEntity> &batch) {
     }
   }
 
-  // 간단한 통계 로깅 (옵션)
-  // if (logger_) {
-  //    logger_->Debug("Saved batch: " + std::to_string(success_count) + "/" +
-  //    std::to_string(batch.size()));
-  // }
+  LogManager::getInstance().Info(
+      "[TRACE] ExportLogService::saveBatch - Saved " +
+      std::to_string(success_count) + "/" + std::to_string(batch.size()) +
+      " logs");
 }
 
 } // namespace Export

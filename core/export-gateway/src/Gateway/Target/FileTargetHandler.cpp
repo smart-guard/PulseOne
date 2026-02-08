@@ -101,7 +101,7 @@ std::string FileTargetHandler::generateFilePath(
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) const {
   std::string base = extractBasePath(config);
-  return base + "/" + alarm.nm + ".json";
+  return base + "/" + alarm.point_name + ".json";
 }
 
 void FileTargetHandler::createDirectoriesForFile(
@@ -132,7 +132,10 @@ std::string FileTargetHandler::expandTemplate(
     const PulseOne::Gateway::Model::AlarmMessage &alarm) const {
   auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
   auto context = transformer.createContext(alarm);
-  return transformer.transformString(template_str, context);
+  std::string result = transformer.transformString(template_str, context);
+  LogManager::getInstance().Info(
+      "[TRACE-TRANSFORM-FILE] Final Alarm Payload: " + result);
+  return result;
 }
 
 REGISTER_TARGET_HANDLER("FILE", FileTargetHandler);

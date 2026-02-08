@@ -828,8 +828,12 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
   std::vector<ExportResult> results;
 
   try {
+    LogManager::getInstance().Info("[TRACE-1-RECEIVE] AlarmEvent: " +
+                                   alarm.to_json().dump());
     // ✅ 메타데이터 통합 보정 (Point, Name, Site ID, BD, ST)
     enrichAlarmMetadata(alarm);
+    LogManager::getInstance().Info("[TRACE-2-ENRICH] Alarm enriched: " +
+                                   alarm.to_json().dump());
 
     // Batching Logic Support
     if (config_.enable_alarm_batching) {
@@ -850,11 +854,11 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
     }
 
     std::cout << "[v3.2.0 Debug][ExportCoordinator] handleAlarmEvent: "
-              << alarm.nm << " [extra_info=" << alarm.extra_info.dump() << "]"
-              << std::endl;
+              << alarm.point_name << " [extra_info=" << alarm.extra_info.dump()
+              << "]" << std::endl;
     LogManager::getInstance().Info(
         "[v3.2.0 Debug] [ExportCoordinator] 알람 이벤트 수신. Name: " +
-        alarm.nm + ", Condition: " + alarm.des +
+        alarm.point_name + ", Condition: " + alarm.description +
         ", Raw Extra: " + alarm.extra_info.dump());
 
     auto target_manager = getTargetManager();
@@ -862,8 +866,8 @@ ExportCoordinator::handleAlarmEvent(PulseOne::CSP::AlarmMessage alarm) {
       LogManager::getInstance().Error("TargetManager가 초기화되지 않았습니다");
       return results;
     }
-
-    // Single Alarm Dispatch (Corrected)
+    LogManager::getInstance().Info(
+        "[TRACE-4-SEND] Dispatching to targets for: " + alarm.point_name);
     auto target_results = target_manager->sendAlarmToTargets(alarm);
 
     for (const auto &target_result : target_results) {
@@ -1110,6 +1114,9 @@ ExportCoordinator::handleManualExport(const std::string &target_name,
       return result;
     }
 
+    LogManager::getInstance().Info(
+        "[TRACE-1-RECEIVE] Manual Export command for point_id: " +
+        std::to_string(point_id));
     std::string redis_key = "point:" + std::to_string(point_id) + ":latest";
     std::string val_json_str = redis_client_->get(redis_key);
     nlohmann::json val_json = nlohmann::json::object();
@@ -1122,46 +1129,49 @@ ExportCoordinator::handleManualExport(const std::string &target_name,
       }
     }
 
-    // 2. AlarmMessage 준비 (매핑 및 템플릿 지원)
+    // [v3.0.0] Zero-Assumption: Merge all available data into extra_info for
+    // tokens
     PulseOne::CSP::AlarmMessage alarm;
-    alarm.point_id = point_id;
 
-    // UI 명령 데이터에서 먼저 찾고, 없으면 Redis 데이터에서 찾음
-    int initial_bd = data.value("bd", 0);
-    if (initial_bd <= 0) {
-      initial_bd = data.value("site_id", 0);
+    if (val_json.is_object()) {
+      for (auto it = val_json.begin(); it != val_json.end(); ++it) {
+        alarm.extra_info[it.key()] = it.value();
+      }
+    }
+    if (data.is_object()) {
+      for (auto it = data.begin(); it != data.end(); ++it) {
+        // Command data (UI) takes precedence over Redis data
+        alarm.extra_info[it.key()] = it.value();
+      }
     }
 
-    if (initial_bd <= 0) {
-      initial_bd = val_json.value("bd", val_json.value("site_id", 0));
-    }
-
-    // 🕵️ DB Fallback: UI와 Redis 모두 site_id가 없으면 DB 직접 조회
-    // 추가 (통합 보정 활용)
-    alarm.site_id = initial_bd;
-    alarm.bd = initial_bd;
-    alarm.nm = val_json.value("nm", val_json.value("point_name", ""));
+    alarm.site_id =
+        alarm.extra_info.value("site_id", alarm.extra_info.value("bd", 0));
+    alarm.point_name =
+        alarm.extra_info.value("point_name", alarm.extra_info.value("nm", ""));
 
     // 통합 메타데이터 보정 로직 호출
     enrichAlarmMetadata(alarm);
+    LogManager::getInstance().Info("[TRACE-2-ENRICH] Manual Alarm enriched: " +
+                                   alarm.to_json().dump());
 
     // 값 파싱 (문자열 또는 숫자 대응) 및 페이로드 오버라이드 지원
     try {
       if (data.contains("value")) {
         if (data["value"].is_string()) {
-          alarm.vl = std::stod(data["value"].get<std::string>());
+          alarm.measured_value = std::stod(data["value"].get<std::string>());
         } else if (data["value"].is_number()) {
-          alarm.vl = data["value"].get<double>();
+          alarm.measured_value = data["value"].get<double>();
         } else {
-          alarm.vl = 0.0;
+          alarm.measured_value = 0.0;
         }
       } else if (val_json.contains("vl") && val_json["vl"].is_string()) {
-        alarm.vl = std::stod(val_json["vl"].get<std::string>());
+        alarm.measured_value = std::stod(val_json["vl"].get<std::string>());
       } else {
-        alarm.vl = val_json.value("vl", 0.0);
+        alarm.measured_value = val_json.value("vl", 0.0);
       }
     } catch (...) {
-      alarm.vl = 0.0;
+      alarm.measured_value = 0.0;
     }
 
     // 타임스탬프 처리
@@ -1169,20 +1179,26 @@ ExportCoordinator::handleManualExport(const std::string &target_name,
     if (tm_ms > 0) {
       auto tp = std::chrono::system_clock::time_point(
           std::chrono::milliseconds(tm_ms));
-      alarm.tm = PulseOne::CSP::AlarmMessage::time_to_csharp_format(tp, true);
+      alarm.timestamp =
+          PulseOne::CSP::AlarmMessage::time_to_csharp_format(tp, true);
     } else {
-      alarm.tm =
+      alarm.timestamp =
           PulseOne::CSP::AlarmMessage::current_time_to_csharp_format(true);
     }
 
-    // Allows override of al, st, and des from manual command data
-    alarm.al = data.value("al", 0);
-    alarm.st = data.value("st", val_json.value("st", 1));
-    alarm.des = data.value("des", std::string("Manual Export Triggered"));
+    // Allows override of alarm_level, status_code, and description from manual
+    // command data
+    alarm.alarm_level = data.value("al", 0);
+    alarm.status_code = data.value("st", val_json.value("st", 1));
+    alarm.description =
+        data.value("des", std::string("Manual Export Triggered"));
 
     // 🚀 [IMPORTANT] Override flag for manual data validation
     // (telling TargetManager to trust this data)
     alarm.manual_override = true;
+
+    LogManager::getInstance().Info("[TRACE-3-PARSED] Agnostic Check: " +
+                                   alarm.to_json().dump());
 
     // 3. DynamicTargetManager를 통해 전송 (매핑 포인트 이름 자동
     // 적용)
@@ -1195,6 +1211,9 @@ ExportCoordinator::handleManualExport(const std::string &target_name,
     LogManager::getInstance().Info("수동 전송 시작: " + target_name +
                                    " (Point=" + std::to_string(point_id) + ")");
 
+    LogManager::getInstance().Info(
+        "[TRACE-4-SEND] Dispatching manual export: " + target_name + " for " +
+        alarm.point_name);
     PulseOne::CSP::TargetSendResult send_res =
         target_manager->sendAlarmToTarget(target_name, alarm);
 
@@ -1594,9 +1613,9 @@ void ExportCoordinator::enrichAlarmMetadata(
     if (point_repo) {
       auto point_opt = point_repo->findById(alarm.point_id);
       if (point_opt.has_value()) {
-        // st (Status) enrichment
-        if (alarm.nm.empty()) {
-          alarm.nm = point_opt->getName();
+        // point_name (Name) enrichment
+        if (alarm.point_name.empty()) {
+          alarm.point_name = point_opt->getName();
         }
 
         // is_control (Intelligence)
@@ -1678,9 +1697,7 @@ void ExportCoordinator::enrichAlarmMetadata(
       }
     }
 
-    if (alarm.bd <= 0 && alarm.site_id > 0) {
-      alarm.bd = alarm.site_id;
-    }
+    // site_id is now natively descriptive
   } catch (...) {
   }
 }

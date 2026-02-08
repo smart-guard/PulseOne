@@ -1267,6 +1267,8 @@ const std::string CREATE_TABLE = R"(
             processing_time_ms INTEGER,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             client_info TEXT,
+            gateway_id INTEGER,
+            sent_payload TEXT,
             
             FOREIGN KEY (service_id) REFERENCES protocol_services(id) ON DELETE SET NULL,
             FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE SET NULL,
@@ -1286,7 +1288,8 @@ const std::string CREATE_INDEXES = R"(
 const std::string FIND_ALL = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, client_info,
+               gateway_id, sent_payload
         FROM export_logs
         ORDER BY timestamp DESC LIMIT 1000
     )";
@@ -1294,7 +1297,8 @@ const std::string FIND_ALL = R"(
 const std::string FIND_BY_ID = R"(
         SELECT id, log_type, service_id, target_id, mapping_id, point_id,
                source_value, converted_value, status, error_message, error_code,
-               response_data, http_status_code, processing_time_ms, timestamp, client_info
+               response_data, http_status_code, processing_time_ms, timestamp, client_info,
+               gateway_id, sent_payload
         FROM export_logs WHERE id = ?
     )";
 
@@ -1311,8 +1315,9 @@ const std::string INSERT = R"(
         INSERT INTO export_logs (
             log_type, service_id, target_id, mapping_id, point_id,
             source_value, converted_value, status, error_message, error_code,
-            response_data, http_status_code, processing_time_ms, timestamp, client_info
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            response_data, http_status_code, processing_time_ms, timestamp, client_info,
+            gateway_id, sent_payload
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
 const std::string UPDATE = R"(
@@ -1320,7 +1325,8 @@ const std::string UPDATE = R"(
             log_type = ?, service_id = ?, target_id = ?, mapping_id = ?, point_id = ?,
             source_value = ?, converted_value = ?, status = ?, error_message = ?,
             error_code = ?, response_data = ?, http_status_code = ?,
-            processing_time_ms = ?, timestamp = ?, client_info = ?
+            processing_time_ms = ?, timestamp = ?, client_info = ?,
+            gateway_id = ?, sent_payload = ?
         WHERE id = ?
     )";
 

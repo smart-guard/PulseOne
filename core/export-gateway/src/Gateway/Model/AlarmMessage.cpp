@@ -20,108 +20,149 @@ namespace Model {
 
 json AlarmMessage::to_json() const {
   // [v3.2.0] Agnostic Data Carrier
-  // 이 JSON은 원본 데이터를 보존하며, 템플릿 엔진({{{...}}})이 참조할 수 있는
-  // 표준 변수들을 제공함.
-  json j = extra_info.is_object() ? extra_info : json::object();
+  // Only use descriptive keys to avoid legacy collision (bd, vl, etc.)
+  json j = json::object();
 
   // 표준 변수군 (Agnostic Variables)
-  // 임의의 템플릿에서 공통적으로 사용할 수 있는 데이터 브릿지 역할
-  j["site_id"] = bd;
+  j["site_id"] = site_id;
   j["point_id"] = point_id;
   j["rule_id"] = rule_id;
-  j["measured_value"] = vl;
-  j["point_name"] = nm;
-  j["original_name"] = original_nm;
-  j["timestamp"] = tm;
-  j["comm_status"] = st;
-  j["alarm_level"] = al;
-  j["description"] = des;
-  j["data_type"] = ty;
-  j["is_control"] = (ty == "bit" || ty == "bool") ? 1 : 0;
+  j["measured_value"] = measured_value;
+  j["point_name"] = point_name;
+  j["original_name"] = original_name;
+  j["timestamp"] = timestamp;
+  j["status_code"] = status_code;
+  j["alarm_level"] = alarm_level;
+  j["description"] = description;
+  j["data_type"] = data_type;
+  j["is_control"] =
+      (data_type == "bit" || data_type == "bool" || data_type == "DIGITAL") ? 1
+                                                                            : 0;
+
+  // extra_info는 필요 시 하위 객체로 보관하거나 템플릿 엔진 전용으로만 사용
+  // j["_metadata"] = extra_info;
 
   return j;
 }
 
 bool AlarmMessage::from_json(const json &j) {
   try {
-    // 1. Building ID / Site ID
-    if (j.contains("bd"))
-      bd = j["bd"].is_number() ? j["bd"].get<int>()
-                               : std::stoi(j["bd"].get<std::string>());
-    else if (j.contains("site_id"))
-      bd = j["site_id"].is_number()
-               ? j["site_id"].get<int>()
-               : std::stoi(j["site_id"].get<std::string>());
+    // [v3.0.0] Agnostic Parsing Logic (Priority: Collector-Native Descriptive
+    // Keys)
 
-    // 2. Name (nm / source_name)
-    if (j.contains("nm"))
-      nm = j["nm"].get<std::string>();
-    else if (j.contains("source_name"))
-      nm = j["source_name"].get<std::string>();
-
-    original_nm = nm; // 컬렉터에서 받은 원본 이름을 보존
-
-    // 3. Value (vl / trigger_value)
-    if (j.contains("vl")) {
-      if (j["vl"].is_number())
-        vl = j["vl"].get<double>();
-    } else if (j.contains("trigger_value")) {
-      if (j["trigger_value"].is_number())
-        vl = j["trigger_value"].get<double>();
-      else if (j["trigger_value"].is_string())
-        vl = std::stod(j["trigger_value"].get<std::string>());
+    // 1. Site ID
+    if (j.contains("site_id")) {
+      site_id = j["site_id"].is_number()
+                    ? j["site_id"].get<int>()
+                    : std::stoi(j["site_id"].get<std::string>());
+    } else if (j.contains("tenant_id")) {
+      site_id = j["tenant_id"].is_number()
+                    ? j["tenant_id"].get<int>()
+                    : std::stoi(j["tenant_id"].get<std::string>());
+    } else if (j.contains("bd")) {
+      site_id = j["bd"].is_number() ? j["bd"].get<int>()
+                                    : std::stoi(j["bd"].get<std::string>());
     }
 
-    // 4. Timestamp (tm / timestamp)
-    if (j.contains("tm")) {
-      tm = j["tm"].get<std::string>();
-    } else if (j.contains("timestamp")) {
-      if (j["timestamp"].is_number()) {
+    // 2. Point Name (Priority: source_name -> point_name -> nm)
+    if (j.contains("source_name"))
+      point_name = j["source_name"].get<std::string>();
+    else if (j.contains("point_name"))
+      point_name = j["point_name"].get<std::string>();
+    else if (j.contains("nm"))
+      point_name = j["nm"].get<std::string>();
+
+    original_name = point_name;
+
+    // 3. Measured Value (Priority: trigger_value -> measured_value -> vl)
+    if (j.contains("trigger_value")) {
+      if (j["trigger_value"].is_number())
+        measured_value = j["trigger_value"].get<double>();
+      else if (j["trigger_value"].is_string())
+        measured_value = std::stod(j["trigger_value"].get<std::string>());
+    } else if (j.contains("measured_value")) {
+      if (j["measured_value"].is_number())
+        measured_value = j["measured_value"].get<double>();
+    } else if (j.contains("vl")) {
+      if (j["vl"].is_number())
+        measured_value = j["vl"].get<double>();
+    } else if (j.contains("value")) {
+      if (j["value"].is_number())
+        measured_value = j["value"].get<double>();
+      else if (j["value"].is_string())
+        measured_value = std::stod(j["value"].get<std::string>());
+    }
+
+    // 4. Timestamp
+    if (j.contains("timestamp")) {
+      if (j["timestamp"].is_string()) {
+        timestamp = j["timestamp"].get<std::string>();
+      } else if (j["timestamp"].is_number()) {
         int64_t ms = j["timestamp"].get<int64_t>();
         std::chrono::system_clock::time_point tp{std::chrono::milliseconds(ms)};
-        tm = time_to_csharp_format(tp, true);
+        timestamp = time_to_csharp_format(tp, true);
       }
+    } else if (j.contains("tm")) {
+      timestamp = j["tm"].get<std::string>();
     }
 
-    // 5. Alarm Status (al / state)
-    if (j.contains("al")) {
-      if (j["al"].is_number())
-        al = j["al"].get<int>();
-      else {
-        std::string s = j["al"].get<std::string>();
-        al = (s == "ALARM" || s == "1" || s == "active" || s == "ACTIVE") ? 1
-                                                                          : 0;
-      }
+    // 5. Alarm Level / Severity (Priority: severity -> state -> alarm_level ->
+    // al)
+    if (j.contains("severity")) {
+      std::string sev = j["severity"].get<std::string>();
+      if (sev == "CRITICAL")
+        alarm_level = 2;
+      else if (sev == "WARNING")
+        alarm_level = 1;
+      else if (sev == "INFO")
+        alarm_level = 0;
+      else
+        alarm_level = 1;
     } else if (j.contains("state")) {
-      std::string s = j["state"].get<std::string>();
-      al = (s == "active" || s == "ACTIVE") ? 1 : 0;
+      std::string st_str = j["state"].get<std::string>();
+      alarm_level = (st_str == "ACTIVE" || st_str == "ALARM") ? 1 : 0;
+    } else if (j.contains("alarm_level")) {
+      alarm_level =
+          j["alarm_level"].is_number() ? j["alarm_level"].get<int>() : 0;
+    } else if (j.contains("al")) {
+      alarm_level = j["al"].is_number() ? j["al"].get<int>() : 0;
     }
 
-    // 6. Comm Status
-    if (j.contains("st") && j["st"].is_number())
-      st = j["st"].get<int>();
+    // 6. Status Code
+    if (j.contains("status_code")) {
+      status_code =
+          j["status_code"].is_number() ? j["status_code"].get<int>() : 1;
+    } else if (j.contains("st")) {
+      status_code = j["st"].is_number() ? j["st"].get<int>() : 1;
+    }
 
-    // 7. Description (des / message)
-    if (j.contains("des"))
-      des = j["des"].get<std::string>();
-    else if (j.contains("message"))
-      des = j["message"].get<std::string>();
+    // 7. Description
+    if (j.contains("message"))
+      description = j["message"].get<std::string>();
+    else if (j.contains("description"))
+      description = j["description"].get<std::string>();
+    else if (j.contains("des"))
+      description = j["des"].get<std::string>();
 
-    // [v3.2.0] Save RAW input JSON for dynamic mapping (PayloadTransformer)
+    // 8. Data Type
+    if (j.contains("data_type"))
+      data_type = j["data_type"].get<std::string>();
+    else if (j.contains("ty"))
+      data_type = j["ty"].get<std::string>();
+
+    // Save RAW context for transformer engine
     extra_info = j;
 
-    // Internal mapping (site_id, point_id)
-    if (j.contains("site_id")) {
-      if (j["site_id"].is_number())
-        site_id = j["site_id"].get<int>();
-      else if (j["site_id"].is_string())
-        site_id = std::stoi(j["site_id"].get<std::string>());
-    }
     if (j.contains("point_id")) {
       if (j["point_id"].is_number())
         point_id = j["point_id"].get<int>();
       else if (j["point_id"].is_string())
         point_id = std::stoi(j["point_id"].get<std::string>());
+    }
+
+    if (j.contains("rule_id")) {
+      if (j["rule_id"].is_number())
+        rule_id = j["rule_id"].get<int>();
     }
 
     return true;
@@ -136,37 +177,38 @@ AlarmMessage AlarmMessage::from_alarm_occurrence(
     int building_id) {
 
   AlarmMessage msg;
-  msg.bd = building_id > 0 ? building_id : occurrence.getTenantId();
+  msg.site_id = building_id > 0 ? building_id : occurrence.getTenantId();
 
   if (occurrence.getPointId().has_value()) {
     msg.point_id = occurrence.getPointId().value();
   }
 
   if (!occurrence.getSourceName().empty()) {
-    msg.nm = occurrence.getSourceName();
+    msg.point_name = occurrence.getSourceName();
   } else {
-    msg.nm = "Alarm_" + std::to_string(occurrence.getRuleId());
+    msg.point_name = "Alarm_" + std::to_string(occurrence.getRuleId());
   }
 
   if (!occurrence.getTriggerValue().empty()) {
     try {
-      msg.vl = std::stod(occurrence.getTriggerValue());
+      msg.measured_value = std::stod(occurrence.getTriggerValue());
     } catch (...) {
-      msg.vl = 0.0;
+      msg.measured_value = 0.0;
     }
   }
 
-  msg.tm = time_to_csharp_format(occurrence.getOccurrenceTime(), true);
+  msg.timestamp = time_to_csharp_format(occurrence.getOccurrenceTime(), true);
 
   auto state = occurrence.getState();
-  msg.al = (state == PulseOne::Alarm::AlarmState::ACTIVE)    ? 1
-           : (state == PulseOne::Alarm::AlarmState::CLEARED) ? 0
-                                                             : 1;
+  msg.alarm_level = (state == PulseOne::Alarm::AlarmState::ACTIVE)    ? 1
+                    : (state == PulseOne::Alarm::AlarmState::CLEARED) ? 0
+                                                                      : 1;
 
-  msg.st = occurrence.getAcknowledgedTime().has_value() ? 0 : 1;
+  msg.status_code = occurrence.getAcknowledgedTime().has_value() ? 0 : 1;
 
-  msg.des = occurrence.getAlarmMessage().empty() ? "Alarm Message"
-                                                 : occurrence.getAlarmMessage();
+  msg.description = occurrence.getAlarmMessage().empty()
+                        ? "Alarm Message"
+                        : occurrence.getAlarmMessage();
 
   return msg;
 }
@@ -200,26 +242,25 @@ std::string AlarmMessage::time_to_csharp_format(
 }
 
 bool AlarmMessage::is_valid() const {
-  // Relaxed validity: if raw data exists, we consider it valid for
-  // transformation
   if (!extra_info.empty())
     return true;
-  // Fallback to legacy check
-  return bd > 0 && !nm.empty();
+  return site_id > 0 && !point_name.empty();
 }
 
 std::string AlarmMessage::get_alarm_status_string() const {
-  return (al == 1) ? "발생" : "해제";
+  return (alarm_level == 1) ? "발생" : "해제";
 }
 
 std::string AlarmMessage::to_string() const {
   std::ostringstream oss;
-  oss << "AlarmMessage{bd=" << bd << ", nm='" << nm << "', al=" << al << "}";
+  oss << "AlarmMessage{site_id=" << site_id << ", point_name='" << point_name
+      << "', alarm_level=" << alarm_level << "}";
   return oss.str();
 }
 
 bool AlarmMessage::operator==(const AlarmMessage &other) const {
-  return bd == other.bd && nm == other.nm && tm == other.tm && al == other.al;
+  return site_id == other.site_id && point_name == other.point_name &&
+         timestamp == other.timestamp && alarm_level == other.alarm_level;
 }
 
 } // namespace Model

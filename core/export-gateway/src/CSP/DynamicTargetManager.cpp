@@ -443,14 +443,7 @@ DynamicTargetManager::sendAlarmToTargets(const AlarmMessage &alarm) {
   // ✅ 1. Redis PUBLISH (옵션 - 다른 시스템에 알람 전파)
   if (publish_client_ && publish_client_->isConnected()) {
     try {
-      json alarm_json;
-      alarm_json["bd"] = alarm.bd;
-      alarm_json["nm"] = alarm.nm;
-      alarm_json["vl"] = alarm.vl;
-      alarm_json["tm"] = alarm.tm;
-      alarm_json["al"] = alarm.al;
-      alarm_json["des"] = alarm.des;
-      alarm_json["st"] = alarm.st;
+      json alarm_json = alarm.to_json();
 
       int subscriber_count = publish_client_->publish(
           PulseOne::Constants::Export::Redis::CHANNEL_ALARMS_PROCESSED,
@@ -708,7 +701,7 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
           auto it2 = it1->second.find(alarm.point_id);
           if (it2 != it1->second.end()) {
             if (!it2->second.empty()) {
-              alarm.nm = it2->second;
+              alarm.point_name = it2->second;
             }
           }
         }
@@ -764,13 +757,13 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
 
       if (!mapped_bd_str.empty()) {
         try {
-          alarm.bd = std::stoi(mapped_bd_str);
+          alarm.site_id = std::stoi(mapped_bd_str);
         } catch (...) {
         }
       } else {
         // [FIX] 만약 사이트 매핑이 없으면 오버라이드된 lookup_site_id(280 등)를
         // 직접 bd로 사용
-        alarm.bd = lookup_site_id;
+        alarm.site_id = lookup_site_id;
       }
 
       processed_batch.push_back(alarm);
@@ -1230,33 +1223,34 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
 
     // Scale/Offset 적용
     if (applied_scale != 1.0 || applied_offset != 0.0) {
-      mapped_alarm.vl = (alarm.vl * applied_scale) + applied_offset;
+      mapped_alarm.measured_value =
+          (alarm.measured_value * applied_scale) + applied_offset;
       LogManager::getInstance().Debug(
-          "값 보정 적용: " + std::to_string(alarm.vl) + " -> " +
-          std::to_string(mapped_alarm.vl) +
+          "값 보정 적용: " + std::to_string(alarm.measured_value) + " -> " +
+          std::to_string(mapped_alarm.measured_value) +
           " (Scale=" + std::to_string(applied_scale) +
           ", Offset=" + std::to_string(applied_offset) + ")");
     }
 
     if (!mapped_name.empty()) {
-      mapped_alarm.nm = mapped_name;
-      LogManager::getInstance().Debug("포인트 이름 매핑 적용: " + alarm.nm +
-                                      " -> " + mapped_name);
+      mapped_alarm.point_name = mapped_name;
+      LogManager::getInstance().Debug(
+          "포인트 이름 매핑 적용: " + alarm.point_name + " -> " + mapped_name);
     }
 
     // [FIX] 수동 전송시 유저 입력 우선, 아니면 매핑값 적용, 없으면
     // lookup_site_id 적용
-    if (alarm.manual_override && alarm.bd > 0) {
-      mapped_alarm.bd = alarm.bd;
+    if (alarm.manual_override && alarm.site_id > 0) {
+      mapped_alarm.site_id = alarm.site_id;
       LogManager::getInstance().Info("[PRIORITY] Manual BD preserved: " +
-                                     std::to_string(alarm.bd));
+                                     std::to_string(alarm.site_id));
     } else if (mapped_bd > 0) {
-      mapped_alarm.bd = mapped_bd;
+      mapped_alarm.site_id = mapped_bd;
       LogManager::getInstance().Debug(
           "빌딩 ID 매핑 적용: " + std::to_string(alarm.site_id) + " -> " +
           std::to_string(mapped_bd));
     } else {
-      mapped_alarm.bd = lookup_site_id;
+      mapped_alarm.site_id = lookup_site_id;
       LogManager::getInstance().Debug("Site ID 매핑 적용 (BD): " +
                                       std::to_string(lookup_site_id));
     }

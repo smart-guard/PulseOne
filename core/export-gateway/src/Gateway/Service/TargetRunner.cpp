@@ -57,18 +57,27 @@ TargetSendResult TargetRunner::sendAlarmToTarget(
   result.target_name = target_name;
   result.success = false;
 
+  LogManager::getInstance().Info(
+      "TargetRunner: Entering sendAlarmToTarget for target=" + target_name);
   auto target_opt = registry_.getTarget(target_name);
   if (!target_opt) {
+    LogManager::getInstance().Error(
+        "TargetRunner: Target not found in registry: " + target_name);
     result.error_message = "Target not found: " + target_name;
     return result;
   }
 
   const auto &target = *target_opt;
+  LogManager::getInstance().Info(
+      "TargetRunner: Found target ID=" + std::to_string(target.id) +
+      " Type=" + target.type);
   result.target_id = target.id;
   result.target_type = target.type;
 
   auto *protector = getOrCreateProtector(target.name, target.config);
   if (protector && !protector->canExecute()) {
+    LogManager::getInstance().Warn(
+        "TargetRunner: Circuit breaker open for target=" + target_name);
     result.error_message = "Circuit breaker open: " + target_name;
     return result;
   }
@@ -235,7 +244,7 @@ PulseOne::Gateway::Model::AlarmMessage TargetRunner::applyMappings(
   std::string mapped_nm =
       registry_.getTargetFieldName(target.id, alarm.point_id);
   if (!mapped_nm.empty())
-    processed.nm = mapped_nm;
+    processed.point_name = mapped_nm;
 
   // Site ID / Building ID mapping
   int site_id = registry_.getOverrideSiteId(target.id, alarm.point_id);
@@ -245,11 +254,11 @@ PulseOne::Gateway::Model::AlarmMessage TargetRunner::applyMappings(
   std::string ext_bd = registry_.getExternalBuildingId(target.id, site_id);
   if (!ext_bd.empty()) {
     try {
-      processed.bd = std::stoi(ext_bd);
+      processed.site_id = std::stoi(ext_bd);
     } catch (...) {
     }
   } else if (site_id != alarm.site_id) {
-    processed.bd = site_id;
+    processed.site_id = site_id;
   }
 
   return processed;
