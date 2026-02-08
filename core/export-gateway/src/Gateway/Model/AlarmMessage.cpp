@@ -19,28 +19,26 @@ namespace Gateway {
 namespace Model {
 
 json AlarmMessage::to_json() const {
-  // [v3.2.0] Agnostic Data Carrier
-  // Only use descriptive keys to avoid legacy collision (bd, vl, etc.)
+  // [v3.2.1] Engine Standard Format (Matched with Payload Templates & UI)
   json j = json::object();
 
-  // 표준 변수군 (Agnostic Variables)
-  j["site_id"] = site_id;
-  j["point_id"] = point_id;
-  j["rule_id"] = rule_id;
-  j["measured_value"] = measured_value;
-  j["point_name"] = point_name;
-  j["original_name"] = original_name;
-  j["timestamp"] = timestamp;
-  j["status_code"] = status_code;
-  j["alarm_level"] = alarm_level;
-  j["description"] = description;
-  j["data_type"] = data_type;
-  j["is_control"] =
-      (data_type == "bit" || data_type == "bool" || data_type == "DIGITAL") ? 1
-                                                                            : 0;
+  j["bd"] = site_id;
+  j["nm"] = point_name;
+  j["vl"] = measured_value;
+  j["al"] = alarm_level;
+  j["st"] = status_code;
+  j["tm"] = timestamp;
+  j["ty"] = data_type;
+  j["des"] = description;
 
-  // extra_info는 필요 시 하위 객체로 보관하거나 템플릿 엔진 전용으로만 사용
-  // j["_metadata"] = extra_info;
+  // Metadata Harvesting (mi, mx, il, xl 등 필수 필드 포함)
+  if (!extra_info.is_null() && extra_info.is_object()) {
+    for (auto it = extra_info.begin(); it != extra_info.end(); ++it) {
+      if (!j.contains(it.key())) {
+        j[it.key()] = it.value();
+      }
+    }
+  }
 
   return j;
 }
