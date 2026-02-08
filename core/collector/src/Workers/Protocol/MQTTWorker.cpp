@@ -1431,9 +1431,24 @@ bool MQTTWorker::ParseMQTTConfig() {
     }
 
     // 재시도 횟수
-    if (protocol_config_json.contains("max_retry_count")) {
-      mqtt_config_.max_retry_count =
-          protocol_config_json.value("max_retry_count", 3);
+    mqtt_config_.max_retry_count =
+        protocol_config_json.value("max_retry_count", 3);
+
+    // [New] 재시도 간격 (기본 5초)
+    if (protocol_config_json.contains("retry_interval_ms")) {
+      mqtt_config_.retry_interval_ms =
+          protocol_config_json.value("retry_interval_ms", 5000);
+    } else if (device_info_.retry_interval_ms > 0) {
+      mqtt_config_.retry_interval_ms = device_info_.retry_interval_ms;
+    }
+
+    // [New] 백오프 시간 (기본 60초)
+    if (protocol_config_json.contains("backoff_time_ms")) {
+      mqtt_config_.backoff_time_ms =
+          protocol_config_json.value("backoff_time_ms", 60000);
+    } else if (device_info_.max_backoff_time_ms > 0) {
+      // DeviceInfo의 max_backoff_time_ms를 백오프 시간으로 사용
+      mqtt_config_.backoff_time_ms = device_info_.max_backoff_time_ms;
     }
 
     // 5단계: Worker 레벨 설정 적용
@@ -1497,7 +1512,6 @@ bool MQTTWorker::ParseMQTTConfig() {
     LogMessage(LogLevel::INFO, config_summary);
 
     return true;
-
   } catch (const std::exception &e) {
     LogMessage(LogLevel::LOG_ERROR,
                "ParseMQTTConfig failed: " + std::string(e.what()));
@@ -1749,7 +1763,39 @@ void MQTTWorker::MessageProcessorThreadFunction() {
       if (!CheckConnection() && auto_reconnect_enabled_) {
         LogMessage(LogLevel::WARN,
                    "Connection lost, attempting reconnection...");
-        EstablishConnection();
+        if (!EstablishConnection()) {
+          current_retry_count_++;
+          int sleep_time = mqtt_config_.retry_interval_ms;
+
+          // 최대 재시도 횟수 초과 시 백오프 적용
+          if (current_retry_count_ > mqtt_config_.max_retry_count) {
+            sleep_time = mqtt_config_.backoff_time_ms;
+            LogMessage(LogLevel::WARN,
+                       "Max retries (" +
+                           std::to_string(mqtt_config_.max_retry_count) +
+                           ") reached. Backing off for " +
+                           std::to_string(sleep_time) + "ms...");
+            // 백오프 후에는 다시 짧은 주기로 재시도하기 위해 카운터 리셋
+            current_retry_count_ = 0;
+          } else {
+            LogMessage(LogLevel::WARN,
+                       "Reconnection failed (Attempt " +
+                           std::to_string(current_retry_count_) + "/" +
+                           std::to_string(mqtt_config_.max_retry_count) +
+                           "). Retrying in " + std::to_string(sleep_time) +
+                           "ms...");
+          }
+
+          std::this_thread::sleep_for(std::chrono::milliseconds(sleep_time));
+        } else {
+          // 연결 성공 시 카운터 리셋
+          if (current_retry_count_ > 0) {
+            LogMessage(LogLevel::INFO,
+                       "Reconnected successfully after " +
+                           std::to_string(current_retry_count_) + " attempts.");
+          }
+          current_retry_count_ = 0;
+        }
       }
 
       // 메시지 처리는 MqttDriver의 콜백을 통해 처리됨

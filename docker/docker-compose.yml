@@ -2,6 +2,7 @@ version: "3.8"
 
 services:
   frontend:
+    container_name: docker-frontend-1
     build:
       context: ../frontend
       dockerfile: Dockerfile.dev
@@ -103,6 +104,7 @@ services:
     command: /bin/bash -c "rm -f /app/data/pulseone.db && make -j10 -C ../shared all && make -j10 all && ./bin/pulseone-collector"
 
   simulator-modbus:
+    container_name: docker-simulator-modbus-1
     image: node:20-slim
     working_dir: /app/backend
     environment:
@@ -117,6 +119,7 @@ services:
       - pulseone_network
 
   simulator-mqtt:
+    container_name: docker-simulator-mqtt-1
     image: node:20-slim
     working_dir: /app/backend
     environment:
@@ -131,6 +134,7 @@ services:
     command: node scripts/mqtt_simulator.js
 
   rabbitmq:
+    container_name: docker-rabbitmq-1
     image: rabbitmq:3-management
     restart: always
     ports:
