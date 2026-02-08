@@ -5,26 +5,12 @@
  * @date 2026-02-06
  */
 
-#include "Security/SecretManager.h"
-
-// ... existing includes ...
-
-// 1. Expand variables (e.g. ${MY_API_KEY} -> actual key or path)
-std::string expanded_value = config_manager.expandVariables(value);
-
-// 2. Decrypt if the value is encrypted (ENC:...)
-// Exposed via SecretManager::decryptEncodedValue
-std::string final_value =
-    Security::SecretManager::getInstance().decryptEncodedValue(expanded_value);
-
-headers[key] = final_value;
-}
-}
-return headers;
-}
+#include "Gateway/Target/HttpTargetHandler.h"
+#include "Client/HttpClient.h"
 #include "Constants/ExportConstants.h"
 #include "Gateway/Model/AlarmMessage.h"
 #include "Logging/LogManager.h"
+#include "Security/SecretManager.h"
 #include "Transform/PayloadTransformer.h"
 #include "Utils/ClientCacheManager.h"
 #include "Utils/ConfigManager.h"
@@ -271,14 +257,12 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
       // 1. Expand variables (e.g. ${MY_API_KEY} -> actual key or path)
       std::string expanded_value = config_manager.expandVariables(value);
 
-      // 2. We can add specific decryption if expected, but usually secrets are
-      // resolved via ID. If the value is "ENC(xyz)", ConfigManager might handle
-      // it? S3Handler used: decryptSecret(config_manager.expandVariables(...))
-      // We should check if we have access to decryptSecret helper or
-      // SecretManager directly. S3Handler had a helper. We don't have it here
-      // yet. But ConfigManager::getSecret() often handles lookup.
+      // 2. Decrypt if the value is encrypted (ENC:...)
+      std::string final_value =
+          Security::SecretManager::getInstance().decryptEncodedValue(
+              expanded_value);
 
-      headers[key] = expanded_value;
+      headers[key] = final_value;
     }
   }
   return headers;
