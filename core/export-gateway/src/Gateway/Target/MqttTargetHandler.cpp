@@ -186,6 +186,13 @@ std::string MqttTargetHandler::generateTopic(
 std::string MqttTargetHandler::generatePayload(
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) const {
+  // [v3.2.1] Manual Override RAW Bypass
+  if (alarm.manual_override) {
+    LogManager::getInstance().Info(
+        "[MQTT] Manual Override active: Sending RAW payload.");
+    return alarm.extra_info.is_null() ? "{}" : alarm.extra_info.dump();
+  }
+
   if (config.contains("body_template")) {
     json temp = config["body_template"];
     auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();

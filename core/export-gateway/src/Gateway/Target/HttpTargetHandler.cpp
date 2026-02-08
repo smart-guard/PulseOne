@@ -199,6 +199,8 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
   auto headers = buildRequestHeaders(config);
   std::string body = buildRequestBody(alarm, config);
 
+  LogManager::getInstance().Info("[TRACE-4-SEND] HTTP Request Body: " + body);
+
   auto response =
       client->post(url, body, HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
   result.success = response.isSuccess();
@@ -265,6 +267,13 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
 
 std::string HttpTargetHandler::buildRequestBody(
     const PulseOne::Gateway::Model::AlarmMessage &alarm, const json &config) {
+  // [v3.2.1] Manual Override RAW Bypass: send EXACTLY what the user provided.
+  if (alarm.manual_override) {
+    LogManager::getInstance().Info("[HTTP] Manual Override active: Sending RAW "
+                                   "payload (Zero-Transformation).");
+    return alarm.extra_info.is_null() ? "{}" : alarm.extra_info.dump();
+  }
+
   if (config.contains("body_template")) {
     json temp = config["body_template"];
     expandTemplateVariables(temp, alarm, config);

@@ -19,19 +19,25 @@ namespace Gateway {
 namespace Model {
 
 json AlarmMessage::to_json() const {
-  // [v3.2.1] Engine Standard Format (Matched with Payload Templates & UI)
+  // [v3.2.1] Manual Override RAW Bypass: 사용자 입력 원본 그대로 반환
+  if (manual_override && !extra_info.is_null()) {
+    return extra_info;
+  }
+
+  // [v3.2.0] Descriptive Agnostic Standard (Template-Independent)
   json j = json::object();
 
-  j["bd"] = site_id;
-  j["nm"] = point_name;
-  j["vl"] = measured_value;
-  j["al"] = alarm_level;
-  j["st"] = status_code;
-  j["tm"] = timestamp;
-  j["ty"] = data_type;
-  j["des"] = description;
+  j["site_id"] = site_id;
+  j["point_name"] = point_name;
+  j["measured_value"] = measured_value;
+  j["alarm_level"] = alarm_level;
+  j["status_code"] = status_code;
+  j["timestamp"] = timestamp;
+  j["data_type"] = data_type;
+  j["description"] = description;
+  j["point_id"] = point_id;
 
-  // Metadata Harvesting (mi, mx, il, xl 등 필수 필드 포함)
+  // Metadata Harvesting (원본 페이로드의 모든 필드 포함)
   if (!extra_info.is_null() && extra_info.is_object()) {
     for (auto it = extra_info.begin(); it != extra_info.end(); ++it) {
       if (!j.contains(it.key())) {
@@ -39,6 +45,10 @@ json AlarmMessage::to_json() const {
       }
     }
   }
+
+  j["is_control"] =
+      (data_type == "bit" || data_type == "bool" || data_type == "DIGITAL") ? 1
+                                                                            : 0;
 
   return j;
 }

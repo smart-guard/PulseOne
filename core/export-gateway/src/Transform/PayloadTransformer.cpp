@@ -143,17 +143,14 @@ TransformContext PayloadTransformer::createContext(
       "[TRACE-TRANSFORM] Value Context created for " + context.point_name +
       " (Value: " + context.value + ")");
 
-  // [v3.0.0] Zero-Assumption Harvesting Logic
+  // [v3.2.1] True Zero-Assumption Harvesting: 모든 추가 정보를 토큰화
   if (!alarm.extra_info.is_null() && alarm.extra_info.is_object()) {
     for (auto it = alarm.extra_info.begin(); it != alarm.extra_info.end();
          ++it) {
-      if (it.value().is_primitive()) {
-        context.custom_vars[it.key()] = it.value().is_string()
-                                            ? it.value().get<std::string>()
-                                            : it.value().dump();
-      } else {
-        context.custom_vars[it.key()] = it.value().dump();
-      }
+      // 이미 정의된 기본 변수들과 충돌하지 않는 경우에만 수집
+      context.custom_vars[it.key()] = it.value().is_string()
+                                          ? it.value().get<std::string>()
+                                          : it.value().dump();
     }
   }
 

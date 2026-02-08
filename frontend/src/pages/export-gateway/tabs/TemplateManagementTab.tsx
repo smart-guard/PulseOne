@@ -417,9 +417,21 @@ const TemplateManagementTab: React.FC = () => {
             {isModalOpen && (
                 <div className="mgmt-modal-overlay">
                     <div className="mgmt-modal-content" style={{ maxWidth: '900px', width: '95%' }}>
-                        <div className="mgmt-modal-header" style={{ padding: '15px 20px' }}>
-                            <h3 className="mgmt-modal-title" style={{ fontSize: '16px' }}>{editingTemplate?.id ? "템플릿 수정" : "페이로드 템플릿 추가"}</h3>
-                            <button className="mgmt-modal-close" onClick={handleCloseModal}>&times;</button>
+                        <div className="mgmt-modal-header" style={{ padding: '15px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 className="mgmt-modal-title" style={{ fontSize: '16px', margin: 0 }}>{editingTemplate?.id ? "템플릿 수정" : "페이로드 템플릿 추가"}</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <button
+                                    type="button"
+                                    className={`mgmt-btn btn-primary btn-sm ${editMode === 'advanced' && !isJsonValid ? 'disabled' : ''}`}
+                                    disabled={editMode === 'advanced' && !isJsonValid}
+                                    onClick={(e) => handleSave(e as any)}
+                                    style={{ height: '32px', fontSize: '13px', padding: '0 16px', borderRadius: '6px' }}
+                                >
+                                    <i className="fas fa-save" style={{ marginRight: '6px' }} />
+                                    저장
+                                </button>
+                                <button className="mgmt-modal-close" onClick={handleCloseModal}>&times;</button>
+                            </div>
                         </div>
                         <form onSubmit={handleSave}>
                             <div className="mgmt-modal-body" style={{ padding: 0, display: 'flex', height: '750px', overflow: 'hidden' }}>

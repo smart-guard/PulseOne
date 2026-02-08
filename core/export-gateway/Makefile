@@ -221,12 +221,15 @@ else
 endif
 
 # 🔥 Paho MQTT C++ 링크 (v3.1 추가 - Collector와 동일)
+# 🔥 Paho MQTT C++ 링크 (v3.1 추가 - Collector와 동일)
+# Linker order matters: -lpaho-mqttpp3 must come before -lpaho-mqtt3a
 ifeq ($(HAS_PAHO_MQTT),1)
     UTILITY_LIBS += -lpaho-mqttpp3 -lpaho-mqtt3a
     CXXFLAGS += -DHAS_PAHO_MQTT=1
-    $(info ✅ Paho MQTT C++ found)
+    $(info ✅ Paho MQTT C++ found and linked)
 else
     $(info ⚠️  Paho MQTT C++ not found - MQTT features disabled)
+    # Do NOT force HAS_PAHO_MQTT=1 here if library is missing
 endif
 
 ifeq ($(HAS_HTTPLIB),1)
