@@ -763,6 +763,8 @@ private:
     bool use_ssl = false;
     int connection_timeout_sec = 30;
     int max_retry_count = 3;
+    int retry_interval_ms = 5000;
+    int backoff_time_ms = 60000;
     MqttQoS default_qos = MqttQoS::AT_LEAST_ONCE;
     std::string file_storage_path = ""; // 파일 저장 경로 (설정 가능)
   } mqtt_config_;
@@ -771,6 +773,7 @@ private:
   uint32_t default_message_timeout_ms_ = 30000;
   uint32_t max_publish_queue_size_ = 10000;
   bool auto_reconnect_enabled_ = true;
+  std::atomic<int> current_retry_count_{0};
 
   // =============================================================================
   // 프로덕션 모드 전용 멤버 변수들

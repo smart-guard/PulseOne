@@ -167,7 +167,24 @@ class ExportGatewayService extends BaseService {
                     data.config = JSON.stringify(newConfig);
                 }
             }
-            return await this.targetRepository.save(data, tenantId);
+            const target = await this.targetRepository.save(data, tenantId);
+
+            // [Fix] Automatically sync mappings if profile_id is assigned
+            if (target.profile_id) {
+                try {
+                    const profile = await this.profileRepository.findById(target.profile_id, tenantId);
+                    if (profile && profile.data_points) {
+                        const points = Array.isArray(profile.data_points) ? profile.data_points : JSON.parse(profile.data_points || '[]');
+                        LogManager.api('INFO', `[CreateTarget] Auto-syncing mappings for target ${target.id} with profile ${target.profile_id}`);
+                        await this.syncProfileToTargets(target.profile_id, points);
+                    }
+                } catch (e) {
+                    LogManager.api('ERROR', `[CreateTarget] Failed to auto-sync mappings: ${e.message}`);
+                    // Fallback: Proceed without failing the creation
+                }
+            }
+
+            return target;
         }, 'CreateTarget');
     }
 
@@ -191,7 +208,23 @@ class ExportGatewayService extends BaseService {
                 }
             }
 
-            return await this.targetRepository.update(id, data, tenantId);
+            const target = await this.targetRepository.update(id, data, tenantId);
+
+            // [Fix] Automatically sync mappings if profile_id is present (changed or just saved)
+            if (target && target.profile_id) {
+                try {
+                    const profile = await this.profileRepository.findById(target.profile_id, tenantId);
+                    if (profile && profile.data_points) {
+                        const points = Array.isArray(profile.data_points) ? profile.data_points : JSON.parse(profile.data_points || '[]');
+                        LogManager.api('INFO', `[UpdateTarget] Auto-syncing mappings for target ${target.id} with profile ${target.profile_id}`);
+                        await this.syncProfileToTargets(target.profile_id, points);
+                    }
+                } catch (e) {
+                    LogManager.api('ERROR', `[UpdateTarget] Failed to auto-sync mappings: ${e.message}`);
+                }
+            }
+
+            return target;
         }, 'UpdateTarget');
     }
 
