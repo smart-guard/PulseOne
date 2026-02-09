@@ -359,6 +359,7 @@ const ActiveAlarms: React.FC = () => {
                     </td>
                     <td>
                       <span className={`mgmt-status-pill ${alarm.state === 'active' ? 'error' : 'active'}`}>
+                        <i className={`fas ${alarm.state === 'active' ? 'fa-clock' : 'fa-check-circle'}`} style={{ marginRight: '6px' }}></i>
                         {alarm.state === 'active' ? '확인 대기' : '확인됨'}
                       </span>
                     </td>

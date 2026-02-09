@@ -36,6 +36,7 @@ import ConfigEditorPage from './pages/ConfigEditor';
 import ExportGatewaySettings from './pages/ExportGatewaySettings';
 import ExportHistory from './pages/ExportHistory';
 import RedisManager from './pages/RedisManager';
+import SystemSettings from './pages/SystemSettings';
 const App: React.FC = () => {
   // 🛠️ 개발 환경 초기화: 더미 토큰 설정
   React.useEffect(() => {
@@ -65,6 +66,7 @@ const App: React.FC = () => {
                 {/* 🆕 프로토콜 관리 - 통합 대시보드 URL 구조 개편 */}
                 <Route path="protocols">
                   <Route index element={<ProtocolManagement />} />
+                  <Route path=":type" element={<ProtocolManagement />} />
                   <Route path=":type/:id" element={<ProtocolManagement />} />
                   <Route path=":type/:id/:tab" element={<ProtocolManagement />} />
                 </Route>
@@ -92,7 +94,8 @@ const App: React.FC = () => {
                 <Route path="alarms">
                   <Route path="active" element={<ActiveAlarms />} />
                   <Route path="history" element={<AlarmHistory />} />
-                  <Route path="settings" element={<AlarmSettings />} />
+                  <Route path="settings" element={<Navigate to="table" replace />} />
+                  <Route path="settings/:view" element={<AlarmSettings />} />
                   <Route path="rules" element={<AlarmRuleTemplates />} />
                   {/* 알람 하위 경로 기본값 */}
                   <Route index element={<Navigate to="active" replace />} />
@@ -107,7 +110,10 @@ const App: React.FC = () => {
                   <Route path="backup" element={<BackupRestore />} />
                   <Route path="database" element={<DatabaseExplorerPage />} />
                   <Route path="config" element={<ConfigEditorPage />} />
-                  <Route path="export-gateways" element={<ExportGatewaySettings />} />
+                  <Route path="settings" element={<Navigate to="general" replace />} />
+                  <Route path="settings/:tab" element={<SystemSettings />} />
+                  <Route path="export-gateways" element={<Navigate to="gateways" replace />} />
+                  <Route path="export-gateways/:tab" element={<ExportGatewaySettings />} />
                   <Route path="export-history" element={<ExportHistory />} />
                   <Route path="redis-manager" element={<RedisManager />} />
                   {/* 시스템 하위 경로 기본값 */}

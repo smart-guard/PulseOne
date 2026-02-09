@@ -316,8 +316,8 @@ export const MainLayout: React.FC = () => {
             </li>
             <li className="menu-item">
               <Link
-                to="/alarms/settings"
-                className={`menu-link ${isActiveSubMenu('/alarms/settings') ? 'active' : ''}`}
+                to="/alarms/settings/table"
+                className={`menu-link ${location.pathname.startsWith('/alarms/settings') ? 'active' : ''}`}
               >
                 <div className="menu-icon">
                   <i className="fas fa-sliders-h"></i>
@@ -433,6 +433,17 @@ export const MainLayout: React.FC = () => {
             </li>
             <li className="menu-item">
               <Link
+                to="/system/settings/general"
+                className={`menu-link ${location.pathname.startsWith('/system/settings') ? 'active' : ''}`}
+              >
+                <div className="menu-icon">
+                  <i className="fas fa-tools"></i>
+                </div>
+                <span className="menu-title">시스템 환경 설정</span>
+              </Link>
+            </li>
+            <li className="menu-item">
+              <Link
                 to="/system/audit-logs"
                 className={`menu-link ${isActiveSubMenu('/system/audit-logs') ? 'active' : ''}`}
               >
@@ -507,9 +518,9 @@ export const MainLayout: React.FC = () => {
               )}
             </button>
 
-            <button className="btn btn-outline btn-sm" title="설정">
+            <Link to="/system/settings/general" className="btn btn-outline btn-sm" title="설정">
               <i className="fas fa-cog"></i>
-            </button>
+            </Link>
 
             <div className="user-menu">
               <div className="user-avatar">

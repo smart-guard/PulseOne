@@ -140,37 +140,35 @@ DOCKERFILE_EOF
     
     echo "📦 Building Collector with $DOCKER_IMAGE..."
     
-    # Run Windows cross-compilation
+    # Run Windows cross-compilation for all native components
     docker run --rm \
-        -v "$(pwd)/core/collector:/src" \
+        -v "$(pwd)/core/collector:/src/collector" \
+        -v "$(pwd)/core:/src/core" \
         -v "$PACKAGE_DIR:/output" \
         "$DOCKER_IMAGE" bash -c "
-            cd /src
-            echo 'Cleaning previous builds...'
-            make -f Makefile.windows clean 2>/dev/null || true
-            
-            echo 'Building for Windows...'
-            if make -f Makefile.windows all; then
-                echo 'Build successful'
-                if [ -f 'bin-windows/collector.exe' ]; then
-                    cp bin-windows/collector.exe /output/collector.exe
-                    echo 'Collector.exe copied to output'
-                elif [ -f 'collector.exe' ]; then
-                    cp collector.exe /output/collector.exe
-                    echo 'Collector.exe copied to output'
-                else
-                    echo 'WARNING: collector.exe not found after build'
-                fi
-            else
-                echo 'WARNING: Collector build failed'
-            fi
+            # 1. Build Collector
+            cd /src/collector
+            echo 'Building Collector (Release)...'
+            make -f Makefile.windows clean
+            make -j\$(nproc) -f Makefile.windows all CXXFLAGS='-O3 -march=x86-64 -DNDEBUG -std=c++17 -Wall -Wextra -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE'
+            x86_64-w64-mingw32-strip --strip-unneeded bin-windows/collector.exe
+            cp bin-windows/collector.exe /output/pulseone-collector.exe
+
+            # 2. Build Export Gateway
+            cd /src/core/export-gateway
+            echo 'Building Export Gateway (Release)...'
+            make clean
+            make -j\$(nproc) CROSS_COMPILE_WINDOWS=1 CXXFLAGS='-O3 -march=x86-64 -DNDEBUG -std=c++17 -Wall -Wextra -DPULSEONE_WINDOWS=1'
+            x86_64-w64-mingw32-strip --strip-unneeded bin/export-gateway.exe
+            cp bin/export-gateway.exe /output/pulseone-export-gateway.exe
         "
     
-    if [ -f "$PACKAGE_DIR/collector.exe" ]; then
-        COLLECTOR_SIZE=$(du -sh "$PACKAGE_DIR/collector.exe" | cut -f1)
-        echo "✅ Collector build successful: $COLLECTOR_SIZE"
+    if [ -f "$PACKAGE_DIR/pulseone-collector.exe" ] && [ -f "$PACKAGE_DIR/pulseone-export-gateway.exe" ]; then
+        COLLECTOR_SIZE=$(du -sh "$PACKAGE_DIR/pulseone-collector.exe" | cut -f1)
+        GATEWAY_SIZE=$(du -sh "$PACKAGE_DIR/pulseone-export-gateway.exe" | cut -f1)
+        echo "✅ Native components built successfully: Collector ($COLLECTOR_SIZE), Gateway ($GATEWAY_SIZE)"
     else
-        echo "⚠️ Collector build failed or not found"
+        echo "⚠️ One or more native components failed to build"
     fi
 fi
 
@@ -566,7 +564,7 @@ echo Creating Service Configurations...
     echo   ^<id^>pulseone-collector^</id^>
     echo   ^<name^>PulseOne Collector^</name^>
     echo   ^<description^>PulseOne Data Collector Service^</description^>
-    echo   ^<executable^>collector.exe^</executable^>
+    echo   ^<executable^>pulseone-collector.exe^</executable^>
     echo   ^<workingdirectory^>%INSTALL_DIR%^</workingdirectory^>
     echo   ^<logmode^>roll^</logmode^>
     echo   ^<onfailure action="restart" delay="10 sec"/^>
@@ -588,35 +586,50 @@ echo Creating Service Configurations...
 :: Create Service Installer Script
 (
     echo @echo off
+    echo setlocal enabledelayedexpansion
     echo title PulseOne Service Installer
     echo.
-    echo Parsing installation directory...
+    echo :: Check administrator privileges
+    echo net session ^>nul 2^>^&1
+    echo if errorlevel 1 (
+    echo     echo [!] ERROR: Please run this script AS ADMINISTRATOR to register services.
+    echo     pause ^& exit /b 1
+    echo )
+    echo.
     echo pushd "%%~dp0"
     echo.
-    echo [1/3] Installing Backend Service...
+    echo [1/3] Registering Backend Service...
     echo pulseone-backend.exe install
     echo pulseone-backend.exe start
     echo.
-    echo [2/3] Installing Collector Service...
+    echo [2/3] Registering Collector Service...
     echo pulseone-collector.exe install
     echo pulseone-collector.exe start
     echo.
-    echo [3/3] Installing Export Gateway Service...
+    echo [3/3] Registering Export Gateway Service...
     echo if exist "pulseone-export-gateway.exe" (
     echo     pulseone-export-gateway.exe install
     echo     pulseone-export-gateway.exe start
     echo ) else (
-    echo     echo WARNING: pulseone-export-gateway.exe not found. Skipping service registration.
+    echo     echo [-] pulseone-export-gateway.exe not found. Skipping.
     echo )
     echo.
-    echo Services installed and started!
+    echo [✓] All services registered and started!
     echo pause
 ) > install_service.bat
 
 :: Create Service Uninstaller Script
 (
     echo @echo off
+    echo setlocal enabledelayedexpansion
     echo title PulseOne Service Uninstaller
+    echo.
+    echo :: Check administrator privileges
+    echo net session ^>nul 2^>^&1
+    echo if errorlevel 1 (
+    echo     echo [!] ERROR: Please run this script AS ADMINISTRATOR to unregister services.
+    echo     pause ^& exit /b 1
+    echo )
     echo.
     echo pushd "%%~dp0"
     echo.
@@ -629,10 +642,12 @@ echo Creating Service Configurations...
     echo pulseone-collector.exe uninstall
     echo.
     echo [3/3] Removing Export Gateway Service...
-    echo pulseone-export-gateway.exe stop
-    echo pulseone-export-gateway.exe uninstall
+    echo if exist "pulseone-export-gateway.exe" (
+    echo     pulseone-export-gateway.exe stop
+    echo     pulseone-export-gateway.exe uninstall
+    echo )
     echo.
-    echo Services removed.
+    echo [✓] All services stopped and unregistered!
     echo pause
 ) > uninstall_service.bat
 
@@ -674,10 +689,16 @@ if exist "frontend\index.html" (
     echo [⚠] Frontend: Files missing
 )
 
-if exist "collector.exe" (
+if exist "pulseone-collector.exe" (
     echo [✓] Collector: Ready
 ) else (
     echo [⚠] Collector: Not included
+)
+
+if exist "pulseone-export-gateway.exe" (
+    echo [✓] Export Gateway: Ready
+) else (
+    echo [⚠] Export Gateway: Not included
 )
 
 if exist "config\.env" (
@@ -744,7 +765,8 @@ echo OK: Environment ready
 echo [2/5] Process cleanup...
 taskkill /F /IM node.exe >nul 2>&1
 taskkill /F /IM redis-server.exe >nul 2>&1
-taskkill /F /IM collector.exe >nul 2>&1
+taskkill /F /IM pulseone-collector.exe >nul 2>&1
+taskkill /F /IM pulseone-export-gateway.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 echo OK: Processes cleaned
 
@@ -773,10 +795,17 @@ echo [5/5] Waiting for server startup...
 timeout /t 5 /nobreak >nul
 
 :: Start Collector if available
-if exist "collector.exe" (
+if exist "pulseone-collector.exe" (
     echo Starting data collector...
-    start /B collector.exe >nul 2>&1
+    start /B pulseone-collector.exe >nul 2>&1
     echo OK: Collector started
+)
+
+:: Start Export Gateway if available
+if exist "pulseone-export-gateway.exe" (
+    echo Starting export gateway...
+    start /B pulseone-export-gateway.exe >nul 2>&1
+    echo OK: Export Gateway started
 )
 
 :: Open browser
@@ -796,7 +825,8 @@ echo.
 echo Active Services:
 echo   • Backend API: Port 3000
 if exist "redis-server.exe" echo   • Redis Cache: Port 6379
-if exist "collector.exe" echo   • Data Collector: Running
+if exist "pulseone-collector.exe" echo   • Data Collector: Running
+if exist "pulseone-export-gateway.exe" echo   • Export Gateway: Running
 echo.
 echo Press any key to stop all services...
 echo ================================================================
@@ -807,7 +837,8 @@ echo.
 echo Stopping all services...
 taskkill /F /IM node.exe >nul 2>&1
 taskkill /F /IM redis-server.exe >nul 2>&1
-taskkill /F /IM collector.exe >nul 2>&1
+taskkill /F /IM pulseone-collector.exe >nul 2>&1
+taskkill /F /IM pulseone-export-gateway.exe >nul 2>&1
 
 echo All services stopped.
 timeout /t 2
@@ -836,6 +867,12 @@ QUICK START:
 4. Browser opens automatically to http://localhost:3000
 5. Login with: admin / admin
 
+UNINSTALLATION / CLEANUP:
+=========================
+1. Run: uninstall_service.bat AS ADMINISTRATOR (stops and unregisters all background services)
+2. Run: start.bat and press any key to stop (if running in console mode)
+3. You can now safely delete the folder.
+
 WHAT'S NEW IN v6.0:
 ===================
 ✅ TRUE one-click installation - everything in ONE run
@@ -861,7 +898,8 @@ Core Files:
 • start.bat       - Service launcher
 • backend/        - Server application (Node.js)
 • frontend/       - Web interface (pre-built)
-• collector.exe   - Data collector (if included)
+• pulseone-collector.exe   - Data collector (Optimized Release)
+• pulseone-export-gateway.exe - Export Gateway (Optimized Release)
 • config/         - Configuration files
 • data/           - Database and logs directory
 
@@ -972,12 +1010,18 @@ echo ""
 echo "📋 Package Contents:"
 echo "   ✅ Automated installer (install.bat)"
 echo "   ✅ Service launcher (start.bat)"
+echo "   ✅ Service uninstaller (uninstall_service.bat)"
 echo "   ✅ Backend source code"
 echo "   ✅ Frontend compiled files"
-if [ -f "$PACKAGE_DIR/collector.exe" ]; then
-    echo "   ✅ Collector executable"
+if [ -f "$PACKAGE_DIR/pulseone-collector.exe" ]; then
+    echo "   ✅ Collector executable (Optimized Release)"
 else
-    echo "   ⚠️ Collector not included (build failed or skipped)"
+    echo "   ⚠️ Collector not included"
+fi
+if [ -f "$PACKAGE_DIR/pulseone-export-gateway.exe" ]; then
+    echo "   ✅ Export Gateway executable (Optimized Release)"
+else
+    echo "   ⚠️ Export Gateway not included"
 fi
 echo "   ✅ Configuration templates"
 echo "   ✅ Documentation (README.txt)"
