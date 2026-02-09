@@ -55,7 +55,7 @@ const AlarmHistory: React.FC = () => {
   const [filters, setFilters] = useState<FilterOptions>({
     dateRange: {
       start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7일 전으로 변경
-      end: new Date()
+      end: new Date(Date.now() + 60 * 60 * 1000) // Now + 1 hour for visibility buffer
     },
     severity: 'all',
     state: 'all',
@@ -490,7 +490,7 @@ const AlarmHistory: React.FC = () => {
         onReset={() => setFilters({
           dateRange: {
             start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-            end: new Date()
+            end: new Date(Date.now() + 60 * 60 * 1000)
           },
           severity: 'all',
           state: 'all',
@@ -603,10 +603,10 @@ const AlarmHistory: React.FC = () => {
                   <thead>
                     <tr>
                       <th style={{ width: '100px' }}>ID</th>
-                      <th style={{ width: '120px' }}>심각도</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>심각도</th>
                       <th style={{ width: '220px' }}>디바이스 / 포인트</th>
                       <th>메시지</th>
-                      <th style={{ width: '120px' }}>상태</th>
+                      <th style={{ width: '120px', textAlign: 'center' }}>상태</th>
                       <th style={{ width: '180px' }}>발생시간</th>
                       <th style={{ width: '150px' }}>지속시간</th>
                       <th style={{ width: '100px', textAlign: 'center' }}>액션</th>
@@ -632,7 +632,7 @@ const AlarmHistory: React.FC = () => {
                         return (
                           <tr key={event.id} className={activeRowId === event.id ? 'active' : ''} onClick={() => setActiveRowId(event.id)}>
                             <td className="font-bold text-primary" style={{ whiteSpace: 'nowrap' }}># {event.id}</td>
-                            <td>
+                            <td style={{ textAlign: 'center' }}>
                               <span className={`status-pill ${severityClass}`}>
                                 {(event.severity || 'UNKNOWN').toUpperCase()}
                               </span>
@@ -649,8 +649,8 @@ const AlarmHistory: React.FC = () => {
                                 </div>
                               )}
                             </td>
-                            <td>
-                              <div className="flex items-center gap-2">
+                            <td style={{ textAlign: 'center' }}>
+                              <div className="flex items-center justify-center gap-2">
                                 <i className={getStatusIcon(state)} style={{ color: getStatusColor(state), fontSize: '14px' }}></i>
                                 <span className="font-medium">{getStatusText(state)}</span>
                               </div>

@@ -509,6 +509,9 @@
   align-items: center !important;
   justify-content: center !important;
   min-width: 60px !important;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
+  vertical-align: middle !important;
 }
 
 .page-active-alarms .mgmt-status-pill.active {
@@ -525,6 +528,9 @@
   align-items: center !important;
   justify-content: center !important;
   min-width: 60px !important;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
+  vertical-align: middle !important;
 }
 
 .page-active-alarms .severity-badge .new-badge {
