@@ -114,10 +114,10 @@ HAS_PAHO_MQTT := $(shell [ -f /usr/include/mqtt/async_client.h ] && echo "1" || 
 # 🔥 1순위: 로컬 include (export-gateway 자체)
 INCLUDES = -I$(INCLUDE_DIR)
 INCLUDES += -I$(PROJECT_ROOT)/core/collector/include
+INCLUDES += -I$(SHARED_INCLUDE_DIR)
 
-# 🔥 2순위: Shared 라이브러리 include
-ifeq ($(HAS_SHARED),1)
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)
+# 🔥 2순위: Shared 라이브러리 상세 include
+ifeq ($(shell [ -d "$(SHARED_INCLUDE_DIR)" ] && echo "1" || echo "0"),1)
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Platform
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Common
     INCLUDES += -I$(SHARED_INCLUDE_DIR)/Utils
@@ -355,14 +355,14 @@ $(BUILD_DIR) $(BIN_DIR) $(TEST_BUILD_DIR) $(TEST_BIN_DIR):
 
 # 컴파일 규칙
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
-	@mkdir -p $(dir $@)
+	mkdir -p $(dir $@)
 	@echo -e "$(YELLOW)⚙️  Compiling $< [$(PLATFORM)]$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
-	@mkdir -p $(dir $@)
+	mkdir -p $(dir $@)
 	@echo -e "$(YELLOW)⚙️  Compiling C source $< [$(PLATFORM)]$(NC)"
-	@$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
+	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
 # =============================================================================
 # 유틸리티

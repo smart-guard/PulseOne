@@ -27,6 +27,7 @@
 #include "CSP/AlarmMessage.h"
 #include "Client/RedisClient.h"
 #include <atomic>
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>

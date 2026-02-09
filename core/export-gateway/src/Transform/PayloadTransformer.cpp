@@ -23,6 +23,59 @@ PayloadTransformer::PayloadTransformer() {
 // 메인 변환
 // =============================================================================
 
+json PayloadTransformer::buildPayload(const ValueMessage &value,
+                                      const json &config) {
+  json content;
+
+  // 1. Template-based Transformation
+  if (config.contains("body_template")) {
+    if (config["body_template"].is_object() ||
+        config["body_template"].is_array()) {
+      content = config["body_template"];
+
+      // 1-1. Determine Target Field Name
+      std::string target_field_name = "";
+      if (config.contains("field_mappings") &&
+          config["field_mappings"].is_array()) {
+        for (const auto &m : config["field_mappings"]) {
+          if (m.contains("point_id") && m["point_id"] == value.point_id) {
+            target_field_name = m.value("target_field_name", "");
+            if (target_field_name.empty()) {
+              target_field_name = m.value("target_field", "");
+            }
+            break;
+          }
+        }
+      }
+
+      // 1-2. Create Context & Transform
+      auto context = createContext(value, target_field_name);
+      return transform(content, context);
+    }
+  }
+
+  // 2. Default Transformation (Fallback)
+  content["building_id"] = value.site_id;
+  content["point_name"] = value.point_name;
+  content["value"] = value.measured_value;
+  content["timestamp"] = value.timestamp;
+  content["status"] = value.status_code;
+
+  content["source"] = "PulseOne-CSPGateway";
+  content["version"] = "2.0";
+  content["upload_timestamp"] = toISO8601(""); // Current time
+
+  // 3. Additional Fields
+  if (config.contains("additional_fields") &&
+      config["additional_fields"].is_object()) {
+    for (auto &[key, val] : config["additional_fields"].items()) {
+      content[key] = val;
+    }
+  }
+
+  return content;
+}
+
 json PayloadTransformer::transform(const json &template_json,
                                    const TransformContext &context) {
   try {
@@ -47,8 +100,9 @@ json PayloadTransformer::buildPayload(const AlarmMessage &alarm,
 
   // 1. Template-based Transformation
   if (config.contains("body_template")) {
-    // LogManager::getInstance().Info("[DEBUG-TRANSFORM] Config contains
-    // body_template");
+    LogManager::getInstance().Info(
+        "[DEBUG-TRANSFORM] Config contains body_template for target: " +
+        config.value("name", "unknown"));
 
     if (config["body_template"].is_object() ||
         config["body_template"].is_array()) {
@@ -72,7 +126,12 @@ json PayloadTransformer::buildPayload(const AlarmMessage &alarm,
 
       // 1-2. Create Context & Transform
       auto context = createContext(alarm, target_field_name);
+      LogManager::getInstance().Info("[DEBUG-TRANSFORM] Context created, "
+                                     "calling transform. TargetField: " +
+                                     target_field_name);
       content = transform(content, context);
+      LogManager::getInstance().Info(
+          "[DEBUG-TRANSFORM] Transformation complete: " + content.dump());
 
       // 1-3. Wrap Object in Array (Standard Consistency)
       // 1-3. Wrap Object in Array (Standard Consistency) -> REMOVED
@@ -83,8 +142,10 @@ json PayloadTransformer::buildPayload(const AlarmMessage &alarm,
   }
 
   // 2. Default Transformation (Fallback)
-  // LogManager::getInstance().Warn("[DEBUG-TRANSFORM] Using Default Payload
-  // Structure");
+  LogManager::getInstance().Warn(
+      "[DEBUG-TRANSFORM] Body template NOT found or invalid. Using Default "
+      "Fallback Structure for target: " +
+      config.value("name", "unknown"));
 
   content["building_id"] = alarm.site_id;
   content["point_name"] = alarm.point_name;
@@ -389,7 +450,8 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
 // =============================================================================
 
 void PayloadTransformer::expandJsonRecursive(
-    json &obj, const std::map<std::string, std::string> &variables) {
+    json &obj, const std::map<std::string, std::string> &variables,
+    const std::string &current_key) {
   if (obj.is_string()) {
     std::string str = obj.get<std::string>();
     // 1. 일반 변수 치환 ({var} 및 {{var}} 지원)
@@ -411,9 +473,7 @@ void PayloadTransformer::expandJsonRecursive(
       }
     }
 
-    // 2. 매핑 변수 치환 ({map:key:true_val:false_val} 또는
-    // {{map:key:true_val:false_val}}) 예: {map:al:발생:복구},
-    // {map:st:제어가능:제어불가}, {map:ty:DIGITAL:ANALOG}
+    // 2. 매핑 변수 치환 ({map:key:true_val:false_val})
     std::regex map_regex("\\{+map:([^:]+):([^:]*):([^}]+)\\}+");
     std::smatch match;
     std::string search_str = str;
@@ -434,7 +494,6 @@ void PayloadTransformer::expandJsonRecursive(
       bool condition = false;
       if (variables.count(key)) {
         std::string val = variables.at(key);
-        // "1", "true", "ALARM", "DIGITAL" 등을 참으로 간주
         if (key == "ty" || key == "type") {
           condition = (val == "bit" || val == "bool" || val == "DIGITAL");
         } else {
@@ -450,7 +509,7 @@ void PayloadTransformer::expandJsonRecursive(
     str = result_str;
 
     // 만약 전체 문자열이 "{{var}}" 형태이고, 그 변수값이 JSON 배열/객체
-    // 형태라면 문자열이 아닌 원본 타입으로 치환 (예: "[0]" -> [0])
+    // 형태라면 원본 타입으로 치환
     if (!str.empty() && str.front() == '[' && str.back() == ']') {
       try {
         json parsed = json::parse(str);
@@ -460,8 +519,14 @@ void PayloadTransformer::expandJsonRecursive(
       }
     }
 
-    // 숫자 변환 시도 (완전한 숫자인 경우만 처리)
-    if (!str.empty() &&
+    // [v3.1.2] Final spec alignment:
+    // Numbers: bd, st, al, vl, mi, mx
+    // Strings: xl, ty, nm, tm, des, il
+    bool skip_conversion =
+        (current_key == "xl" || current_key == "ty" || current_key == "nm" ||
+         current_key == "tm" || current_key == "des" || current_key == "il");
+
+    if (!skip_conversion && !str.empty() &&
         (std::isdigit(str[0]) || str[0] == '-' || str[0] == '.')) {
       try {
         size_t processed = 0;
@@ -488,31 +553,30 @@ void PayloadTransformer::expandJsonRecursive(
     for (auto it = obj.begin(); it != obj.end(); ++it) {
       std::string key = it.key();
 
-      // ✅ Key Expansion 지원
+      // Key Expansion
       for (const auto &[v_key, v_value] : variables) {
-        std::string pattern2 = "{{" + v_key + "}}";
+        std::string p2 = "{{" + v_key + "}}";
         size_t pos = 0;
-        while ((pos = key.find(pattern2, pos)) != std::string::npos) {
-          key.replace(pos, pattern2.length(), v_value);
+        while ((pos = key.find(p2, pos)) != std::string::npos) {
+          key.replace(pos, p2.length(), v_value);
           pos += v_value.length();
         }
-
-        std::string pattern1 = "{" + v_key + "}";
+        std::string p1 = "{" + v_key + "}";
         pos = 0;
-        while ((pos = key.find(pattern1, pos)) != std::string::npos) {
-          key.replace(pos, pattern1.length(), v_value);
+        while ((pos = key.find(p1, pos)) != std::string::npos) {
+          key.replace(pos, p1.length(), v_value);
           pos += v_value.length();
         }
       }
 
       json value = it.value();
-      expandJsonRecursive(value, variables);
+      expandJsonRecursive(value, variables, key); // Pass the key
       new_obj[key] = value;
     }
     obj = new_obj;
   } else if (obj.is_array()) {
     for (auto &item : obj) {
-      expandJsonRecursive(item, variables);
+      expandJsonRecursive(item, variables, current_key);
     }
   }
 }

@@ -37,6 +37,7 @@ bool MqttTargetHandler::initialize(const json &config) {
 }
 
 TargetSendResult MqttTargetHandler::sendAlarm(
+    const json &payload_json,
     const PulseOne::Gateway::Model::AlarmMessage &alarm, const json &config) {
   TargetSendResult result;
   result.target_type = "MQTT";
@@ -51,7 +52,7 @@ TargetSendResult MqttTargetHandler::sendAlarm(
   }
 
   std::string topic = generateTopic(alarm, config);
-  std::string payload = generatePayload(alarm, config);
+  std::string payload = payload_json.dump();
 
   result = publishMessage(topic, payload, config.value("qos", 1),
                           config.value("retain", false));
@@ -66,15 +67,17 @@ TargetSendResult MqttTargetHandler::sendAlarm(
 }
 
 std::vector<TargetSendResult> MqttTargetHandler::sendValueBatch(
+    const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config) {
   std::vector<TargetSendResult> results;
-  for (const auto &v : values) {
+  for (size_t i = 0; i < values.size() && i < payloads.size(); ++i) {
     TargetSendResult res;
-    res.target_type = "MQTT";
-    std::string topic =
-        config.value("topic", "pulseone/values/" + std::to_string(v.site_id));
-    std::string payload = v.to_json().dump();
+    // Note: generateTopic is usually for alarms, for values we might need a
+    // different topic strategy but here we use a simple approach or follow
+    // original pattern
+    std::string topic = config.value("topic", "pulseone/values");
+    std::string payload = payloads[i].dump();
     res = publishMessage(topic, payload, config.value("qos", 0), false);
     results.push_back(res);
   }
@@ -174,29 +177,11 @@ void MqttTargetHandler::disconnectFromBroker() {
 std::string MqttTargetHandler::generateTopic(
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) const {
-  if (config.contains("topic_template")) {
-    return expandTemplateVariables(config["topic_template"], alarm, config);
-  }
+  // Simple fallback since expandTemplateVariables was removed
   std::string topic_val =
       config.value("topic", "pulseone/alarms/" + std::to_string(alarm.site_id) +
                                 "/" + alarm.point_name);
   return ConfigManager::getInstance().expandVariables(topic_val);
-}
-
-std::string MqttTargetHandler::generatePayload(
-    const PulseOne::Gateway::Model::AlarmMessage &alarm,
-    const json &config) const {
-  // [v3.2.1] Manual Override RAW Bypass
-  if (alarm.manual_override) {
-    LogManager::getInstance().Info(
-        "[MQTT] Manual Override active: Sending RAW payload.");
-    return alarm.extra_info.is_null() ? "{}" : alarm.extra_info.dump();
-  }
-
-  // Unified Payload Builder Delegation
-  return PulseOne::Transform::PayloadTransformer::getInstance()
-      .buildPayload(alarm, config)
-      .dump();
 }
 
 TargetSendResult MqttTargetHandler::publishMessage(const std::string &topic,
@@ -227,30 +212,6 @@ TargetSendResult MqttTargetHandler::publishMessage(const std::string &topic,
   result.error_message = "MQTT not available in this build";
 #endif
 
-  return result;
-}
-
-std::string MqttTargetHandler::expandTemplateVariables(
-    const std::string &template_str,
-    const PulseOne::Gateway::Model::AlarmMessage &alarm,
-    const json &config) const {
-  auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-
-  std::string target_field_name = "";
-  if (config.contains("field_mappings") &&
-      config["field_mappings"].is_array()) {
-    for (const auto &m : config["field_mappings"]) {
-      if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
-        target_field_name = m.value("target_field", "");
-        break;
-      }
-    }
-  }
-
-  auto context = transformer.createContext(alarm, target_field_name);
-  std::string result = transformer.transformString(template_str, context);
-  LogManager::getInstance().Info(
-      "[TRACE-TRANSFORM-MQTT] Final Alarm Payload: " + result);
   return result;
 }
 

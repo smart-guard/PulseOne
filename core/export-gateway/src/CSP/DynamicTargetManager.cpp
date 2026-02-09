@@ -39,6 +39,7 @@
 #include "Constants/ExportConstants.h" // ✅ Added Constants
 #include "Database/Entities/ExportTargetEntity.h"
 #include "Database/Entities/PayloadTemplateEntity.h"
+#include "Transform/PayloadTransformer.h"
 #include <algorithm>
 #include <iostream>
 
@@ -779,8 +780,16 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
     // auto start_time = std::chrono::steady_clock::now(); // Unused variable
     // removed
 
-    std::vector<TargetSendResult> results =
-        it_handler->second->sendAlarmBatch(processed_batch, targets_[i].config);
+    // [v3.0.0] Payload 변환
+    std::vector<json> payloads;
+    for (const auto &alm : processed_batch) {
+      payloads.push_back(
+          PulseOne::Transform::PayloadTransformer::getInstance().buildPayload(
+              alm, targets_[i].config));
+    }
+
+    std::vector<TargetSendResult> results = it_handler->second->sendAlarmBatch(
+        payloads, processed_batch, targets_[i].config);
 
     // auto end_time = std::chrono::steady_clock::now(); // Unused variable
     // removed 배치 전체 처리 시간 (개별 결과에는 각각의 시간이 있을 수 있음)
@@ -858,9 +867,17 @@ BatchTargetResult DynamicTargetManager::sendValueBatchToTargets(
       continue;
     }
 
-    // HANDLER에게 배치 위임
-    std::vector<TargetSendResult> results =
-        it_handler->second->sendValueBatch(values, targets_[i].config);
+    // Payload 변환
+    std::vector<json> payloads;
+    for (const auto &val : values) {
+      payloads.push_back(
+          PulseOne::Transform::PayloadTransformer::getInstance().buildPayload(
+              val, targets_[i].config));
+    }
+
+    // HANDLER에게 배치 위임 (3인자 사용)
+    std::vector<TargetSendResult> results = it_handler->second->sendValueBatch(
+        payloads, values, targets_[i].config);
 
     for (const auto &res : results) {
       if (res.success) {
@@ -1255,9 +1272,13 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
                                       std::to_string(lookup_site_id));
     }
 
-    // ✅ 4. 핸들러 호출
-    auto handler_result =
-        handler_it->second->sendAlarm(mapped_alarm, target.config);
+    // ✅ 4. 핸들러 호출 (v3.1.0: 중앙 집중형 변환 적용)
+    json transformed_payload =
+        PulseOne::Transform::PayloadTransformer::getInstance().buildPayload(
+            mapped_alarm, target.config);
+
+    auto handler_result = handler_it->second->sendAlarm(
+        transformed_payload, mapped_alarm, target.config);
 
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1271,6 +1292,8 @@ bool DynamicTargetManager::processTargetByIndex(size_t index,
     result.error_message = handler_result.error_message;
     result.content_size =
         handler_result.content_size; // bytes_sent → content_size
+    result.sent_payload = handler_result.sent_payload;
+    result.response_body = handler_result.response_body;
     result.retry_count = handler_result.retry_count;
 
     // Circuit Breaker 업데이트

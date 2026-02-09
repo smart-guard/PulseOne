@@ -414,17 +414,19 @@ bool ExportService::exportToTarget(
 
     if (target.type == "HTTP" || target.type == "HTTPS") {
       CSP::AlarmMessage dummy_alarm;
-      auto result = http_handler_->sendAlarm(dummy_alarm, target.config);
-      success = result.success;
+      auto handler_result =
+          http_handler_->sendAlarm(payload, dummy_alarm, target.config);
+      success = handler_result.success;
 
     } else if (target.type == "S3") {
       CSP::AlarmMessage dummy_alarm;
-      auto result = s3_handler_->sendAlarm(dummy_alarm, target.config);
+      auto result = s3_handler_->sendAlarm(payload, dummy_alarm, target.config);
       success = result.success;
 
     } else if (target.type == "FILE") {
       CSP::AlarmMessage dummy_alarm;
-      auto result = file_handler_->sendAlarm(dummy_alarm, target.config);
+      auto result =
+          file_handler_->sendAlarm(payload, dummy_alarm, target.config);
       success = result.success;
 
     } else {

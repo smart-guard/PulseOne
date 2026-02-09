@@ -57,7 +57,8 @@ bool HttpTargetHandler::initialize(const json &config) {
 }
 
 TargetSendResult HttpTargetHandler::sendAlarm(
-    const PulseOne::Gateway::Model::AlarmMessage &alarm, const json &config) {
+    const json &payload, const PulseOne::Gateway::Model::AlarmMessage &alarm,
+    const json &config) {
   TargetSendResult result;
   result.target_type = "HTTP";
   result.target_name = getTargetName(config);
@@ -70,7 +71,7 @@ TargetSendResult HttpTargetHandler::sendAlarm(
       return result;
     }
 
-    result = executeWithRetry(alarm, config, url);
+    result = executeWithRetry(payload, alarm, config, url);
     if (result.success)
       success_count_++;
     else
@@ -85,6 +86,7 @@ TargetSendResult HttpTargetHandler::sendAlarm(
 }
 
 std::vector<TargetSendResult> HttpTargetHandler::sendValueBatch(
+    const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config) {
 
@@ -101,9 +103,9 @@ std::vector<TargetSendResult> HttpTargetHandler::sendValueBatch(
       return results;
     }
 
-    TargetSendResult batch_result = executeWithRetry(values, config, url);
-    results.push_back(batch_result);
-    if (batch_result.success)
+    TargetSendResult result = executeWithRetry(payloads, values, config, url);
+    results.push_back(result);
+    if (result.success)
       success_count_++;
     else
       failure_count_++;
@@ -176,29 +178,32 @@ std::string HttpTargetHandler::extractUrl(const json &config) const {
 }
 
 TargetSendResult HttpTargetHandler::executeWithRetry(
-    const PulseOne::Gateway::Model::AlarmMessage &alarm, const json &config,
-    const std::string &url) {
+    const json &payload, const PulseOne::Gateway::Model::AlarmMessage &alarm,
+    const json &config, const std::string &url) {
   // Retry logic implementation (Simplified for brevity, matches original
   // pattern)
-  return executeSingleRequest(alarm, config, url);
+  return executeSingleRequest(payload, alarm, config, url);
 }
 
 TargetSendResult HttpTargetHandler::executeWithRetry(
+    const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config, const std::string &url) {
-  return executeSingleRequest(values, config, url);
+  // Retry logic implementation (Simplified for brevity, matches original
+  // pattern)
+  return executeSingleRequest(payloads, values, config, url);
 }
 
 TargetSendResult HttpTargetHandler::executeSingleRequest(
-    const PulseOne::Gateway::Model::AlarmMessage &alarm, const json &config,
-    const std::string &url) {
+    const json &payload, const PulseOne::Gateway::Model::AlarmMessage &alarm,
+    const json &config, const std::string &url) {
   TargetSendResult result;
   auto client = getOrCreateClient(config, url);
   if (!client)
     return result;
 
   auto headers = buildRequestHeaders(config);
-  std::string body = buildRequestBody(alarm, config);
+  std::string body = buildRequestBody(payload, alarm, config);
 
   LogManager::getInstance().Info(
       "[TRACE-4-SEND] HTTP Request Body: " +
@@ -214,6 +219,7 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
 }
 
 TargetSendResult HttpTargetHandler::executeSingleRequest(
+    const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config, const std::string &url) {
   TargetSendResult result;
@@ -222,7 +228,7 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
     return result;
 
   auto headers = buildRequestHeaders(config);
-  std::string body = buildRequestBody(values, config);
+  std::string body = buildRequestBody(payloads, values, config);
 
   auto response =
       client->post(url, body, HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
@@ -329,26 +335,27 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
 }
 
 std::string HttpTargetHandler::buildRequestBody(
-    const PulseOne::Gateway::Model::AlarmMessage &alarm, const json &config) {
-  // [v3.2.1] Manual Override RAW Bypass: send EXACTLY what the user provided.
-  if (alarm.manual_override) {
-    LogManager::getInstance().Info("[HTTP] Manual Override active: Sending RAW "
-                                   "payload (Zero-Transformation).");
-    return alarm.extra_info.is_null() ? "{}" : alarm.extra_info.dump();
-  }
+    const json &payload, const PulseOne::Gateway::Model::AlarmMessage &alarm,
+    const json &config) {
+  LogManager::getInstance().Info(
+      "[DEBUG-HTTP] buildRequestBody(Pre-mapped) called for point: " +
+      alarm.point_name);
 
-  // Unified Payload Builder Delegation
-  return PulseOne::Transform::PayloadTransformer::getInstance()
-      .buildPayload(alarm, config)
-      .dump();
+  return payload.dump();
 }
 
 std::string HttpTargetHandler::buildRequestBody(
+    const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config) {
+  LogManager::getInstance().Info(
+      "[DEBUG-HTTP] buildRequestBody(Pre-mapped Batch) called. Count: " +
+      std::to_string(payloads.size()));
+
   json arr = json::array();
-  for (const auto &v : values)
-    arr.push_back(v.to_json());
+  for (const auto &p : payloads) {
+    arr.push_back(p);
+  }
   return arr.dump();
 }
 
@@ -371,54 +378,6 @@ std::string HttpTargetHandler::generateRequestId() const {
   return "req_" +
          std::to_string(
              std::chrono::system_clock::now().time_since_epoch().count());
-}
-
-void HttpTargetHandler::expandTemplateVariables(
-    json &template_json, const PulseOne::Gateway::Model::AlarmMessage &alarm,
-    const json &config) const {
-  auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-
-  std::string target_field_name = "";
-  if (config.contains("field_mappings") &&
-      config["field_mappings"].is_array()) {
-    for (const auto &m : config["field_mappings"]) {
-      if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
-        target_field_name = m.value("target_field", "");
-        break;
-      }
-    }
-  }
-
-  auto context = transformer.createContext(alarm, target_field_name);
-  template_json = transformer.transform(template_json, context);
-  LogManager::getInstance().Info(
-      "[TRACE-TRANSFORM-HTTP] Final Alarm Payload: " +
-      Security::SecretManager::getInstance().maskSensitiveJson(
-          template_json.dump()));
-}
-
-void HttpTargetHandler::expandTemplateVariables(
-    json &template_json, const PulseOne::Gateway::Model::ValueMessage &value,
-    const json &config) const {
-  auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-
-  std::string target_field_name = "";
-  if (config.contains("field_mappings") &&
-      config["field_mappings"].is_array()) {
-    for (const auto &m : config["field_mappings"]) {
-      if (m.contains("point_id") && m["point_id"] == value.point_id) {
-        target_field_name = m.value("target_field", "");
-        break;
-      }
-    }
-  }
-
-  auto context = transformer.createContext(value, target_field_name);
-  template_json = transformer.transform(template_json, context);
-  LogManager::getInstance().Info(
-      "[TRACE-TRANSFORM-HTTP] Final Value Payload: " +
-      Security::SecretManager::getInstance().maskSensitiveJson(
-          template_json.dump()));
 }
 
 std::string HttpTargetHandler::base64Encode(const std::string &input) const {

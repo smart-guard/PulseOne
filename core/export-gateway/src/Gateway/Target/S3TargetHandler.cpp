@@ -49,7 +49,8 @@ bool S3TargetHandler::initialize(const json &config) {
 }
 
 TargetSendResult
-S3TargetHandler::sendAlarm(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+S3TargetHandler::sendAlarm(const json &payload,
+                           const PulseOne::Gateway::Model::AlarmMessage &alarm,
                            const json &config) {
   TargetSendResult result;
   result.target_type = "S3";
@@ -64,7 +65,7 @@ S3TargetHandler::sendAlarm(const PulseOne::Gateway::Model::AlarmMessage &alarm,
     }
 
     std::string key = generateObjectKey(alarm, config);
-    std::string content = buildJsonContent(alarm, config);
+    std::string content = payload.dump(2);
     auto metadata = buildMetadata(alarm, config);
 
     auto upload_res =
@@ -97,33 +98,27 @@ TargetSendResult S3TargetHandler::sendFile(const std::string &local_path,
 }
 
 std::vector<TargetSendResult> S3TargetHandler::sendAlarmBatch(
+    const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::AlarmMessage> &alarms,
     const json &config) {
-  return ITargetHandler::sendAlarmBatch(alarms, config);
+  return ITargetHandler::sendAlarmBatch(payloads, alarms, config);
 }
 
 std::vector<TargetSendResult> S3TargetHandler::sendValueBatch(
+    const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config) {
   std::vector<TargetSendResult> results;
 
-  // Reuse ITargetHandler default behavior which loops and calls sendValue
-  // However, ITargetHandler::sendValueBatch does a loop calling sendValue.
-  // We need to implement sendValue as well if we rely on loop.
-  // Given S3 pattern, we might want to upload individual files per value OR one
-  // big file. Legacy C# behavior: usually maps values to individual files if
-  // template is used. Let's rely on ITargetHandler default for now which calls
-  // sendValue. But wait, sendValue is NOT implemented in ITargetHandler base
-  // (virtual). So we MUST implement sendValue.
-
-  for (const auto &val : values) {
-    results.push_back(sendValue(val, config));
+  for (size_t i = 0; i < values.size() && i < payloads.size(); ++i) {
+    results.push_back(sendValue(payloads[i], values[i], config));
   }
   return results;
 }
 
 TargetSendResult
-S3TargetHandler::sendValue(const PulseOne::Gateway::Model::ValueMessage &value,
+S3TargetHandler::sendValue(const json &payload,
+                           const PulseOne::Gateway::Model::ValueMessage &value,
                            const json &config) {
   TargetSendResult result;
   result.target_type = "S3";
@@ -201,27 +196,9 @@ S3TargetHandler::sendValue(const PulseOne::Gateway::Model::ValueMessage &value,
     while (!object_key.empty() && object_key[0] == '/')
       object_key = object_key.substr(1);
 
-    // Build content
-    json content;
-    if (config.contains("body_template")) {
-      content = config["body_template"];
-      expandTemplateVariables(content, value, config);
-    } else {
-      // Default Value JSON
-      content["building_id"] = value.site_id;
-      content["point_id"] = value.point_id;
-      content["value"] = value.measured_value;
-      content["timestamp"] = value.timestamp;
-      content["quality"] = value.status_code;
-    }
-
-    std::string final_content;
-    if (content.is_object() && !config.value("flat_json", false)) {
-      final_content = json::array({content}).dump(2);
-    } else {
-      final_content =
-          content.is_string() ? content.get<std::string>() : content.dump(2);
-    }
+    std::string key =
+        object_key; // Simplified key generation or use object_key directly
+    std::string content = payload.dump(2);
 
     // Metadata
     std::unordered_map<std::string, std::string> metadata;
@@ -230,15 +207,15 @@ S3TargetHandler::sendValue(const PulseOne::Gateway::Model::ValueMessage &value,
     metadata["timestamp"] = value.timestamp;
 
     auto upload_res =
-        client->upload(object_key, final_content, "application/json", metadata);
+        client->upload(key, content, "application/json", metadata);
     result.success = upload_res.isSuccess();
-    result.sent_payload = final_content;
+    result.sent_payload = content;
     result.response_body = upload_res.error_message;
 
     if (result.success) {
       upload_count_++;
       success_count_++;
-      total_bytes_uploaded_ += final_content.length();
+      total_bytes_uploaded_ += content.length();
     } else {
       result.error_message = "S3 upload failed: " + upload_res.error_message;
       failure_count_++;
@@ -518,56 +495,6 @@ std::string S3TargetHandler::expandTemplate(
   result = std::regex_replace(result, std::regex("[^a-zA-Z0-9/_.-]"), "_");
 
   return result;
-}
-
-void S3TargetHandler::expandTemplateVariables(
-    json &template_json, const PulseOne::Gateway::Model::AlarmMessage &alarm,
-    const json &config) const {
-  auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-
-  std::string target_field_name = "";
-  std::string target_description = "";
-  std::string converted_value = "";
-
-  // ✅ v3.2.1: 타겟 설정(config)의 field_mappings에서 현재 포인트의 매핑 정보를
-  // 찾음
-  if (config.contains("field_mappings") &&
-      config["field_mappings"].is_array()) {
-    for (const auto &m : config["field_mappings"]) {
-      if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
-        target_field_name = m.value("target_field", "");
-        break;
-      }
-    }
-  }
-
-  auto context = transformer.createContext(alarm, target_field_name,
-                                           target_description, converted_value);
-  template_json = transformer.transform(template_json, context);
-  LogManager::getInstance().Info("[TRACE-TRANSFORM-S3] Final Alarm Payload: " +
-                                 template_json.dump());
-}
-
-void S3TargetHandler::expandTemplateVariables(
-    json &template_json, const PulseOne::Gateway::Model::ValueMessage &value,
-    const json &config) const {
-  // DEPRECATED: Logic moved to PayloadTransformer::buildPayload
-}
-
-std::string S3TargetHandler::buildJsonContent(
-    const PulseOne::Gateway::Model::AlarmMessage &alarm,
-    const json &config) const {
-  // [v3.2.1] Manual Override RAW Bypass (PRESERVED)
-  if (alarm.manual_override) {
-    LogManager::getInstance().Info(
-        "[S3] Manual Override active: Sending RAW payload.");
-    return alarm.extra_info.is_null() ? "{}" : alarm.extra_info.dump(2);
-  }
-
-  // [v3.0.0] Unified Payload Builder Delegation
-  return PulseOne::Transform::PayloadTransformer::getInstance()
-      .buildPayload(alarm, config)
-      .dump(2);
 }
 
 std::unordered_map<std::string, std::string> S3TargetHandler::buildMetadata(
