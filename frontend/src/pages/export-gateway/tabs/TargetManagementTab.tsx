@@ -36,8 +36,14 @@ const maskSensitiveData = (config: any): any => {
         if (!o || typeof o !== 'object') return;
         Object.keys(o).forEach(key => {
             if (sensitiveKeys.some(sk => sk.toLowerCase() === key.toLowerCase())) {
-                if (typeof o[key] === 'string' && o[key].length > 0) {
-                    o[key] = '********';
+                const val = o[key];
+                if (typeof val === 'string' && val.length > 0) {
+                    // If it's a variable reference, show a masked placeholder to avoid exposing the variable name
+                    if (val.startsWith('${') && val.endsWith('}')) {
+                        o[key] = '******** (Environment Variable)';
+                    } else {
+                        o[key] = '********';
+                    }
                 }
             } else if (typeof o[key] === 'object') {
                 maskValue(o[key]);
@@ -82,6 +88,30 @@ const TargetManagementTab: React.FC = () => {
     const [bulkSiteIdForMapping, setBulkSiteIdForMapping] = useState(''); // [NEW] Bulk Site ID state
 
     const { confirm } = useConfirmContext();
+
+    const handleCredentialChange = (currentVal: string, newVal: string, onUpdate: (finalVal: string) => void) => {
+        // If current value is masked variable and user types something new
+        if (currentVal === '********') {
+            // If the user typed something into a field that was previously showing the mask
+            // we assume they want to REPLACE the entire mask with the new value.
+            // This is safer than trying to 'replace' the substring.
+            if (newVal !== '********') {
+                // Determine the newly typed text. 
+                // In Ant Design Input.Password, e.target.value usually contains the new char at the end or middle.
+                // We just take the whole newVal if it's different from the mask, 
+                // provided it's not just a deletion that left some stars.
+                if (newVal.includes('********')) {
+                    const added = newVal.replace('********', '');
+                    onUpdate(added);
+                } else {
+                    // They replaced the whole selection or similar
+                    onUpdate(newVal);
+                }
+            }
+        } else {
+            onUpdate(newVal);
+        }
+    };
 
     const fetchData = async () => {
         setLoading(true);
@@ -156,14 +186,12 @@ const TargetManagementTab: React.FC = () => {
                 point_id: m.point_id!,
                 target_field_name: m.target_field_name || '',
                 target_description: m.target_description || '',
-                site_id: m.site_id, // [FIX] Include site_id
-                start_bit: m.start_bit,
-                bit_length: m.bit_length,
+                site_id: m.site_id,
                 is_enabled: m.is_enabled !== false,
-                conversion_config: m.conversion_config // { scale, offset }
+                conversion_config: m.conversion_config
             }));
 
-            const response = await exportGatewayApi.updateTargetMappings(mappingTargetId, mappingsPayload);
+            const response = await exportGatewayApi.saveTargetMappings(mappingTargetId, mappingsPayload);
 
             if (response.success) {
                 await confirm({
@@ -195,7 +223,8 @@ const TargetManagementTab: React.FC = () => {
             const pointFn = allPoints.find(p => p.id === mapping.point_id);
             const val = pointFn ? (pointFn as any).latest_value : 0;
 
-            const res = await exportGatewayApi.triggerManualExport(0, { // 0 = broadcast or handled by backend logic for target-specific
+            const res = await exportGatewayApi.triggerManualExport(0, {
+                target_name: targets.find(t => t.id === mappingTargetId)?.name || 'Unknown',
                 target_id: mappingTargetId,
                 point_id: mapping.point_id,
                 value: val || 0
@@ -488,7 +517,7 @@ const TargetManagementTab: React.FC = () => {
                                             </select>
                                         </div>
                                         <div className="mgmt-modal-form-group">
-                                            <label>사용할 페이로드 템플릿</label>
+                                            <label>사용할 페이로드 템플릿 <span className="mgmt-tag tag-blue">{templates.find(t => t.id === editingTarget.template_id)?.system_type || 'Custom'}</span></label>
                                             <select
                                                 className="mgmt-select"
                                                 required
@@ -497,7 +526,7 @@ const TargetManagementTab: React.FC = () => {
                                             >
                                                 <option value="">(기본 형식 사용)</option>
                                                 {templates.map(t => (
-                                                    <option key={t.id} value={t.id}>{t.name} (v{t.version})</option>
+                                                    <option key={t.id} value={t.id}>{t.name}</option>
                                                 ))}
                                             </select>
                                         </div>
@@ -563,8 +592,15 @@ const TargetManagementTab: React.FC = () => {
                                                         placeholder='{"Content-Type": "application/json"}'
                                                         value={(() => {
                                                             const c = getConfigObject(editingTarget.config);
-                                                            return JSON.stringify(c.headers || {});
+                                                            const h = c.headers || {};
+                                                            // For the JSON field, we NEVER show variables or masks, 
+                                                            // we just show OTHER headers to avoid exposure.
+                                                            const otherHeaders = { ...h };
+                                                            const sensitive = ['Authorization', 'x-api-key', 'apiKey', 'token'];
+                                                            sensitive.forEach(k => delete (otherHeaders as any)[k]);
+                                                            return JSON.stringify(otherHeaders, null, 1);
                                                         })()}
+                                                        readOnly // Standard headers can be edited in the JSON block if needed, but not sensitive ones
                                                         onChange={e => {
                                                             const c = getConfigObject(editingTarget.config);
                                                             try {
@@ -582,17 +618,24 @@ const TargetManagementTab: React.FC = () => {
                                                     <Input.Password
                                                         className="mgmt-input"
                                                         placeholder="Bearer Token, AWS Signature, or custom auth value"
-                                                        value={getConfigObject(editingTarget.config).headers?.['Authorization'] || ''}
+                                                        value={(() => {
+                                                            const val = getConfigObject(editingTarget.config).headers?.['Authorization'] || '';
+                                                            return (val.startsWith('${') && val.endsWith('}')) ? '********' : val;
+                                                        })()}
                                                         onChange={e => {
                                                             const c = getConfigObject(editingTarget.config);
-                                                            const headers = { ...(c.headers || {}) };
-                                                            if (e.target.value) {
-                                                                headers['Authorization'] = e.target.value;
-                                                            } else {
-                                                                delete headers['Authorization'];
-                                                            }
-                                                            setEditingTarget({ ...editingTarget, config: JSON.stringify({ ...c, headers }, null, 2) });
-                                                            setHasChanges(true);
+                                                            const currentVal = (getConfigObject(editingTarget.config).headers?.['Authorization'] || '').startsWith('${') ? '********' : (getConfigObject(editingTarget.config).headers?.['Authorization'] || '');
+
+                                                            handleCredentialChange(currentVal, e.target.value, (finalVal) => {
+                                                                const headers = { ...(c.headers || {}) };
+                                                                if (finalVal) {
+                                                                    headers['Authorization'] = finalVal;
+                                                                } else {
+                                                                    delete headers['Authorization'];
+                                                                }
+                                                                setEditingTarget({ ...editingTarget, config: JSON.stringify({ ...c, headers }, null, 2) });
+                                                                setHasChanges(true);
+                                                            });
                                                         }}
                                                     />
                                                 </div>
@@ -604,21 +647,28 @@ const TargetManagementTab: React.FC = () => {
                                                         placeholder="x-api-key 또는 Authorization Bearer 토큰 입력"
                                                         value={(() => {
                                                             const c = getConfigObject(editingTarget.config);
-                                                            return c.auth?.apiKey || c.headers?.['x-api-key'] || '';
+                                                            const val = c.auth?.apiKey || c.headers?.['x-api-key'] || '';
+                                                            // Mask variable names to avoid exposing internal security details
+                                                            return (val.startsWith('${') && val.endsWith('}')) ? '********' : val;
                                                         })()}
                                                         onChange={e => {
                                                             const c = getConfigObject(editingTarget.config);
-                                                            const auth = { ...(c.auth || { type: 'x-api-key' }), apiKey: e.target.value };
-                                                            const headers = { ...(c.headers || {}) };
+                                                            const val = c.auth?.apiKey || c.headers?.['x-api-key'] || '';
+                                                            const currentVal = val.startsWith('${') ? '********' : val;
 
-                                                            if (e.target.value) {
-                                                                headers['x-api-key'] = e.target.value;
-                                                            } else {
-                                                                delete headers['x-api-key'];
-                                                            }
+                                                            handleCredentialChange(currentVal, e.target.value, (finalVal) => {
+                                                                const auth = { ...(c.auth || { type: 'x-api-key' }), apiKey: finalVal };
+                                                                const headers = { ...(c.headers || {}) };
 
-                                                            setEditingTarget({ ...editingTarget, config: JSON.stringify({ ...c, auth, headers }, null, 2) });
-                                                            setHasChanges(true);
+                                                                if (finalVal) {
+                                                                    headers['x-api-key'] = finalVal;
+                                                                } else {
+                                                                    delete headers['x-api-key'];
+                                                                }
+
+                                                                setEditingTarget({ ...editingTarget, config: JSON.stringify({ ...c, auth, headers }, null, 2) });
+                                                                setHasChanges(true);
+                                                            });
                                                         }}
                                                     />
                                                     <div className="mgmt-modal-form-hint">입력 시 x-api-key 헤더 및 auth 설정에 자동 반영됩니다.</div>
@@ -692,12 +742,20 @@ const TargetManagementTab: React.FC = () => {
                                                     <Input.Password
                                                         className="mgmt-input"
                                                         placeholder="AKIA..."
-                                                        value={getConfigObject(editingTarget.config).AccessKeyID || ''}
+                                                        value={(() => {
+                                                            const val = getConfigObject(editingTarget.config).AccessKeyID || '';
+                                                            return (val.startsWith('${') && val.endsWith('}')) ? '********' : val;
+                                                        })()}
                                                         onChange={e => {
                                                             const c = getConfigObject(editingTarget.config);
-                                                            const newConfig = { ...c, AccessKeyID: e.target.value };
-                                                            setEditingTarget({ ...editingTarget, config: JSON.stringify(newConfig, null, 2) });
-                                                            setHasChanges(true);
+                                                            const val = c.AccessKeyID || '';
+                                                            const currentVal = val.startsWith('${') ? '********' : val;
+
+                                                            handleCredentialChange(currentVal, e.target.value, (finalVal) => {
+                                                                const newConfig = { ...c, AccessKeyID: finalVal };
+                                                                setEditingTarget({ ...editingTarget, config: JSON.stringify(newConfig, null, 2) });
+                                                                setHasChanges(true);
+                                                            });
                                                         }}
                                                     />
                                                 </div>
@@ -706,12 +764,20 @@ const TargetManagementTab: React.FC = () => {
                                                     <Input.Password
                                                         className="mgmt-input"
                                                         placeholder="Secret Key..."
-                                                        value={getConfigObject(editingTarget.config).SecretAccessKey || ''}
+                                                        value={(() => {
+                                                            const val = getConfigObject(editingTarget.config).SecretAccessKey || '';
+                                                            return (val.startsWith('${') && val.endsWith('}')) ? '********' : val;
+                                                        })()}
                                                         onChange={e => {
                                                             const c = getConfigObject(editingTarget.config);
-                                                            const newConfig = { ...c, SecretAccessKey: e.target.value };
-                                                            setEditingTarget({ ...editingTarget, config: JSON.stringify(newConfig, null, 2) });
-                                                            setHasChanges(true);
+                                                            const val = c.SecretAccessKey || '';
+                                                            const currentVal = val.startsWith('${') ? '********' : val;
+
+                                                            handleCredentialChange(currentVal, e.target.value, (finalVal) => {
+                                                                const newConfig = { ...c, SecretAccessKey: finalVal };
+                                                                setEditingTarget({ ...editingTarget, config: JSON.stringify(newConfig, null, 2) });
+                                                                setHasChanges(true);
+                                                            });
                                                         }}
                                                     />
                                                 </div>

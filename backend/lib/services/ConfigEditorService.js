@@ -6,9 +6,16 @@ const LogManager = require('../utils/LogManager');
 class ConfigEditorService {
     constructor() {
         this.logger = LogManager.getInstance();
-        // Use process.cwd() (backend root) to find config sibling directory
-        // In Docker: /app/backend -> ../config -> /app/config
-        this.configDir = path.resolve(process.cwd(), '../config');
+        // Find config directory more robustly
+        const pathsToTry = [
+            path.resolve(process.cwd(), 'config'),           // If run from project root
+            path.resolve(process.cwd(), '../config'),        // If run from backend directory
+            path.resolve(__dirname, '../../../config'),      // Absolute path from backend/lib/services/
+            path.resolve(__dirname, '../../config')          // Absolute path from backend/lib/
+        ];
+
+        this.configDir = pathsToTry.find(p => fs.existsSync(p)) || pathsToTry[0];
+        this.logger.debug('ConfigEditor', `Resolved config directory: ${this.configDir}`);
 
         // 허용된 확장자
         this.allowedExtensions = ['.env', '.json', '.conf'];
@@ -121,7 +128,7 @@ class ConfigEditorService {
     encryptSecret(value) {
         if (!value) return '';
 
-        const KEY = "PulseOne2025SecretKey";
+        const KEY = process.env.PULSEONE_SECRET_KEY || "PulseOne_Secure_Vault_Key_2026_v3.2.0_Unified";
         let encrypted = '';
 
         // XOR Encryption
@@ -140,7 +147,7 @@ class ConfigEditorService {
     decryptSecret(value) {
         if (!value || !value.startsWith('ENC:')) return value;
 
-        const KEY = "PulseOne2025SecretKey";
+        const KEY = process.env.PULSEONE_SECRET_KEY || "PulseOne_Secure_Vault_Key_2026_v3.2.0_Unified";
         const encryptedBase64 = value.substring(4); // Remove ENC:
 
         try {

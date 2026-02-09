@@ -44,7 +44,11 @@ class ExportLogRepository extends BaseRepository {
                 query.where('l.timestamp', '>=', filters.date_from);
             }
             if (filters.date_to) {
-                query.where('l.timestamp', '<=', filters.date_to);
+                let dateTo = filters.date_to;
+                if (typeof dateTo === 'string' && dateTo.length === 10) {
+                    dateTo += ' 23:59:59';
+                }
+                query.where('l.timestamp', '<=', dateTo);
             }
             if (filters.target_type) {
                 query.whereRaw('LOWER(t.target_type) = ?', [filters.target_type.toLowerCase()]);
@@ -119,7 +123,7 @@ class ExportLogRepository extends BaseRepository {
             const stats = await query.select(
                 this.knex.raw('COUNT(*) as total'),
                 this.knex.raw("SUM(CASE WHEN UPPER(l.status) = 'SUCCESS' THEN 1 ELSE 0 END) as success"),
-                this.knex.raw("SUM(CASE WHEN UPPER(l.status) = 'FAILURE' THEN 1 ELSE 0 END) as failure"),
+                this.knex.raw("SUM(CASE WHEN UPPER(l.status) = 'FAILED' THEN 1 ELSE 0 END) as failure"),
                 this.knex.raw('MAX(l.timestamp) as last_dispatch')
             ).first();
 

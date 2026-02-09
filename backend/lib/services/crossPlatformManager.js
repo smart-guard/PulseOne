@@ -324,6 +324,10 @@ class CrossPlatformManager {
                     const pid = parseInt(parts[1]);
                     const command = parts.slice(10).join(' ');
 
+                    if (command.includes('<defunct>') || command.includes('[defunct]')) {
+                        return;
+                    }
+
                     const processInfo = {
                         pid: pid,
                         name: parts[10],
@@ -943,12 +947,19 @@ class CrossPlatformManager {
             gatewayId
         });
 
-        // [MODIFIED] Docker Environment Handling Removed
-        // We want to spawn processes directly even in Docker to support multi-instance (per ID)
-        // if (this.isDocker) {
-        //    this.log('INFO', 'Docker 환경 감지: Export Gateway 컨테이너 시작 시도');
-        //    return await this.controlDockerContainer('export-gateway', 'start', gatewayId);
-        // }
+        // [RESTORED] Docker Environment Handling
+        // We MUST NOT spawn local processes in the backend container if a dedicated
+        // export-gateway container is available.
+        if (this.isDocker) {
+            this.log('INFO', 'Docker 환경 감지: 전용 컨테이너에 제어 위임');
+            // Note: In Docker, the dedicated container's launcher will auto-detect the new gateway.
+            // We return success here to indicate the command was 'accepted' by the system.
+            return {
+                success: true,
+                message: 'Docker 환경: 전용 컨테이너에서 게이트웨이가 자동 시작됩니다.',
+                platform: 'docker'
+            };
+        }
 
         try {
             const gatewayExists = await this.fileExists(this.paths.exportGateway);

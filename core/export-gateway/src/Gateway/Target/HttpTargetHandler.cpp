@@ -200,7 +200,9 @@ TargetSendResult HttpTargetHandler::executeSingleRequest(
   auto headers = buildRequestHeaders(config);
   std::string body = buildRequestBody(alarm, config);
 
-  LogManager::getInstance().Info("[TRACE-4-SEND] HTTP Request Body: " + body);
+  LogManager::getInstance().Info(
+      "[TRACE-4-SEND] HTTP Request Body: " +
+      Security::SecretManager::getInstance().maskSensitiveJson(body));
 
   auto response =
       client->post(url, body, HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
@@ -284,22 +286,21 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
 
     if (type == "x-api-key") {
       std::string key = auth.value("apiKey", "");
-      LogManager::getInstance().Info("[DEBUG] Raw apiKey: " + key);
-
       if (!key.empty()) {
         std::string expanded =
             ConfigManager::getInstance().expandVariables(key);
-        LogManager::getInstance().Info("[DEBUG] Expanded apiKey: " + expanded);
-
         std::string final_value =
             Security::SecretManager::getInstance().decryptEncodedValue(
                 expanded);
+
         // Log masked final value
-        std::string masked =
-            (final_value.length() > 4)
-                ? final_value.substr(0, 2) + "..." +
-                      final_value.substr(final_value.length() - 2)
-                : "****";
+        std::string masked = "****";
+        if (final_value.length() >= 4) {
+          masked = final_value.substr(0, 2) + "..." +
+                   final_value.substr(final_value.length() - 2);
+        } else if (!final_value.empty()) {
+          masked = final_value.substr(0, 1) + "...";
+        }
         LogManager::getInstance().Info("[DEBUG] Final decrypted key: " +
                                        masked);
 
@@ -391,7 +392,9 @@ void HttpTargetHandler::expandTemplateVariables(
   auto context = transformer.createContext(alarm, target_field_name);
   template_json = transformer.transform(template_json, context);
   LogManager::getInstance().Info(
-      "[TRACE-TRANSFORM-HTTP] Final Alarm Payload: " + template_json.dump());
+      "[TRACE-TRANSFORM-HTTP] Final Alarm Payload: " +
+      Security::SecretManager::getInstance().maskSensitiveJson(
+          template_json.dump()));
 }
 
 void HttpTargetHandler::expandTemplateVariables(
@@ -413,7 +416,9 @@ void HttpTargetHandler::expandTemplateVariables(
   auto context = transformer.createContext(value, target_field_name);
   template_json = transformer.transform(template_json, context);
   LogManager::getInstance().Info(
-      "[TRACE-TRANSFORM-HTTP] Final Value Payload: " + template_json.dump());
+      "[TRACE-TRANSFORM-HTTP] Final Value Payload: " +
+      Security::SecretManager::getInstance().maskSensitiveJson(
+          template_json.dump()));
 }
 
 std::string HttpTargetHandler::base64Encode(const std::string &input) const {

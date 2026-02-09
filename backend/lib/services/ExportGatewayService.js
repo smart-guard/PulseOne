@@ -169,20 +169,16 @@ class ExportGatewayService extends BaseService {
             }
             const target = await this.targetRepository.save(data, tenantId);
 
-            // [Fix] Automatically sync mappings if profile_id is assigned
-            if (target.profile_id) {
-                try {
-                    const profile = await this.profileRepository.findById(target.profile_id, tenantId);
-                    if (profile && profile.data_points) {
-                        const points = Array.isArray(profile.data_points) ? profile.data_points : JSON.parse(profile.data_points || '[]');
-                        LogManager.api('INFO', `[CreateTarget] Auto-syncing mappings for target ${target.id} with profile ${target.profile_id}`);
-                        await this.syncProfileToTargets(target.profile_id, points);
-                    }
-                } catch (e) {
-                    LogManager.api('ERROR', `[CreateTarget] Failed to auto-sync mappings: ${e.message}`);
-                    // Fallback: Proceed without failing the creation
+            // Automatically sync mappings if profile_id is assigned
+            if (data.profile_id) {
+                const profile = await this.profileRepository.findById(data.profile_id, tenantId);
+                if (profile && profile.data_points) {
+                    await this.syncProfileToTargets(data.profile_id, profile.data_points);
                 }
             }
+
+            // Signal gateways to reload configurations
+            await this.signalTargetReload(tenantId);
 
             return target;
         }, 'CreateTarget');
@@ -190,7 +186,7 @@ class ExportGatewayService extends BaseService {
 
     async updateTarget(id, data, tenantId) {
         return await this.handleRequest(async () => {
-            // [Modified] Encrypt credentials if they are in raw format
+            // [Replace & Cleanup] Encrypt credentials if they are in raw format
             if (data.config) {
                 // Ensure config is an object
                 let configObj = data.config;
@@ -202,27 +198,63 @@ class ExportGatewayService extends BaseService {
                     }
                 }
 
-                const { hasChanges, newConfig } = await this.extractAndEncryptCredentials(data.name || 'TARGET', configObj);
-                if (hasChanges) {
-                    data.config = JSON.stringify(newConfig);
+                // Fetch old target to find old variable names for cleanup
+                const oldTarget = await this.targetRepository.findById(id, tenantId);
+                let oldConfig = null;
+                if (oldTarget && oldTarget.config) {
+                    try {
+                        oldConfig = typeof oldTarget.config === 'string' ? JSON.parse(oldTarget.config) : oldTarget.config;
+                    } catch (e) {
+                        oldConfig = null;
+                    }
+                }
+
+                const { hasChanges: credChanges, newConfig, variablesToRemove } = await this.extractAndEncryptCredentials(data.name || 'TARGET', configObj, oldConfig);
+
+                // [FIX] Always update if the FINAL processed config is different from oldConfig
+                // This ensures non-sensitive changes and deletions are persisted correctly.
+                const finalConfigStr = JSON.stringify(newConfig);
+                const oldConfigStr = oldConfig ? JSON.stringify(oldConfig) : null;
+
+                if (finalConfigStr !== oldConfigStr) {
+                    data.config = finalConfigStr;
+
+                    // [FIX] [IMPORTANT] Global Deletion Guard
+                    // Scan ALL targets in the database before removing ANY variable.
+                    // This prevents cross-target data loss when variables are shared.
+                    if (variablesToRemove && variablesToRemove.length > 0) {
+                        try {
+                            const allTargets = await this.targetRepository.findAll(tenantId);
+                            const allConfigsStr = allTargets.map(t => t.config || '').join(' ') + ' ' + finalConfigStr;
+
+                            const safeToRemove = variablesToRemove.filter(varName => {
+                                // Must not be in the new config of current target AND must not be in ANY other target's config
+                                return !allConfigsStr.includes(`\${${varName}}`);
+                            });
+
+                            if (safeToRemove.length > 0) {
+                                this.removeVariablesFromEnvFile(safeToRemove);
+                            }
+                        } catch (e) {
+                            console.error(`[ExportGatewayService] Global Deletion Guard failed: ${e.message}`);
+                            // If audit fails, err on the side of caution and DON'T remove anything
+                        }
+                    }
                 }
             }
 
             const target = await this.targetRepository.update(id, data, tenantId);
 
             // [Fix] Automatically sync mappings if profile_id is present (changed or just saved)
-            if (target && target.profile_id) {
-                try {
-                    const profile = await this.profileRepository.findById(target.profile_id, tenantId);
-                    if (profile && profile.data_points) {
-                        const points = Array.isArray(profile.data_points) ? profile.data_points : JSON.parse(profile.data_points || '[]');
-                        LogManager.api('INFO', `[UpdateTarget] Auto-syncing mappings for target ${target.id} with profile ${target.profile_id}`);
-                        await this.syncProfileToTargets(target.profile_id, points);
-                    }
-                } catch (e) {
-                    LogManager.api('ERROR', `[UpdateTarget] Failed to auto-sync mappings: ${e.message}`);
+            if (data.profile_id) {
+                const profile = await this.profileRepository.findById(data.profile_id, tenantId);
+                if (profile && profile.data_points) {
+                    await this.syncProfileToTargets(data.profile_id, profile.data_points);
                 }
             }
+
+            // Signal gateways to reload configurations
+            await this.signalTargetReload(tenantId);
 
             return target;
         }, 'UpdateTarget');
@@ -231,101 +263,212 @@ class ExportGatewayService extends BaseService {
     /**
      * Extracts raw credentials, encrypts them, saves to security.env, and replaces with ${VAR}.
      */
-    async extractAndEncryptCredentials(targetName, config) {
+    async extractAndEncryptCredentials(targetName, config, oldConfig = null) {
         // [Fix] Handle Array Configurations (Recursively)
         if (Array.isArray(config)) {
             let anyChanges = false;
+            let variablesToRemoveAll = [];
             const newArray = [];
             for (let i = 0; i < config.length; i++) {
-                const { hasChanges, newConfig } = await this.extractAndEncryptCredentials(targetName, config[i]);
+                const oldItem = (oldConfig && Array.isArray(oldConfig)) ? oldConfig[i] : null;
+                const { hasChanges, newConfig, variablesToRemove } = await this.extractAndEncryptCredentials(targetName, config[i], oldItem);
                 if (hasChanges) anyChanges = true;
+                if (variablesToRemove) variablesToRemoveAll = variablesToRemoveAll.concat(variablesToRemove);
                 newArray.push(newConfig);
             }
-            return { hasChanges: anyChanges, newConfig: newArray };
+            return { hasChanges: anyChanges, newConfig: newArray, variablesToRemove: variablesToRemoveAll };
         }
 
         let hasChanges = false;
+        let variablesToRemove = [];
         const newConfig = { ...config };
         const ConfigManager = require('../config/ConfigManager');
         const path = require('path');
 
+        // [FIX] Define sanitizedTargetName for variable generation
+        const sanitizedTargetName = (targetName || 'TARGET')
+            .replace(/[^a-zA-Z0-9]/g, '_')
+            .toUpperCase()
+            .substring(0, 16);
+
         // Helper to process a specific field
-        const processField = async (obj, key, prefixSuffix) => {
+        const processField = async (obj, key, prefixSuffix, oldSubObj = null) => {
             const val = obj[key];
-            // Check if value is non-empty string, not already a variable (${...}), and not encrypted (ENC:)
-            if (val && typeof val === 'string' && !val.startsWith('${') && !val.startsWith('ENC:')) {
-                // Generate unique variable name
-                // [Fix] Remove CSP_ prefix and collapse multiple underscores
-                const sanitizedTargetName = targetName.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '').toUpperCase();
-                const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0'); // Add randomness to avoid collision
-                const varName = `${sanitizedTargetName}_${prefixSuffix}_${randomSuffix}`.substring(0, 64); // Limit length
+            if (!val || typeof val !== 'string') return;
 
-                // Encrypt
+            // 1. If it's already a variable reference (${VAR_NAME})
+            if (val.startsWith('${') && val.endsWith('}')) {
+                return;
+            }
+
+            // [FIX] 1.5. If it's a masked placeholder from UI
+            if (val.startsWith('***')) {
+                // If oldSubObj had a real value (variable reference), restore it
+                const oldVal = (oldSubObj && oldSubObj[key]) ? oldSubObj[key] : null;
+                if (oldVal && oldVal.startsWith('${') && oldVal.endsWith('}')) {
+                    obj[key] = oldVal;
+                } else {
+                    // [IMPORTANT] If we can't restore, CLEAR the placeholder so it doesn't pollute the DB
+                    console.warn(`[ExportGatewayService] Cannot restore variable for placeholder: ${key}=${val}. Clearing field.`);
+                    delete obj[key];
+                }
+                hasChanges = true; // Always mark as change when resolving placeholders
+                return;
+            }
+
+            // 2. If it's a RAW value (not starting with ${ and not ENC:)
+            if (!val.startsWith('ENC:')) {
                 const encrypted = this.encryptSecret(val);
+                // Find security.env more robustly
+                // [FIX] Unify security.env path resolution for Docker
+                const pathsToTry = [
+                    '/app/config/security.env', // Docker absolute path (Primary)
+                    path.resolve(process.cwd(), '../config', 'security.env'),
+                    path.resolve(process.cwd(), 'config', 'security.env'),
+                    path.resolve(__dirname, '../../../config', 'security.env')
+                ];
+                const envPath = pathsToTry.find(p => fs.existsSync(p)) || pathsToTry[0];
 
-                // Append to security.env
-                // [Fix] Path resolution: process.cwd() is /app/backend, config is at /app/config
-                const envPath = path.join(process.cwd(), '../config', 'security.env');
-                const envEntry = `\n${varName}=${encrypted}`;
+                // [REMOVED] Smart matching/reuse logic was causing cross-target interference.
+                // Every secret save now generates a unique, isolated variable.
+
+                // If we are replacing an existing variable with a new random one, mark old one for removal
+                const oldVal = (oldSubObj && oldSubObj[key]) ? oldSubObj[key] : null;
+                if (oldVal && oldVal.startsWith('${') && oldVal.endsWith('}')) {
+                    const oldVarName = oldVal.substring(2, oldVal.length - 1);
+                    variablesToRemove.push(oldVarName);
+                    console.log(`[ExportGatewayService] Marking old variable for removal: ${oldVarName}`);
+                }
+
+                // Generate unique variable name
+                const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+                const varName = `${sanitizedTargetName}_${prefixSuffix}_${randomSuffix}`.substring(0, 64);
 
                 try {
-                    // console.log(`[ExportGatewayService] Writing secret to ${envPath}`);
-                    fs.appendFileSync(envPath, envEntry);
+                    // Append to security.env
+                    fs.appendFileSync(envPath, `\n${varName}=${encrypted}`);
                     console.log(`[ExportGatewayService] Auto-encrypted credential to ${varName}`);
 
                     // Reload Config
                     ConfigManager.getInstance().reload();
 
-                    // Update config object
                     obj[key] = `\${${varName}}`;
                     hasChanges = true;
                 } catch (e) {
-                    console.error(`[ExportGatewayService] Failed to write to security.env at ${envPath}: ${e.message}`);
+                    console.error(`[ExportGatewayService] Failed to write to security.env: ${e.message}`);
                 }
             }
         };
 
         // 1. Process standard fields based on structure
+        await processField(newConfig, 'access_key', 'ACCESS', oldConfig);
+        await processField(newConfig, 'secret_key', 'SECRET', oldConfig);
+        await processField(newConfig, 'apiKey', 'APIKEY', oldConfig);
+        await processField(newConfig, 'api_key', 'APIKEY', oldConfig);
+        await processField(newConfig, 'password', 'PW', oldConfig);
+        await processField(newConfig, 'sas_token', 'SAS', oldConfig);
+
         // HTTP Headers
         if (newConfig.headers) {
-            if (newConfig.headers['Authorization']) await processField(newConfig.headers, 'Authorization', 'AUTH');
-            if (newConfig.headers['x-api-key']) await processField(newConfig.headers, 'x-api-key', 'APIKEY');
+            const oldHeaders = (oldConfig && oldConfig.headers) ? oldConfig.headers : null;
+            if (newConfig.headers['Authorization']) await processField(newConfig.headers, 'Authorization', 'AUTH', oldHeaders);
+            if (newConfig.headers['x-api-key']) await processField(newConfig.headers, 'x-api-key', 'APIKEY', oldHeaders);
         }
 
-        // Auth Object (HTTP)
-        if (newConfig.auth) {
-            if (newConfig.auth.apiKey) await processField(newConfig.auth, 'apiKey', 'APIKEY');
-            if (newConfig.auth.token) await processField(newConfig.auth, 'token', 'TOKEN');
-            if (newConfig.auth.password) await processField(newConfig.auth, 'password', 'PWD');
+        // Auth Object (HTTP/MQTT)
+        if (newConfig.auth && typeof newConfig.auth === 'object') {
+            const oldAuth = (oldConfig && oldConfig.auth) ? oldConfig.auth : null;
+            const { hasChanges: authChanges, newConfig: newAuth, variablesToRemove: authVars } = await this.extractAndEncryptCredentials(targetName, newConfig.auth, oldAuth);
+            if (authChanges) {
+                newConfig.auth = newAuth;
+                hasChanges = true;
+            }
+            if (authVars) variablesToRemove = variablesToRemove.concat(authVars);
+        } else if (newConfig.auth) {
+            // Some auth formats might have flat fields
+            const oldAuth = (oldConfig && oldConfig.auth) ? oldConfig.auth : null;
+            if (newConfig.auth.apiKey) await processField(newConfig.auth, 'apiKey', 'APIKEY', oldAuth);
+            if (newConfig.auth.token) await processField(newConfig.auth, 'token', 'TOKEN', oldAuth);
+            if (newConfig.auth.password) await processField(newConfig.auth, 'password', 'PWD', oldAuth);
         }
 
         // S3 Credentials
-        if (newConfig.AccessKeyID) await processField(newConfig, 'AccessKeyID', 'S3_ACCESS');
-        if (newConfig.SecretAccessKey) await processField(newConfig, 'SecretAccessKey', 'S3_SECRET');
+        if (newConfig.AccessKeyID) await processField(newConfig, 'AccessKeyID', 'S3_ACCESS', oldConfig);
+        if (newConfig.SecretAccessKey) await processField(newConfig, 'SecretAccessKey', 'S3_SECRET', oldConfig);
 
         // Root Level Common (sometimes used)
-        if (newConfig.Authorization) await processField(newConfig, 'Authorization', 'AUTH');
-        if (newConfig['x-api-key']) await processField(newConfig, 'x-api-key', 'APIKEY');
+        if (newConfig.Authorization) await processField(newConfig, 'Authorization', 'AUTH', oldConfig);
+        if (newConfig['x-api-key']) await processField(newConfig, 'x-api-key', 'APIKEY', oldConfig);
 
-        return { hasChanges, newConfig };
+        return { hasChanges, newConfig, variablesToRemove };
     }
 
     /**
-     * Encrypt secret using XOR + Base64 (Matching C++ Logic)
+     * Removes specific variable lines from security.env
+     */
+    removeVariablesFromEnvFile(varNames) {
+        if (!varNames || varNames.length === 0) return;
+
+        const path = require('path');
+        const pathsToTry = [
+            '/app/config/security.env', // Docker absolute path (Primary)
+            path.resolve(process.cwd(), '../config', 'security.env'),
+            path.resolve(process.cwd(), 'config', 'security.env'),
+            path.resolve(__dirname, '../../../config', 'security.env')
+        ];
+        const envPath = pathsToTry.find(p => fs.existsSync(p)) || pathsToTry[0];
+
+        try {
+            if (!fs.existsSync(envPath)) return;
+
+            const content = fs.readFileSync(envPath, 'utf8');
+            const lines = content.split('\n');
+            const newLines = lines.filter(line => {
+                if (!line.trim() || line.startsWith('#')) return true;
+                const parts = line.split('=');
+                if (parts.length < 1) return true;
+                const key = parts[0].trim();
+                return !varNames.includes(key);
+            });
+
+            fs.writeFileSync(envPath, newLines.join('\n'), 'utf8');
+            console.log(`[ExportGatewayService] Removed variables from security.env: ${varNames.join(', ')}`);
+
+            // Reload ConfigManager to reflect deletions
+            const ConfigManager = require('../config/ConfigManager');
+            ConfigManager.getInstance().reload();
+        } catch (e) {
+            console.error(`[ExportGatewayService] Failed to cleanup security.env: ${e.message}`);
+        }
+    }
+
+    /**
+     * [FIX] Encrypt secret using Salted XOR + Base64 (Non-Deterministic)
+     * Format: ENC:base64(XOR(salt + ":" + value))
      */
     encryptSecret(value) {
         if (!value) return value;
-        const KEY = "PulseOne2025SecretKey";
+        const KEY = process.env.PULSEONE_SECRET_KEY || "PulseOne_Secure_Vault_Key_2026_v3.2.0_Unified";
+
+        // Generate a random 8-character salt (hex)
+        const crypto = require('crypto');
+        const salt = crypto.randomBytes(4).toString('hex'); // 8 hex chars
+        const saltedValue = salt + ":" + value;
+
         let encryptedStr = '';
-        for (let i = 0; i < value.length; i++) {
-            encryptedStr += String.fromCharCode(value.charCodeAt(i) ^ KEY.charCodeAt(i % KEY.length));
+        for (let i = 0; i < saltedValue.length; i++) {
+            encryptedStr += String.fromCharCode(saltedValue.charCodeAt(i) ^ KEY.charCodeAt(i % KEY.length));
         }
         return 'ENC:' + Buffer.from(encryptedStr, 'binary').toString('base64');
     }
 
     async deleteTarget(id, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.targetRepository.deleteById(id, tenantId);
+            const success = await this.targetRepository.deleteById(id, tenantId);
+            if (success) {
+                await this.signalTargetReload(tenantId);
+            }
+            return { success };
         }, 'DeleteTarget');
     }
 
@@ -353,7 +496,10 @@ class ExportGatewayService extends BaseService {
 
     async updatePayloadTemplate(id, data) {
         return await this.handleRequest(async () => {
-            return await this.payloadTemplateRepository.update(id, data);
+            const template = await this.payloadTemplateRepository.update(id, data);
+            // Templates can affect multiple targets, so broadcast reload
+            await this.signalTargetReload();
+            return template;
         }, 'UpdatePayloadTemplate');
     }
 
@@ -389,7 +535,9 @@ class ExportGatewayService extends BaseService {
 
     async updateSchedule(id, data) {
         return await this.handleRequest(async () => {
-            return await this.scheduleRepository.update(id, data);
+            const schedule = await this.scheduleRepository.update(id, data);
+            await this.signalTargetReload();
+            return schedule;
         }, 'UpdateSchedule');
     }
 
@@ -483,6 +631,9 @@ class ExportGatewayService extends BaseService {
                 );
             }
 
+            // Signal reload after assignment
+            await this.signalTargetReload(tenantId);
+
             return { success: true, profile_id: profileId, gateway_id: gatewayId };
         }, 'AssignProfileToGateway');
     }
@@ -495,6 +646,10 @@ class ExportGatewayService extends BaseService {
             // 현재 프론트엔드는 토글 방식을 사용하므로 데이터 정합성을 위해 삭제 처리
             const query = `DELETE FROM export_profile_assignments WHERE profile_id = ? AND gateway_id = ?`;
             await this.db.executeQuery(query, [profileId, gatewayId]);
+
+            // Signal reload after unassignment
+            await this.signalTargetReload();
+
             return { success: true };
         }, 'UnassignProfile');
     }
@@ -561,7 +716,6 @@ class ExportGatewayService extends BaseService {
 
     async registerGateway(data, tenantId) {
         return await this.handleRequest(async () => {
-            console.log('DEBUG: registerGateway data:', JSON.stringify(data, null, 2));
 
             // 1. Auto-encrypt sensitive fields in config (MQTT credentials, etc.)
             if (data.config) {
@@ -611,7 +765,6 @@ class ExportGatewayService extends BaseService {
 
     async updateGateway(id, data, tenantId) {
         return await this.handleRequest(async () => {
-            console.log(`DEBUG: updateGateway ID ${id} data:`, JSON.stringify(data, null, 2));
             return await this.gatewayRepository.update(id, data, tenantId);
         }, 'UpdateGateway');
     }
@@ -843,13 +996,14 @@ class ExportGatewayService extends BaseService {
     }
 
     /**
-     * Decrypt secret if it starts with ENC:
+     * [FIX] Decrypt secret if it starts with ENC:
      * Logic matches C++ SecretManager (XOR + Base64)
+     * Now supports Salted format (detects ':' delimiter)
      */
     decryptSecret(value) {
         if (!value || !value.startsWith('ENC:')) return value;
 
-        const KEY = "PulseOne2025SecretKey";
+        const KEY = process.env.PULSEONE_SECRET_KEY || "PulseOne_Secure_Vault_Key_2026_v3.2.0_Unified";
         const encryptedBase64 = value.substring(4); // Remove ENC:
 
         try {
@@ -859,7 +1013,19 @@ class ExportGatewayService extends BaseService {
             for (let i = 0; i < encryptedStr.length; i++) {
                 decrypted += String.fromCharCode(encryptedStr.charCodeAt(i) ^ KEY.charCodeAt(i % KEY.length));
             }
-            return decrypted;
+
+            // [FIX] Check for salt delimiter (8 hex chars + ':')
+            // Salted format: [8 hex chars]:[actual secret]
+            if (decrypted.length > 9 && decrypted.charAt(8) === ':') {
+                const salt = decrypted.substring(0, 8);
+                const actualSecret = decrypted.substring(9);
+                // Basic hex check to be sure it's a salt
+                if (/^[0-9a-f]{8}$/.test(salt)) {
+                    return actualSecret;
+                }
+            }
+
+            return decrypted; // Return as is if not salted (backward compatibility)
         } catch (e) {
             console.error(`[ExportGatewayService] Decryption failed: ${e.message}`);
             return value; // Return original if decryption fails (fallback)
@@ -901,6 +1067,25 @@ class ExportGatewayService extends BaseService {
                 c2_result: result
             };
         }, 'ManualExport');
+    }
+
+    /**
+     * Signal all Export Gateways to reload configuration
+     */
+    async signalTargetReload(tenantId = null) {
+        try {
+            const gateways = await this.gatewayRepository.findAll(tenantId);
+            if (gateways && gateways.length > 0) {
+                // target:reload is a broadcast command in EdgeServerService.sendCommand
+                // We send it to the first gateway found, and it will be broadcasted to all.
+                await EdgeServerService.sendCommand(gateways[0].id, 'target:reload');
+                LogManager.api('INFO', `[Sync] Sent target:reload signal to export gateway cluster`);
+                return true;
+            }
+        } catch (e) {
+            LogManager.api('WARN', `[Sync] Failed to send target:reload signal: ${e.message}`);
+        }
+        return false;
     }
 }
 

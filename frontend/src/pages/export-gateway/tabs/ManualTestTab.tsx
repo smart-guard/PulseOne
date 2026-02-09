@@ -12,6 +12,13 @@ const extractItemsRef = (data: any) => {
     return [];
 }
 
+const getLocalISOString = () => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    const localIso = new Date(now.getTime() - offset).toISOString();
+    return `${localIso.replace('T', ' ').split('.')[0]}.000`;
+};
+
 const ManualTestTab: React.FC = () => {
     const [gateways, setGateways] = useState<Gateway[]>([]);
     const [targets, setTargets] = useState<ExportTarget[]>([]);
@@ -115,7 +122,7 @@ const ManualTestTab: React.FC = () => {
                 '{{type}}': dataType,
                 '{{target_key}}': currentMapping.target_field_name,
                 '{{measured_value}}': val,
-                '{{timestamp}}': `${new Date().toISOString().replace('T', ' ').split('.')[0]}.000`,
+                '{{timestamp}}': getLocalISOString(),
                 '{{is_control}}': 1,
                 '{{status_code}}': 0,
                 '{{alarm_level}}': testAlValue,
@@ -129,7 +136,7 @@ const ManualTestTab: React.FC = () => {
                 '{{bd}}': currentMapping.site_id || 1,
                 '{{nm}}': currentMapping.target_field_name,
                 '{{vl}}': val,
-                '{{tm}}': `${new Date().toISOString().replace('T', ' ').split('.')[0]}.000`,
+                '{{tm}}': getLocalISOString(),
                 '{{st}}': 1,
                 '{{al}}': testAlValue,
                 '{{des}}': "Manual Export Triggered",
@@ -188,7 +195,7 @@ const ManualTestTab: React.FC = () => {
                 "xl": "-",
                 "mi": [0],
                 "mx": [100],
-                "tm": `${new Date().toISOString().replace('T', ' ').split('.')[0]}.000`,
+                "tm": getLocalISOString(),
                 "st": 1,
                 "al": testAlValue,
                 "des": "Manual Export Triggered"
@@ -260,9 +267,12 @@ const ManualTestTab: React.FC = () => {
         setIsModalOpen(true);
     };
 
-    const handleSendTest = async () => {
-        if (!currentMapping || !selectedGatewayId) return;
+    const isSubmittingRef = React.useRef(false);
 
+    const handleSendTest = async () => {
+        if (!currentMapping || !selectedGatewayId || isSubmittingRef.current) return;
+
+        isSubmittingRef.current = true;
         setLoading(true);
         try {
             let overrides: any = {};
@@ -317,6 +327,7 @@ const ManualTestTab: React.FC = () => {
             });
         } finally {
             setLoading(false);
+            isSubmittingRef.current = false;
         }
     };
 
