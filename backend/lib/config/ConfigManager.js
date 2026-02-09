@@ -297,14 +297,9 @@ class ConfigManager {
                 // 따옴표 제거
                 const cleanValue = value.replace(/^["']|["']$/g, '');
 
-                // 환경변수 설정 (process.env가 이미 있으면 무시)
-                if (process.env[key] === undefined) {
-                    this.env.set(key, cleanValue);
-                    process.env[key] = cleanValue;
-                } else {
-                    // 이미 설정된 경우 this.env에만 보관
-                    this.env.set(key, process.env[key]);
-                }
+                // 환경변수 설정 (파일의 최신값으로 업데이트)
+                this.env.set(key, cleanValue);
+                process.env[key] = cleanValue;
                 loadedCount++;
             });
 

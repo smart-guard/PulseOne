@@ -1382,7 +1382,10 @@ ExportCoordinator::getTargetStats(const std::string &target_name) const {
 
 int ExportCoordinator::reloadTargets() {
   try {
-    LogManager::getInstance().Info("타겟 리로드 중...");
+    LogManager::getInstance().Info("타겟 리로드 중 (ConfigManager 포함)...");
+
+    // 1. 환경변수 재로딩 (security.env 변경사항 반영)
+    ConfigManager::getInstance().reload();
 
     auto target_manager = getTargetManager();
     if (!target_manager) {

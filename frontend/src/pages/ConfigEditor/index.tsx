@@ -74,7 +74,7 @@ const ConfigEditor: React.FC = () => {
                 </div>
             </div>
 
-            <Layout className="flex-1 overflow-hidden bg-transparent">
+            <Layout className="flex-1 overflow-hidden bg-transparent border-t border-neutral-200 !h-0 min-h-0">
                 {/* Modern Sidebar */}
                 <Sider width={320} className="config-sidebar">
                     <div className="sidebar-search">
@@ -137,9 +137,9 @@ const ConfigEditor: React.FC = () => {
                 </Sider>
 
                 {/* Editor Area */}
-                <Content className="overflow-hidden bg-transparent flex flex-col">
+                <Content className="flex-1 overflow-hidden bg-transparent flex flex-col min-h-0 h-full max-h-full">
                     {selectedFile ? (
-                        <div className="h-full flex flex-col">
+                        <div className="flex-1 flex flex-col min-h-0 relative h-full max-h-full">
                             <EnvFileEditor filename={selectedFile} />
                         </div>
                     ) : (

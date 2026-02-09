@@ -173,6 +173,11 @@ public:
    */
   std::string decryptEncodedValue(const std::string &value) const;
 
+  /**
+   * @brief JSON 문자열 내의 민감한 정보를 마스킹 (로그용)
+   */
+  std::string maskSensitiveJson(const std::string &json_str) const;
+
   // ==========================================================================
   // CSP Gateway 전용 편의 메서드들
   // ==========================================================================
@@ -384,6 +389,11 @@ private:
    */
   std::string maskSensitivePath(const std::string &file_path) const;
 
+  /**
+   * @brief 민감한 키/값 마스킹 (로그용)
+   */
+  std::string maskValue(const std::string &value) const;
+
   // ==========================================================================
   // 멤버 변수들
   // ==========================================================================
@@ -407,7 +417,8 @@ private:
   /// 설정
   static constexpr int DEFAULT_CACHE_DURATION = 3600; // 1시간
   static constexpr size_t MAX_CACHE_SIZE = 100;
-  static constexpr char DEFAULT_ENCRYPTION_KEY[] = "PulseOne2025SecretKey";
+  static constexpr char DEFAULT_ENCRYPTION_KEY[] =
+      "PulseOne_Secure_Vault_Key_2026_v3.2.0_Unified";
 };
 
 // =============================================================================

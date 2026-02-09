@@ -1,10 +1,12 @@
 /* config-editor.css */
 
 .config-editor-container {
-    height: calc(100vh - 64px);
-    display: flex;
-    flex-direction: column;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
     background-color: var(--neutral-50);
+    overflow: hidden !important;
+    min-height: 0 !important;
 }
 
 .config-sidebar {
@@ -95,24 +97,31 @@
     text-overflow: ellipsis;
 }
 
+
 .editor-main-container {
-    flex: 1;
+    flex: 1 !important;
     padding: var(--space-6);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    position: relative !important;
+    /* Anchor for surface */
 }
 
 .editor-surface {
-    flex: 1;
+    position: absolute !important;
+    top: var(--space-6) !important;
+    left: var(--space-6) !important;
+    right: var(--space-6) !important;
+    bottom: var(--space-6) !important;
     background: white;
     border-radius: var(--radius-2xl);
     border: 1px solid var(--neutral-200);
     box-shadow: var(--shadow-md);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
 }
 
 .editor-toolbar {
@@ -122,20 +131,26 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-shrink: 0;
+    /* Prevent toolbar shrinking */
 }
 
 .editor-content-area {
-    flex: 1;
-    display: flex;
-    position: relative;
+    flex: 1 !important;
+    display: grid !important;
+    grid-template-columns: 60px 1fr !important;
+    grid-template-rows: minmax(0, 1fr) !important;
     background: #1e1e1e;
-    /* VS Code style dark theme */
-    overflow: hidden;
+    overflow: hidden !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
 }
 
 /* Line Number Gutter */
 .line-numbers {
-    width: 50px;
+    grid-column: 1;
+    grid-row: 1;
     padding: var(--space-4) 0;
     background: #252526;
     color: #858585;
@@ -146,10 +161,13 @@
     line-height: 1.6;
     user-select: none;
     border-right: 1px solid #333;
+    overflow: hidden !important;
+    height: 100% !important;
 }
 
 .code-editor-textarea {
-    flex: 1;
+    grid-column: 2;
+    grid-row: 1;
     padding: var(--space-4);
     background: transparent;
     color: #d4d4d4;
@@ -159,10 +177,12 @@
     border: none;
     resize: none;
     white-space: pre;
-    overflow: auto;
+    overflow-y: auto !important;
+    overflow-x: auto;
     outline: none;
-    /* Fix text clipping */
     padding-bottom: 40px;
+    height: 100% !important;
+    min-height: 0 !important;
 }
 
 /* Custom Scrollbar for Editor */

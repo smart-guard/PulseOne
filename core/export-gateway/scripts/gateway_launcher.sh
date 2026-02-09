@@ -7,7 +7,7 @@ set -e
 # DB_TYPE, DB_PRIMARY_HOST, DB_PRIMARY_USER 등이 설정되어 있으면 C++ 바이너리가 이를 사용함
 BIN_PATH="${BIN_PATH:-./core/export-gateway/bin/export-gateway}"
 LOG_DIR="${LOG_DIR:-/app/logs}"
-CHECK_INTERVAL="${CHECK_INTERVAL:-60}" # 새로운 게이트웨이 체크 간격 (초)
+CHECK_INTERVAL="${CHECK_INTERVAL:-5}" # 새로운 게이트웨이 체크 간격 (초)
 
 mkdir -p "$LOG_DIR"
 

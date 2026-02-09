@@ -8,6 +8,7 @@
 #include "Security/SecretManager.h"
 #include "Platform/PlatformCompat.h"
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -81,6 +82,18 @@ void SecureString::zeroMemory() {
 SecretManager::SecretManager()
     : config_manager_(nullptr), encryption_mode_(EncryptionMode::XOR),
       encryption_key_(DEFAULT_ENCRYPTION_KEY) {
+
+  // 암호화 키 설정 (환경 변수 우선)
+  const char *env_key = std::getenv("PULSEONE_SECRET_KEY");
+  if (env_key && std::strlen(env_key) > 0) {
+    encryption_key_ = env_key;
+    LOG_SECRET(LogLevel::INFO,
+               "SecretManager: 환경 변수에서 암호화 키를 로드했습니다.");
+  } else {
+    LOG_SECRET(LogLevel::WARN,
+               "SecretManager: 기본 암호화 키를 사용 중입니다. 보안을 위해 "
+               "PULSEONE_SECRET_KEY 환경 변수를 설정하십시오.");
+  }
 
   // 통계 초기화
   stats_.total_secrets = 0;
@@ -678,26 +691,66 @@ SecretManager::decryptValue(const std::string &encrypted_value) const {
   }
 
   std::string payload = encrypted_value.substr(4); // "ENC:" 제거
+  std::string decrypted;
 
-  std::lock_guard<std::mutex> lock(encryption_mutex_);
+  {
+    std::lock_guard<std::mutex> lock(encryption_mutex_);
 
-  switch (encryption_mode_) {
-  case EncryptionMode::NONE:
-    return payload;
+    switch (encryption_mode_) {
+    case EncryptionMode::NONE:
+      decrypted = payload;
+      break;
 
-  case EncryptionMode::XOR: {
-    std::string decoded = base64Decode(payload);
-    return xorDecrypt(decoded, encryption_key_);
+    case EncryptionMode::XOR: {
+      std::string decoded = base64Decode(payload);
+      decrypted = xorDecrypt(decoded, encryption_key_);
+      break;
+    }
+
+    case EncryptionMode::AES:
+      // TODO: AES 구현
+      LOG_SECRET(LogLevel::WARN, "AES 복호화는 아직 구현되지 않음. XOR 사용.");
+      // Recursive call with lock released or just do XOR logic here.
+      // For simplicity and matching Node.js, we assume XOR.
+      {
+        std::string decoded = base64Decode(payload);
+        decrypted = xorDecrypt(decoded, encryption_key_);
+      }
+      break;
+
+    default:
+      decrypted = payload;
+      break;
+    }
   }
 
-  case EncryptionMode::AES:
-    // TODO: AES 구현
-    LOG_SECRET(LogLevel::WARN, "AES 복호화는 아직 구현되지 않음. XOR 사용.");
-    return decryptValue(encrypted_value); // XOR로 폴백
+  // [FIX] Salted format 지원 (8 hex chars + ':')
+  // Salted format: [8 hex chars]:[actual secret]
+  if (decrypted.length() > 9 && decrypted[8] == ':') {
+    std::string salt = decrypted.substr(0, 8);
 
-  default:
-    return payload;
+    // Salt가 16진수인지 확인
+    bool is_hex = true;
+    for (char c : salt) {
+      if (!std::isxdigit(static_cast<unsigned char>(c))) {
+        is_hex = false;
+        break;
+      }
+    }
+
+    if (is_hex) {
+      std::string result = decrypted.substr(9);
+      // ✅ [Harden] 디코딩 후 보이지 않는 공백/제어문자 제거
+      // (InvalidAccessKeyId 방지)
+      result.erase(result.find_last_not_of(" \t\r\n") + 1);
+      return result;
+    }
   }
+
+  // ✅ [Harden] 일반 복호화 결과도 트리밍
+  std::string result = decrypted;
+  result.erase(result.find_last_not_of(" \t\r\n") + 1);
+  return result;
 }
 
 std::string SecretManager::xorEncrypt(const std::string &value,
@@ -804,6 +857,67 @@ SecretManager::maskSensitivePath(const std::string &file_path) const {
   }
 
   return "***";
+}
+
+std::string
+SecretManager::maskSensitiveJson(const std::string &json_str) const {
+  if (json_str.empty())
+    return json_str;
+
+  std::string masked = json_str;
+  // 민감한 키 목록 (JSON 키 형식: "key":)
+  std::vector<std::string> sensitive_keys = {
+      "\"apiKey\":",          "\"password\":",   "\"token\":",
+      "\"access_key\":",      "\"secret_key\":", "\"AccessKeyID\":",
+      "\"SecretAccessKey\":", "\"x-api-key\":",  "\"Authorization\":"};
+
+  for (const auto &key : sensitive_keys) {
+    size_t pos = 0;
+    while ((pos = masked.find(key, pos)) != std::string::npos) {
+      // 키 다음의 값 시작 위치 찾기
+      size_t value_start = masked.find(':', pos);
+      if (value_start == std::string::npos)
+        break;
+      value_start++; // : 다음으로
+
+      // 공백 무시
+      while (value_start < masked.length() &&
+             std::isspace(static_cast<unsigned char>(masked[value_start]))) {
+        value_start++;
+      }
+
+      // 값이 따옴표로 시작하는지 확인
+      if (value_start < masked.length() && masked[value_start] == '\"') {
+        size_t start_quote = value_start;
+        size_t end_quote = masked.find('\"', start_quote + 1);
+        if (end_quote != std::string::npos) {
+          std::string raw_value =
+              masked.substr(start_quote + 1, end_quote - start_quote - 1);
+          std::string replacement = maskValue(raw_value);
+          masked.replace(start_quote + 1, end_quote - start_quote - 1,
+                         replacement);
+          pos = start_quote + replacement.length() + 2;
+        } else {
+          break;
+        }
+      } else {
+        // 따옴표가 아닌 경우 (숫자나 불리언 등 - 드묾)
+        size_t end_val = masked.find_first_of(",}", value_start);
+        if (end_val == std::string::npos)
+          end_val = masked.length();
+        masked.replace(value_start, end_val - value_start, "\"***\"");
+        pos = value_start + 5;
+      }
+    }
+  }
+
+  return masked;
+}
+
+std::string SecretManager::maskValue(const std::string &value) const {
+  if (value.length() <= 4)
+    return "****";
+  return value.substr(0, 2) + "..." + value.substr(value.length() - 2);
 }
 
 } // namespace Security

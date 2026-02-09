@@ -72,12 +72,18 @@ void EventDispatcher::registerHandlers(
       "target:*",
       std::make_shared<GenericHandlerBridge>(
           *this, "ConfigHandler", &EventDispatcher::handleConfigEvent));
+  // [v3.1.0] Precision Channel Subscription (Fix for Double Export)
+  // Instead of subscribing to the global `cmd:*` pattern (which causes overlaps
+  // and cross-talk), we subscribe ONLY to our specific gateway command channel.
+  std::string cmd_channel =
+      "cmd:gateway:" + std::to_string(context_.getGatewayId());
+
   subscriber.registerHandler(
-      "cmd:*",
+      cmd_channel,
       std::make_shared<GenericHandlerBridge>(
           *this, "CommandHandler", &EventDispatcher::handleCommandEvent));
 
-  subscriber.subscribePattern("cmd:*");
+  subscriber.subscribeChannel(cmd_channel);
 }
 
 void EventDispatcher::handleAlarm(const PulseOne::CSP::AlarmMessage &alarm) {

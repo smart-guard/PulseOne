@@ -676,10 +676,10 @@ void ConfigManager::parseLine(const std::string &line) {
   std::string key = line.substr(0, pos);
   std::string value = line.substr(pos + 1);
 
-  key.erase(0, key.find_first_not_of(" \t"));
-  key.erase(key.find_last_not_of(" \t") + 1);
-  value.erase(0, value.find_first_not_of(" \t"));
-  value.erase(value.find_last_not_of(" \t") + 1);
+  key.erase(0, key.find_first_not_of(" \t\r\n"));
+  key.erase(key.find_last_not_of(" \t\r\n") + 1);
+  value.erase(0, value.find_first_not_of(" \t\r\n"));
+  value.erase(value.find_last_not_of(" \t\r\n") + 1);
 
   if (value.length() >= 2 &&
       ((value.front() == '"' && value.back() == '"') ||
@@ -917,6 +917,16 @@ std::string ConfigManager::expandVariables(const std::string &value) const {
         const char *env_val = std::getenv(var_name.c_str());
         if (env_val) {
           replacement = std::string(env_val);
+        } else if (var_name.compare(0, 7, "INSITE_") == 0) {
+          // [HOTFIX] 환경변수 주입 지연 대응: security.env 강제 재로드
+          std::string sec_path = Path::Join(configDir_, "security.env");
+          if (FileSystem::FileExists(sec_path)) {
+            const_cast<ConfigManager *>(this)->loadConfigFile(sec_path);
+            auto it_retry = configMap.find(var_name);
+            if (it_retry != configMap.end()) {
+              replacement = it_retry->second;
+            }
+          }
         }
       }
     }
