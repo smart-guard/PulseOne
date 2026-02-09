@@ -332,13 +332,13 @@ const ActiveAlarms: React.FC = () => {
             <thead>
               <tr>
                 <th>발생 시간</th>
-                <th>심각도</th>
+                <th style={{ textAlign: 'center' }}>심각도</th>
                 <th>디바이스 / 규칙</th>
                 <th>메시지</th>
                 <th>메모</th>
-                <th>상태</th>
+                <th style={{ textAlign: 'center' }}>상태</th>
                 <th style={{ textAlign: 'center' }}>상세</th>
-                <th>액션</th>
+                <th style={{ textAlign: 'center' }}>액션</th>
               </tr>
             </thead>
             <tbody>
@@ -346,7 +346,7 @@ const ActiveAlarms: React.FC = () => {
                 alarms.map(alarm => (
                   <tr key={alarm.id}>
                     <td>{new Date(alarm.triggered_at).toLocaleString()}</td>
-                    <td><span className={`mgmt-status-pill ${alarm.severity}`}>{alarm.severity.toUpperCase()}</span></td>
+                    <td style={{ textAlign: 'center' }}><span className={`mgmt-status-pill ${alarm.severity}`}>{alarm.severity.toUpperCase()}</span></td>
                     <td>
                       <div><strong>{alarm.device_name}</strong></div>
                       <div style={{ fontSize: '12px', color: '#64748b' }}>{alarm.rule_name}</div>
@@ -357,7 +357,7 @@ const ActiveAlarms: React.FC = () => {
                         {alarm.comment || '-'}
                       </div>
                     </td>
-                    <td>
+                    <td style={{ textAlign: 'center' }}>
                       <span className={`mgmt-status-pill ${alarm.state === 'active' ? 'error' : 'active'}`}>
                         <i className={`fas ${alarm.state === 'active' ? 'fa-clock' : 'fa-check-circle'}`} style={{ marginRight: '6px' }}></i>
                         {alarm.state === 'active' ? '확인 대기' : '확인됨'}
@@ -373,8 +373,8 @@ const ActiveAlarms: React.FC = () => {
                         <i className="far fa-eye"></i>
                       </button>
                     </td>
-                    <td>
-                      <div className="table-actions">
+                    <td style={{ textAlign: 'center' }}>
+                      <div className="table-actions" style={{ justifyContent: 'center' }}>
                         {alarm.state === 'active' ? (
                           <button
                             onClick={() => handleAcknowledge(alarm.id)}

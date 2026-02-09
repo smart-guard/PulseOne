@@ -52,7 +52,7 @@ const ExportHistory: React.FC = () => {
     const [filters, setFilters] = useState<FilterOptions>({
         dateRange: {
             start: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
-            end: new Date()
+            end: new Date(Date.now() + 60 * 60 * 1000) // Now + 1 hour for visibility buffer
         },
         status: 'all',
         target_type: 'all',
@@ -295,7 +295,10 @@ const ExportHistory: React.FC = () => {
                         (filters.gateway_id !== 'all' ? 1 : 0)
                     }
                     onReset={() => setFilters({
-                        dateRange: { start: new Date(Date.now() - 24 * 60 * 60 * 1000), end: new Date() },
+                        dateRange: {
+                            start: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                            end: new Date(Date.now() + 60 * 60 * 1000)
+                        },
                         status: 'all',
                         target_type: 'all',
                         target_id: 'all',
