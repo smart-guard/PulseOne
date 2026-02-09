@@ -47,10 +47,12 @@ public:
   bool initialize(const json &config) override;
 
   TargetSendResult
-  sendAlarm(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+  sendAlarm(const json &payload,
+            const PulseOne::Gateway::Model::AlarmMessage &alarm,
             const json &config) override;
 
   std::vector<TargetSendResult> sendValueBatch(
+      const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config) override;
 
@@ -67,25 +69,31 @@ private:
   std::string extractUrl(const json &config) const;
 
   TargetSendResult
-  executeWithRetry(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+  executeWithRetry(const json &payload,
+                   const PulseOne::Gateway::Model::AlarmMessage &alarm,
                    const json &config, const std::string &url);
   TargetSendResult executeWithRetry(
+      const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config, const std::string &url);
 
   TargetSendResult
-  executeSingleRequest(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+  executeSingleRequest(const json &payload,
+                       const PulseOne::Gateway::Model::AlarmMessage &alarm,
                        const json &config, const std::string &url);
   TargetSendResult executeSingleRequest(
+      const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config, const std::string &url);
 
   std::unordered_map<std::string, std::string>
   buildRequestHeaders(const json &config);
   std::string
-  buildRequestBody(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+  buildRequestBody(const json &payload,
+                   const PulseOne::Gateway::Model::AlarmMessage &alarm,
                    const json &config);
   std::string buildRequestBody(
+      const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config);
 
@@ -93,15 +101,6 @@ private:
   std::string getTargetName(const json &config) const;
   std::string getCurrentTimestamp() const;
   std::string generateRequestId() const;
-
-  void
-  expandTemplateVariables(json &template_json,
-                          const PulseOne::Gateway::Model::AlarmMessage &alarm,
-                          const json &config) const;
-  void
-  expandTemplateVariables(json &template_json,
-                          const PulseOne::Gateway::Model::ValueMessage &value,
-                          const json &config) const;
 
   std::string base64Encode(const std::string &input) const;
 };

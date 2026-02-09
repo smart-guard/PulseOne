@@ -61,7 +61,7 @@ private:
   PulseOne::CSP::FailureProtector *
   getOrCreateProtector(const std::string &target_name, const json &config);
 
-  bool executeSend(const DynamicTarget &target,
+  bool executeSend(const DynamicTarget &target, const json &payload,
                    const PulseOne::Gateway::Model::AlarmMessage &alarm,
                    TargetSendResult &result);
 

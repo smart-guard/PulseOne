@@ -194,7 +194,8 @@ public:
   virtual ~ITargetHandler() = default;
 
   // 필수 메서드들
-  virtual TargetSendResult sendAlarm(const PulseOne::CSP::AlarmMessage &alarm,
+  virtual TargetSendResult sendAlarm(const json &payload,
+                                     const PulseOne::CSP::AlarmMessage &alarm,
                                      const json &config) = 0;
   virtual bool testConnection(const json &config) = 0;
   virtual std::string getHandlerType() const = 0;
@@ -218,20 +219,21 @@ public:
 
   // 배치 전송 메서드들 (기본 구현: 루프 전송)
   virtual std::vector<TargetSendResult>
-  sendAlarmBatch(const std::vector<PulseOne::CSP::AlarmMessage> &alarms,
+  sendAlarmBatch(const std::vector<json> &payloads,
+                 const std::vector<PulseOne::CSP::AlarmMessage> &alarms,
                  const json &config) {
     std::vector<TargetSendResult> results;
-    for (const auto &alarm : alarms) {
-      results.push_back(sendAlarm(alarm, config));
+    for (size_t i = 0; i < alarms.size() && i < payloads.size(); ++i) {
+      results.push_back(sendAlarm(payloads[i], alarms[i], config));
     }
     return results;
   }
 
   virtual std::vector<TargetSendResult>
-  sendValueBatch(const std::vector<PulseOne::CSP::ValueMessage> & /* values */,
-                 const json & /* config */) {
-    // 기본적으로 값 전송은 배치만 지원하거나 미지원
-    return {};
+  sendValueBatch(const std::vector<json> &payloads,
+                 const std::vector<PulseOne::CSP::ValueMessage> &values,
+                 const json &config) {
+    return std::vector<TargetSendResult>();
   }
 };
 

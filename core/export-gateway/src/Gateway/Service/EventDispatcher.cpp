@@ -336,15 +336,16 @@ void EventDispatcher::logExportResult(
     }
 
     if (alarm) {
-      // [v3.2.1] Manual Override RAW Bypass: send EXACTLY what the user
-      // provided.
+      // [v3.1.0] Logging Consistency: Recording the ACTUAL transformed payload
+      // as the source value so history reflects the refactored template format.
       if (alarm->manual_override) {
-        LogManager::getInstance().Info(
-            "[TRACE-TRANSFORM-HTTP] Manual Override: Sending RAW payload.");
         log_entity.setSourceValue(
             alarm->extra_info.is_null() ? "{}" : alarm->extra_info.dump());
       } else {
-        log_entity.setSourceValue(alarm->to_json().dump());
+        // [IMPORTANT] Record the SENT payload (templated) instead of RAW alarm
+        log_entity.setSourceValue(result.sent_payload.empty()
+                                      ? alarm->to_json().dump()
+                                      : result.sent_payload);
       }
       log_entity.setPointId(alarm->point_id);
     } else {

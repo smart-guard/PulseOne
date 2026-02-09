@@ -34,10 +34,12 @@ public:
   bool initialize(const json &config) override;
 
   TargetSendResult
-  sendAlarm(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+  sendAlarm(const json &payload,
+            const PulseOne::Gateway::Model::AlarmMessage &alarm,
             const json &config) override;
 
   std::vector<TargetSendResult> sendValueBatch(
+      const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config) override;
 
@@ -55,15 +57,8 @@ private:
                    const json &config) const;
   void createDirectoriesForFile(const std::string &file_path) const;
 
-  std::string
-  buildFileContent(const PulseOne::Gateway::Model::AlarmMessage &alarm,
-                   const json &config) const;
   bool writeFile(const std::string &file_path, const std::string &content,
                  const json &config) const;
-
-  std::string
-  expandTemplate(const std::string &template_str,
-                 const PulseOne::Gateway::Model::AlarmMessage &alarm) const;
 };
 
 } // namespace Target

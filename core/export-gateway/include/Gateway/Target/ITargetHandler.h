@@ -31,7 +31,8 @@ public:
 
   // Essential methods
   virtual TargetSendResult
-  sendAlarm(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+  sendAlarm(const json &payload,
+            const PulseOne::Gateway::Model::AlarmMessage &alarm,
             const json &config) = 0;
 
   virtual bool testConnection(const json &config) = 0;
@@ -56,18 +57,20 @@ public:
 
   // Batch methods
   virtual std::vector<TargetSendResult> sendAlarmBatch(
+      const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::AlarmMessage> &alarms,
       const json &config) {
     std::vector<TargetSendResult> results;
-    for (const auto &alarm : alarms) {
-      results.push_back(sendAlarm(alarm, config));
+    for (size_t i = 0; i < alarms.size() && i < payloads.size(); ++i) {
+      results.push_back(sendAlarm(payloads[i], alarms[i], config));
     }
     return results;
   }
 
   virtual std::vector<TargetSendResult> sendValueBatch(
-      const std::vector<PulseOne::Gateway::Model::ValueMessage> & /* values */,
-      const json & /* config */) {
+      const std::vector<json> &payloads,
+      const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
+      const json &config) {
     return {};
   }
 };

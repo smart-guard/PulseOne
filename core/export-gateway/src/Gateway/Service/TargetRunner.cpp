@@ -7,6 +7,7 @@
 #include "Constants/ExportConstants.h"
 #include "Gateway/Target/ITargetHandler.h"
 #include "Logging/LogManager.h"
+#include "Transform/PayloadTransformer.h"
 #include <algorithm>
 #include <thread>
 
@@ -104,7 +105,20 @@ TargetSendResult TargetRunner::sendAlarmToTarget(
 
   auto start_time = std::chrono::steady_clock::now();
 
-  if (executeSend(target, processed_alarm, result)) {
+  // [v4.0.0] Centralized Payload Transformation
+  json payload;
+  try {
+    payload =
+        PulseOne::Transform::PayloadTransformer::getInstance().buildPayload(
+            processed_alarm, target.config);
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error("TargetRunner: Transformation failed for " +
+                                    target_name + ": " + e.what());
+    result.error_message = "Transformation logic error";
+    return result;
+  }
+
+  if (executeSend(target, payload, processed_alarm, result)) {
     if (protector)
       protector->recordSuccess();
     result.success = true;
@@ -161,11 +175,17 @@ BatchTargetResult TargetRunner::sendAlarmBatch(
       continue;
 
     std::vector<PulseOne::Gateway::Model::AlarmMessage> processed_batch;
+    std::vector<json> payloads;
+    auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
+
     for (const auto &alarm : alarms) {
-      processed_batch.push_back(applyMappings(target, alarm));
+      auto processed = applyMappings(target, alarm);
+      processed_batch.push_back(processed);
+      payloads.push_back(transformer.buildPayload(processed, target.config));
     }
 
-    auto results = handler->sendAlarmBatch(processed_batch, target.config);
+    auto results =
+        handler->sendAlarmBatch(payloads, processed_batch, target.config);
     for (const auto &res : results) {
       batch_result.results.push_back(res);
       if (res.success)
@@ -224,7 +244,7 @@ TargetRunner::getOrCreateProtector(const std::string &target_name,
 }
 
 bool TargetRunner::executeSend(
-    const DynamicTarget &target,
+    const DynamicTarget &target, const json &payload,
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     TargetSendResult &result) {
   auto *handler = registry_.getHandler(target.name);
@@ -233,7 +253,7 @@ bool TargetRunner::executeSend(
     return false;
   }
 
-  result = handler->sendAlarm(alarm, target.config);
+  result = handler->sendAlarm(payload, alarm, target.config);
 
   // Restore target identity (handlers might overwrite/ignore these)
   result.target_id = target.id;

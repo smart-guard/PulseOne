@@ -52,10 +52,12 @@ public:
   bool initialize(const json &config) override;
 
   TargetSendResult
-  sendAlarm(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+  sendAlarm(const json &payload,
+            const PulseOne::Gateway::Model::AlarmMessage &alarm,
             const json &config) override;
 
   std::vector<TargetSendResult> sendValueBatch(
+      const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config) override;
 
@@ -72,18 +74,10 @@ private:
 
   std::string generateTopic(const PulseOne::Gateway::Model::AlarmMessage &alarm,
                             const json &config) const;
-  std::string
-  generatePayload(const PulseOne::Gateway::Model::AlarmMessage &alarm,
-                  const json &config) const;
 
   TargetSendResult publishMessage(const std::string &topic,
                                   const std::string &payload, int qos,
                                   bool retain);
-
-  std::string
-  expandTemplateVariables(const std::string &template_str,
-                          const PulseOne::Gateway::Model::AlarmMessage &alarm,
-                          const json &config) const;
 };
 
 } // namespace Target

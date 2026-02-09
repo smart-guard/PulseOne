@@ -74,6 +74,7 @@ public:
 
   // [v3.0.0] Unified Payload Builder (Refactored from S3TargetHandler)
   json buildPayload(const AlarmMessage &alarm, const json &config);
+  json buildPayload(const ValueMessage &value, const json &config);
 
   // 시스템별 기본 템플릿
   json getInsiteDefaultTemplate();
@@ -98,7 +99,8 @@ public:
   std::map<std::string, std::string>
   buildVariableMap(const TransformContext &context);
   void expandJsonRecursive(json &obj,
-                           const std::map<std::string, std::string> &variables);
+                           const std::map<std::string, std::string> &variables,
+                           const std::string &current_key = "");
 
   // 헬퍼
   std::string toISO8601(const std::string &alarm_tm);

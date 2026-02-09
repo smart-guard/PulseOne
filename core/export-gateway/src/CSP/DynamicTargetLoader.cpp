@@ -342,7 +342,9 @@ PulseOne::Export::DynamicTarget DynamicTargetLoader::createTargetFromEntity(
 
           target.config["body_template"] = json::parse(raw_json);
           LogManager::getInstance().Info(
-              "[DEBUG-TEMPLATE] Injected body_template into config");
+              "[DEBUG-TEMPLATE] Successful injection for target: " +
+              target.name + " | Template Keys: " +
+              std::to_string(target.config["body_template"].size()));
         } catch (const std::exception &e) {
           LogManager::getInstance().Warn(
               "Template parsing failed for target: " + target.name + " - " +

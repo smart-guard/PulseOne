@@ -39,22 +39,26 @@ public:
   bool initialize(const json &config) override;
 
   TargetSendResult
-  sendAlarm(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+  sendAlarm(const json &payload,
+            const PulseOne::Gateway::Model::AlarmMessage &alarm,
             const json &config) override;
 
   TargetSendResult sendFile(const std::string &local_path,
                             const json &config) override;
 
   std::vector<TargetSendResult> sendAlarmBatch(
+      const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::AlarmMessage> &alarms,
       const json &config) override;
 
   std::vector<TargetSendResult> sendValueBatch(
+      const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config) override;
 
   TargetSendResult
-  sendValue(const PulseOne::Gateway::Model::ValueMessage &value,
+  sendValue(const json &payload,
+            const PulseOne::Gateway::Model::ValueMessage &value,
             const json &config);
 
   bool testConnection(const json &config) override;
@@ -76,18 +80,6 @@ private:
   expandTemplate(const std::string &template_str,
                  const PulseOne::Gateway::Model::AlarmMessage &alarm) const;
 
-  void
-  expandTemplateVariables(json &template_json,
-                          const PulseOne::Gateway::Model::AlarmMessage &alarm,
-                          const json &config) const;
-  void
-  expandTemplateVariables(json &template_json,
-                          const PulseOne::Gateway::Model::ValueMessage &value,
-                          const json &config) const;
-
-  std::string
-  buildJsonContent(const PulseOne::Gateway::Model::AlarmMessage &alarm,
-                   const json &config) const;
   std::unordered_map<std::string, std::string>
   buildMetadata(const PulseOne::Gateway::Model::AlarmMessage &alarm,
                 const json &config) const;

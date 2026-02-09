@@ -35,14 +35,15 @@ bool FileTargetHandler::initialize(const json &config) {
 }
 
 TargetSendResult FileTargetHandler::sendAlarm(
-    const PulseOne::Gateway::Model::AlarmMessage &alarm, const json &config) {
+    const json &payload, const PulseOne::Gateway::Model::AlarmMessage &alarm,
+    const json &config) {
   TargetSendResult result;
   result.target_type = "FILE";
   result.success = false;
 
   try {
     std::string path = generateFilePath(alarm, config);
-    std::string content = buildFileContent(alarm, config);
+    std::string content = payload.dump(2);
 
     result.success = writeFile(path, content, config);
     if (result.success) {
@@ -62,6 +63,7 @@ TargetSendResult FileTargetHandler::sendAlarm(
 }
 
 std::vector<TargetSendResult> FileTargetHandler::sendValueBatch(
+    const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config) {
   std::vector<TargetSendResult> results;
@@ -110,14 +112,6 @@ void FileTargetHandler::createDirectoriesForFile(
       std::filesystem::path(file_path).parent_path());
 }
 
-std::string FileTargetHandler::buildFileContent(
-    const PulseOne::Gateway::Model::AlarmMessage &alarm,
-    const json &config) const {
-  return PulseOne::Transform::PayloadTransformer::getInstance()
-      .buildPayload(alarm, config)
-      .dump(2);
-}
-
 bool FileTargetHandler::writeFile(const std::string &file_path,
                                   const std::string &content,
                                   const json &config) const {
@@ -127,17 +121,6 @@ bool FileTargetHandler::writeFile(const std::string &file_path,
     return false;
   ofs << content << std::endl;
   return true;
-}
-
-std::string FileTargetHandler::expandTemplate(
-    const std::string &template_str,
-    const PulseOne::Gateway::Model::AlarmMessage &alarm) const {
-  auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
-  auto context = transformer.createContext(alarm);
-  std::string result = transformer.transformString(template_str, context);
-  LogManager::getInstance().Info(
-      "[TRACE-TRANSFORM-FILE] Final Alarm Payload: " + result);
-  return result;
 }
 
 REGISTER_TARGET_HANDLER("FILE", FileTargetHandler);
