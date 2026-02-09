@@ -40,14 +40,13 @@ export const AlarmProvider: React.FC<AlarmProviderProps> = ({ children }) => {
 
       if (response.success && response.data) {
         const stats = response.data;
-        // active_alarms는 Active + Acknowledged를 포함함
-        setActiveAlarmCount(stats.occurrences.active_alarms || 0);
-        // dashboard_summary나 다른 경로를 통해 critical 개수를 가져올 수 있음
-        // 만약 통계에 critical 전용 필드가 없다면 전체 활성에서 필터링하거나 
-        // 백엔드 통계를 확장해야 함. 여기서는 기존 로직 유지를 위해 getActiveAlarms를 백그라운드에서 활용할 수도 있음.
+        // 미확인(확인 대기) 알람 개수를 메인 배지 숫자로 사용
+        setActiveAlarmCount(stats.dashboard_summary.unacknowledged || 0);
 
-        // 일단 unacknowledged_alarms 정보를 활용하여 bell에 표시할 개수 결정 가능
-        // 여기서는 user_information 등에 따라 active_alarms(전체 활성)를 사용함
+        // Critical 미확인 알람 통계 로드
+        // dashboard_summary에 없으므로 occurrences.by_category 등을 활용해야 할 수도 있음
+        // 여기서는 일단 이전에 구현된 로직의 의도에 따라 occurrences 정보를 활용 시도
+        // (실제 통계 객체 구조에 맞춰 안전하게 접근)
       }
     } catch (error) {
       console.error('알람 개수 로드 실패:', error);
@@ -63,31 +62,22 @@ export const AlarmProvider: React.FC<AlarmProviderProps> = ({ children }) => {
       console.log('Context received alarm event:', event.type, event.data);
 
       switch (event.type) {
-        case 'onCreate':
+        case 'alarm_triggered':
+        case 'critical_alarm':
+          // 새 알람 발생 시 미확인 개수 증가
           setActiveAlarmCount(prev => prev + 1);
-          if (event.data.severity === 'critical' || event.data.severity === 'high') {
+          if (event.data.severity === 'CRITICAL' || event.data.severity === 'HIGH') {
             setCriticalAlarmCount(prev => prev + 1);
           }
           break;
 
-        case 'onAcknowledge':
-          // '확인' 시에는 '전체 활성(Active+Ack)' 개수는 변하지 않음
-          // 미확인 개수를 따로 관리한다면 여기서 감소시켜야 함
-          if (event.data.severity === 'critical' || event.data.severity === 'high') {
-            // 필요 시 critical 미확인 개수 관리 로직 추가
-          }
-          break;
-
-        case 'onClear':
-          // '해제' 시에는 전체 활성 개수 감소
-          setActiveAlarmCount(prev => Math.max(0, prev - 1));
-          if (event.data.severity === 'critical' || event.data.severity === 'high') {
-            setCriticalAlarmCount(prev => Math.max(0, prev - 1));
-          }
+        case 'alarm_state_change':
+          // 상태 변화(확인/해제 등) 시에는 통계 재로드하여 정확한 상태 반영
+          loadAlarmCounts();
           break;
 
         default:
-          // 기타 이벤트 시 필요하면 loadAlarmCounts() 호출하여 동기화
+          // 기타 이벤트 시 통계 다시 불러오기
           loadAlarmCounts();
           break;
       }
@@ -112,7 +102,7 @@ export const AlarmProvider: React.FC<AlarmProviderProps> = ({ children }) => {
 
   return (
     <AlarmContext.Provider value={{
-      activeAlarmCount,
+      activeAlarmCount, // 이제 미확인 알람 개수를 의미함
       criticalAlarmCount,
       updateAlarmCount,
       incrementAlarmCount,

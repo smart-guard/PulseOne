@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { AlarmApiService, AlarmRule } from '../api/services/alarmApi';
 import { DataApiService } from '../api/services/dataApi';
 import { DeviceApiService } from '../api/services/deviceApi';
@@ -46,7 +47,19 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedRule, setSelectedRule] = useState<AlarmRule | null>(null);
-  const [viewType, setViewType] = useState<'card' | 'table'>('table');
+  const { view } = useParams<{ view: string }>();
+  const navigate = useNavigate();
+  const viewType = (view === 'card' || view === 'table') ? view : 'table';
+
+  const setViewType = (newView: 'card' | 'table') => {
+    navigate(`/alarms/settings/${newView}`);
+  };
+
+  useEffect(() => {
+    if (view && view !== 'card' && view !== 'table') {
+      navigate('/alarms/settings/table', { replace: true });
+    }
+  }, [view, navigate]);
   const [filters, setFilters] = useState<{
     search: string;
     severity: string;

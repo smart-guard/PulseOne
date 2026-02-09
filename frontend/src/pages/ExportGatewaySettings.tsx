@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import GatewayListTab from './export-gateway/tabs/GatewayListTab';
 import ExportGatewayWizard from './export-gateway/wizards/ExportGatewayWizard';
 import ProfileManagementTab from './export-gateway/tabs/ProfileManagementTab';
@@ -29,7 +30,16 @@ const extractItems = (data: any): any[] => {
 // =============================================================================
 
 const ExportGatewaySettings: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'gateways' | 'profiles' | 'targets' | 'templates' | 'schedules' | 'manual-test'>('gateways');
+    const { tab } = useParams<{ tab: string }>();
+    const navigate = useNavigate();
+
+    // Tab mapping for validation
+    const validTabs = ['gateways', 'profiles', 'targets', 'templates', 'schedules', 'manual-test'];
+    const activeTab = (tab && validTabs.includes(tab)) ? tab as any : 'gateways';
+
+    const setActiveTab = (newTab: string) => {
+        navigate(`/system/export-gateways/${newTab}`);
+    };
     const [gateways, setGateways] = useState<Gateway[]>([]);
     const [assignments, setAssignments] = useState<Record<number, Assignment[]>>({});
     const [targets, setTargets] = useState<ExportTarget[]>([]);

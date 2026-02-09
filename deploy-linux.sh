@@ -85,20 +85,18 @@ docker run --rm \
     pulseone-linux-builder bash -c "
         mkdir -p /src/collector/build
         cd /src/collector/build
-        cmake .. -DCMAKE_BUILD_TYPE=Release
+        # [OPTIMIZED] Release Build with RPi4 CPU Tuning & -O3
+        cmake .. -DCMAKE_BUILD_TYPE=Release \
+                 -DCMAKE_CXX_FLAGS="-O3 -march=armv8-a+crc -mtune=cortex-a72"
         make -j\$(nproc)
+        strip --strip-unneeded collector
         cp collector /output/pulseone-collector
 
-        mkdir -p /src/core/export-gateway/build
-        cd /src/core/export-gateway/build
-        # Assume Makefile.linux or CMake exists? 
-        # Actually core/export-gateway/Makefile supports Linux build
-        # But we need to use it.
-        # Wait, the Makefile might assume system libs.
-        # Let's try cmake if we can, or make.
-        # The Dockerfile.prod used 'make'.
+        # [OPTIMIZED] Export Gateway Build with RPi4 CPU Tuning & -O3
         cd /src/core/export-gateway
-        make -j\$(nproc)
+        make clean
+        make -j\$(nproc) CXXFLAGS="-O3 -march=armv8-a+crc -mtune=cortex-a72 -DPULSEONE_LINUX=1 -DNDEBUG"
+        strip --strip-unneeded bin/export-gateway
         cp bin/export-gateway /output/pulseone-export-gateway
     "
 
@@ -185,6 +183,11 @@ Environment=NODE_ENV=production
 Restart=always
 User=pulseone
 Group=pulseone
+# [OPTIMIZED] Resource Limits for Raspberry Pi
+MemoryHigh=512M
+MemoryMax=768M
+CPUWeight=100
+TasksMax=100
 
 [Install]
 WantedBy=multi-user.target
@@ -219,6 +222,11 @@ Environment=LD_LIBRARY_PATH=$INSTALL_DIR/collector:/usr/local/lib
 Restart=always
 User=pulseone
 Group=pulseone
+# [OPTIMIZED] Resource Limits and HA
+MemoryHigh=256M
+MemoryMax=512M
+CPUWeight=200
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target
@@ -238,4 +246,40 @@ INSTALL_EOF
 
 chmod +x install.sh
 
+# Generate uninstall.sh
+cat > uninstall.sh << 'UNINSTALL_EOF'
+#!/bin/bash
+if [ "$EUID" -ne 0 ]; then
+  echo "❌ Please run as root"
+  exit 1
+fi
+
+INSTALL_DIR="/opt/pulseone"
+echo "Cleaning up PulseOne services..."
+
+# Stop and Disable Services
+SERVICES=("pulseone-backend" "pulseone-collector" "pulseone-export-gateway")
+
+for service in "${SERVICES[@]}"; do
+    if systemctl is-active --quiet "$service"; then
+        echo "Stopping $service..."
+        systemctl stop "$service"
+    fi
+    if [ -f "/etc/systemd/system/$service.service" ]; then
+        echo "Removing $service..."
+        systemctl disable "$service"
+        rm "/etc/systemd/system/$service.service"
+    fi
+done
+
+systemctl daemon-reload
+
+echo "Services removed successfully."
+echo "Note: The installation directory ($INSTALL_DIR) was not removed."
+echo "To remove all data, run: rm -rf $INSTALL_DIR"
+UNINSTALL_EOF
+
+chmod +x uninstall.sh
+
 echo "✅ Build Complete: dist_linux/$PACKAGE_NAME"
+# [OPTIMIZED] Native deployment package with full lifecycle support (install/uninstall)
