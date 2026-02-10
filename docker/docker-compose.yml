@@ -135,7 +135,8 @@ services:
 
   rabbitmq:
     container_name: docker-rabbitmq-1
-    image: rabbitmq:3-management
+    build:
+      context: ./rabbitmq
     restart: always
     ports:
       - "${RABBITMQ_PORT:-5672}:5672"

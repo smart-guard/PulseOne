@@ -3,6 +3,8 @@
 // =============================================================================
 
 class WebSocketService {
+    static instance = null;
+
     constructor(server) {
         this.server = server;
         this.io = null;
@@ -15,7 +17,12 @@ class WebSocketService {
         this.statusMonitorInterval = null;
 
         this.log('WebSocketService 초기화 시작...');
+        WebSocketService.instance = this;
         this.initialize();
+    }
+
+    static getInstance() {
+        return WebSocketService.instance;
     }
 
     // =========================================================================

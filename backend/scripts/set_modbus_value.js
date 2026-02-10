@@ -4,8 +4,8 @@ const client = new ModbusRTU();
 const PORT = parseInt(process.env.MODBUS_PORT) || 50502;
 const HOST = 'localhost';
 const UNIT_ID = 1;
-const ADDR = 200;
-const VALUE = 150;
+const ADDR = parseInt(process.argv[2]) || 200;
+const VALUE = parseInt(process.argv[3]) || 150;
 
 console.log(`Connecting to ${HOST}:${PORT}...`);
 
