@@ -117,45 +117,47 @@ const ManualTestTab: React.FC = () => {
             const point = allPoints.find(p => p.id === currentMapping.point_id);
             const dataType = point?.data_type || 'num';
 
-            const replacements: Record<string, any> = {
-                '{{site_id}}': currentMapping.site_id || 1,
-                '{{type}}': dataType,
-                '{{target_key}}': currentMapping.target_field_name,
-                '{{measured_value}}': val,
-                '{{timestamp}}': getLocalISOString(),
-                '{{is_control}}': 1,
-                '{{status_code}}': 0,
-                '{{alarm_level}}': testAlValue,
-                '{{target_description}}': "Manual Export Triggered",
-                '{{il}}': "-",
-                '{{xl}}': "-",
-                '{{mi}}': 0,
-                '{{mx}}': 100,
-
-                // Legacy / Compatibility keys if used in template
-                '{{bd}}': currentMapping.site_id || 1,
-                '{{nm}}': currentMapping.target_field_name,
-                '{{vl}}': val,
-                '{{tm}}': getLocalISOString(),
-                '{{st}}': 1,
-                '{{al}}': testAlValue,
-                '{{des}}': "Manual Export Triggered",
-                '{{ty}}': dataType
+            // Substitutions (Supporting both {} and {{}} for C++ Engine format)
+            const substitutions: Record<string, any> = {
+                'site_id': currentMapping.site_id || 1,
+                'bd': currentMapping.site_id || 1,
+                'point_name': point?.name || 'Unknown',
+                'nm': point?.name || 'Unknown',
+                'target_key': currentMapping.target_field_name,
+                'measured_value': val,
+                'vl': val,
+                'timestamp': getLocalISOString(),
+                'tm': getLocalISOString(),
+                'status_code': 0,
+                'st': 1,
+                'alarm_level': testAlValue,
+                'al': testAlValue,
+                'description': "Manual Export Triggered",
+                'des': "Manual Export Triggered",
+                'target_description': currentMapping.target_description || "Manual Export Triggered",
+                'type': dataType,
+                'ty': dataType,
+                'device_name': point?.device_name || '',
+                'unit': point?.unit || '',
+                'is_control': 1,
+                'il': "-",
+                'xl': "-",
+                'mi': 0,
+                'mx': 100
             };
 
             // Replace all placeholders
-            Object.entries(replacements).forEach(([key, value]) => {
-                // Replace quoted string placeholders: "{{key}}" -> value (if value is number, it becomes number)
-                // If value is string, it stays string.
-                // This simple Replace isn't perfect for all JSON types but works for the standard template format.
+            Object.entries(substitutions).forEach(([key, value]) => {
+                const escapedVal = String(value);
 
-                if (typeof value === 'number') {
-                    // Try to replace quoted version first to unquote numbers if they were quoted in template
-                    // e.g. "val": "{{val}}" -> "val": 123
-                    jsonStr = jsonStr.replace(new RegExp(`"${key}"`, 'g'), String(value));
-                }
+                // 1. Double braces with |array filter: {{key|array}} -> [value]
+                const arrayPattern = new RegExp(`\\{\\{${key}\\|array\\}\\}`, 'g');
+                jsonStr = jsonStr.replace(arrayPattern, `[${escapedVal}]`);
 
-                jsonStr = jsonStr.replace(new RegExp(key, 'g'), String(value));
+                // 2. Double braces {{key}}
+                jsonStr = jsonStr.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), escapedVal);
+                // 3. Single braces {key} (C++ Engine Format)
+                jsonStr = jsonStr.replace(new RegExp(`\\{${key}\\}`, 'g'), escapedVal);
             });
 
             // Handle Smart Logic {{map:source:trueVal:falseVal}}

@@ -96,6 +96,15 @@ std::string TargetRegistry::getTargetFieldName(int target_id,
   return "";
 }
 
+bool TargetRegistry::isPointMapped(int target_id, int point_id) const {
+  std::shared_lock<std::shared_mutex> lock(mappings_mutex_);
+  auto it1 = target_point_mappings_.find(target_id);
+  if (it1 != target_point_mappings_.end()) {
+    return it1->second.find(point_id) != it1->second.end();
+  }
+  return false;
+}
+
 int TargetRegistry::getOverrideSiteId(int target_id, int point_id) const {
   std::shared_lock<std::shared_mutex> lock(mappings_mutex_);
   auto it1 = target_point_site_mappings_.find(target_id);

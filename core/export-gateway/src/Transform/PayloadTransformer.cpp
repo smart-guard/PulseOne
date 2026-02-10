@@ -456,6 +456,15 @@ void PayloadTransformer::expandJsonRecursive(
     std::string str = obj.get<std::string>();
     // 1. 일반 변수 치환 ({var} 및 {{var}} 지원)
     for (const auto &[key, value] : variables) {
+      // [v3.6.8] Dynamic Casting Filter: {{var|array}} -> [val]
+      std::string array_pattern = "{{" + key + "|array}}";
+      size_t a_pos = 0;
+      while ((a_pos = str.find(array_pattern, a_pos)) != std::string::npos) {
+        std::string array_val = "[" + value + "]";
+        str.replace(a_pos, array_pattern.length(), array_val);
+        a_pos += array_val.length();
+      }
+
       // {{var}}
       std::string pattern2 = "{{" + key + "}}";
       size_t pos = 0;

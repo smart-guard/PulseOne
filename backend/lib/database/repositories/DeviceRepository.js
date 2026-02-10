@@ -731,6 +731,7 @@ class DeviceRepository extends BaseRepository {
                     'cv.quality',
                     'cv.value_timestamp as last_update',
                     'd.name as device_name',
+                    'd.site_id as site_id',
                     's.name as site_name'
                 )
                 .where('dp.id', pointId)

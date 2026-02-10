@@ -318,6 +318,15 @@ void EventDispatcher::logExportResult(
     LogManager::getInstance().Info("[TRACE] EventDispatcher::logExportResult - "
                                    "Enqueuing log for target: " +
                                    result.target_name);
+
+    // [v4.1.1] Skip logging for intentionally skipped transmissions (whitelist)
+    if (result.skipped) {
+      LogManager::getInstance().Info(
+          "[TRACE] EventDispatcher::logExportResult - "
+          "Skipping log save because result is marked as skipped.");
+      return;
+    }
+
     ExportLogEntity log_entity;
     bool is_manual = alarm && alarm->manual_override;
     log_entity.setLogType(is_manual

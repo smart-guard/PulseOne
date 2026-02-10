@@ -1,4 +1,5 @@
 const BaseService = require('./BaseService');
+const RedisCleanupService = require('./RedisCleanupService');
 
 class DataPointService extends BaseService {
     constructor() {
@@ -89,9 +90,20 @@ class DataPointService extends BaseService {
                 }
 
                 const idsToDelete = existingIds.filter(eid => !retainedIds.includes(eid));
+
+                // 🔥 Redis 정리를 위해 삭제될 포인트 정보 미리 추출
+                const pointsToDelete = existingPoints.filter(p => idsToDelete.includes(p.id));
+
                 if (idsToDelete.length > 0) await trx('data_points').whereIn('id', idsToDelete).del();
                 for (const item of toUpdate) await trx('data_points').where('id', item.id).update(item.data);
                 if (toInsert.length > 0) await trx('data_points').insert(toInsert);
+
+                // 🔥 Redis 데이터 비동기 정리
+                for (const p of pointsToDelete) {
+                    RedisCleanupService.cleanupDataPoint(deviceId, p.id, p.name).catch(err =>
+                        this.logger.warn(`Failed to cleanup Redis for deleted point ${p.id}`, err.message)
+                    );
+                }
 
                 return { count: dataPoints.length, device_id: deviceId };
             });

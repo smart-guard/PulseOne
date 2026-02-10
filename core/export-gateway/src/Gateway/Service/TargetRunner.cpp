@@ -96,6 +96,21 @@ TargetSendResult TargetRunner::sendAlarmToTarget(
         "TargetRunner: Manual Override active, bypassing mappings.");
     processed_alarm = alarm;
   } else {
+    // [v4.1.0] Point-based Whitelist Filtering
+    // Only proceed if the point is explicitly mapped for this target.
+    if (!registry_.isPointMapped(target.id, alarm.point_id)) {
+      LogManager::getInstance().Info("[WHITELIST] Point '" + alarm.point_name +
+                                     "' (ID:" + std::to_string(alarm.point_id) +
+                                     ") is NOT in Profile for Target '" +
+                                     target_name + "'. Skipping.");
+      result.error_message = "Skipped: Not in whitelist";
+      result.skipped =
+          true; // [v4.1.1] Mark as skipped to avoid logging in history
+      result.success =
+          true; // Mark as 'handled success' to avoid internal retry/error loops
+      return result;
+    }
+
     processed_alarm = applyMappings(target, alarm);
     LogManager::getInstance().Info(
         "[ALARM_ENRICH] Mappings applied for " + target_name +
@@ -179,6 +194,11 @@ BatchTargetResult TargetRunner::sendAlarmBatch(
     auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
 
     for (const auto &alarm : alarms) {
+      // [v4.1.0] Point-based Whitelist Filtering for Batch
+      if (!registry_.isPointMapped(target.id, alarm.point_id)) {
+        continue;
+      }
+
       auto processed = applyMappings(target, alarm);
       processed_batch.push_back(processed);
       payloads.push_back(transformer.buildPayload(processed, target.config));

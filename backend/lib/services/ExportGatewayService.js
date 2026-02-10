@@ -1057,14 +1057,45 @@ class ExportGatewayService extends BaseService {
             const gateway = await this.gatewayRepository.findById(gatewayId);
             if (!gateway) throw new Error('Export Gateway not found');
 
-            // 2. 명령 전송 (Redis C2)
-            // payload expects: { target_name, point_id, command_id }
-            const result = await EdgeServerService.sendCommand(gatewayId, 'manual_export', payload);
+            // 2. Fetch enrichment data from DB
+            const pointRepository = RepositoryFactory.getInstance().getDeviceRepository();
+            const pointInfo = await pointRepository.getDataPointById(payload.point_id);
+
+            // 3. Enrich payload details (for visibility in Redis logs)
+            // [v3.6.8] Agnostic Enrichment: Harvest ALL fields from pointInfo
+            const enrichedPayload = {
+                ...payload,
+                site_id: pointInfo?.site_id || payload.site_id || 1,
+                point_name: pointInfo?.name || payload.point_name || 'Unknown'
+            };
+
+            // Inject all available metadata into enrichedPayload for C2 visibility
+            if (pointInfo) {
+                Object.entries(pointInfo).forEach(([key, val]) => {
+                    // Don't overwrite essential payload keys unless they are missing
+                    if (val !== null && val !== undefined && !['target_name', 'command_id'].includes(key)) {
+                        enrichedPayload[key] = val;
+                    }
+                });
+            }
+
+            // 4. If raw_payload is provided, enrich its values too (replaces {site_id}, etc.)
+            if (enrichedPayload.raw_payload) {
+                enrichedPayload.raw_payload = this._enrichPayload(enrichedPayload.raw_payload, pointInfo, payload);
+            }
+
+            // 5. 명령 전송 (Redis C2)
+            // payload expects: { target_name, point_id, command_id, ...enriched }
+            const result = await EdgeServerService.sendCommand(gatewayId, 'manual_export', enrichedPayload);
 
             return {
                 success: true,
                 message: `Gateway ${gateway.name} 수동 전송 명령 전송 완료`,
-                c2_result: result
+                c2_result: result,
+                enriched_data: {
+                    site_id: enrichedPayload.site_id,
+                    point_name: enrichedPayload.point_name
+                }
             };
         }, 'ManualExport');
     }
@@ -1086,6 +1117,79 @@ class ExportGatewayService extends BaseService {
             LogManager.api('WARN', `[Sync] Failed to send target:reload signal: ${e.message}`);
         }
         return false;
+    }
+
+    /**
+     * Enriches a payload by replacing placeholders with actual point/metadata.
+     * Supports both {key} and {{key}} formats.
+     */
+    _enrichPayload(payload, pointInfo, overrides = {}) {
+        if (!payload || typeof payload !== 'object') return payload;
+
+        let jsonStr = JSON.stringify(payload);
+        const now = new Date();
+
+        // Simple helper for ISO string without 'T' and with 3 decimal ms
+        const getLocalISO = () => {
+            const offset = now.getTimezoneOffset() * 60000;
+            const localIso = new Date(now.getTime() - offset).toISOString();
+            return `${localIso.replace('T', ' ').split('.')[0]}.000`;
+        };
+
+        const substitutions = {
+            'timestamp': getLocalISO(),
+            'tm': getLocalISO(),
+            'measured_value': overrides.value ?? 0,
+            'vl': overrides.value ?? 0,
+            'alarm_level': overrides.al ?? 0,
+            'al': overrides.al ?? 0,
+            'status_code': overrides.st ?? 1,
+            'st': overrides.st ?? 1,
+            'description': overrides.des || "Manual Export Triggered",
+            'des': overrides.des || "Manual Export Triggered",
+            'target_description': overrides.target_description || overrides.des || "Manual Export Triggered"
+        };
+
+        // [v3.6.8] Agnostic Harvesting: Automatically include all fields from pointInfo as tokens
+        if (pointInfo) {
+            Object.entries(pointInfo).forEach(([key, val]) => {
+                const finalVal = (val === null || val === undefined) ? '' : val;
+
+                // Special handling for mi/mx: default to array wrap for C++ auto-parser alignment
+                // if target is a raw value.
+                if ((key === 'mi' || key === 'mx') && typeof finalVal !== 'string') {
+                    substitutions[key] = `[${finalVal}]`;
+                } else if (!substitutions[key]) {
+                    substitutions[key] = finalVal;
+                }
+            });
+        }
+
+        // Aliases and fallbacks
+        substitutions['site_id'] = substitutions['site_id'] || pointInfo?.site_id || 1;
+        substitutions['bd'] = substitutions['site_id'];
+        substitutions['point_name'] = substitutions['point_name'] || pointInfo?.name || 'Unknown';
+        substitutions['nm'] = substitutions['point_name'];
+        substitutions['target_key'] = substitutions['target_field_name'] || substitutions['mapping_key'] || substitutions['point_name'];
+        substitutions['type'] = substitutions['data_type'] || 'num';
+        substitutions['ty'] = substitutions['type'];
+
+        // Replace both {key} and {{key}}
+        Object.entries(substitutions).forEach(([key, val]) => {
+            const escapedVal = typeof val === 'string' ? val : String(val);
+
+            // 1. Double braces {{key}}
+            jsonStr = jsonStr.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), escapedVal);
+            // 2. Single braces {key}
+            jsonStr = jsonStr.replace(new RegExp(`\\{${key}\\}`, 'g'), escapedVal);
+        });
+
+        try {
+            return JSON.parse(jsonStr);
+        } catch (e) {
+            console.error(`[ExportGatewayService] Failed to parse enriched payload JSON: ${e.message}`);
+            return payload;
+        }
     }
 }
 
