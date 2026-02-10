@@ -72,6 +72,8 @@ struct TargetSendResult {
 public:
   // 기본 결과 필드들
   bool success = false;
+  bool skipped =
+      false; // [v4.1.1] Whether the transmission was intentionally skipped
   std::string error_message = "";
   std::chrono::milliseconds response_time{0};
   size_t content_size = 0;

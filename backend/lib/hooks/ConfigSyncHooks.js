@@ -4,6 +4,7 @@
 // =============================================================================
 
 const { getInstance: getCollectorProxy } = require('../services/CollectorProxyService');
+const RedisCleanupService = require('../services/RedisCleanupService');
 
 class ConfigSyncHooks {
     constructor() {
@@ -166,6 +167,9 @@ class ConfigSyncHooks {
 
             // 2. 해당 콜렉터 설정 재로드
             await proxy.reloadAllConfigs(edgeServerId);
+
+            // 3. 🔥 Redis 데이터 즉시 정리
+            await RedisCleanupService.cleanupDevice(deviceId);
         });
     }
 
@@ -277,6 +281,12 @@ class ConfigSyncHooks {
 
             // 데이터포인트가 변경되면 해당 디바이스 재시작
             if (newPoint.device_id) {
+                // 🔥 명칭 변경 감지 시 이전 Redis 키 정리
+                if (oldPoint && oldPoint.name !== newPoint.name) {
+                    console.log(`🧹 Point name changed: ${oldPoint.name} -> ${newPoint.name}. Cleaning up old Redis keys.`);
+                    await RedisCleanupService.cleanupDataPoint(newPoint.device_id, newPoint.id, oldPoint.name);
+                }
+
                 const proxy = getCollectorProxy();
                 const DeviceService = require('../services/DeviceService');
 

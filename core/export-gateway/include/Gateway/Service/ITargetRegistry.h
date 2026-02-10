@@ -43,6 +43,7 @@ public:
 
   // Mapping lookups
   virtual std::string getTargetFieldName(int target_id, int point_id) const = 0;
+  virtual bool isPointMapped(int target_id, int point_id) const = 0;
   virtual int getOverrideSiteId(int target_id, int point_id) const = 0;
   virtual std::string getExternalBuildingId(int target_id,
                                             int site_id) const = 0;

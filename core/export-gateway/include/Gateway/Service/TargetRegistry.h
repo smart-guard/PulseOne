@@ -55,6 +55,7 @@ public:
   getHandler(const std::string &target_name) const override;
 
   std::string getTargetFieldName(int target_id, int point_id) const override;
+  bool isPointMapped(int target_id, int point_id) const override;
   int getOverrideSiteId(int target_id, int point_id) const override;
   std::string getExternalBuildingId(int target_id, int site_id) const override;
 

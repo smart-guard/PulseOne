@@ -19,6 +19,10 @@ const TemplateManagementTab: React.FC = () => {
     const [logicTrueVal, setLogicTrueVal] = useState('1');
     const [logicFalseVal, setLogicFalseVal] = useState('0');
 
+    // [v3.6.12] Smart Import from Sample JSON
+    const [isImportVisible, setIsImportVisible] = useState(false);
+    const [sampleInput, setSampleInput] = useState('');
+
     const VARIABLE_CATEGORIES = [
         {
             name: '매핑 (Target Mapping)',
@@ -56,8 +60,8 @@ const TemplateManagementTab: React.FC = () => {
         {
             name: '범위 및 한계 (Ranges)',
             items: [
-                { label: '계측 범위(Min)', value: '{{mi}}', desc: '미터링 최소 한계값' },
-                { label: '계측 범위(Max)', value: '{{mx}}', desc: '미터링 최대 한계값' },
+                { label: '계측 범위(Min)', value: '{{mi|array}}', desc: '미터링 최소 한계값 (배열 강제)' },
+                { label: '계측 범위(Max)', value: '{{mx|array}}', desc: '미터링 최대 한계값 (배열 강제)' },
                 { label: '정보 한계', value: '{{il}}', desc: '임계치 정보(Information Limit)' },
                 { label: '위험 한계', value: '{{xl}}', desc: '임계치 위험(Extra Limit)' }
             ]
@@ -92,10 +96,10 @@ const TemplateManagementTab: React.FC = () => {
         device_name: "냉동기-01 (AHU)",
         type: "num",
         data_type: "num",
-        is_control: "1",
-        is_writable: "1",
-        status_code: "0 (NORMAL)",
-        alarm_level: "1 (WARNING)",
+        is_control: 1,
+        is_writable: 1,
+        status_code: 0,
+        alarm_level: 1,
         timestamp: new Date().toISOString().replace('T', ' ').split('.')[0],
 
         // Backward Compatibility (Old names)
@@ -117,15 +121,62 @@ const TemplateManagementTab: React.FC = () => {
         alarm_status: "WARNING",
         il: "-",
         xl: "1",
-        mi: "[0]",
-        mx: "[100]"
+        mi: 0,
+        mx: 100
+    };
+
+    // [v3.6.10] Refined preview renderer to correctly handle numeric/array types
+    const getSafePreview = (template_json: any, editMode: 'simple' | 'advanced', simpleMappings: { key: string, value: string }[], isWrappedInArray: boolean) => {
+        try {
+            let jsonText = "";
+            if (editMode === 'simple') {
+                const obj: Record<string, string> = {};
+                simpleMappings.forEach(m => { if (m.key) obj[m.key] = m.value; });
+                jsonText = isWrappedInArray ? JSON.stringify([obj], null, 2) : JSON.stringify(obj, null, 2);
+            } else {
+                jsonText = typeof template_json === 'string' ? template_json : JSON.stringify(template_json || {}, null, 2);
+            }
+
+            let preview = jsonText;
+            Object.entries(SAMPLE_DATA).forEach(([k, v]) => {
+                const escapedVal = String(v);
+
+                // 1. Handle array filter: "{{var|array}}" or {{var|array}}
+                // We replace the quoted version first to ensure it becomes a literal array in preview
+                preview = preview.replace(new RegExp(`\"\\{\\{${k}\\|array\\}\\}\"`, 'g'), `[${escapedVal}]`);
+                preview = preview.replace(new RegExp(`\\{\\{${k}\\|array\\}\\}`, 'g'), `[${escapedVal}]`);
+
+                // 2. Handle numeric substitutions for common fields if they are quoted
+                const numericFields = ['site_id', 'measured_value', 'status_code', 'alarm_level', 'is_control', 'is_writable', 'point_id', 'mi', 'mx', 'bd', 'st', 'al', 'vl'];
+                if (numericFields.includes(k)) {
+                    preview = preview.replace(new RegExp(`\"\\{\\{${k}\\}\\}\"`, 'g'), escapedVal);
+                }
+
+                // 3. Standard substitution for anything else
+                preview = preview.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), escapedVal);
+                preview = preview.replace(new RegExp(`\\{${k}\\}`, 'g'), escapedVal);
+            });
+
+            try {
+                const parsedPreview = JSON.parse(preview);
+                return JSON.stringify(parsedPreview, null, 2);
+            } catch {
+                return String(preview);
+            }
+        } catch (e) {
+            console.error("Preview rendering failed", e);
+            return "JSON 형식이 올바르지 않거나 렌더링 중 오류가 발생했습니다.";
+        }
     };
 
     const fetchTemplates = async () => {
         setLoading(true);
         try {
             const response = await exportGatewayApi.getTemplates();
-            setTemplates(response.data || []);
+            const data = response.data;
+            // Handle various API formats (items, rows, or direct array) to prevent .map() crash
+            const list = Array.isArray(data) ? data : (data?.items || data?.rows || []);
+            setTemplates(list);
         } catch (error) {
             console.error(error);
         } finally {
@@ -229,11 +280,17 @@ const TemplateManagementTab: React.FC = () => {
 
             if (typeof templateJson === 'string') {
                 try {
-                    templateJson = JSON.parse(templateJson);
+                    // [v3.6.11] Lax parsing for save: replace placeholders so JSON.parse doesn't fail
+                    const placeholderFree = templateJson
+                        .replace(/\{\{[^}]+\}\}/g, '0')
+                        .replace(/\{[^}]+\}/g, '0');
+                    JSON.parse(placeholderFree);
+                    // Note: We still save the original templateJson with placeholders as a STRING
+                    templateJson = editingTemplate?.template_json;
                 } catch (parseError) {
                     await confirm({
                         title: 'JSON 형식 오류',
-                        message: `유효하지 않은 JSON 형식입니다.\n\n[상세 내역]\n${parseError instanceof Error ? parseError.message : String(parseError)}\n\n팁: {{bd}}와 같은 숫자형 변수도 "{{bd}}"와 같이 따옴표로 감싸야 유효한 JSON이 됩니다.`,
+                        message: `유효하지 않은 JSON 형식입니다.\n\n[상세 내역]\n${parseError instanceof Error ? parseError.message : String(parseError)}\n\n팁: 중괄호를 제외한 나머지 구조가 올바른 JSON인지 확인해 주세요.`,
                         confirmText: '확인',
                         showCancelButton: false,
                         confirmButtonType: 'danger'
@@ -275,7 +332,11 @@ const TemplateManagementTab: React.FC = () => {
 
     const syncAdvancedToSimple = (jsonStr: string) => {
         try {
-            const parsed = JSON.parse(jsonStr || '{}');
+            // Lax parsing: replace placeholders so JSON.parse doesn't fail on unquoted tokens
+            const placeholderFree = (jsonStr || '{}')
+                .replace(/\{\{[^}]+\}\}/g, '"TEMPLATE_VAR"')
+                .replace(/\{[^}]+\}/g, '"TEMPLATE_VAR"');
+            const parsed = JSON.parse(placeholderFree);
             let isWrapped = false;
             let mappings: { key: string; value: string }[] = [];
 
@@ -304,6 +365,71 @@ const TemplateManagementTab: React.FC = () => {
         }
     };
 
+    // [v3.6.12] Smart Inference: Parse Sample JSON and map to PulseOne placeholders
+    const handleImportFromSample = () => {
+        try {
+            let parsed = JSON.parse(sampleInput);
+            let isWrapped = false;
+            if (Array.isArray(parsed)) {
+                if (parsed.length > 0) {
+                    parsed = parsed[0];
+                    isWrapped = true;
+                } else {
+                    throw new Error("Empty array");
+                }
+            }
+
+            const mappings: { key: string; value: string }[] = [];
+
+            // Mapper: Key Patterns -> Placeholder
+            const KEY_MAP: Record<string, string> = {
+                'bd': '{{site_id}}',
+                'site_id': '{{site_id}}',
+                'vl': '{{measured_value}}',
+                'measured_value': '{{measured_value}}',
+                'tm': '{{timestamp}}',
+                'timestamp': '{{timestamp}}',
+                'st': '{{status_code}}',
+                'status_code': '{{status_code}}',
+                'al': '{{alarm_level}}',
+                'alarm_level': '{{alarm_level}}',
+                'ty': '{{type}}',
+                'type': '{{type}}',
+                'nm': '{{target_key}}',
+                'target_key': '{{target_key}}',
+                'des': '{{target_description}}',
+                'target_description': '{{target_description}}',
+                'mi': '{{mi|array}}',
+                'mx': '{{mx|array}}'
+            };
+
+            Object.entries(parsed).forEach(([k, v]) => {
+                let placeholder = KEY_MAP[k] || `{{${k}}}`;
+                // Auto-detect array types for variables not in KEY_MAP
+                if (Array.isArray(v) && !placeholder.includes('|array')) {
+                    placeholder = placeholder.replace('}}', '|array}}');
+                }
+                mappings.push({ key: k, value: placeholder });
+            });
+
+            if (mappings.length > 0) {
+                setSimpleMappings(mappings);
+                setIsWrappedInArray(isWrapped);
+                setEditMode('simple');
+                setIsImportVisible(false);
+                setHasChanges(true);
+                setSampleInput('');
+            }
+        } catch (e) {
+            confirm({
+                title: '분석 실패',
+                message: '유효한 JSON 샘플을 입력해 주세요. (배열 형태도 지원합니다)',
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
+        }
+    };
+
     const handleDelete = async (id: number) => {
         const confirmed = await confirm({
             title: '템플릿 삭제 확인',
@@ -326,13 +452,25 @@ const TemplateManagementTab: React.FC = () => {
             <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>페이로드 템플릿 설정</h3>
                 <button className="btn btn-primary btn-sm" onClick={() => {
-                    setEditingTemplate({ name: '', system_type: 'custom', template_json: '{\n  "site_id": "{{site_id}}",\n  "type": "{{type}}",\n  "target_key": "{{target_key}}",\n  "measured_value": "{{measured_value}}",\n  "timestamp": "{{timestamp}}"\n}', is_active: true });
+                    setEditingTemplate({
+                        name: '',
+                        system_type: 'insite',
+                        template_json: '{\n  "bd": {{site_id}},\n  "ty": "{{type}}",\n  "nm": "{{target_key}}",\n  "vl": {{measured_value}},\n  "il": "{{il}}",\n  "xl": "{{xl}}",\n  "mi": {{mi|array}},\n  "mx": {{mx|array}},\n  "tm": "{{timestamp}}",\n  "st": {{status_code}},\n  "al": {{alarm_level}},\n  "des": "{{target_description}}"\n}',
+                        is_active: true
+                    });
                     setSimpleMappings([
-                        { key: 'site_id', value: '{{site_id}}' },
-                        { key: 'type', value: '{{type}}' },
-                        { key: 'target_key', value: '{{target_key}}' },
-                        { key: 'measured_value', value: '{{measured_value}}' },
-                        { key: 'timestamp', value: '{{timestamp}}' }
+                        { key: 'bd', value: '{{site_id}}' },
+                        { key: 'ty', value: '{{type}}' },
+                        { key: 'nm', value: '{{target_key}}' },
+                        { key: 'vl', value: '{{measured_value}}' },
+                        { key: 'il', value: '{{il}}' },
+                        { key: 'xl', value: '{{xl}}' },
+                        { key: 'mi', value: '{{mi|array}}' },
+                        { key: 'mx', value: '{{mx|array}}' },
+                        { key: 'tm', value: '{{timestamp}}' },
+                        { key: 'st', value: '{{status_code}}' },
+                        { key: 'al', value: '{{alarm_level}}' },
+                        { key: 'des', value: '{{target_description}}' }
                     ]);
                     setEditMode('simple');
                     setIsWrappedInArray(false);
@@ -552,12 +690,45 @@ const TemplateManagementTab: React.FC = () => {
                                                     태그 삽입
                                                 </button>
 
-                                                <div style={{ marginTop: '5px' }}>
-                                                    <div style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 600, marginBottom: '6px' }}>자주 쓰는 로직</div>
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                        <button type="button" className="mgmt-badge primary-light" style={{ cursor: 'pointer', textAlign: 'left', border: 'none', fontSize: '10px', background: 'var(--primary-50)', color: 'var(--primary-700)', padding: '5px 8px' }} onClick={() => { setLogicSource('measured_value'); setLogicTrueVal('0'); setLogicFalseVal('1'); }}>디지털 반전 (0 ↔ 1)</button>
-                                                        <button type="button" className="mgmt-badge primary-light" style={{ cursor: 'pointer', textAlign: 'left', border: 'none', fontSize: '10px', background: 'var(--primary-50)', color: 'var(--primary-700)', padding: '5px 8px' }} onClick={() => { setLogicSource('status_code'); setLogicTrueVal('DISCONNECTED'); setLogicFalseVal('NORMAL'); }}>통신상태 텍스트화</button>
-                                                    </div>
+                                                <div style={{ marginTop: '10px', borderTop: '1px solid var(--neutral-200)', paddingTop: '10px' }}>
+                                                    <div style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 600, marginBottom: '6px' }}>포맷 필터</div>
+                                                    <button
+                                                        type="button"
+                                                        className="mgmt-badge primary"
+                                                        style={{ width: '100%', cursor: 'pointer', border: 'none', fontSize: '10px', background: 'var(--primary-600)', color: '#fff', padding: '6px 8px', borderRadius: '4px', fontWeight: 600 }}
+                                                        onClick={() => {
+                                                            if (lastFocusedElement) {
+                                                                const { index, field } = lastFocusedElement;
+                                                                if (index !== undefined && field === 'value') {
+                                                                    const mappings = [...simpleMappings];
+                                                                    let val = mappings[index].value;
+                                                                    if (val.includes('{{') && val.includes('}}') && !val.includes('|array')) {
+                                                                        val = val.replace('}}', '|array}}');
+                                                                        mappings[index].value = val;
+                                                                        setSimpleMappings(mappings);
+                                                                        setHasChanges(true);
+                                                                    }
+                                                                }
+                                                            } else if (editMode === 'advanced') {
+                                                                const textarea = document.getElementById('template-textarea') as HTMLTextAreaElement;
+                                                                if (textarea) {
+                                                                    const start = textarea.selectionStart;
+                                                                    const end = textarea.selectionEnd;
+                                                                    const currentVal = textarea.value;
+                                                                    const selectedText = currentVal.substring(start, end);
+                                                                    if (selectedText.includes('{{') && selectedText.includes('}}')) {
+                                                                        const newVal = selectedText.replace('}}', '|array}}');
+                                                                        textarea.setRangeText(newVal, start, end, 'end');
+                                                                        setEditingTemplate({ ...editingTemplate, template_json: textarea.value });
+                                                                    } else {
+                                                                        insertAtCursor('|array');
+                                                                    }
+                                                                }
+                                                            }
+                                                        }}
+                                                    >
+                                                        JSON 배열 강제 (|array)
+                                                    </button>
                                                 </div>
                                             </div>
                                         </details>
@@ -581,6 +752,43 @@ const TemplateManagementTab: React.FC = () => {
                                                     <div style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ background: '#fff', color: 'var(--primary-600)', width: '16px', height: '16px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>3</span> 미리보기 확인 후 저장</div>
                                                 </div>
                                             </div>
+                                        </div>
+                                        <div style={{ padding: '0 0 25px 0' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--neutral-50)', padding: '15px 20px', borderRadius: '12px', border: '1px solid var(--neutral-200)' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                    <div style={{ background: 'var(--primary-100)', color: 'var(--primary-600)', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                        <i className="fas fa-bolt" />
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--neutral-800)' }}>스마트 페이로드 생성기</div>
+                                                        <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>기존 JSON 샘플을 붙여넣으면 PulseOne 템플릿으로 자동 변환합니다.</div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="mgmt-btn mgmt-btn-outline"
+                                                    style={{ height: '36px', fontSize: '12px', width: 'auto', padding: '0 15px', borderColor: 'var(--primary-300)', color: 'var(--primary-600)' }}
+                                                    onClick={() => setIsImportVisible(!isImportVisible)}
+                                                >
+                                                    {isImportVisible ? '숨기기' : '샘플 붙여넣기'}
+                                                </button>
+                                            </div>
+
+                                            {isImportVisible && (
+                                                <div style={{ marginTop: '15px', background: '#fff', border: '1px solid var(--primary-200)', borderRadius: '10px', padding: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+                                                    <textarea
+                                                        className="mgmt-input"
+                                                        style={{ height: '120px', fontFamily: '"Fira Code", monospace', fontSize: '12px', marginBottom: '10px' }}
+                                                        placeholder='[{"bd":9, "ty":"num", ...}] 형태의 JSON 샘플을 여기에 붙여넣으세요.'
+                                                        value={sampleInput}
+                                                        onChange={e => setSampleInput(e.target.value)}
+                                                    />
+                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                                        <button type="button" className="mgmt-btn mgmt-btn-outline" style={{ height: '32px', fontSize: '12px', width: '80px' }} onClick={() => setIsImportVisible(false)}>취소</button>
+                                                        <button type="button" className="mgmt-btn btn-primary" style={{ height: '32px', fontSize: '12px', width: '100px' }} onClick={handleImportFromSample}>분석 및 적용</button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Name & System Type Row: Softer Inputs */}
@@ -721,7 +929,11 @@ const TemplateManagementTab: React.FC = () => {
                                                             setEditingTemplate({ ...editingTemplate, template_json: val });
                                                             setHasChanges(true);
                                                             try {
-                                                                JSON.parse(val);
+                                                                // [v3.6.11] Lax validation: support unquoted placeholders for numeric/array types
+                                                                const placeholderFree = val
+                                                                    .replace(/\{\{[^}]+\}\}/g, '0')
+                                                                    .replace(/\{[^}]+\}/g, '0');
+                                                                JSON.parse(placeholderFree);
                                                                 setIsJsonValid(true);
                                                             } catch {
                                                                 setIsJsonValid(false);
@@ -757,33 +969,7 @@ const TemplateManagementTab: React.FC = () => {
                                             </div>
                                             <div style={{ background: '#1e272e', borderRadius: '10px', padding: '20px', border: '1px solid #10171d', boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.2)' }}>
                                                 <pre style={{ margin: 0, fontSize: '12px', color: '#55efc4', whiteSpace: 'pre-wrap', lineHeight: '1.6', fontFamily: '"Fira Code", monospace' }}>
-                                                    {(() => {
-                                                        try {
-                                                            const rawJson = editingTemplate?.template_json;
-                                                            let jsonText = typeof rawJson === 'string' ? rawJson : JSON.stringify(rawJson || {}, null, 2);
-
-                                                            if (editMode === 'simple') {
-                                                                const obj: Record<string, string> = {};
-                                                                simpleMappings.forEach(m => { if (m.key) obj[m.key] = m.value; });
-                                                                jsonText = isWrappedInArray ? JSON.stringify([obj], null, 2) : JSON.stringify(obj, null, 2);
-                                                            }
-
-                                                            let preview = jsonText;
-                                                            Object.entries(SAMPLE_DATA).forEach(([k, v]) => {
-                                                                preview = preview.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v));
-                                                                preview = preview.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
-                                                            });
-
-                                                            try {
-                                                                const parsedPreview = JSON.parse(preview);
-                                                                return JSON.stringify(parsedPreview, null, 2);
-                                                            } catch {
-                                                                return String(preview);
-                                                            }
-                                                        } catch (e) {
-                                                            return "JSON 형식이 올바르지 않거나 렌더링 중 오류가 발생했습니다.";
-                                                        }
-                                                    })()}
+                                                    {getSafePreview(editingTemplate?.template_json, editMode, simpleMappings, isWrappedInArray)}
                                                 </pre>
                                             </div>
                                         </div>
