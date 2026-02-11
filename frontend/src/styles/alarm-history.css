@@ -16,31 +16,31 @@
   --color-gray-700: #334155;
   --color-gray-800: #1e293b;
   --color-gray-900: #0f172a;
-  
+
   --color-red-50: #fef2f2;
   --color-red-200: #fecaca;
   --color-red-500: #ef4444;
   --color-red-600: #dc2626;
   --color-red-900: #b91c1c;
-  
+
   --color-orange-500: #f59e0b;
   --color-orange-600: #d97706;
   --color-orange-50: #fffbeb;
-  
+
   --color-green-50: #f0fdf4;
   --color-green-500: #22c55e;
   --color-green-600: #16a34a;
-  
+
   --color-blue-50: #f0f9ff;
   --color-blue-600: #0284c7;
-  
+
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
-  
+
   --radius-sm: 6px;
   --radius-md: 8px;
 }
@@ -73,21 +73,48 @@
 }
 
 /* 심각도 색상 */
-.severity-critical { background: var(--color-red-600) !important; }
-.severity-high { background: #ea580c !important; }
-.severity-medium { background: var(--color-orange-600) !important; }
-.severity-low { background: var(--color-green-600) !important; }
-.severity-info { background: #2563eb !important; }
+.severity-critical {
+  background: var(--color-red-600) !important;
+}
+
+.severity-high {
+  background: #ea580c !important;
+}
+
+.severity-medium {
+  background: var(--color-orange-600) !important;
+}
+
+.severity-low {
+  background: var(--color-green-600) !important;
+}
+
+.severity-info {
+  background: #2563eb !important;
+}
 
 /* 상태 색상 */
-.state-active { color: var(--color-red-600); }
-.state-acknowledged { color: var(--color-orange-600); }
-.state-cleared { color: var(--color-green-600); }
+.state-active {
+  color: var(--color-red-600);
+}
+
+.state-acknowledged {
+  color: var(--color-orange-600);
+}
+
+.state-cleared {
+  color: var(--color-green-600);
+}
 
 /* 로딩 애니메이션 */
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .alarm-loading-spinner {
@@ -118,32 +145,176 @@
   font-family: 'Fira Code', 'JetBrains Mono', monospace;
 }
 
-.text-xs { font-size: 12px; }
-.text-sm { font-size: 14px; }
-.text-base { font-size: 16px; }
-.text-lg { font-size: 18px; }
-.text-xl { font-size: 20px; }
+.text-xs {
+  font-size: 12px;
+}
 
-.font-medium { font-weight: 500; }
-.font-semibold { font-weight: 600; }
-.font-bold { font-weight: 700; }
+.text-sm {
+  font-size: 14px;
+}
+
+.text-base {
+  font-size: 16px;
+}
+
+.text-lg {
+  font-size: 18px;
+}
+
+.text-xl {
+  font-size: 20px;
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.font-bold {
+  font-weight: 700;
+}
 
 /* 공통 간격 */
-.gap-2 { gap: var(--space-2); }
-.gap-3 { gap: var(--space-3); }
-.gap-4 { gap: var(--space-4); }
+.gap-2 {
+  gap: var(--space-2);
+}
+
+.gap-3 {
+  gap: var(--space-3);
+}
+
+.gap-4 {
+  gap: var(--space-4);
+}
 
 /* 플렉스 유틸리티 */
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.items-center { align-items: center; }
-.justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
+.flex {
+  display: flex;
+}
 
-/* 반응형 */
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+/* 알람 날짜 입력 - 큰 화면: 시간까지 표시 */
+.alarm-date-input {
+  width: 280px !important;
+  height: 36px !important;
+}
+
+/* 작은 화면: type=date로 전환되므로 너비 조정 */
+@media (max-width: 1600px) {
+  .alarm-date-input {
+    width: 160px !important;
+  }
+}
+
 @media (max-width: 768px) {
   .alarm-grid-container {
     grid-template-columns: 60px 100px 1fr 1fr 100px 140px 100px 80px;
     min-width: 800px;
   }
+}
+
+/* ============================================================================
+ * 알람 이력 필터바 레이아웃 최적화
+ * ============================================================================ */
+
+/* 필터바 줄바꿈 허용 + 간격 조정 */
+.page-alarm-history .mgmt-filter-bar {
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+  gap: 8px !important;
+  margin-bottom: 8px !important;
+}
+
+.page-alarm-history .mgmt-filter-bar-inner {
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+}
+
+/* 필터 그룹 기본: 잘림/겹침 방지, 내용 크기에 맞춤 */
+.page-alarm-history .mgmt-filter-group {
+  overflow: visible !important;
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+}
+
+/* 검색 영역 - 적정 크기 유지 */
+.page-alarm-history .mgmt-filter-group.search {
+  flex: 1 1 200px !important;
+  min-width: 160px !important;
+  max-width: 400px !important;
+}
+
+.page-alarm-history .mgmt-filter-group.search .mgmt-input {
+  height: 36px !important;
+  width: 100% !important;
+}
+
+/* 심각도 / 상태 셀렉트 - 겹치지 않게 고정 너비 */
+.page-alarm-history .mgmt-filter-group .mgmt-select {
+  width: 90px !important;
+  min-width: 90px !important;
+  flex: 0 0 90px !important;
+  height: 36px !important;
+}
+
+/* 통계 카드와 필터 사이 간격 축소 */
+.page-alarm-history .mgmt-stats-panel {
+  margin-bottom: 8px !important;
+}
+
+/* ============================================================================
+ * 테이블 레이아웃 최적화 - 가운데 정렬, 여백 축소, 메시지 줄임
+ * ============================================================================ */
+
+/* 모든 셀 가운데 정렬 + 패딩 축소 */
+.page-alarm-history .mgmt-table th,
+.page-alarm-history .mgmt-table td {
+  text-align: center !important;
+  vertical-align: middle !important;
+  padding: 8px 6px !important;
+}
+
+/* 메시지 컬럼 - 왼쪽 정렬 유지, 2줄 제한 + 말줄임 */
+.page-alarm-history .mgmt-table td:nth-child(4) {
+  text-align: left !important;
+  max-width: 250px !important;
+}
+
+.page-alarm-history .mgmt-table td:nth-child(4) .text-neutral-800 {
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.4 !important;
+}
+
+/* 디바이스/포인트 컬럼 - 가운데 정렬 */
+.page-alarm-history .mgmt-table td:nth-child(3) {
+  text-align: center !important;
+}
+
+/* 현재값 텍스트도 줄임 */
+.page-alarm-history .mgmt-table td:nth-child(4) .text-xs {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }

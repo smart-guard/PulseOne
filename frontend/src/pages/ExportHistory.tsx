@@ -209,14 +209,28 @@ const ExportHistory: React.FC = () => {
     // ---------------------------------------------------------------------------
 
     const formatDateForInput = (date: Date): string => {
+        // Return YYYY-MM-DDTHH:mm for datetime-local input
         return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+    };
+
+    const format24HDate = (date: Date) => {
+        return date.toLocaleDateString('ko-KR', {
+            year: 'numeric', month: '2-digit', day: '2-digit'
+        });
+    };
+
+    const format24HTime = (date: Date) => {
+        return date.toLocaleTimeString('ko-KR', {
+            hour: '2-digit', minute: '2-digit', hour12: false
+        });
     };
 
     const formatDateTime = (isoString?: string) => {
         if (!isoString) return '-';
         return new Date(isoString).toLocaleString('ko-KR', {
             year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false
         });
     };
 
@@ -265,7 +279,7 @@ const ExportHistory: React.FC = () => {
                 />
 
                 {/* Summary Cards */}
-                <div className="mgmt-stats-panel" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+                <div className="mgmt-stats-panel">
                     <StatCard
                         title="총 시도"
                         value={computedStats.total}
@@ -309,6 +323,8 @@ const ExportHistory: React.FC = () => {
                             label: '게이트웨이',
                             value: filters.gateway_id,
                             onChange: (v) => handleFilterChange({ gateway_id: v }),
+                            flexWeight: 0.7,
+                            minWidth: '7em',
                             options: [
                                 { label: '전체', value: 'all' },
                                 ...gateways.map(g => ({ label: g.name, value: g.id.toString() }))
@@ -318,6 +334,8 @@ const ExportHistory: React.FC = () => {
                             label: '상태',
                             value: filters.status,
                             onChange: (v) => handleFilterChange({ status: v }),
+                            flexWeight: 0.5,
+                            minWidth: '7.5em',
                             options: [
                                 { label: '전체', value: 'all' },
                                 { label: '성공', value: 'success' },
@@ -328,6 +346,8 @@ const ExportHistory: React.FC = () => {
                             label: '타겟 유형',
                             value: filters.target_type,
                             onChange: (v) => handleFilterChange({ target_type: v }),
+                            flexWeight: 0.6,
+                            minWidth: '8.5em',
                             options: [
                                 { label: '전체', value: 'all' },
                                 { label: 'HTTP', value: 'http' },
@@ -340,6 +360,8 @@ const ExportHistory: React.FC = () => {
                             label: '타겟 명',
                             value: filters.target_id,
                             onChange: (v) => handleFilterChange({ target_id: v }),
+                            flexWeight: 0.7,
+                            minWidth: '7em',
                             options: [
                                 { label: '전체', value: 'all' },
                                 ...targets.map(t => ({ label: t.name, value: t.id.toString() }))
@@ -347,24 +369,46 @@ const ExportHistory: React.FC = () => {
                         }
                     ]}
                     leftActions={
-                        <div className="mgmt-filter-group">
-                            <label>기간</label>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <input
-                                    type="datetime-local"
-                                    className="mgmt-input"
-                                    style={{ width: '210px' }}
-                                    value={formatDateForInput(filters.dateRange.start)}
-                                    onChange={(e) => handleDateChange('start', e.target.value)}
-                                />
-                                <span style={{ color: 'var(--neutral-400)' }}>~</span>
-                                <input
-                                    type="datetime-local"
-                                    className="mgmt-input"
-                                    style={{ width: '210px' }}
-                                    value={formatDateForInput(filters.dateRange.end)}
-                                    onChange={(e) => handleDateChange('end', e.target.value)}
-                                />
+                        <div className="mgmt-filter-group date-range-group">
+                            <label style={{ flexShrink: 0 }}>기간</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                <div
+                                    className="shadow-datepicker"
+                                    onClick={(e) => {
+                                        const input = e.currentTarget.querySelector('input');
+                                        if (input && 'showPicker' in input) (input as any).showPicker();
+                                    }}
+                                >
+                                    <div className="shadow-datepicker-display">
+                                        <span className="shadow-date-part">{format24HDate(filters.dateRange.start)}</span>
+                                        <span className="shadow-time-part">{format24HTime(filters.dateRange.start)}</span>
+                                    </div>
+                                    <input
+                                        type="datetime-local"
+                                        className="shadow-datepicker-input"
+                                        value={formatDateForInput(filters.dateRange.start)}
+                                        onChange={(e) => handleDateChange('start', e.target.value)}
+                                    />
+                                </div>
+                                <span style={{ color: 'var(--neutral-400)', flexShrink: 0, padding: '0 2px' }}>~</span>
+                                <div
+                                    className="shadow-datepicker"
+                                    onClick={(e) => {
+                                        const input = e.currentTarget.querySelector('input');
+                                        if (input && 'showPicker' in input) (input as any).showPicker();
+                                    }}
+                                >
+                                    <div className="shadow-datepicker-display">
+                                        <span className="shadow-date-part">{format24HDate(filters.dateRange.end)}</span>
+                                        <span className="shadow-time-part">{format24HTime(filters.dateRange.end)}</span>
+                                    </div>
+                                    <input
+                                        type="datetime-local"
+                                        className="shadow-datepicker-input"
+                                        value={formatDateForInput(filters.dateRange.end)}
+                                        onChange={(e) => handleDateChange('end', e.target.value)}
+                                    />
+                                </div>
                             </div>
                         </div>
                     }
@@ -372,8 +416,8 @@ const ExportHistory: React.FC = () => {
                         <button
                             className="mgmt-btn mgmt-btn-primary"
                             onClick={() => { pagination.goToPage(1); fetchLogs(); fetchStatistics(); }}
-                            style={{ height: '36px' }}
                         >
+                            <i className="fas fa-search"></i>
                             조회
                         </button>
                     }
@@ -387,7 +431,7 @@ const ExportHistory: React.FC = () => {
                 )}
 
                 {/* Main Table */}
-                <div className="mgmt-card table-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '500px' }}>
+                <div className="mgmt-card table-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                     <div className="mgmt-header" style={{ border: 'none', background: 'transparent', paddingBottom: '0' }}>
                         <div className="mgmt-header-info">
                             <h3 className="mgmt-title" style={{ fontSize: '18px' }}>
@@ -408,13 +452,13 @@ const ExportHistory: React.FC = () => {
                                 <table className="mgmt-table">
                                     <thead>
                                         <tr>
-                                            <th style={{ width: '80px' }}>ID</th>
-                                            <th style={{ width: '100px', textAlign: 'center', verticalAlign: 'middle' }}>상태</th>
-                                            <th style={{ width: '180px' }}>발생 시간</th>
-                                            <th>타겟 시스템</th>
-                                            <th>설정 정보 (Profile / Gateway)</th>
-                                            <th>메시지 (Source)</th>
-                                            <th style={{ width: '100px' }}>응답 코드</th>
+                                            <th className="col-id">ID</th>
+                                            <th className="col-status">상태</th>
+                                            <th className="col-time">발생 시간</th>
+                                            <th className="col-target">타겟 시스템</th>
+                                            <th className="col-settings">설정 정보</th>
+                                            <th>메시지 (SOURCE)</th>
+                                            <th className="col-response">응답</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -429,9 +473,10 @@ const ExportHistory: React.FC = () => {
                                             </tr>
                                         ) : (
                                             logs.map(log => {
-                                                const sourceOverview = log.source_value.length > 50
-                                                    ? log.source_value.substring(0, 50) + '...'
-                                                    : log.source_value;
+                                                const dt = formatDateTime(log.timestamp);
+                                                const lastSpaceIndex = dt.lastIndexOf(' ');
+                                                const datePart = lastSpaceIndex !== -1 ? dt.substring(0, lastSpaceIndex).trim() : dt;
+                                                const timePart = lastSpaceIndex !== -1 ? dt.substring(lastSpaceIndex).trim() : '';
 
                                                 return (
                                                     <tr
@@ -444,26 +489,31 @@ const ExportHistory: React.FC = () => {
                                                         style={{ cursor: 'pointer' }}
                                                     >
                                                         <td className="font-bold text-neutral-600">#{log.id}</td>
-                                                        <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                                                        <td style={{ textAlign: 'center' }}>
                                                             <span className={getStatusBadgeClass(log.status)}>
                                                                 {(log.status || 'UNKNOWN').toUpperCase()}
                                                             </span>
                                                         </td>
-                                                        <td className="text-neutral-700">
-                                                            {formatDateTime(log.timestamp)}
+                                                        <td>
+                                                            <div className="datetime-stacked">
+                                                                <span className="date">{datePart}</span>
+                                                                <span className="time">{timePart}</span>
+                                                            </div>
                                                         </td>
                                                         <td>
-                                                            <div className="font-semibold text-neutral-900">{log.target_name || '-'}</div>
-                                                            <div className="text-xs text-neutral-500">{log.target_id ? `Target #${log.target_id}` : ''}</div>
+                                                            <div className="mgmt-table-row-group">
+                                                                <div className="font-semibold text-neutral-900 td-truncate" title={log.target_name || '-'}>{log.target_name || '-'}</div>
+                                                                <div className="text-xs text-neutral-500">{log.target_id ? `Target #${log.target_id}` : ''}</div>
+                                                            </div>
                                                         </td>
                                                         <td>
                                                             {log.profile_name ? (
-                                                                <div className="flex flex-col">
-                                                                    <span className="text-sm font-medium text-primary-700">
+                                                                <div className="mgmt-table-row-group td-truncate">
+                                                                    <span className="text-sm font-medium text-primary-700" title={log.profile_name}>
                                                                         <i className="fas fa-file-alt mr-1"></i> {log.profile_name}
                                                                     </span>
                                                                     {log.gateway_name && (
-                                                                        <span className="text-xs text-neutral-500 mt-1">
+                                                                        <span className="text-xs text-neutral-500" title={log.gateway_name}>
                                                                             <i className="fas fa-server mr-1"></i> {log.gateway_name}
                                                                         </span>
                                                                     )}
@@ -473,15 +523,15 @@ const ExportHistory: React.FC = () => {
                                                             )}
                                                         </td>
                                                         <td>
-                                                            <div className="text-neutral-800" title={log.source_value}>{sourceOverview}</div>
+                                                            <div className="text-neutral-800 td-2-line-truncate" title={log.source_value}>{log.source_value}</div>
                                                             {log.error_message && (
-                                                                <div className="text-xs text-error-600 mt-1">
+                                                                <div className="text-xs text-error-600 mt-1 td-truncate" title={log.error_message}>
                                                                     <i className="fas fa-exclamation-triangle mr-1"></i>
                                                                     {log.error_message}
                                                                 </div>
                                                             )}
                                                         </td>
-                                                        <td>
+                                                        <td style={{ textAlign: 'center' }}>
                                                             {log.http_status_code > 0 ? (
                                                                 <span className={`font-mono text-sm ${log.http_status_code >= 200 && log.http_status_code < 300 ? 'text-success-600' : 'text-error-600'}`}>
                                                                     {log.http_status_code}

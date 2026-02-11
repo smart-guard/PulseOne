@@ -256,7 +256,7 @@ const ActiveAlarms: React.FC = () => {
         }
       />
 
-      <div className="mgmt-stats-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', alignItems: 'stretch', marginBottom: '20px' }}>
+      <div className="mgmt-stats-panel" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', alignItems: 'stretch', marginBottom: '8px' }}>
         <StatCard title="전체 활성" value={computedStats.totalActive} icon="fas fa-bell" type="error" />
         <StatCard title="확인 대기" value={computedStats.unacknowledged} icon="fas fa-clock" type="error" />
         <StatCard title="확인됨" value={computedStats.acknowledged} icon="fas fa-check-circle" type="warning" />
@@ -271,7 +271,7 @@ const ActiveAlarms: React.FC = () => {
         </div>
       )}
 
-      <div style={{ marginBottom: '20px' }}>
+      <div style={{ marginBottom: '8px' }}>
         <FilterBar
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}

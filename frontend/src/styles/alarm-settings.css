@@ -770,6 +770,18 @@
   margin-bottom: var(--space-6);
 }
 
+.modal-form-grid .form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 0;
+}
+
+.modal-form-grid .form-section .form-group,
+.modal-form-grid>.form-group {
+  gap: 0;
+}
+
 .form-section:last-child {
   margin-bottom: 0;
 }
@@ -2249,4 +2261,50 @@
 .modal-main-form.full-width {
   padding-bottom: 0 !important;
   /* Let sentence bar handle bottom padding */
+}
+
+/* ============================================================================
+ * 알람 설정 페이지 - 필터바/간격 최적화
+ * ============================================================================ */
+
+/* 카드 - 필터 간격 축소 */
+.page-alarm-settings .mgmt-stats-panel {
+  margin-bottom: 8px !important;
+}
+
+/* 필터바 간격 축소 + overflow 방지 */
+.page-alarm-settings .mgmt-filter-bar {
+  margin-bottom: 8px !important;
+  overflow: visible !important;
+}
+
+.page-alarm-settings .mgmt-filter-bar-inner {
+  overflow: visible !important;
+}
+
+/* 필터 그룹 기본: 내용 크기에 맞춤 */
+.page-alarm-settings .mgmt-filter-group {
+  overflow: visible !important;
+  flex: 0 0 auto !important;
+}
+
+/* 검색 영역 확대 */
+.page-alarm-settings .mgmt-filter-group.search {
+  flex: 1 1 300px !important;
+  min-width: 200px !important;
+}
+
+.page-alarm-settings .mgmt-filter-group.search .mgmt-search-wrapper {
+  width: 100% !important;
+}
+
+.page-alarm-settings .mgmt-filter-group.search .mgmt-input {
+  width: 100% !important;
+}
+
+/* 심각도 / 상태 셀렉트 고정 너비 */
+.page-alarm-settings .mgmt-filter-group .mgmt-select {
+  width: 90px !important;
+  min-width: 90px !important;
+  flex: 0 0 90px !important;
 }

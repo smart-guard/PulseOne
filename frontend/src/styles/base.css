@@ -97,7 +97,21 @@
   /* === Layout === */
   --sidebar-width: 280px;
   --topbar-height: 64px;
+
+  /* === Dynamic Size Tokens (Base) === */
+  --input-h: clamp(32px, 1vw + 24px, 40px);
+  --btn-h: clamp(28px, 1vw + 20px, 36px);
+  --btn-sm-h: clamp(24px, 1vw + 16px, 28px);
+  --input-font-size: clamp(11.5px, 0.3vw + 9px, 14px);
+  --input-px: clamp(8px, 1vw + 4px, 16px);
+  --filter-gap: clamp(8px, 1vw + 2px, 16px);
 }
+
+/* MacBook / Laptop Scaling (1280px - 1440px) */
+/* REMOVED: Replaced by Fluid Typography (clamp) in :root */
+
+/* Industrial Panel Scaling (1024px) */
+/* REMOVED: Replaced by Fluid Typography (clamp) in :root */
 
 /* ============================================
    Base Styles

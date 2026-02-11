@@ -15,8 +15,21 @@ import { usePagination } from '../hooks/usePagination';
 import { FilterBar } from '../components/common/FilterBar';
 import '../styles/management.css';
 import '../styles/pagination.css';
+import '../styles/alarm-history.css';
 import AlarmActionModal from '../components/modals/AlarmActionModal';
 import AlarmHistoryDetailModal from '../components/modals/AlarmHistoryDetailModal';
+
+// 화면 크기 감지 훅
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [query]);
+  return matches;
+}
 
 // 필터 옵션 인터페이스
 interface FilterOptions {
@@ -32,6 +45,7 @@ interface FilterOptions {
 const AlarmHistory: React.FC = () => {
   const { confirm } = useConfirmContext();
   const { decrementAlarmCount } = useAlarmContext();
+  const isSmallScreen = useMediaQuery('(max-width: 1600px)');
   // 기본 상태들
   const [alarmEvents, setAlarmEvents] = useState<AlarmOccurrence[]>([]);
   const [statistics, setStatistics] = useState<AlarmStatistics | null>(null);
@@ -253,6 +267,10 @@ const AlarmHistory: React.FC = () => {
     return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
   };
 
+  const formatDateOnly = (date: Date): string => {
+    return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 10);
+  };
+
   // =============================================================================
   // 계산된 값들 (파생 상태)
   // =============================================================================
@@ -422,7 +440,7 @@ const AlarmHistory: React.FC = () => {
   // =============================================================================
 
   return (
-    <ManagementLayout>
+    <ManagementLayout className="page-alarm-history">
       <PageHeader
         title="알람 이력"
         description="시스템에서 발생한 모든 알람의 이력을 확인하고 분석할 수 있습니다."
@@ -450,7 +468,7 @@ const AlarmHistory: React.FC = () => {
       />
 
       {/* 통계 카드 */}
-      <div className="mgmt-stats-panel" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', alignItems: 'stretch' }}>
+      <div className="mgmt-stats-panel" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', alignItems: 'stretch', marginBottom: '8px' }}>
         <StatCard
           title="총 이벤트"
           value={computedStats.total}
@@ -526,18 +544,16 @@ const AlarmHistory: React.FC = () => {
             <label>기간 설정</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
-                type="datetime-local"
-                className="mgmt-input"
-                style={{ width: '230px' }}
-                value={formatDateForInput(filters.dateRange.start)}
+                type={isSmallScreen ? 'date' : 'datetime-local'}
+                className="mgmt-input alarm-date-input"
+                value={isSmallScreen ? formatDateOnly(filters.dateRange.start) : formatDateForInput(filters.dateRange.start)}
                 onChange={(e) => handleDateChange('start', e.target.value)}
               />
               <span style={{ color: 'var(--neutral-400)' }}>~</span>
               <input
-                type="datetime-local"
-                className="mgmt-input"
-                style={{ width: '230px' }}
-                value={formatDateForInput(filters.dateRange.end)}
+                type={isSmallScreen ? 'date' : 'datetime-local'}
+                className="mgmt-input alarm-date-input"
+                value={isSmallScreen ? formatDateOnly(filters.dateRange.end) : formatDateForInput(filters.dateRange.end)}
                 onChange={(e) => handleDateChange('end', e.target.value)}
               />
             </div>
@@ -604,12 +620,12 @@ const AlarmHistory: React.FC = () => {
                     <tr>
                       <th style={{ width: '100px' }}>ID</th>
                       <th style={{ width: '120px', textAlign: 'center' }}>심각도</th>
-                      <th style={{ width: '220px' }}>디바이스 / 포인트</th>
+                      <th style={{ width: '180px' }}>디바이스 / 포인트</th>
                       <th>메시지</th>
                       <th style={{ width: '120px', textAlign: 'center' }}>상태</th>
-                      <th style={{ width: '180px' }}>발생시간</th>
-                      <th style={{ width: '150px' }}>지속시간</th>
-                      <th style={{ width: '100px', textAlign: 'center' }}>액션</th>
+                      <th style={{ width: '200px', whiteSpace: 'nowrap' }}>발생시간</th>
+                      <th style={{ width: '90px' }}>지속시간</th>
+                      <th style={{ width: '60px', textAlign: 'center' }}>액션</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -655,8 +671,15 @@ const AlarmHistory: React.FC = () => {
                                 <span className="font-medium">{getStatusText(state)}</span>
                               </div>
                             </td>
-                            <td className="text-neutral-600">
-                              {new Date(occurrenceTime).toLocaleString('ko-KR')}
+                            <td className="text-neutral-600" style={isSmallScreen ? undefined : { whiteSpace: 'nowrap' }}>
+                              {isSmallScreen ? (
+                                <>
+                                  <div>{new Date(occurrenceTime).toLocaleDateString('ko-KR')}</div>
+                                  <div className="text-xs">{new Date(occurrenceTime).toLocaleTimeString('ko-KR')}</div>
+                                </>
+                              ) : (
+                                new Date(occurrenceTime).toLocaleString('ko-KR')
+                              )}
                             </td>
                             <td className="text-neutral-600">
                               {formatDuration(occurrenceTime, event.cleared_time || event.acknowledged_time)}
