@@ -141,110 +141,41 @@ const ExportGatewaySettings: React.FC = () => {
                     <StatCard label="오프라인" value={gateways.length - onlineCount} type="error" />
                 </div>
 
-                <div className="mgmt-filter-bar" style={{ marginBottom: '20px', borderBottom: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: '24px' }}>
-                        <button
-                            className={`nav-tab ${activeTab === 'gateways' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('gateways')}
-                            style={{
-                                padding: '12px 16px',
-                                border: 'none',
-                                background: 'none',
-                                borderBottom: activeTab === 'gateways' ? '2px solid var(--primary-500)' : '2px solid transparent',
-                                color: activeTab === 'gateways' ? 'var(--primary-600)' : 'var(--neutral-500)',
-                                fontWeight: activeTab === 'gateways' ? 600 : 400,
-                                cursor: 'pointer',
-                                fontSize: '14px'
-                            }}
-                        >
-                            <i className="fas fa-server" style={{ marginRight: '8px' }} /> 게이트웨이 설정
-                        </button>
-                        <button
-                            className={`nav-tab ${activeTab === 'profiles' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('profiles')}
-                            style={{
-                                padding: '12px 16px',
-                                border: 'none',
-                                background: 'none',
-                                borderBottom: activeTab === 'profiles' ? '2px solid var(--primary-500)' : '2px solid transparent',
-                                color: activeTab === 'profiles' ? 'var(--primary-600)' : 'var(--neutral-500)',
-                                fontWeight: activeTab === 'profiles' ? 600 : 400,
-                                cursor: 'pointer',
-                                fontSize: '14px'
-                            }}
-                        >
-                            <i className="fas fa-file-export" style={{ marginRight: '8px' }} /> 데이터 매핑
-                        </button>
-                        <button
-                            className={`nav-tab ${activeTab === 'targets' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('targets')}
-                            style={{
-                                padding: '12px 16px',
-                                border: 'none',
-                                background: 'none',
-                                borderBottom: activeTab === 'targets' ? '2px solid var(--primary-500)' : '2px solid transparent',
-                                color: activeTab === 'targets' ? 'var(--primary-600)' : 'var(--neutral-500)',
-                                fontWeight: activeTab === 'targets' ? 600 : 400,
-                                cursor: 'pointer',
-                                fontSize: '14px'
-                            }}
-                        >
-                            <i className="fas fa-external-link-alt" style={{ marginRight: '8px' }} /> 내보내기 대상
-                        </button>
-                        <button
-                            className={`nav-tab ${activeTab === 'templates' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('templates')}
-                            style={{
-                                padding: '12px 16px',
-                                border: 'none',
-                                background: 'none',
-                                borderBottom: activeTab === 'templates' ? '2px solid var(--primary-500)' : '2px solid transparent',
-                                color: activeTab === 'templates' ? 'var(--primary-600)' : 'var(--neutral-500)',
-                                fontWeight: activeTab === 'templates' ? 600 : 400,
-                                cursor: 'pointer',
-                                fontSize: '14px'
-                            }}
-                        >
-                            <i className="fas fa-code" style={{ marginRight: '8px' }} /> 페이로드 템플릿
-                        </button>
-                        <button
-                            className={`nav-tab ${activeTab === 'schedules' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('schedules')}
-                            style={{
-                                padding: '12px 16px',
-                                border: 'none',
-                                background: 'none',
-                                borderBottom: activeTab === 'schedules' ? '2px solid var(--primary-500)' : '2px solid transparent',
-                                color: activeTab === 'schedules' ? 'var(--primary-600)' : 'var(--neutral-500)',
-                                fontWeight: activeTab === 'schedules' ? 600 : 400,
-                                cursor: 'pointer',
-                                fontSize: '14px'
-                            }}
-                        >
-                            <i className="fas fa-calendar-alt" style={{ marginRight: '8px' }} /> 스케줄 관리
-                        </button>
-                        <button
-                            className={`nav-tab ${activeTab === 'manual-test' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('manual-test')}
-                            style={{
-                                padding: '12px 16px',
-                                border: 'none',
-                                background: 'none',
-                                borderBottom: activeTab === 'manual-test' ? '2px solid var(--primary-500)' : '2px solid transparent',
-                                color: activeTab === 'manual-test' ? 'var(--primary-600)' : 'var(--neutral-500)',
-                                fontWeight: activeTab === 'manual-test' ? 600 : 400,
-                                cursor: 'pointer',
-                                fontSize: '14px'
-                            }}
-                        >
-                            <i className="fas fa-flask" style={{ marginRight: '8px' }} /> 수동 테스트
-                        </button>
+                <div className="mgmt-filter-bar" style={{ marginBottom: '20px', borderBottom: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'visible' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'nowrap', overflow: 'auto' }}>
+                        {[
+                            { key: 'gateways', icon: 'fa-server', label: '게이트웨이 설정' },
+                            { key: 'profiles', icon: 'fa-file-export', label: '데이터 매핑' },
+                            { key: 'targets', icon: 'fa-external-link-alt', label: '내보내기 대상' },
+                            { key: 'templates', icon: 'fa-code', label: '페이로드 템플릿' },
+                            { key: 'schedules', icon: 'fa-calendar-alt', label: '스케줄 관리' },
+                            { key: 'manual-test', icon: 'fa-flask', label: '수동 테스트' },
+                        ].map(t => (
+                            <button
+                                key={t.key}
+                                className={`nav-tab ${activeTab === t.key ? 'active' : ''}`}
+                                onClick={() => setActiveTab(t.key)}
+                                style={{
+                                    padding: '8px 10px',
+                                    border: 'none',
+                                    background: 'none',
+                                    borderBottom: activeTab === t.key ? '2px solid var(--primary-500)' : '2px solid transparent',
+                                    color: activeTab === t.key ? 'var(--primary-600)' : 'var(--neutral-500)',
+                                    fontWeight: activeTab === t.key ? 600 : 400,
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                <i className={`fas ${t.icon}`} style={{ marginRight: '4px' }} /> {t.label}
+                            </button>
+                        ))}
                     </div>
 
                     <div className="tab-actions">
                         {activeTab === 'gateways' && (
-                            <button className="btn btn-primary btn-sm" onClick={() => setIsRegModalOpen(true)}>
-                                <i className="fas fa-magic" style={{ marginRight: '8px' }} /> 게이트웨이 등록 (마법사)
+                            <button className="btn btn-primary btn-sm" onClick={() => setIsRegModalOpen(true)} style={{ fontSize: '13px', padding: '4px 10px', whiteSpace: 'nowrap' }}>
+                                <i className="fas fa-magic" style={{ marginRight: '4px' }} /> 게이트웨이 등록 (마법사)
                             </button>
                         )}
                     </div>

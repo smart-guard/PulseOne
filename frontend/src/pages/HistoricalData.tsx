@@ -454,11 +454,11 @@ const HistoricalData: React.FC = () => {
       {/* 검색 조건 패널 */}
       <div className="query-panel">
         <div className="query-section">
-          <div className="query-header-row" style={{ display: 'flex', alignItems: 'center', gap: '24px', marginBottom: showAdvancedFilter ? '16px' : '0' }}>
-            <h3 style={{ margin: 0, whiteSpace: 'nowrap', fontSize: '15px', fontWeight: 600, color: '#334155' }}>조회 조건</h3>
+          <div className="query-header-row">
+            <h3 className="query-title">조회 조건</h3>
 
             {/* 기본 조건 */}
-            <div className="query-filter-bar single-line" style={{ marginBottom: 0 }}>
+            <div className="query-filter-bar single-line">
               <div className="filter-group date-range">
                 <label>조회 기간</label>
                 <div className="date-range-wrapper">
@@ -530,11 +530,11 @@ const HistoricalData: React.FC = () => {
                 </div>
               )}
 
-              <div className="filter-group search-action" style={{ flexDirection: 'row', alignItems: 'flex-end', gap: '8px' }}>
+              <div className="filter-group search-action">
                 <div>
                   <label>&nbsp;</label>
                   <button
-                    className="btn btn-primary search-btn"
+                    className="search-btn primary"
                     onClick={loadHistoricalData}
                     disabled={isLoading}
                   >
@@ -543,13 +543,11 @@ const HistoricalData: React.FC = () => {
                   </button>
                 </div>
 
-                {/* 고급 필터 버튼을 여기로 이동 */}
                 <div>
                   <label>&nbsp;</label>
                   <button
-                    className="btn btn-outline btn-sm search-btn" // search-btn 클래스 재사용하여 높이 맞춤
+                    className="search-btn"
                     onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-                    style={{ background: 'white' }}
                   >
                     <i className={`fas fa-chevron-${showAdvancedFilter ? 'up' : 'down'}`}></i>
                     고급 필터

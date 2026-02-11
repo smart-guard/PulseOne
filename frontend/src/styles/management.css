@@ -10,7 +10,7 @@
     margin: 0 auto;
     padding: var(--space-4);
     /* Reduced standard padding */
-    gap: var(--space-4);
+    gap: var(--space-2);
     height: 100vh;
     /* Full viewport height */
     max-height: 100vh;
@@ -49,6 +49,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-bottom: var(--space-2);
+    /* Added space before cards */
 }
 
 .mgmt-header-info {
@@ -79,7 +81,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 10px;
-    margin-bottom: 10px;
+    margin-bottom: var(--space-2);
 }
 
 .mgmt-stat-card {
@@ -200,34 +202,195 @@
 
 /* === 필터 바 === */
 .mgmt-filter-bar {
-    padding: var(--space-2) var(--space-6);
+    padding: var(--space-3) var(--space-4);
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    flex-wrap: wrap;
-    /* Allow wrapping on small screens */
+    gap: var(--filter-gap);
+    flex-wrap: nowrap;
+    position: relative;
+    background: white;
     overflow: visible;
-    /* Avoid horizontal scrollbar on the container */
+    margin-bottom: var(--space-2);
+    min-height: 56px;
+    box-sizing: border-box;
+}
+
+.mgmt-filter-bar-inner {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    /* RESTORED: NO WRAPPING */
+    gap: var(--filter-gap);
+    flex: 1;
+    min-width: 0;
 }
 
 .mgmt-filter-group {
     display: flex;
     flex-direction: row;
     align-items: center;
+    gap: var(--space-1);
+    flex: 0 0 auto !important;
+    /* OVERRIDE INLINE: dropdown groups shrink to content */
+    min-width: 0;
+    overflow: visible;
+}
+
+/* 검색 영역 */
+.mgmt-filter-group.search {
+    flex: 1 1 200px !important;
+    min-width: 120px !important;
+}
+
+.mgmt-filter-group.search .mgmt-search-wrapper {
+    width: 100% !important;
+}
+
+.mgmt-filter-group.search .mgmt-input {
+    width: 100% !important;
+}
+
+/* 드랍다운 셀렉트 너비 */
+.mgmt-filter-group .mgmt-select {
+    width: 120px !important;
+    min-width: 120px !important;
+    flex: 0 0 120px !important;
+}
+
+/* Management Filter Visibility Helpers - CLEANED */
+
+/* Shadow Datepicker - Definitive 24H Design Pattern */
+.mgmt-filter-group.date-range-group {
+    flex: 0 1 auto;
+    min-width: 15.5em;
+    /* Tighten to the max */
+    transition: all 0.2s ease;
+}
+
+.shadow-datepicker {
+    position: relative;
+    flex: 1;
+    min-width: 7.7em;
+    /* Exactly fits YYYY. MM. DD. */
+    /* Safe floor for YYYY. MM. DD. */
+    height: 32px;
+    /* Standard sm height */
+    box-sizing: border-box;
+    cursor: pointer;
+    overflow: hidden;
+    /* Prevent internal artifacts from bleeding out */
+}
+
+.shadow-datepicker-display {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    /* Space out Date and 24H Time */
+    background: #ffffff;
+    border: 1px solid var(--neutral-300);
+    border-radius: var(--radius-sm);
+    font-size: var(--input-font-size);
+    color: var(--neutral-800);
+    pointer-events: none !important;
+    /* Ensure click hits the hidden input */
+    white-space: nowrap;
+    padding: 0 6px;
+    /* Reduced from 10px */
+    z-index: 1;
+    box-sizing: border-box;
+    background-color: #fff !important;
+}
+
+.shadow-datepicker-input {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
+    opacity: 0 !important;
+    /* HIDE THE NATIVE UI BUT KEEP INTERACTION */
+    cursor: pointer !important;
+    z-index: 2;
+    /* MUST BE ON TOP */
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent !important;
+    color: transparent !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    pointer-events: auto !important;
+}
+
+/* Aggressive suppression of native artifacts - these cause the "lines" */
+.shadow-datepicker-input::-webkit-datetime-edit,
+.shadow-datepicker-input::-webkit-datetime-edit-fields-wrapper,
+.shadow-datepicker-input::-webkit-datetime-edit-text,
+.shadow-datepicker-input::-webkit-datetime-edit-month-field,
+.shadow-datepicker-input::-webkit-datetime-edit-day-field,
+.shadow-datepicker-input::-webkit-datetime-edit-year-field,
+.shadow-datepicker-input::-webkit-datetime-edit-hour-field,
+.shadow-datepicker-input::-webkit-datetime-edit-minute-field,
+.shadow-datepicker-input::-webkit-calendar-picker-indicator,
+.shadow-datepicker-input::-webkit-inner-spin-button,
+.shadow-datepicker-input::-webkit-clear-button {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    -webkit-appearance: none !important;
+}
+
+.shadow-time-part {
+    font-weight: 600;
+    color: var(--primary-600);
+    /* Highlight 17:59 as requested */
+    display: none;
+    /* Mobile/Small: Hide Time */
+}
+
+@media (min-width: 1600px) {
+    .mgmt-filter-group.date-range-group {
+        flex: 0 0 auto !important;
+        min-width: 29.5em !important;
+    }
+
+    .shadow-datepicker {
+        min-width: 12.5em !important;
+        /* Expand for HH:mm */
+    }
+
+    .shadow-time-part {
+        display: inline !important;
+        /* Reveal 24H Time */
+    }
+}
+
+.mgmt-filter-actions {
+    display: flex;
+    align-items: center;
     gap: var(--space-2);
     flex-shrink: 0;
+    margin-left: auto;
+    /* Push to right if space allows */
 }
 
 .mgmt-filter-group label {
-    font-size: 13px;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--neutral-700);
     white-space: nowrap;
+    min-width: 0;
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .mgmt-filter-group.search {
-    flex: 1;
-    min-width: 150px;
+    flex: 0 1 120px;
+    /* Non-greedy; allow it to shrink significantly */
+    min-width: 60px;
 }
 
 .checkbox-label {
@@ -247,26 +410,45 @@
 
 .mgmt-input,
 .mgmt-select {
-    width: 100%;
-    height: 40px;
-    /* Increased height for premium feel */
-    padding: 0 var(--space-4);
+    display: block;
+    flex: 1;
+    /* Take remaining space in filter group */
+    width: 0;
+    /* CRITICAL: Allow flex engine to determine width, preventing overlap */
+    height: var(--input-h);
+    padding: 0 var(--input-px);
     border: 1px solid var(--neutral-300);
     border-radius: var(--radius-md);
-    font-size: 14px;
-    /* Slightly increased font size */
+    /* FLUID TYPOGRAPHY: Uses clamp() from base.css */
+    font-size: var(--input-font-size);
     color: var(--neutral-800);
     background: white;
     transition: all var(--transition-fast);
     box-sizing: border-box;
+    min-width: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    /* SAFETY FLOOR: REMOVED TO ALLOW ULTRA-Surgical target name reduction */
+}
+
+.mgmt-select {
+    padding-right: 14px !important;
+    /* Extremely tight arrow area for scaling */
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 2px center;
+    background-size: 8px;
 }
 
 .mgmt-input.sm,
 .mgmt-select.sm {
-    height: 36px;
-    /* Substantial but compact for tables */
-    padding: 0 var(--space-3);
-    font-size: 13px;
+    height: var(--btn-h);
+    /* Use dynamic height */
+    padding: 0 var(--input-px);
+    /* Use dynamic padding */
+    font-size: calc(var(--input-font-size) - 1px);
 }
 
 .mgmt-input:focus,
@@ -374,6 +556,8 @@
 .mgmt-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
+    /* CRITICAL: Enforce column widths to prevent overflow */
 }
 
 .mgmt-table th {
@@ -389,10 +573,16 @@
 }
 
 .mgmt-table td {
-    padding: 8px 24px;
+    padding: 8px 12px;
+    /* Reduced from 24px default */
     border-bottom: 1px solid var(--neutral-100);
     font-size: var(--text-sm);
     vertical-align: middle;
+}
+
+.mgmt-table th {
+    padding: 8px 12px;
+    /* Reduced from 24px default */
 }
 
 .mgmt-table tr:hover td {
@@ -513,16 +703,15 @@
     align-items: center;
     justify-content: center;
     gap: var(--space-2);
-    height: 32px;
+    height: var(--btn-h);
     padding: 0 var(--space-4);
-    font-size: 13px;
+    font-size: calc(var(--input-font-size) - 1px);
     font-weight: 600;
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: all var(--transition-base);
     border: 1px solid transparent;
     white-space: nowrap;
-    /* Prevent text wrapping */
 }
 
 .mgmt-btn-primary {
@@ -566,8 +755,8 @@
 }
 
 .mgmt-btn-icon {
-    width: 32px;
-    height: 32px;
+    width: var(--btn-h);
+    height: var(--btn-h);
     padding: 0;
     background: transparent;
     color: var(--neutral-500);
@@ -612,6 +801,9 @@
     border-radius: var(--radius-md);
     border: 1px solid var(--neutral-200);
     gap: 2px;
+    height: var(--input-h);
+    box-sizing: border-box;
+    align-items: stretch;
 }
 
 .mgmt-btn-primary:disabled,
@@ -623,7 +815,7 @@
 
 .mgmt-btn-status {
     flex: 1;
-    padding: 8px;
+    padding: 4px 8px;
     border-radius: var(--radius-md);
     border: none;
     font-size: var(--text-xs);
@@ -804,7 +996,80 @@
     }
 }
 
+/* 맥북 / 고해상도 노트북 대응 (1024px - 1440px) */
+@media (max-width: 1440px) {
+    .management-container {
+        padding: var(--space-3);
+        gap: var(--space-3);
+    }
+
+    .mgmt-header {
+        padding: var(--space-2) var(--space-4);
+    }
+
+    .mgmt-title {
+        font-size: 22px;
+    }
+
+    .mgmt-filter-bar {
+        padding: var(--space-2) var(--space-4);
+        gap: var(--space-3);
+    }
+
+    .mgmt-filter-group label {
+        font-size: 12px;
+    }
+
+    .mgmt-input.sm,
+    .mgmt-select.sm {
+        height: 32px;
+        padding: 0 var(--space-2);
+    }
+
+    .mgmt-table th,
+    .mgmt-table td {
+        padding: 6px 8px;
+        /* High density for laptops */
+        font-size: 13px;
+    }
+
+    .mgmt-stats-panel {
+        gap: 8px;
+    }
+
+    .mgmt-stat-card {
+        padding: var(--space-3) var(--space-4);
+    }
+
+    .mgmt-stat-value {
+        font-size: 1.25rem;
+    }
+}
+
 /* 모바일 대응 */
+@media (max-width: 1024px) {
+    .mgmt-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-4);
+        padding: var(--space-4);
+    }
+
+    .mgmt-filter-bar-inner {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        gap: var(--space-3);
+    }
+
+    .mgmt-filter-actions {
+        margin-left: 0;
+        justify-content: flex-end;
+        border-top: 1px solid var(--neutral-100);
+        padding-top: var(--space-3);
+    }
+}
+
 @media (max-width: 768px) {
     .mgmt-header {
         flex-direction: column;
@@ -899,7 +1164,7 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: var(--space-2);
     min-height: 0;
 }
 
@@ -1400,5 +1665,132 @@
 
     to {
         opacity: 1;
+    }
+}
+
+/* === EMERGENCY FIX: Table Utilities === */
+.mgmt-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+}
+
+.mgmt-table td {
+    padding: 8px 12px !important;
+    vertical-align: middle !important;
+}
+
+.datetime-stacked {
+    display: flex !important;
+    flex-direction: column !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+}
+
+.datetime-stacked .date {
+    font-size: 13px !important;
+    color: #374151 !important;
+    display: block !important;
+}
+
+.datetime-stacked .time {
+    font-size: 11px !important;
+    color: #6b7280 !important;
+    display: block !important;
+}
+
+.td-2-line-truncate {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    white-space: normal !important;
+    line-height: 1.4 !important;
+    word-break: break-all !important;
+}
+
+/* === Time Visibility Override === */
+.datetime-stacked .date {
+    font-size: 11px !important;
+    color: #6b7280 !important;
+}
+
+.datetime-stacked .time {
+    font-size: 14px !important;
+    color: #111827 !important;
+    font-weight: 600 !important;
+}
+
+/* === Time Styling Sync: Match Date and Time === */
+.datetime-stacked .date,
+.datetime-stacked .time {
+    font-size: 13px !important;
+    color: #374151 !important;
+    font-weight: 500 !important;
+}
+
+/* === Adaptive Layout: Large Screens (>= 1600px) === */
+@media (min-width: 1600px) {
+    .datetime-stacked {
+        flex-direction: row !important;
+        gap: 8px !important;
+        align-items: baseline !important;
+    }
+
+    .datetime-stacked .date {
+        font-size: 13px !important;
+    }
+
+    .datetime-stacked .time {
+        font-size: 13px !important;
+    }
+
+    .mgmt-table-row-group {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: baseline !important;
+        gap: 6px !important;
+        white-space: nowrap !important;
+    }
+}
+
+/* === Responsive Header Widths === */
+.col-id {
+    width: 65px;
+}
+
+.col-status {
+    width: 90px;
+    text-align: center;
+}
+
+.col-time {
+    width: 120px;
+}
+
+.col-target {
+    width: 18%;
+}
+
+.col-settings {
+    width: 18%;
+}
+
+.col-response {
+    width: 70px;
+    text-align: center;
+}
+
+@media (min-width: 1600px) {
+    .col-time {
+        width: 180px;
+    }
+
+    .col-target {
+        width: 22%;
+    }
+
+    .col-settings {
+        width: 22%;
     }
 }

@@ -11,6 +11,8 @@ export interface FilterConfig {
     value: string;
     options: FilterOption[];
     onChange: (value: string) => void;
+    flexWeight?: number;
+    minWidth?: string;
 }
 
 interface FilterBarProps {
@@ -39,14 +41,14 @@ export const FilterBar: React.FC<FilterBarProps> = ({
     return (
         <div className={`mgmt-filter-bar ${className}`}>
             {/* 필터 섹션: 검색 + 옵션들 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 1, minWidth: 0 }}>
+            <div className="mgmt-filter-bar-inner">
                 {onSearchChange && (
                     <div className="mgmt-filter-group search">
                         <div className="mgmt-search-wrapper">
                             <i className="fas fa-search mgmt-search-icon"></i>
                             <input
                                 type="text"
-                                className="mgmt-input mgmt-input-with-icon sm"
+                                className="mgmt-input sm mgmt-input-with-icon"
                                 placeholder={searchPlaceholder}
                                 value={searchTerm}
                                 onChange={(e) => onSearchChange(e.target.value)}
@@ -58,13 +60,15 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 {leftActions}
 
                 {filters.map((filter, index) => (
-                    <div key={index} className="mgmt-filter-group">
+                    <div
+                        key={index}
+                        className="mgmt-filter-group"
+                    >
                         <label>{filter.label}</label>
                         <select
                             className="mgmt-select sm"
                             value={filter.value}
                             onChange={(e) => filter.onChange(e.target.value)}
-                            style={{ minWidth: '100px' }}
                         >
                             {filter.options.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -77,9 +81,9 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             </div>
 
             {/* 액션 섹션: 초기화 + 추가 버튼들 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
+            <div className="mgmt-filter-actions">
                 <button
-                    className="mgmt-btn mgmt-btn-outline mgmt-btn-sm"
+                    className="mgmt-btn mgmt-btn-outline"
                     onClick={onReset}
                     disabled={activeFilterCount === 0}
                 >

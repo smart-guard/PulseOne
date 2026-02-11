@@ -21,163 +21,167 @@
 }
 
 .query-section {
-  padding: var(--space-6);
+  padding: 16px 20px;
+  /* Gain ~12px total width from padding */
 }
 
 .query-section h3 {
   margin: 0 0 var(--space-4) 0;
-  font-size: var(--text-lg);
+  font-size: 16px;
+  /* Balanced size */
   font-weight: 600;
   color: var(--neutral-700);
 }
 
-/* 기본 조건 바 - 한 줄 레이아웃 */
-/* 기본 조건 바 - 한 줄 레이아웃 */
-.query-filter-bar.single-line {
-  display: flex;
-  gap: var(--space-4);
-  align-items: center;
-  /* Center align items vertically */
-  flex-wrap: nowrap;
-  padding: 0;
-  /* Remove padding */
-  border: none;
-  /* Remove border */
-  flex: 1;
-  /* Take up remaining space */
+.page-title {
+  font-size: 1.25rem !important;
+  /* Shrunk for balance */
+  font-weight: 700;
+  color: var(--neutral-800);
 }
 
-.filter-group {
+.page-header .btn {
+  height: 34px !important;
+  /* Standard professional height */
+  font-size: 12px !important;
+  padding: 0 16px !important;
+}
+
+/* 기본 조건 바 - 한 줄 레이아웃 */
+/* 기본 조건 바 - 한 줄 레이아웃 */
+#root .query-filter-bar.single-line {
+  display: flex !important;
+  gap: 8px !important;
+  align-items: flex-end !important;
+  flex-wrap: nowrap !important;
+  padding: 0 !important;
+  border: none !important;
+  flex: 1 1 auto !important;
+  width: auto !important;
+}
+
+#root .query-filter-bar.single-line .filter-group {
+  margin: 0 !important;
+  padding: 0 !important;
+  min-width: auto !important;
+  /* Override filter-panel.css min-width: 200px */
   display: flex;
   flex-direction: column;
-  gap: var(--space-1-5);
+  gap: 2px;
 }
 
-.filter-group.date-range {
-  flex: 0 0 auto;
+/* 집계 방식 - 약간의 여백으로 구분 */
+#root .query-filter-bar.single-line .filter-group:not(.date-range):not(.quick-ranges):not(.search-action) {
+  margin-left: 20px !important;
 }
 
-.filter-group label {
-  font-size: 11px;
-  font-weight: 800;
-  color: var(--neutral-400);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: 4px;
-  display: block;
-  white-space: nowrap;
-  /* Prevent label wrapping */
+/* 조회 + 고급필터 - 오른쪽 끝 고정 */
+#root .query-filter-bar.single-line .filter-group.search-action {
+  margin-left: auto !important;
 }
 
-.date-range-wrapper {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1-5);
+#root .date-input {
+  padding: 0 12px !important;
+  border: 1px solid var(--neutral-300) !important;
+  border-radius: var(--radius-md) !important;
+  min-width: 180px !important;
+  font-size: 13px !important;
+  height: 36px !important;
+  color: var(--neutral-700) !important;
+  background: white !important;
 }
 
-.date-input {
-  padding: 6px 12px;
-  border: 1px solid var(--neutral-300);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-family: var(--font-family-sans);
+#root .condition-select {
+  padding: 0 12px !important;
+  border: 1px solid var(--neutral-300) !important;
+  border-radius: var(--radius-md) !important;
+  font-size: 13px !important;
+  background: white !important;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e") !important;
+  background-position: right 0.5rem center !important;
+  background-repeat: no-repeat !important;
+  background-size: 1.25em !important;
+  padding-right: 2rem !important;
+  min-width: 85px !important;
+  height: 36px !important;
+  appearance: none !important;
+  margin: 0 !important;
+}
+
+/* 빠른 설정 버튼 - 가로 일렬, 조회기간과 동일 높이 */
+#root .quick-date-buttons {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 2px !important;
+  flex-wrap: nowrap !important;
+}
+
+#root .quick-date-buttons .btn-xs {
+  height: 36px !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+  min-width: 36px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Fix for button wrapper structure */
+#root .filter-group.search-action {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  gap: 4px !important;
+  /* Slight breathing room between buttons */
+  flex-shrink: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Target the wrapper divs inside search-action */
+#root .filter-group.search-action>div {
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+}
+
+/* Hide the &nbsp; labels completely */
+#root .filter-group.search-action>div>label {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#root .search-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding: 0 16px !important;
+  font-weight: 700 !important;
+  height: 36px !important;
+  font-size: 13px !important;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--neutral-300) !important;
   background: white;
-  min-width: 190px;
   color: var(--neutral-700);
-  transition: all 0.2s ease;
-  cursor: pointer;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+  margin: 0 !important;
 }
 
-.date-input:hover {
-  border-color: var(--neutral-400);
-  background: var(--neutral-25);
+#root .search-btn.primary {
+  background: var(--primary-600) !important;
+  border-color: var(--primary-600) !important;
+  color: white !important;
 }
 
-.date-input:focus {
-  outline: none;
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-100), inset 0 1px 2px rgba(0, 0, 0, 0.02);
-}
-
-/* 📅 크롬/사파리 데이트 피커 아이콘 스타일링 */
-.date-input::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  filter: invert(0.4);
-  margin-left: 4px;
-}
-
-.date-separator {
-  color: var(--neutral-400);
-  font-weight: 400;
-  padding: 0 2px;
-}
-
-.quick-date-buttons {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.condition-select {
-  padding: 6px 12px;
-  border: 1px solid var(--neutral-300);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  background: white;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 0.5rem center;
-  background-repeat: no-repeat;
-  background-size: 1.25em 1.25em;
-  padding-right: 2rem;
-  min-width: 100px;
-  height: 38px;
-  /* date-input과 높이 통일 */
-  transition: all 0.2s ease;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-}
-
-.condition-select:hover {
-  border-color: var(--neutral-400);
-}
-
-.condition-select:focus {
-  outline: none;
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px var(--primary-100);
-}
-
-.interval-select {
-  min-width: 90px;
-}
-
-.quick-date-buttons {
-  display: flex;
-  gap: 4px;
-}
-
-.filter-group.search-action {
-  margin-left: auto;
-  /* 우측 끝으로 밀기 */
-}
-
-.search-btn {
-  padding: 0 var(--space-6);
-  font-weight: 700;
-  height: 38px;
-  /* 인풋 높이와 일치 (padding 포함) */
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
 
 .search-btn:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
+  filter: brightness(0.98);
 }
 
 .search-btn:active {
@@ -187,7 +191,6 @@
 /* 고급 필터 */
 .advanced-filter-toggle {
   margin-bottom: 0;
-  /* Remove margin */
 }
 
 .advanced-conditions {
@@ -320,8 +323,8 @@
 .view-toggle-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
+  gap: 0;
+  padding: 6px 12px;
   border: none;
   background: transparent;
   border-radius: var(--radius-md);
@@ -330,6 +333,10 @@
   font-weight: 600;
   color: var(--neutral-500);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.view-toggle-btn span {
+  display: none;
 }
 
 .view-toggle-btn i {
@@ -1115,4 +1122,22 @@ thead th.num-cell {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   text-align: center !important;
+}
+
+/* --- Responsive Layout Adjustments --- */
+.query-header-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: nowrap !important;
+}
+
+.query-title {
+  margin: 0 !important;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--neutral-700);
+  padding-bottom: 6px;
 }

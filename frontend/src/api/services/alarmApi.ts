@@ -931,21 +931,20 @@ export class AlarmApiService {
   static formatDuration(startTime: string, endTime?: string): string {
     const start = new Date(startTime).getTime();
     const end = endTime ? new Date(endTime).getTime() : Date.now();
-    const durationMs = end - start;
+    const durationMs = Math.abs(end - start);
 
-    const seconds = Math.floor(durationMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
+    const totalMinutes = Math.floor(durationMs / 60000);
+    const totalHours = Math.floor(totalMinutes / 60);
+    const days = Math.floor(totalHours / 24);
 
     if (days > 0) {
-      return `${days}일 ${hours % 24}시간`;
-    } else if (hours > 0) {
-      return `${hours}시간 ${minutes % 60}분`;
-    } else if (minutes > 0) {
-      return `${minutes}분`;
+      return `${days}일 ${totalHours % 24}시간`;
+    } else if (totalHours > 0) {
+      return `${totalHours}시간 ${totalMinutes % 60}분`;
+    } else if (totalMinutes > 0) {
+      return `${totalMinutes}분`;
     } else {
-      return `${seconds}초`;
+      return '1분 미만';
     }
   }
 

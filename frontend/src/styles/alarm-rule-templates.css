@@ -1334,8 +1334,8 @@
 }
 
 .form-group {
-  margin-bottom: 8px !important;
-  /* Very tight form groups */
+  margin-bottom: 16px !important;
+  /* Adequate separation between form groups */
 }
 
 .form-label {
@@ -1682,7 +1682,7 @@
 }
 
 .form-group {
-  margin-bottom: 8px !important;
+  margin-bottom: 16px !important;
 }
 
 .form-label {
@@ -1808,7 +1808,8 @@
 }
 
 .form-group {
-  margin-bottom: 0px !important;
+  margin-bottom: 16px !important;
+  gap: 0 !important;
 }
 
 .form-label {
@@ -2284,7 +2285,7 @@
 .form-label {
   font-size: 14px !important;
   font-weight: 700 !important;
-  margin-bottom: 10px !important;
+  margin-bottom: 2px !important;
 }
 
 /* Stretch the whole modal even more to accommodate huge gaps */

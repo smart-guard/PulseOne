@@ -199,7 +199,7 @@ const AlarmSettings: React.FC<AlarmSettingsProps> = () => {
   };
 
   return (
-    <ManagementLayout>
+    <ManagementLayout className="page-alarm-settings">
       <PageHeader
         title="알람 설정 관리"
         description="시스템 전반의 알람 발생 규칙을 설정하고 관리합니다. 한 눈에 파악하기 쉬운 콤팩트한 설정을 제공합니다."

@@ -210,14 +210,14 @@ const UserManagement: React.FC = () => {
           <table className="mgmt-table">
             <thead>
               <tr>
-                <th>이름</th>
-                <th>아이디</th>
-                <th>고객사</th>
-                <th>이메일</th>
-                <th>역할</th>
-                <th>부서</th>
-                <th>마지막 로그인</th>
-                <th style={{ textAlign: 'center' }}>상태</th>
+                <th style={{ width: '10%' }}>이름</th>
+                <th style={{ width: '12%' }}>아이디</th>
+                <th style={{ width: '12%' }}>고객사</th>
+                <th style={{ width: '22%' }}>이메일</th>
+                <th style={{ width: '10%' }}>역할</th>
+                <th style={{ width: '12%' }}>부서</th>
+                <th style={{ width: '12%' }}>마지막 로그인</th>
+                <th style={{ width: '5%', textAlign: 'center' }}>상태</th>
               </tr>
             </thead>
             <tbody>

@@ -1218,3 +1218,42 @@
     text-align: center;
   }
 }
+
+/* ============================================================================
+ * 필터바 레이아웃 최적화 - 검색 버튼 확대, 셀렉트 축소, 간격 축소
+ * ============================================================================ */
+
+/* 검색 버튼 크기 확대 */
+.page-active-alarms .mgmt-filter-bar .mgmt-search-input-group .mgmt-search-btn {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  font-size: 14px !important;
+}
+
+/* 검색 입력 필드 높이 맞춤 */
+.page-active-alarms .mgmt-filter-bar .mgmt-search-input-group .mgmt-search-input {
+  height: 36px !important;
+}
+
+/* 심각도 / 상태 셀렉트 너비 축소 */
+.page-active-alarms .mgmt-filter-bar .mgmt-filter-group select {
+  max-width: 120px !important;
+  min-width: 80px !important;
+}
+
+/* 필터바 하단 여백 축소 */
+.page-active-alarms .mgmt-filter-bar {
+  margin-bottom: 0 !important;
+}
+
+/* 검색 영역 확대 - flex-grow로 남은 공간 모두 차지 */
+.page-active-alarms .mgmt-filter-group.search {
+  flex: 1 1 auto !important;
+  min-width: 200px !important;
+}
+
+.page-active-alarms .mgmt-filter-group.search .mgmt-input {
+  height: 36px !important;
+  width: 100% !important;
+}

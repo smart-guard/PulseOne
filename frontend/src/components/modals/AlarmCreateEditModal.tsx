@@ -484,9 +484,9 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                       자동 해제 (Auto Clear)
                     </label>
                   </div>
-                  <div className="priority-group">
-                    <label className="form-label">우선순위 (1-1000)</label>
-                    <input type="number" className="form-input" value={formData.priority} onChange={e => setFormData(prev => ({ ...prev, priority: parseInt(e.target.value) || 100 }))} />
+                  <div className="priority-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <label className="form-label" style={{ whiteSpace: 'nowrap', marginBottom: 0 }}>우선순위 (1-1000)</label>
+                    <input type="number" className="form-input" style={{ width: '80px' }} value={formData.priority} onChange={e => setFormData(prev => ({ ...prev, priority: parseInt(e.target.value) || 100 }))} />
                   </div>
                 </div>
               </div>
