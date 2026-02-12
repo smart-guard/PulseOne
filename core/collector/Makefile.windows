@@ -20,8 +20,9 @@ BIN_DIR = bin-windows
 MINGW_PREFIX = /usr/x86_64-w64-mingw32
 
 # 포함 경로
-SHARED_INCLUDE_DIR = ../shared/include
-SHARED_MODULES_DIR = ../shared/modules
+CORE_ROOT = $(abspath $(CURDIR)/..)
+SHARED_INCLUDE_DIR = $(CORE_ROOT)/shared/include
+SHARED_MODULES_DIR = $(CORE_ROOT)/shared/modules
 INCLUDES = -I$(SHARED_INCLUDE_DIR) \
            -I$(SHARED_INCLUDE_DIR)/Common \
            -I$(SHARED_INCLUDE_DIR)/Utils \
@@ -213,14 +214,64 @@ $(PLUGINS_DIR)/modbus_driver.dll: $(MODBUS_DRV_SOURCES) $(ALL_CLEAN_SHARED_OBJEC
 	$(CXX) $(CXXFLAGS) -shared $(INCLUDES) $^ $(IMPLIB) -o $@ -lmodbus $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
 
 # 2. BACnet Driver DLL
-BACNET_DRV_SOURCES = $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
-                     $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
-BACNET_DRV_SOURCES := $(filter-out $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp,$(BACNET_DRV_SOURCES))
-BACNET_DRV_SOURCES := $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp $(BACNET_DRV_SOURCES)
+BACNET_STACK_DIR = $(MINGW_PREFIX)/include/bacnet
+BACNET_DRV_CPP_SOURCES = $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
+                         $(SRC_DIR)/Drivers/Bacnet/BACnetBIPPort.cpp \
+                         $(SRC_DIR)/Drivers/Bacnet/BACnetServiceManager.cpp \
+                         $(SRC_DIR)/Drivers/Bacnet/BACnetStubs.cpp
 
-$(PLUGINS_DIR)/bacnet_driver.dll: $(BACNET_DRV_SOURCES) $(ALL_CLEAN_SHARED_OBJECTS) | $(PLUGINS_DIR)
-	@echo "🔨 Building BACnet DLL..."
-	$(CXX) $(CXXFLAGS) -shared $(INCLUDES) $^ $(IMPLIB) -o $@ -lbacnet $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
+# Detailed list of BACnet stack core files to ensure macro consistency
+BACNET_DRV_C_SOURCES = $(BACNET_STACK_DIR)/basic/service/h_apdu.c \
+                       $(BACNET_STACK_DIR)/basic/npdu/h_npdu.c \
+                       $(BACNET_STACK_DIR)/basic/service/h_iam.c \
+                       $(BACNET_STACK_DIR)/basic/service/s_rp.c \
+                       $(BACNET_STACK_DIR)/basic/tsm/tsm.c \
+                       $(BACNET_STACK_DIR)/npdu.c \
+                       $(BACNET_STACK_DIR)/rp.c \
+                       $(BACNET_STACK_DIR)/wp.c \
+                       $(BACNET_STACK_DIR)/bacdcode.c \
+                       $(BACNET_STACK_DIR)/bacapp.c \
+                       $(BACNET_STACK_DIR)/bacstr.c \
+                       $(BACNET_STACK_DIR)/bactext.c \
+                       $(BACNET_STACK_DIR)/datetime.c \
+                       $(BACNET_STACK_DIR)/indtext.c \
+                       $(BACNET_STACK_DIR)/bacint.c \
+                       $(BACNET_STACK_DIR)/bacreal.c \
+                       $(BACNET_STACK_DIR)/bacerror.c \
+                       $(BACNET_STACK_DIR)/bacprop.c \
+                       $(BACNET_STACK_DIR)/bactimevalue.c \
+                       $(BACNET_STACK_DIR)/bacaddr.c \
+                       $(BACNET_STACK_DIR)/basic/sys/days.c \
+                       $(BACNET_STACK_DIR)/basic/binding/address.c
+
+# Compilation flags for C files
+BACNET_DEFS = -DBACNET_STACK_USE_TSM=1 -DHAVE_BACNET_STACK=1 -DMAX_TSM_TRANSACTIONS=255 \
+              -DBACAPP_ALL -DBACAPP_REAL -DBACAPP_DOUBLE -DBACAPP_BOOLEAN -DBACAPP_UNSIGNED \
+              -DBACAPP_SIGNED -DBACAPP_ENUMERATED -DBACAPP_CHARACTER_STRING -DBACAPP_OBJECT_ID \
+              -DBACAPP_BIT_STRING -DBACAPP_OCTET_STRING -DBACAPP_TIME -DBACAPP_DATE -DBACAPP_DATETIME \
+              -DBACNET_USE_SIGNED=1 -DBACNET_USE_DOUBLE=1 -DBACNET_USE_OCTETSTRING=1 \
+              -DBACNET_SVC_RP_A=1 -DBACNET_SVC_RP_B=1 -DBACNET_SVC_WP_A=1 -DBACNET_SVC_WP_B=1 \
+              -DBACNET_SVC_RPM_A=1 -DBACNET_SVC_RPM_B=1 \
+              -DBAC_ROUTING=0 -DHAVE_IPPORT=1
+
+BACNET_C_FLAGS = $(CFLAGS) -include stdio.h -I$(BACNET_STACK_DIR)/basic/service -I$(BACNET_STACK_DIR)/basic/tsm $(BACNET_DEFS)
+
+$(PLUGINS_DIR)/bacnet_driver.dll: $(BACNET_DRV_CPP_SOURCES) $(BACNET_DRV_C_SOURCES) $(ALL_CLEAN_SHARED_OBJECTS) | $(PLUGINS_DIR)
+	@echo "🔨 Building BACnet DLL (Mixed C/C++)..."
+	@mkdir -p build-windows/bacnet_objs
+	@for f in $(BACNET_DRV_C_SOURCES); do \
+		echo "  CC  $$f"; \
+		$(CC) $(BACNET_C_FLAGS) $(INCLUDES) -c $$f -o build-windows/bacnet_objs/$$(basename $$f .c).o; \
+	done
+	@for f in $(BACNET_DRV_CPP_SOURCES); do \
+		echo "  CXX $$f"; \
+		$(CXX) $(CXXFLAGS) -fpermissive $(INCLUDES) -include src/Drivers/Bacnet/bacnet_minmax_fix.h \
+			-I$(BACNET_STACK_DIR)/basic/service -I$(BACNET_STACK_DIR)/basic/tsm \
+			$(BACNET_DEFS) \
+			-c $$f -o build-windows/bacnet_objs/$$(basename $$f .cpp).o; \
+	done
+	$(CXX) -shared build-windows/bacnet_objs/*.o $(ALL_CLEAN_SHARED_OBJECTS) \
+		$(IMPLIB) -o $@ $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS) -lbacnet
 
 # 3. MQTT Driver DLL
 MQTT_DRV_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp)

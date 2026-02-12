@@ -18,12 +18,16 @@ endif
 
 # 컴파일러 설정
 CXX = g++
+AR = ar
+RANLIB = ranlib
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -fPIC -DHAS_SHARED_LIBS=1
 
 # Windows 크로스 컴파일 지원
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
     CXX = x86_64-w64-mingw32-g++
-    CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
+    AR = x86_64-w64-mingw32-ar
+    RANLIB = x86_64-w64-mingw32-ranlib
+    CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DDBLIB_STATIC -DLOGLIB_STATIC -DCURL_STATICLIB
     PLATFORM := Windows-Cross
     MINGW_PREFIX = /usr/x86_64-w64-mingw32
     INCLUDES += -I$(MINGW_PREFIX)/include
@@ -205,49 +209,49 @@ common: $(COMMON_LIB)
 $(COMMON_LIB): $(COMMON_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-common [$(PLATFORM)]$(NC)"
 ifneq ($(COMMON_OBJECTS),)
-	@ar rcs $@ $(COMMON_OBJECTS)
+	@$(AR) rcs $@ $(COMMON_OBJECTS)
 	@echo "🔍 Checking symbols in libpulseone-common:"
 	@nm -C $@ | grep "LogManager::Info" || echo "❌ LogManager::Info symbol MISSING!"
 	@nm -C $@ | grep "ConfigManager::reload" || echo "❌ ConfigManager::reload symbol MISSING!"
-	@ranlib $@ 2>/dev/null || true
+	@$(RANLIB) $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
-	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
 endif
 
 security: $(SECURITY_LIB)
 $(SECURITY_LIB): $(SECURITY_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-security [$(PLATFORM)]$(NC)"
 ifneq ($(SECURITY_OBJECTS),)
-	@ar rcs $@ $(SECURITY_OBJECTS)
-	@ranlib $@ 2>/dev/null || true
+	@$(AR) rcs $@ $(SECURITY_OBJECTS)
+	@$(RANLIB) $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
-	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
 endif
 
 database: $(DATABASE_LIB)
 $(DATABASE_LIB): $(DATABASE_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-database [$(PLATFORM)]$(NC)"
 ifneq ($(DATABASE_OBJECTS),)
-	@ar rcs $@ $(DATABASE_OBJECTS)
+	@$(AR) rcs $@ $(DATABASE_OBJECTS)
 	@echo "🔍 Checking symbols in libpulseone-database:"
 	@nm -C $@ | grep "RepositoryFactory::getInstance" || echo "❌ RepositoryFactory::getInstance symbol MISSING!"
-	@ranlib $@ 2>/dev/null || true
+	@$(RANLIB) $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
-	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
 endif
 
 client: $(CLIENT_LIB)
 $(CLIENT_LIB): $(CLIENT_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-client [$(PLATFORM)]$(NC)"
 ifneq ($(CLIENT_OBJECTS),)
-	@ar rcs $@ $(CLIENT_OBJECTS)
-	@ranlib $@ 2>/dev/null || true
+	@$(AR) rcs $@ $(CLIENT_OBJECTS)
+	@$(RANLIB) $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
-	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
 endif
 
 # 🆕 Data 라이브러리 빌드 (DataReader, DataWriter)
@@ -255,34 +259,34 @@ data: $(DATA_LIB)
 $(DATA_LIB): $(DATA_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-data [$(PLATFORM)]$(NC)"
 ifneq ($(DATA_OBJECTS),)
-	@ar rcs $@ $(DATA_OBJECTS)
-	@ranlib $@ 2>/dev/null || true
+	@$(AR) rcs $@ $(DATA_OBJECTS)
+	@$(RANLIB) $@ 2>/dev/null || true
 	@echo -e "$(GREEN)   ✅ DataReader.cpp, DataWriter.cpp compiled$(NC)"
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy_data.c && $(CXX) -c /tmp/dummy_data.c -o /tmp/dummy_data.o
-	@ar rcs $@ /tmp/dummy_data.o && rm -f /tmp/dummy_data.c /tmp/dummy_data.o
+	@$(AR) rcs $@ /tmp/dummy_data.o && rm -f /tmp/dummy_data.c /tmp/dummy_data.o
 endif
 
 export: $(EXPORT_LIB)
 $(EXPORT_LIB): $(EXPORT_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-export [$(PLATFORM)]$(NC)"
 ifneq ($(EXPORT_OBJECTS),)
-	@ar rcs $@ $(EXPORT_OBJECTS)
-	@ranlib $@ 2>/dev/null || true
+	@$(AR) rcs $@ $(EXPORT_OBJECTS)
+	@$(RANLIB) $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy_export.c && $(CXX) -c /tmp/dummy_export.c -o /tmp/dummy_export.o
-	@ar rcs $@ /tmp/dummy_export.o && rm -f /tmp/dummy_export.c /tmp/dummy_export.o
+	@$(AR) rcs $@ /tmp/dummy_export.o && rm -f /tmp/dummy_export.c /tmp/dummy_export.o
 endif
 
 alarm: $(ALARM_LIB)
 $(ALARM_LIB): $(ALARM_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-alarm [$(PLATFORM)]$(NC)"
 ifneq ($(ALARM_OBJECTS),)
-	@ar rcs $@ $(ALARM_OBJECTS)
-	@ranlib $@ 2>/dev/null || true
+	@$(AR) rcs $@ $(ALARM_OBJECTS)
+	@$(RANLIB) $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
-	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
 endif
 
 # 🆕 DbLib 라이브러리 빌드
@@ -290,11 +294,11 @@ dblib: $(DBLIB_LIB)
 $(DBLIB_LIB): $(DBLIB_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-dblib [$(PLATFORM)]$(NC)"
 ifneq ($(DBLIB_OBJECTS),)
-	@ar rcs $@ $(DBLIB_OBJECTS)
-	@ranlib $@ 2>/dev/null || true
+	@$(AR) rcs $@ $(DBLIB_OBJECTS)
+	@$(RANLIB) $@ 2>/dev/null || true
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
-	@ar rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
 endif
 
 # =============================================================================

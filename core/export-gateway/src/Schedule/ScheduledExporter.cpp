@@ -13,10 +13,11 @@
  */
 
 #include "Schedule/ScheduledExporter.h"
-#include "CSP/DynamicTargetManager.h" // ✅ 추가
+#include "CSP/DynamicTargetManager.h"
 #include "Client/RedisClientImpl.h"
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
+#include "Utils/ccronexpr.h"
 #include <algorithm>
 #include <ctime>
 #include <filesystem>
@@ -742,12 +743,13 @@ bool ScheduledExporter::sendDataToTarget(
 
       return false;
     }
-
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("데이터 전송 중 예외 [" + target_name +
                                     "]: " + std::string(e.what()));
     return false;
   }
+
+  return false;
 }
 
 // =============================================================================
@@ -862,15 +864,12 @@ std::vector<std::vector<ExportDataPoint>> ScheduledExporter::createBatches(
 // 내부 메서드 - Cron 처리
 // =============================================================================
 
-// Include ccronexpr header
-#include "Utils/ccronexpr.h"
-
 std::chrono::system_clock::time_point ScheduledExporter::calculateNextRunTime(
     const std::string &cron_expression, const std::string &timezone,
     const std::chrono::system_clock::time_point &from_time) {
 
-  (void)timezone; // Timezone handling is complex, defaulting to system time for
-                  // now
+  (void)timezone; // Timezone handling is complex, defaulting to system time
+                  // for now
 
   using namespace std::chrono;
 

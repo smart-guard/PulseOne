@@ -17,12 +17,14 @@
 #include "CSP/DynamicTargetManager.h"
 #include "Client/RedisClientImpl.h"
 #include "Export/ExportTypes.h"
+#include "Export/GatewayExportTypes.h"
 #include "Logging/LogManager.h"
 #include "Schedule/ScheduledExporter.h"
 #include "Utils/ConfigManager.h"
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 
 namespace PulseOne {
@@ -639,7 +641,8 @@ void EventSubscriber::processAlarm(const PulseOne::CSP::AlarmMessage &alarm) {
 
   // 기본 처리 (Fallback)
   auto &manager = PulseOne::CSP::DynamicTargetManager::getInstance();
-  auto results = manager.sendAlarmToTargets(alarm);
+  std::vector<PulseOne::Export::TargetSendResult> results =
+      manager.sendAlarmToTargets(alarm);
 
   int success_count = 0;
   for (const auto &result : results) {

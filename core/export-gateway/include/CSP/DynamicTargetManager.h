@@ -36,8 +36,10 @@
 
 #include "CSP/AlarmMessage.h"
 #include "CSP/FailureProtector.h"
-#include "Client/RedisClient.h"
-#include "Export/ExportTypes.h" // ← CSP/ITargetHandler.h 대체
+#include "Export/ExportTypes.h" // Shared data models
+#include "Export/FailureProtectorTypes.h"
+#include "Export/GatewayExportTypes.h"
+#include "Export/TargetSendResult.h"
 
 // ✅ v6.2.2: ExportTargetEntity 헤더 포함 (필수!)
 #include "CSP/DynamicTargetLoader.h"

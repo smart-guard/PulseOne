@@ -26,6 +26,8 @@ MqttTargetHandler::MqttTargetHandler() {
 MqttTargetHandler::~MqttTargetHandler() { disconnectFromBroker(); }
 
 bool MqttTargetHandler::initialize(const json &config) {
+  target_name_ = config.value("name", "MQTT_Target");
+  target_type_ = "MQTT";
   std::vector<std::string> errors;
   if (!validateConfig(config, errors)) {
     for (const auto &err : errors) {
@@ -41,7 +43,7 @@ TargetSendResult MqttTargetHandler::sendAlarm(
     const PulseOne::Gateway::Model::AlarmMessage &alarm, const json &config) {
   TargetSendResult result;
   result.target_type = "MQTT";
-  result.target_name = config.value("name", "MQTT_Target");
+  result.target_name = getTargetName();
   result.success = false;
 
   if (!is_connected_.load()) {
@@ -56,6 +58,35 @@ TargetSendResult MqttTargetHandler::sendAlarm(
 
   result = publishMessage(topic, payload, config.value("qos", 1),
                           config.value("retain", false));
+  if (result.success) {
+    success_count_++;
+  } else {
+    failure_count_++;
+  }
+  publish_count_++;
+
+  return result;
+}
+
+TargetSendResult MqttTargetHandler::sendValue(
+    const json &payload_json,
+    const PulseOne::Gateway::Model::ValueMessage &value, const json &config) {
+  TargetSendResult result;
+  result.target_type = "MQTT";
+  result.target_name = config.value("name", "MQTT_Target");
+  result.success = false;
+
+  if (!is_connected_.load()) {
+    if (!connectToBroker(config)) {
+      result.error_message = "MQTT not connected and failed to reconnect";
+      return result;
+    }
+  }
+
+  std::string topic = config.value("topic", "pulseone/values");
+  std::string payload = payload_json.dump();
+
+  result = publishMessage(topic, payload, config.value("qos", 0), false);
   if (result.success) {
     success_count_++;
   } else {

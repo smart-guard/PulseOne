@@ -194,7 +194,7 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
       auto targets = context_.getRegistry().getAllTargets();
       target_names.clear();
       for (const auto &target : targets) {
-        if (target.enabled) {
+        if (target.is_active) {
           target_names.push_back(target.name);
         }
       }

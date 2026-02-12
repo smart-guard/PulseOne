@@ -26,14 +26,6 @@ FileTargetHandler::FileTargetHandler() {
 
 FileTargetHandler::~FileTargetHandler() {}
 
-bool FileTargetHandler::initialize(const json &config) {
-  std::string base_path = extractBasePath(config);
-  if (!base_path.empty()) {
-    std::filesystem::create_directories(base_path);
-  }
-  return true;
-}
-
 TargetSendResult FileTargetHandler::sendAlarm(
     const json &payload, const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) {
@@ -43,6 +35,44 @@ TargetSendResult FileTargetHandler::sendAlarm(
 
   try {
     std::string path = generateFilePath(alarm, config);
+    std::string content = payload.dump(2);
+
+    result.success = writeFile(path, content, config);
+    if (result.success) {
+      file_count_++;
+      success_count_++;
+      total_bytes_written_ += content.length();
+    } else {
+      result.error_message = "File write failed";
+      failure_count_++;
+    }
+  } catch (const std::exception &e) {
+    result.error_message = std::string("File exception: ") + e.what();
+    failure_count_++;
+  }
+
+  return result;
+}
+
+bool FileTargetHandler::initialize(const json &config) {
+  target_name_ = config.value("name", "FILE_Target");
+  target_type_ = "FILE";
+  std::string base_path = extractBasePath(config);
+  if (!base_path.empty()) {
+    std::filesystem::create_directories(base_path);
+  }
+  return true;
+}
+
+TargetSendResult FileTargetHandler::sendValue(
+    const json &payload, const PulseOne::Gateway::Model::ValueMessage &value,
+    const json &config) {
+  TargetSendResult result;
+  result.target_type = "FILE";
+  result.success = false;
+
+  try {
+    std::string path = generateFilePath(value, config);
     std::string content = payload.dump(2);
 
     result.success = writeFile(path, content, config);
@@ -103,7 +133,14 @@ std::string FileTargetHandler::generateFilePath(
     const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config) const {
   std::string base = extractBasePath(config);
-  return base + "/" + alarm.point_name + ".json";
+  return base + "/alarms/" + alarm.point_name + "_" + alarm.timestamp + ".json";
+}
+
+std::string FileTargetHandler::generateFilePath(
+    const PulseOne::Gateway::Model::ValueMessage &value,
+    const json &config) const {
+  std::string base = extractBasePath(config);
+  return base + "/values/" + value.point_name + "_" + value.timestamp + ".json";
 }
 
 void FileTargetHandler::createDirectoriesForFile(

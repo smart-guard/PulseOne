@@ -44,6 +44,8 @@ S3TargetHandler::~S3TargetHandler() {
 }
 
 bool S3TargetHandler::initialize(const json &config) {
+  target_name_ = config.value("name", "S3_Target");
+  target_type_ = "S3";
   std::vector<std::string> errors;
   return validateConfig(config, errors);
 }
@@ -54,7 +56,7 @@ S3TargetHandler::sendAlarm(const json &payload,
                            const json &config) {
   TargetSendResult result;
   result.target_type = "S3";
-  result.target_name = getTargetName(config);
+  result.target_name = getTargetName();
 
   try {
     std::string bucket = extractBucketName(config);
@@ -122,7 +124,7 @@ S3TargetHandler::sendValue(const json &payload,
                            const json &config) {
   TargetSendResult result;
   result.target_type = "S3";
-  result.target_name = getTargetName(config);
+  result.target_name = getTargetName();
 
   try {
     std::string bucket = extractBucketName(config);
@@ -133,78 +135,15 @@ S3TargetHandler::sendValue(const json &payload,
     }
 
     // Key Generation
-    // Default template: {building_id}/{date}/{timestamp}_{point_id}.json
-    std::string template_str =
-        config.value("object_key_template",
-                     "{building_id}/{date}/{timestamp}_{point_id}.json");
+    std::string template_str = config.value(
+        "object_key_template", "{site_id}/{date}/{timestamp}_{point_id}.json");
     if (config.contains("ObjectKeyTemplate")) {
       template_str = config["ObjectKeyTemplate"].get<std::string>();
     }
-    template_str = expandEnvironmentVariables(template_str);
 
-    // Manual Template Expansion for Value (since generic expandTemplate takes
-    // AlarmMessage)
-    std::string object_key = template_str;
-    object_key = std::regex_replace(object_key, std::regex("\\{building_id\\}"),
-                                    std::to_string(value.site_id));
-    object_key = std::regex_replace(object_key, std::regex("\\{site_id\\}"),
-                                    std::to_string(value.site_id));
-    object_key = std::regex_replace(object_key, std::regex("\\{point_id\\}"),
-                                    std::to_string(value.point_id));
-
-    std::string val_str = value.measured_value;
-    object_key =
-        std::regex_replace(object_key, std::regex("\\{value\\}"), val_str);
-
-    // Time handling
-    std::string ts_str = generateTimestampString();
-    std::string date_str = generateDateString();
-    // Parse value.timestamp if possible, otherwise use current time
-    if (value.timestamp.length() >= 19) {
-      std::string y = value.timestamp.substr(0, 4);
-      std::string m = value.timestamp.substr(5, 2);
-      std::string d = value.timestamp.substr(8, 2);
-      date_str = y + m + d; // S3 usually prefers yyyymmdd or yyyy/mm/dd
-      // Actually generateDateString returns YYYYMMDD based on current time.
-      // Let's trust the function or parse.
-      // For consistency with existing alarm logic, try to use event time.
-      // But here we'll keep it simple: event time components
-      ts_str = y + m + d + value.timestamp.substr(11, 2) +
-               value.timestamp.substr(14, 2) + value.timestamp.substr(17, 2);
-    }
-    object_key =
-        std::regex_replace(object_key, std::regex("\\{timestamp\\}"), ts_str);
-    object_key =
-        std::regex_replace(object_key, std::regex("\\{date\\}"), date_str);
-
-    // Path cleanup
-    object_key = std::regex_replace(object_key, std::regex("//+"), "/");
-
-    // Prefix support
-    std::string prefix;
-    if (config.contains("Folder"))
-      prefix = config["Folder"].get<std::string>();
-    else if (config.contains("prefix"))
-      prefix = config["prefix"].get<std::string>();
-
-    if (!prefix.empty()) {
-      prefix = expandEnvironmentVariables(prefix);
-      if (prefix.back() != '/')
-        prefix += "/";
-      object_key = prefix + object_key;
-    }
-    while (!object_key.empty() && object_key[0] == '/')
-      object_key = object_key.substr(1);
-
-    std::string key =
-        object_key; // Simplified key generation or use object_key directly
+    std::string key = expandTemplate(template_str, value);
     std::string content = payload.dump(2);
-
-    // Metadata
-    std::unordered_map<std::string, std::string> metadata;
-    metadata["building_id"] = std::to_string(value.site_id);
-    metadata["point_id"] = std::to_string(value.point_id);
-    metadata["timestamp"] = value.timestamp;
+    auto metadata = buildMetadata(value, config);
 
     auto upload_res =
         client->upload(key, content, "application/json", metadata);
@@ -213,7 +152,6 @@ S3TargetHandler::sendValue(const json &payload,
     result.response_body = upload_res.error_message;
 
     if (result.success) {
-      upload_count_++;
       success_count_++;
       total_bytes_uploaded_ += content.length();
     } else {
@@ -224,7 +162,70 @@ S3TargetHandler::sendValue(const json &payload,
     result.error_message = std::string("S3 exception: ") + e.what();
     failure_count_++;
   }
+
   return result;
+}
+
+std::string S3TargetHandler::expandTemplate(
+    const std::string &template_str,
+    const PulseOne::Gateway::Model::ValueMessage &value) const {
+  std::string result = template_str;
+
+  // 변수 치환
+  result = std::regex_replace(result, std::regex("\\{site_id\\}"),
+                              std::to_string(value.site_id));
+  result = std::regex_replace(result, std::regex("\\{building_id\\}"),
+                              std::to_string(value.site_id));
+  result = std::regex_replace(result, std::regex("\\{point_id\\}"),
+                              std::to_string(value.point_id));
+  result = std::regex_replace(result, std::regex("\\{point_name\\}"),
+                              value.point_name);
+
+  // 타임스탬프
+  std::string year = generateYearString();
+  std::string month = generateMonthString();
+  std::string day = generateDayString();
+  std::string hour = generateHourString();
+  std::string minute = generateMinuteString();
+  std::string second = generateSecondString();
+  std::string date_str = generateDateString();
+  std::string ts_str = generateTimestampString();
+
+  if (value.timestamp.length() >= 19) {
+    year = value.timestamp.substr(0, 4);
+    month = value.timestamp.substr(5, 2);
+    day = value.timestamp.substr(8, 2);
+    hour = value.timestamp.substr(11, 2);
+    minute = value.timestamp.substr(14, 2);
+    second = value.timestamp.substr(17, 2);
+    date_str = year + month + day;
+    ts_str = year + month + day + hour + minute + second;
+  }
+
+  result = std::regex_replace(result, std::regex("\\{timestamp\\}"), ts_str);
+  result = std::regex_replace(result, std::regex("\\{date\\}"), date_str);
+  result = std::regex_replace(result, std::regex("\\{year\\}"), year);
+  result = std::regex_replace(result, std::regex("\\{month\\}"), month);
+  result = std::regex_replace(result, std::regex("\\{day\\}"), day);
+  result = std::regex_replace(result, std::regex("\\{hour\\}"), hour);
+  result = std::regex_replace(result, std::regex("\\{minute\\}"), minute);
+  result = std::regex_replace(result, std::regex("\\{second\\}"), second);
+
+  // 안전한 파일명으로 변환
+  result = std::regex_replace(result, std::regex("[^a-zA-Z0-9/_.-]"), "_");
+
+  return result;
+}
+
+std::unordered_map<std::string, std::string> S3TargetHandler::buildMetadata(
+    const PulseOne::Gateway::Model::ValueMessage &value,
+    const json &config) const {
+  std::unordered_map<std::string, std::string> metadata;
+  metadata["site_id"] = std::to_string(value.site_id);
+  metadata["point_id"] = std::to_string(value.point_id);
+  metadata["point_name"] = value.point_name;
+  metadata["timestamp"] = value.timestamp;
+  return metadata;
 }
 
 bool S3TargetHandler::testConnection(const json &config) {

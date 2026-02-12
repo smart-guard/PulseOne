@@ -56,10 +56,17 @@ public:
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config) override;
 
+  TargetSendResult
+  sendValue(const json &payload,
+            const PulseOne::Gateway::Model::ValueMessage &value,
+            const json &config) override;
+
   bool testConnection(const json &config) override;
   std::string getHandlerType() const override { return "HTTP"; }
   bool validateConfig(const json &config,
                       std::vector<std::string> &errors) override;
+  std::string getTargetName() const override { return target_name_; }
+  std::string getTargetType() const override { return "HTTP"; }
   void cleanup() override;
   json getStatus() const override;
 
@@ -72,6 +79,10 @@ private:
   executeWithRetry(const json &payload,
                    const PulseOne::Gateway::Model::AlarmMessage &alarm,
                    const json &config, const std::string &url);
+  TargetSendResult
+  executeWithRetry(const json &payload,
+                   const PulseOne::Gateway::Model::ValueMessage &value,
+                   const json &config, const std::string &url);
   TargetSendResult executeWithRetry(
       const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
@@ -80,6 +91,10 @@ private:
   TargetSendResult
   executeSingleRequest(const json &payload,
                        const PulseOne::Gateway::Model::AlarmMessage &alarm,
+                       const json &config, const std::string &url);
+  TargetSendResult
+  executeSingleRequest(const json &payload,
+                       const PulseOne::Gateway::Model::ValueMessage &value,
                        const json &config, const std::string &url);
   TargetSendResult executeSingleRequest(
       const std::vector<json> &payloads,
@@ -91,6 +106,10 @@ private:
   std::string
   buildRequestBody(const json &payload,
                    const PulseOne::Gateway::Model::AlarmMessage &alarm,
+                   const json &config);
+  std::string
+  buildRequestBody(const json &payload,
+                   const PulseOne::Gateway::Model::ValueMessage &value,
                    const json &config);
   std::string buildRequestBody(
       const std::vector<json> &payloads,

@@ -59,12 +59,14 @@ public:
   TargetSendResult
   sendValue(const json &payload,
             const PulseOne::Gateway::Model::ValueMessage &value,
-            const json &config);
+            const json &config) override;
 
   bool testConnection(const json &config) override;
   std::string getHandlerType() const override { return "S3"; }
   bool validateConfig(const json &config,
                       std::vector<std::string> &errors) override;
+  std::string getTargetName() const override { return target_name_; }
+  std::string getTargetType() const override { return "S3"; }
   void cleanup() override;
   json getStatus() const override;
 
@@ -74,14 +76,24 @@ private:
   std::string extractBucketName(const json &config) const;
 
   std::string
+  expandTemplate(const std::string &template_str,
+                 const PulseOne::Gateway::Model::AlarmMessage &alarm) const;
+  std::string
+  expandTemplate(const std::string &template_str,
+                 const PulseOne::Gateway::Model::ValueMessage &value) const;
+
+  std::string
   generateObjectKey(const PulseOne::Gateway::Model::AlarmMessage &alarm,
                     const json &config) const;
   std::string
-  expandTemplate(const std::string &template_str,
-                 const PulseOne::Gateway::Model::AlarmMessage &alarm) const;
+  generateObjectKey(const PulseOne::Gateway::Model::ValueMessage &value,
+                    const json &config) const;
 
   std::unordered_map<std::string, std::string>
   buildMetadata(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+                const json &config) const;
+  std::unordered_map<std::string, std::string>
+  buildMetadata(const PulseOne::Gateway::Model::ValueMessage &value,
                 const json &config) const;
 
   std::string compressContent(const std::string &content, int level) const;

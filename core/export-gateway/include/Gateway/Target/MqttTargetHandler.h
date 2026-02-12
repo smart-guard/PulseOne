@@ -61,10 +61,17 @@ public:
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const json &config) override;
 
+  TargetSendResult
+  sendValue(const json &payload,
+            const PulseOne::Gateway::Model::ValueMessage &value,
+            const json &config) override;
+
   bool testConnection(const json &config) override;
   std::string getHandlerType() const override { return "MQTT"; }
   bool validateConfig(const json &config,
                       std::vector<std::string> &errors) override;
+  std::string getTargetName() const override { return target_name_; }
+  std::string getTargetType() const override { return "MQTT"; }
   void cleanup() override;
   json getStatus() const override;
 

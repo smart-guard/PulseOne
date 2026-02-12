@@ -6,7 +6,7 @@
 #ifndef GATEWAY_SERVICE_I_TARGET_RUNNER_H
 #define GATEWAY_SERVICE_I_TARGET_RUNNER_H
 
-#include "Export/ExportTypes.h"
+#include "Export/GatewayExportTypes.h"
 #include "Gateway/Model/AlarmMessage.h"
 #include "Gateway/Model/ValueMessage.h"
 #include <string>

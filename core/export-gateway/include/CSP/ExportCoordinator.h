@@ -23,6 +23,9 @@
 #include <vector>
 
 #include "AlarmMessage.h"
+#include "Export/GatewayExportTypes.h"
+#include "Export/TargetSendResult.h"
+#include "Export/FailureProtectorTypes.h"
 #include "Export/ExportTypes.h"
 #include <nlohmann/json.hpp>
 

@@ -6,8 +6,8 @@
 # =============================================================================
 
 PROJECT_ROOT=$(pwd)
-PACKAGE_NAME="PulseOne_Linux_Deploy"
-VERSION="6.0.0"
+VERSION=$(grep '"version"' "$PROJECT_ROOT/version.json" | cut -d'"' -f4 || echo "6.0.0")
+PACKAGE_NAME="PulseOne_Linux_Deploy-v$VERSION"
 DIST_DIR="$PROJECT_ROOT/dist_linux"
 PACKAGE_DIR="$DIST_DIR/$PACKAGE_NAME"
 
@@ -41,58 +41,58 @@ find "$PACKAGE_DIR/setup_assets" -mindepth 1 -delete 2>/dev/null || true
 # 3. Dependency Bundling (Air-Gapped Support)
 # =============================================================================
 echo "3. 📥 Bundling dependencies for offline installation..."
+mkdir -p "$PROJECT_ROOT/setup_assets" # Cache directory
 
 # Node.js (Linux x64 LTS)
 NODE_VERSION="v22.13.1"
 NODE_PACKAGE="node-$NODE_VERSION-linux-x64.tar.xz"
-if [ ! -f "setup_assets/$NODE_PACKAGE" ]; then
+if [ ! -f "$PROJECT_ROOT/setup_assets/$NODE_PACKAGE" ]; then
     echo "   Downloading Node.js $NODE_VERSION..."
-    curl -L "https://nodejs.org/dist/$NODE_VERSION/$NODE_PACKAGE" -o "$PACKAGE_DIR/setup_assets/$NODE_PACKAGE"
-else
-    cp "setup_assets/$NODE_PACKAGE" "$PACKAGE_DIR/setup_assets/"
+    curl -L "https://nodejs.org/dist/$NODE_VERSION/$NODE_PACKAGE" -o "$PROJECT_ROOT/setup_assets/$NODE_PACKAGE"
 fi
+cp "$PROJECT_ROOT/setup_assets/$NODE_PACKAGE" "$PACKAGE_DIR/setup_assets/"
 
-# Redis (Linux x64 - Using static binary if possible or generic source)
-# Note: Redis usually requires build on target or specific binary. 
-# We'll provide a pre-compiled x64 binary if available or skip if building on target is preferred.
-# For simplicity, we'll try to fetch a generic x64 build.
+# Redis (Source for compilation on target)
 REDIS_VERSION="7.2.4"
 REDIS_PACKAGE="redis-$REDIS_VERSION.tar.gz"
-echo "   Bundling Redis $REDIS_VERSION source (to be compiled on target if needed)..."
-if [ ! -f "setup_assets/$REDIS_PACKAGE" ]; then
-    curl -L "http://download.redis.io/releases/$REDIS_PACKAGE" -o "$PACKAGE_DIR/setup_assets/$REDIS_PACKAGE"
-else
-    cp "setup_assets/$REDIS_PACKAGE" "$PACKAGE_DIR/setup_assets/"
+if [ ! -f "$PROJECT_ROOT/setup_assets/$REDIS_PACKAGE" ]; then
+    echo "   Downloading Redis $REDIS_VERSION..."
+    curl -L "http://download.redis.io/releases/$REDIS_PACKAGE" -o "$PROJECT_ROOT/setup_assets/$REDIS_PACKAGE"
 fi
+cp "$PROJECT_ROOT/setup_assets/$REDIS_PACKAGE" "$PACKAGE_DIR/setup_assets/"
 
 # InfluxDB (Linux x64)
 INFLUX_VERSION="2.7.5"
 INFLUX_PACKAGE="influxdb2-$INFLUX_VERSION-linux-amd64.tar.gz"
-echo "   Downloading InfluxDB $INFLUX_VERSION..."
-if [ ! -f "setup_assets/$INFLUX_PACKAGE" ]; then
-    curl -L "https://dl.influxdata.com/influxdb/releases/$INFLUX_PACKAGE" -o "$PACKAGE_DIR/setup_assets/$INFLUX_PACKAGE"
-else
-    cp "setup_assets/$INFLUX_PACKAGE" "$PACKAGE_DIR/setup_assets/"
+if [ ! -f "$PROJECT_ROOT/setup_assets/$INFLUX_PACKAGE" ]; then
+    echo "   Downloading InfluxDB $INFLUX_VERSION..."
+    curl -L "https://dl.influxdata.com/influxdb/releases/$INFLUX_PACKAGE" -o "$PROJECT_ROOT/setup_assets/$INFLUX_PACKAGE"
 fi
+cp "$PROJECT_ROOT/setup_assets/$INFLUX_PACKAGE" "$PACKAGE_DIR/setup_assets/"
 
 # =============================================================================
-# 4. Frontend Build
+# 4. Frontend & Backend Preparation
 # =============================================================================
-echo "4. 🎨 Building frontend..."
+echo "4. 🎨 Building frontend & Bundling backend..."
+
+# Frontend
 cd "$PROJECT_ROOT/frontend"
 npm install --silent
-if npm run build; then
-    echo "✅ Frontend build completed"
-else
-    echo "❌ Frontend build failed"
-    exit 1
-fi
+npm run build
+
+# Backend (Bundle node_modules)
+echo "   📦 Preparing backend node_modules (Linux compatibility)..."
+cd "$PROJECT_ROOT/backend"
+# We should use a linux-compatible install if possible, but for JS-only deps it's usually fine.
+# If native deps exist, we might need to build them inside the linux container.
+npm install --production --silent
 
 # =============================================================================
 # 5. Collector Build (Docker for Linux)
 # =============================================================================
 echo "5. ⚙️ Building Collector for Linux..."
 cd "$PROJECT_ROOT"
+# ... (rest of docker build logic)
 
 if docker image ls | grep -q "pulseone-linux-builder"; then
     echo "✅ Found pulseone-linux-builder container"
@@ -100,7 +100,7 @@ else
     echo "📦 Creating Linux build container..."
     cat > "$PROJECT_ROOT/collector/Dockerfile.linux-build" << 'EOF'
 FROM ubuntu:22.04
-RUN apt-get update && apt-get install -y build-essential cmake git libsqlite3-dev libcurl4-openssl-dev libssl-dev uuid-dev nlohmann-json3-dev pkg-config
+RUN apt-get update && apt-get install -y build-essential cmake git libsqlite3-dev libcurl4-openssl-dev libssl-dev uuid-dev nlohmann-json3-dev pkg-config libmodbus-dev
 RUN git clone --depth 1 --branch bacnet-stack-1.3.8 https://github.com/bacnet-stack/bacnet-stack.git /tmp/bacnet-stack && \
     cd /tmp/bacnet-stack && cmake -Bbuild -DBACNET_STACK_BUILD_APPS=OFF . && cmake --build build/ --target install && rm -rf /tmp/bacnet-stack
 RUN git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git /tmp/hiredis && \
@@ -142,6 +142,13 @@ docker run --rm \
         make clean && make -j\$(nproc) CXXFLAGS='-O3 -DPULSEONE_LINUX=1 -DNDEBUG'
         strip --strip-unneeded bin/export-gateway
         cp bin/export-gateway /output/pulseone-export-gateway
+
+        if [ -d /src/collector/bin/plugins ]; then
+            echo '📦 Copying driver plugins (.so)...'
+            mkdir -p /output/plugins
+            cp /src/collector/bin/plugins/*.so /output/plugins/ 2>/dev/null || true
+            echo '✅ Driver plugins copied'
+        fi
     "
 
 # =============================================================================

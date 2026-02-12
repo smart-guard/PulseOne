@@ -13,6 +13,7 @@
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
 #include "Export/ExportTypes.h"
+#include "Export/GatewayExportTypes.h"
 #include <map>
 #include <set>
 #include <string>

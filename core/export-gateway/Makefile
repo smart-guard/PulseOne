@@ -28,10 +28,10 @@ CC = gcc
 
 # Windows 크로스 컴파일 지원
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
-    CXX = x86_64-w64-mingw32-g++
-    CC = x86_64-w64-mingw32-gcc
-    CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
-    CFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
+    CXX = x86_64-w64-mingw32-g++-posix
+    CC = x86_64-w64-mingw32-gcc-posix
+    CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DCURL_STATICLIB -DDBLIB_STATIC -DLOGLIB_STATIC
+    CFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DCURL_STATICLIB -DDBLIB_STATIC -DLOGLIB_STATIC
     IS_WINDOWS := 1
     PLATFORM := Windows-Cross
     MINGW_PREFIX = /usr/x86_64-w64-mingw32
@@ -93,7 +93,7 @@ HAS_HTTPLIB := $(shell echo '\#include <httplib.h>' | $(CXX) -E -x c++ - >/dev/n
 # 🔥 libcurl 자동 감지
 HAS_CURL := $(shell pkg-config --exists libcurl 2>/dev/null && echo "1" || echo "0")
 ifeq ($(HAS_CURL),0)
-    HAS_CURL := $(shell echo '\#include <curl/curl.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
+    HAS_CURL := $(shell echo '#include <curl/curl.h>' | $(CXX) -E -x c++ - >/dev/null 2>&1 && echo "1" || echo "0")
 endif
 
 # OpenSSL 감지 (S3 서명용)
@@ -128,23 +128,27 @@ endif
 
 # 🔥 2순위: 로컬 include
 INCLUDES += -I$(INCLUDE_DIR)
-INCLUDES += -I$(PROJECT_ROOT)/core/collector/include
+# INCLUDES += -I$(PROJECT_ROOT)/core/collector/include
 
-# 🔥 3순위: 시스템 include
-INCLUDES += -I/usr/local/include
+# 🔥 3순위: 시스템 include (Linux/Mac에서만 호환성 위해 유지)
+ifneq ($(CROSS_COMPILE_WINDOWS),1)
+    INCLUDES += -I/usr/local/include
+endif
 
 # 🔥 4순위: pkg-config 기반 include (hiredis, curl, openssl 등)
-ifeq ($(HAS_HIREDIS),1)
-    INCLUDES += $(shell pkg-config --cflags hiredis 2>/dev/null)
-endif
-ifeq ($(HAS_CURL),1)
-    INCLUDES += $(shell pkg-config --cflags libcurl 2>/dev/null)
-endif
-ifeq ($(HAS_OPENSSL),1)
-    INCLUDES += $(shell pkg-config --cflags openssl 2>/dev/null)
-endif
-
-ifeq ($(CROSS_COMPILE_WINDOWS),1)
+# Windows 크로스 컴파일 시에는 시스템 pkg-config 사용 자제 (호스트 헤더 유출 방지)
+ifneq ($(CROSS_COMPILE_WINDOWS),1)
+    ifeq ($(HAS_HIREDIS),1)
+        INCLUDES += $(shell pkg-config --cflags hiredis 2>/dev/null)
+    endif
+    ifeq ($(HAS_CURL),1)
+        INCLUDES += $(shell pkg-config --cflags libcurl 2>/dev/null)
+    endif
+    ifeq ($(HAS_OPENSSL),1)
+        INCLUDES += $(shell pkg-config --cflags openssl 2>/dev/null)
+    endif
+else
+    # Windows 크로스 컴파일 시에는 명시적인 MinGW 경로만 사용
     INCLUDES += -I$(MINGW_PREFIX)/include
 endif
 
@@ -242,7 +246,7 @@ endif
 # 🔥 기본 시스템 라이브러리 (SQLite3 추가!)
 ifeq ($(IS_WINDOWS),1)
     BASIC_LIBS = -lpthread -lstdc++ -lm -lsqlite3
-    PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi -lodbc32 -lodbccp32
+    PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi -lodbc32 -lodbccp32 -lcrypt32 -ladvapi32 -lwldap32
 else
     BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
     ifeq ($(HAS_PQXX),1)

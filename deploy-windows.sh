@@ -7,8 +7,8 @@ set -euo pipefail
 # =============================================================================
 
 PROJECT_ROOT=$(pwd)
-PACKAGE_NAME="deploy"
-VERSION="6.1.0"
+VERSION=$(grep '"version"' "$PROJECT_ROOT/version.json" | cut -d'"' -f4 || echo "6.1.0")
+PACKAGE_NAME="deploy-v$VERSION"
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 DIST_DIR="$PROJECT_ROOT/dist"
 PACKAGE_DIR="$DIST_DIR/$PACKAGE_NAME"
@@ -193,7 +193,7 @@ fi
 
     docker run --rm \
         -v "$PROJECT_ROOT/core:/src/core" \
-        -v "$PROJECT_ROOT/core/collector/bin-windows:/output" \
+        -v "$PACKAGE_DIR:/output" \
         pulseone-windows-builder bash -c "
             set -e
             

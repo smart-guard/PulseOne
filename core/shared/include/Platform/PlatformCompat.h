@@ -9,8 +9,10 @@
  */
 
 // 표준 헤더들 먼저 (순서 중요!)
+#include <cerrno>
 #include <cstdint>
 #include <ctime>
+#include <errno.h>
 #include <string>
 #include <vector>
 
@@ -89,6 +91,7 @@
 #include <dlfcn.h>
 #include <libgen.h> // dirname, basename용
 #include <limits.h> // PATH_MAX용
+#include <netdb.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
