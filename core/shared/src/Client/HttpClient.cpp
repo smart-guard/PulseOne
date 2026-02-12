@@ -10,14 +10,9 @@
 #include <regex>
 #include <sstream>
 
-#ifdef HAS_SHARED_LIBS
 #include "Logging/LogManager.h"
 #define LOG_ERROR(msg) LogManager::getInstance().Error(msg)
 #define LOG_DEBUG(msg) LogManager::getInstance().Debug(msg)
-#else
-#define LOG_ERROR(msg) // 로깅 비활성화
-#define LOG_DEBUG(msg) // 로깅 비활성화
-#endif
 
 namespace PulseOne {
 namespace Client {

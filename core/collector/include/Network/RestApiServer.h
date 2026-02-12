@@ -29,7 +29,7 @@
 #include <nlohmann/json.hpp>
 
 // 🔥 HTTP 라이브러리 조건부 포함 (프로젝트 패턴 준수)
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
 #include <httplib.h>
 #else
 namespace httplib {
@@ -316,7 +316,7 @@ private:
   int port_;
 
   // 🔥 unique_ptr 타입 문제 해결
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
   std::unique_ptr<httplib::Server> server_;
 #else
   std::unique_ptr<char> server_; // void* 대신 char 사용

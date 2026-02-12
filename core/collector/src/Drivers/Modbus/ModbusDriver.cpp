@@ -10,15 +10,15 @@
 #include "Drivers/Modbus/ModbusFailover.h"
 #include "Drivers/Modbus/ModbusPerformance.h"
 #include "Logging/LogManager.h"
+#include "Platform/PlatformCompat.h"
 #include <algorithm>
-#include <arpa/inet.h>
 #include <chrono>
 #include <cstring>
 #include <iostream>
-#include <netdb.h>
 #include <sstream>
-#include <sys/socket.h>
 #include <thread>
+
+using namespace PulseOne::Platform;
 
 namespace PulseOne {
 namespace Drivers {
@@ -1003,7 +1003,12 @@ bool ModbusDriver::SetupModbusConnection() {
       freeaddrinfo(res);
     } else {
       logger_->Warn("Failed to resolve hostname: " + host + " (" +
-                    gai_strerror(status) + ")");
+#ifdef _WIN32
+                    std::string(gai_strerrorA(status))
+#else
+                    std::string(gai_strerror(status))
+#endif
+                    + ")");
     }
 
     modbus_ctx_ = modbus_new_tcp(resolved_host.c_str(), port);
@@ -1621,11 +1626,14 @@ ModbusDriver::ExtractValueFromBuffer(const std::vector<uint16_t> &buffer,
 } // namespace PulseOne
 
 // =============================================================================
-// 🔥 플러그인 등록용 C 인터페이스 (PluginLoader가 호출)
+// 🔥 Plugin Entry Point
 // =============================================================================
 #ifndef TEST_BUILD
 extern "C" {
-void RegisterModbusDriver() {
+#ifdef _WIN32
+__declspec(dllexport)
+#endif
+void RegisterPlugin() {
   // 일반 MODBUS 드라이버 등록 (설정에 따라 TCP/RTU 결정)
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "MODBUS",
@@ -1642,5 +1650,8 @@ void RegisterModbusDriver() {
       []() { return std::make_unique<PulseOne::Drivers::ModbusDriver>(); });
   std::cout << "[ModbusDriver] Plugin Registered Successfully" << std::endl;
 }
+
+// Legacy wrapper for static linking
+void RegisterModbusDriver() { RegisterPlugin(); }
 }
 #endif

@@ -1,4 +1,5 @@
 #include "Drivers/Ble/BleBeaconDriver.h"
+#include "Drivers/Common/DriverFactory.h"
 #include "Logging/LogManager.h"
 #include <cstring>
 #include <iomanip>
@@ -6,7 +7,7 @@
 #include <sstream>
 #include <unistd.h>
 
-#if HAS_BLUETOOTH
+#if HAVE_BLUETOOTH
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
@@ -20,7 +21,7 @@ namespace Ble {
 
 BleBeaconDriver::BleBeaconDriver()
     : is_connected_(false)
-#if HAS_BLUETOOTH
+#if HAVE_BLUETOOTH
       ,
       hci_socket_(-1), device_id_(-1), is_scanning_(false)
 #endif
@@ -31,7 +32,7 @@ BleBeaconDriver::~BleBeaconDriver() { Disconnect(); }
 
 bool BleBeaconDriver::Initialize(const Structs::DriverConfig &config) {
   (void)config;
-#if HAS_BLUETOOTH
+#if HAVE_BLUETOOTH
   LogManager::getInstance().Info("[BLE] Initialized with Native BlueZ Support");
 #else
   LogManager::getInstance().Info("[BLE] Initialized in Simulation Mode");
@@ -40,7 +41,7 @@ bool BleBeaconDriver::Initialize(const Structs::DriverConfig &config) {
 }
 
 bool BleBeaconDriver::Connect() {
-#if HAS_BLUETOOTH
+#if HAVE_BLUETOOTH
   // Open HCI Socket
   if (OpenHciSocket() < 0) {
     LogManager::getInstance().Error("[BLE] Failed to open HCI socket");
@@ -71,7 +72,7 @@ bool BleBeaconDriver::Connect() {
 }
 
 bool BleBeaconDriver::Disconnect() {
-#if HAS_BLUETOOTH
+#if HAVE_BLUETOOTH
   is_scanning_ = false;
   if (scan_thread_.joinable()) {
     scan_thread_.join();
@@ -136,7 +137,7 @@ bool BleBeaconDriver::ReadValues(
     } else {
       // Simulation fallback if not using BlueZ (or if BlueZ hasn't found it
       // yet)
-#if !HAS_BLUETOOTH
+#if !HAVE_BLUETOOTH
       if (point.address_string == "74278BDA-B644-4520-8F0C-720EAF059935") {
         val.value = -65; // Simulated "Good" RSSI
         val.quality = Enums::DataQuality::GOOD;
@@ -160,7 +161,7 @@ bool BleBeaconDriver::ReadValues(
 // Native BlueZ Implementation
 // =========================================================================
 
-#if HAS_BLUETOOTH
+#if HAVE_BLUETOOTH
 int BleBeaconDriver::OpenHciSocket() {
   device_id_ = hci_get_route(NULL);
   if (device_id_ < 0) {
@@ -333,3 +334,24 @@ void BleBeaconDriver::ScanLoop() {
 } // namespace Ble
 } // namespace Drivers
 } // namespace PulseOne
+
+// =============================================================================
+// 🔥 Plugin Entry Point (Outside Namespace)
+// =============================================================================
+#ifndef TEST_BUILD
+extern "C" {
+#ifdef _WIN32
+__declspec(dllexport)
+#endif
+void RegisterPlugin() {
+  PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
+      "BLE_BEACON", []() {
+        return std::make_unique<PulseOne::Drivers::Ble::BleBeaconDriver>();
+      });
+  std::cout << "[BleDriver] Plugin Registered Successfully" << std::endl;
+}
+
+// Legacy wrapper for static linking
+void RegisterBleDriver() { RegisterPlugin(); }
+}
+#endif

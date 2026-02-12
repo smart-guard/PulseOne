@@ -4,8 +4,13 @@
 
 # 기본 설정
 CXX = x86_64-w64-mingw32-g++
+CC = x86_64-w64-mingw32-gcc
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0601
+CFLAGS = -Wall -O2 -DWIN32 -D_WIN32_WINNT=0x0601
 CXXFLAGS += -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE
+CXXFLAGS += -DHAVE_MODBUS=1 -DHAVE_MQTT=1 -DHAVE_BACNET=1 -DHAVE_QUICKJS=1 -DHAVE_HTTPLIB=1 -DHAVE_REDIS=1 -DHAVE_JSON=1
+CXXFLAGS += -DBACAPP_ALL -DBACAPP_REAL -DBACAPP_DOUBLE -DBACAPP_BOOLEAN -DBACAPP_UNSIGNED -DBACAPP_SIGNED -DBACAPP_ENUMERATED -DBACAPP_CHARACTER_STRING -DBACAPP_OBJECT_ID
+CXXFLAGS += -DDBLIB_EXPORTS -DLOGLIB_EXPORTS
 
 # 경로 설정
 SRC_DIR = src
@@ -15,7 +20,16 @@ BIN_DIR = bin-windows
 MINGW_PREFIX = /usr/x86_64-w64-mingw32
 
 # 포함 경로
-INCLUDES = -I$(INCLUDE_DIR) \
+SHARED_INCLUDE_DIR = ../shared/include
+SHARED_MODULES_DIR = ../shared/modules
+INCLUDES = -I$(SHARED_INCLUDE_DIR) \
+           -I$(SHARED_INCLUDE_DIR)/Common \
+           -I$(SHARED_INCLUDE_DIR)/Utils \
+           -I$(SHARED_INCLUDE_DIR)/Platform \
+           -I$(SHARED_INCLUDE_DIR)/Logging \
+           -I$(SHARED_MODULES_DIR)/LogLib/include \
+           -I$(SHARED_MODULES_DIR)/DbLib/include \
+           -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Platform \
            -I$(INCLUDE_DIR)/Api \
            -I$(INCLUDE_DIR)/Alarm \
@@ -33,6 +47,9 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Config \
            -I$(INCLUDE_DIR)/Drivers \
            -I$(INCLUDE_DIR)/Drivers/Common \
+           -I$(INCLUDE_DIR)/Drivers/Modbus \
+           -I$(INCLUDE_DIR)/Drivers/Bacnet \
+           -I$(INCLUDE_DIR)/Drivers/OPCUA \
            -I$(INCLUDE_DIR)/Pipeline \
            -I$(INCLUDE_DIR)/Storage \
            -I$(INCLUDE_DIR)/Client \
@@ -43,7 +60,11 @@ LDFLAGS = -L$(MINGW_PREFIX)/lib -static
 
 # 🔧 수정된 라이브러리 링킹 순서 (의존성 순서대로)
 # 높은 레벨 라이브러리 → 낮은 레벨 라이브러리 순서
-PROTOCOL_LIBS = 
+OPCUA_LIBS =
+ifneq ($(wildcard $(MINGW_PREFIX)/lib/libopen62541.a),)
+    OPCUA_LIBS += -lopen62541
+    PROTOCOL_LIBS += -lopen62541
+endif
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libmodbus.a),)
     PROTOCOL_LIBS += -lmodbus
     CXXFLAGS += -DHAVE_MODBUS=1
@@ -93,7 +114,7 @@ endif
 # 🔧 Windows 시스템 라이브러리 (완전한 목록)
 WIN_LIBS = -lws2_32 -lwsock32 -liphlpapi -lrpcrt4 -luuid -lwinmm
 WIN_LIBS += -lkernel32 -luser32 -ladvapi32 -lshell32 -lole32 -loleaut32
-WIN_LIBS += -lcrypt32 -lsecur32 -lbcrypt -lncrypt  # 암호화 관련 추가
+WIN_LIBS += -lcrypt32 -lsecur32 -lbcrypt -lncrypt -lodbc32 -lodbccp32 # Added ODBC for MSSQL
 
 # 기본 시스템 라이브러리
 SYS_LIBS = -lpthread -lstdc++ -lm -lgcc -lgcc_eh
@@ -103,24 +124,140 @@ SYS_LIBS = -lpthread -lstdc++ -lm -lgcc -lgcc_eh
 LIBS = $(PROTOCOL_LIBS) $(MQTT_LIBS) $(BACNET_LIBS) $(OTHER_LIBS) $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
 
 # 소스 파일 수집
-ALL_CPP_FILES = $(shell find $(SRC_DIR) -name "*.cpp" -type f 2>/dev/null)
-SOURCES = $(filter-out $(SRC_DIR)/main.cpp,$(ALL_CPP_FILES))
+ALL_CPP_FILES = $(shell find $(SRC_DIR) -name "*.cpp")
+SHARED_SRC_DIR = ../shared/src
+SHARED_MODULE_DIR = ../shared/modules
+
+# 필요한 공유 소스 파일 수집 (Database, Security, Logging, Utils, Client)
+SHARED_SOURCES = $(SHARED_SRC_DIR)/Logging/LogManager.cpp \
+                 $(SHARED_SRC_DIR)/Utils/ConfigManager.cpp \
+                 $(SHARED_SRC_DIR)/Utils/RedisManager.cpp \
+                 $(SHARED_SRC_DIR)/Security/SecretManager.cpp \
+                 $(wildcard $(SHARED_SRC_DIR)/Database/*.cpp) \
+                 $(wildcard $(SHARED_SRC_DIR)/Database/Entities/*.cpp) \
+                 $(wildcard $(SHARED_SRC_DIR)/Database/Repositories/*.cpp) \
+                 $(wildcard $(SHARED_SRC_DIR)/Client/*.cpp)
+
+SHARED_DBLIB_SOURCES = $(wildcard $(SHARED_MODULE_DIR)/DbLib/src/*.cpp)
+SHARED_LOGLIB_SOURCES = $(wildcard $(SHARED_MODULE_DIR)/LogLib/src/*.cpp)
+
+# 드라이버 구현 파일 및 관련 워커 제외 목록 (DLL로 별도 빌드됨)
+DRIVER_IMPLEMENTATIONS = $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp) \
+                         $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp) \
+                         $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp) \
+                         $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp) \
+                         $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp) \
+                         $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp) \
+                         $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp) \
+                         $(SRC_DIR)/Workers/Protocol/BACnetWorker.cpp \
+                         $(SRC_DIR)/Workers/Protocol/BACnetDiscoveryService.cpp \
+                         $(SRC_DIR)/Workers/Protocol/MQTTWorker.cpp \
+                         $(SRC_DIR)/Workers/Protocol/OPCUAWorker.cpp \
+                         $(SRC_DIR)/Workers/Protocol/ROSWorker.cpp \
+                         $(SRC_DIR)/Workers/Protocol/BleBeaconWorker.cpp \
+                         $(SRC_DIR)/Workers/Protocol/HttpRestWorker.cpp \
+                         $(SRC_DIR)/Workers/Protocol/ModbusWorker.cpp
+
+# 필터링 로직 (main.cpp 및 개별 드라이버 DLL 소스 제외)
+SOURCES = $(filter-out $(SRC_DIR)/main.cpp $(DRIVER_IMPLEMENTATIONS),$(ALL_CPP_FILES))
 MAIN_SOURCE = $(SRC_DIR)/main.cpp
 
 # 오브젝트 파일들
 OBJECTS = $(SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+
+# 공유 오브젝트 파일들 (디렉토리 구조 유지)
+SHARED_OBJECTS = $(patsubst $(SHARED_SRC_DIR)/%.cpp,$(BUILD_DIR)/shared/%.o,$(SHARED_SOURCES))
+DBLIB_OBJECTS = $(patsubst $(SHARED_MODULE_DIR)/DbLib/src/%.cpp,$(BUILD_DIR)/shared/modules/DbLib/%.o,$(SHARED_DBLIB_SOURCES))
+LOGLIB_OBJECTS = $(patsubst $(SHARED_MODULE_DIR)/LogLib/src/%.cpp,$(BUILD_DIR)/shared/modules/LogLib/%.o,$(SHARED_LOGLIB_SOURCES))
+
+ALL_CLEAN_SHARED_OBJECTS = $(SHARED_OBJECTS) $(DBLIB_OBJECTS) $(LOGLIB_OBJECTS)
+
 MAIN_OBJECT = $(BUILD_DIR)/main.o
 
 # 타겟
 TARGET = collector.exe
+PLUGINS_DIR = $(BIN_DIR)/plugins
+
+# 드라이버 DLL 목록
+DRIVER_DLLS = $(PLUGINS_DIR)/modbus_driver.dll \
+              $(PLUGINS_DIR)/bacnet_driver.dll \
+              $(PLUGINS_DIR)/mqtt_driver.dll \
+              $(PLUGINS_DIR)/opcua_driver.dll \
+              $(PLUGINS_DIR)/ros_driver.dll \
+              $(PLUGINS_DIR)/ble_driver.dll \
+              $(PLUGINS_DIR)/httprest_driver.dll
 
 # =============================================================================
 # 빌드 규칙
 # =============================================================================
 
-.PHONY: all clean info check-libs rebuild
+.PHONY: all clean info check-libs rebuild plugins
 
-all: check-libs $(BIN_DIR)/$(TARGET)
+# Import Library for EXE symbols (needed by DLLs on Windows)
+IMPLIB = $(BIN_DIR)/libcollector.a
+
+all: check-libs $(BIN_DIR)/$(TARGET) plugins
+
+# 드라이버 플러그인 빌드 (EXE가 완전히 링크된 뒤에만 실행되도록 강제)
+plugins:
+	$(MAKE) -f Makefile.windows $(BIN_DIR)/$(TARGET)
+	$(MAKE) -f Makefile.windows $(PLUGINS_DIR) $(DRIVER_DLLS)
+
+$(PLUGINS_DIR):
+	@mkdir -p $(PLUGINS_DIR)
+
+# 1. Modbus Driver DLL
+MODBUS_DRV_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp)
+$(PLUGINS_DIR)/modbus_driver.dll: $(MODBUS_DRV_SOURCES) $(ALL_CLEAN_SHARED_OBJECTS) | $(PLUGINS_DIR)
+	@echo "🔨 Building Modbus DLL..."
+	$(CXX) $(CXXFLAGS) -shared $(INCLUDES) $^ $(IMPLIB) -o $@ -lmodbus $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
+
+# 2. BACnet Driver DLL
+BACNET_DRV_SOURCES = $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
+                     $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
+BACNET_DRV_SOURCES := $(filter-out $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp,$(BACNET_DRV_SOURCES))
+BACNET_DRV_SOURCES := $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp $(BACNET_DRV_SOURCES)
+
+$(PLUGINS_DIR)/bacnet_driver.dll: $(BACNET_DRV_SOURCES) $(ALL_CLEAN_SHARED_OBJECTS) | $(PLUGINS_DIR)
+	@echo "🔨 Building BACnet DLL..."
+	$(CXX) $(CXXFLAGS) -shared $(INCLUDES) $^ $(IMPLIB) -o $@ -lbacnet $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
+
+# 3. MQTT Driver DLL
+MQTT_DRV_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp)
+$(PLUGINS_DIR)/mqtt_driver.dll: $(MQTT_DRV_SOURCES) $(ALL_CLEAN_SHARED_OBJECTS) | $(PLUGINS_DIR)
+	@echo "🔨 Building MQTT DLL..."
+	$(CXX) $(CXXFLAGS) -shared $(INCLUDES) $^ $(IMPLIB) -o $@ $(MQTT_LIBS) $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
+
+# 4. OPCUA Driver DLL
+OPCUA_DRV_SOURCES = $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
+OPCUA_C_OBJECTS = $(BUILD_DIR)/Drivers/OPCUA/open62541.o
+
+$(OPCUA_C_OBJECTS): $(SRC_DIR)/Drivers/OPCUA/open62541.c
+	@mkdir -p $(@D)
+	@echo "🔨 Compiling OPCUA C source..."
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(PLUGINS_DIR)/opcua_driver.dll: $(OPCUA_DRV_SOURCES) $(OPCUA_C_OBJECTS) $(ALL_CLEAN_SHARED_OBJECTS) | $(PLUGINS_DIR)
+	@echo "🔨 Building OPCUA DLL..."
+	$(CXX) $(CXXFLAGS) -shared $(INCLUDES) $^ $(IMPLIB) -o $@ $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
+
+# 5. ROS Driver DLL
+ROS_DRV_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp)
+$(PLUGINS_DIR)/ros_driver.dll: $(ROS_DRV_SOURCES) $(ALL_CLEAN_SHARED_OBJECTS) | $(PLUGINS_DIR)
+	@echo "🔨 Building ROS DLL..."
+	$(CXX) $(CXXFLAGS) -shared $(INCLUDES) $^ $(IMPLIB) -o $@ $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
+
+# 6. BLE Driver DLL
+BLE_DRV_SOURCES = $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
+$(PLUGINS_DIR)/ble_driver.dll: $(BLE_DRV_SOURCES) $(ALL_CLEAN_SHARED_OBJECTS) | $(PLUGINS_DIR)
+	@echo "🔨 Building BLE DLL..."
+	$(CXX) $(CXXFLAGS) -shared $(INCLUDES) $^ $(IMPLIB) -o $@ $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
+
+# 7. HttpRest Driver DLL
+HTTPREST_DRV_SOURCES = $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp)
+$(PLUGINS_DIR)/httprest_driver.dll: $(HTTPREST_DRV_SOURCES) $(ALL_CLEAN_SHARED_OBJECTS) | $(PLUGINS_DIR)
+	@echo "🔨 Building HttpRest DLL..."
+	$(CXX) $(CXXFLAGS) -shared $(INCLUDES) $^ $(IMPLIB) -o $@ $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
 
 # 라이브러리 존재 확인
 check-libs:
@@ -134,19 +271,41 @@ check-libs:
 	@echo ""
 
 # 메인 타겟
-$(BIN_DIR)/$(TARGET): $(OBJECTS) $(MAIN_OBJECT) | $(BIN_DIR)
+$(BIN_DIR)/$(TARGET): $(OBJECTS) $(ALL_CLEAN_SHARED_OBJECTS) $(MAIN_OBJECT) | $(BIN_DIR)
 	@echo "🔗 Linking $(BIN_DIR)/$(TARGET)..."
 	@echo "Link command:"
-	@echo "$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) $(MAIN_OBJECT) $(LIBS)"
-	@$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) $(MAIN_OBJECT) $(LIBS)
+	echo "$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) $(ALL_CLEAN_SHARED_OBJECTS) $(MAIN_OBJECT) $(DB_LIBS) $(OTHER_LIBS) $(WIN_LIBS) $(SYS_LIBS)"
+	$(CXX) $(LDFLAGS) -Wl,--out-implib,$(IMPLIB) -Wl,--export-all-symbols -o $@ $(OBJECTS) $(ALL_CLEAN_SHARED_OBJECTS) $(MAIN_OBJECT) $(DB_LIBS) $(OTHER_LIBS) $(WIN_LIBS) $(SYS_LIBS)
 	@echo "✅ Build completed: $@"
 	@echo "File size: $$(du -h $@ | cut -f1)"
 
-# 오브젝트 파일 생성 (디렉토리별)
+# 오브젝트 파일 생성 (디렉토리별) - Drivers 리서치 코드 제외
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@mkdir -p $(dir $@)
 	@echo "🔨 Compiling $<..."
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# 공유 소스 컴파일 규칙
+$(BUILD_DIR)/shared/%.o: $(SHARED_SRC_DIR)/%.cpp | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	@echo "🔨 Compiling shared source $<..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+# 공유 모듈 컴파일 규칙
+$(BUILD_DIR)/shared/modules/DbLib/%.o: $(SHARED_MODULE_DIR)/DbLib/src/%.cpp | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	@echo "🔨 Compiling shared module DbLib $<..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/shared/modules/LogLib/%.o: $(SHARED_MODULE_DIR)/LogLib/src/%.cpp | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	@echo "🔨 Compiling shared module LogLib $<..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/shared/Security/%.o: $(SHARED_SRC_DIR)/Security/%.cpp | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	@echo "🔨 Compiling shared security $<..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # 디렉토리 생성
 $(BUILD_DIR):

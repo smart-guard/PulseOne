@@ -12,7 +12,7 @@
 #include "Logging/LogManager.h"
 
 // Modbus 라이브러리 조건부 포함
-#ifdef HAS_MODBUS
+#ifdef HAVE_MODBUS
 #include <modbus/modbus.h>
 #else
 // 라이브러리 부재 시 전방 선언

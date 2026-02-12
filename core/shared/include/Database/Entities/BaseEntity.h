@@ -15,6 +15,8 @@
 #include "Database/RepositoryFactory.h"
 #include "DatabaseAbstractionLayer.hpp"
 #include "DatabaseManager.hpp"
+#include "Logging/LogManager.h"
+#include "Utils/ConfigManager.h"
 #include <chrono>
 #include <iomanip>
 #include <map>

@@ -32,6 +32,7 @@ ifeq ($(CROSS_COMPILE_WINDOWS),1)
     CC = x86_64-w64-mingw32-gcc
     CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
     CFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX
+    IS_WINDOWS := 1
     PLATFORM := Windows-Cross
     MINGW_PREFIX = /usr/x86_64-w64-mingw32
     INCLUDES += -I$(MINGW_PREFIX)/include
@@ -107,31 +108,27 @@ HAS_PQXX := $(shell pkg-config --exists libpqxx 2>/dev/null && echo "1" || echo 
 # 🔥 Paho MQTT C++ 라이브러리 감지 (v3.1 추가)
 HAS_PAHO_MQTT := $(shell [ -f /usr/include/mqtt/async_client.h ] && echo "1" || echo "0")
 
-# =============================================================================
-# Include 경로들 (🔥 로컬 include를 최우선으로!)
-# =============================================================================
-
-# 🔥 1순위: 로컬 include (export-gateway 자체)
-INCLUDES = -I$(INCLUDE_DIR)
-INCLUDES += -I$(PROJECT_ROOT)/core/collector/include
-INCLUDES += -I$(SHARED_INCLUDE_DIR)
-
-# 🔥 2순위: Shared 라이브러리 상세 include
-ifeq ($(shell [ -d "$(SHARED_INCLUDE_DIR)" ] && echo "1" || echo "0"),1)
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Platform
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Common
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Utils
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Database
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Database/Entities
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Database/Repositories
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Alarm
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Export
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Client
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Security
-    INCLUDES += -I$(SHARED_INCLUDE_DIR)/Data
-    INCLUDES += -I$(SHARED_DIR)/modules/DbLib/include
-    INCLUDES += -I$(SHARED_DIR)/modules/LogLib/include
+# 🔥 1순위: Shared 라이브러리 상세 include
+ifneq ($(wildcard $(SHARED_INCLUDE_DIR)),)
+    INCLUDES = -I$(SHARED_INCLUDE_DIR) \
+               -I$(SHARED_INCLUDE_DIR)/Platform \
+               -I$(SHARED_INCLUDE_DIR)/Common \
+               -I$(SHARED_INCLUDE_DIR)/Utils \
+               -I$(SHARED_INCLUDE_DIR)/Database \
+               -I$(SHARED_INCLUDE_DIR)/Database/Entities \
+               -I$(SHARED_INCLUDE_DIR)/Database/Repositories \
+               -I$(SHARED_INCLUDE_DIR)/Alarm \
+               -I$(SHARED_INCLUDE_DIR)/Export \
+               -I$(SHARED_INCLUDE_DIR)/Client \
+               -I$(SHARED_INCLUDE_DIR)/Security \
+               -I$(SHARED_INCLUDE_DIR)/Data \
+               -I$(SHARED_DIR)/modules/DbLib/include \
+               -I$(SHARED_DIR)/modules/LogLib/include
 endif
+
+# 🔥 2순위: 로컬 include
+INCLUDES += -I$(INCLUDE_DIR)
+INCLUDES += -I$(PROJECT_ROOT)/core/collector/include
 
 # 🔥 3순위: 시스템 include
 INCLUDES += -I/usr/local/include
@@ -245,7 +242,7 @@ endif
 # 🔥 기본 시스템 라이브러리 (SQLite3 추가!)
 ifeq ($(IS_WINDOWS),1)
     BASIC_LIBS = -lpthread -lstdc++ -lm -lsqlite3
-    PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi
+    PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi -lodbc32 -lodbccp32
 else
     BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
     ifeq ($(HAS_PQXX),1)
