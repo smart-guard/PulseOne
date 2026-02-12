@@ -7,7 +7,9 @@
 #include "Logging/LogManager.h"
 #include "Storage/RedisDataWriter.h"
 #include "Workers/Base/BaseDeviceWorker.h"
+#ifndef _WIN32
 #include "Workers/Protocol/BACnetDiscoveryService.h"
+#endif
 #include "Workers/WorkerMonitor.h"
 #include "Workers/WorkerRegistry.h"
 #include "Workers/WorkerScheduler.h"
@@ -42,7 +44,8 @@ WorkerManager::WorkerManager() {
       return;
     }
 
-    // Initialize BACnet Discovery Service
+    // Initialize BACnet Discovery Service (Only if not Windows/static build)
+#ifndef _WIN32
     bacnet_discovery_service_ = std::make_shared<BACnetDiscoveryService>(
         repo_factory.getDeviceRepository(),
         repo_factory.getDataPointRepository(),
@@ -53,6 +56,7 @@ WorkerManager::WorkerManager() {
     // Set Schedule Repository
     bacnet_discovery_service_->SetDeviceScheduleRepository(
         repo_factory.getDeviceScheduleRepository());
+#endif
 
     LogManager::getInstance().Info(
         "WorkerManager (Facade) initialized with sub-components");
@@ -181,6 +185,7 @@ WorkerManager::DiscoverDevicePoints(const std::string &device_id) {
 bool WorkerManager::StartNetworkScan(const std::string &protocol,
                                      const std::string &range, int timeout_ms) {
   if (protocol == "BACNET" || protocol == "BACnet") {
+#ifndef _WIN32
     if (bacnet_discovery_service_) {
       LogManager::getInstance().Info(
           "WorkerManager: Starting BACnet network scan");
@@ -190,6 +195,11 @@ bool WorkerManager::StartNetworkScan(const std::string &protocol,
           "WorkerManager: BACnet Discovery Service not initialized");
       return false;
     }
+#else
+    LogManager::getInstance().Warn("WorkerManager: BACnet Discovery Service "
+                                   "not available on Windows in this build");
+    return false;
+#endif
   } else if (protocol == "MODBUS_TCP" || protocol == "MODBUS_RTU") {
     LogManager::getInstance().Info(
         "WorkerManager: Starting stubbed Modbus network scan for protocol: " +
@@ -212,9 +222,11 @@ bool WorkerManager::StartNetworkScan(const std::string &protocol,
 
 void WorkerManager::StopNetworkScan(const std::string &protocol) {
   if (protocol == "BACNET" || protocol == "BACnet") {
+#ifndef _WIN32
     if (bacnet_discovery_service_) {
       bacnet_discovery_service_->StopNetworkScan();
     }
+#endif
   } else if (protocol == "MODBUS_TCP" || protocol == "MODBUS_RTU") {
     LogManager::getInstance().Info(
         "WorkerManager: Stopping stubbed Modbus network scan");

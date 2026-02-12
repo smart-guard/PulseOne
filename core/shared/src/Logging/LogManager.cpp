@@ -16,9 +16,9 @@ static LogLib::LogLevel MapToLogLibLevel(PulseOne::Enums::LogLevel level) {
   case PulseOne::Enums::LogLevel::WARN:
     return LogLib::LogLevel::WARN;
   case PulseOne::Enums::LogLevel::LOG_ERROR:
-    return LogLib::LogLevel::ERROR;
+    return LogLib::LogLevel::LOG_ERROR;
   case PulseOne::Enums::LogLevel::LOG_FATAL:
-    return LogLib::LogLevel::FATAL;
+    return LogLib::LogLevel::LOG_FATAL;
   case PulseOne::Enums::LogLevel::MAINTENANCE:
     return LogLib::LogLevel::MAINTENANCE;
   case PulseOne::Enums::LogLevel::OFF:
@@ -74,9 +74,9 @@ void LogManager::loadLogSettingsFromConfig() {
     else if (level_str == "WARN" || level_str == "WARNING")
       engine.setLogLevel(LogLib::LogLevel::WARN);
     else if (level_str == "ERROR")
-      engine.setLogLevel(LogLib::LogLevel::ERROR);
+      engine.setLogLevel(LogLib::LogLevel::LOG_ERROR);
     else if (level_str == "FATAL")
-      engine.setLogLevel(LogLib::LogLevel::FATAL);
+      engine.setLogLevel(LogLib::LogLevel::LOG_FATAL);
 
     // Settings
     engine.setConsoleOutput(config.getOrDefault("LOG_TO_CONSOLE", "true") ==

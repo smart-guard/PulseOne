@@ -7,6 +7,7 @@
 #include "Common/Enums.h"
 #include "Drivers/Common/DriverFactory.h"
 #include "Logging/LogManager.h"
+#include <iostream>
 #if HAS_CURL
 #include <curl/curl.h>
 #endif
@@ -23,16 +24,8 @@ namespace PulseOne {
 namespace Drivers {
 
 // =============================================================================
-// Plugin Registration
+// Implementation
 // =============================================================================
-#ifndef TEST_BUILD
-extern "C" {
-void RegisterHttpDriver() {
-  DriverFactory::GetInstance().RegisterDriver(
-      "HTTP_REST", []() { return std::make_unique<HttpRestDriver>(); });
-}
-}
-#endif
 
 // =============================================================================
 // CURL Context (PIMPL)
@@ -569,6 +562,25 @@ size_t HttpRestDriver::WriteCallback(void *contents, size_t size, size_t nmemb,
   buffer->append(static_cast<char *>(contents), total_size);
   return total_size;
 }
-
 } // namespace Drivers
 } // namespace PulseOne
+
+// =============================================================================
+// 🔥 Plugin Entry Point
+// =============================================================================
+#ifndef TEST_BUILD
+extern "C" {
+#ifdef _WIN32
+__declspec(dllexport)
+#endif
+void RegisterPlugin() {
+  PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
+      "HTTP_REST",
+      []() { return std::make_unique<PulseOne::Drivers::HttpRestDriver>(); });
+  std::cout << "[HttpRestDriver] Plugin Registered Successfully" << std::endl;
+}
+
+// Legacy wrapper for static linking
+void RegisterHttpDriver() { RegisterPlugin(); }
+}
+#endif

@@ -7,7 +7,7 @@
 #include "Common/Enums.h"
 #include "Logging/LogManager.h"
 
-#if HAS_BACNET
+#if HAVE_BACNET
 #include "Drivers/Bacnet/BACnetDriver.h"
 #include "Drivers/Bacnet/BACnetServiceManager.h"
 #endif
@@ -35,7 +35,7 @@ BACnetWorker::BACnetWorker(const DeviceInfo &device_info)
   LogMessage(LogLevel::INFO,
              "BACnetWorker created for device: " + device_info.name);
 
-#if HAS_BACNET
+#if HAVE_BACNET
   // BACnet Driver 생성 (Factory 사용)
   bacnet_driver_ =
       PulseOne::Drivers::DriverFactory::GetInstance().CreateDriver("BACNET");
@@ -88,7 +88,7 @@ BACnetWorker::BACnetWorker(const DeviceInfo &device_info)
 }
 
 BACnetWorker::~BACnetWorker() {
-#if HAS_BACNET
+#if HAVE_BACNET
   // 스레드 정리
   if (data_scan_thread_running_.load()) {
     data_scan_thread_running_ = false;
@@ -114,7 +114,7 @@ std::future<bool> BACnetWorker::Start() {
   return std::async(std::launch::async, [this]() -> bool {
     LogMessage(LogLevel::INFO, "Starting BACnetWorker...");
 
-#if HAS_BACNET
+#if HAVE_BACNET
     // 1. 통계 초기화
     worker_stats_.Reset();
     StartReconnectionThread();
@@ -142,7 +142,7 @@ std::future<bool> BACnetWorker::Stop() {
   return std::async(std::launch::async, [this]() -> bool {
     LogMessage(LogLevel::INFO, "Stopping BACnetWorker...");
 
-#if HAS_BACNET
+#if HAVE_BACNET
     // 1. BaseDeviceWorker의 스레드 정리 (재연결 스레드 등)
     StopAllThreads();
 
@@ -173,7 +173,7 @@ std::future<bool> BACnetWorker::Stop() {
 // =============================================================================
 
 bool BACnetWorker::EstablishProtocolConnection() {
-#if HAS_BACNET
+#if HAVE_BACNET
   LogMessage(LogLevel::INFO, "Establishing BACnet protocol connection...");
 
   if (!bacnet_driver_) {
@@ -209,7 +209,7 @@ bool BACnetWorker::EstablishProtocolConnection() {
 }
 
 bool BACnetWorker::CloseProtocolConnection() {
-#if HAS_BACNET
+#if HAVE_BACNET
   LogMessage(LogLevel::INFO, "Closing BACnet protocol connection...");
   ShutdownBACnetDriver();
   LogMessage(LogLevel::INFO, "BACnet protocol connection closed");
@@ -220,7 +220,7 @@ bool BACnetWorker::CloseProtocolConnection() {
 }
 
 bool BACnetWorker::CheckProtocolConnection() {
-#if HAS_BACNET
+#if HAVE_BACNET
   if (!bacnet_driver_) {
     return false;
   }
@@ -233,7 +233,7 @@ bool BACnetWorker::CheckProtocolConnection() {
 bool BACnetWorker::SendProtocolKeepAlive() { return CheckProtocolConnection(); }
 
 bool BACnetWorker::ProcessReceivedPacket(const UdpPacket &packet) {
-#if HAS_BACNET
+#if HAVE_BACNET
   try {
     LogMessage(LogLevel::DEBUG_LEVEL, "Processing BACnet packet (" +
                                           std::to_string(packet.data.size()) +
@@ -261,7 +261,7 @@ bool BACnetWorker::SendBACnetDataToPipeline(
     const std::map<std::string, PulseOne::Structs::DataValue> &object_values,
     const std::string &context, uint32_t priority) {
 
-#if HAS_BACNET
+#if HAVE_BACNET
   if (object_values.empty()) {
     return false;
   }
@@ -367,7 +367,7 @@ bool BACnetWorker::SendBACnetPropertyToPipeline(
     const std::string &object_id,
     const PulseOne::Structs::DataValue &property_value,
     const std::string &object_name, uint32_t priority) {
-#if HAS_BACNET
+#if HAVE_BACNET
   try {
     PulseOne::Structs::TimestampedValue tv;
 
@@ -434,7 +434,7 @@ bool BACnetWorker::SendBACnetPropertyToPipeline(
 bool BACnetWorker::SendCOVNotificationToPipeline(
     const std::string &object_id, const PulseOne::Structs::DataValue &new_value,
     const PulseOne::Structs::DataValue &previous_value) {
-#if HAS_BACNET
+#if HAVE_BACNET
   (void)previous_value; // 사용하지 않는 매개변수 경고 방지
 
   try {
@@ -605,7 +605,7 @@ std::vector<DataPoint> BACnetWorker::GetConfiguredDataPoints() const {
 }
 
 std::string BACnetWorker::GetBACnetWorkerStats() const {
-#if HAS_BACNET
+#if HAVE_BACNET
   std::stringstream ss;
   ss << "{\n";
   ss << "  \"polling_cycles\": " << worker_stats_.polling_cycles.load()
@@ -647,7 +647,7 @@ std::string BACnetWorker::GetBACnetWorkerStats() const {
 }
 
 void BACnetWorker::ResetBACnetWorkerStats() {
-#if HAS_BACNET
+#if HAVE_BACNET
   worker_stats_.Reset();
 #endif
   LogMessage(LogLevel::INFO, "BACnet worker statistics reset");
@@ -662,7 +662,7 @@ void BACnetWorker::SetValueChangedCallback(ValueChangedCallback callback) {
 // =============================================================================
 
 bool BACnetWorker::ParseBACnetConfigFromDeviceInfo() {
-#if HAS_BACNET
+#if HAVE_BACNET
   try {
     const auto &props = device_info_.properties;
 
@@ -692,7 +692,7 @@ bool BACnetWorker::ParseBACnetConfigFromDeviceInfo() {
 
 PulseOne::Structs::DriverConfig
 BACnetWorker::CreateDriverConfigFromDeviceInfo() {
-#if HAS_BACNET
+#if HAVE_BACNET
   LogMessage(LogLevel::INFO, "Creating BACnet DriverConfig from DeviceInfo...");
 
   PulseOne::Structs::DriverConfig config = device_info_.driver_config;
@@ -764,7 +764,7 @@ BACnetWorker::CreateDriverConfigFromDeviceInfo() {
 }
 
 bool BACnetWorker::InitializeBACnetDriver() {
-#if HAS_BACNET
+#if HAVE_BACNET
   try {
     LogMessage(LogLevel::INFO, "Initializing BACnet driver...");
 
@@ -799,7 +799,7 @@ bool BACnetWorker::InitializeBACnetDriver() {
 }
 
 void BACnetWorker::ShutdownBACnetDriver() {
-#if HAS_BACNET
+#if HAVE_BACNET
   try {
     if (bacnet_driver_) {
       bacnet_driver_->Disconnect();
@@ -818,7 +818,7 @@ void BACnetWorker::ShutdownBACnetDriver() {
 // =============================================================================
 
 void BACnetWorker::DataScanThreadFunction() {
-#if HAS_BACNET
+#if HAVE_BACNET
   LogMessage(LogLevel::INFO, "BACnet data scan thread started");
 
   uint32_t polling_interval_ms = device_info_.polling_interval_ms;
@@ -851,7 +851,7 @@ void BACnetWorker::DataScanThreadFunction() {
 }
 
 bool BACnetWorker::PerformDataScan() {
-#if HAS_BACNET
+#if HAVE_BACNET
   LogMessage(LogLevel::DEBUG_LEVEL, "Performing BACnet data scan...");
 
   try {
@@ -931,7 +931,7 @@ bool BACnetWorker::PerformDataScan() {
 // Implementation of missing Write/Control interfaces
 // =============================================================================
 
-#if HAS_BACNET
+#if HAVE_BACNET
 
 bool BACnetWorker::WriteDataPoint(const std::string &point_id,
                                   const DataValue &value) {
@@ -1013,9 +1013,9 @@ bool BACnetWorker::WriteBACnetDataPoint(const std::string &,
 #endif
 
 // -----------------------------------------------------------
-// Missing implementations stubbed for HAS_BACNET=0
+// Missing implementations stubbed for HAVE_BACNET=0
 // -----------------------------------------------------------
-#if !HAS_BACNET
+#if !HAVE_BACNET
 bool BACnetWorker::WriteProperty(uint32_t, BACNET_OBJECT_TYPE, uint32_t,
                                  BACNET_PROPERTY_ID, const DataValue &,
                                  uint8_t) {
@@ -1051,7 +1051,7 @@ bool BACnetWorker::ControlAnalogDevice(const std::string &, double) {
 // -----------------------------------------------------------
 // Private methods implemented conditionally or stubbed
 // -----------------------------------------------------------
-#if HAS_BACNET
+#if HAVE_BACNET
 bool BACnetWorker::ProcessDataPoints(const std::vector<DataPoint> &points) {
   (void)points;
   return true;
@@ -1101,8 +1101,8 @@ void BACnetWorker::LogWriteOperation(const std::string &object_id,
 }
 #endif
 
-// Stubs for private methods when !HAS_BACNET
-#if !HAS_BACNET
+// Stubs for private methods when !HAVE_BACNET
+#if !HAVE_BACNET
 bool BACnetWorker::ProcessDataPoints(const std::vector<DataPoint> &) {
   return false;
 }

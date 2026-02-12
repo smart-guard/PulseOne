@@ -28,7 +28,7 @@ bool ScriptExecutor::reset() {
 }
 
 bool ScriptExecutor::initJSEngine() {
-#if HAS_QUICKJS
+#if HAVE_QUICKJS
     std::lock_guard<std::recursive_mutex> lock(js_mutex_);
     
     js_runtime_ = JS_NewRuntime();
@@ -60,7 +60,7 @@ bool ScriptExecutor::initJSEngine() {
 }
 
 void ScriptExecutor::cleanupJSEngine() {
-#if HAS_QUICKJS
+#if HAVE_QUICKJS
     std::lock_guard<std::recursive_mutex> lock(js_mutex_);
     if (js_context_) {
         JS_FreeContext(js_context_);
@@ -74,7 +74,7 @@ void ScriptExecutor::cleanupJSEngine() {
 }
 
 bool ScriptExecutor::registerSystemFunctions() {
-#if HAS_QUICKJS
+#if HAVE_QUICKJS
     std::lock_guard<std::recursive_mutex> lock(js_mutex_);
     if (!js_context_) return false;
     JS_UpdateStackTop(js_runtime_);
@@ -98,7 +98,7 @@ function getCurrentValue(pointId) { return getPointValue(pointId); }
 }
 
 PulseOne::Structs::DataValue ScriptExecutor::evaluate(const ScriptContext& ctx) {
-#if HAS_QUICKJS
+#if HAVE_QUICKJS
     std::lock_guard<std::recursive_mutex> lock(js_mutex_);
     if (!js_runtime_) throw std::runtime_error("JS runtime not initialized");
     JS_UpdateStackTop(js_runtime_);

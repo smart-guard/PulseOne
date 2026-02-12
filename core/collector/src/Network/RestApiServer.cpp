@@ -27,7 +27,7 @@
 using nlohmann::json;
 
 // 🔥 조건부 httplib 포함 (기존 패턴 100% 준수)
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
 #include <httplib.h>
 #endif
 
@@ -39,7 +39,7 @@ using namespace std::chrono;
 // =============================================================================
 
 RestApiServer::RestApiServer(int port) : port_(port), running_(false) {
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
   server_ = std::make_unique<httplib::Server>();
   SetupRoutes();
 #else
@@ -55,7 +55,7 @@ RestApiServer::~RestApiServer() { Stop(); }
 // =============================================================================
 
 bool RestApiServer::Start() {
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
   if (running_) {
     return true;
   }
@@ -80,7 +80,7 @@ bool RestApiServer::Start() {
 }
 
 void RestApiServer::Stop() {
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
   if (!running_) {
     return;
   }
@@ -107,7 +107,7 @@ bool RestApiServer::IsRunning() const { return running_; }
 // =============================================================================
 
 void RestApiServer::SetupRoutes() {
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
   auto *httplib_server = static_cast<httplib::Server *>(server_.get());
 
   // CORS 미들웨어
@@ -328,7 +328,7 @@ void RestApiServer::SetNetworkScanCallback(NetworkScanCallback callback) {
   network_scan_callback_ = callback;
 }
 
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
 void RestApiServer::HandlePostNetworkScan(const httplib::Request &req,
                                           httplib::Response &res) {
   try {
@@ -1301,7 +1301,8 @@ void RestApiServer::HandleGetSystemLogs(const httplib::Request &req,
       path = req.matches[1];
     }
 
-    bool is_read_request = req.has_param("lines") || req.has_param("offset");
+    bool is_read_request =
+        req.params.count("lines") > 0 || req.params.count("offset") > 0;
     bool has_extension = path.find('.') != std::string::npos;
 
     if (is_read_request || has_extension) {
@@ -1309,10 +1310,16 @@ void RestApiServer::HandleGetSystemLogs(const httplib::Request &req,
         int lines = 100;
         int offset = 0;
 
-        if (req.has_param("lines"))
-          lines = std::stoi(req.get_param_value("lines"));
-        if (req.has_param("offset"))
-          offset = std::stoi(req.get_param_value("offset"));
+        if (req.params.count("lines")) {
+          auto it = req.params.find("lines");
+          if (it != req.params.end())
+            lines = std::stoi(it->second);
+        }
+        if (req.params.count("offset")) {
+          auto it = req.params.find("offset");
+          if (it != req.params.end())
+            offset = std::stoi(it->second);
+        }
 
         std::string content = log_read_callback_(path, lines, offset);
 
@@ -1376,7 +1383,7 @@ void RestApiServer::HandleGetErrorCodeInfo(const httplib::Request &req,
   try {
     SetCorsHeaders(res);
     std::string error_code_str =
-        req.matches.size() > 1 ? req.matches[1].str() : "";
+        req.matches.size() > 1 ? std::string(req.matches[1]) : "";
 
     json info = json::object();
     info["code"] = error_code_str;

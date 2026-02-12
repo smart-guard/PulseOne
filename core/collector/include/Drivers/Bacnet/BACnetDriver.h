@@ -23,13 +23,13 @@
 // Windows 매크로 충돌 방지
 #ifdef min
 #undef min
-#endif // defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 #ifdef max
 #undef max
-#endif // defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 #ifdef ERROR
 #undef ERROR
-#endif // defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 
 #include "Common/BasicTypes.h"       // UniqueId, Timestamp 등
 #include "Common/DriverStatistics.h" // DriverStatistics
@@ -40,15 +40,13 @@
 #include "Logging/LogManager.h"
 
 // BACnet 스택 조건부 포함
-#if defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 extern "C" {
 // 핵심 BACnet 헤더들
-#ifdef HAS_BACNET
 #include "bacnet/apdu.h"
 #include "bacnet/bacdef.h"
 #include "bacnet/bacenum.h"
 #include "bacnet/config.h"
-#endif
 #include <bacnet/bacapp.h>
 #include <bacnet/bacdcode.h>
 #include <bacnet/bacenum.h>
@@ -79,15 +77,15 @@ extern "C" {
 // 매크로 충돌 재방지
 #ifdef min
 #undef min
-#endif // defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 #ifdef max
 #undef max
-#endif // defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 #ifdef ERROR
 #undef ERROR
-#endif // defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 
-#endif // defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 
 namespace PulseOne {
 namespace Drivers {

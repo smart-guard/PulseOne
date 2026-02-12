@@ -33,7 +33,7 @@ devices 테이블:
 #include "Common/Enums.h"
 #include "Drivers/Common/DriverFactory.h" // Plugin System Factory
 #include "Logging/LogManager.h"
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 #endif
@@ -315,7 +315,7 @@ bool MQTTWorker::SendMQTTDataToPipeline(
                "Processing MQTT message: topic=" + topic +
                    ", size=" + std::to_string(payload.size()));
 
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
     // JSON 파싱 시도
     nlohmann::json json_data;
     try {
@@ -394,7 +394,7 @@ bool MQTTWorker::SendMQTTDataToPipeline(
   }
 }
 
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
 bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
                                           const std::string &topic_context,
                                           uint32_t priority) {
@@ -654,14 +654,14 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
   }
 }
 #else
-bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
+bool MQTTWorker::SendJsonValuesToPipeline(const std::string &raw_json,
                                           const std::string &topic_context,
                                           uint32_t priority) {
-  (void)json_data;
+  (void)raw_json;
   (void)topic_context;
   (void)priority;
   LogMessage(LogLevel::WARN,
-             "JSON support not available (HAS_NLOHMANN_JSON not defined)");
+             "JSON support not available (HAVE_JSON not defined)");
   return false;
 }
 #endif
@@ -1150,7 +1150,7 @@ std::string MQTTWorker::GetPerformanceMetricsJson() const {
            "mode\"}";
   }
 
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
   json metrics = {
       {"messages_sent", performance_metrics_.messages_sent.load()},
       {"messages_received", performance_metrics_.messages_received.load()},
@@ -1180,7 +1180,7 @@ std::string MQTTWorker::GetRealtimeDashboardData() const {
            "mode\"}";
   }
 
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
   json dashboard;
   // const 메서드에서 비const 메서드 호출 방지 - const_cast 사용
   dashboard["status"] = const_cast<MQTTWorker *>(this)->CheckConnection()
@@ -1204,7 +1204,7 @@ std::string MQTTWorker::GetDetailedDiagnostics() const {
            "mode\"}";
   }
 
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
   auto now = steady_clock::now();
   auto uptime = duration_cast<seconds>(now - start_time_);
 
@@ -2376,7 +2376,7 @@ void MQTTWorker::MessageCallback(MQTTWorker *worker, const std::string &topic,
   }
 }
 
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
 bool MQTTWorker::ConvertJsonToDataValue(
     const nlohmann::json &json_val, PulseOne::Structs::DataValue &data_value) {
   try {
@@ -2655,7 +2655,7 @@ std::string MQTTWorker::BuildControlTopic(const std::string &device_id,
 
 std::string MQTTWorker::CreateJsonPayload(const DataValue &value) {
   try {
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
     nlohmann::json payload_json;
 
     if (std::holds_alternative<bool>(value)) {

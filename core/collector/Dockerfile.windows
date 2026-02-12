@@ -36,11 +36,11 @@ RUN cd /tmp && \
     unzip sqlite.zip && \
     cd sqlite-amalgamation-3420000 && \
     ${CC} -c sqlite3.c -o sqlite3.o \
-        -DSQLITE_THREADSAFE=1 \
-        -DSQLITE_ENABLE_FTS5 \
-        -DSQLITE_ENABLE_JSON1 \
-        -DSQLITE_ENABLE_RTREE \
-        -DSQLITE_USE_URI=1 && \
+    -DSQLITE_THREADSAFE=1 \
+    -DSQLITE_ENABLE_FTS5 \
+    -DSQLITE_ENABLE_JSON1 \
+    -DSQLITE_ENABLE_RTREE \
+    -DSQLITE_USE_URI=1 && \
     ${AR} rcs ${MINGW_PREFIX}/lib/libsqlite3.a sqlite3.o && \
     cp sqlite3.h sqlite3ext.h ${MINGW_PREFIX}/include/ && \
     rm -rf /tmp/sqlite* && \
@@ -54,8 +54,8 @@ RUN cd /tmp && \
     tar xzf openssl-1.1.1w.tar.gz && \
     cd openssl-1.1.1w && \
     ./Configure mingw64 no-shared no-asm \
-        --prefix=${MINGW_PREFIX} \
-        --openssldir=${MINGW_PREFIX}/ssl && \
+    --prefix=${MINGW_PREFIX} \
+    --openssldir=${MINGW_PREFIX}/ssl && \
     make CC=${CC} AR=${AR} RANLIB=x86_64-w64-mingw32-ranlib && \
     make install_sw && \
     rm -rf /tmp/openssl* && \
@@ -69,11 +69,11 @@ RUN cd /tmp && \
     cd libmodbus && \
     ./autogen.sh && \
     ./configure --host=x86_64-w64-mingw32 \
-                --prefix=${MINGW_PREFIX} \
-                --enable-static \
-                --disable-shared \
-                --disable-tests \
-                CFLAGS="-O2 -D_WIN32_WINNT=0x0601" && \
+    --prefix=${MINGW_PREFIX} \
+    --enable-static \
+    --disable-shared \
+    --disable-tests \
+    CFLAGS="-O2 -D_WIN32_WINNT=0x0601" && \
     make && make install && \
     mkdir -p ${MINGW_PREFIX}/include/modbus && \
     cp ${MINGW_PREFIX}/include/modbus*.h ${MINGW_PREFIX}/include/modbus/ 2>/dev/null || true && \
@@ -87,9 +87,9 @@ RUN cd /tmp && \
     git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && \
     cd hiredis && \
     make CC=${CC} AR=${AR} PREFIX=${MINGW_PREFIX} \
-         CFLAGS="-O2 -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -w" \
-         LDFLAGS="-lws2_32" \
-         WARNINGS="" && \
+    CFLAGS="-O2 -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -w" \
+    LDFLAGS="-lws2_32" \
+    WARNINGS="" && \
     make PREFIX=${MINGW_PREFIX} install && \
     rm -rf /tmp/hiredis && \
     echo "hiredis 설치 완료"
@@ -114,9 +114,9 @@ RUN cat > ${MINGW_PREFIX}/include/poll.h << 'EOF'
 #define POLLNVAL    0x0020
 
 struct pollfd {
-    SOCKET fd;
-    short events;
-    short revents;
+SOCKET fd;
+short events;
+short revents;
 };
 
 typedef unsigned long nfds_t;
@@ -126,48 +126,48 @@ extern "C" {
 #endif
 
 static inline int poll(struct pollfd *fds, nfds_t nfds, int timeout) {
-    #if defined(WSAPoll)
-        return WSAPoll(fds, nfds, timeout);
-    #else
-        fd_set readfds, writefds, exceptfds;
-        struct timeval tv, *tvp = NULL;
-        SOCKET maxfd = 0;
-        int result, i;
+#if defined(WSAPoll)
+return WSAPoll(fds, nfds, timeout);
+#else
+fd_set readfds, writefds, exceptfds;
+struct timeval tv, *tvp = NULL;
+SOCKET maxfd = 0;
+int result, i;
 
-        if (timeout >= 0) {
-            tv.tv_sec = timeout / 1000;
-            tv.tv_usec = (timeout % 1000) * 1000;
-            tvp = &tv;
-        }
+if (timeout >= 0) {
+tv.tv_sec = timeout / 1000;
+tv.tv_usec = (timeout % 1000) * 1000;
+tvp = &tv;
+}
 
-        FD_ZERO(&readfds);
-        FD_ZERO(&writefds);
-        FD_ZERO(&exceptfds);
+FD_ZERO(&readfds);
+FD_ZERO(&writefds);
+FD_ZERO(&exceptfds);
 
-        for (i = 0; i < nfds; i++) {
-            if (fds[i].fd == INVALID_SOCKET) continue;
-            
-            if (fds[i].events & POLLIN) FD_SET(fds[i].fd, &readfds);
-            if (fds[i].events & POLLOUT) FD_SET(fds[i].fd, &writefds);
-            FD_SET(fds[i].fd, &exceptfds);
-            
-            if (fds[i].fd > maxfd) maxfd = fds[i].fd;
-            fds[i].revents = 0;
-        }
+for (i = 0; i < nfds; i++) {
+if (fds[i].fd == INVALID_SOCKET) continue;
 
-        result = select(maxfd + 1, &readfds, &writefds, &exceptfds, tvp);
-        if (result <= 0) return result;
+if (fds[i].events & POLLIN) FD_SET(fds[i].fd, &readfds);
+if (fds[i].events & POLLOUT) FD_SET(fds[i].fd, &writefds);
+FD_SET(fds[i].fd, &exceptfds);
 
-        for (i = 0; i < nfds; i++) {
-            if (fds[i].fd == INVALID_SOCKET) continue;
-            
-            if (FD_ISSET(fds[i].fd, &readfds)) fds[i].revents |= POLLIN;
-            if (FD_ISSET(fds[i].fd, &writefds)) fds[i].revents |= POLLOUT;
-            if (FD_ISSET(fds[i].fd, &exceptfds)) fds[i].revents |= POLLERR;
-        }
+if (fds[i].fd > maxfd) maxfd = fds[i].fd;
+fds[i].revents = 0;
+}
 
-        return result;
-    #endif
+result = select(maxfd + 1, &readfds, &writefds, &exceptfds, tvp);
+if (result <= 0) return result;
+
+for (i = 0; i < nfds; i++) {
+if (fds[i].fd == INVALID_SOCKET) continue;
+
+if (FD_ISSET(fds[i].fd, &readfds)) fds[i].revents |= POLLIN;
+if (FD_ISSET(fds[i].fd, &writefds)) fds[i].revents |= POLLOUT;
+if (FD_ISSET(fds[i].fd, &exceptfds)) fds[i].revents |= POLLERR;
+}
+
+return result;
+#endif
 }
 
 #ifdef __cplusplus
@@ -190,19 +190,19 @@ RUN cd /tmp && \
     mkdir -p build && \
     cd build && \
     cmake .. \
-        -DCMAKE_SYSTEM_NAME=Windows \
-        -DCMAKE_C_COMPILER=${CC} \
-        -DCMAKE_CXX_COMPILER=${CXX} \
-        -DCMAKE_RC_COMPILER=${WINDRES} \
-        -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
-        -DPAHO_WITH_SSL=FALSE \
-        -DPAHO_BUILD_STATIC=TRUE \
-        -DPAHO_BUILD_SHARED=FALSE \
-        -DPAHO_BUILD_DOCUMENTATION=FALSE \
-        -DPAHO_BUILD_SAMPLES=FALSE \
-        -DPAHO_BUILD_TESTS=FALSE \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_FLAGS="-O2 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN" && \
+    -DCMAKE_SYSTEM_NAME=Windows \
+    -DCMAKE_C_COMPILER=${CC} \
+    -DCMAKE_CXX_COMPILER=${CXX} \
+    -DCMAKE_RC_COMPILER=${WINDRES} \
+    -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+    -DPAHO_WITH_SSL=FALSE \
+    -DPAHO_BUILD_STATIC=TRUE \
+    -DPAHO_BUILD_SHARED=FALSE \
+    -DPAHO_BUILD_DOCUMENTATION=FALSE \
+    -DPAHO_BUILD_SAMPLES=FALSE \
+    -DPAHO_BUILD_TESTS=FALSE \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS="-O2 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN" && \
     make paho-mqtt3c-static paho-mqtt3a-static -j$(nproc) && \
     find . -name "libpaho-mqtt3*.a" -exec cp {} ${MINGW_PREFIX}/lib/ \; && \
     cp src/libpaho-mqtt3c-static.a ${MINGW_PREFIX}/lib/libpaho-mqtt3c.a && \
@@ -220,25 +220,25 @@ RUN cd /tmp && \
     mkdir -p build && \
     cd build && \
     cmake .. \
-        -DCMAKE_SYSTEM_NAME=Windows \
-        -DCMAKE_C_COMPILER=${CC} \
-        -DCMAKE_CXX_COMPILER=${CXX} \
-        -DCMAKE_RC_COMPILER=${WINDRES} \
-        -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
-        -DPAHO_WITH_SSL=FALSE \
-        -DPAHO_BUILD_STATIC=TRUE \
-        -DPAHO_BUILD_SHARED=FALSE \
-        -DPAHO_BUILD_DOCUMENTATION=FALSE \
-        -DPAHO_BUILD_SAMPLES=FALSE \
-        -DPAHO_BUILD_TESTS=FALSE \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH=${MINGW_PREFIX} \
-        -DCMAKE_FIND_ROOT_PATH=${MINGW_PREFIX} \
-        -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-        -DCMAKE_CXX_STANDARD=11 \
-        -DCMAKE_CXX_FLAGS="-std=c++11 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN" && \
+    -DCMAKE_SYSTEM_NAME=Windows \
+    -DCMAKE_C_COMPILER=${CC} \
+    -DCMAKE_CXX_COMPILER=${CXX} \
+    -DCMAKE_RC_COMPILER=${WINDRES} \
+    -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+    -DPAHO_WITH_SSL=FALSE \
+    -DPAHO_BUILD_STATIC=TRUE \
+    -DPAHO_BUILD_SHARED=FALSE \
+    -DPAHO_BUILD_DOCUMENTATION=FALSE \
+    -DPAHO_BUILD_SAMPLES=FALSE \
+    -DPAHO_BUILD_TESTS=FALSE \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH=${MINGW_PREFIX} \
+    -DCMAKE_FIND_ROOT_PATH=${MINGW_PREFIX} \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+    -DCMAKE_CXX_STANDARD=11 \
+    -DCMAKE_CXX_FLAGS="-std=c++11 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN" && \
     make -j$(nproc) && \
     make install && \
     rm -rf /tmp/paho.mqtt.cpp && \
@@ -322,26 +322,26 @@ RUN cd /tmp/bacnet-stack && \
     cd /tmp/bacnet-win32 && \
     echo "핵심 BACnet 파일들 컴파일 시작..." && \
     for file in /tmp/bacnet-stack/src/bacnet/*.c; do \
-        echo "Compiling $(basename $file)..."; \
-        x86_64-w64-mingw32-gcc -c \
-            -DBACDL_BIP=1 -DBACAPP_ALL -DPRINT_ENABLED=1 \
-            -DBACNET_STACK_DEPRECATED= \
-            -Wno-macro-redefined \
-            -I/tmp/bacnet-stack/src \
-            -I/tmp/bacnet-stack/src/bacnet \
-            "$file" 2>/dev/null || echo "Failed: $(basename $file)"; \
+    echo "Compiling $(basename $file)..."; \
+    x86_64-w64-mingw32-gcc -c \
+    -DBACDL_BIP=1 -DBACAPP_ALL -DPRINT_ENABLED=1 \
+    -DBACNET_STACK_DEPRECATED= \
+    -Wno-macro-redefined \
+    -I/tmp/bacnet-stack/src \
+    -I/tmp/bacnet-stack/src/bacnet \
+    "$file" 2>/dev/null || echo "Failed: $(basename $file)"; \
     done && \
     echo "BACnet 정적 라이브러리 생성..." && \
     x86_64-w64-mingw32-ar rcs libbacnet.a *.o && \
     BACNET_SIZE_KB=$(du -k libbacnet.a | cut -f1) && \
     if [ "$BACNET_SIZE_KB" -lt 300 ]; then \
-        echo "❌ BACnet 라이브러리가 너무 작음: ${BACNET_SIZE_KB}KB"; \
-        exit 1; \
+    echo "❌ BACnet 라이브러리가 너무 작음: ${BACNET_SIZE_KB}KB"; \
+    exit 1; \
     fi && \
     echo "✅ BACnet 라이브러리 검증 통과: ${BACNET_SIZE_KB}KB" && \
     cp libbacnet.a ${MINGW_PREFIX}/lib/ && \
     mkdir -p ${MINGW_PREFIX}/include/bacnet && \
-    cp /tmp/bacnet-stack/src/bacnet/*.h ${MINGW_PREFIX}/include/bacnet/ && \
+    cp -r /tmp/bacnet-stack/src/bacnet/* ${MINGW_PREFIX}/include/bacnet/ && \
     rm -rf /tmp/bacnet-stack /tmp/bacnet-win32 && \
     echo "BACnet Stack 설치 완료"
 
@@ -357,7 +357,7 @@ RUN cd /tmp && \
     echo "nlohmann/json 설치 완료"
 
 RUN wget https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.14.1/httplib.h \
-         -O ${MINGW_PREFIX}/include/httplib.h && \
+    -O ${MINGW_PREFIX}/include/httplib.h && \
     echo "cpp-httplib 설치 완료"
 
 RUN cd /tmp && \
@@ -375,9 +375,9 @@ RUN cat > /usr/local/bin/build-pulseone << 'BUILDEOF'
 echo "🏗️ PulseOne Collector Windows 빌드 시작..."
 
 if [ ! -d "/src/collector" ]; then
-    echo "❌ /src/collector 디렉토리가 없습니다"
-    echo "💡 사용법: docker run -v $(pwd):/src pulseone-windows-builder build-pulseone"
-    exit 1
+echo "❌ /src/collector 디렉토리가 없습니다"
+echo "💡 사용법: docker run -v $(pwd):/src pulseone-windows-builder build-pulseone"
+exit 1
 fi
 
 cd /src/collector
@@ -391,29 +391,29 @@ make -f Makefile.windows clean 2>/dev/null || true
 
 echo "🔨 PulseOne Collector 컴파일..."
 if make -f Makefile.windows all; then
-    echo ""
-    echo "✅ 빌드 성공!"
-    
-    if [ -f "bin-windows/collector.exe" ]; then
-        echo "📦 결과 파일: bin-windows/collector.exe"
-        echo "📏 파일 크기: $(du -h bin-windows/collector.exe | cut -f1)"
-        echo "🔍 파일 타입: $(file bin-windows/collector.exe | cut -d: -f2-)"
-        echo ""
-        echo "🎉 Windows 실행 파일이 성공적으로 생성되었습니다!"
-        echo "💾 파일 위치: $(realpath bin-windows/collector.exe)"
-    else
-        echo "⚠️ 빌드는 성공했지만 실행 파일을 찾을 수 없습니다"
-        echo "📁 bin-windows/ 디렉토리 내용:"
-        ls -la bin-windows/ 2>/dev/null || echo "  (디렉토리 없음)"
-    fi
+echo ""
+echo "✅ 빌드 성공!"
+
+if [ -f "bin-windows/collector.exe" ]; then
+echo "📦 결과 파일: bin-windows/collector.exe"
+echo "📏 파일 크기: $(du -h bin-windows/collector.exe | cut -f1)"
+echo "🔍 파일 타입: $(file bin-windows/collector.exe | cut -d: -f2-)"
+echo ""
+echo "🎉 Windows 실행 파일이 성공적으로 생성되었습니다!"
+echo "💾 파일 위치: $(realpath bin-windows/collector.exe)"
 else
-    echo ""
-    echo "❌ 빌드 실패"
-    echo "🔍 다음 사항들을 확인해주세요:"
-    echo "  1. Makefile.windows 파일이 존재하는지"
-    echo "  2. 소스 코드에 컴파일 오류가 없는지"
-    echo "  3. 필요한 라이브러리가 모두 설치되어 있는지"
-    exit 1
+echo "⚠️ 빌드는 성공했지만 실행 파일을 찾을 수 없습니다"
+echo "📁 bin-windows/ 디렉토리 내용:"
+ls -la bin-windows/ 2>/dev/null || echo "  (디렉토리 없음)"
+fi
+else
+echo ""
+echo "❌ 빌드 실패"
+echo "🔍 다음 사항들을 확인해주세요:"
+echo "  1. Makefile.windows 파일이 존재하는지"
+echo "  2. 소스 코드에 컴파일 오류가 없는지"
+echo "  3. 필요한 라이브러리가 모두 설치되어 있는지"
+exit 1
 fi
 BUILDEOF
 
@@ -424,70 +424,70 @@ RUN cat > /usr/local/bin/check-all-libs << 'CHECKEOF'
 echo "설치된 라이브러리 확인:"
 echo "=============================="
 for lib in sqlite3 ssl crypto modbus hiredis paho-mqtt3c paho-mqtt3a quickjs bacnet; do
-   if [ -f "/usr/x86_64-w64-mingw32/lib/lib${lib}.a" ]; then
-       size=$(du -h "/usr/x86_64-w64-mingw32/lib/lib${lib}.a" | cut -f1)
-       printf "  ✅ %-20s %s\n" "lib${lib}.a" "($size)"
-   else
-       printf "  ❌ %-20s\n" "lib${lib}.a"
-   fi
+if [ -f "/usr/x86_64-w64-mingw32/lib/lib${lib}.a" ]; then
+size=$(du -h "/usr/x86_64-w64-mingw32/lib/lib${lib}.a" | cut -f1)
+printf "  ✅ %-20s %s\n" "lib${lib}.a" "($size)"
+else
+printf "  ❌ %-20s\n" "lib${lib}.a"
+fi
 done
 
 if [ -f "/usr/x86_64-w64-mingw32/lib/libpaho-mqttpp3-static.a" ]; then
-   size=$(du -h "/usr/x86_64-w64-mingw32/lib/libpaho-mqttpp3-static.a" | cut -f1)
-   printf "  ✅ %-20s %s\n" "libpaho-mqttpp3-static.a" "($size)"
+size=$(du -h "/usr/x86_64-w64-mingw32/lib/libpaho-mqttpp3-static.a" | cut -f1)
+printf "  ✅ %-20s %s\n" "libpaho-mqttpp3-static.a" "($size)"
 else
-   printf "  ❌ %-20s\n" "libpaho-mqttpp3-static.a"
+printf "  ❌ %-20s\n" "libpaho-mqttpp3-static.a"
 fi
 
 echo ""
 echo "MQTT 헤더 파일 확인:"
 echo "=============================="
 for header in MQTTClient.h MQTTAsync.h; do
-   if [ -f "/usr/x86_64-w64-mingw32/include/$header" ]; then
-       echo "  ✅ $header"
-   else
-       echo "  ❌ $header"
-   fi
+if [ -f "/usr/x86_64-w64-mingw32/include/$header" ]; then
+echo "  ✅ $header"
+else
+echo "  ❌ $header"
+fi
 done
 
 if [ -d "/usr/x86_64-w64-mingw32/include/mqtt" ]; then
-   echo "  ✅ mqtt/ 디렉토리"
-   echo "  📁 C++ 헤더 개수: $(find /usr/x86_64-w64-mingw32/include/mqtt/ -name "*.h" | wc -l)"
+echo "  ✅ mqtt/ 디렉토리"
+echo "  📁 C++ 헤더 개수: $(find /usr/x86_64-w64-mingw32/include/mqtt/ -name "*.h" | wc -l)"
 else
-   echo "  ❌ mqtt/ 디렉토리"
+echo "  ❌ mqtt/ 디렉토리"
 fi
 
 echo ""
 echo "Modbus 헤더 파일 확인:"
 echo "=============================="
 if [ -d "/usr/x86_64-w64-mingw32/include/modbus" ]; then
-   echo "  ✅ modbus/ 디렉토리"
-   echo "  📁 헤더 개수: $(find /usr/x86_64-w64-mingw32/include/modbus/ -name "*.h" | wc -l)"
+echo "  ✅ modbus/ 디렉토리"
+echo "  📁 헤더 개수: $(find /usr/x86_64-w64-mingw32/include/modbus/ -name "*.h" | wc -l)"
 else
-   echo "  ❌ modbus/ 디렉토리"
+echo "  ❌ modbus/ 디렉토리"
 fi
 
 echo ""
 echo "BACnet 헤더 파일 확인:"
 echo "=============================="
 if [ -d "/usr/x86_64-w64-mingw32/include/bacnet" ]; then
-   echo "  ✅ bacnet/ 디렉토리"
-   echo "  📁 헤더 개수: $(find /usr/x86_64-w64-mingw32/include/bacnet/ -name "*.h" | wc -l)"
-   for header in bacenum.h bacdef.h bip.h config.h; do
-       if [ -f "/usr/x86_64-w64-mingw32/include/bacnet/$header" ]; then
-           echo "  ✅ $header"
-       else
-           echo "  ❌ $header"
-       fi
-   done
-   
-   if [ -f "/usr/x86_64-w64-mingw32/include/bacnet/basic/sys/platform.h" ]; then
-       echo "  ✅ basic/sys/platform.h"
-   else
-       echo "  ❌ basic/sys/platform.h"
-   fi
+echo "  ✅ bacnet/ 디렉토리"
+echo "  📁 헤더 개수: $(find /usr/x86_64-w64-mingw32/include/bacnet/ -name "*.h" | wc -l)"
+for header in bacenum.h bacdef.h bip.h config.h; do
+if [ -f "/usr/x86_64-w64-mingw32/include/bacnet/$header" ]; then
+echo "  ✅ $header"
 else
-   echo "  ❌ bacnet/ 디렉토리"
+echo "  ❌ $header"
+fi
+done
+
+if [ -f "/usr/x86_64-w64-mingw32/include/bacnet/basic/sys/platform.h" ]; then
+echo "  ✅ basic/sys/platform.h"
+else
+echo "  ❌ basic/sys/platform.h"
+fi
+else
+echo "  ❌ bacnet/ 디렉토리"
 fi
 
 echo ""
@@ -529,8 +529,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # 최종 검증
 RUN FINAL_SIZE_KB=$(du -k ${MINGW_PREFIX}/lib/libbacnet.a | cut -f1) && \
     if [ "$FINAL_SIZE_KB" -lt 400 ]; then \
-        echo "❌ BACnet 최종 검증 실패: ${FINAL_SIZE_KB}KB"; \
-        exit 1; \
+    echo "❌ BACnet 최종 검증 실패: ${FINAL_SIZE_KB}KB"; \
+    exit 1; \
     fi && \
     echo "✅ BACnet 라이브러리 최종 검증 완료: ${FINAL_SIZE_KB}KB"
 

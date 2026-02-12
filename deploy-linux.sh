@@ -30,14 +30,55 @@ echo "✅ Project structure check completed"
 # 2. Build Environment Setup
 # =============================================================================
 echo "2. 📦 Setting up build environment..."
-rm -rf "$DIST_DIR"
-mkdir -p "$PACKAGE_DIR"
 mkdir -p "$PACKAGE_DIR/collector"
+mkdir -p "$PACKAGE_DIR/setup_assets"
+# Clean contents but keep directories to avoid Docker mount sync issues
+find "$PACKAGE_DIR" -mindepth 1 -maxdepth 2 -not -path "$PACKAGE_DIR/collector" -not -path "$PACKAGE_DIR/setup_assets" -delete 2>/dev/null || true
+find "$PACKAGE_DIR/collector" -mindepth 1 -delete 2>/dev/null || true
+find "$PACKAGE_DIR/setup_assets" -mindepth 1 -delete 2>/dev/null || true
 
 # =============================================================================
-# 3. Frontend Build
+# 3. Dependency Bundling (Air-Gapped Support)
 # =============================================================================
-echo "3. 🎨 Building frontend..."
+echo "3. 📥 Bundling dependencies for offline installation..."
+
+# Node.js (Linux x64 LTS)
+NODE_VERSION="v22.13.1"
+NODE_PACKAGE="node-$NODE_VERSION-linux-x64.tar.xz"
+if [ ! -f "setup_assets/$NODE_PACKAGE" ]; then
+    echo "   Downloading Node.js $NODE_VERSION..."
+    curl -L "https://nodejs.org/dist/$NODE_VERSION/$NODE_PACKAGE" -o "$PACKAGE_DIR/setup_assets/$NODE_PACKAGE"
+else
+    cp "setup_assets/$NODE_PACKAGE" "$PACKAGE_DIR/setup_assets/"
+fi
+
+# Redis (Linux x64 - Using static binary if possible or generic source)
+# Note: Redis usually requires build on target or specific binary. 
+# We'll provide a pre-compiled x64 binary if available or skip if building on target is preferred.
+# For simplicity, we'll try to fetch a generic x64 build.
+REDIS_VERSION="7.2.4"
+REDIS_PACKAGE="redis-$REDIS_VERSION.tar.gz"
+echo "   Bundling Redis $REDIS_VERSION source (to be compiled on target if needed)..."
+if [ ! -f "setup_assets/$REDIS_PACKAGE" ]; then
+    curl -L "http://download.redis.io/releases/$REDIS_PACKAGE" -o "$PACKAGE_DIR/setup_assets/$REDIS_PACKAGE"
+else
+    cp "setup_assets/$REDIS_PACKAGE" "$PACKAGE_DIR/setup_assets/"
+fi
+
+# InfluxDB (Linux x64)
+INFLUX_VERSION="2.7.5"
+INFLUX_PACKAGE="influxdb2-$INFLUX_VERSION-linux-amd64.tar.gz"
+echo "   Downloading InfluxDB $INFLUX_VERSION..."
+if [ ! -f "setup_assets/$INFLUX_PACKAGE" ]; then
+    curl -L "https://dl.influxdata.com/influxdb/releases/$INFLUX_PACKAGE" -o "$PACKAGE_DIR/setup_assets/$INFLUX_PACKAGE"
+else
+    cp "setup_assets/$INFLUX_PACKAGE" "$PACKAGE_DIR/setup_assets/"
+fi
+
+# =============================================================================
+# 4. Frontend Build
+# =============================================================================
+echo "4. 🎨 Building frontend..."
 cd "$PROJECT_ROOT/frontend"
 npm install --silent
 if npm run build; then
@@ -48,9 +89,9 @@ else
 fi
 
 # =============================================================================
-# 4. Collector Build (Docker for Linux)
+# 5. Collector Build (Docker for Linux)
 # =============================================================================
-echo "4. ⚙️ Building Collector for Linux..."
+echo "5. ⚙️ Building Collector for Linux..."
 cd "$PROJECT_ROOT"
 
 if docker image ls | grep -q "pulseone-linux-builder"; then
@@ -60,75 +101,61 @@ else
     cat > "$PROJECT_ROOT/collector/Dockerfile.linux-build" << 'EOF'
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y build-essential cmake git libsqlite3-dev libcurl4-openssl-dev libssl-dev uuid-dev nlohmann-json3-dev pkg-config
-
-# Install Hiredis
+RUN git clone --depth 1 --branch bacnet-stack-1.3.8 https://github.com/bacnet-stack/bacnet-stack.git /tmp/bacnet-stack && \
+    cd /tmp/bacnet-stack && cmake -Bbuild -DBACNET_STACK_BUILD_APPS=OFF . && cmake --build build/ --target install && rm -rf /tmp/bacnet-stack
 RUN git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git /tmp/hiredis && \
     cd /tmp/hiredis && make && make install && rm -rf /tmp/hiredis
-
-# Install Paho MQTT C
 RUN git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git /tmp/paho.mqtt.c && \
     cd /tmp/paho.mqtt.c && cmake -Bbuild -DPAHO_ENABLE_TESTING=OFF -DPAHO_BUILD_STATIC=ON -DPAHO_WITH_SSL=ON . && cmake --build build/ --target install && rm -rf /tmp/paho.mqtt.c
-
-# Install Paho MQTT C++
 RUN git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git /tmp/paho.mqtt.cpp && \
     cd /tmp/paho.mqtt.cpp && cmake -Bbuild -DPAHO_BUILD_STATIC=ON -DPAHO_BUILD_DOCUMENTATION=OFF . && cmake --build build/ --target install && rm -rf /tmp/paho.mqtt.cpp
-
 WORKDIR /src
 EOF
     docker build -f collector/Dockerfile.linux-build -t pulseone-linux-builder .
 fi
 
+# Docker Desktop for Mac sync delay protection
+sleep 5
+
+# Extreme defensive check for mount points
+mkdir -p "$PACKAGE_DIR/collector"
+if [ ! -d "$PACKAGE_DIR/collector" ]; then
+    echo "❌ CRITICAL: Mount point $PACKAGE_DIR/collector still missing!"
+    exit 1
+fi
+
 docker run --rm \
     -v "$(pwd)/core/collector:/src/collector" \
+    -v "$(pwd)/core/shared:/src/shared" \
     -v "$(pwd)/core:/src/core" \
     -v "$PACKAGE_DIR/collector:/output" \
     pulseone-linux-builder bash -c "
-        mkdir -p /src/collector/build
-        cd /src/collector/build
-        # [OPTIMIZED] Release Build with RPi4 CPU Tuning & -O3
-        cmake .. -DCMAKE_BUILD_TYPE=Release \
-                 -DCMAKE_CXX_FLAGS="-O3 -march=armv8-a+crc -mtune=cortex-a72"
+        set -e
+        rm -rf /src/collector/build
+        mkdir -p /src/collector/build && cd /src/collector/build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS='-O3'
         make -j\$(nproc)
         strip --strip-unneeded collector
         cp collector /output/pulseone-collector
-
-        # [OPTIMIZED] Export Gateway Build with RPi4 CPU Tuning & -O3
+        
         cd /src/core/export-gateway
-        make clean
-        make -j\$(nproc) CXXFLAGS="-O3 -march=armv8-a+crc -mtune=cortex-a72 -DPULSEONE_LINUX=1 -DNDEBUG"
+        make clean && make -j\$(nproc) CXXFLAGS='-O3 -DPULSEONE_LINUX=1 -DNDEBUG'
         strip --strip-unneeded bin/export-gateway
         cp bin/export-gateway /output/pulseone-export-gateway
     "
 
-if [ -f "$PACKAGE_DIR/collector/pulseone-collector" ]; then
-    echo "✅ Collector build successful"
-else
-    echo "❌ Collector build failed"
-    exit 1
-fi
-
-if [ -f "$PACKAGE_DIR/collector/pulseone-export-gateway" ]; then
-    echo "✅ Export Gateway build successful"
-else
-    echo "❌ Export Gateway build failed"
-    exit 1
-fi
-
 # =============================================================================
-# 5. Assemble Package
+# 6. Assemble Package
 # =============================================================================
-echo "5. 🔧 Assembling package..."
+echo "6. 🔧 Assembling package..."
 cd "$PACKAGE_DIR"
 
-# Copy Backend
 cp -r "$PROJECT_ROOT/backend" ./
 rm -rf backend/node_modules backend/.git
 
-# Copy Frontend
 mkdir -p backend/frontend
 cp -r "$PROJECT_ROOT/frontend/dist"/* ./backend/frontend/
 
-# Copy Config
 if [ -d "$PROJECT_ROOT/config" ]; then
     cp -r "$PROJECT_ROOT/config" ./
 fi
@@ -136,58 +163,121 @@ fi
 mkdir -p data/db data/logs config
 
 # =============================================================================
-# 6. Create Install Script (Systemd)
+# 7. Create Install Script (Systemd + Air-Gapped)
 # =============================================================================
-echo "6. 🛠️ Creating install.sh..."
+echo "7. 🛠️ Creating install.sh..."
 
 cat > install.sh << 'INSTALL_EOF'
 #!/bin/bash
 if [ "$EUID" -ne 0 ]; then
-  echo "❌ Please run as root"
+  echo "❌ Please run as root (sudo ./install.sh)"
   exit 1
 fi
 
-INSTALL_DIR="/opt/pulseone"
-echo "Installing to $INSTALL_DIR..."
+pushd "$(dirname "$0")" > /dev/null
+INSTALL_DIR=$(pwd)
+ASSETS_DIR="$INSTALL_DIR/setup_assets"
 
-# Create User
+echo "================================================================"
+echo "PulseOne Linux Installation v6.1 (Air-Gapped Ready)"
+echo "Target Directory: $INSTALL_DIR"
+echo "================================================================"
+
+# 1. Setup User
+echo "[1/6] Setting up system user..."
 id -u pulseone &>/dev/null || useradd -r -s /bin/false pulseone
 
-# Create Directories
-mkdir -p "$INSTALL_DIR"
-cp -r * "$INSTALL_DIR/"
-chown -R pulseone:pulseone "$INSTALL_DIR"
+# 2. Install Infrastructure (Offline First)
+echo "[2/6] Installing Infrastructure Components..."
 
-# Install Dependencies (Ubuntu/Debian)
-if command -v apt-get &> /dev/null; then
-    apt-get update
-    apt-get install -y nodejs npm redis-server libsqlite3-0 libcurl4
-elif command -v yum &> /dev/null; then
-    yum install -y nodejs redis libsqlite3 libcurl
+# Node.js
+if ! command -v node &> /dev/null; then
+    echo "   Node.js not found. Installing from setup_assets..."
+    NODE_TAR=$(ls "$ASSETS_DIR"/node-*.tar.xz 2>/dev/null)
+    if [ -f "$NODE_TAR" ]; then
+        tar -xJf "$NODE_TAR" -C /usr/local --strip-components=1
+        echo "   ✅ Node.js installed"
+    else
+        echo "   ⚠️ Node.js binary not found in assets. Trying apt-get..."
+        apt-get update && apt-get install -y nodejs npm
+    fi
 fi
 
-# Install Node Modules
-cd "$INSTALL_DIR/backend"
-npm install --production --unsafe-perm
+# Redis
+if ! command -v redis-server &> /dev/null; then
+    echo "   Redis not found. Installing from setup_assets..."
+    REDIS_TAR=$(ls "$ASSETS_DIR"/redis-*.tar.gz 2>/dev/null)
+    if [ -f "$REDIS_TAR" ]; then
+        mkdir -p /tmp/redis-build
+        tar -xzf "$REDIS_TAR" -C /tmp/redis-build --strip-components=1
+        cd /tmp/redis-build && make -j$(nproc) && make install
+        cd "$INSTALL_DIR"
+        echo "   ✅ Redis installed"
+    else
+        echo "   ⚠️ Redis source not found. Trying apt-get..."
+        apt-get update && apt-get install -y redis-server
+    fi
+fi
 
-# Generate Systemd Service
+# InfluxDB
+if ! command -v influxd &> /dev/null; then
+    echo "   InfluxDB not found. Installing from setup_assets..."
+    INFLUX_TAR=$(ls "$ASSETS_DIR"/influxdb2-*.tar.gz 2>/dev/null)
+    if [ -f "$INFLUX_TAR" ]; then
+        tar -xzf "$INFLUX_TAR" -C /usr/local/bin --strip-components=1
+        echo "   ✅ InfluxDB installed"
+    else
+        echo "   ⚠️ InfluxDB binary not found. Trying apt-get..."
+        apt-get update && apt-get install -y influxdb2
+    fi
+fi
+
+# 3. Backend Dependencies
+echo "[3/6] Installing Backend dependencies..."
+cd "$INSTALL_DIR/backend"
+if [ -d "$ASSETS_DIR/node_modules" ]; then
+    echo "   Using pre-bundled node_modules..."
+    cp -r "$ASSETS_DIR/node_modules" ./
+else
+    echo "   📦 Running npm install (Internet required if not bundled)..."
+    npm install --production --unsafe-perm
+fi
+
+# 4. Portability: Standardize .env with Relative Paths
+echo "[4/6] Standardizing configuration (Relative Paths)..."
+mkdir -p "$INSTALL_DIR/config"
+cat > "$INSTALL_DIR/config/.env" << ENV_EOF
+# PulseOne Production Environment
+NODE_ENV=production
+PORT=3000
+
+# Base Directories (Relative to INSTALL_DIR)
+DATA_DIR=./data
+LOGS_DIR=./data/logs
+CONFIG_DIR=./config
+
+# Infrastructure
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+INFLUXDB_HOST=127.0.0.1
+INFLUXDB_PORT=8086
+ENV_EOF
+
+# 5. Systemd Service Registration
+echo "[5/6] Registering Systemd services..."
+
 cat > /etc/systemd/system/pulseone-backend.service << SERVICE_EOF
 [Unit]
 Description=PulseOne Backend
 After=network.target redis.service
 
 [Service]
-ExecStart=/usr/bin/node $INSTALL_DIR/backend/app.js
+ExecStart=/usr/local/bin/node $INSTALL_DIR/backend/app.js
 WorkingDirectory=$INSTALL_DIR/backend
 Environment=NODE_ENV=production
 Restart=always
 User=pulseone
 Group=pulseone
-# [OPTIMIZED] Resource Limits for Raspberry Pi
-MemoryHigh=512M
-MemoryMax=768M
-CPUWeight=100
-TasksMax=100
 
 [Install]
 WantedBy=multi-user.target
@@ -201,7 +291,6 @@ After=pulseone-backend.service
 [Service]
 ExecStart=$INSTALL_DIR/collector/pulseone-collector
 WorkingDirectory=$INSTALL_DIR
-Environment=LD_LIBRARY_PATH=$INSTALL_DIR/collector:/usr/local/lib
 Restart=always
 User=pulseone
 Group=pulseone
@@ -218,30 +307,30 @@ After=pulseone-collector.service
 [Service]
 ExecStart=$INSTALL_DIR/collector/pulseone-export-gateway
 WorkingDirectory=$INSTALL_DIR
-Environment=LD_LIBRARY_PATH=$INSTALL_DIR/collector:/usr/local/lib
 Restart=always
 User=pulseone
 Group=pulseone
-# [OPTIMIZED] Resource Limits and HA
-MemoryHigh=256M
-MemoryMax=512M
-CPUWeight=200
-KillMode=process
 
 [Install]
 WantedBy=multi-user.target
 SERVICE_EOF
 
-# Enable Services
-systemctl daemon-reload
-systemctl enable pulseone-backend
-systemctl enable pulseone-collector
-systemctl enable pulseone-export-gateway
-systemctl start pulseone-backend
-systemctl start pulseone-collector
-systemctl start pulseone-export-gateway
+# 6. Finalize
+echo "[6/6] Starting services..."
+chmod -R 755 "$INSTALL_DIR"
+chown -R pulseone:pulseone "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR/data/db" "$INSTALL_DIR/data/logs"
+chown -R pulseone:pulseone "$INSTALL_DIR/data"
 
-echo "✅ Installation Complete! Web UI: http://localhost:3000"
+systemctl daemon-reload
+systemctl enable pulseone-backend pulseone-collector pulseone-export-gateway
+systemctl start pulseone-backend pulseone-collector pulseone-export-gateway
+
+echo "================================================================"
+echo "✅ Installation Complete!"
+echo "➡️ Web UI: http://localhost:3000"
+echo "================================================================"
+popd > /dev/null
 INSTALL_EOF
 
 chmod +x install.sh
@@ -250,36 +339,23 @@ chmod +x install.sh
 cat > uninstall.sh << 'UNINSTALL_EOF'
 #!/bin/bash
 if [ "$EUID" -ne 0 ]; then
-  echo "❌ Please run as root"
+  echo "❌ Please run as root (sudo ./uninstall.sh)"
   exit 1
 fi
 
-INSTALL_DIR="/opt/pulseone"
 echo "Cleaning up PulseOne services..."
-
-# Stop and Disable Services
 SERVICES=("pulseone-backend" "pulseone-collector" "pulseone-export-gateway")
 
 for service in "${SERVICES[@]}"; do
-    if systemctl is-active --quiet "$service"; then
-        echo "Stopping $service..."
-        systemctl stop "$service"
-    fi
-    if [ -f "/etc/systemd/system/$service.service" ]; then
-        echo "Removing $service..."
-        systemctl disable "$service"
-        rm "/etc/systemd/system/$service.service"
-    fi
+    systemctl stop "$service" 2>/dev/null
+    systemctl disable "$service" 2>/dev/null
+    rm -f "/etc/systemd/system/$service.service"
 done
 
 systemctl daemon-reload
-
-echo "Services removed successfully."
-echo "Note: The installation directory ($INSTALL_DIR) was not removed."
-echo "To remove all data, run: rm -rf $INSTALL_DIR"
+echo "✅ Services removed. Data directory was NOT deleted."
 UNINSTALL_EOF
 
 chmod +x uninstall.sh
 
 echo "✅ Build Complete: dist_linux/$PACKAGE_NAME"
-# [OPTIMIZED] Native deployment package with full lifecycle support (install/uninstall)

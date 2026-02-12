@@ -1,0 +1,53 @@
+# ==========================================
+# Phase 1: Builder
+# ==========================================
+FROM gcc:12 AS builder
+
+RUN apt-get update && apt-get install -y \
+    cmake make build-essential \
+    libsqlite3-dev libcurl4-openssl-dev libssl-dev uuid-dev \
+    git pkg-config wget \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /deps
+
+# 1. nlohmann/json
+RUN git clone --depth 1 --branch v3.11.3 https://github.com/nlohmann/json.git && \
+    cmake -S json -B json/build -DCMAKE_INSTALL_PREFIX=/usr/local -DJSON_BuildTests=OFF && \
+    make -C json/build -j$(nproc) install
+
+# 2. hiredis
+RUN git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && \
+    cmake -S hiredis -B hiredis/build -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_SSL=ON && \
+    make -C hiredis/build -j$(nproc) install
+
+WORKDIR /app
+COPY core /app/core
+RUN cd core/shared && make all -j$(nproc)
+RUN cd core/export-gateway && make -j$(nproc) CXXFLAGS="-O3 -DNDEBUG"
+
+# ==========================================
+# Phase 2: Final
+# ==========================================
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+    libsqlite3-0 libcurl4 libssl3 uuid-runtime \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Binary
+COPY --from=builder /app/core/export-gateway/bin/export-gateway /app/pulseone-export-gateway
+
+# Copy required Shared Libraries
+COPY --from=builder /usr/local/lib/libhiredis.so* /usr/local/lib/
+RUN ldconfig
+
+# Create data/logs directory
+RUN mkdir -p /app/data/db /app/data/logs
+
+# Environment
+ENV ENVIRONMENT=production
+
+CMD ["/app/pulseone-export-gateway"]

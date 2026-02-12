@@ -10,7 +10,7 @@
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include <nlohmann/json.hpp>
-#if HAS_QUICKJS
+#if HAVE_QUICKJS
 #include <quickjs.h>
 #endif
 #include <algorithm>
@@ -177,7 +177,7 @@ void AlarmManager::initializeData() {
 }
 
 bool AlarmManager::initScriptEngine() {
-#if HAS_QUICKJS
+#if HAVE_QUICKJS
   try {
     if (js_context_) {
       return true;
@@ -213,7 +213,7 @@ bool AlarmManager::initScriptEngine() {
 }
 
 void AlarmManager::cleanupScriptEngine() {
-#if HAS_QUICKJS
+#if HAVE_QUICKJS
   if (js_context_) {
     JS_FreeContext((JSContext *)js_context_);
     js_context_ = nullptr;

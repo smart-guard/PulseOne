@@ -9,7 +9,7 @@
 #include <nlohmann/json.hpp>
 
 // QuickJS forward declarations or headers
-#if HAS_QUICKJS
+#if HAVE_QUICKJS
 extern "C" {
     #include <quickjs.h>
 }
@@ -68,7 +68,7 @@ private:
     bool registerSystemFunctions();
     std::string preprocessFormula(const std::string& script, int tenant_id);
 
-#if HAS_QUICKJS
+#if HAVE_QUICKJS
     JSRuntime* js_runtime_{nullptr};
     JSContext* js_context_{nullptr};
 #else

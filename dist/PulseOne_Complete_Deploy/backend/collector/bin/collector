@@ -1,3 +1,0 @@
-#!/bin/bash
-echo "Mock Collector Started"
-sleep 30

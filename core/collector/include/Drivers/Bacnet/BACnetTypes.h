@@ -28,7 +28,7 @@
 // BACnet 기본 타입 정의
 // =============================================================================
 
-#if defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 extern "C" {
 #include <bacnet/bacapp.h>
 #include <bacnet/bacdef.h>
@@ -338,14 +338,15 @@ typedef struct {
   uint8_t adr[7];
 } BACNET_ADDRESS; // ✅ typedef 완료
 
-#endif // defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 // ✅ 조건부 컴파일 닫힘
 
 // =============================================================================
 // BACnet 상수들 (Windows/Linux 공통)
 // =============================================================================
 
-#if !defined(HAS_BACNET) && !defined(HAS_BACNET_STACK)
+#if !defined(HAVE_BACNET) && !defined(HAVE_BACNET) &&                          \
+    !defined(HAVE_BACNET_STACK)
 // 1. BACnet 스택(라이브러리)에서 제공하는 표준 상수/태그들
 // 스택이 없을 때만 시스템 정의와 동일한 이름으로 제공하여 소스 코드 호환성 유지
 
@@ -380,7 +381,7 @@ constexpr uint8_t BACNET_APPLICATION_TAG_CHARACTER_STRING = 7;
 constexpr uint8_t CHARACTER_UTF8 = 0;
 #endif
 
-#endif // !defined(HAVE_BACNET) && !defined(HAS_BACNET_STACK)
+#endif // !defined(HAVE_BACNET)
 
 // 2. PulseOne 프로젝트 전용 상수 (스택 유무와 상관없이 항상 필요)
 #ifndef BACNET_MAX_DEVICE_ID
@@ -410,7 +411,7 @@ namespace BACnet {
 /**
  * @brief BACnet 객체 타입을 문자열로 변환
  */
-#if defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 inline std::string ObjectTypeToString(BACNET_OBJECT_TYPE type) {
 #else
 inline std::string ObjectTypeToString(BACnetObjectType type) {
@@ -466,7 +467,7 @@ inline std::string ObjectTypeToString(BACnetObjectType type) {
 /**
  * @brief 문자열을 BACnet 객체 타입으로 변환
  */
-#if defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 inline BACNET_OBJECT_TYPE StringToObjectType(const std::string &type_str) {
 #else
 inline BACnetObjectType StringToObjectType(const std::string &type_str) {
@@ -499,7 +500,7 @@ inline BACnetObjectType StringToObjectType(const std::string &type_str) {
   // 숫자로 파싱 시도
   try {
     int type_num = std::stoi(type_str);
-#if defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
     return static_cast<BACNET_OBJECT_TYPE>(type_num);
 #else
     return static_cast<BACnetObjectType>(type_num);
@@ -512,7 +513,7 @@ inline BACnetObjectType StringToObjectType(const std::string &type_str) {
 /**
  * @brief BACnet 프로퍼티 ID를 문자열로 변환
  */
-#if defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 inline std::string PropertyIdToString(BACNET_PROPERTY_ID prop_id) {
 #else
 inline std::string PropertyIdToString(BACnetPropertyId prop_id) {
@@ -566,7 +567,7 @@ inline std::string PropertyIdToString(BACnetPropertyId prop_id) {
 /**
  * @brief 문자열을 BACnet 프로퍼티 ID로 변환
  */
-#if defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 inline BACNET_PROPERTY_ID StringToPropertyId(const std::string &prop_str) {
 #else
 inline BACnetPropertyId StringToPropertyId(const std::string &prop_str) {
@@ -601,7 +602,7 @@ inline BACnetPropertyId StringToPropertyId(const std::string &prop_str) {
   // 숫자로 파싱 시도
   try {
     uint32_t prop_num = std::stoul(prop_str);
-#if defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
     return static_cast<BACNET_PROPERTY_ID>(prop_num);
 #else
     return static_cast<BACnetPropertyId>(prop_num);
@@ -614,7 +615,7 @@ inline BACnetPropertyId StringToPropertyId(const std::string &prop_str) {
 /**
  * @brief BACnet 객체 ID 생성
  */
-#if defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 inline uint32_t CreateObjectId(BACNET_OBJECT_TYPE type, uint32_t instance) {
 #else
 inline uint32_t CreateObjectId(BACnetObjectType type, uint32_t instance) {
@@ -625,7 +626,7 @@ inline uint32_t CreateObjectId(BACnetObjectType type, uint32_t instance) {
 /**
  * @brief BACnet 객체 ID에서 타입 추출
  */
-#if defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 inline BACNET_OBJECT_TYPE ExtractObjectType(uint32_t object_id) {
   return static_cast<BACNET_OBJECT_TYPE>((object_id >> 22) & 0x3FF);
 #else
@@ -653,7 +654,7 @@ inline bool IsValidObjectId(uint32_t object_id) {
 /**
  * @brief BACnet 프로퍼티 ID 유효성 검사
  */
-#if defined(HAVE_BACNET) || defined(HAS_BACNET_STACK)
+#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
 inline bool IsValidPropertyId(BACNET_PROPERTY_ID prop_id) {
 #else
 inline bool IsValidPropertyId(BACnetPropertyId prop_id) {

@@ -9,7 +9,7 @@
 #include <sstream>
 #include <iomanip>
 
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 #endif
@@ -217,7 +217,7 @@ void MqttDiagnostics::RecordOperation(const std::string& operation, bool success
 // =============================================================================
 
 std::string MqttDiagnostics::GetDiagnosticsJSON() const {
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
     std::lock_guard<std::mutex> lock(stats_mutex_);
     
     try {

@@ -15,7 +15,7 @@
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
-#if HAS_MQTT_CPP
+#if HAVE_MQTT_CPP
 // Eclipse Paho MQTT C++ 헤더들
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
@@ -27,22 +27,6 @@ using json = nlohmann::json;
 namespace PulseOne {
 namespace Drivers {
 
-// =============================================================================
-// 🔥 플러그인 등록용 C 인터페이스 (PluginLoader가 호출)
-// =============================================================================
-#ifndef TEST_BUILD
-extern "C" {
-#ifdef _WIN32
-__declspec(dllexport) void RegisterPlugin() {
-#else
-void RegisterMqttDriver() {
-#endif
-  DriverFactory::GetInstance().RegisterDriver(
-      "MQTT", []() { return std::make_unique<MqttDriver>(); });
-}
-}
-#endif
-
 using namespace std::chrono;
 
 // 타입 별칭들 - 헤더와 동일하게
@@ -52,7 +36,7 @@ using ProtocolType = PulseOne::Enums::ProtocolType;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
 using DataQuality = PulseOne::Enums::DataQuality; // ✅ 추가
 
-#if HAS_MQTT_CPP
+#if HAVE_MQTT_CPP
 
 // =============================================================================
 // MQTT 콜백 클래스 구현
@@ -1534,7 +1518,7 @@ std::string MqttDriver::GetDiagnosticsJSON() const {
   // ✅ 참조로 사용하여 복사 생성자 문제 해결
   const auto &stats = GetStatistics();
 
-#ifdef HAS_NLOHMANN_JSON
+#ifdef HAVE_JSON
   try {
     json diagnostics;
 
@@ -1833,3 +1817,23 @@ void MqttDriver::NotifyMessageProcessing(const std::string &,
 
 } // namespace Drivers
 } // namespace PulseOne
+
+// =============================================================================
+// 🔥 Plugin Entry Point
+// =============================================================================
+#ifndef TEST_BUILD
+extern "C" {
+#ifdef _WIN32
+__declspec(dllexport)
+#endif
+void RegisterPlugin() {
+  PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver("MQTT", []() {
+    return std::make_unique<PulseOne::Drivers::MqttDriver>();
+  });
+  std::cout << "[MqttDriver] Plugin Registered Successfully" << std::endl;
+}
+
+// Legacy wrapper for static linking
+void RegisterMqttDriver() { RegisterPlugin(); }
+}
+#endif

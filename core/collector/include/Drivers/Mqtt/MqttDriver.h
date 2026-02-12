@@ -32,7 +32,7 @@
 #endif
 
 // Eclipse Paho MQTT C++ 헤더들
-#ifdef HAS_MQTT
+#ifdef HAVE_MQTT
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
 #include <mqtt/connect_options.h>
@@ -181,7 +181,7 @@ public:
   /**
    * @brief 연결 성공 콜백
    */
-#ifdef HAS_MQTT
+#ifdef HAVE_MQTT
   /**
    * @brief 연결 성공 콜백
    */
@@ -465,7 +465,7 @@ private:
   // =======================================================================
 
   // Eclipse Paho MQTT 클라이언트
-#ifdef HAS_MQTT
+#ifdef HAVE_MQTT
   // Eclipse Paho MQTT 클라이언트
   std::unique_ptr<mqtt::async_client> mqtt_client_;
   std::shared_ptr<MqttCallbackImpl> mqtt_callback_;

@@ -282,7 +282,7 @@ bool DatabaseManager::connectMSSQL() {
   SQLCHAR out_conn_str[1024];
   SQLSMALLINT out_conn_str_len;
 
-  SQLRETURN ret = SQLDriverConnect(
+  SQLRETURN ret = SQLDriverConnectA(
       mssql_conn_, nullptr, (SQLCHAR *)conn_str.c_str(), SQL_NTS, out_conn_str,
       sizeof(out_conn_str), &out_conn_str_len, SQL_DRIVER_NOPROMPT);
 
@@ -307,7 +307,7 @@ bool DatabaseManager::executeQueryMSSQL(
   if (SQLAllocHandle(SQL_HANDLE_STMT, mssql_conn_, &stmt) != SQL_SUCCESS)
     return false;
 
-  SQLRETURN ret = SQLExecDirect(stmt, (SQLCHAR *)query.c_str(), SQL_NTS);
+  SQLRETURN ret = SQLExecDirectA(stmt, (SQLCHAR *)query.c_str(), SQL_NTS);
   if (!SQL_SUCCEEDED(ret)) {
     SQLFreeHandle(SQL_HANDLE_STMT, stmt);
     return false;
@@ -340,7 +340,7 @@ bool DatabaseManager::executeNonQueryMSSQL(const std::string &query) {
   SQLHSTMT stmt;
   if (SQLAllocHandle(SQL_HANDLE_STMT, mssql_conn_, &stmt) != SQL_SUCCESS)
     return false;
-  SQLRETURN ret = SQLExecDirect(stmt, (SQLCHAR *)query.c_str(), SQL_NTS);
+  SQLRETURN ret = SQLExecDirectA(stmt, (SQLCHAR *)query.c_str(), SQL_NTS);
   bool success = SQL_SUCCEEDED(ret);
   SQLFreeHandle(SQL_HANDLE_STMT, stmt);
   return success;

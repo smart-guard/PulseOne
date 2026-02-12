@@ -1,0 +1,104 @@
+version: "3.8"
+
+services:
+  backend:
+    image: pulseone-backend:prod
+    container_name: pulseone-backend
+    restart: always
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - DATA_DIR=/app/data
+      - LOGS_DIR=/app/data/logs
+      - CONFIG_DIR=/app/config
+      - REDIS_HOST=redis
+      - INFLUXDB_HOST=influxdb
+      - RABBITMQ_HOST=rabbitmq
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    depends_on:
+      - redis
+      - influxdb
+      - rabbitmq
+    networks:
+      - pulseone_net
+
+  collector:
+    image: pulseone-collector:prod
+    container_name: pulseone-collector
+    restart: always
+    environment:
+      - REDIS_HOST=redis
+      - SQLITE_PATH=/app/data/db/pulseone.db
+      - PULSEONE_DATA_DIR=/app/data
+      - LOG_LEVEL=warn
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    depends_on:
+      - backend
+    networks:
+      - pulseone_net
+
+  export-gateway:
+    image: pulseone-export-gateway:prod
+    container_name: pulseone-export-gateway
+    restart: always
+    environment:
+      - REDIS_HOST=redis
+      - SQLITE_PATH=/app/data/db/pulseone.db
+      - AUTO_RUN=true
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    depends_on:
+      - collector
+    networks:
+      - pulseone_net
+
+  redis:
+    image: redis:alpine
+    container_name: pulseone-redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - pulseone_net
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: pulseone-influxdb
+    restart: always
+    ports:
+      - "${INFLUXDB_PORT:-8086}:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=pulseone
+      - DOCKER_INFLUXDB_INIT_PASSWORD=yourpassword
+      - DOCKER_INFLUXDB_INIT_ORG=pulseone
+      - DOCKER_INFLUXDB_INIT_BUCKET=history
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=my-super-secret-auth-token
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    networks:
+      - pulseone_net
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: pulseone-rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - pulseone_net
+
+networks:
+  pulseone_net:
+    driver: bridge
+
+volumes:
+  redis_data:
+  influxdb_data:

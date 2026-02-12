@@ -1,6 +1,10 @@
 #ifndef DBLIB_DATABASE_MANAGER_HPP
 #define DBLIB_DATABASE_MANAGER_HPP
 
+#if defined(_WIN32) || defined(__MINGW32__)
+#include "Platform/PlatformCompat.h"
+#endif
+
 #include "DbExport.hpp"
 #include <atomic>
 #include <map>

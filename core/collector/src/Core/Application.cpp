@@ -12,6 +12,7 @@
 #include "Database/Repositories/TenantRepository.h"
 #include "Database/RepositoryFactory.h"
 #include "DatabaseManager.hpp"
+#include "Drivers/Common/PluginLoader.h"
 #include "Logging/LogManager.h"
 #include "Pipeline/DataProcessingService.h"
 #include "Pipeline/PipelineManager.h"
@@ -21,7 +22,7 @@
 
 #include <nlohmann/json.hpp>
 
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
 #include "Api/ConfigApiCallbacks.h"
 #include "Api/DeviceApiCallbacks.h"
 #include "Api/HardwareApiCallbacks.h"
@@ -79,17 +80,20 @@ void CollectorApplication::Stop() {
 
 // 드라이버 및 플러그인 등록 함수 선언 (monolithic link인 경우)
 extern "C" {
-#ifdef HAS_MODBUS
+#ifdef HAVE_MODBUS
 void RegisterModbusDriver();
 #endif
-#ifdef HAS_BACNET
+#ifdef HAVE_BACNET
 void RegisterBacnetDriver();
 #endif
-#ifdef HAS_MQTT
+#ifdef HAVE_MQTT
 void RegisterMqttDriver();
 #endif
 #ifdef HAVE_HTTP_DRIVER
 void RegisterHttpDriver();
+#endif
+#ifdef HAVE_BLE
+void RegisterBleDriver();
 #endif
 }
 
@@ -97,14 +101,25 @@ bool CollectorApplication::Initialize() {
   // 드라이버 등록
   LogManager::getInstance().Info("Registering built-in drivers...");
   try {
-#ifdef HAS_MODBUS
+#ifdef _WIN32
+    // Windows에서는 플러그인이 DLL로 제공되므로 정적 링크 호출을 하지 않음
+    // PluginLoader가 실행 파일 위치 기준의 ./plugins/*.dll을 로드할 것임
+    std::string exe_dir = Platform::Path::GetExecutableDirectory();
+    std::string plugin_path = Platform::Path::Join(exe_dir, "plugins");
+    Drivers::PluginLoader::GetInstance().LoadPlugins(plugin_path);
+#else
+#ifdef HAVE_MODBUS
     RegisterModbusDriver();
 #endif
-#ifdef HAS_BACNET
+#ifdef HAVE_BACNET
     RegisterBacnetDriver();
 #endif
-#ifdef HAS_MQTT
+#ifdef HAVE_MQTT
     RegisterMqttDriver();
+#endif
+#ifdef HAVE_BLE
+    RegisterBleDriver();
+#endif
 #endif
 #ifdef HAVE_HTTP_DRIVER
     RegisterHttpDriver();
@@ -414,7 +429,7 @@ void CollectorApplication::MainLoop() {
                       ? "Ready"
                       : "Not Ready"));
 
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
           // API 서버 상태
           LogManager::getInstance().Info(
               "  REST API: " +
@@ -466,7 +481,7 @@ void CollectorApplication::Cleanup() {
     is_running_.store(false);
 
     // 1. REST API 서버 정리
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
     if (api_server_) {
       LogManager::getInstance().Info("Step 1/3: Stopping REST API server...");
       api_server_->Stop();
@@ -517,7 +532,7 @@ void CollectorApplication::Cleanup() {
 }
 
 bool CollectorApplication::InitializeRestApiServer() {
-#if HAS_HTTPLIB
+#if HAVE_HTTPLIB
   try {
     // ConfigManager에서 API 포트 읽기
     int api_port = 8080; // 기본값
@@ -572,7 +587,7 @@ bool CollectorApplication::InitializeRestApiServer() {
   LogManager::getInstance().Info(
       "REST API Server disabled - HTTP library not available");
   LogManager::getInstance().Info("To enable REST API, compile with "
-                                 "-DHAS_HTTPLIB and link against httplib");
+                                 "-DHAVE_HTTPLIB and link against httplib");
   return true;
 #endif
 }

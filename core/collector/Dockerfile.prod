@@ -1,0 +1,84 @@
+# ==========================================
+# Phase 1: Builder (Heavy Build Environment)
+# ==========================================
+FROM gcc:12 AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    cmake make build-essential \
+    libsqlite3-dev libcurl4-openssl-dev libssl-dev uuid-dev \
+    git pkg-config wget unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Libraries (Cached)
+WORKDIR /deps
+
+# 1. httplib header
+RUN wget -O /usr/local/include/httplib.h https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.14.1/httplib.h
+
+# 2. nlohmann/json
+RUN git clone --depth 1 --branch v3.11.3 https://github.com/nlohmann/json.git && \
+    cmake -S json -B json/build -DCMAKE_INSTALL_PREFIX=/usr/local -DJSON_BuildTests=OFF && \
+    make -C json/build -j$(nproc) install
+
+# 3. hiredis
+RUN git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && \
+    cmake -S hiredis -B hiredis/build -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_SSL=ON && \
+    make -C hiredis/build -j$(nproc) install
+
+# 4. Paho MQTT C/C++
+RUN git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git && \
+    cmake -S paho.mqtt.c -B paho.mqtt.c/build -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_DOCUMENTATION=FALSE && \
+    make -C paho.mqtt.c/build -j$(nproc) install && \
+    git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
+    cmake -S paho.mqtt.cpp -B paho.mqtt.cpp/build -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_DOCUMENTATION=FALSE -DPAHO_BUILD_SAMPLES=FALSE && \
+    make -C paho.mqtt.cpp/build -j$(nproc) install
+
+# 5. libmodbus
+RUN git clone --depth 1 --branch v3.1.10 https://github.com/stephane/libmodbus.git && \
+    cd libmodbus && ./autogen.sh && ./configure --prefix=/usr/local && \
+    make -j$(nproc) install
+
+# 6. open62541 (OPC UA)
+RUN git clone --depth 1 --branch v1.3.9 https://github.com/open62541/open62541.git && \
+    cmake -S open62541 -B open62541/build -DUA_ENABLE_AMALGAMATION=ON -DUA_ENABLE_ENCRYPTION=ON && \
+    make -C open62541/build -j$(nproc) install
+
+# Build PulseOne Collector
+WORKDIR /app
+COPY core /app/core
+RUN cd core/shared && make all -j$(nproc)
+RUN cd core/collector && make all -j$(nproc)
+
+# ==========================================
+# Phase 2: Final (Lightweight Runtime)
+# ==========================================
+FROM ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libsqlite3-0 libcurl4 libssl3 uuid-runtime libpaho-mqtt1.3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Binaries and Plugins
+COPY --from=builder /app/core/collector/bin/pulseone-collector /app/
+COPY --from=builder /app/core/collector/bin/plugins /app/plugins/
+
+# Copy required Shared Libraries from builder
+COPY --from=builder /usr/local/lib/libhiredis.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libpaho-mqttpp3.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libmodbus.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libopen62541.so* /usr/local/lib/ 2>/dev/null || true
+
+RUN ldconfig
+
+# Create data/logs directory
+RUN mkdir -p /app/data/db /app/data/logs
+
+# Environment
+ENV LD_LIBRARY_PATH=/usr/local/lib:/app
+ENV ENVIRONMENT=production
+
+CMD ["/app/pulseone-collector"]
