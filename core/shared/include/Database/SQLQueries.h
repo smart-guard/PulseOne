@@ -69,7 +69,7 @@ namespace Device {
 // 🔥🔥🔥 중요: protocol_id 사용, protocol_type 제거
 const std::string FIND_ALL = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
+            id, tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 
@@ -80,7 +80,7 @@ const std::string FIND_ALL = R"(
 
 const std::string FIND_BY_ID = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
+            id, tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 
@@ -92,7 +92,7 @@ const std::string FIND_BY_ID = R"(
 // 🔥🔥🔥 프로토콜 조회 - protocol_id 사용
 const std::string FIND_BY_PROTOCOL_ID = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
+            id, tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 
@@ -105,7 +105,7 @@ const std::string FIND_BY_PROTOCOL_ID = R"(
 // 🔥 프로토콜 타입별 조회 (JOIN 필요)
 const std::string FIND_BY_PROTOCOL_TYPE = R"(
         SELECT 
-            d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id,
+            d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id, d.protocol_instance_id,
             d.name, d.description, d.device_type, d.manufacturer, d.model, d.serial_number,
             d.protocol_id, d.endpoint, d.config, d.polling_interval, d.timeout, d.retry_count,
             d.is_enabled, d.installation_date, d.last_maintenance, 
@@ -118,7 +118,7 @@ const std::string FIND_BY_PROTOCOL_TYPE = R"(
 
 const std::string FIND_BY_TENANT = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
+            id, tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 
@@ -130,7 +130,7 @@ const std::string FIND_BY_TENANT = R"(
 
 const std::string FIND_BY_SITE = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
+            id, tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 
@@ -143,7 +143,7 @@ const std::string FIND_BY_SITE = R"(
 // 🔥 에지 서버별 조회 (컬렉터 필터링용)
 const std::string FIND_BY_EDGE_SERVER = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
+            id, tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 
@@ -155,7 +155,7 @@ const std::string FIND_BY_EDGE_SERVER = R"(
 
 const std::string FIND_ENABLED = R"(
         SELECT 
-            d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id,
+            d.id, d.tenant_id, d.site_id, d.device_group_id, d.edge_server_id, d.protocol_instance_id,
             d.name, d.description, d.device_type, d.manufacturer, d.model, d.serial_number,
             d.protocol_id, d.endpoint, d.config, d.polling_interval, d.timeout, d.retry_count,
             d.is_enabled, d.installation_date, d.last_maintenance, 
@@ -168,7 +168,7 @@ const std::string FIND_ENABLED = R"(
 
 const std::string FIND_DISABLED = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
+            id, tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 
@@ -181,18 +181,18 @@ const std::string FIND_DISABLED = R"(
 // 🔥🔥🔥 INSERT - 현재 스키마 필드들
 const std::string INSERT = R"(
         INSERT INTO devices (
-            tenant_id, site_id, device_group_id, edge_server_id,
+            tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 
             created_by, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
 // 🔥🔥🔥 UPDATE - 현재 스키마 필드들
 const std::string UPDATE = R"(
         UPDATE devices SET 
-            tenant_id = ?, site_id = ?, device_group_id = ?, edge_server_id = ?,
+            tenant_id = ?, site_id = ?, device_group_id = ?, edge_server_id = ?, protocol_instance_id = ?,
             name = ?, description = ?, device_type = ?, manufacturer = ?, model = ?, 
             serial_number = ?, protocol_id = ?, endpoint = ?, config = ?, 
             polling_interval = ?, timeout = ?, retry_count = ?,
@@ -257,6 +257,7 @@ const std::string CREATE_TABLE = R"(
             site_id INTEGER NOT NULL,
             device_group_id INTEGER,
             edge_server_id INTEGER,
+            protocol_instance_id INTEGER,
             
             -- 디바이스 기본 정보
             name VARCHAR(100) NOT NULL,
@@ -290,14 +291,15 @@ const std::string CREATE_TABLE = R"(
             FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
             FOREIGN KEY (device_group_id) REFERENCES device_groups(id) ON DELETE SET NULL,
             FOREIGN KEY (edge_server_id) REFERENCES edge_servers(id) ON DELETE SET NULL,
-            FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT
+            FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT,
+            FOREIGN KEY (protocol_instance_id) REFERENCES protocol_instances(id) ON DELETE SET NULL
         )
     )";
 
 // 🔥 device_details 뷰 조회
 const std::string FIND_WITH_PROTOCOL_INFO = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
+            id, tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 
@@ -309,7 +311,7 @@ const std::string FIND_WITH_PROTOCOL_INFO = R"(
 
 const std::string FIND_BY_ID_WITH_PROTOCOL_INFO = R"(
         SELECT 
-            id, tenant_id, site_id, device_group_id, edge_server_id,
+            id, tenant_id, site_id, device_group_id, edge_server_id, protocol_instance_id,
             name, description, device_type, manufacturer, model, serial_number,
             protocol_id, endpoint, config, polling_interval, timeout, retry_count,
             is_enabled, installation_date, last_maintenance, 

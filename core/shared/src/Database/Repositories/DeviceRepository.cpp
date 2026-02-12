@@ -824,6 +824,11 @@ DeviceEntity DeviceRepository::mapRowToEntity(
       entity.setEdgeServerId(std::stoi(it->second));
     }
 
+    it = row.find("protocol_instance_id");
+    if (it != row.end() && !it->second.empty() && it->second != "NULL") {
+      entity.setProtocolInstanceId(std::stoi(it->second));
+    }
+
     // 디바이스 기본 정보
     if ((it = row.find("name")) != row.end())
       entity.setName(it->second);
@@ -934,6 +939,13 @@ DeviceRepository::entityToParams(const DeviceEntity &entity) {
     params["edge_server_id"] = std::to_string(entity.getEdgeServerId().value());
   } else {
     params["edge_server_id"] = "NULL";
+  }
+
+  if (entity.getProtocolInstanceId().has_value()) {
+    params["protocol_instance_id"] =
+        std::to_string(entity.getProtocolInstanceId().value());
+  } else {
+    params["protocol_instance_id"] = "NULL";
   }
 
   // 디바이스 정보
