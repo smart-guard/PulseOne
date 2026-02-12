@@ -232,10 +232,17 @@ std::string AlarmMessage::time_to_csharp_format(
     bool use_local_time) {
   auto time_t = std::chrono::system_clock::to_time_t(time_point);
   std::tm tm_buf;
+#ifdef _WIN32
+  if (use_local_time)
+    localtime_s(&tm_buf, &time_t);
+  else
+    gmtime_s(&tm_buf, &time_t);
+#else
   if (use_local_time)
     localtime_r(&time_t, &tm_buf);
   else
     gmtime_r(&time_t, &tm_buf);
+#endif
 
   std::ostringstream oss;
   oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");

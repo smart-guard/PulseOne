@@ -6,7 +6,7 @@
 #ifndef GATEWAY_SERVICE_I_TARGET_REGISTRY_H
 #define GATEWAY_SERVICE_I_TARGET_REGISTRY_H
 
-#include "Export/ExportTypes.h"
+#include "Export/GatewayExportTypes.h"
 #include <memory>
 #include <optional>
 #include <set>

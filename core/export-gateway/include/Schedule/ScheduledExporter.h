@@ -15,7 +15,7 @@
 #include "Database/Repositories/ExportTargetMappingRepository.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
-#include "Export/ExportTypes.h"
+#include "Export/GatewayExportTypes.h"
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 

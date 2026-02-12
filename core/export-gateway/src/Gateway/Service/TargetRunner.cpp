@@ -30,11 +30,13 @@ TargetRunner::sendAlarm(const PulseOne::Gateway::Model::AlarmMessage &alarm) {
   auto targets = registry_.getAllTargets();
 
   for (const auto &target : targets) {
-    if (!target.enabled)
+    if (!target.is_active)
       continue;
 
+    const json &target_config = target.config;
+
     // Filter by export_mode
-    std::string export_mode = target.config.value(
+    std::string export_mode = target_config.value(
         ExportConst::ConfigKeys::EXPORT_MODE, ExportConst::ExportMode::ALARM);
     std::string mode_upper = export_mode;
     std::transform(mode_upper.begin(), mode_upper.end(), mode_upper.begin(),
@@ -75,7 +77,8 @@ TargetSendResult TargetRunner::sendAlarmToTarget(
   result.target_id = target.id;
   result.target_type = target.type;
 
-  auto *protector = getOrCreateProtector(target.name, target.config);
+  const json &target_config = target.config;
+  auto *protector = getOrCreateProtector(target.name, target_config);
   if (protector && !protector->canExecute()) {
     LogManager::getInstance().Warn(
         "TargetRunner: Circuit breaker open for target=" + target_name);
@@ -84,9 +87,9 @@ TargetSendResult TargetRunner::sendAlarmToTarget(
   }
 
   // Pre-execution delay
-  if (target.execution_delay_ms > 0) {
-    std::this_thread::sleep_for(
-        std::chrono::milliseconds(target.execution_delay_ms));
+  int delay_ms = target_config.value("execution_delay_ms", 0);
+  if (delay_ms > 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
   }
 
   // [v3.2.1] Manual Override: Skip ALL mappings/enrichment for manual tests.
@@ -125,7 +128,7 @@ TargetSendResult TargetRunner::sendAlarmToTarget(
   try {
     payload =
         PulseOne::Transform::PayloadTransformer::getInstance().buildPayload(
-            processed_alarm, target.config);
+            processed_alarm, target_config);
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("TargetRunner: Transformation failed for " +
                                     target_name + ": " + e.what());
@@ -158,12 +161,14 @@ TargetRunner::sendFile(const std::string &local_path) {
   auto targets = registry_.getAllTargets();
 
   for (const auto &target : targets) {
-    if (!target.enabled)
+    if (!target.is_active)
       continue;
+
+    const json &target_config = target.config;
 
     auto *handler = registry_.getHandler(target.name);
     if (handler) {
-      auto result = handler->sendFile(local_path, target.config);
+      auto result = handler->sendFile(local_path, target_config);
       result.target_name = target.name;
       result.target_type = target.type;
       results.push_back(result);
@@ -180,8 +185,10 @@ BatchTargetResult TargetRunner::sendAlarmBatch(
   auto targets = registry_.getAllTargets();
 
   for (const auto &target : targets) {
-    if (!target.enabled)
+    if (!target.is_active)
       continue;
+
+    const json &target_config = target.config;
     if (!specific_target.empty() && target.name != specific_target)
       continue;
 
@@ -201,22 +208,22 @@ BatchTargetResult TargetRunner::sendAlarmBatch(
 
       auto processed = applyMappings(target, alarm);
       processed_batch.push_back(processed);
-      payloads.push_back(transformer.buildPayload(processed, target.config));
+      payloads.push_back(transformer.buildPayload(processed, target_config));
     }
 
     auto results =
-        handler->sendAlarmBatch(payloads, processed_batch, target.config);
+        handler->sendAlarmBatch(payloads, processed_batch, target_config);
     for (const auto &res : results) {
       batch_result.results.push_back(res);
       if (res.success)
-        batch_result.successful_targets++;
+        batch_result.success_count++;
       else
-        batch_result.failed_targets++;
+        batch_result.failure_count++;
     }
   }
 
-  batch_result.total_targets =
-      batch_result.successful_targets + batch_result.failed_targets;
+  batch_result.total_count =
+      batch_result.success_count + batch_result.failure_count;
   return batch_result;
 }
 
@@ -273,7 +280,8 @@ bool TargetRunner::executeSend(
     return false;
   }
 
-  result = handler->sendAlarm(payload, alarm, target.config);
+  const json &target_config = target.config;
+  result = handler->sendAlarm(payload, alarm, target_config);
 
   // Restore target identity (handlers might overwrite/ignore these)
   result.target_id = target.id;

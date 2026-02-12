@@ -32,6 +32,7 @@
 #include "Database/Repositories/SiteRepository.h"
 #include "Database/RepositoryFactory.h"
 #include "Export/ExportTypes.h"
+#include "Export/GatewayExportTypes.h"
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 

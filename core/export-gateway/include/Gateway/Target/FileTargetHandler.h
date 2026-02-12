@@ -38,6 +38,11 @@ public:
             const PulseOne::Gateway::Model::AlarmMessage &alarm,
             const json &config) override;
 
+  TargetSendResult
+  sendValue(const json &payload,
+            const PulseOne::Gateway::Model::ValueMessage &value,
+            const json &config) override;
+
   std::vector<TargetSendResult> sendValueBatch(
       const std::vector<json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
@@ -47,6 +52,8 @@ public:
   std::string getHandlerType() const override { return "FILE"; }
   bool validateConfig(const json &config,
                       std::vector<std::string> &errors) override;
+  std::string getTargetName() const override { return target_name_; }
+  std::string getTargetType() const override { return "FILE"; }
   void cleanup() override;
   json getStatus() const override;
 
@@ -54,6 +61,9 @@ private:
   std::string extractBasePath(const json &config) const;
   std::string
   generateFilePath(const PulseOne::Gateway::Model::AlarmMessage &alarm,
+                   const json &config) const;
+  std::string
+  generateFilePath(const PulseOne::Gateway::Model::ValueMessage &value,
                    const json &config) const;
   void createDirectoriesForFile(const std::string &file_path) const;
 

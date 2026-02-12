@@ -293,6 +293,7 @@ PulseOne::Export::DynamicTarget DynamicTargetLoader::createTargetFromEntity(
     std::transform(target.type.begin(), target.type.end(), target.type.begin(),
                    ::toupper);
     target.enabled = entity.isEnabled();
+    target.is_active = target.enabled;
     target.execution_order =
         100; // Default runtime priority (obsolete DB field removed)
     target.execution_delay_ms = entity.getExecutionDelayMs();
@@ -387,6 +388,7 @@ PulseOne::Export::DynamicTarget DynamicTargetLoader::createTargetFromEntity(
     // Here we return value.
     // Let's mark it disabled if invalid.
     target.enabled = false;
+    target.is_active = false;
     return target;
   }
 }

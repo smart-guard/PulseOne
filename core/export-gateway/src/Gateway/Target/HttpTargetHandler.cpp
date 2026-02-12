@@ -52,6 +52,8 @@ HttpTargetHandler::~HttpTargetHandler() {
 }
 
 bool HttpTargetHandler::initialize(const json &config) {
+  target_name_ = config.value("name", "HTTP_Target");
+  target_type_ = "HTTP";
   std::vector<std::string> errors;
   return validateConfig(config, errors);
 }
@@ -61,7 +63,7 @@ TargetSendResult HttpTargetHandler::sendAlarm(
     const json &config) {
   TargetSendResult result;
   result.target_type = "HTTP";
-  result.target_name = getTargetName(config);
+  result.target_name = getTargetName();
   result.success = false;
 
   try {
@@ -72,6 +74,35 @@ TargetSendResult HttpTargetHandler::sendAlarm(
     }
 
     result = executeWithRetry(payload, alarm, config, url);
+    if (result.success)
+      success_count_++;
+    else
+      failure_count_++;
+    request_count_++;
+  } catch (const std::exception &e) {
+    result.error_message = std::string("HTTP exception: ") + e.what();
+    failure_count_++;
+  }
+
+  return result;
+}
+
+TargetSendResult HttpTargetHandler::sendValue(
+    const json &payload, const PulseOne::Gateway::Model::ValueMessage &value,
+    const json &config) {
+  TargetSendResult result;
+  result.target_type = "HTTP";
+  result.target_name = getTargetName();
+  result.success = false;
+
+  try {
+    std::string url = extractUrl(config);
+    if (url.empty()) {
+      result.error_message = "URL not configured";
+      return result;
+    }
+
+    result = executeWithRetry(payload, value, config, url);
     if (result.success)
       success_count_++;
     else
@@ -186,12 +217,39 @@ TargetSendResult HttpTargetHandler::executeWithRetry(
 }
 
 TargetSendResult HttpTargetHandler::executeWithRetry(
+    const json &payload, const PulseOne::Gateway::Model::ValueMessage &value,
+    const json &config, const std::string &url) {
+  // Retry logic implementation
+  return executeSingleRequest(payload, value, config, url);
+}
+
+TargetSendResult HttpTargetHandler::executeWithRetry(
     const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config, const std::string &url) {
   // Retry logic implementation (Simplified for brevity, matches original
   // pattern)
   return executeSingleRequest(payloads, values, config, url);
+}
+
+TargetSendResult HttpTargetHandler::executeSingleRequest(
+    const json &payload, const PulseOne::Gateway::Model::ValueMessage &value,
+    const json &config, const std::string &url) {
+  TargetSendResult result;
+  auto client = getOrCreateClient(config, url);
+  if (!client)
+    return result;
+
+  auto headers = buildRequestHeaders(config);
+  std::string body = buildRequestBody(payload, value, config);
+
+  auto response =
+      client->post(url, body, HttpConst::CONTENT_TYPE_JSON_UTF8, headers);
+  result.success = response.isSuccess();
+  result.status_code = response.status_code;
+  result.sent_payload = body;
+  result.response_body = response.body;
+  return result;
 }
 
 TargetSendResult HttpTargetHandler::executeSingleRequest(
@@ -341,6 +399,12 @@ std::string HttpTargetHandler::buildRequestBody(
       "[DEBUG-HTTP] buildRequestBody(Pre-mapped) called for point: " +
       alarm.point_name);
 
+  return payload.dump();
+}
+
+std::string HttpTargetHandler::buildRequestBody(
+    const json &payload, const PulseOne::Gateway::Model::ValueMessage &value,
+    const json &config) {
   return payload.dump();
 }
 
