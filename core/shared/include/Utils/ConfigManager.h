@@ -56,11 +56,7 @@ public:
   // 전역 싱글톤 패턴 (기존 유지)
   // ==========================================================================
 
-  static ConfigManager &getInstance() {
-    static ConfigManager instance;
-    instance.ensureInitialized();
-    return instance;
-  }
+  static ConfigManager &getInstance();
 
   bool isInitialized() const {
     return initialized_.load(std::memory_order_acquire);
@@ -183,7 +179,15 @@ public:
   std::string getInstanceKey() const;
 
   int getCollectorId() const {
-    // 1. 환경변수 우선 확인 (Docker 등 환경에서 중요)
+    // 1. memory check
+    int id = getInt("COLLECTOR_ID", 0);
+    if (id > 0) {
+      // LogManager might not be available here safely if not initialized,
+      // but it's a member of static singleton so it should be fine.
+      return id;
+    }
+
+    // 2. env check
     const char *env_id = std::getenv("COLLECTOR_ID");
     if (env_id) {
       try {
@@ -192,13 +196,7 @@ public:
       }
     }
 
-    // 2. 설정 파일 확인
-    int id = getInt("COLLECTOR_ID", 0);
-    if (id <= 0) {
-      // 3. 하위 호환을 위해 CSP_GATEWAY_BUILDING_ID 확인
-      id = getInt("CSP_GATEWAY_BUILDING_ID", 1);
-    }
-    return id;
+    return getInt("CSP_GATEWAY_BUILDING_ID", 1);
   }
 
   void setCollectorId(int id) { set("COLLECTOR_ID", std::to_string(id)); }

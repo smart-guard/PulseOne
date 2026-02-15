@@ -17,7 +17,7 @@
 
 #include "Common/Structs.h"
 
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
 #include "Api/ConfigApiCallbacks.h"
 #include "Api/DeviceApiCallbacks.h"
 #include "Network/RestApiServer.h"
@@ -137,7 +137,7 @@ private:
   // ==========================================================================
   // REST API 서버 (조건부 컴파일)
   // ==========================================================================
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
   std::unique_ptr<Network::RestApiServer> api_server_;
 #endif
 

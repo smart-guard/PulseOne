@@ -153,7 +153,7 @@ else
     ifeq ($(UNAME_S),Darwin)
         LDFLAGS += -Wl,-dead_strip
     else
-        LDFLAGS += -Wl,--gc-sections
+        LDFLAGS += -Wl,--gc-sections -Wl,--export-dynamic
     endif
 endif
 
@@ -202,6 +202,10 @@ PROTOCOL_LIBS += -lmodbus
 CXXFLAGS += -DHAS_MODBUS=1
 endif
 
+ifneq ($(HAS_MQTT_C)$(HAS_MQTT_CPP),00)
+CXXFLAGS += -DHAS_MQTT=1
+endif
+
 ifeq ($(HAS_MQTT_CPP),1)
 PROTOCOL_LIBS += -lpaho-mqttpp3
 CXXFLAGS += -DHAS_MQTT_CPP=1
@@ -209,7 +213,6 @@ endif
 
 ifeq ($(HAS_MQTT_C),1)
 PROTOCOL_LIBS += -lpaho-mqtt3c
-CXXFLAGS += -DHAS_MQTT=1
 endif
 
 ifeq ($(HAS_BACNET),1)
@@ -240,13 +243,13 @@ endif
 UTILITY_LIBS :=
 ifeq ($(HAS_HIREDIS),1)
 UTILITY_LIBS += -lhiredis
-CXXFLAGS += -DHAVE_REDIS=1
+CXXFLAGS += -DHAS_REDIS=1
 endif
 
 ifeq ($(HAS_HTTPLIB),1)
-CXXFLAGS += -DHAVE_HTTPLIB=1
+CXXFLAGS += -DHAS_HTTPLIB=1
 else
-CXXFLAGS += -DHAVE_HTTPLIB=0
+CXXFLAGS += -DHAS_HTTPLIB=0
 endif
 
 ifeq ($(HAS_QUICKJS),1)
@@ -260,10 +263,13 @@ endif
 CXXFLAGS += -DHAS_QUICKJS=1
 endif
 
-ifeq ($(HAS_CURL),1)
+ifneq ($(HAS_CURL),0)
 UTILITY_LIBS += $(shell pkg-config --libs libcurl)
-CXXFLAGS += -DHAVE_CURL=1
+CXXFLAGS += -DHAS_CURL=1
 endif
+
+# All builds use JSON
+CXXFLAGS += -DHAS_JSON=1
 
 # 최종 라이브러리 링킹 순서
 LIBS := -Wl,--start-group $(SHARED_LIBS) -Wl,--end-group $(PROTOCOL_LIBS) $(UTILITY_LIBS) -lpqxx -lpq -lmysqlclient $(BASIC_LIBS) $(PLATFORM_LIBS)
@@ -285,6 +291,7 @@ ALARM_SOURCES := $(wildcard $(SRC_DIR)/Alarm/*.cpp)
 WORKERS_SOURCES := $(wildcard $(SRC_DIR)/Workers/Base/*.cpp)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/Components/*.cpp)
 WORKERS_SOURCES += $(wildcard $(SRC_DIR)/Workers/*.cpp)
+WORKERS_SOURCES += $(SRC_DIR)/Workers/Protocol/GenericDeviceWorker.cpp
 
 # 프로토콜별 워커 필터링
 ifeq ($(HAS_MODBUS),1)
@@ -325,27 +332,17 @@ VIRTUALPOINT_SOURCES := $(wildcard $(SRC_DIR)/VirtualPoint/*.cpp)
 # Scripting
 SCRIPTING_SOURCES := $(wildcard $(SRC_DIR)/Scripting/*.cpp)
 
-# 드라이버 소스
+# 드라이버 소스 (Core에는 Common만 포함, 개별 드라이버는 플러그인화)
 DRIVERS_SOURCES := $(wildcard $(SRC_DIR)/Drivers/Common/*.cpp)
-
-ifeq ($(HAS_MODBUS),1)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp)
-endif
-
-ifeq ($(HAS_MQTT_CPP),1)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp)
-endif
-
+# BACnetWorker가 직접 사용하는 매니저와 Datalink 인터페이스는 메인 바이너리에 포함되어야 함
 ifeq ($(HAS_BACNET),1)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp)
+DRIVERS_SOURCES += $(SRC_DIR)/Drivers/Bacnet/BACnetServiceManager.cpp
+DRIVERS_SOURCES += $(SRC_DIR)/Drivers/Bacnet/BACnetBIPPort.cpp
+DRIVERS_SOURCES += $(SRC_DIR)/Drivers/Bacnet/BACnetStubs.cpp
 endif
 
-# 추가 드라이버 (항시 포함)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.c)
-# DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp)
-DRIVERS_SOURCES += $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp)
+# 플러그인용 경로 설정
+PLUGINS_DIR := $(BIN_DIR)/plugins
 
 # 네트워크 및 API
 ifeq ($(HAS_HTTPLIB),1)
@@ -397,7 +394,7 @@ NC := \033[0m
 
 .PHONY: all debug release windows-cross clean distclean check-env status run help create-dirs
 
-all: check-env create-dirs $(TARGET)
+all: check-env create-dirs $(TARGET) plugins
 	@echo -e "$(GREEN)✅ Build completed for $(PLATFORM)!$(NC)"
 	@echo -e "Binary: $(CYAN)$(BIN_DIR)/$(TARGET)$(NC)"
 	@echo -e "Sources: $(CYAN)$(words $(ALL_SOURCES))$(NC) files"
@@ -416,7 +413,7 @@ windows-cross:
 # 디렉토리 생성
 # =============================================================================
 
-create-dirs: | $(BUILD_DIR) $(BIN_DIR) $(DIST_DIR)
+create-dirs: | $(BUILD_DIR) $(BIN_DIR) $(DIST_DIR) $(PLUGINS_DIR)
 	@mkdir -p $(BUILD_SUBDIRS)
 
 $(BUILD_DIR) $(BIN_DIR) $(DIST_DIR):
@@ -431,6 +428,22 @@ $(TARGET): $(ALL_OBJECTS) $(MAIN_OBJECT) | $(BIN_DIR)
 	$(CXX) $(LDFLAGS) -o $(BIN_DIR)/$@ $(ALL_OBJECTS) $(MAIN_OBJECT) $(LIBS)
 	@echo -e "$(GREEN)✅ $(TARGET) built successfully!$(NC)"
 	@echo -e "Size: $(CYAN)$(shell du -h $(BIN_DIR)/$(TARGET) 2>/dev/null | cut -f1 || echo 'N/A')$(NC)"
+
+# 플러그인 타겟 (개별 드라이버 Makefile 호출)
+.PHONY: plugins
+plugins: create-dirs
+	@echo -e "$(BLUE)🔨 Building Driver Plugins...$(NC)"
+	@$(MAKE) -C src/Drivers/Modbus DEBUG=$(DEBUG)
+	@$(MAKE) -C src/Drivers/Bacnet DEBUG=$(DEBUG)
+	@$(MAKE) -C src/Drivers/OPCUA DEBUG=$(DEBUG)
+	@$(MAKE) -C src/Drivers/Mqtt DEBUG=$(DEBUG)
+	@$(MAKE) -C src/Drivers/Ble DEBUG=$(DEBUG)
+	@$(MAKE) -C src/Drivers/HttpRest DEBUG=$(DEBUG)
+	@$(MAKE) -C src/Drivers/Ros DEBUG=$(DEBUG)
+	@echo -e "$(GREEN)✅ Driver Plugins built successfully!$(NC)"
+
+$(PLUGINS_DIR):
+	@mkdir -p $@
 
 # 컴파일 규칙 (.c 추가)
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp

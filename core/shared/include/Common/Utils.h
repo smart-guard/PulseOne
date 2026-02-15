@@ -39,8 +39,7 @@ using Duration = PulseOne::BasicTypes::Duration;
 using DataVariant = PulseOne::BasicTypes::DataVariant;
 using EngineerID = PulseOne::BasicTypes::EngineerID;
 
-// Enums에서 필요한 열거형들만 개별 선언
-using ProtocolType = PulseOne::Enums::ProtocolType;
+using ProtocolType = PulseOne::BasicTypes::ProtocolType;
 using LogLevel = PulseOne::Enums::LogLevel;
 using DriverLogCategory = PulseOne::Enums::DriverLogCategory;
 using DataQuality = PulseOne::Enums::DataQuality;
@@ -53,55 +52,20 @@ using ErrorCode = PulseOne::Enums::ErrorCode;
 // ========================================
 
 /**
- * @brief 프로토콜 타입을 문자열로 변환
+ * @brief 프로토콜 타입을 문자열로 변환 (문자열 방식이므로 그대로 반환하거나
+ * 정규화)
  */
-inline std::string ProtocolTypeToString(ProtocolType type) {
-  switch (type) {
-  case ProtocolType::MODBUS_TCP:
-    return "MODBUS_TCP";
-  case ProtocolType::MODBUS_RTU:
-    return "MODBUS_RTU";
-  case ProtocolType::MQTT:
-    return "MQTT";
-  case ProtocolType::BACNET_IP:
-    return "BACNET_IP";
-  case ProtocolType::BACNET_MSTP:
-    return "BACNET_MSTP";
-  case ProtocolType::OPC_UA:
-    return "OPC_UA";
-  case ProtocolType::ETHERNET_IP:
-    return "ETHERNET_IP";
-  case ProtocolType::CUSTOM:
-    return "CUSTOM";
-  default:
-    return "UNKNOWN";
-  }
+inline std::string ProtocolTypeToString(const ProtocolType &type) {
+  return type;
 }
 
 /**
- * @brief 문자열을 프로토콜 타입으로 변환
+ * @brief 문자열을 프로토콜 타입으로 변환 (상호 호환성 유지)
  */
 inline ProtocolType StringToProtocolType(const std::string &str) {
   std::string upper = str;
   std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
-
-  if (upper == "MODBUS_TCP")
-    return ProtocolType::MODBUS_TCP;
-  if (upper == "MODBUS_RTU")
-    return ProtocolType::MODBUS_RTU;
-  if (upper == "MQTT")
-    return ProtocolType::MQTT;
-  if (upper == "BACNET_IP")
-    return ProtocolType::BACNET_IP;
-  if (upper == "BACNET_MSTP")
-    return ProtocolType::BACNET_MSTP;
-  if (upper == "OPC_UA")
-    return ProtocolType::OPC_UA;
-  if (upper == "ETHERNET_IP")
-    return ProtocolType::ETHERNET_IP;
-  if (upper == "CUSTOM")
-    return ProtocolType::CUSTOM;
-  return ProtocolType::UNKNOWN;
+  return upper;
 }
 
 /**
@@ -521,9 +485,9 @@ inline UniqueId GenerateUniqueId() {
 /**
  * @brief 디바이스 ID 생성 (프로토콜별)
  */
-inline UniqueId GenerateDeviceID(ProtocolType protocol,
+inline UniqueId GenerateDeviceID(const ProtocolType &protocol,
                                  const std::string &endpoint) {
-  std::string prefix = ProtocolTypeToString(protocol);
+  std::string prefix = protocol;
   std::hash<std::string> hasher;
   size_t hash = hasher(endpoint);
 
@@ -713,22 +677,19 @@ inline DataVariant StringToDataVariant(const std::string &str,
  * @brief 엔드포인트 형식 검증
  */
 inline bool IsValidEndpoint(const std::string &endpoint,
-                            ProtocolType protocol) {
+                            const ProtocolType &protocol) {
   if (endpoint.empty())
     return false;
 
-  switch (protocol) {
-  case ProtocolType::MODBUS_TCP:
-  case ProtocolType::MQTT:
+  if (protocol == "MODBUS_TCP" || protocol == "MQTT") {
     // IP:PORT 형식 확인
     return endpoint.find(':') != std::string::npos;
-  case ProtocolType::MODBUS_RTU:
+  } else if (protocol == "MODBUS_RTU") {
     // 시리얼 포트 형식 확인 (예: COM1, /dev/ttyUSB0)
     return endpoint.find("COM") != std::string::npos ||
            endpoint.find("/dev/") != std::string::npos;
-  default:
-    return true; // 기타 프로토콜은 관대하게 처리
   }
+  return true; // 기타 프로토콜은 관대하게 처리
 }
 
 /**
@@ -931,13 +892,6 @@ inline PulseOne::Enums::DataType StringToDataType(const std::string &str) {
     return PulseOne::Enums::DataType::OBJECT;
 
   return PulseOne::Enums::DataType::UNKNOWN;
-}
-
-/**
- * @brief 프로토콜 타입을 문자열로 변환 (문자열 버전 - WorkerFactory 호환)
- */
-inline std::string ProtocolTypeToString(const std::string &protocol) {
-  return protocol; // 이미 문자열이므로 그대로 반환
 }
 
 /**

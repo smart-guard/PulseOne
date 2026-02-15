@@ -21,10 +21,14 @@ RUN git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && 
     cmake -S hiredis -B hiredis/build -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_SSL=ON && \
     make -C hiredis/build -j$(nproc) install
 
+# Build PulseOne Export Gateway
 WORKDIR /app
 COPY core /app/core
-RUN cd core/shared && make all -j$(nproc)
-RUN cd core/export-gateway && make -j$(nproc) CXXFLAGS="-O3 -DNDEBUG"
+RUN cat core/export-gateway/src/CSP/DynamicTargetManager.cpp | grep -E "publish_client_|m_redis_publish_client_"
+RUN cd core/export-gateway && \
+    mkdir build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make -j$(nproc)
 
 # ==========================================
 # Phase 2: Final

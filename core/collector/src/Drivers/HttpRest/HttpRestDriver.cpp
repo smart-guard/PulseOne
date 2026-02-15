@@ -5,6 +5,8 @@
 
 #include "Drivers/HttpRest/HttpRestDriver.h"
 #include "Common/Enums.h"
+#include "Database/Repositories/ProtocolRepository.h"
+#include "Database/RepositoryFactory.h"
 #include "Drivers/Common/DriverFactory.h"
 #include "Logging/LogManager.h"
 #include <iostream>
@@ -187,9 +189,7 @@ void HttpRestDriver::ResetStatistics() {
   LogManager::getInstance().Info("[HTTP/REST] Statistics reset");
 }
 
-ProtocolType HttpRestDriver::GetProtocolType() const {
-  return ProtocolType::HTTP_REST;
-}
+std::string HttpRestDriver::GetProtocolType() const { return "HTTP_REST"; }
 
 // =============================================================================
 // Core Functionality
@@ -574,6 +574,27 @@ extern "C" {
 __declspec(dllexport)
 #endif
 void RegisterPlugin() {
+  // 1. DB에 프로토콜 정보 자동 등록 (없을 경우)
+  try {
+    auto &repo_factory = PulseOne::Database::RepositoryFactory::getInstance();
+    auto protocol_repo = repo_factory.getProtocolRepository();
+    if (protocol_repo) {
+      if (!protocol_repo->findByType("HTTP_REST").has_value()) {
+        PulseOne::Database::Entities::ProtocolEntity entity;
+        entity.setProtocolType("HTTP_REST");
+        entity.setDisplayName("HTTP REST");
+        entity.setCategory("web");
+        entity.setDescription("HTTP REST API Protocol Driver");
+        entity.setDefaultPort(80);
+        protocol_repo->save(entity);
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[HttpRestDriver] DB Registration failed: " << e.what()
+              << std::endl;
+  }
+
+  // 2. 메모리 Factory에 드라이버 생성자 등록
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "HTTP_REST",
       []() { return std::make_unique<PulseOne::Drivers::HttpRestDriver>(); });

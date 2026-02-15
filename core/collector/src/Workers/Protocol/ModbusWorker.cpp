@@ -211,10 +211,10 @@ bool ModbusWorker::ParseModbusConfig() {
 
   if (device_info_.protocol_type == "MODBUS_TCP" || p_type == "tcp" ||
       p_type == "modbus_tcp") {
-    modbus_config_.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
+    modbus_config_.protocol = "MODBUS_TCP";
     modbus_config_.properties["protocol_type"] = "MODBUS_TCP";
   } else {
-    modbus_config_.protocol = PulseOne::Enums::ProtocolType::MODBUS_RTU;
+    modbus_config_.protocol = "MODBUS_RTU";
     modbus_config_.properties["protocol_type"] = "MODBUS_RTU";
     modbus_config_.properties["serial_port"] = device_info_.endpoint;
   }
@@ -264,7 +264,7 @@ void ModbusWorker::PollingThreadFunction() {
         modbus_driver_->IsConnected()) {
       std::vector<DataPoint> points_to_read;
       {
-        std::lock_guard<std::mutex> lock(data_points_mutex_);
+        std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
         // Collect enabled points
         for (const auto &dp : data_points_) {
           if (dp.is_enabled)
@@ -290,6 +290,9 @@ void ModbusWorker::PollingThreadFunction() {
           UpdateCommunicationResult(
               false, err, -1,
               duration_cast<milliseconds>(system_clock::now() - start_time));
+
+          // 🔥 연결 실패 시 BaseDeviceWorker의 재연결 로직 트리거
+          HandleConnectionError("Modbus polling failed: " + err);
         }
       }
     } else {
@@ -492,7 +495,7 @@ std::string ModbusWorker::GetPropertyValue(
 
 std::optional<DataPoint>
 ModbusWorker::FindDataPointById(const std::string &point_id) {
-  std::lock_guard<std::mutex> lock(data_points_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
   for (const auto &dp : data_points_) {
     if (dp.id == point_id)
       return dp;

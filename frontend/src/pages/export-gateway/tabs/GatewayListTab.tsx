@@ -342,13 +342,14 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                     <div className="assigned-profiles" style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--neutral-100)', flex: 1 }}>
                                         <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--neutral-400)', textTransform: 'uppercase', marginBottom: '8px' }}>포함된 프로파일</div>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                            {(assignments[gw.id] || []).length === 0 ? (
-                                                <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontStyle: 'italic' }}>할당된 프로파일 없음</span>
-                                            ) : (
-                                                assignments[gw.id].map(a => (
-                                                    <span key={a.id} className="badge neutral-light" style={{ fontSize: '11px' }}>{a.name}</span>
-                                                ))
-                                            )}
+                                            {(() => {
+                                                const myAssignments = (assignments[gw.id] || []).sort((a, b) => (b.id || 0) - (a.id || 0));
+                                                if (myAssignments.length === 0) {
+                                                    return <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontStyle: 'italic' }}>할당된 프로파일 없음</span>;
+                                                }
+                                                // Only show latest
+                                                return <span key={myAssignments[0].id} className="badge neutral-light" style={{ fontSize: '11px' }}>{myAssignments[0].name}</span>;
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -406,14 +407,17 @@ const GatewayDetailModal: React.FC<{
 }> = ({ visible, onClose, gateway, allAssignments, targets, allProfiles, schedules, onEdit, onDelete }) => {
     if (!gateway) return null;
 
-    // Derived info with fallback for names
+    // Derived info with fallback for names (PICK LATEST ONLY)
     const assignments = gateway ? (Object.entries(allAssignments).find(([k]) => String(k) === String(gateway.id))?.[1] || []) : [];
-    const assignedProfiles = assignments.map(a => {
-        const found = allProfiles.find(p => String(p.id) === String(a.profile_id));
-        if (found) return found;
-        if (a.name) return { id: a.profile_id, name: a.name, data_points: [] } as any;
-        return null;
-    }).filter(Boolean) as ExportProfile[];
+    const sortedAssignments = [...assignments].sort((a, b) => (b.id || 0) - (a.id || 0));
+    const latestAssignment = sortedAssignments[0];
+
+    const assignedProfiles = latestAssignment ? (() => {
+        const found = allProfiles.find(p => String(p.id) === String(latestAssignment.profile_id));
+        if (found) return [found];
+        if (latestAssignment.name) return [{ id: latestAssignment.profile_id, name: latestAssignment.name, data_points: [] } as any];
+        return [];
+    })() : [];
 
     const profileIds = assignedProfiles.map(p => p.id);
     const linkedTargets = targets.filter(t => profileIds.some(pid => String(pid) === String(t.profile_id)));

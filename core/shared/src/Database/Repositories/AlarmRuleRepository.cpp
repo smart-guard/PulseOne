@@ -790,7 +790,13 @@ AlarmRuleEntity AlarmRuleRepository::mapRowToEntity(
       entity.setAlarmType(PulseOne::Alarm::AlarmType::ANALOG);
     }
 
-    // 🔥 5. 임계값들 (optional 처리)
+    // 🔥 5. 임계값들 (optional 처리) - Extended Mapping Support
+    std::string hh_limit_str = getValue("high_high_limit");
+    if (!hh_limit_str.empty() && hh_limit_str != "NULL") {
+      entity.setHighHighLimit(
+          safeStringToDouble(hh_limit_str, "high_high_limit"));
+    }
+
     std::string high_limit_str = getValue("high_limit");
     if (!high_limit_str.empty() && high_limit_str != "NULL") {
       entity.setHighLimit(safeStringToDouble(high_limit_str, "high_limit"));
@@ -799,6 +805,31 @@ AlarmRuleEntity AlarmRuleRepository::mapRowToEntity(
     std::string low_limit_str = getValue("low_limit");
     if (!low_limit_str.empty() && low_limit_str != "NULL") {
       entity.setLowLimit(safeStringToDouble(low_limit_str, "low_limit"));
+    }
+
+    std::string ll_limit_str = getValue("low_low_limit");
+    if (!ll_limit_str.empty() && ll_limit_str != "NULL") {
+      entity.setLowLowLimit(safeStringToDouble(ll_limit_str, "low_low_limit"));
+    }
+
+    // 💥 Legacy Compatibility: condition + threshold 필드를 새 Limit 필드에
+    // 매핑
+    std::string condition_legacy = getValue("condition");
+    std::string threshold_str = getValue("threshold");
+    if (!threshold_str.empty() && threshold_str != "NULL") {
+      double threshold_val = safeStringToDouble(threshold_str, "threshold");
+      if (condition_legacy == "low" && !entity.getLowLimit().has_value()) {
+        entity.setLowLimit(threshold_val);
+      } else if (condition_legacy == "high" &&
+                 !entity.getHighLimit().has_value()) {
+        entity.setHighLimit(threshold_val);
+      } else if (condition_legacy == "low_low" &&
+                 !entity.getLowLowLimit().has_value()) {
+        entity.setLowLowLimit(threshold_val);
+      } else if (condition_legacy == "high_high" &&
+                 !entity.getHighHighLimit().has_value()) {
+        entity.setHighHighLimit(threshold_val);
+      }
     }
 
     std::string deadband_str = getValue("deadband");

@@ -28,7 +28,7 @@
 #include <thread>
 #include <vector>
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
 #include <nlohmann/json.hpp>
 #endif
 
@@ -302,7 +302,7 @@ public:
       const PulseOne::Structs::DataPoint *data_point = nullptr,
       uint32_t priority = 0);
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
   /**
    * @brief JSON 데이터를 직접 TimestampedValue로 변환 후 파이프라인 전송
    * @param json_data 파싱된 JSON 데이터
@@ -878,7 +878,7 @@ private:
   bool ParseMQTTTopic(const PulseOne::Structs::DataPoint &data_point,
                       std::string &topic, std::string &json_path, int &qos);
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
   bool ConvertJsonToDataValue(const nlohmann::json &json_val,
                               PulseOne::Structs::DataValue &data_value);
 #endif

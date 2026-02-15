@@ -27,12 +27,12 @@
 #include <thread>
 #include <unordered_map>
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
 #include <nlohmann/json.hpp>
 #endif
 
 // Eclipse Paho MQTT C++ 헤더들
-#ifdef HAVE_MQTT
+#ifdef HAS_MQTT
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
 #include <mqtt/connect_options.h>
@@ -46,7 +46,6 @@ namespace Drivers {
 // 타입 별칭들 - IProtocolDriver와 동일하게
 using ErrorCode = PulseOne::Structs::ErrorCode;
 using ErrorInfo = PulseOne::Structs::ErrorInfo;
-using ProtocolType = PulseOne::Enums::ProtocolType;
 using DataPoint = PulseOne::Structs::DataPoint;
 using DataValue = PulseOne::Structs::DataValue;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
@@ -111,7 +110,7 @@ public:
   bool Stop() override;
 
   // ✅ IProtocolDriver 순수 가상 함수들 구현
-  ProtocolType GetProtocolType() const override;
+  std::string GetProtocolType() const override;
   Structs::DriverStatus GetStatus() const override;
   ErrorInfo GetLastError() const override;
 
@@ -181,7 +180,7 @@ public:
   /**
    * @brief 연결 성공 콜백
    */
-#ifdef HAVE_MQTT
+#ifdef HAS_MQTT
   /**
    * @brief 연결 성공 콜백
    */
@@ -465,7 +464,7 @@ private:
   // =======================================================================
 
   // Eclipse Paho MQTT 클라이언트
-#ifdef HAVE_MQTT
+#ifdef HAS_MQTT
   // Eclipse Paho MQTT 클라이언트
   std::unique_ptr<mqtt::async_client> mqtt_client_;
   std::shared_ptr<MqttCallbackImpl> mqtt_callback_;

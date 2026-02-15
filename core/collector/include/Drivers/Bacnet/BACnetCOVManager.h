@@ -17,7 +17,7 @@
 #include <functional>
 #include <queue>
 
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
 extern "C" {
     #include <bacnet/bacdef.h>
     #include <bacnet/bacenum.h>
@@ -316,7 +316,7 @@ private:
     bool IsValidObjectForCOV(BACNET_OBJECT_TYPE object_type) const;
     uint32_t GetEffectiveLifetime(uint32_t requested_lifetime) const;
     
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
     // BACnet 스택 헬퍼들
     bool GetDeviceAddress(uint32_t device_id, BACNET_ADDRESS& address);
     bool ParseCOVNotificationData(const uint8_t* service_data, uint16_t service_len,

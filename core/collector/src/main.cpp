@@ -43,9 +43,11 @@ Enterprise Industrial Data Collection System
     }
 
     if (collector_id != -1) {
-      std::cout << "🆔 Manually assigned Collector ID: " << collector_id
+      std::cout << "🆔 Manually assigning Collector ID: " << collector_id
                 << std::endl;
       ConfigManager::getInstance().setCollectorId(collector_id);
+      std::cout << "🆔 Verification - getCollectorId() returns: "
+                << ConfigManager::getInstance().getCollectorId() << std::endl;
     }
 
     g_app = std::make_unique<CollectorApplication>();

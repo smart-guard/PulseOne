@@ -19,10 +19,11 @@
 #endif
 
 namespace PulseOne {
-namespace Gateway {
-namespace Model {
 
 using json = nlohmann::json;
+
+namespace Gateway {
+namespace Model {
 
 /**
  * @brief Gateway AlarmMessage structure (PulseOne::Gateway::Model)

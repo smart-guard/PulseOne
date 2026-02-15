@@ -30,6 +30,12 @@ using namespace PulseOne::Security;
 ConfigManager::ConfigManager()
     : initialized_(false), secret_manager_initialized_(false) {}
 
+ConfigManager &ConfigManager::getInstance() {
+  static ConfigManager instance;
+  instance.ensureInitialized();
+  return instance;
+}
+
 // =============================================================================
 // 초기화 관련
 // =============================================================================
@@ -697,16 +703,22 @@ void ConfigManager::parseLine(const std::string &line) {
 // =============================================================================
 
 std::string ConfigManager::get(const std::string &key) const {
-  // 1. 환경변수 우선 확인 (Docker 등 환경에서 중요)
+  // 1. 메모리 설정 확인 (Manual override or file load)
+  {
+    std::lock_guard<std::mutex> lock(configMutex);
+    auto it = configMap.find(key);
+    if (it != configMap.end() && !it->second.empty()) {
+      return it->second;
+    }
+  }
+
+  // 2. 환경변수 확인 (Fall-back or Docker defaults)
   const char *env_val = std::getenv(key.c_str());
   if (env_val) {
     return std::string(env_val);
   }
 
-  // 2. 메모리 설정 확인
-  std::lock_guard<std::mutex> lock(configMutex);
-  auto it = configMap.find(key);
-  return (it != configMap.end()) ? it->second : "";
+  return "";
 }
 
 std::string ConfigManager::getOrDefault(const std::string &key,
@@ -746,6 +758,14 @@ std::string ConfigManager::getOrDefault(const std::string &key,
 void ConfigManager::set(const std::string &key, const std::string &value) {
   std::lock_guard<std::mutex> lock(configMutex);
   configMap[key] = value;
+
+  // Sync to environment so that get() (which checks getenv first) sees the
+  // update
+#ifndef _WIN32
+  setenv(key.c_str(), value.c_str(), 1);
+#else
+  _putenv_s(key.c_str(), value.c_str());
+#endif
 }
 
 bool ConfigManager::hasKey(const std::string &key) const {

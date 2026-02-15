@@ -1,22 +1,24 @@
 const ModbusRTU = require('modbus-serial');
 const client = new ModbusRTU();
 
-async function triggerAlarm() {
+async function trigger() {
     try {
-        await client.connectTCP('127.0.0.1', { port: 50502 });
+        console.log('Connecting to simulator-modbus:50502...');
+        await client.connectTCP('simulator-modbus', { port: 50502 });
         await client.setID(1);
-
-        console.log('🔗 Connected to Modbus Simulator');
-
-        // Trigger WLS.SRS alarm (Address 101, Value 1)
-        console.log('📤 Writing 1 to Address 101 (WLS.SRS)...');
-        await client.writeCoil(101, true);
-
-        console.log('✅ Trigger successful');
+        
+        console.log('Setting SSS to 10 (Clear)...');
+        await client.writeRegister(200, 10);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        console.log('Setting SSS to 50 (Alarm)...');
+        await client.writeRegister(200, 50);
+        
         client.close();
+        console.log('✅ Trigger completed');
     } catch (e) {
-        console.error('❌ Failed to trigger alarm:', e.message);
+        console.error('❌ Trigger failed:', e.message);
     }
 }
 
-triggerAlarm();
+trigger();

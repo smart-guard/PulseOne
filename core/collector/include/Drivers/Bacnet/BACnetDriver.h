@@ -23,13 +23,13 @@
 // Windows 매크로 충돌 방지
 #ifdef min
 #undef min
-#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#endif // defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 #ifdef max
 #undef max
-#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#endif // defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 #ifdef ERROR
 #undef ERROR
-#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#endif // defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 
 #include "Common/BasicTypes.h"       // UniqueId, Timestamp 등
 #include "Common/DriverStatistics.h" // DriverStatistics
@@ -40,7 +40,7 @@
 #include "Logging/LogManager.h"
 
 // BACnet 스택 조건부 포함
-#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#if defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 extern "C" {
 // 핵심 BACnet 헤더들
 #include "bacnet/apdu.h"
@@ -77,15 +77,15 @@ extern "C" {
 // 매크로 충돌 재방지
 #ifdef min
 #undef min
-#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#endif // defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 #ifdef max
 #undef max
-#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#endif // defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 #ifdef ERROR
 #undef ERROR
-#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#endif // defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 
-#endif // defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#endif // defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 
 namespace PulseOne {
 namespace Drivers {
@@ -128,7 +128,7 @@ public:
   bool WriteValue(const PulseOne::Structs::DataPoint &point,
                   const PulseOne::Structs::DataValue &value) override;
 
-  PulseOne::Enums::ProtocolType GetProtocolType() const override;
+  std::string GetProtocolType() const override;
   PulseOne::Structs::DriverStatus GetStatus() const override;
   PulseOne::Structs::ErrorInfo GetLastError() const override;
 

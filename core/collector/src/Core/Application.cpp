@@ -22,7 +22,7 @@
 
 #include <nlohmann/json.hpp>
 
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
 #include "Api/ConfigApiCallbacks.h"
 #include "Api/DeviceApiCallbacks.h"
 #include "Api/HardwareApiCallbacks.h"
@@ -78,54 +78,26 @@ void CollectorApplication::Stop() {
   }
 }
 
-// 드라이버 및 플러그인 등록 함수 선언 (monolithic link인 경우)
-extern "C" {
-#ifdef HAVE_MODBUS
-void RegisterModbusDriver();
-#endif
-#ifdef HAVE_BACNET
-void RegisterBacnetDriver();
-#endif
-#ifdef HAVE_MQTT
-void RegisterMqttDriver();
-#endif
-#ifdef HAVE_HTTP_DRIVER
-void RegisterHttpDriver();
-#endif
-#ifdef HAVE_BLE
-void RegisterBleDriver();
-#endif
-}
-
 bool CollectorApplication::Initialize() {
-  // 드라이버 등록
-  LogManager::getInstance().Info("Registering built-in drivers...");
+  // 드라이버 및 플러그인 동적 로드
+  LogManager::getInstance().Info("Loading protocol driver plugins...");
   try {
-#ifdef _WIN32
-    // Windows에서는 플러그인이 DLL로 제공되므로 정적 링크 호출을 하지 않음
-    // PluginLoader가 실행 파일 위치 기준의 ./plugins/*.dll을 로드할 것임
+    // 실행 파일 기준 ./plugins 디렉토리에서 플러그인 로드
     std::string exe_dir = Platform::Path::GetExecutableDirectory();
     std::string plugin_path = Platform::Path::Join(exe_dir, "plugins");
-    Drivers::PluginLoader::GetInstance().LoadPlugins(plugin_path);
-#else
-#ifdef HAVE_MODBUS
-    RegisterModbusDriver();
-#endif
-#ifdef HAVE_BACNET
-    RegisterBacnetDriver();
-#endif
-#ifdef HAVE_MQTT
-    RegisterMqttDriver();
-#endif
-#ifdef HAVE_BLE
-    RegisterBleDriver();
-#endif
-#endif
-#ifdef HAVE_HTTP_DRIVER
-    RegisterHttpDriver();
+
+    size_t loaded =
+        Drivers::PluginLoader::GetInstance().LoadPlugins(plugin_path);
+    LogManager::getInstance().Info("Loaded " + std::to_string(loaded) +
+                                   " drivers from " + plugin_path);
+
+#ifdef HAS_HTTP_DRIVER
+    // HttpDriver는 내장형일 수 있으므로(Worker 포함 여부에 따라) 별도 처리 가능
+    // 여기서는 일단 플러그인화가 기본이므로 로드되지 않았을 경우만 예외적
+    // 처리하거나 생략
 #endif
   } catch (const std::exception &e) {
-    LogManager::getInstance().Error("Driver registration failed: " +
+    LogManager::getInstance().Error("Plugin loading failed: " +
                                     std::string(e.what()));
   }
 
@@ -135,7 +107,9 @@ bool CollectorApplication::Initialize() {
     // 1. 설정 관리자 초기화
     try {
       LogManager::getInstance().Info("Step 1/5: Initializing ConfigManager...");
-      ConfigManager::getInstance().initialize();
+      if (!ConfigManager::getInstance().isInitialized()) {
+        ConfigManager::getInstance().initialize();
+      }
       LogManager::getInstance().Info(
           "✓ ConfigManager initialized successfully");
     } catch (const std::exception &e) {
@@ -312,10 +286,10 @@ int CollectorApplication::ResolveCollectorId() {
     LogManager::getInstance().Info("🆔 Using explicit Collector ID: " +
                                    std::to_string(explicit_id));
     // Claim the slot with instance_key for consistency
-    std::string update_query = "UPDATE edge_servers SET instance_key = '" +
-                               instance_key +
-                               "', last_seen = CURRENT_TIMESTAMP WHERE id = " +
-                               std::to_string(explicit_id);
+    std::string update_query =
+        "UPDATE edge_servers SET instance_key = '" + instance_key +
+        "', last_seen = CURRENT_TIMESTAMP WHERE id = " +
+        std::to_string(explicit_id) + " AND server_type = 'collector'";
     db_mgr.executeNonQuery(update_query);
     config.setCollectorId(explicit_id);
     return explicit_id;
@@ -329,7 +303,7 @@ int CollectorApplication::ResolveCollectorId() {
   std::vector<std::vector<std::string>> results;
   std::string find_query =
       "SELECT id FROM edge_servers WHERE instance_key = '" + instance_key +
-      "' LIMIT 1";
+      "' AND server_type = 'collector' LIMIT 1";
   if (db_mgr.executeQuery(find_query, results) && !results.empty()) {
     int id = std::stoi(results[0][0]);
     LogManager::getInstance().Info(
@@ -343,9 +317,11 @@ int CollectorApplication::ResolveCollectorId() {
   std::string claim_query =
       "UPDATE edge_servers SET instance_key = '" + instance_key +
       "', last_seen = CURRENT_TIMESTAMP "
-      "WHERE id = (SELECT id FROM edge_servers WHERE (instance_key IS NULL OR "
+      "WHERE id = (SELECT id FROM edge_servers WHERE server_type = 'collector' "
+      "AND ((instance_key IS NULL OR "
       "instance_key = '') "
-      "OR (last_heartbeat < CURRENT_TIMESTAMP - INTERVAL '5 minutes') LIMIT 1)";
+      "OR (last_heartbeat < CURRENT_TIMESTAMP - INTERVAL '5 minutes')) LIMIT "
+      "1)";
 
   if (db_mgr.executeNonQuery(claim_query)) {
     // Re-check which ID we got
@@ -429,7 +405,7 @@ void CollectorApplication::MainLoop() {
                       ? "Ready"
                       : "Not Ready"));
 
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
           // API 서버 상태
           LogManager::getInstance().Info(
               "  REST API: " +
@@ -481,7 +457,7 @@ void CollectorApplication::Cleanup() {
     is_running_.store(false);
 
     // 1. REST API 서버 정리
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
     if (api_server_) {
       LogManager::getInstance().Info("Step 1/3: Stopping REST API server...");
       api_server_->Stop();
@@ -532,7 +508,7 @@ void CollectorApplication::Cleanup() {
 }
 
 bool CollectorApplication::InitializeRestApiServer() {
-#if HAVE_HTTPLIB
+#if HAS_HTTPLIB
   try {
     // ConfigManager에서 API 포트 읽기
     int api_port = 8080; // 기본값
@@ -587,7 +563,7 @@ bool CollectorApplication::InitializeRestApiServer() {
   LogManager::getInstance().Info(
       "REST API Server disabled - HTTP library not available");
   LogManager::getInstance().Info("To enable REST API, compile with "
-                                 "-DHAVE_HTTPLIB and link against httplib");
+                                 "-DHAS_HTTPLIB and link against httplib");
   return true;
 #endif
 }

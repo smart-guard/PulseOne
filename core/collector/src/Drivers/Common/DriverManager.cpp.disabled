@@ -26,7 +26,7 @@ bool DriverManager::Initialize() {
             return false;
         }
 
-#ifdef HAVE_DRIVER_SYSTEM
+#ifdef HAS_DRIVER_SYSTEM
         // 드라이버 팩토리 초기화 확인
         auto& factory = DriverFactory::GetInstance();
         auto available_protocols = factory.GetAvailableProtocols();
@@ -58,7 +58,7 @@ bool DriverManager::LoadDriversFromConfig(const std::string& config_path) {
     try {
         logger_->Info("Loading drivers from config: " + config_path);
 
-#ifdef HAVE_DRIVER_SYSTEM
+#ifdef HAS_DRIVER_SYSTEM
         // 설정 파일에서 드라이버 생성
         active_drivers_ = CreateDriversFromConfig(config_path);
         
@@ -84,7 +84,7 @@ bool DriverManager::StartAllDrivers() {
     try {
         logger_->Info("Starting all drivers...");
 
-#ifdef HAVE_DRIVER_SYSTEM
+#ifdef HAS_DRIVER_SYSTEM
         size_t started_count = 0;
         for (auto& driver : active_drivers_) {
             if (driver && driver->Start()) {
@@ -120,7 +120,7 @@ void DriverManager::StopAllDrivers() {
     try {
         logger_->Info("Stopping all drivers...");
 
-#ifdef HAVE_DRIVER_SYSTEM
+#ifdef HAS_DRIVER_SYSTEM
         for (auto& driver : active_drivers_) {
             if (driver) {
                 driver->Stop();
@@ -138,7 +138,7 @@ void DriverManager::StopAllDrivers() {
 }
 
 size_t DriverManager::GetActiveDriverCount() const {
-#ifdef HAVE_DRIVER_SYSTEM
+#ifdef HAS_DRIVER_SYSTEM
     if (!is_running_) return 0;
     
     size_t active_count = 0;
@@ -159,7 +159,7 @@ std::string DriverManager::GetStatistics() const {
     stats << "  Initialized: " << (is_initialized_ ? "Yes" : "No") << "\n";
     stats << "  Running: " << (is_running_ ? "Yes" : "No") << "\n";
     
-#ifdef HAVE_DRIVER_SYSTEM
+#ifdef HAS_DRIVER_SYSTEM
     stats << "  Total Drivers: " << active_drivers_.size() << "\n";
     stats << "  Active Drivers: " << GetActiveDriverCount() << "\n";
     
@@ -182,7 +182,7 @@ void DriverManager::Cleanup() {
         StopAllDrivers();
     }
 
-#ifdef HAVE_DRIVER_SYSTEM
+#ifdef HAS_DRIVER_SYSTEM
     active_drivers_.clear();
     driver_statistics_.clear();
 #endif

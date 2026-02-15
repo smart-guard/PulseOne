@@ -30,15 +30,15 @@ echo "📦 Building Production Images..."
 
 # Backend (includes Frontend)
 echo "   - Building Backend (with Frontend UI)..."
-docker build -f backend/Dockerfile.prod -t pulseone-backend:prod .
+docker build --no-cache -f backend/Dockerfile.prod -t pulseone-backend:prod .
 
 # Collector (with all drivers)
 echo "   - Building Collector (Native Core)..."
-docker build -f core/collector/Dockerfile.prod -t pulseone-collector:prod .
+docker build --no-cache -f core/collector/Dockerfile.prod -t pulseone-collector:prod .
 
 # Export Gateway
 echo "   - Building Export Gateway..."
-docker build -f core/export-gateway/Dockerfile.prod -t pulseone-export-gateway:prod .
+docker build --no-cache -f core/export-gateway/Dockerfile.prod -t pulseone-export-gateway:prod .
 
 # 3. Export Images for Offline Support
 echo "💾 Exporting Images to tarballs (Offline Mode Support)..."

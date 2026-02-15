@@ -148,7 +148,6 @@ private:
 
   // 유틸리티
   int getDeviceIdForPoint(int point_id);
-  int getSiteIdForPoint(int point_id);
   std::string getPointName(int point_id);
   std::string getPointLocation(int point_id);
   AlarmType convertToAlarmType(const AlarmRuleEntity::AlarmType &entity_type);
@@ -195,7 +194,6 @@ private:
   std::unordered_map<int, int64_t> rule_occurrence_map_;
   std::unordered_map<int, int> point_device_cache_;
   std::unordered_map<int, std::string> point_name_cache_;
-  std::unordered_map<int, int> device_site_cache_;
   mutable std::shared_mutex device_cache_mutex_;
 
   // 통계

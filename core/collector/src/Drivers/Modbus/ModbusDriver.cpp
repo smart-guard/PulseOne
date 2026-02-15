@@ -4,6 +4,8 @@
 // =============================================================================
 
 #include "Drivers/Modbus/ModbusDriver.h"
+#include "Database/Repositories/ProtocolRepository.h"
+#include "Database/RepositoryFactory.h"
 #include "Drivers/Common/DriverFactory.h"
 #include "Drivers/Modbus/ModbusConnectionPool.h"
 #include "Drivers/Modbus/ModbusDiagnostics.h"
@@ -24,7 +26,6 @@ namespace PulseOne {
 namespace Drivers {
 
 // 타입 별칭 정의
-using ProtocolType = PulseOne::Enums::ProtocolType;
 using ErrorInfo = PulseOne::Structs::ErrorInfo;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
 
@@ -555,12 +556,12 @@ void ModbusDriver::ResetStatistics() {
   driver_statistics_.average_response_time = std::chrono::milliseconds(0);
 }
 
-ProtocolType ModbusDriver::GetProtocolType() const {
+std::string ModbusDriver::GetProtocolType() const {
   if (config_.endpoint.find('/') != std::string::npos ||
       config_.endpoint.find("COM") != std::string::npos) {
-    return ProtocolType::MODBUS_RTU;
+    return "MODBUS_RTU";
   }
-  return ProtocolType::MODBUS_TCP;
+  return "MODBUS_TCP";
 }
 
 Enums::DriverStatus ModbusDriver::GetStatus() const {
@@ -1634,6 +1635,36 @@ extern "C" {
 __declspec(dllexport)
 #endif
 void RegisterPlugin() {
+  // 1. DB에 프로토콜 정보 자동 등록 (없을 경우)
+  try {
+    auto &repo_factory = PulseOne::Database::RepositoryFactory::getInstance();
+    auto protocol_repo = repo_factory.getProtocolRepository();
+    if (protocol_repo) {
+      if (!protocol_repo->findByType("MODBUS_TCP").has_value()) {
+        PulseOne::Database::Entities::ProtocolEntity entity;
+        entity.setProtocolType("MODBUS_TCP");
+        entity.setDisplayName("Modbus TCP");
+        entity.setCategory("industrial");
+        entity.setDescription("Modbus over TCP/IP Protocol Driver");
+        entity.setDefaultPort(502);
+        protocol_repo->save(entity);
+      }
+      if (!protocol_repo->findByType("MODBUS_RTU").has_value()) {
+        PulseOne::Database::Entities::ProtocolEntity entity;
+        entity.setProtocolType("MODBUS_RTU");
+        entity.setDisplayName("Modbus RTU");
+        entity.setCategory("industrial");
+        entity.setDescription("Modbus Serial (RTU/ASCII) Protocol Driver");
+        entity.setUsesSerial(true);
+        protocol_repo->save(entity);
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[ModbusDriver] DB Registration failed: " << e.what()
+              << std::endl;
+  }
+
+  // 2. 메모리 Factory에 드라이버 생성자 등록
   // 일반 MODBUS 드라이버 등록 (설정에 따라 TCP/RTU 결정)
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "MODBUS",

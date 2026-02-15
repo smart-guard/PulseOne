@@ -98,7 +98,7 @@ RUN echo "Installing BACnet Stack..." && \
     cd /tmp && \
     git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
     cd bacnet-stack && \
-    make BACNET_PORT=linux BACDL_DEFINE=-DBACDL_BIP=1 library && \
+    make BACNET_PORT=linux BACDL_DEFINE=-DBACDL_BIP=1 CC="gcc -fPIC" library && \
     cp apps/lib/libbacnet.a /usr/local/lib/ && \
     cp -r src/bacnet /usr/local/include/ && \
     ldconfig && \

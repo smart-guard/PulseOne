@@ -17,7 +17,7 @@
 #include <chrono>
 #include <functional>
 
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
 extern "C" {
     #include <bacnet/bacdef.h>
     #include <bacnet/bacenum.h>

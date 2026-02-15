@@ -1,0 +1,43 @@
+# =============================================================================
+# PulseOne OPCUA Driver Makefile (Windows/MinGW)
+# =============================================================================
+
+# Project Paths
+COLLECTOR_ROOT = ../../../
+BIN_DIR = $(COLLECTOR_ROOT)bin-windows
+PLUGINS_DIR = $(BIN_DIR)/plugins
+MINGW_PREFIX = /usr/x86_64-w64-mingw32
+
+# Compiler & Flags
+CXX = x86_64-w64-mingw32-g++
+CC = x86_64-w64-mingw32-gcc
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0601 -shared
+CFLAGS = -Wall -O2 -DWIN32 -D_WIN32_WINNT=0x0601
+
+INCLUDES = -I$(COLLECTOR_ROOT)include \
+           -I$(COLLECTOR_ROOT)src \
+           -I$(COLLECTOR_ROOT)../shared/include \
+           -I$(COLLECTOR_ROOT)../shared/modules/DbLib/include \
+           -I$(COLLECTOR_ROOT)../shared/modules/LogLib/include
+
+# Libraries
+IMPLIB = $(BIN_DIR)/libcollector.a
+LIBS = -lopen62541 -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread
+
+# Target
+TARGET = $(PLUGINS_DIR)/opcua_driver.dll
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): OPCUADriver.cpp open62541.c
+	@mkdir -p $(PLUGINS_DIR)
+	@echo "🔨 Building OPCUA Windows Plugin..."
+	@$(CC) $(CFLAGS) $(INCLUDES) -c open62541.c -o open62541.o
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c OPCUADriver.cpp -o OPCUADriver.o
+	$(CXX) -shared OPCUADriver.o open62541.o $(IMPLIB) -o $@ $(LIBS)
+	@rm -f *.o
+
+clean:
+	rm -f $(TARGET)

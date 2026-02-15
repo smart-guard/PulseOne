@@ -5,13 +5,17 @@
 **Objective**: Verify the complete data pipeline including **Auto-Discovery**, **File Chunking (Split Transfer)**, **Alarm Generation**, and **External S3 Export**.
 
 ## Phase 1: Environment & Setup (Clean State)
-- [ ] **1.1. Database Cleanup**:
-    - Ensure `pulseone.db` is clean (restored from backup).
-    - **Crucial**: Ensure NO manual `data_points` exist for the test device initially.
-- [ ] **1.2. Register MQTT Device**:
-    - Create Device ID 300 (`MQTT-Test-Device`) in `devices` table.
-    - Config: Endpoint `tcp://rabbitmq:1883`, Topics `vfd/#`.
-    - **Verify**: Restart Collector and check logs for "Worker 300 started".
+- [x] **1.1. Database Cleanup & Topology Setup**:
+    - [x] Clear existing `data_points` for device 300.
+    - [x] **Modbus (ID 2, 12346)** -> Assign to **Edge Server 1**.
+    - [x] **MQTT (ID 300)** -> Assign to **Edge Server 6**.
+    - [x] **Reset Identities**: Set `instance_key` to NULL for Edge Servers 1 and 6.
+- [ ] **1.2. Multi-Instance Startup (Zero-Config)**:
+    - [ ] Start **Collector A** (Standard path) -> Verify it claims **ID 1** (Modbus).
+    - [ ] Start **Collector B** (Unique path to differentiate hash) -> Verify it claims **ID 6** (MQTT).
+    - [ ] **Verify**: Check `startup_vfinal.log` for both to ensure they load correct workers.
+
+
 
 ## Phase 2: Auto-Discovery Verification
 - [ ] **2.1. Execute Simulator (Chunked)**:

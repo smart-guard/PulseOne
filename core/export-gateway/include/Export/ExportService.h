@@ -28,7 +28,9 @@
 #include <thread>
 #include <vector>
 
+namespace PulseOne {
 using json = nlohmann::json;
+} // namespace PulseOne
 
 #include "CSP/FileTargetHandler.h"
 #include "CSP/HttpTargetHandler.h"

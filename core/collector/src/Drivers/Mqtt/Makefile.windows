@@ -1,0 +1,41 @@
+# =============================================================================
+# PulseOne MQTT Driver Makefile (Windows/MinGW)
+# =============================================================================
+
+# Project Paths
+COLLECTOR_ROOT = ../../../
+BIN_DIR = $(COLLECTOR_ROOT)bin-windows
+PLUGINS_DIR = $(BIN_DIR)/plugins
+MINGW_PREFIX = /usr/x86_64-w64-mingw32
+
+# Compiler & Flags
+CXX = x86_64-w64-mingw32-g++
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0601 -shared
+CXXFLAGS += -DHAS_MQTT_CPP=1 -DHAS_MQTT_ASYNC=1 -DHAS_MQTT=1
+
+INCLUDES = -I$(COLLECTOR_ROOT)include \
+           -I$(COLLECTOR_ROOT)src \
+           -I$(COLLECTOR_ROOT)../shared/include \
+           -I$(COLLECTOR_ROOT)../shared/modules/DbLib/include \
+           -I$(COLLECTOR_ROOT)../shared/modules/LogLib/include
+
+# Libraries
+# Order: paho-mqttpp3 -> paho-mqtt3a -> paho-mqtt3c
+IMPLIB = $(BIN_DIR)/libcollector.a
+LIBS = -lpaho-mqttpp3-static -lpaho-mqtt3a -lpaho-mqtt3c \
+       -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread
+
+# Target
+TARGET = $(PLUGINS_DIR)/mqtt_driver.dll
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(wildcard *.cpp)
+	@mkdir -p $(PLUGINS_DIR)
+	@echo "🔨 Building MQTT Windows Plugin: $@"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $^ $(IMPLIB) -o $@ $(LIBS)
+
+clean:
+	rm -f $(TARGET)

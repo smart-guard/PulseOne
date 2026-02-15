@@ -10,7 +10,7 @@
 #include <sstream>
 #include <iomanip>
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 #endif
@@ -314,7 +314,7 @@ std::vector<FailoverEvent> MqttFailover::GetRecentEvents(size_t max_count) const
 }
 
 std::string MqttFailover::GetStatisticsJSON() const {
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
     std::lock_guard<std::mutex> brokers_lock(brokers_mutex_);
     std::lock_guard<std::mutex> events_lock(events_mutex_);
     

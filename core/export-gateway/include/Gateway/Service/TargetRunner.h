@@ -11,9 +11,13 @@
 #include "Gateway/Service/ITargetRunner.h"
 #include <memory>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <unordered_map>
 
 namespace PulseOne {
+
+using json = nlohmann::json;
+
 namespace Gateway {
 namespace Service {
 

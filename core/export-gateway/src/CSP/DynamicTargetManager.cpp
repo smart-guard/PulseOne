@@ -64,7 +64,7 @@ DynamicTargetManager &DynamicTargetManager::getInstance() {
 // 생성자 및 소멸자 (private)
 // =============================================================================
 
-DynamicTargetManager::DynamicTargetManager() : publish_client_(nullptr) {
+DynamicTargetManager::DynamicTargetManager() : m_redis_pub_client_(nullptr) {
 
   LogManager::getInstance().Info("DynamicTargetManager 싱글턴 생성");
 
@@ -116,20 +116,20 @@ bool DynamicTargetManager::initializePublishClient() {
                                    std::to_string(redis_port));
 
     // RedisClientImpl 인스턴스 생성
-    publish_client_ = std::make_unique<RedisClientImpl>();
+    m_redis_pub_client_ = std::make_unique<RedisClientImpl>();
 
     // 연결 시도
-    if (!publish_client_->connect(redis_host, redis_port, redis_password)) {
+    if (!m_redis_pub_client_->connect(redis_host, redis_port, redis_password)) {
       LogManager::getInstance().Error("Redis 연결 실패: " + redis_host + ":" +
                                       std::to_string(redis_port));
-      publish_client_.reset();
+      m_redis_pub_client_.reset();
       return false;
     }
 
     // 연결 테스트
-    if (!publish_client_->ping()) {
+    if (!m_redis_pub_client_->ping()) {
       LogManager::getInstance().Error("Redis PING 실패");
-      publish_client_.reset();
+      m_redis_pub_client_.reset();
       return false;
     }
 
@@ -142,18 +142,18 @@ bool DynamicTargetManager::initializePublishClient() {
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("Redis 연결 초기화 예외: " +
                                     std::string(e.what()));
-    publish_client_.reset();
+    m_redis_pub_client_.reset();
     return false;
   }
 }
 
 bool DynamicTargetManager::isRedisConnected() const {
-  if (!publish_client_) {
+  if (!m_redis_pub_client_) {
     return false;
   }
 
   try {
-    return publish_client_->isConnected();
+    return m_redis_pub_client_->isConnected();
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("Redis 연결 상태 확인 예외: " +
                                     std::string(e.what()));
@@ -238,13 +238,13 @@ void DynamicTargetManager::stop() {
   stopBackgroundThreads();
 
   // ✅ PUBLISH 전용 Redis 연결 정리
-  if (publish_client_) {
+  if (m_redis_pub_client_) {
     try {
-      if (publish_client_->isConnected()) {
-        publish_client_->disconnect();
+      if (m_redis_pub_client_->isConnected()) {
+        m_redis_pub_client_->disconnect();
         LogManager::getInstance().Info("PUBLISH Redis 연결 종료");
       }
-      publish_client_.reset();
+      m_redis_pub_client_.reset();
     } catch (const std::exception &e) {
       LogManager::getInstance().Error("Redis 연결 종료 예외: " +
                                       std::string(e.what()));
@@ -436,17 +436,16 @@ bool DynamicTargetManager::setTargetEnabled(const std::string &name,
 // =============================================================================
 // 알람 전송
 // =============================================================================
-
 std::vector<TargetSendResult>
 DynamicTargetManager::sendAlarmToTargets(const AlarmMessage &alarm) {
   std::vector<TargetSendResult> results;
 
   // ✅ 1. Redis PUBLISH (옵션 - 다른 시스템에 알람 전파)
-  if (publish_client_ && publish_client_->isConnected()) {
+  if (this->m_redis_pub_client_ && this->m_redis_pub_client_->isConnected()) {
     try {
       json alarm_json = alarm.to_json();
 
-      int subscriber_count = publish_client_->publish(
+      int subscriber_count = this->m_redis_pub_client_->publish(
           PulseOne::Constants::Export::Redis::CHANNEL_ALARMS_PROCESSED,
           alarm_json.dump());
 
@@ -617,11 +616,11 @@ BatchTargetResult DynamicTargetManager::sendAlarmBatchToTargets(
   }
 
   // 1. Redis PUBLISH (개별 알람 발행 - 배치는 알람별로 루프 필요)
-  if (publish_client_ && publish_client_->isConnected()) {
+  if (this->m_redis_pub_client_ && this->m_redis_pub_client_->isConnected()) {
     for (const auto &alarm : alarms) {
       try {
         json alarm_json = alarm.to_json(); // helper or manual packing
-        publish_client_->publish(
+        this->m_redis_pub_client_->publish(
             PulseOne::Constants::Export::Redis::CHANNEL_ALARMS_PROCESSED,
             alarm_json.dump());
       } catch (...) {

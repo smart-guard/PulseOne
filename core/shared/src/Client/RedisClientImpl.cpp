@@ -1413,8 +1413,12 @@ void RedisClientImpl::connectionWatchdog() {
       if (!ping()) {
         logWarning("연결 감시: PING 실패, 재연결 시도");
         connected_ = false;
-        ensureConnected();
       }
+    }
+
+    // 연결되어 있지 않다면 재연결 시도 (초기 연결 실패 시나리오 대응)
+    if (!connected_) {
+      ensureConnected();
     }
   }
 }

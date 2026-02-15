@@ -12,10 +12,11 @@
 #include <string>
 
 namespace PulseOne {
-namespace Gateway {
-namespace Model {
 
 using json = nlohmann::json;
+
+namespace Gateway {
+namespace Model {
 
 /**
  * @brief Value Message Structure (v3.5 compatibility)

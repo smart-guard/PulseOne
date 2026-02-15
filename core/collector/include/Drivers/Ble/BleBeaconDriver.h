@@ -36,7 +36,7 @@ public:
                   const Structs::DataValue &value) override;
 
   // Getters
-  Enums::ProtocolType GetProtocolType() const override;
+  std::string GetProtocolType() const override;
   Structs::DriverStatus GetStatus() const override;
   Structs::ErrorInfo GetLastError() const override;
 

@@ -19,15 +19,11 @@
 // 분할된 타입 헤더 포함
 #include "Export/FailureProtectorTypes.h"
 #include "Export/TargetSendResult.h"
+#include "Gateway/Model/AlarmMessage.h"
+#include "Gateway/Model/ValueMessage.h"
 
-// Forward declarations for circular dependencies
+// CSP 네임스페이스 별칭 제공 (내부용)
 namespace PulseOne {
-namespace Gateway {
-namespace Model {
-struct AlarmMessage;
-struct ValueMessage;
-} // namespace Model
-} // namespace Gateway
 namespace CSP {
 using AlarmMessage = PulseOne::Gateway::Model::AlarmMessage;
 using ValueMessage = PulseOne::Gateway::Model::ValueMessage;
@@ -35,9 +31,10 @@ using ValueMessage = PulseOne::Gateway::Model::ValueMessage;
 } // namespace PulseOne
 
 namespace PulseOne {
-namespace Export {
 
 using json = nlohmann::json;
+
+namespace Export {
 
 // =============================================================================
 // 전방 선언
@@ -176,9 +173,5 @@ bool isValidTargetConfig(const nlohmann::json &config,
                          const std::string &target_type);
 } // namespace Export
 } // namespace PulseOne
-
-// 실제 구현 포함 (전방 선언 해결용 - 파일 하단 배치)
-#include "Gateway/Model/AlarmMessage.h"
-#include "Gateway/Model/ValueMessage.h"
 
 #endif // EXPORT_TYPES_H

@@ -45,8 +45,8 @@ using UniqueId = PulseOne::BasicTypes::UniqueId;     // ✅ 매우 중요!
 using Duration = PulseOne::BasicTypes::Duration;     // ✅ 중요!
 using EngineerID = PulseOne::BasicTypes::EngineerID; // ✅ 중요!
 
-// 🔥 Enums 타입들 명시적 선언 (ErrorCode 제외!)
-using ProtocolType = PulseOne::Enums::ProtocolType;
+// Protocols are now identified by std::string. Legacy ProtocolType enum
+// removed.
 using ConnectionStatus = PulseOne::Enums::ConnectionStatus;
 using DataQuality = PulseOne::Enums::DataQuality;
 using LogLevel = PulseOne::Enums::LogLevel;
@@ -936,16 +936,17 @@ struct DriverConfig {
   // =======================================================================
   // 🔥 공통 필드들 (기존 호환)
   // =======================================================================
-  UniqueId device_id;                            // 디바이스 ID
-  std::string name = "";                         // 디바이스 이름
-  ProtocolType protocol = ProtocolType::UNKNOWN; // 프로토콜 타입
-  std::string endpoint = "";                     // 연결 엔드포인트
+  UniqueId device_id;               // 디바이스 ID
+  std::string name = "";            // 디바이스 이름
+  std::string protocol = "UNKNOWN"; // 프로토콜 타입 (문자열 방식)
+  std::string endpoint = "";        // 연결 엔드포인트
 
   // 타이밍 설정
   uint32_t polling_interval_ms = 1000; // 폴링 간격
   uint32_t timeout_ms = 5000;          // 타임아웃
   int retry_count = 3;                 // 재시도 횟수
   bool auto_reconnect = true;          // 자동 재연결
+
   std::map<std::string, std::string>
       properties; // 🔥 프로토콜별 속성 저장 (통합 시스템 핵심)
   std::map<std::string, std::string> custom_settings;
@@ -960,7 +961,7 @@ struct DriverConfig {
 
   DriverConfig() = default;
 
-  explicit DriverConfig(ProtocolType proto) : protocol(proto) {
+  explicit DriverConfig(const std::string &proto) : protocol(proto) {
     protocol_config = CreateProtocolConfig(proto);
   }
 
@@ -999,57 +1000,36 @@ struct DriverConfig {
   // =======================================================================
 
   bool IsModbus() const {
-    return protocol == ProtocolType::MODBUS_TCP ||
-           protocol == ProtocolType::MODBUS_RTU;
+    return protocol == "MODBUS_TCP" || protocol == "MODBUS_RTU" ||
+           protocol == "MODBUS";
   }
 
-  bool IsMqtt() const { return protocol == ProtocolType::MQTT; }
+  bool IsMqtt() const { return protocol == "MQTT" || protocol == "MQTT_5"; }
 
   bool IsBacnet() const {
-    return protocol == ProtocolType::BACNET_IP ||
-           protocol == ProtocolType::BACNET_MSTP;
+    return protocol == "BACNET" || protocol == "BACNET_IP" ||
+           protocol == "BACNET_MSTP";
   }
 
   bool IsValid() const {
-    return protocol != ProtocolType::UNKNOWN && !endpoint.empty() &&
-           protocol_config && protocol_config->IsValid();
+    return !protocol.empty() && protocol != "UNKNOWN" && !endpoint.empty();
   }
 
-  std::string GetProtocolName() const {
-    switch (protocol) {
-    case ProtocolType::MODBUS_TCP:
-      return "MODBUS_TCP";
-    case ProtocolType::MODBUS_RTU:
-      return "MODBUS_RTU";
-    case ProtocolType::MQTT:
-      return "MQTT";
-    case ProtocolType::BACNET_IP:
-      return "BACNET_IP";
-    case ProtocolType::BACNET_MSTP:
-      return "BACNET_MSTP";
-    default:
-      return "UNKNOWN";
-    }
-  }
+  std::string GetProtocolName() const { return protocol; }
 
 private:
   // =======================================================================
   // 🔥 팩토리 메서드
   // =======================================================================
   static std::unique_ptr<IProtocolConfig>
-  CreateProtocolConfig(ProtocolType type) {
-    switch (type) {
-    case ProtocolType::MODBUS_TCP:
-    case ProtocolType::MODBUS_RTU:
+  CreateProtocolConfig(const std::string &type) {
+    if (type == "MODBUS_TCP" || type == "MODBUS_RTU" || type == "MODBUS")
       return std::make_unique<ModbusConfig>();
-    case ProtocolType::MQTT:
+    if (type == "MQTT" || type == "MQTT_5")
       return std::make_unique<MqttConfig>();
-    case ProtocolType::BACNET_IP:
-    case ProtocolType::BACNET_MSTP:
+    if (type == "BACNET" || type == "BACNET_IP" || type == "BACNET_MSTP")
       return std::make_unique<BACnetConfig>();
-    default:
-      return nullptr;
-    }
+    return nullptr;
   }
 };
 
@@ -1203,9 +1183,9 @@ struct DeviceInfo {
     connection_string = endpoint;
   }
 
-  explicit DeviceInfo(ProtocolType protocol) : DeviceInfo() {
+  explicit DeviceInfo(const std::string &protocol) : DeviceInfo() {
     driver_config = DriverConfig(protocol);
-    protocol_type = driver_config.GetProtocolName();
+    protocol_type = protocol;
     InitializeProtocolDefaults(protocol);
   }
 
@@ -1217,12 +1197,8 @@ struct DeviceInfo {
    * @brief 프로토콜별 기본 properties 설정 (기존 코드 완전 호환)
    * @note 🔥 Phase 1: 기존 메서드들 100% 유지하면서 내부만 설정 기반으로 변경
    */
-  void InitializeProtocolDefaults(ProtocolType protocol) {
-    // 🔥 1단계: 기존 방식 유지 (나중에 설정 기반으로 점진적 변경)
-    switch (protocol) {
-    case ProtocolType::MODBUS_TCP:
-    case ProtocolType::MODBUS_RTU:
-      // Modbus 기본값들 (기존 Worker 코드 호환)
+  void InitializeProtocolDefaults(const std::string &protocol) {
+    if (protocol == "MODBUS_TCP" || protocol == "MODBUS_RTU") {
       properties["slave_id"] = "1";
       properties["function_code"] = "3";
       properties["byte_order"] = "big_endian";
@@ -1230,10 +1206,7 @@ struct DeviceInfo {
       properties["register_type"] = "HOLDING_REGISTER";
       properties["max_registers_per_group"] = "125";
       properties["auto_group_creation"] = "true";
-      break;
-
-    case ProtocolType::MQTT:
-      // MQTT 기본값들 (기존 Worker 코드 호환)
+    } else if (protocol == "MQTT") {
       properties["client_id"] = "";
       properties["username"] = "";
       properties["password"] = "";
@@ -1241,26 +1214,17 @@ struct DeviceInfo {
       properties["clean_session"] = "true";
       properties["retain"] = "false";
       properties["keep_alive"] = "60";
-      break;
-
-    case ProtocolType::BACNET:
-      // BACnet 기본값들 (기존 Worker 코드 호환)
+    } else if (protocol == "BACNET" || protocol == "BACNET_IP") {
       properties["device_id"] = "1001";
       properties["network_number"] = "1";
       properties["max_apdu_length"] = "1476";
       properties["segmentation_support"] = "both";
       properties["vendor_id"] = "0";
-      break;
-
-    default:
-      // 공통 기본값들
+    } else {
       properties["auto_reconnect"] = "true";
       properties["ssl_enabled"] = "false";
       properties["validate_certificates"] = "true";
-      break;
     }
-
-    // Protocol Defaults application logic (Implemented via switch above)
   }
 
   // =======================================================================
@@ -1375,7 +1339,7 @@ struct DeviceInfo {
   const std::string &getProtocolType() const { return protocol_type; }
   void setProtocolType(const std::string &protocol) {
     protocol_type = protocol;
-    driver_config.protocol = StringToProtocolType(protocol);
+    driver_config.protocol = protocol;
   }
 
   const std::string &getEndpoint() const { return endpoint; }
@@ -1397,24 +1361,25 @@ struct DeviceInfo {
   /**
    * @brief 프로토콜 문자열을 ProtocolType 열거형으로 변환
    */
-  static ProtocolType StringToProtocolType(const std::string &type_str) {
-    if (type_str == "MODBUS_TCP")
-      return ProtocolType::MODBUS_TCP;
-    if (type_str == "MODBUS_RTU")
-      return ProtocolType::MODBUS_RTU;
-    if (type_str == "MQTT")
-      return ProtocolType::MQTT;
-    if (type_str == "OPC_UA")
-      return ProtocolType::OPC_UA;
-    if (type_str == "BACNET_IP" || type_str == "BACNET")
-      return ProtocolType::BACNET_IP;
-    if (type_str == "HTTP_REST")
-      return ProtocolType::HTTP_REST;
-    if (type_str == "BLE_BEACON")
-      return ProtocolType::BLE_BEACON;
-    if (type_str == "ROS_BRIDGE")
-      return ProtocolType::ROS_BRIDGE;
-    return ProtocolType::UNKNOWN;
+  /**
+   * @brief 프로토콜 문자열 정규화 (StringToProtocolType 대체)
+   */
+  static std::string StringToProtocolType(const std::string &type_str) {
+    // 이제 숫자로 변환하지 않고 문자열 그대로 사용하되, 정규화만 수행
+    std::string upper = type_str;
+    for (auto &c : upper)
+      c = toupper(c);
+
+    if (upper == "MODBUS")
+      return "MODBUS_TCP";
+    if (upper == "BACNET_IP")
+      return "BACNET";
+    if (upper == "ROS_BRIDGE")
+      return "ROS";
+    if (upper == "HTTP_REST")
+      return "HTTP";
+
+    return upper;
   }
 
   // 상태 정보
@@ -1592,6 +1557,7 @@ struct DeviceInfo {
     connection_string = endpoint;
 
     // 🔥 DeviceSettings → DriverConfig 완전 매핑
+    driver_config.protocol = protocol_type;
     driver_config.name = name;
     driver_config.endpoint = endpoint;
     driver_config.polling_interval_ms =
@@ -1695,13 +1661,13 @@ struct DeviceInfo {
     // 🔥 프로토콜 타입 설정
     // =======================================================================
     if (protocol_type == "MODBUS_TCP") {
-      driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_TCP;
+      driver_config.protocol = "MODBUS_TCP";
     } else if (protocol_type == "MODBUS_RTU") {
-      driver_config.protocol = PulseOne::Enums::ProtocolType::MODBUS_RTU;
+      driver_config.protocol = "MODBUS_RTU";
     } else if (protocol_type == "MQTT") {
-      driver_config.protocol = PulseOne::Enums::ProtocolType::MQTT;
+      driver_config.protocol = "MQTT";
     } else if (protocol_type == "BACNET_IP") {
-      driver_config.protocol = PulseOne::Enums::ProtocolType::BACNET_IP;
+      driver_config.protocol = "BACNET_IP";
     }
   }
 
@@ -1825,7 +1791,7 @@ struct DeviceInfo {
   std::string GetProtocolName() const {
     return driver_config.GetProtocolName();
   }
-  ProtocolType GetProtocol() const { return driver_config.protocol; }
+  std::string GetProtocol() const { return driver_config.protocol; }
 };
 
 // =========================================================================
@@ -1845,8 +1811,9 @@ struct DeviceDataMessage {
   uint32_t priority = 0;                // 처리 우선순위 (0=일반, 1=높음)
 
   // 멀티테넌트 지원
-  int tenant_id = 0; // 테넌트 ID (0=기본)
-  int site_id = 0;   // 사이트 ID (0=기본)
+  int tenant_id = 0;      // 테넌트 ID (0=기본)
+  int site_id = 0;        // 사이트 ID (0=기본)
+  int edge_server_id = 0; // 엣지 서버 ID
 
   // 처리 제어
   bool trigger_alarms = true;          // 알람 체크 수행 여부
@@ -2503,7 +2470,7 @@ struct PipelineStatistics {
 struct DriverLogContext {
   UniqueId device_id;
   std::string device_name;
-  ProtocolType protocol;
+  std::string protocol;
   std::string endpoint;
   std::string thread_id;
   std::string operation;
@@ -2511,7 +2478,7 @@ struct DriverLogContext {
   DriverLogContext() = default;
 
   DriverLogContext(const UniqueId &dev_id, const std::string &dev_name,
-                   ProtocolType proto, const std::string &ep)
+                   const std::string &proto, const std::string &ep)
       : device_id(dev_id), device_name(dev_name), protocol(proto),
         endpoint(ep) {}
 };

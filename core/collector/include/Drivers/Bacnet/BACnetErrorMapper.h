@@ -12,7 +12,7 @@
 #include <string>
 #include <map>
 
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
 extern "C" {
     #include <bacnet/bacdef.h>
     #include <bacnet/bacenum.h>
@@ -62,7 +62,7 @@ public:
      * @brief BACnet 에러 클래스/코드를 PulseOne 에러로 변환
      */
     Enums::ErrorCode MapBACnetError(uint8_t error_class, uint8_t error_code) const {
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
         // BACnet Error Class 기반 매핑
         switch (error_class) {
             case ERROR_CLASS_DEVICE:
@@ -122,7 +122,7 @@ public:
      * @brief BACnet Reject Reason 매핑
      */
     Enums::ErrorCode MapRejectReason(uint8_t reject_reason) const {
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
         switch (reject_reason) {
             case REJECT_REASON_OTHER:
                 return Enums::ErrorCode::PROTOCOL_ERROR;
@@ -157,7 +157,7 @@ public:
      * @brief BACnet Abort Reason 매핑
      */
     Enums::ErrorCode MapAbortReason(uint8_t abort_reason) const {
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
         switch (abort_reason) {
             case ABORT_REASON_OTHER:
                 return Enums::ErrorCode::PROTOCOL_ERROR;
@@ -206,7 +206,7 @@ public:
      * @brief 에러 코드 이름 반환
      */
     std::string GetErrorCodeName(uint8_t error_class, uint8_t error_code) const {
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
         std::string class_name = "Class_" + std::to_string(error_class);
         std::string code_name = "Code_" + std::to_string(error_code);
         

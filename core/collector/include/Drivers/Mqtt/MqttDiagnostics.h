@@ -16,7 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
 #include <nlohmann/json.hpp>
 #endif
 

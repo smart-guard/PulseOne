@@ -46,9 +46,9 @@ class ExportGatewayRepository extends BaseRepository {
         }
     }
 
-    async findById(id, tenantId = null) {
+    async findById(id, tenantId = null, trx = null) {
         try {
-            const query = this.query()
+            const query = this.query(trx)
                 .select('*', 'server_name as name')
                 .where('id', id)
                 .where('is_deleted', 0)
@@ -65,7 +65,7 @@ class ExportGatewayRepository extends BaseRepository {
         }
     }
 
-    async create(data, tenantId = null) {
+    async create(data, tenantId = null, trx = null) {
         try {
             const dataToInsert = {
                 tenant_id: tenantId || data.tenant_id,
@@ -79,8 +79,8 @@ class ExportGatewayRepository extends BaseRepository {
                 config: typeof data.config === 'object' ? JSON.stringify(data.config) : (data.config || '{}')
             };
 
-            const [id] = await this.knex('edge_servers').insert(dataToInsert);
-            return await this.findById(id, tenantId);
+            const [id] = await (trx || this.knex)('edge_servers').insert(dataToInsert);
+            return await this.findById(id, tenantId, trx);
         } catch (error) {
             this.logger.error('ExportGatewayRepository.create 오류:', error);
             throw error;

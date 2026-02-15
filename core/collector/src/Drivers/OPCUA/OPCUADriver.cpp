@@ -1,7 +1,8 @@
 #include "Drivers/OPCUA/OPCUADriver.h"
+#include "Database/Repositories/ProtocolRepository.h"
+#include "Database/RepositoryFactory.h"
 #include "Drivers/Common/DriverFactory.h"
 #include "Logging/LogManager.h"
-#include <chrono>
 #include <iostream>
 #include <thread>
 
@@ -272,9 +273,7 @@ PulseOne::Structs::ErrorInfo OPCUADriver::GetLastError() const {
   return last_error_;
 }
 
-PulseOne::Enums::ProtocolType OPCUADriver::GetProtocolType() const {
-  return ProtocolType::OPC_UA;
-}
+std::string OPCUADriver::GetProtocolType() const { return "OPC_UA"; }
 
 // =============================================================================
 // 🚀 High-Performance Read: Cache Lookup
@@ -531,6 +530,26 @@ extern "C" {
 __declspec(dllexport)
 #endif
 void RegisterPlugin() {
+  // 1. DB에 프로토콜 정보 자동 등록 (없을 경우)
+  try {
+    auto &repo_factory = PulseOne::Database::RepositoryFactory::getInstance();
+    auto protocol_repo = repo_factory.getProtocolRepository();
+    if (protocol_repo) {
+      if (!protocol_repo->findByType("OPC_UA").has_value()) {
+        PulseOne::Database::Entities::ProtocolEntity entity;
+        entity.setProtocolType("OPC_UA");
+        entity.setDisplayName("OPC UA");
+        entity.setCategory("industrial");
+        entity.setDescription("OPC Unified Architecture Protocol Driver");
+        entity.setDefaultPort(4840);
+        protocol_repo->save(entity);
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[OPCUA] DB Registration failed: " << e.what() << std::endl;
+  }
+
+  // 2. 메모리 Factory에 드라이버 생성자 등록
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "OPC_UA",
       []() { return std::make_unique<PulseOne::Drivers::OPCUADriver>(); });

@@ -11,9 +11,10 @@
 #include <string>
 
 namespace PulseOne {
-namespace Export {
 
 using json = nlohmann::json;
+
+namespace Export {
 
 /**
  * @brief 실패 방지기 설정

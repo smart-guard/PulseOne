@@ -87,6 +87,7 @@ services:
       - ../config/timeseries.env
     environment:
       - COLLECTOR_ID=1
+      - PULSEONE_CONFIG_DIR=/app/config
       - PULSEONE_DATA_DIR=/app/data
       - SQLITE_PATH=/app/data/db/pulseone.db
       - LOG_LEVEL=debug
@@ -101,7 +102,7 @@ services:
       - ../config:/app/config
       - ../core:/app/core
     tty: true
-    command: /bin/bash -c "rm -f /app/data/pulseone.db && make -j10 -C ../shared all && make -j10 all && ./bin/pulseone-collector"
+    command: /bin/bash -c "tail -f /dev/null"
 
   simulator-modbus:
     container_name: docker-simulator-modbus-1

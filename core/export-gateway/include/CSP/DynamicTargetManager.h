@@ -36,6 +36,7 @@
 
 #include "CSP/AlarmMessage.h"
 #include "CSP/FailureProtector.h"
+#include "Client/RedisClient.h"
 #include "Export/ExportTypes.h" // Shared data models
 #include "Export/FailureProtectorTypes.h"
 #include "Export/GatewayExportTypes.h"
@@ -61,10 +62,12 @@
 #include <unordered_map>
 #include <vector>
 
-using json = nlohmann::json;
-// json은 헤더에서 제거됨 (메모리 절감)
+class RedisClient;
 
 namespace PulseOne {
+
+using json = nlohmann::json;
+
 namespace CSP {
 
 // =============================================================================
@@ -144,7 +147,7 @@ public:
    * @note AlarmSubscriber는 SUBSCRIBE 모드로 Redis를 점유하므로
    *       별도의 PUBLISH 전용 연결이 필요함
    */
-  RedisClient *getPublishClient() { return publish_client_.get(); }
+  RedisClient *getPublishClient() { return m_redis_pub_client_.get(); }
 
   /**
    * @brief Redis 연결 상태 확인
@@ -429,7 +432,7 @@ private:
   // =======================================================================
 
   // ✅ PUBLISH 전용 Redis 클라이언트
-  std::unique_ptr<RedisClient> publish_client_;
+  std::unique_ptr<RedisClient> m_redis_pub_client_;
 
   // ✅ 게이트웨이 ID (필터링용)
   int gateway_id_{0};

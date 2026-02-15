@@ -39,7 +39,6 @@ namespace PulseOne {
 namespace Gateway {
 namespace Target {
 
-using json = nlohmann::json;
 using TargetSendResult = PulseOne::Export::TargetSendResult;
 
 /**

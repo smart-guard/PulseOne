@@ -16,9 +16,11 @@
 #include <string>
 
 namespace PulseOne {
-namespace Transform {
 
 using json = nlohmann::json;
+
+namespace Transform {
+
 using CSP::AlarmMessage;
 using CSP::ValueMessage;
 

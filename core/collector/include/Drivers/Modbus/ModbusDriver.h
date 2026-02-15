@@ -12,7 +12,7 @@
 #include "Logging/LogManager.h"
 
 // Modbus 라이브러리 조건부 포함
-#ifdef HAVE_MODBUS
+#ifdef HAS_MODBUS
 #include <modbus/modbus.h>
 #else
 // 라이브러리 부재 시 전방 선언
@@ -40,7 +40,6 @@ struct RegisterAccessPattern;
 struct ModbusPacketLog;
 
 // 타입 별칭 (IProtocolDriver 호환성)
-using ProtocolType = PulseOne::Enums::ProtocolType;
 using ErrorInfo = PulseOne::Structs::ErrorInfo;
 } // namespace PulseOne::Drivers
 
@@ -96,7 +95,7 @@ public:
   void ResetStatistics() override;
 
   // IProtocolDriver 필수 구현 메서드들
-  ProtocolType GetProtocolType() const override;
+  std::string GetProtocolType() const override;
   Enums::DriverStatus GetStatus() const override;
   ErrorInfo GetLastError() const override;
 

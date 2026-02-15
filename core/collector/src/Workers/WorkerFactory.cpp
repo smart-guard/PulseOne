@@ -7,33 +7,36 @@
 
 // Worker 구현체들 (Windows DLL 빌드 시에는 정적 링크에서 제외됨)
 #ifndef _WIN32
-#ifdef HAVE_BACNET
+#ifdef HAS_BACNET
 #include "Workers/Protocol/BACnetWorker.h"
 #endif
 
-#ifdef HAVE_BLUETOOTH
+#ifdef HAS_BLUETOOTH
 #include "Workers/Protocol/BleBeaconWorker.h"
 #endif
 
-#ifdef HAVE_HTTP_REST
+#ifdef HAS_HTTP_REST
 #include "Workers/Protocol/HttpRestWorker.h"
 #endif
 
-#ifdef HAVE_MQTT
+#ifdef HAS_MQTT
 #include "Workers/Protocol/MQTTWorker.h"
 #endif
 
-#ifdef HAVE_MODBUS
+#ifdef HAS_MODBUS
 #include "Workers/Protocol/ModbusWorker.h"
 #endif
 
-#ifdef HAVE_OPCUA
+#ifdef HAS_OPCUA
 #include "Workers/Protocol/OPCUAWorker.h"
 #endif
 
-#ifdef HAVE_ROS
+#ifdef HAS_ROS
 #include "Workers/Protocol/ROSWorker.h"
 #endif
+
+// Universal Dynamic Worker
+#include "Workers/Protocol/GenericDeviceWorker.h"
 #endif
 
 // Database
@@ -72,11 +75,6 @@ WorkerFactory::CreateWorker(const Database::Entities::DeviceEntity &device) {
     }
 
     auto it = creators.find(protocol_type);
-    if (it == creators.end()) {
-      LogManager::getInstance().Error("지원하지 않는 프로토콜: " +
-                                      protocol_type);
-      return nullptr;
-    }
 
     PulseOne::Structs::DeviceInfo device_info;
     if (!ConvertToDeviceInfoSafe(device, device_info)) {
@@ -91,7 +89,17 @@ WorkerFactory::CreateWorker(const Database::Entities::DeviceEntity &device) {
     // Worker 생성
     std::unique_ptr<BaseDeviceWorker> worker;
     try {
-      worker = it->second(device_info);
+      if (it != creators.end()) {
+        // 명시적으로 등록된 Worker 사용
+        worker = it->second(device_info);
+      } else {
+        // 등록되지 않은 프로토콜은 GenericDeviceWorker (Dynamic Driver Wrapper)
+        // 사용
+        LogManager::getInstance().Info(
+            "Unregistered protocol detected, using GenericDeviceWorker for: " +
+            protocol_type);
+        worker = std::make_unique<Protocol::GenericDeviceWorker>(device_info);
+      }
     } catch (const std::exception &e) {
       LogManager::getInstance().Error("Worker 생성 중 예외: " +
                                       std::string(e.what()));
@@ -270,6 +278,8 @@ std::string WorkerFactory::GetProtocolTypeById(int protocol_id) {
     return "BLE_BEACON";
   case 7:
     return "ROS";
+  case 15:
+    return "ROS"; // Added support for ROS Robot (ROS_BRIDGE)
   case 8:
     return "HTTP_REST";
   default:
@@ -601,9 +611,65 @@ WorkerFactory::LoadProtocolCreators() const {
   std::map<std::string, WorkerCreator> creators;
 
   try {
+    LogManager::getInstance().Info("LoadProtocolCreators - Checking macros...");
+#ifdef HAS_MODBUS
+    LogManager::getInstance().Info(
+        "LoadProtocolCreators - HAS_MODBUS is DEFINED");
+#else
+    LogManager::getInstance().Warn(
+        "LoadProtocolCreators - HAS_MODBUS is NOT DEFINED");
+#endif
+
+#ifdef HAS_MQTT
+    LogManager::getInstance().Info(
+        "LoadProtocolCreators - HAS_MQTT is DEFINED");
+#else
+    LogManager::getInstance().Warn(
+        "LoadProtocolCreators - HAS_MQTT is NOT DEFINED");
+#endif
+
+#ifdef HAS_BACNET
+    LogManager::getInstance().Info(
+        "LoadProtocolCreators - HAS_BACNET is DEFINED");
+#else
+    LogManager::getInstance().Warn(
+        "LoadProtocolCreators - HAS_BACNET is NOT DEFINED");
+#endif
+
+#ifdef HAS_OPCUA
+    LogManager::getInstance().Info(
+        "LoadProtocolCreators - HAS_OPCUA is DEFINED");
+#else
+    LogManager::getInstance().Warn(
+        "LoadProtocolCreators - HAS_OPCUA is NOT DEFINED");
+#endif
+
+#ifdef HAS_BLUETOOTH
+    LogManager::getInstance().Info(
+        "LoadProtocolCreators - HAS_BLUETOOTH is DEFINED");
+#else
+    LogManager::getInstance().Warn(
+        "LoadProtocolCreators - HAS_BLUETOOTH is NOT DEFINED");
+#endif
+
+#ifdef HAS_ROS
+    LogManager::getInstance().Info("LoadProtocolCreators - HAS_ROS is DEFINED");
+#else
+    LogManager::getInstance().Warn(
+        "LoadProtocolCreators - HAS_ROS is NOT DEFINED");
+#endif
+
+#ifdef HAS_HTTP_REST
+    LogManager::getInstance().Info(
+        "LoadProtocolCreators - HAS_HTTP_REST is DEFINED");
+#else
+    LogManager::getInstance().Warn(
+        "LoadProtocolCreators - HAS_HTTP_REST is NOT DEFINED");
+#endif
+
     // 지원하는 프로토콜들 등록 (Windows DLL 빌드 시에는 런타임에 DLL이 등록함)
 #ifndef _WIN32
-#ifdef HAVE_MODBUS
+#ifdef HAS_MODBUS
     creators["MODBUS_TCP"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<ModbusWorker>(info);
@@ -615,42 +681,42 @@ WorkerFactory::LoadProtocolCreators() const {
     };
 #endif
 
-#ifdef HAVE_MQTT
+#ifdef HAS_MQTT
     creators["MQTT"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<MQTTWorker>(info);
     };
 #endif
 
-#ifdef HAVE_BACNET
+#ifdef HAS_BACNET
     creators["BACNET"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<BACnetWorker>(info);
     };
 #endif
 
-#ifdef HAVE_OPCUA
+#ifdef HAS_OPCUA
     creators["OPC_UA"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<OPCUAWorker>(info);
     };
 #endif
 
-#ifdef HAVE_BLUETOOTH
+#ifdef HAS_BLUETOOTH
     creators["BLE_BEACON"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<BleBeaconWorker>(info);
     };
 #endif
 
-#ifdef HAVE_HTTP_REST
+#ifdef HAS_HTTP_REST
     creators["HTTP_REST"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<HttpRestWorker>(info);
     };
 #endif
 
-#ifdef HAVE_ROS
+#ifdef HAS_ROS
     creators["ROS"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {
       return std::make_unique<ROSWorker>(info);
@@ -658,25 +724,27 @@ WorkerFactory::LoadProtocolCreators() const {
 #endif
 
     // 별칭들 (Aliases)
-#ifdef HAVE_MODBUS
+#ifdef HAS_MODBUS
     creators["modbus_tcp"] = creators["MODBUS_TCP"];
     creators["modbus_rtu"] = creators["MODBUS_RTU"];
 #endif
-#ifdef HAVE_MQTT
+#ifdef HAS_MQTT
     creators["mqtt"] = creators["MQTT"];
 #endif
-#ifdef HAVE_BACNET
+#ifdef HAS_BACNET
     creators["bacnet"] = creators["BACNET"];
 #endif
-#ifdef HAVE_OPCUA
+#ifdef HAS_OPCUA
     creators["opc_ua"] = creators["OPC_UA"];
 #endif
-#ifdef HAVE_ROS
+#ifdef HAS_ROS
     creators["ros"] = creators["ROS"];
+    creators["ROS_BRIDGE"] = creators["ROS"];
+    creators["ros_bridge"] = creators["ROS"];
 #endif
 
     // Database protocol_type mappings
-#ifdef HAVE_MODBUS
+#ifdef HAS_MODBUS
     creators["tcp"] = creators["MODBUS_TCP"];
     creators["serial"] = creators["MODBUS_RTU"];
 #endif

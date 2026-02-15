@@ -20,8 +20,6 @@
 
 namespace PulseOne {
 namespace CSP {
-
-using json = nlohmann::json;
 namespace ExportConst = PulseOne::Constants::Export;
 using namespace PulseOne::Database;
 using namespace PulseOne::Database::Entities;
@@ -336,20 +334,24 @@ PulseOne::Export::DynamicTarget DynamicTargetLoader::createTargetFromEntity(
           " has template_id: " + std::to_string(tmpl_id));
 
       if (templates.count(tmpl_id)) {
+        std::string raw_json = templates.at(tmpl_id).getTemplateJson();
         try {
-          std::string raw_json = templates.at(tmpl_id).getTemplateJson();
-          LogManager::getInstance().Info("[DEBUG-TEMPLATE] Parsing raw JSON: " +
-                                         raw_json);
-
+          LogManager::getInstance().Info(
+              "[DEBUG-TEMPLATE] Parsing raw JSON for target: " + target.name);
           target.config["body_template"] = json::parse(raw_json);
           LogManager::getInstance().Info(
-              "[DEBUG-TEMPLATE] Successful injection for target: " +
+              "[DEBUG-TEMPLATE] Successful JSON injection for target: " +
               target.name + " | Template Keys: " +
               std::to_string(target.config["body_template"].size()));
         } catch (const std::exception &e) {
           LogManager::getInstance().Warn(
-              "Template parsing failed for target: " + target.name + " - " +
-              std::string(e.what()));
+              "[DEBUG-TEMPLATE] JSON parsing failed for target: " +
+              target.name + " - " + std::string(e.what()) +
+              " | Preserving raw string for deferred expansion.");
+
+          // 파싱 실패 시 원본 문자열을 그대로 저장 (PayloadTransformer에서 지연
+          // 처리)
+          target.config["body_template"] = raw_json;
         }
       } else {
         LogManager::getInstance().Warn(

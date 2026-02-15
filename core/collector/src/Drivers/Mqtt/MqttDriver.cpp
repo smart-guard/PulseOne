@@ -4,7 +4,10 @@
 // =============================================================================
 
 #include "Drivers/Mqtt/MqttDriver.h"
+#include "Database/Repositories/ProtocolRepository.h"
+#include "Database/RepositoryFactory.h"
 #include "Drivers/Common/DriverFactory.h"
+#include "Logging/LogManager.h"
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
@@ -15,7 +18,7 @@
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
-#if HAVE_MQTT_CPP
+#if HAS_MQTT_CPP
 // Eclipse Paho MQTT C++ 헤더들
 #include <mqtt/async_client.h>
 #include <mqtt/callback.h>
@@ -32,11 +35,10 @@ using namespace std::chrono;
 // 타입 별칭들 - 헤더와 동일하게
 using ErrorCode = PulseOne::Structs::ErrorCode;
 using ErrorInfo = PulseOne::Structs::ErrorInfo;
-using ProtocolType = PulseOne::Enums::ProtocolType;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
 using DataQuality = PulseOne::Enums::DataQuality; // ✅ 추가
 
-#if HAVE_MQTT_CPP
+#if HAS_MQTT_CPP
 
 // =============================================================================
 // MQTT 콜백 클래스 구현
@@ -158,50 +160,38 @@ void MqttDriver::InitializeMqttCounters() {
 // =============================================================================
 
 bool MqttDriver::Initialize(const DriverConfig &config) {
-  try {
-    config_ = config;
-    LogMessage("INFO", "Initializing MQTT driver", "MQTT");
+  config_ = config;
+  LogMessage("INFO", "Initializing MQTT driver", "MQTT");
 
-    // 설정 파싱
-    if (!ParseDriverConfig(config_)) {
-      SetError("Failed to parse driver configuration");
-      return false;
-    }
-
-    // MQTT 클라이언트 초기화
-    if (!InitializeMqttClient()) {
-      SetError("Failed to initialize MQTT client");
-      return false;
-    }
-
-    status_ = Structs::DriverStatus::INITIALIZED;
-    LogMessage("INFO", "MQTT driver initialized successfully", "MQTT");
-    return true;
-
-  } catch (const std::exception &e) {
-    SetError("Exception during initialization: " + std::string(e.what()));
+  // 설정 파싱
+  if (!ParseDriverConfig(config_)) {
+    SetError("Failed to parse driver configuration");
     return false;
   }
+
+  // MQTT 클라이언트 초기화
+  if (!InitializeMqttClient()) {
+    SetError("Failed to initialize MQTT client");
+    return false;
+  }
+
+  status_ = Structs::DriverStatus::INITIALIZED;
+  LogMessage("INFO", "MQTT driver initialized successfully", "MQTT");
+  return true;
 }
 
 bool MqttDriver::Connect() { return EstablishConnection(); }
 
 bool MqttDriver::Disconnect() {
-  try {
-    if (mqtt_client_ && mqtt_client_->is_connected()) {
-      auto token = mqtt_client_->disconnect();
-      token->wait();
-    }
-
-    is_connected_ = false;
-    status_ = Structs::DriverStatus::STOPPED; // ✅ DISCONNECTED → STOPPED
-    LogMessage("INFO", "MQTT driver disconnected", "MQTT");
-    return true;
-
-  } catch (const std::exception &e) {
-    SetError("Exception during disconnect: " + std::string(e.what()));
-    return false;
+  if (mqtt_client_ && mqtt_client_->is_connected()) {
+    auto token = mqtt_client_->disconnect();
+    token->wait();
   }
+
+  is_connected_ = false;
+  status_ = Structs::DriverStatus::STOPPED; // ✅ DISCONNECTED → STOPPED
+  LogMessage("INFO", "MQTT driver disconnected", "MQTT");
+  return true;
 }
 
 bool MqttDriver::IsConnected() const {
@@ -214,38 +204,29 @@ bool MqttDriver::ReadValues(const std::vector<DataPoint> &points,
     return false;
   }
 
-  try {
-    values.clear();
-    values.reserve(points.size());
+  values.clear();
+  values.reserve(points.size());
 
-    // message_queue_mutex_ 사용 (올바른 뮤텍스)
-    std::lock_guard<std::mutex> lock(message_queue_mutex_);
+  // message_queue_mutex_ 사용 (올바른 뮤텍스)
+  std::lock_guard<std::mutex> lock(message_queue_mutex_);
 
-    for (const auto &point : points) {
-      TimestampedValue result_value;
+  for (const auto &point : points) {
+    TimestampedValue result_value;
 
-      // ✅ 수정: source_id → source (Structs.h의 실제 필드명에 맞춤)
-      result_value.source = point.id;      // source_id에서 source로 변경
-      result_value.value = DataValue(0.0); // 기본값
-      result_value.timestamp = Utils::GetCurrentTimestamp();
-      result_value.quality = DataQuality::BAD;
+    // ✅ 수정: source_id → source (Structs.h의 실제 필드명에 맞춤)
+    result_value.source = point.id;      // source_id에서 source로 변경
+    result_value.value = DataValue(0.0); // 기본값
+    result_value.timestamp = Utils::GetCurrentTimestamp();
+    result_value.quality = DataQuality::BAD;
 
-      values.push_back(result_value);
-    }
-
-    // 통계 업데이트 (기존 방식 유지)
-    driver_statistics_.total_reads.fetch_add(1);
-    driver_statistics_.successful_reads.fetch_add(1);
-
-    return true;
-
-  } catch (const std::exception &e) {
-    LogMessage("ERROR", "Failed to read MQTT values: " + std::string(e.what()),
-               "MQTT");
-    driver_statistics_.total_reads.fetch_add(1);
-    driver_statistics_.failed_reads.fetch_add(1);
-    return false;
+    values.push_back(result_value);
   }
+
+  // 통계 업데이트 (기존 방식 유지)
+  driver_statistics_.total_reads.fetch_add(1);
+  driver_statistics_.successful_reads.fetch_add(1);
+
+  return true;
 }
 
 bool MqttDriver::WriteValue(const DataPoint &point, const DataValue &value) {
@@ -309,7 +290,7 @@ void MqttDriver::ResetStatistics() {
   LogMessage("INFO", "MQTT driver statistics reset", "MQTT");
 }
 
-ProtocolType MqttDriver::GetProtocolType() const { return ProtocolType::MQTT; }
+std::string MqttDriver::GetProtocolType() const { return "MQTT"; }
 
 Structs::DriverStatus MqttDriver::GetStatus() const { return status_.load(); }
 
@@ -854,6 +835,14 @@ bool MqttDriver::EstablishConnection() {
       return false;
     }
 
+    if (mqtt_client_->is_connected()) {
+      LogMessage("INFO", "Already connected to MQTT broker", "MQTT");
+      is_connected_ = true;
+      status_ = Structs::DriverStatus::RUNNING;
+      connection_in_progress_ = false;
+      return true;
+    }
+
     mqtt::connect_options connOpts;
     connOpts.set_keep_alive_interval(keep_alive_seconds_);
     connOpts.set_clean_session(clean_session_);
@@ -1004,6 +993,18 @@ bool MqttDriver::ParseDriverConfig(const DriverConfig &config) {
                    ", timeout=" + std::to_string(timeout_ms_) +
                    "ms, user=" + (username_.empty() ? "none" : username_),
                "MQTT");
+
+    // 🔥 진단 모드 설정 확인 (properties 우선)
+    bool diag_enabled = false;
+    if (config.properties.count("diagnostic_mode")) {
+      diag_enabled = (config.properties.at("diagnostic_mode") == "true");
+    } else if (config.properties.count("debug")) {
+      diag_enabled = (config.properties.at("debug") == "true");
+    }
+
+    if (diag_enabled) {
+      EnableDiagnostics(true, true, true);
+    }
 
     // =================================================================
     // 2. JSON 설정 파싱 (endpoint를 JSON으로 처리)
@@ -1329,22 +1330,27 @@ bool MqttDriver::EnableDiagnostics(bool enable, bool packet_logging,
       diagnostics_->EnableQosAnalysis(true);
       diagnostics_->SetMaxHistorySize(1000);
 
-      LogMessage("INFO", "MQTT diagnostics enabled", "MQTT-DRIVER");
+      packet_logging_enabled_ = packet_logging;
+      console_output_enabled_ = console_output;
+
+      LogMessage("INFO",
+                 "MQTT diagnostics enabled (Log:" +
+                     std::string(packet_logging ? "ON" : "OFF") + ", Console:" +
+                     std::string(console_output ? "ON" : "OFF") + ")",
+                 "MQTT-DRIVER");
       return true;
 
     } else if (!enable && diagnostics_) {
       diagnostics_.reset();
+      packet_logging_enabled_ = false;
+      console_output_enabled_ = false;
       LogMessage("INFO", "MQTT diagnostics disabled", "MQTT-DRIVER");
     }
-
-    // ✅ 사용되지 않는 매개변수 경고 방지
-    (void)packet_logging;
-    (void)console_output;
 
     return true;
 
   } catch (const std::exception &e) {
-    SetError("Failed to enable MQTT diagnostics: " + std::string(e.what()));
+    SetError("Exception in EnableDiagnostics: " + std::string(e.what()));
     return false;
   }
 }
@@ -1518,7 +1524,7 @@ std::string MqttDriver::GetDiagnosticsJSON() const {
   // ✅ 참조로 사용하여 복사 생성자 문제 해결
   const auto &stats = GetStatistics();
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
   try {
     json diagnostics;
 
@@ -1742,22 +1748,25 @@ bool MqttDriver::CreateMqttClientForBroker(const std::string &broker_url) {
 }
 
 #else
-                                                  // STUB IMPLEMENTATION (When
-                                                  // MQTT C++ library is not
-                                                  // available)
+
+// =============================================================================
+// STUB IMPLEMENTATION (When HAS_MQTT_CPP is not defined)
+// =============================================================================
+
 MqttDriver::MqttDriver()
     : driver_statistics_("MQTT"), status_(Structs::DriverStatus::UNINITIALIZED),
       is_connected_(false), load_balancer_(nullptr) {
-  std::cout << "[DEBUG][MQTT] MqttDriver stub instance created (HAVE_MQTT_CPP "
+  std::cout << "[DEBUG][MQTT] MqttDriver stub instance created (HAS_MQTT_CPP "
                "not defined)"
             << std::endl;
 }
 MqttDriver::~MqttDriver() {}
+
 bool MqttDriver::Initialize(const DriverConfig &config) {
-  config_ = config;
+  (void)config;
   std::cerr << "[ERROR][MQTT] MqttDriver::Initialize failed: STUB "
-               "implementation is being used. Please check if HAVE_MQTT_CPP is "
-               "defined and libmqtt-paho is linked."
+               "implementation is being used. Please check if HAS_MQTT_CPP "
+               "is defined and libmqtt-paho is linked."
             << std::endl;
   return false;
 }
@@ -1776,7 +1785,7 @@ const DriverStatistics &MqttDriver::GetStatistics() const {
   return s;
 }
 void MqttDriver::ResetStatistics() {}
-ProtocolType MqttDriver::GetProtocolType() const { return ProtocolType::MQTT; }
+std::string MqttDriver::GetProtocolType() const { return "MQTT"; }
 Structs::DriverStatus MqttDriver::GetStatus() const {
   return Structs::DriverStatus::STOPPED;
 }
@@ -1827,6 +1836,28 @@ extern "C" {
 __declspec(dllexport)
 #endif
 void RegisterPlugin() {
+  // 1. DB에 프로토콜 정보 자동 등록 (없을 경우)
+  try {
+    auto &repo_factory = PulseOne::Database::RepositoryFactory::getInstance();
+    auto protocol_repo = repo_factory.getProtocolRepository();
+    if (protocol_repo) {
+      if (!protocol_repo->findByType("MQTT").has_value()) {
+        PulseOne::Database::Entities::ProtocolEntity entity;
+        entity.setProtocolType("MQTT");
+        entity.setDisplayName("MQTT Protocol");
+        entity.setCategory("iot");
+        entity.setDescription("MQTT v3.1.1/v5.0 Protocol Driver");
+        entity.setRequiresBroker(true);
+        entity.setDefaultPort(1883);
+        protocol_repo->save(entity);
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[MqttDriver] DB Registration failed: " << e.what()
+              << std::endl;
+  }
+
+  // 2. 메모리 Factory에 드라이버 생성자 등록
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver("MQTT", []() {
     return std::make_unique<PulseOne::Drivers::MqttDriver>();
   });

@@ -20,7 +20,7 @@ typedef int socklen_t;
 #include "Logging/LogManager.h"
 
 // BACnet Stack Headers
-#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#if defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 extern "C" {
 #include <bacnet/bacdef.h>
 #include <bacnet/datalink/bip.h>

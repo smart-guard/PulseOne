@@ -39,7 +39,7 @@
 #endif
 
 // BACnet Stack 헬퍼 관련
-#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#if defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 extern "C" {
 #include <bacnet/bacapp.h>
 #include <bacnet/basic/binding/address.h>
@@ -120,7 +120,7 @@ BACnetServiceManager *g_pPulseOneBACnetServiceManager = nullptr;
 // 생성자 및 소멸자
 // =============================================================================
 
-BACnetServiceManager::BACnetServiceManager(BACnetDriver *driver)
+BACnetServiceManager::BACnetServiceManager(IProtocolDriver *driver)
     : driver_(driver), next_invoke_id_(1) {
 
   if (!driver_) {
@@ -130,7 +130,7 @@ BACnetServiceManager::BACnetServiceManager(BACnetDriver *driver)
   // 브릿지 연결
   g_pPulseOneBACnetServiceManager = this;
 
-#if defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#if HAS_BACNET
   // 스택에 핸들러 등록
   apdu_set_confirmed_ack_handler(SERVICE_CONFIRMED_READ_PROPERTY,
                                  HandlerReadPropertyAck);
@@ -223,7 +223,7 @@ bool BACnetServiceManager::ReadProperty(uint32_t device_id,
     return false;
   }
 
-#if HAVE_BACNET_STACK
+#if HAS_BACNET
   // 1. Invoke ID 할당
   uint8_t invoke_id = GetNextInvokeId();
 
@@ -383,7 +383,7 @@ bool BACnetServiceManager::WriteProperty(
     return false;
   }
 
-#if HAVE_BACNET_STACK
+#if HAS_BACNET
   // BACnet 쓰기 구현 (실제 스택 사용 - Linux)
   // 실제 쓰기는 driver에서 처리
   return true;
@@ -752,7 +752,7 @@ TimestampedValue BACnetServiceManager::BACnetValueToTimestampedValue(
   result.timestamp = std::chrono::system_clock::now();
   result.quality = DataQuality::GOOD;
 
-#if HAVE_BACNET_STACK
+#if HAS_BACNET
   // 실제 BACnet 값 변환
   switch (bacnet_value.tag) {
   case BACNET_APPLICATION_TAG_BOOLEAN:
@@ -794,7 +794,7 @@ bool BACnetServiceManager::DataValueToBACnetValue(
 
   memset(&bacnet_value, 0, sizeof(bacnet_value));
 
-#if HAVE_BACNET_STACK
+#if HAS_BACNET
   // 실제 BACnet 값 변환
   if (std::holds_alternative<bool>(data_value)) {
     bacnet_value.tag = BACNET_APPLICATION_TAG_BOOLEAN;
@@ -842,7 +842,7 @@ bool BACnetServiceManager::DataValueToBACnetValue(
 // BACnet 프로토콜 헬퍼 함수들 (Linux에서만 컴파일)
 // =============================================================================
 
-#if HAVE_BACNET_STACK
+#if HAS_BACNET
 
 bool BACnetServiceManager::SendRPMRequest(uint32_t device_id,
                                           const std::vector<DataPoint> &objects,
@@ -1008,7 +1008,7 @@ void BACnetServiceManager::CacheDeviceAddress(uint32_t device_id,
   (void)address;
 }
 
-#endif // HAVE_BACNET_STACK
+#endif // HAS_BACNET_STACK
 
 // =============================================================================
 // Datalink Bridge (BIP Port 지원)

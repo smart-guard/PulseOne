@@ -1,4 +1,5 @@
 #include "Workers/Protocol/BleBeaconWorker.h"
+#include "Drivers/Common/DriverFactory.h"
 #include "Logging/LogManager.h"
 #include <chrono>
 
@@ -7,12 +8,12 @@ namespace Workers {
 
 BleBeaconWorker::BleBeaconWorker(const Structs::DeviceInfo &device_info)
     : BaseDeviceWorker(device_info) {
-  ble_driver_ = std::make_unique<PulseOne::Drivers::Ble::BleBeaconDriver>();
-  // No need to set driver_ pointer manually if using unique_ptr and
-  // IProtocolDriver interface isn't stored in BaseDeviceWorker as a raw pointer
-  // in the header I saw. Wait, BaseDeviceWorker header didn't show a 'driver_'
-  // member. It assumes derived classes handle their drivers or it was hidden in
-  // the truncated part. Assuming derived class manages specifics.
+  ble_driver_ =
+      Drivers::DriverFactory::GetInstance().CreateDriver("BLE_BEACON");
+  if (!ble_driver_) {
+    LogManager::getInstance().Error(
+        "[BleBeaconWorker] Failed to create BLE driver via factory");
+  }
 }
 
 BleBeaconWorker::~BleBeaconWorker() { Stop().wait(); }
@@ -22,10 +23,12 @@ std::future<bool> BleBeaconWorker::Start() {
     if (is_running_)
       return true;
 
+    StartReconnectionThread();
+
     if (!EstablishConnection()) {
-      // Even if initial connection fails, we might want to start logic to
-      // retry? BaseDeviceWorker logic usually handles retries if we use it, but
-      // here we have our own loop. Let's allow start but loop will retry.
+      LogManager::getInstance().Warn(
+          "Initial BLE connection failed. Will retry via base engine.");
+      ChangeState(WorkerState::RECONNECTING);
     }
 
     is_running_ = true;
@@ -94,10 +97,8 @@ void BleBeaconWorker::PollingThreadFunction() {
 
   while (is_running_) {
     if (!CheckConnection()) {
-      if (!EstablishConnection()) {
-        std::this_thread::sleep_for(std::chrono::seconds(5));
-        continue;
-      }
+      HandleConnectionError("BLE connection lost or not established");
+      continue;
     }
 
     auto start_time = std::chrono::steady_clock::now();
@@ -105,7 +106,7 @@ void BleBeaconWorker::PollingThreadFunction() {
     // 1. Get Points to Read
     std::vector<Structs::DataPoint> points_to_read;
     {
-      std::lock_guard<std::mutex> lock(data_points_mutex_);
+      std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
       for (const auto &point : data_points_) {
         if (point.is_enabled) {
           points_to_read.push_back(point);
@@ -124,7 +125,7 @@ void BleBeaconWorker::PollingThreadFunction() {
         std::vector<Structs::TimestampedValue> pipeline_values;
         // 3. Update Points
         {
-          std::lock_guard<std::mutex> lock(data_points_mutex_);
+          std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
 
           // Assuming 1:1 mapping as driver processes the vector in order
           for (size_t i = 0; i < points_to_read.size() && i < values.size();

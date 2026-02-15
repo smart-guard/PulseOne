@@ -11,7 +11,7 @@
 #include "Logging/LogManager.h"
 #include "Config/ConfigManager.h"
 
-#ifdef HAVE_DRIVER_SYSTEM
+#ifdef HAS_DRIVER_SYSTEM
 #include "Drivers/IProtocolDriver.h"
 #include "Drivers/DriverFactory.h"
 #include "Drivers/CommonTypes.h"
@@ -74,7 +74,7 @@ private:
     std::shared_ptr<LogManager> logger_;
     std::shared_ptr<ConfigManager> config_;
 
-#ifdef HAVE_DRIVER_SYSTEM
+#ifdef HAS_DRIVER_SYSTEM
     std::vector<std::unique_ptr<IProtocolDriver>> active_drivers_;
     std::unordered_map<std::string, size_t> driver_statistics_;
 #endif

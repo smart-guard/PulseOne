@@ -29,28 +29,45 @@ json PayloadTransformer::buildPayload(const ValueMessage &value,
 
   // 1. Template-based Transformation
   if (config.contains("body_template")) {
+    // 1-1. Determine Target Field Name
+    std::string target_field_name = "";
+    if (config.contains("field_mappings") &&
+        config["field_mappings"].is_array()) {
+      for (const auto &m : config["field_mappings"]) {
+        if (m.contains("point_id") && m["point_id"] == value.point_id) {
+          target_field_name = m.value("target_field_name", "");
+          if (target_field_name.empty()) {
+            target_field_name = m.value("target_field", "");
+          }
+          break;
+        }
+      }
+    }
+
+    // 1-2. Handle JSON Object/Array Template
     if (config["body_template"].is_object() ||
         config["body_template"].is_array()) {
       content = config["body_template"];
-
-      // 1-1. Determine Target Field Name
-      std::string target_field_name = "";
-      if (config.contains("field_mappings") &&
-          config["field_mappings"].is_array()) {
-        for (const auto &m : config["field_mappings"]) {
-          if (m.contains("point_id") && m["point_id"] == value.point_id) {
-            target_field_name = m.value("target_field_name", "");
-            if (target_field_name.empty()) {
-              target_field_name = m.value("target_field", "");
-            }
-            break;
-          }
-        }
-      }
-
-      // 1-2. Create Context & Transform
       auto context = createContext(value, target_field_name);
       return transform(content, context);
+    }
+    // 1-3. Handle Raw String Template (Backwards Compatibility)
+    else if (config["body_template"].is_string()) {
+      std::string raw_template = config["body_template"].get<std::string>();
+      auto context = createContext(value, target_field_name);
+      std::string expanded = transformString(raw_template, context);
+      try {
+        json content = json::parse(expanded);
+        LogManager::getInstance().Info(
+            "[DEBUG-TRANSFORM] String template parsed successfully. Content: " +
+            content.dump());
+        return content;
+      } catch (const std::exception &e) {
+        LogManager::getInstance().Error(
+            "[DEBUG-TRANSFORM] Expanded template parse failed: " +
+            std::string(e.what()) + " | Content: " + expanded);
+        // Fallback to default if parsing expanded string fails
+      }
     }
   }
 
@@ -90,6 +107,82 @@ json PayloadTransformer::transform(const json &template_json,
   }
 }
 
+std::string
+PayloadTransformer::transformString(const std::string &template_str,
+                                    const TransformContext &context) {
+  std::string result = template_str;
+  auto variables = buildVariableMap(context);
+
+  for (const auto &[key, value] : variables) {
+    // 1. {{var|array}} -> [val] (Idempotent: don't double wrap if already has
+    // brackets)
+    std::string array_pattern = "{{" + key + "|array}}";
+    size_t a_pos = 0;
+    while ((a_pos = result.find(array_pattern, a_pos)) != std::string::npos) {
+      std::string array_val;
+      if (!value.empty() && value.front() == '[' && value.back() == ']') {
+        array_val = value; // Already a bracketed string
+      } else {
+        array_val = "[" + value + "]";
+      }
+      result.replace(a_pos, array_pattern.length(), array_val);
+      a_pos += array_val.length();
+    }
+
+    // 2. {{var}}
+    std::string p2 = "{{" + key + "}}";
+    size_t pos = 0;
+    while ((pos = result.find(p2, pos)) != std::string::npos) {
+      result.replace(pos, p2.length(), value);
+      pos += value.length();
+    }
+
+    // 3. {var}
+    std::string p1 = "{" + key + "}";
+    pos = 0;
+    while ((pos = result.find(p1, pos)) != std::string::npos) {
+      result.replace(pos, p1.length(), value);
+      pos += value.length();
+    }
+  }
+
+  // 4. 매핑 변수 치환 ({map:key:true_val:false_val})
+  std::regex map_regex("\\{+map:([^:]+):([^:]*):([^}]+)\\}+");
+  std::smatch match;
+  std::string search_str = result;
+  std::string final_str;
+  auto words_begin =
+      std::sregex_iterator(search_str.begin(), search_str.end(), map_regex);
+  auto words_end = std::sregex_iterator();
+
+  size_t last_pos = 0;
+  for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
+    std::smatch match = *i;
+    final_str += search_str.substr(last_pos, match.position() - last_pos);
+
+    std::string key = match[1].str();
+    std::string true_val = match[2].str();
+    std::string false_val = match[3].str();
+
+    bool condition = false;
+    if (variables.count(key)) {
+      std::string val = variables.at(key);
+      if (key == "ty" || key == "type") {
+        condition = (val == "bit" || val == "bool" || val == "DIGITAL");
+      } else {
+        condition =
+            (val == "1" || val == "true" || val == "active" || val == "ALARM");
+      }
+    }
+
+    final_str += condition ? true_val : false_val;
+    last_pos = match.position() + match.length();
+  }
+  final_str += search_str.substr(last_pos);
+
+  return final_str;
+}
+
 // =============================================================================
 // [v3.0.0] Unified Payload Builder
 // =============================================================================
@@ -104,27 +197,28 @@ json PayloadTransformer::buildPayload(const AlarmMessage &alarm,
         "[DEBUG-TRANSFORM] Config contains body_template for target: " +
         config.value("name", "unknown"));
 
+    // 1-1. Determine Target Field Name
+    std::string target_field_name = "";
+    if (config.contains("field_mappings") &&
+        config["field_mappings"].is_array()) {
+      for (const auto &m : config["field_mappings"]) {
+        if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
+          target_field_name = m.value("target_field_name", "");
+          // Fallback for legacy key
+          if (target_field_name.empty()) {
+            target_field_name = m.value("target_field", "");
+          }
+          break;
+        }
+      }
+    }
+
+    // 1-2. Handle JSON Object/Array Template
     if (config["body_template"].is_object() ||
         config["body_template"].is_array()) {
       content = config["body_template"];
 
-      // 1-1. Determine Target Field Name
-      std::string target_field_name = "";
-      if (config.contains("field_mappings") &&
-          config["field_mappings"].is_array()) {
-        for (const auto &m : config["field_mappings"]) {
-          if (m.contains("point_id") && m["point_id"] == alarm.point_id) {
-            target_field_name = m.value("target_field_name", "");
-            // Fallback for legacy key
-            if (target_field_name.empty()) {
-              target_field_name = m.value("target_field", "");
-            }
-            break;
-          }
-        }
-      }
-
-      // 1-2. Create Context & Transform
+      // 1-1. Create Context & Transform
       auto context = createContext(alarm, target_field_name);
       LogManager::getInstance().Info("[DEBUG-TRANSFORM] Context created, "
                                      "calling transform. TargetField: " +
@@ -133,11 +227,24 @@ json PayloadTransformer::buildPayload(const AlarmMessage &alarm,
       LogManager::getInstance().Info(
           "[DEBUG-TRANSFORM] Transformation complete: " + content.dump());
 
-      // 1-3. Wrap Object in Array (Standard Consistency)
-      // 1-3. Wrap Object in Array (Standard Consistency) -> REMOVED
-      // We must respect the template structure. If template is Object, return
-      // Object.
       return content;
+    }
+    // 1-3. Handle Raw String Template (Backwards Compatibility)
+    else if (config["body_template"].is_string()) {
+      std::string raw_template = config["body_template"].get<std::string>();
+      auto context = createContext(alarm, target_field_name);
+      std::string expanded = transformString(raw_template, context);
+      try {
+        content = json::parse(expanded);
+        LogManager::getInstance().Info(
+            "[DEBUG-TRANSFORM] String template parsed successfully. Content: " +
+            content.dump());
+        return content;
+      } catch (const std::exception &e) {
+        LogManager::getInstance().Error(
+            "[DEBUG-TRANSFORM] Expanded string template parse failed: " +
+            std::string(e.what()) + " | Content: " + expanded);
+      }
     }
   }
 
@@ -170,23 +277,6 @@ json PayloadTransformer::buildPayload(const AlarmMessage &alarm,
   }
 
   return content;
-}
-
-std::string
-PayloadTransformer::transformString(const std::string &template_str,
-                                    const TransformContext &context) {
-  std::string result = template_str;
-  auto variables = buildVariableMap(context);
-
-  for (const auto &[key, value] : variables) {
-    std::string pattern = "{{" + key + "}}";
-    size_t pos = 0;
-    while ((pos = result.find(pattern, pos)) != std::string::npos) {
-      result.replace(pos, pattern.length(), value);
-      pos += value.length();
-    }
-  }
-  return result;
 }
 
 // =============================================================================
@@ -415,9 +505,9 @@ PayloadTransformer::buildVariableMap(const TransformContext &context) {
   vars["xl"] =
       context.custom_vars.count("xl") ? context.custom_vars.at("xl") : "1";
   vars["mi"] =
-      context.custom_vars.count("mi") ? context.custom_vars.at("mi") : "[0]";
+      context.custom_vars.count("mi") ? context.custom_vars.at("mi") : "0";
   vars["mx"] =
-      context.custom_vars.count("mx") ? context.custom_vars.at("mx") : "[100]";
+      context.custom_vars.count("mx") ? context.custom_vars.at("mx") : "100";
 
   // [v3.0.0] Zero-Assumption Token Pool (Automatically turn all custom_vars
   // into tokens)
@@ -460,7 +550,12 @@ void PayloadTransformer::expandJsonRecursive(
       std::string array_pattern = "{{" + key + "|array}}";
       size_t a_pos = 0;
       while ((a_pos = str.find(array_pattern, a_pos)) != std::string::npos) {
-        std::string array_val = "[" + value + "]";
+        std::string array_val;
+        if (!value.empty() && value.front() == '[' && value.back() == ']') {
+          array_val = value; // Already bracketed
+        } else {
+          array_val = "[" + value + "]";
+        }
         str.replace(a_pos, array_pattern.length(), array_val);
         a_pos += array_val.length();
       }
@@ -634,21 +729,18 @@ int64_t PayloadTransformer::toUnixTimestampMs(const std::string &alarm_tm) {
 }
 
 std::string PayloadTransformer::getAlarmStatusString(int al, int st) {
-  if (al == 1) {
-    switch (st) {
-    case 0:
-      return "NORMAL";
-    case 1:
-      return "WARNING";
-    case 2:
-      return "CRITICAL";
-    case 3:
-      return "ACTIVE";
-    default:
-      return "ACTIVE";
-    }
+  if (al < 1) {
+    return "CLEARED";
   }
-  return "CLEARED";
+
+  switch (st) {
+  case 1:
+    return "WARNING";
+  case 2:
+    return "CRITICAL";
+  default:
+    return "ACTIVE";
+  }
 }
 
 void PayloadTransformer::registerCustomVariable(

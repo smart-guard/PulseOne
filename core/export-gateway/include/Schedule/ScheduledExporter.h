@@ -30,9 +30,10 @@
 #include <vector>
 
 namespace PulseOne {
-namespace Schedule {
 
 using json = nlohmann::json;
+
+namespace Schedule {
 
 struct ScheduledExporterConfig {
   std::string redis_host = "localhost";

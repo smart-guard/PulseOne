@@ -11,7 +11,7 @@
 #include <string>
 #include <unordered_map>
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
 #include <nlohmann/json.hpp>
 #endif
 
@@ -521,7 +521,7 @@ public:
   /**
    * @brief 에러 상세 정보를 JSON으로 반환 (프런트엔드용)
    */
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
   nlohmann::json
   GetErrorInfoJson(PulseOne::Enums::ErrorCode error_code,
                    const std::string &device_id = "",

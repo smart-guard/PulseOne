@@ -80,8 +80,8 @@ cd "$PROJECT_ROOT/frontend"
 npm install --silent
 npm run build
 
-# Backend (Bundle node_modules)
-echo "   📦 Preparing backend node_modules (Linux compatibility)..."
+# Backend (Bundle nnnode_modules)
+echo "   📦 Preparing backend nnnode_modules (Linux compatibility)..."
 cd "$PROJECT_ROOT/backend"
 # We should use a linux-compatible install if possible, but for JS-only deps it's usually fine.
 # If native deps exist, we might need to build them inside the linux container.
@@ -133,13 +133,13 @@ docker run --rm \
         set -e
         rm -rf /src/collector/build
         mkdir -p /src/collector/build && cd /src/collector/build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS='-O3'
-        make -j\$(nproc)
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS='-O2'
+        make -j1
         strip --strip-unneeded collector
         cp collector /output/pulseone-collector
         
         cd /src/core/export-gateway
-        make clean && make -j\$(nproc) CXXFLAGS='-O3 -DPULSEONE_LINUX=1 -DNDEBUG'
+        make clean && make -j2 CXXFLAGS='-O3 -DPULSEONE_LINUX=1 -DNDEBUG'
         strip --strip-unneeded bin/export-gateway
         cp bin/export-gateway /output/pulseone-export-gateway
 
@@ -158,7 +158,7 @@ echo "6. 🔧 Assembling package..."
 cd "$PACKAGE_DIR"
 
 cp -r "$PROJECT_ROOT/backend" ./
-rm -rf backend/node_modules backend/.git
+rm -rf backend/nnnode_modules backend/.git
 
 mkdir -p backend/frontend
 cp -r "$PROJECT_ROOT/frontend/dist"/* ./backend/frontend/
@@ -242,9 +242,9 @@ fi
 # 3. Backend Dependencies
 echo "[3/6] Installing Backend dependencies..."
 cd "$INSTALL_DIR/backend"
-if [ -d "$ASSETS_DIR/node_modules" ]; then
-    echo "   Using pre-bundled node_modules..."
-    cp -r "$ASSETS_DIR/node_modules" ./
+if [ -d "$ASSETS_DIR/nnnode_modules" ]; then
+    echo "   Using pre-bundled nnnode_modules..."
+    cp -r "$ASSETS_DIR/nnnode_modules" ./
 else
     echo "   📦 Running npm install (Internet required if not bundled)..."
     npm install --production --unsafe-perm

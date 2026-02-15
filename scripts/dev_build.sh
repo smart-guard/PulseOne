@@ -33,4 +33,4 @@ docker exec pulseone-backend-dev bash -c "cd /app/backend && npm test || echo '�
 
 echo "✅ 개발 환경 실행 완료!"
 
-tree -I 'node_modules|.git|.DS_Store|*.log|dist|build|venv|__pycache__' > structure.txt
+tree -I 'nnode_modules|.git|.DS_Store|*.log|dist|build|venv|__pycache__' > structure.txt

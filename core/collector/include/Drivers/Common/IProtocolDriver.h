@@ -28,7 +28,6 @@ namespace Drivers {
 // ✅ 타입 별칭들 (기존 코드 호환성)
 // =============================================================================
 using UniqueId = PulseOne::BasicTypes::UniqueId;
-using ProtocolType = PulseOne::Enums::ProtocolType;
 using ConnectionStatus = PulseOne::Enums::ConnectionStatus;
 using DriverStatistics = PulseOne::Structs::DriverStatistics;
 using DriverConfig = PulseOne::Structs::DriverConfig;
@@ -37,6 +36,7 @@ using DataPoint = PulseOne::Structs::DataPoint;
 using TimestampedValue = PulseOne::Structs::TimestampedValue;
 using DataValue = PulseOne::Structs::DataValue;
 using ErrorInfo = PulseOne::Structs::ErrorInfo;
+using ProtocolType = PulseOne::BasicTypes::ProtocolType;
 using DriverStatus = PulseOne::Structs::DriverStatus;
 
 // =============================================================================
@@ -113,9 +113,54 @@ public:
    */
   virtual std::vector<DataPoint> DiscoverPoints() { return {}; }
 
-  virtual ProtocolType GetProtocolType() const = 0;
+  /**
+   * @brief Discover available devices on the network (specific to some
+   * protocols)
+   * @param timeout_ms Discovery timeout
+   * @return List of discovered DeviceInfo
+   */
+  virtual std::vector<PulseOne::Structs::DeviceInfo>
+  DiscoverDevices(uint32_t timeout_ms = 5000) {
+    (void)timeout_ms;
+    return {};
+  }
+
+  /**
+   * @brief Read a single property (useful for discovery or specific property
+   * types)
+   */
+  virtual bool ReadSingleProperty(const PulseOne::Structs::DataPoint &point,
+                                  PulseOne::Structs::TimestampedValue &value) {
+    std::vector<PulseOne::Structs::DataPoint> points = {point};
+    std::vector<PulseOne::Structs::TimestampedValue> values;
+    if (ReadValues(points, values) && !values.empty()) {
+      value = values[0];
+      return true;
+    }
+    return false;
+  }
+
+  virtual std::string GetProtocolType() const = 0;
   virtual DriverStatus GetStatus() const = 0;
   virtual ErrorInfo GetLastError() const = 0; // ✅ const 참조 제거
+
+  /**
+   * @brief Low-level packet sending (optional, for protocols needing raw
+   * access)
+   */
+  virtual int SendRawPacket(uint8_t *dest_addr, uint32_t addr_len,
+                            uint8_t *payload, uint32_t payload_len) {
+    (void)dest_addr;
+    (void)addr_len;
+    (void)payload;
+    (void)payload_len;
+    return -1;
+  }
+
+  /**
+   * @brief Get underlying socket file descriptor (optional)
+   */
+  virtual int GetSocketFd() const { return -1; }
 
   // =============================================================================
   // ✅ 공통 구현 메서드들 (실제 메서드명 사용)

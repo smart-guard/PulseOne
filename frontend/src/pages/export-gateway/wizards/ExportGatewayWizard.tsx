@@ -176,6 +176,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             let changed = false;
             const next = { ...prev };
 
+            // Step 1: Populate missing configurations
             selectedTargetIds.forEach(id => {
                 if (!next[id]) {
                     const t = targets.find(x => x.id === id);
@@ -185,12 +186,10 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             if (!parsed) parsed = {};
                             if (!Array.isArray(parsed)) parsed = [parsed];
 
-                            // [NEW] Sync execution_order: Prefer gateway-specific override, fallback to global entity order
                             const priorityMap = editingGateway?.config?.target_priorities || {};
                             const overrideOrder = priorityMap[id];
 
-                            // v3.2: We NO LONGER sync global execution_order here. 
-                            // Gateway-scoped priority is handled via Drag & Drop.
+                            // Default to 100 if no override (will be re-sequenced below if needed)
                             parsed[0].execution_order = overrideOrder !== undefined ? overrideOrder : 100;
 
                             next[id] = parsed;
@@ -203,9 +202,23 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     }
                 }
             });
+
+            // Step 2: Auto-sequence priorities to ensure they are always 1, 2, 3...
+            // This handles additions, removals, and initial hydration consistently.
+            selectedTargetIds.forEach((id, idx) => {
+                const priority = idx + 1;
+                if (next[id] && next[id][0]) {
+                    if (next[id][0].execution_order !== priority) {
+                        next[id][0] = { ...next[id][0], execution_order: priority };
+                        changed = true;
+                    }
+                }
+            });
+
             return changed ? next : prev;
         });
-    }, [selectedTargetIds, targets]);
+    }, [selectedTargetIds, targets, editingGateway]);
+
 
     const [mappings, setMappings] = useState<Partial<ExportTargetMapping>[]>([]);
     const [bulkSiteId, setBulkSiteId] = useState<string>('');
@@ -360,10 +373,26 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
         });
 
         // Profile & Targets
-        const assign = myAssignments[0];
+        // Profile & Targets - Pick the LATEST assignment if multiple exist
+        const sortedAssignments = [...myAssignments].sort((a, b) => (b.id || 0) - (a.id || 0));
+        const assign = sortedAssignments[0];
+
         setSelectedProfileId(assign.profile_id);
         lastMappedProfileIdRef.current = assign.profile_id;
         setProfileMode('existing');
+
+        // Mappings Population - Robust Fallback
+        const p = profiles.find(x => x.id === assign.profile_id);
+        if (p && p.data_points) {
+            const initialMappings = (p.data_points || []).map((dp: any) => ({
+                point_id: dp.id,
+                site_id: dp.site_id || dp.building_id || 0,
+                target_field_name: dp.name,
+                is_enabled: true,
+                conversion_config: { scale: 1, offset: 0 }
+            }));
+            setMappings(initialMappings);
+        }
 
         const linkedTargets = targets.filter(t => t.profile_id === assign.profile_id);
         if (linkedTargets.length > 0) {
@@ -378,6 +407,18 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 setTemplateMode('existing');
             }
 
+            // Mappings (Fetch from server if available, overwrite defaults)
+            (async () => {
+                try {
+                    const mRes = await exportGatewayApi.getTargetMappings(primaryTarget.id);
+                    if (mRes.success && mRes.data && mRes.data.length > 0) {
+                        setMappings(mRes.data);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch existing mappings", err);
+                }
+            })();
+
             // Schedule
             const linkedSchedule = schedules.find(s => s.target_id === primaryTarget.id);
             if (linkedSchedule) {
@@ -391,21 +432,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             } else {
                 setTransmissionMode('EVENT');
             }
-
-            // Mappings (Async)
-            (async () => {
-                try {
-                    const mRes = await exportGatewayApi.getTargetMappings(primaryTarget.id);
-                    if (mRes.success && mRes.data) {
-                        setMappings(mRes.data);
-                    }
-                } catch (err) {
-                    console.error("Failed to fetch existing mappings", err);
-                }
-            })();
-
-            hydratedTargetIdRef.current = currentId; // Mark as done
+        } else {
+            // No targets yet, but keep it in existing mode if we have a profile
+            setTargetMode('new');
         }
+
+        hydratedTargetIdRef.current = currentId; // Mark as done for this ID
     }, [visible, editingGateway, assignments, targets, templates, schedules]);
 
 
@@ -424,13 +456,21 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 setMappings(initialMappings);
             }
         }
-        // [SCENARIO B] Existing Profile selected
+        // [SCENARIO B] Existing Profile selected (REFINED: Merge Reset & Populate & Empty Fallback)
         else if (profileMode === 'existing' && selectedProfileId) {
-            // DETECT EXPLICIT CHANGE: If selectedProfileId differs from what we last mapped, REFRESH.
-            if (selectedProfileId !== lastMappedProfileIdRef.current) {
+            const isProfileChanged = selectedProfileId !== lastMappedProfileIdRef.current;
+            const isEmpty = mappings.length === 0;
+
+            if (isProfileChanged || isEmpty) {
                 const p = profiles.find(x => x.id === selectedProfileId);
-                if (p) {
-                    console.log(`[Wizard] Profile changed (${lastMappedProfileIdRef.current} -> ${selectedProfileId}). Regenerating mappings...`);
+                if (p && p.data_points?.length > 0) {
+                    if (isProfileChanged) {
+                        console.log(`[Wizard] Profile changed (${lastMappedProfileIdRef.current} -> ${selectedProfileId}). Resetting targets and regenerating mappings...`);
+                        setSelectedTargetIds([]); // Reset on manual profile change
+                    } else {
+                        console.log(`[Wizard] Mappings empty for Profile ${selectedProfileId}. Generating defaults from points...`);
+                    }
+
                     const initialMappings = (p.data_points || []).map((dp: any) => ({
                         point_id: dp.id,
                         site_id: dp.site_id || dp.building_id || 0,
@@ -514,8 +554,33 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
             if (!profileId) throw new Error("프로파일 ID 확보 실패");
 
-            // Assign Profile to Gateway
-            await exportGatewayApi.assignProfile(gatewayId, profileId);
+            // 2. Profile Assignment (Single-Profile Triage)
+            if (profileId) {
+                try {
+                    const assignmentsRes = await exportGatewayApi.getAssignments(gatewayId);
+                    if (assignmentsRes.success && Array.isArray(assignmentsRes.data)) {
+                        const oldAssignments = assignmentsRes.data;
+                        // Unassign all BUT the current desired profile
+                        for (const old of oldAssignments) {
+                            if (old.profile_id !== profileId) {
+                                await exportGatewayApi.unassignProfile(gatewayId, old.profile_id);
+                            }
+                        }
+
+                        // Only assign if it's not already there
+                        const alreadyAssigned = oldAssignments.some(a => a.profile_id === profileId);
+                        if (!alreadyAssigned) {
+                            await exportGatewayApi.assignProfile(gatewayId, profileId);
+                        }
+                    } else {
+                        // Fallback
+                        await exportGatewayApi.assignProfile(gatewayId, profileId).catch(() => { });
+                    }
+                } catch (err) {
+                    console.error("Assignment triage failed", err);
+                    await exportGatewayApi.assignProfile(gatewayId, profileId).catch(() => { });
+                }
+            }
 
             // 3. Template
             let templateId = selectedTemplateId;
@@ -745,6 +810,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         optionFilterProp="children"
                                         value={selectedProfileId}
                                         onChange={setSelectedProfileId}
+                                        getPopupContainer={triggerNode => triggerNode.parentNode}
                                         filterOption={(input, option: any) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
                                         options={profiles.map(p => ({ value: p.id, label: `${p.name} (${p.data_points?.length || 0} points)` }))}
                                     />
@@ -982,6 +1048,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         value={selectedTemplateId}
                                         onChange={setSelectedTemplateId}
                                         options={templates.map(t => ({ value: t.id, label: t.name }))}
+                                        getPopupContainer={trigger => trigger.parentElement}
                                     />
                                     {selectedTemplateId && (
                                         <div style={{ marginTop: '10px', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1160,57 +1227,159 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         placeholder="타겟 선택 (다중 선택 가능)"
                                         value={selectedTargetIds}
                                         onChange={setSelectedTargetIds}
-                                        options={targets.map(t => ({ value: t.id, label: `${t.name} [${t.target_type}]` }))}
+                                        options={targets.map(t => ({
+                                            value: t.id,
+                                            label: `${t.name} [${t.target_type}]`
+                                        }))}
+                                        getPopupContainer={trigger => trigger.parentElement}
                                     />
                                     {selectedTargetIds.length > 0 && (
                                         <div style={{ marginTop: '16px', flex: 1, overflowY: 'auto', border: '1px solid #f0f0f0', borderRadius: '8px', background: '#fafafa', padding: '12px' }}>
                                             <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px' }}>선택된 타겟 설정 수정 ({selectedTargetIds.length})</div>
-                                            {selectedTargetIds.map(tid => {
-                                                const t = targets.find(yt => yt.id === tid);
-                                                if (!t) return null;
-                                                const configs = editingTargets[tid] || [];
+                                            {selectedTargetIds
+                                                .sort((a, b) => {
+                                                    const orderA = editingTargets[a]?.[0]?.execution_order || 100;
+                                                    const orderB = editingTargets[b]?.[0]?.execution_order || 100;
+                                                    return orderA - orderB;
+                                                })
+                                                .map(tid => {
+                                                    const t = targets.find(yt => yt.id === tid);
+                                                    if (!t) return null;
+                                                    const configs = editingTargets[tid] || [];
 
-                                                return (
-                                                    <div key={tid} style={{ background: 'white', border: '1px solid #eee', borderRadius: '6px', padding: '16px', marginBottom: '12px' }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid #f5f5f5', paddingBottom: '8px', alignItems: 'center' }}>
-                                                            <div>
-                                                                <strong style={{ color: '#1890ff', marginRight: '8px' }}>{t.name}</strong>
-                                                                <Tag bordered={false} color={t.target_type === 'HTTP' ? 'blue' : t.target_type === 'S3' ? 'orange' : 'default'}>{t.target_type}</Tag>
+                                                    return (
+                                                        <div key={tid} style={{ background: 'white', border: '1px solid #eee', borderRadius: '6px', padding: '16px', marginBottom: '12px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', borderBottom: '1px solid #f5f5f5', paddingBottom: '8px', alignItems: 'center' }}>
+                                                                <div>
+                                                                    <strong style={{ color: '#1890ff', marginRight: '8px' }}>{t.name}</strong>
+                                                                    <Tag bordered={false} color={t.target_type === 'HTTP' ? 'blue' : t.target_type === 'S3' ? 'orange' : 'default'}>{t.target_type}</Tag>
+                                                                </div>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <span style={{ fontSize: '12px', color: '#666' }}>전송 우선순위:</span>
+                                                                    <Select
+                                                                        size="small"
+                                                                        style={{ width: '60px' }}
+                                                                        value={configs[0]?.execution_order || 1}
+                                                                        getPopupContainer={trigger => trigger.parentElement}
+                                                                        onChange={(val) => updateTargetPriority('existing', tid, 0, val)}
+                                                                    >
+                                                                        {Array.from({ length: totalTargetCount }).map((_, idx) => (
+                                                                            <Select.Option key={idx + 1} value={idx + 1}>{idx + 1}</Select.Option>
+                                                                        ))}
+                                                                    </Select>
+                                                                </div>
                                                             </div>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                <span style={{ fontSize: '12px', color: '#666' }}>전송 우선순위:</span>
-                                                                <Select
-                                                                    size="small"
-                                                                    style={{ width: '60px' }}
-                                                                    value={configs[0]?.execution_order || 1}
-                                                                    onChange={(val) => updateTargetPriority('existing', tid, 0, val)}
-                                                                >
-                                                                    {Array.from({ length: totalTargetCount }).map((_, idx) => (
-                                                                        <Select.Option key={idx + 1} value={idx + 1}>{idx + 1}</Select.Option>
-                                                                    ))}
-                                                                </Select>
-                                                            </div>
-                                                        </div>
 
-                                                        {configs.map((c: any, cIdx: number) => (
-                                                            <div key={cIdx} style={{ marginBottom: '12px' }}>
-                                                                {t.target_type === 'HTTP' && (
-                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                                                            <Select
-                                                                                style={{ width: '100px' }}
-                                                                                value={c.method}
-                                                                                onChange={val => {
+                                                            {configs.map((c: any, cIdx: number) => (
+                                                                <div key={cIdx} style={{ marginBottom: '12px' }}>
+                                                                    {t.target_type === 'HTTP' && (
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                                <Select
+                                                                                    style={{ width: '100px' }}
+                                                                                    value={c.method}
+                                                                                    onChange={val => {
+                                                                                        const next = { ...editingTargets };
+                                                                                        next[tid][cIdx] = { ...c, method: val };
+                                                                                        setEditingTargets(next);
+                                                                                    }}
+                                                                                >
+                                                                                    <option value="POST">POST</option>
+                                                                                    <option value="PUT">PUT</option>
+                                                                                </Select>
+                                                                                <Input
+                                                                                    placeholder="Endpoint URL"
+                                                                                    value={c.url}
+                                                                                    onChange={e => {
+                                                                                        const next = { ...editingTargets };
+                                                                                        next[tid][cIdx] = { ...c, url: e.target.value };
+                                                                                        setEditingTargets(next);
+                                                                                    }}
+                                                                                />
+                                                                            </div>
+                                                                            <Input.Password
+                                                                                placeholder="Authorization Header (Token / Signature)"
+                                                                                value={c.headers?.Authorization || ''}
+                                                                                onChange={e => {
                                                                                     const next = { ...editingTargets };
-                                                                                    next[tid][cIdx] = { ...c, method: val };
+                                                                                    next[tid][cIdx] = {
+                                                                                        ...c,
+                                                                                        headers: { ...c.headers, Authorization: e.target.value }
+                                                                                    };
                                                                                     setEditingTargets(next);
                                                                                 }}
-                                                                            >
-                                                                                <option value="POST">POST</option>
-                                                                                <option value="PUT">PUT</option>
-                                                                            </Select>
+                                                                            />
+                                                                            <Input.Password
+                                                                                placeholder="인증 키 (x-api-key 또는 Token)"
+                                                                                value={c.auth?.apiKey || ''}
+                                                                                onChange={e => {
+                                                                                    const next = { ...editingTargets };
+                                                                                    next[tid][cIdx] = {
+                                                                                        ...c,
+                                                                                        auth: { ...c.auth, type: 'x-api-key', apiKey: e.target.value }
+                                                                                    };
+                                                                                    setEditingTargets(next);
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                    {t.target_type === 'S3' && (
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                                             <Input
-                                                                                placeholder="Endpoint URL"
+                                                                                placeholder="S3 Service URL"
+                                                                                value={c.S3ServiceUrl}
+                                                                                onChange={e => {
+                                                                                    const next = { ...editingTargets };
+                                                                                    next[tid][cIdx] = { ...c, S3ServiceUrl: e.target.value };
+                                                                                    setEditingTargets(next);
+                                                                                }}
+                                                                            />
+                                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                                <Input
+                                                                                    placeholder="Bucket Name"
+                                                                                    value={c.BucketName}
+                                                                                    onChange={e => {
+                                                                                        const next = { ...editingTargets };
+                                                                                        next[tid][cIdx] = { ...c, BucketName: e.target.value };
+                                                                                        setEditingTargets(next);
+                                                                                    }}
+                                                                                />
+                                                                                <Input
+                                                                                    placeholder="Folder Path"
+                                                                                    value={c.Folder}
+                                                                                    onChange={e => {
+                                                                                        const next = { ...editingTargets };
+                                                                                        next[tid][cIdx] = { ...c, Folder: e.target.value };
+                                                                                        setEditingTargets(next);
+                                                                                    }}
+                                                                                />
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                                <Input.Password
+                                                                                    placeholder="Access Key ID"
+                                                                                    value={c.AccessKeyID}
+                                                                                    onChange={e => {
+                                                                                        const next = { ...editingTargets };
+                                                                                        next[tid][cIdx] = { ...c, AccessKeyID: e.target.value };
+                                                                                        setEditingTargets(next);
+                                                                                    }}
+                                                                                />
+                                                                                <Input.Password
+                                                                                    placeholder="Secret Access Key"
+                                                                                    value={c.SecretAccessKey}
+                                                                                    onChange={e => {
+                                                                                        const next = { ...editingTargets };
+                                                                                        next[tid][cIdx] = { ...c, SecretAccessKey: e.target.value };
+                                                                                        setEditingTargets(next);
+                                                                                    }}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    {t.target_type === 'MQTT' && (
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                            <Input
+                                                                                placeholder="Broker URL"
                                                                                 value={c.url}
                                                                                 onChange={e => {
                                                                                     const next = { ...editingTargets };
@@ -1218,113 +1387,22 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                                     setEditingTargets(next);
                                                                                 }}
                                                                             />
-                                                                        </div>
-                                                                        <Input.Password
-                                                                            placeholder="Authorization Header (Token / Signature)"
-                                                                            value={c.headers?.Authorization || ''}
-                                                                            onChange={e => {
-                                                                                const next = { ...editingTargets };
-                                                                                next[tid][cIdx] = {
-                                                                                    ...c,
-                                                                                    headers: { ...c.headers, Authorization: e.target.value }
-                                                                                };
-                                                                                setEditingTargets(next);
-                                                                            }}
-                                                                        />
-                                                                        <Input.Password
-                                                                            placeholder="인증 키 (x-api-key 또는 Token)"
-                                                                            value={c.auth?.apiKey || ''}
-                                                                            onChange={e => {
-                                                                                const next = { ...editingTargets };
-                                                                                next[tid][cIdx] = {
-                                                                                    ...c,
-                                                                                    auth: { ...c.auth, type: 'x-api-key', apiKey: e.target.value }
-                                                                                };
-                                                                                setEditingTargets(next);
-                                                                            }}
-                                                                        />
-                                                                    </div>
-                                                                )}
-                                                                {t.target_type === 'S3' && (
-                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                                        <Input
-                                                                            placeholder="S3 Service URL"
-                                                                            value={c.S3ServiceUrl}
-                                                                            onChange={e => {
-                                                                                const next = { ...editingTargets };
-                                                                                next[tid][cIdx] = { ...c, S3ServiceUrl: e.target.value };
-                                                                                setEditingTargets(next);
-                                                                            }}
-                                                                        />
-                                                                        <div style={{ display: 'flex', gap: '8px' }}>
                                                                             <Input
-                                                                                placeholder="Bucket Name"
-                                                                                value={c.BucketName}
+                                                                                placeholder="Topic"
+                                                                                value={c.topic}
                                                                                 onChange={e => {
                                                                                     const next = { ...editingTargets };
-                                                                                    next[tid][cIdx] = { ...c, BucketName: e.target.value };
-                                                                                    setEditingTargets(next);
-                                                                                }}
-                                                                            />
-                                                                            <Input
-                                                                                placeholder="Folder Path"
-                                                                                value={c.Folder}
-                                                                                onChange={e => {
-                                                                                    const next = { ...editingTargets };
-                                                                                    next[tid][cIdx] = { ...c, Folder: e.target.value };
+                                                                                    next[tid][cIdx] = { ...c, topic: e.target.value };
                                                                                     setEditingTargets(next);
                                                                                 }}
                                                                             />
                                                                         </div>
-                                                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                                                            <Input.Password
-                                                                                placeholder="Access Key ID"
-                                                                                value={c.AccessKeyID}
-                                                                                onChange={e => {
-                                                                                    const next = { ...editingTargets };
-                                                                                    next[tid][cIdx] = { ...c, AccessKeyID: e.target.value };
-                                                                                    setEditingTargets(next);
-                                                                                }}
-                                                                            />
-                                                                            <Input.Password
-                                                                                placeholder="Secret Access Key"
-                                                                                value={c.SecretAccessKey}
-                                                                                onChange={e => {
-                                                                                    const next = { ...editingTargets };
-                                                                                    next[tid][cIdx] = { ...c, SecretAccessKey: e.target.value };
-                                                                                    setEditingTargets(next);
-                                                                                }}
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                                {t.target_type === 'MQTT' && (
-                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                                        <Input
-                                                                            placeholder="Broker URL"
-                                                                            value={c.url}
-                                                                            onChange={e => {
-                                                                                const next = { ...editingTargets };
-                                                                                next[tid][cIdx] = { ...c, url: e.target.value };
-                                                                                setEditingTargets(next);
-                                                                            }}
-                                                                        />
-                                                                        <Input
-                                                                            placeholder="Topic"
-                                                                            value={c.topic}
-                                                                            onChange={e => {
-                                                                                const next = { ...editingTargets };
-                                                                                next[tid][cIdx] = { ...c, topic: e.target.value };
-                                                                                setEditingTargets(next);
-                                                                            }}
-                                                                        />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                );
-                                            })}
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })}
                                         </div>
                                     )}
                                 </div>
@@ -1358,6 +1436,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                 size="small"
                                                                 style={{ width: '60px' }}
                                                                 value={c.execution_order || i + 1}
+                                                                getPopupContainer={trigger => trigger.parentElement}
                                                                 onChange={(val) => updateTargetPriority('new', 'config_http', i, val)}
                                                             >
                                                                 {Array.from({ length: totalTargetCount }).map((_, idx) => (
@@ -1370,14 +1449,15 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         <Select
                                                             style={{ width: '100px' }}
                                                             value={c.method}
+                                                            getPopupContainer={trigger => trigger.parentElement}
                                                             onChange={val => {
                                                                 const next = [...targetData.config_http];
                                                                 next[i].method = val;
                                                                 setTargetData({ ...targetData, config_http: next });
                                                             }}
                                                         >
-                                                            <option value="POST">POST</option>
-                                                            <option value="PUT">PUT</option>
+                                                            <Select.Option value="POST">POST</Select.Option>
+                                                            <Select.Option value="PUT">PUT</Select.Option>
                                                         </Select>
                                                         <Input
                                                             placeholder="Endpoint URL (예: http://api.server.com/ingest)"
@@ -1452,6 +1532,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                 size="small"
                                                                 style={{ width: '60px' }}
                                                                 value={c.execution_order || i + 1}
+                                                                getPopupContainer={trigger => trigger.parentElement}
                                                                 onChange={(val) => updateTargetPriority('new', 'config_mqtt', i, val)}
                                                             >
                                                                 {Array.from({ length: totalTargetCount }).map((_, idx) => (
@@ -1507,6 +1588,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                 size="small"
                                                                 style={{ width: '60px' }}
                                                                 value={c.execution_order || i + 1}
+                                                                getPopupContainer={trigger => trigger.parentElement}
                                                                 onChange={(val) => updateTargetPriority('new', 'config_s3', i, val)}
                                                             >
                                                                 {Array.from({ length: totalTargetCount }).map((_, idx) => (

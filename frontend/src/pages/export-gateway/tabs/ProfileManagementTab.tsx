@@ -354,19 +354,49 @@ const ProfileManagementTab: React.FC = () => {
                             overflow: hidden;
                             box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3);
                         }
-                        .refresh-btn-hover:hover {
-                            color: var(--primary-500) !important;
+                        /* Isolated overrides for Management design system within this modal */
+                        .ultra-wide-container .mgmt-input {
+                            width: 100% !important; 
+                            height: 38px !important; /* Standard comfortable height */
+                            border: 1.5px solid #cbd5e1 !important;
+                            border-radius: 8px !important;
+                            background-color: #ffffff !important;
+                            font-size: 14px !important;
+                            transition: all 0.2s ease !important;
+                        }
+                        .ultra-wide-container .mgmt-input.bulk-site-input {
+                             width: 110px !important; 
+                             height: 44px !important; /* ONLY THIS ONE IS TALLER as requested */
+                             font-size: 16px !important;
+                             font-weight: 700 !important;
+                        }
+                        .ultra-wide-container .mgmt-input:focus {
+                            border-color: var(--primary-500) !important;
+                            box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15) !important;
+                            background-color: #fff !important;
+                        }
+                        .ultra-wide-container .mgmt-table th {
+                            background: #f8fafc !important;
+                            color: #475569 !important;
+                            font-weight: 700 !important;
+                            font-size: 11px !important;
+                            letter-spacing: 0.05em !important;
+                            padding: 12px 16px !important;
+                        }
+                        .ultra-wide-container .mgmt-table td {
+                            padding: 10px 12px !important;
+                            border-bottom: 1px solid #f1f5f9 !important;
                         }
                         .ultra-wide-body {
                             flex: 1;
                             display: flex;
                             overflow: hidden;
-                            background: #f1f5f9;
-                            padding: 16px;
-                            gap: 16px;
+                            background: #f8fafc;
+                            padding: 20px;
+                            gap: 20px;
                         }
                         .side-setup-panel {
-                            width: 350px; /* Slimmer sidebar for discovery */
+                            width: 380px;
                             display: flex;
                             flex-direction: column;
                             flex-shrink: 0;
@@ -374,6 +404,7 @@ const ProfileManagementTab: React.FC = () => {
                             border-radius: 12px;
                             border: 1px solid #e2e8f0;
                             overflow: hidden;
+                            box-shadow: var(--shadow-sm);
                         }
                         .center-mapping-panel {
                             flex: 1;
@@ -383,24 +414,20 @@ const ProfileManagementTab: React.FC = () => {
                             display: flex;
                             flex-direction: column;
                             overflow: hidden;
+                            box-shadow: var(--shadow-sm);
                         }
                         .side-guide-panel {
-                            width: 300px;
+                            width: 320px;
                             background: white;
                             border-radius: 12px;
                             border: 1px solid #e2e8f0;
-                            padding: 24px;
+                            padding: 28px;
                             overflow-y: auto;
                             flex-shrink: 0;
-                        }
-                        .setup-card {
-                            background: white;
-                            border-radius: 12px;
-                            border: 1px solid #e2e8f0;
-                            padding: 24px;
+                            box-shadow: var(--shadow-sm);
                         }
                         .ultra-wide-header {
-                            padding: 20px 32px;
+                            padding: 24px 32px;
                             background: white;
                             border-bottom: 1px solid #e2e8f0;
                             display: flex;
@@ -408,49 +435,48 @@ const ProfileManagementTab: React.FC = () => {
                             align-items: center;
                         }
                         .ultra-wide-footer {
-                            padding: 16px 32px;
+                            padding: 20px 32px;
                             background: #f8fafc;
                             border-top: 1px solid #e2e8f0;
                             display: flex;
-                            justify-content: flex-end; /* Ensure buttons are on the right */
+                            justify-content: flex-end;
                             align-items: center;
-                            gap: 12px;
-                        }
-                        .ultra-wide-footer button {
-                            flex: 0 0 auto; /* Prevent buttons from stretching */
-                            width: auto;
+                            gap: 16px;
                         }
                     `}</style>
                     <div className="ultra-wide-container">
                         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                             <div className="ultra-wide-header">
-                                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 700 }}>{editingProfile?.id ? "프로파일 수정" : "신규 프로파일 생성"}</h3>
-                                <button type="button" className="mgmt-modal-close" onClick={handleCloseModal} style={{ fontSize: '28px' }}>&times;</button>
+                                <h3 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>
+                                    <i className={`fas ${editingProfile?.id ? 'fa-edit' : 'fa-plus-circle'} `} style={{ marginRight: '12px', color: 'var(--primary-600)' }} />
+                                    {editingProfile?.id ? "프로파일 수정" : "신규 프로파일 생성"}
+                                </h3>
+                                <button type="button" className="mgmt-modal-close" onClick={handleCloseModal} style={{ fontSize: '28px', color: '#94a3b8' }}>&times;</button>
                             </div>
 
                             {/* Top Setup Bar (Horizontal) */}
-                            <div style={{ background: 'white', padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '32px', alignItems: 'flex-start' }}>
-                                <div style={{ flex: '0 0 350px' }}>
-                                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#64748b', marginBottom: '6px' }}>프로파일 명칭</label>
+                            <div style={{ background: 'white', padding: '20px 32px', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '40px', alignItems: 'flex-start' }}>
+                                <div style={{ flex: '0 0 400px' }}>
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>프로파일 명칭</label>
                                     <input
                                         type="text"
                                         className="mgmt-input"
                                         required
                                         value={editingProfile?.name || ''}
                                         onChange={e => { setEditingProfile({ ...editingProfile, name: e.target.value }); setHasChanges(true); }}
-                                        placeholder="예: 공장 데이터 전송"
-                                        style={{ height: '36px' }}
+                                        placeholder="예: 공장 데이터 전송 프로파일"
+                                        style={{ height: '42px', fontSize: '15px' }}
                                     />
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#64748b', marginBottom: '6px' }}>상세 설명</label>
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>상세 설명</label>
                                     <input
                                         type="text"
                                         className="mgmt-input"
                                         value={editingProfile?.description || ''}
                                         onChange={e => { setEditingProfile({ ...editingProfile, description: e.target.value }); setHasChanges(true); }}
-                                        placeholder="프로파일 용도 요약"
-                                        style={{ height: '36px' }}
+                                        placeholder="이 프로파일의 용도를 간단히 적어주세요"
+                                        style={{ height: '42px', fontSize: '15px' }}
                                     />
                                 </div>
                             </div>
@@ -458,8 +484,9 @@ const ProfileManagementTab: React.FC = () => {
                             <div className="ultra-wide-body">
                                 {/* Column 1: Data Discovery (Full Height) */}
                                 <div className="side-setup-panel">
-                                    <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-                                        <h4 className="section-title" style={{ margin: 0 }}><i className="fas fa-search-plus" /> 포인트 탐색</h4>
+                                    <div style={{ padding: '20px', borderBottom: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <i className="fas fa-search-plus" style={{ color: 'var(--primary-600)' }} />
+                                        <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>포인트 탐색</h4>
                                     </div>
                                     <div style={{ flex: 1, overflow: 'hidden' }}>
                                         <DataPointSelector
@@ -473,108 +500,106 @@ const ProfileManagementTab: React.FC = () => {
 
                                 {/* Column 2: Large Mapping Table */}
                                 <div className="center-mapping-panel">
-                                    <div style={{ padding: '20px 24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ padding: '24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div>
-                                            <h4 className="section-title" style={{ margin: 0 }}>데이터 매핑 및 외부 필드명 설정</h4>
-                                            <p className="mgmt-modal-form-hint">추가된 포인트가 외부 시스템에서 어떤 필드명(Mapping Name)으로 표시될지 정의하세요.</p>
+                                            <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>데이터 매핑 및 외부 필드명 설정</h4>
+                                            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>추가된 포인트가 외부 시스템에서 어떤 이름으로 표시될지 정의하세요.</p>
                                         </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', background: 'var(--primary-50)', borderRadius: '12px', border: '1px solid var(--primary-100)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', padding: '12px 20px', background: '#f0f9ff', borderRadius: '12px', border: '1.5px solid #bae6fd' }}>
                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--primary-600)', marginBottom: '2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bulk Site ID</span>
+                                                <span style={{ fontSize: '11px', fontWeight: 800, color: '#0369a1', marginBottom: '2px', textTransform: 'uppercase' }}>Site ID 일괄 적용</span>
                                                 <input
                                                     type="number"
-                                                    className="mgmt-input sm"
-                                                    placeholder="Site ID"
+                                                    className="mgmt-input sm bulk-site-input"
+                                                    placeholder="ID"
                                                     value={bulkSiteId ?? ''}
                                                     onChange={e => {
                                                         const val = parseInt(e.target.value);
                                                         setBulkSiteId(isNaN(val) ? undefined : val);
                                                     }}
-                                                    style={{ width: '100px', height: '32px', border: '1px solid var(--primary-200)', borderRadius: '6px' }}
+                                                    style={{ borderColor: '#7dd3fc' }}
                                                 />
                                             </div>
                                             <button
                                                 type="button"
-                                                className="btn btn-primary btn-sm"
+                                                className="btn btn-primary"
                                                 onClick={handleBulkSiteIdApply}
-                                                style={{ height: '32px', marginTop: '12px', borderRadius: '6px', fontWeight: 600 }}
+                                                style={{ height: '36px', fontSize: '13px', fontWeight: 700, padding: '0 20px' }}
                                             >
                                                 적용
                                             </button>
                                         </div>
                                     </div>
-                                    <div style={{ flex: 1, overflow: 'auto' }}>
+                                    <div style={{ flex: 1, overflow: 'auto', padding: '0 8px' }}>
                                         <table className="mgmt-table">
-                                            <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: '#f8fafc' }}>
+                                            <thead>
                                                 <tr>
-                                                    <th style={{ width: '18%', padding: '8px 20px' }}>내부 포인트명</th>
-                                                    <th style={{ width: '35%', padding: '8px 10px' }}>매핑 명칭 (TARGET KEY)</th>
-                                                    <th style={{ width: '100px', padding: '8px 10px' }}>SITE ID</th>
-                                                    <th style={{ width: '90px', padding: '8px 10px' }}>SCALE</th>
-                                                    <th style={{ width: '90px', padding: '8px 10px' }}>OFFSET</th>
-                                                    <th style={{ width: '60px', padding: '8px 10px', textAlign: 'center' }}>삭제</th>
+                                                    <th style={{ width: '22%' }}>내부 포인트명</th>
+                                                    <th style={{ width: '38%' }}>매핑 명칭 (TARGET KEY)</th>
+                                                    <th style={{ width: '100px', textAlign: 'center' }}>SITE ID</th>
+                                                    <th style={{ width: '90px', textAlign: 'center' }}>SCALE</th>
+                                                    <th style={{ width: '90px', textAlign: 'center' }}>OFFSET</th>
+                                                    <th style={{ width: '60px', textAlign: 'center' }}>삭제</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {(editingProfile?.data_points || []).map((p: any) => (
                                                     <tr key={p.id}>
-                                                        <td style={{ padding: '8px 20px' }}>
-                                                            <div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>{p.name}</div>
+                                                        <td>
+                                                            <div style={{ fontWeight: 700, color: '#334155', fontSize: '14px' }}>{p.name}</div>
+                                                            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>ID: {p.id}</div>
                                                         </td>
-                                                        <td style={{ padding: '8px 10px' }}>
+                                                        <td>
                                                             <input
                                                                 type="text"
-                                                                className="mgmt-input sm"
+                                                                className="mgmt-input"
                                                                 value={p.target_field_name || ''}
                                                                 onChange={e => handleMappingNameChange(p.id, e.target.value)}
-                                                                placeholder="Target Key"
-                                                                style={{ height: '36px', border: '1px solid #cbd5e1' }}
+                                                                placeholder="예: TEMPERATURE_SENSOR_1"
+                                                                style={{ height: '38px', fontSize: '13px' }}
                                                             />
                                                         </td>
-                                                        <td style={{ padding: '8px 10px' }}>
+                                                        <td style={{ textAlign: 'center' }}>
                                                             <input
                                                                 type="number"
-                                                                className="mgmt-input sm"
+                                                                className="mgmt-input"
                                                                 value={p.site_id || ''}
                                                                 onChange={e => {
                                                                     const val = parseInt(e.target.value);
                                                                     handleSiteIdChange(p.id, isNaN(val) ? undefined : val);
                                                                 }}
-                                                                placeholder="ID"
-                                                                style={{ height: '36px', border: '1px solid #cbd5e1' }}
+                                                                style={{ height: '38px', textAlign: 'center', fontSize: '13px' }}
                                                             />
                                                         </td>
-                                                        <td style={{ padding: '8px 10px' }}>
+                                                        <td>
                                                             <input
                                                                 type="number"
-                                                                className="mgmt-input sm"
+                                                                className="mgmt-input"
                                                                 step="0.001"
                                                                 value={p.scale ?? 1}
                                                                 onChange={e => handleScaleChange(p.id, parseFloat(e.target.value))}
-                                                                style={{ height: '36px', border: '1px solid #cbd5e1' }}
+                                                                style={{ height: '38px', textAlign: 'center', fontSize: '13px' }}
                                                             />
                                                         </td>
-                                                        <td style={{ padding: '8px 10px' }}>
+                                                        <td>
                                                             <input
                                                                 type="number"
-                                                                className="mgmt-input sm"
+                                                                className="mgmt-input"
                                                                 step="0.001"
                                                                 value={p.offset ?? 0}
                                                                 onChange={e => handleOffsetChange(p.id, parseFloat(e.target.value))}
-                                                                style={{ height: '36px', border: '1px solid #cbd5e1' }}
+                                                                style={{ height: '38px', textAlign: 'center', fontSize: '13px' }}
                                                             />
                                                         </td>
-                                                        <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                                                                <button
-                                                                    type="button"
-                                                                    className="mgmt-btn-icon error"
-                                                                    onClick={() => handlePointRemove(p.id)}
-                                                                    style={{ margin: 0, padding: 0, width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                                >
-                                                                    <i className="fas fa-trash" />
-                                                                </button>
-                                                            </div>
+                                                        <td style={{ textAlign: 'center' }}>
+                                                            <button
+                                                                type="button"
+                                                                className="mgmt-btn-icon error"
+                                                                onClick={() => handlePointRemove(p.id)}
+                                                                style={{ background: '#fff1f2', color: '#e11d48', border: '1px solid #fecaca' }}
+                                                            >
+                                                                <i className="fas fa-trash-alt" />
+                                                            </button>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -585,32 +610,43 @@ const ProfileManagementTab: React.FC = () => {
 
                                 {/* Column 3: Guide */}
                                 <div className="side-guide-panel">
-                                    <h4 style={{ borderBottom: '2px solid var(--primary-500)', paddingBottom: '8px' }}>Engineer's Guide</h4>
-                                    <div style={{ fontSize: '13px', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px', borderBottom: '2px solid #e2e8f0', paddingBottom: '12px' }}>
+                                        <i className="fas fa-book-reader" style={{ color: 'var(--primary-600)', fontSize: '20px' }} />
+                                        <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Engineer's Guide</h4>
+                                    </div>
+                                    <div style={{ fontSize: '14px', lineHeight: '1.7', display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                         <section>
-                                            <div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>1. 프로파일 정의</div>
-                                            <p style={{ margin: '4px 0' }}>데이터 수집의 **템플릿** 역할을 합니다. 의미 있는 이름을 지정해 주세요.</p>
+                                            <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ background: 'var(--primary-100)', color: 'var(--primary-700)', width: '22px', height: '22px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>1</span>
+                                                프로파일 정의
+                                            </div>
+                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>데이터 수집의 **템플릿** 역할을 수행합니다. 내부 관리용 명칭을 입력하세요.</p>
                                         </section>
                                         <section>
-                                            <div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>2. 포인트 탐색</div>
-                                            <p style={{ margin: '4px 0' }}>디바이스 필터를 사용하면 대량의 포인트도 쉽게 관리할 수 있습니다.</p>
+                                            <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ background: 'var(--primary-100)', color: 'var(--primary-700)', width: '22px', height: '22px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>2</span>
+                                                포인트 탐색
+                                            </div>
+                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>왼쪽 패널에서 필요한 포인트를 선택하여 우측 매핑 리스트에 추가하세요.</p>
                                         </section>
                                         <section>
-                                            <div style={{ fontWeight: 700, color: 'var(--primary-600)' }}>3. 매핑 키(Key) 및 타겟 설정</div>
-                                            <p style={{ margin: '4px 0' }}>외부 시스템에서 수집할 **최종 필드 명칭**입니다. </p>
-                                            <p style={{ fontSize: '11px', color: '#64748b', marginTop: '8px' }}>
-                                                <i className="fas fa-lightbulb" /> **매핑 구조 참고**<br />
-                                                - **프로파일 매핑**: 논리적 수집 대상 정의 (이곳)<br />
-                                                - **내보내기 타겟 매핑**: 목적지별 상세 변환 (Scale/Offset/필드명 재정의)
-                                            </p>
+                                            <div style={{ fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ background: 'var(--primary-100)', color: 'var(--primary-700)', width: '22px', height: '22px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px' }}>3</span>
+                                                매핑 키 설정
+                                            </div>
+                                            <p style={{ margin: '8px 0 0 30px', color: '#64748b' }}>외부 시스템(AWS S3 등)에서 보여질 **최종 필드 명칭**을 정의합니다.</p>
+                                            <div style={{ margin: '12px 0 0 30px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', fontSize: '12px' }}>
+                                                <i className="fas fa-info-circle" style={{ color: '#0ea5e9', marginRight: '6px' }} />
+                                                **Scale/Offset**: 수집된 원본 수치 데이터를 변환할 때 사용합니다.
+                                            </div>
                                         </section>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="ultra-wide-footer">
-                                <button type="button" className="mgmt-btn-outline" style={{ height: '32px', fontSize: '12px', padding: '0 16px' }} onClick={handleCloseModal}>취소</button>
-                                <button type="submit" className="mgmt-btn-primary" style={{ height: '32px', fontSize: '12px', padding: '0 20px' }}>프로파일 저장</button>
+                                <button type="button" className="btn btn-outline" style={{ height: '40px', padding: '0 24px', borderRadius: '10px', fontWeight: 600 }} onClick={handleCloseModal}>취소</button>
+                                <button type="submit" className="btn btn-primary" style={{ height: '40px', padding: '0 32px', borderRadius: '10px', fontWeight: 700, boxShadow: '0 4px 10px rgba(14, 165, 233, 0.3)' }}>프로파일 저장</button>
                             </div>
                         </form>
                     </div>

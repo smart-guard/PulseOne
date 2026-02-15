@@ -4,10 +4,13 @@
 //=============================================================================
 
 #include "Drivers/Bacnet/BACnetDriver.h"
+#include "Database/Repositories/ProtocolRepository.h"
+#include "Database/RepositoryFactory.h"
 #include "Drivers/Bacnet/BACnetServiceManager.h"
 #include "Drivers/Common/DriverFactory.h"
 #include "Logging/LogManager.h"
 #include "Platform/PlatformCompat.h"
+#include <iostream>
 
 // =============================================================================
 // Windows 매크로 충돌 해결 (가장 중요!)
@@ -46,7 +49,7 @@ typedef int socklen_t;
 #define GET_SOCKET_ERROR() errno
 #endif
 
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
 // Note: apdu.h and others might be included via multiple paths,
 // using a clean order here.
 extern "C" {
@@ -189,7 +192,7 @@ bool BACnetDriver::Connect() {
     network_thread_running_.store(true);
     network_thread_ = std::thread(&BACnetDriver::NetworkLoop, this);
 
-#if HAVE_BACNET_STACK
+#if HAS_BACNET_STACK
     // 수동 주소 바인딩 (Discovery 없이 즉시 통신 가능하도록)
     if (!target_ip_.empty() && target_ip_ != "192.168.1.255") {
       BACNET_ADDRESS dest_addr;
@@ -426,9 +429,7 @@ bool BACnetDriver::WriteValue(const PulseOne::Structs::DataPoint &point,
 // 상태 및 통계 메서드
 // =============================================================================
 
-PulseOne::Enums::ProtocolType BACnetDriver::GetProtocolType() const {
-  return PulseOne::Enums::ProtocolType::BACNET_IP;
-}
+std::string BACnetDriver::GetProtocolType() const { return "BACNET_IP"; }
 
 PulseOne::Structs::DriverStatus BACnetDriver::GetStatus() const {
   return status_.load();
@@ -493,7 +494,7 @@ BACnetDriver::DiscoverDevices(uint32_t timeout_ms) {
 
   std::vector<PulseOne::Structs::DeviceInfo> discovered_devices;
 
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
   // Ensure socket is ready
   if (!IsConnected() && !Connect()) {
     logger.Error("Discovery failed: Could not connect driver");
@@ -650,7 +651,7 @@ void BACnetDriver::NetworkLoop() {
   unsigned timeout_ms = 100; // Small timeout for responsiveness
 
   while (network_thread_running_.load()) {
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
     pdu_len = datalink_receive(&src, &pdu[0], MAX_NPDU, timeout_ms);
 
     if (pdu_len > 0) {
@@ -672,7 +673,7 @@ void BACnetDriver::NetworkLoop() {
 bool BACnetDriver::InitializeBACnetStack() {
   auto &logger = LogManager::getInstance();
 
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
   try {
     // 실제 BACnet 스택 초기화
     // 1. BIP (BACnet IP) 초기화
@@ -795,7 +796,7 @@ bool BACnetDriver::ReadSingleProperty(
     object_instance = 0;
   }
 
-#ifdef HAVE_BACNET_STACK
+#ifdef HAS_BACNET_STACK
   // Ensure we are connected
   if (!IsConnected() && !Connect())
     return false;
@@ -930,6 +931,27 @@ extern "C" {
 __declspec(dllexport)
 #endif
 void RegisterPlugin() {
+  // 1. DB에 프로토콜 정보 자동 등록 (없을 경우)
+  try {
+    auto &repo_factory = PulseOne::Database::RepositoryFactory::getInstance();
+    auto protocol_repo = repo_factory.getProtocolRepository();
+    if (protocol_repo) {
+      if (!protocol_repo->findByType("BACNET_IP").has_value()) {
+        PulseOne::Database::Entities::ProtocolEntity entity;
+        entity.setProtocolType("BACNET_IP");
+        entity.setDisplayName("BACnet/IP");
+        entity.setCategory("building_automation");
+        entity.setDescription("BACnet over IP Protocol Driver");
+        entity.setDefaultPort(47808);
+        protocol_repo->save(entity);
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[BACnetDriver] DB Registration failed: " << e.what()
+              << std::endl;
+  }
+
+  // 2. 메모리 Factory에 드라이버 생성자 등록
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "BACNET_IP",
       []() { return std::make_unique<PulseOne::Drivers::BACnetDriver>(); });

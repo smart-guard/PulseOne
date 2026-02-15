@@ -56,10 +56,11 @@ echo "✅ Project structure check completed"
 
 echo "2. 📦 Setting up build environment..."
 
-rm -rf "$DIST_DIR"
+# Selective cleanup to preserve setup_assets
 mkdir -p "$PACKAGE_DIR"
 DEPS_DIR="$PACKAGE_DIR/setup_assets"
 mkdir -p "$DEPS_DIR"
+find "$PACKAGE_DIR" -mindepth 1 -maxdepth 1 -not -name "setup_assets" -exec rm -rf {} +
 
 if ! command -v node &> /dev/null; then
     echo "⚠️ Node.js not found on build system — frontend build may fail"
@@ -186,26 +187,35 @@ else
     echo "✅ Found pulseone-windows-builder image"
 fi
 
-    echo "📦 Building native components with MinGW..."
-
-    # Ensure output directory exists for volume mount
-    mkdir -p "$PACKAGE_DIR"
+    # Use a more stable temporary directory for Docker mount (Bypass Docker for Mac sync issues)
+    TMP_OUTPUT="/tmp/pulseone-dist-$(date +%s)"
+    mkdir -p "$TMP_OUTPUT"
+    chmod 777 "$TMP_OUTPUT"
+    sync
+    sleep 2
 
     docker run --rm \
         -v "$PROJECT_ROOT/core:/src/core" \
-        -v "$PACKAGE_DIR:/output" \
+        -v "$TMP_OUTPUT:/output" \
         pulseone-windows-builder bash -c "
             set -e
             
             # Use POSIX thread model for C++11/14/17 features (std::thread, std::mutex)
             export CC=x86_64-w64-mingw32-gcc-posix
             export CXX=x86_64-w64-mingw32-g++-posix
+            export AR=x86_64-w64-mingw32-ar
+            export RANLIB=x86_64-w64-mingw32-ranlib
+            
+            # 0. Build Shared Libraries (CRITICAL for linking)
+            cd /src/core/shared
+            echo 'Building Shared Libraries (Windows Cross-compile)...'
+            rm -rf build lib && mkdir lib
+            make -j2 CROSS_COMPILE_WINDOWS=1
             
             # 1. Build Collector
             cd /src/core/collector
             echo 'Building Collector (Release) with ALL Drivers...'
-            # make -f Makefile.windows clean (Preserving object files for resume)
-            # Using -j2 to balance speed and OOM risk
+            rm -rf build-windows bin-windows/*.exe
             make -f Makefile.windows -j2
             
             if [ -f bin-windows/collector.exe ]; then
@@ -228,8 +238,8 @@ fi
             cd /src/core/export-gateway
             echo 'Building Export Gateway (Release)...'
             if [ -f Makefile ]; then
-                make clean 2>/dev/null || true
-                make -j\$(nproc) CROSS_COMPILE_WINDOWS=1
+                rm -rf build bin/*.exe
+                make -j2 CROSS_COMPILE_WINDOWS=1
                 
                 if [ -f bin/export-gateway.exe ]; then
                     x86_64-w64-mingw32-strip --strip-unneeded bin/export-gateway.exe
@@ -244,6 +254,11 @@ fi
                 exit 1
             fi
         "
+
+    # Copy from TMP_OUTPUT to PACKAGE_DIR
+    echo "📦 Copying artifacts from temporary build directory..."
+    cp -r "$TMP_OUTPUT/"* "$PACKAGE_DIR/"
+    rm -rf "$TMP_OUTPUT"
 
     # Verify binaries
     if [ -f "$PACKAGE_DIR/pulseone-collector.exe" ]; then
@@ -275,7 +290,7 @@ else
 
     # Copy backend source (exclude dev artifacts)
     rsync -a \
-        --exclude='node_modules' \
+        --exclude='nnode_modules' \
         --exclude='.git' \
         --exclude='__tests__' \
         --exclude='__mocks__' \
@@ -441,7 +456,7 @@ if exist "!ASSETS_DIR!\WinSW-x64.exe" (
 echo.
 echo [6/9] Installing backend packages...
 pushd backend
-if exist "node_modules" rd /s /q node_modules
+if exist "nnode_modules" rd /s /q nnode_modules
 echo Running npm install...
 call npm install --no-audit --no-fund --loglevel=error
 popd
@@ -787,13 +802,13 @@ if exist "redis-server.exe" (
     echo [--] Redis: Not installed (optional)
 )
 
-if exist "backend\node_modules\express" (
+if exist "backend\nnode_modules\express" (
     echo [OK] Backend: Packages installed
 ) else (
     echo [!!] Backend: Packages missing
 )
 
-if exist "backend\node_modules\sqlite3" (
+if exist "backend\nnode_modules\sqlite3" (
     echo [OK] Database: SQLite3 module installed
 ) else (
     echo [--] Database: SQLite3 module missing

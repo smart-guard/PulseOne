@@ -11,9 +11,10 @@
 #include <string>
 
 namespace PulseOne {
-namespace Export {
 
 using json = nlohmann::json;
+
+namespace Export {
 
 struct TargetSendResult {
 public:

@@ -16,14 +16,17 @@
 #include "Database/RepositoryFactory.h" // 추가: ProtocolRepository 접근용
 #include "DatabaseManager.hpp"
 #include "DatabaseTypes.hpp"
-#include "Drivers/Bacnet/BACnetDriver.h" // Added for dynamic_cast
+#include "Drivers/Common/IProtocolDriver.h"
 #include "Logging/LogManager.h"
 #include "Workers/Protocol/BACnetWorker.h"
+#include <chrono>
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <regex>
 #include <sstream>
+#include <string>
 #include <thread>
+#include <vector>
 
 using json = nlohmann::json;
 using namespace std::chrono;
@@ -405,12 +408,9 @@ void BACnetDiscoveryService::SyncDeviceSchedules(uint32_t device_id) {
   }
 
   // 3. Get Driver
-  auto protocol_driver = bacnet_worker->GetProtocolDriver();
-  auto bacnet_driver =
-      dynamic_cast<PulseOne::Drivers::BACnetDriver *>(protocol_driver);
+  auto bacnet_driver = bacnet_worker->GetProtocolDriver();
   if (!bacnet_driver) {
-    LogManager::getInstance().Warn(
-        "SyncDeviceSchedules: Driver is not BACnetDriver");
+    LogManager::getInstance().Warn("SyncDeviceSchedules: Driver not found");
     return;
   }
 
@@ -1229,18 +1229,13 @@ bool BACnetDiscoveryService::StartNetworkScan(
                 PulseOne::Drivers::DriverFactory::GetInstance();
             auto driver_ptr = driver_factory.CreateDriver("BACNET_IP");
             if (driver_ptr) {
-              auto bacnet_driver =
-                  dynamic_cast<PulseOne::Drivers::BACnetDriver *>(
-                      driver_ptr.get());
-              if (bacnet_driver) {
-                // 1. Discover devices
-                auto discovered =
-                    bacnet_driver->DiscoverDevices(5000); // 5 sec scan
+              // IProtocolDriver 인터페이스를 통해 장치 검색 수행 (동적 캐스팅
+              // 불필요)
+              auto discovered = driver_ptr->DiscoverDevices(5000); // 5 sec scan
 
-                // 2. Process each discovered device
-                for (const auto &dev : discovered) {
-                  OnDeviceDiscovered(dev);
-                }
+              // 발견된 각 장치 처리
+              for (const auto &dev : discovered) {
+                OnDeviceDiscovered(dev);
               }
             }
 

@@ -1,4 +1,6 @@
 #include "Drivers/Ros/ROSDriver.h"
+#include "Database/Repositories/ProtocolRepository.h"
+#include "Database/RepositoryFactory.h"
 #include "Drivers/Common/DriverFactory.h"
 #include "Logging/LogManager.h"
 #include "Platform/PlatformCompat.h"
@@ -30,13 +32,25 @@ ROSDriver::~ROSDriver() { Stop(); }
 
 bool ROSDriver::Initialize(const DriverConfig &config) {
   config_ = config;
-  robot_ip_ = config.endpoint; // Expecting IP address
-
-  // Parse port from properties or default
-  if (config.properties.find("port") != config.properties.end()) {
+  std::string endpoint = config.endpoint;
+  size_t colon_pos = endpoint.find(':');
+  if (colon_pos != std::string::npos) {
+    robot_ip_ = endpoint.substr(0, colon_pos);
     try {
-      robot_port_ = std::stoi(config.properties.at("port"));
+      robot_port_ = std::stoi(endpoint.substr(colon_pos + 1));
     } catch (...) {
+      robot_port_ = 9090;
+    }
+  } else {
+    robot_ip_ = endpoint;
+    // Parse port from properties or default
+    if (config.properties.count("port")) {
+      try {
+        robot_port_ = std::stoi(config.properties.at("port"));
+      } catch (...) {
+        robot_port_ = 9090;
+      }
+    } else {
       robot_port_ = 9090;
     }
   }
@@ -141,7 +155,7 @@ void ROSDriver::ReceiveLoop() {
               if (j.contains("msg")) {
                 std::lock_guard<std::mutex> lock(callback_mutex_);
                 if (message_callback_) {
-                  message_callback_(topic, j["msg"]);
+                  message_callback_(topic, j["msg"].dump());
                 }
               }
             }
@@ -193,24 +207,27 @@ bool ROSDriver::OpenSocket() {
     return false;
   }
 
-  struct sockaddr_in server_addr;
-  std::memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(robot_port_);
-  if (inet_pton(AF_INET, robot_ip_.c_str(), &server_addr.sin_addr) <= 0) {
-    SetError("Invalid IP Address",
+  struct addrinfo hints, *res;
+  std::memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+
+  std::string port_str = std::to_string(robot_port_);
+  if (getaddrinfo(robot_ip_.c_str(), port_str.c_str(), &hints, &res) != 0) {
+    SetError("Failed to resolve hostname: " + robot_ip_,
              PulseOne::Structs::ErrorCode::CONFIGURATION_ERROR);
     return false;
   }
 
-  if (connect(socket_fd_, (struct sockaddr *)&server_addr,
-              sizeof(server_addr)) < 0) {
-    SetError("Connection Refused",
+  if (connect(socket_fd_, res->ai_addr, res->ai_addrlen) < 0) {
+    SetError("Connection Refused to " + robot_ip_ + ":" + port_str,
              PulseOne::Structs::ErrorCode::CONNECTION_FAILED);
+    freeaddrinfo(res);
     Socket::CloseSocket(socket_fd_);
     socket_fd_ = -1;
     return false;
   }
+  freeaddrinfo(res);
 
   is_connected_ = true;
   LogManager::getInstance().Info("Connected to ROS Bridge at " + robot_ip_);
@@ -237,17 +254,15 @@ bool ROSDriver::SendJson(const json &j) {
   return (sent == (ssize_t)msg.length());
 }
 
-bool ROSDriver::Subscribe(const std::string &topic) {
+bool ROSDriver::Subscribe(const std::string &topic, int qos) {
+  (void)qos;
   json j;
   j["op"] = "subscribe";
   j["topic"] = topic;
   return SendJson(j);
 }
 
-void ROSDriver::SetMessageCallback(MessageCallback callback) {
-  std::lock_guard<std::mutex> lock(callback_mutex_);
-  message_callback_ = callback;
-}
+// IProtocolDriver::SetMessageCallback is used (defined in base class)
 
 // Stubs for interface
 bool ROSDriver::ReadValues(const std::vector<DataPoint> &points,
@@ -255,11 +270,39 @@ bool ROSDriver::ReadValues(const std::vector<DataPoint> &points,
   return true;
 }
 bool ROSDriver::WriteValue(const DataPoint &point, const DataValue &value) {
-  return true;
-} // To implement Publish logic later
-PulseOne::Enums::ProtocolType ROSDriver::GetProtocolType() const {
-  return PulseOne::Enums::ProtocolType::ROS_BRIDGE;
+  if (!is_connected_)
+    return false;
+
+  json j;
+  j["op"] = "publish";
+  j["topic"] = point.address_string; // Using address_string as the topic
+
+  // Construct message based on value type
+  if (std::holds_alternative<double>(value))
+    j["msg"] = std::get<double>(value);
+  else if (std::holds_alternative<bool>(value))
+    j["msg"] = std::get<bool>(value);
+  else if (std::holds_alternative<std::string>(value)) {
+    // If it's a string, try to parse as JSON if it looks like it
+    std::string s = std::get<std::string>(value);
+    if (!s.empty() && (s.front() == '{' || s.front() == '[')) {
+      try {
+        j["msg"] = json::parse(s);
+      } catch (...) {
+        j["msg"] = s;
+      }
+    } else {
+      j["msg"] = s;
+    }
+  } else {
+    j["msg"] = Utils::DataVariantToString(value);
+  }
+
+  LogManager::getInstance().Info("[ROSDriver] Publishing to " +
+                                 point.address_string + ": " + j["msg"].dump());
+  return SendJson(j);
 }
+std::string ROSDriver::GetProtocolType() const { return "ROS_BRIDGE"; }
 void ROSDriver::UpdateStatus(DriverStatus status) { status_ = status; }
 void ROSDriver::SetError(const std::string &message,
                          PulseOne::Structs::ErrorCode code) {
@@ -285,6 +328,27 @@ extern "C" {
 __declspec(dllexport)
 #endif
 void RegisterPlugin() {
+  // 1. DB에 프로토콜 정보 자동 등록 (없을 경우)
+  try {
+    auto &repo_factory = PulseOne::Database::RepositoryFactory::getInstance();
+    auto protocol_repo = repo_factory.getProtocolRepository();
+    if (protocol_repo) {
+      if (!protocol_repo->findByType("ROS").has_value()) {
+        PulseOne::Database::Entities::ProtocolEntity entity;
+        entity.setProtocolType("ROS");
+        entity.setDisplayName("Robot Operating System");
+        entity.setCategory("industrial");
+        entity.setDescription(
+            "ROS (Robot Operating System) Driver via ROS Bridge");
+        protocol_repo->save(entity);
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[ROSDriver] DB Registration failed: " << e.what()
+              << std::endl;
+  }
+
+  // 2. 메모리 Factory에 드라이버 생성자 등록
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "ROS", []() { return std::make_unique<PulseOne::Drivers::ROSDriver>(); });
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(

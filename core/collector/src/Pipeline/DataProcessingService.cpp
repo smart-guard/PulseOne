@@ -599,20 +599,6 @@ void DataProcessingService::ProcessBatch(
 
     for (const auto &message : batch) {
       try {
-        // 🛑 성능 개선: 실패 장비 1~20번 명시적 건너뛰기
-        // (DB에서 비활성화했으므로 워커는 생성되지 않지만, 파이프라인 잔여
-        // 메시지 처리를 위해 유지)
-        int dev_id_int = 0;
-        try {
-          dev_id_int = std::stoi(message.device_id);
-        } catch (...) {
-        }
-
-        /*
-        if (dev_id_int >= 1 && dev_id_int <= 20) {
-          continue;
-        }
-        */
 
         // Initialize Context
         PipelineContext context(message);

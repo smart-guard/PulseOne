@@ -109,6 +109,8 @@ endif
 ifeq ($(HAS_QUICKJS),1)
     QUICKJS_LIBS = -lquickjs
     LIBS += $(QUICKJS_LIBS)
+    # Ensure include path for quickjs.h
+    INCLUDES += -I/usr/local/include/quickjs -I/opt/homebrew/include/quickjs
 endif
 
 # 디렉토리 설정
@@ -154,7 +156,8 @@ INCLUDES = -I$(SHARED_INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Storage \
            -I$(INCLUDE_DIR)/Client \
            -I./googletest/googletest/include \
-           -I./googletest/googlemock/include
+           -I./googletest/googlemock/include \
+           -I/usr/local/include/quickjs
 
 # Modbus 라이브러리 설정
 ifneq ($(shell echo "int main(){return 0;}" | $(CXX) -x c++ - -lmodbus >/dev/null 2>&1; echo $$?),0)

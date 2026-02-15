@@ -209,12 +209,6 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
   }
 
   for (const auto &rule : rules) {
-    // 🔥 [v3.2.0 Debug] Rule Loop start
-    LogManager::getInstance().Debug(
-        "[AlarmEngine] Checking Rule ID: " + std::to_string(rule.getId()) +
-        " for Point: " + std::to_string(tv.point_id) +
-        ", Enabled: " + (rule.isEnabled() ? "YES" : "NO"));
-
     if (!rule.isEnabled())
       continue;
 
@@ -228,7 +222,8 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
           AlarmEvent ev;
           ev.device_id = getDeviceIdForPoint(tv.point_id);
           ev.point_id = tv.point_id;
-          ev.site_id = getSiteIdForPoint(tv.point_id);
+          ev.site_id = 0;
+
           ev.source_name = getPointName(tv.point_id);
           ev.rule_id = rule.getId();
           ev.occurrence_id = *occ_id;
@@ -256,7 +251,8 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
           AlarmEvent ev;
           ev.device_id = getDeviceIdForPoint(tv.point_id);
           ev.point_id = tv.point_id;
-          ev.site_id = getSiteIdForPoint(tv.point_id);
+          ev.site_id = 0;
+
           ev.source_name = getPointName(tv.point_id);
           ev.rule_id = rule.getId();
           ev.current_value = tv.value;
@@ -465,45 +461,20 @@ int AlarmEngine::getDeviceIdForPoint(int point_id) {
     auto point = data_point_repo_->findById(point_id);
     if (point.has_value()) {
       int device_id = point->getDeviceId();
+      LogManager::getInstance().Debug(
+          "[AlarmEngine] Point " + std::to_string(point_id) +
+          " -> Device ID: " + std::to_string(device_id));
       std::unique_lock<std::shared_mutex> lock(device_cache_mutex_);
       point_device_cache_[point_id] = device_id;
       return device_id;
+    } else {
+      LogManager::getInstance().Error("[AlarmEngine] Point " +
+                                      std::to_string(point_id) +
+                                      " NOT FOUND in DB");
     }
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("Error getting device ID for point " +
                                     std::to_string(point_id) + ": " + e.what());
-  }
-
-  return 0;
-}
-
-int AlarmEngine::getSiteIdForPoint(int point_id) {
-  if (point_id <= 0)
-    return 0;
-  int device_id = getDeviceIdForPoint(point_id);
-  if (device_id <= 0)
-    return 0;
-
-  {
-    std::shared_lock<std::shared_mutex> lock(device_cache_mutex_);
-    auto it = device_site_cache_.find(device_id);
-    if (it != device_site_cache_.end()) {
-      return it->second;
-    }
-  }
-
-  if (!device_repo_)
-    return 0;
-
-  try {
-    auto device = device_repo_->findById(device_id);
-    if (device.has_value()) {
-      int site_id = device->getSiteId();
-      std::unique_lock<std::shared_mutex> lock(device_cache_mutex_);
-      device_site_cache_[device_id] = site_id;
-      return site_id;
-    }
-  } catch (...) {
   }
 
   return 0;

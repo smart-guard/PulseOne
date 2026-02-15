@@ -1133,6 +1133,14 @@
     margin-bottom: var(--space-3);
 }
 
+/* Ensure inputs/selects in all modal types take full width */
+.mgmt-modal-container .mgmt-input,
+.mgmt-modal-container .mgmt-select,
+.mgmt-modal-content .mgmt-input,
+.mgmt-modal-content .mgmt-select {
+    width: 100% !important;
+}
+
 .mgmt-modal-form-group label {
     font-size: 13px;
     font-weight: 600;

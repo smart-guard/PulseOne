@@ -32,8 +32,8 @@ public:
   std::string serial_port = "/dev/ttyUSB0";
 
   // IProtocolConfig 구현
-  ProtocolType GetProtocol() const override {
-    return use_rtu ? ProtocolType::MODBUS_RTU : ProtocolType::MODBUS_TCP;
+  std::string GetProtocol() const override {
+    return use_rtu ? "MODBUS_RTU" : "MODBUS_TCP";
   }
 
   std::unique_ptr<IProtocolConfig> Clone() const override {
@@ -107,7 +107,7 @@ public:
   int reconnect_delay_ms = 1000;
 
   // IProtocolConfig 구현
-  ProtocolType GetProtocol() const override { return ProtocolType::MQTT; }
+  std::string GetProtocol() const override { return "MQTT"; }
 
   std::unique_ptr<IProtocolConfig> Clone() const override {
     return std::make_unique<MqttConfig>(*this);
@@ -182,7 +182,7 @@ public:
   uint16_t bbmd_port = 47808;
 
   // IProtocolConfig 구현
-  ProtocolType GetProtocol() const override { return ProtocolType::BACNET; }
+  std::string GetProtocol() const override { return "BACNET"; }
 
   std::unique_ptr<IProtocolConfig> Clone() const override {
     return std::make_unique<BACnetConfig>(*this);

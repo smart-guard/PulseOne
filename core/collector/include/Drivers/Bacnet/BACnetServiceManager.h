@@ -22,7 +22,7 @@
 #include <vector>
 
 // BACnet 스택 조건부 포함
-#if defined(HAVE_BACNET) || defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#if defined(HAS_BACNET) || defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
 extern "C" {
 #include <bacnet/apdu.h>
 #include <bacnet/bacaddr.h>
@@ -36,10 +36,7 @@ extern "C" {
 namespace PulseOne {
 namespace Drivers {
 
-// =============================================================================
-// 전방 선언
-// =============================================================================
-class BACnetDriver; // 전방 선언
+class IProtocolDriver; // 전방 선언
 
 // =============================================================================
 // 타입 별칭 정의 (기존 프로젝트 패턴)
@@ -69,9 +66,7 @@ using DataQuality = PulseOne::Enums::DataQuality;
 class BACnetServiceManager {
 public:
   // ==========================================================================
-  // 생성자 및 소멸자
-  // ==========================================================================
-  explicit BACnetServiceManager(BACnetDriver *driver);
+  explicit BACnetServiceManager(IProtocolDriver *driver);
   ~BACnetServiceManager();
 
   // 복사/이동 방지
@@ -135,7 +130,7 @@ public:
                              const std::map<DataPoint, DataValue> &values,
                              uint32_t timeout_ms = 5000);
 
-  BACnetDriver *GetDriver() const { return driver_; }
+  IProtocolDriver *GetDriver() const { return driver_; }
 
   /**
    * @brief 개별 속성 쓰기
@@ -317,7 +312,7 @@ private:
   // ==========================================================================
 
   /// BACnet 드라이버 참조
-  BACnetDriver *driver_;
+  IProtocolDriver *driver_;
 
   /// Invoke ID 관리
   std::atomic<uint8_t> next_invoke_id_;
@@ -360,7 +355,7 @@ private:
   // ==========================================================================
   // C-to-C++ Bridge (Static Handlers)
   // ==========================================================================
-#if defined(HAVE_BACNET) || defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#if defined(HAS_BACNET) || defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
   static void
   HandlerReadPropertyAck(uint8_t *service_request, uint16_t service_len,
                          BACNET_ADDRESS *src,
@@ -393,7 +388,7 @@ private:
   bool DataValueToBACnetValue(const DataValue &data_value,
                               BACNET_APPLICATION_DATA_VALUE &bacnet_value);
 
-#if defined(HAVE_BACNET) || defined(HAVE_BACNET) || defined(HAVE_BACNET_STACK)
+#if defined(HAS_BACNET) || defined(HAS_BACNET) || defined(HAS_BACNET_STACK)
   /// BACnet 프로토콜 헬퍼 함수들 (Linux에서만 컴파일)
   bool SendRPMRequest(uint32_t device_id, const std::vector<DataPoint> &objects,
                       uint8_t invoke_id);
@@ -410,9 +405,10 @@ private:
 
   bool GetDeviceAddress(uint32_t device_id, BACNET_ADDRESS &address);
   void CacheDeviceAddress(uint32_t device_id, const BACNET_ADDRESS &address);
-#endif // HAVE_BACNET_STACK
+#endif // HAS_BACNET_STACK
 
   friend class BACnetDriver;
+  friend class IProtocolDriver;
 };
 
 } // namespace Drivers

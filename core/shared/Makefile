@@ -17,9 +17,9 @@ else
 endif
 
 # 컴파일러 설정
-CXX = g++
-AR = ar
-RANLIB = ranlib
+CXX ?= g++
+AR ?= ar
+RANLIB ?= ranlib
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -fPIC -DHAS_SHARED_LIBS=1
 
 # Windows 크로스 컴파일 지원
@@ -213,7 +213,7 @@ ifneq ($(COMMON_OBJECTS),)
 	@echo "🔍 Checking symbols in libpulseone-common:"
 	@nm -C $@ | grep "LogManager::Info" || echo "❌ LogManager::Info symbol MISSING!"
 	@nm -C $@ | grep "ConfigManager::reload" || echo "❌ ConfigManager::reload symbol MISSING!"
-	@$(RANLIB) $@ 2>/dev/null || true
+	@$(RANLIB) $@
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
 	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
@@ -224,7 +224,7 @@ $(SECURITY_LIB): $(SECURITY_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-security [$(PLATFORM)]$(NC)"
 ifneq ($(SECURITY_OBJECTS),)
 	@$(AR) rcs $@ $(SECURITY_OBJECTS)
-	@$(RANLIB) $@ 2>/dev/null || true
+	@$(RANLIB) $@
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
 	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
@@ -237,7 +237,7 @@ ifneq ($(DATABASE_OBJECTS),)
 	@$(AR) rcs $@ $(DATABASE_OBJECTS)
 	@echo "🔍 Checking symbols in libpulseone-database:"
 	@nm -C $@ | grep "RepositoryFactory::getInstance" || echo "❌ RepositoryFactory::getInstance symbol MISSING!"
-	@$(RANLIB) $@ 2>/dev/null || true
+	@$(RANLIB) $@
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
 	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
@@ -248,7 +248,7 @@ $(CLIENT_LIB): $(CLIENT_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-client [$(PLATFORM)]$(NC)"
 ifneq ($(CLIENT_OBJECTS),)
 	@$(AR) rcs $@ $(CLIENT_OBJECTS)
-	@$(RANLIB) $@ 2>/dev/null || true
+	@$(RANLIB) $@
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
 	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
@@ -260,7 +260,7 @@ $(DATA_LIB): $(DATA_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-data [$(PLATFORM)]$(NC)"
 ifneq ($(DATA_OBJECTS),)
 	@$(AR) rcs $@ $(DATA_OBJECTS)
-	@$(RANLIB) $@ 2>/dev/null || true
+	@$(RANLIB) $@
 	@echo -e "$(GREEN)   ✅ DataReader.cpp, DataWriter.cpp compiled$(NC)"
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy_data.c && $(CXX) -c /tmp/dummy_data.c -o /tmp/dummy_data.o
@@ -272,7 +272,7 @@ $(EXPORT_LIB): $(EXPORT_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-export [$(PLATFORM)]$(NC)"
 ifneq ($(EXPORT_OBJECTS),)
 	@$(AR) rcs $@ $(EXPORT_OBJECTS)
-	@$(RANLIB) $@ 2>/dev/null || true
+	@$(RANLIB) $@
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy_export.c && $(CXX) -c /tmp/dummy_export.c -o /tmp/dummy_export.o
 	@$(AR) rcs $@ /tmp/dummy_export.o && rm -f /tmp/dummy_export.c /tmp/dummy_export.o
@@ -283,7 +283,7 @@ $(ALARM_LIB): $(ALARM_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-alarm [$(PLATFORM)]$(NC)"
 ifneq ($(ALARM_OBJECTS),)
 	@$(AR) rcs $@ $(ALARM_OBJECTS)
-	@$(RANLIB) $@ 2>/dev/null || true
+	@$(RANLIB) $@
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
 	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
@@ -295,7 +295,7 @@ $(DBLIB_LIB): $(DBLIB_OBJECTS) | $(LIB_DIR)
 	@echo -e "$(BLUE)🔧 Building libpulseone-dblib [$(PLATFORM)]$(NC)"
 ifneq ($(DBLIB_OBJECTS),)
 	@$(AR) rcs $@ $(DBLIB_OBJECTS)
-	@$(RANLIB) $@ 2>/dev/null || true
+	@$(RANLIB) $@
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
 	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o

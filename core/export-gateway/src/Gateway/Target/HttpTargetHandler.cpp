@@ -25,7 +25,6 @@ namespace PulseOne {
 namespace Gateway {
 namespace Target {
 
-using json = nlohmann::json;
 namespace HttpConst = PulseOne::Constants::Export::Http;
 
 // Static Client Cache

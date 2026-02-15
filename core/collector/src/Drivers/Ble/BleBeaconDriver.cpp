@@ -1,4 +1,6 @@
 #include "Drivers/Ble/BleBeaconDriver.h"
+#include "Database/Repositories/ProtocolRepository.h"
+#include "Database/RepositoryFactory.h"
 #include "Drivers/Common/DriverFactory.h"
 #include "Logging/LogManager.h"
 #include <cstring>
@@ -7,13 +9,20 @@
 #include <sstream>
 #include <unistd.h>
 
-#if HAVE_BLUETOOTH
+#if HAS_BLUETOOTH
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #endif
+#include <atomic>
+#include <nlohmann/json.hpp>
+#include <thread>
 
 namespace PulseOne {
 namespace Drivers {
@@ -21,7 +30,7 @@ namespace Ble {
 
 BleBeaconDriver::BleBeaconDriver()
     : is_connected_(false)
-#if HAVE_BLUETOOTH
+#if HAS_BLUETOOTH
       ,
       hci_socket_(-1), device_id_(-1), is_scanning_(false)
 #endif
@@ -32,7 +41,7 @@ BleBeaconDriver::~BleBeaconDriver() { Disconnect(); }
 
 bool BleBeaconDriver::Initialize(const Structs::DriverConfig &config) {
   (void)config;
-#if HAVE_BLUETOOTH
+#if HAS_BLUETOOTH
   LogManager::getInstance().Info("[BLE] Initialized with Native BlueZ Support");
 #else
   LogManager::getInstance().Info("[BLE] Initialized in Simulation Mode");
@@ -41,38 +50,89 @@ bool BleBeaconDriver::Initialize(const Structs::DriverConfig &config) {
 }
 
 bool BleBeaconDriver::Connect() {
-#if HAVE_BLUETOOTH
-  // Open HCI Socket
-  if (OpenHciSocket() < 0) {
-    LogManager::getInstance().Error("[BLE] Failed to open HCI socket");
-    return false;
-  }
-
-  // Enable scanning
-  if (EnableScanning(true) < 0) {
-    LogManager::getInstance().Error("[BLE] Failed to enable scanning");
+  // Try Native BLE first if supported
+#if HAS_BLUETOOTH
+  if (OpenHciSocket() >= 0) {
+    if (EnableScanning(true) >= 0) {
+      is_scanning_ = true;
+      scan_thread_ = std::thread(&BleBeaconDriver::ScanLoop, this);
+      is_connected_ = true;
+      NotifyStatusChange(Enums::ConnectionStatus::CONNECTED);
+      LogManager::getInstance().Info(
+          "[BLE] Connected and native scanning started");
+      return true;
+    }
     CloseHciSocket();
+  }
+  LogManager::getInstance().Warn("[BLE] Native BLE failed or not available, "
+                                 "falling back to Simulation Mode");
+#endif
+
+  // Simulation Mode (UDP Receiver)
+  int port = 5555;
+  if (config_.properties.count("sim_port")) {
+    port = std::stoi(config_.properties.at("sim_port"));
+  }
+
+  hci_socket_ = socket(AF_INET, SOCK_DGRAM, 0);
+  if (hci_socket_ < 0) {
+    LogManager::getInstance().Error("[BLE] Failed to create simulation socket");
     return false;
   }
 
-  // Start scan thread
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = INADDR_ANY;
+  addr.sin_port = htons(port);
+
+  if (bind(hci_socket_, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    LogManager::getInstance().Error("[BLE] Failed to bind simulation socket");
+    close(hci_socket_);
+    hci_socket_ = -1;
+    return false;
+  }
+
   is_scanning_ = true;
-  scan_thread_ = std::thread(&BleBeaconDriver::ScanLoop, this);
+  scan_thread_ = std::thread([this]() {
+    char buffer[1024];
+    while (is_scanning_) {
+      struct sockaddr_in src_addr;
+      socklen_t addr_len = sizeof(src_addr);
+
+      // Set receive timeout to avoid blocking forever on join
+      struct timeval tv;
+      tv.tv_sec = 1;
+      tv.tv_usec = 0;
+      setsockopt(hci_socket_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+      int len = recvfrom(hci_socket_, buffer, sizeof(buffer) - 1, 0,
+                         (struct sockaddr *)&src_addr, &addr_len);
+      if (len > 0) {
+        buffer[len] = '\0';
+        try {
+          auto j = nlohmann::json::parse(buffer);
+          if (j.contains("uuid") && j.contains("rssi")) {
+            std::lock_guard<std::mutex> lock(data_mutex_);
+            discovered_rssi_[j["uuid"].get<std::string>()] =
+                j["rssi"].get<int>();
+          }
+        } catch (...) {
+        }
+      }
+    }
+    LogManager::getInstance().Info("[BLE] Simulation loop stopped");
+  });
 
   is_connected_ = true;
   NotifyStatusChange(Enums::ConnectionStatus::CONNECTED);
-  LogManager::getInstance().Info("[BLE] Connected and scanning started");
+  LogManager::getInstance().Info("[BLE] Simulation mode active on port " +
+                                 std::to_string(port));
   return true;
-#else
-  // Simulation Mode
-  is_connected_ = true;
-  NotifyStatusChange(Enums::ConnectionStatus::CONNECTED);
-  return true;
-#endif
 }
 
 bool BleBeaconDriver::Disconnect() {
-#if HAVE_BLUETOOTH
+#if HAS_BLUETOOTH
   is_scanning_ = false;
   if (scan_thread_.joinable()) {
     scan_thread_.join();
@@ -100,9 +160,7 @@ bool BleBeaconDriver::WriteValue(const Structs::DataPoint &point,
   return false; // BLE Beacons are read-only
 }
 
-Enums::ProtocolType BleBeaconDriver::GetProtocolType() const {
-  return Enums::ProtocolType::BLE_BEACON;
-}
+std::string BleBeaconDriver::GetProtocolType() const { return "BLE_BEACON"; }
 
 Structs::DriverStatus BleBeaconDriver::GetStatus() const {
   if (is_connected_)
@@ -137,7 +195,7 @@ bool BleBeaconDriver::ReadValues(
     } else {
       // Simulation fallback if not using BlueZ (or if BlueZ hasn't found it
       // yet)
-#if !HAVE_BLUETOOTH
+#if !HAS_BLUETOOTH
       if (point.address_string == "74278BDA-B644-4520-8F0C-720EAF059935") {
         val.value = -65; // Simulated "Good" RSSI
         val.quality = Enums::DataQuality::GOOD;
@@ -161,7 +219,7 @@ bool BleBeaconDriver::ReadValues(
 // Native BlueZ Implementation
 // =========================================================================
 
-#if HAVE_BLUETOOTH
+#if HAS_BLUETOOTH
 int BleBeaconDriver::OpenHciSocket() {
   device_id_ = hci_get_route(NULL);
   if (device_id_ < 0) {
@@ -344,6 +402,26 @@ extern "C" {
 __declspec(dllexport)
 #endif
 void RegisterPlugin() {
+  // 1. DB에 프로토콜 정보 자동 등록 (없을 경우)
+  try {
+    auto &repo_factory = PulseOne::Database::RepositoryFactory::getInstance();
+    auto protocol_repo = repo_factory.getProtocolRepository();
+    if (protocol_repo) {
+      if (!protocol_repo->findByType("BLE_BEACON").has_value()) {
+        PulseOne::Database::Entities::ProtocolEntity entity;
+        entity.setProtocolType("BLE_BEACON");
+        entity.setDisplayName("Bluetooth LE Beacon");
+        entity.setCategory("iot");
+        entity.setDescription("BLE iBeacon Advertisement Receiver");
+        protocol_repo->save(entity);
+      }
+    }
+  } catch (const std::exception &e) {
+    std::cerr << "[BleDriver] DB Registration failed: " << e.what()
+              << std::endl;
+  }
+
+  // 2. 메모리 Factory에 드라이버 생성자 등록
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "BLE_BEACON", []() {
         return std::make_unique<PulseOne::Drivers::Ble::BleBeaconDriver>();

@@ -33,7 +33,7 @@ devices 테이블:
 #include "Common/Enums.h"
 #include "Drivers/Common/DriverFactory.h" // Plugin System Factory
 #include "Logging/LogManager.h"
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
 #endif
@@ -119,7 +119,7 @@ std::future<bool> MQTTWorker::Start() {
 
       // 1. DataPoint 기반 자동 구독 등록
       {
-        std::lock_guard<std::mutex> lock(data_points_mutex_);
+        std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
         for (const auto &dp : data_points_) {
           if (!dp.address_string.empty()) {
             MQTTSubscription sub;
@@ -149,6 +149,9 @@ std::future<bool> MQTTWorker::Start() {
           }
         }
       }
+
+      // 🔥 BaseDeviceWorker의 재연결 관리 스레드 시작
+      StartReconnectionThread();
 
       if (EstablishConnection()) {
         ChangeState(WorkerState::RUNNING);
@@ -315,7 +318,7 @@ bool MQTTWorker::SendMQTTDataToPipeline(
                "Processing MQTT message: topic=" + topic +
                    ", size=" + std::to_string(payload.size()));
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
     // JSON 파싱 시도
     nlohmann::json json_data;
     try {
@@ -394,7 +397,7 @@ bool MQTTWorker::SendMQTTDataToPipeline(
   }
 }
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
 bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
                                           const std::string &topic_context,
                                           uint32_t priority) {
@@ -405,7 +408,7 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
 
     // 1. 사전 매핑된 포인트(Mapping Key 기반) 처리
     {
-      std::lock_guard<std::mutex> lock(data_points_mutex_);
+      std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
       for (const auto &point : data_points_) {
         if (point.address_string == topic_context &&
             !point.mapping_key.empty()) {
@@ -488,7 +491,7 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
         // [Auto-Registration] DB에 등록된 포인트인지 확인
         uint32_t point_id = 0;
         {
-          std::lock_guard<std::mutex> lock(data_points_mutex_);
+          std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
           for (const auto &dp : data_points_) {
             if (dp.address_string == topic_context && dp.mapping_key == key) {
               try {
@@ -579,7 +582,7 @@ bool MQTTWorker::SendJsonValuesToPipeline(const nlohmann::json &json_data,
       PulseOne::Structs::TimestampedValue tv;
       uint32_t point_id = 0;
       {
-        std::lock_guard<std::mutex> lock(data_points_mutex_);
+        std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
         for (const auto &dp : data_points_) {
           if (dp.address_string == topic_context && dp.mapping_key.empty()) {
             try {
@@ -661,7 +664,7 @@ bool MQTTWorker::SendJsonValuesToPipeline(const std::string &raw_json,
   (void)topic_context;
   (void)priority;
   LogMessage(LogLevel::WARN,
-             "JSON support not available (HAVE_JSON not defined)");
+             "JSON support not available (HAS_JSON not defined)");
   return false;
 }
 #endif
@@ -1150,7 +1153,7 @@ std::string MQTTWorker::GetPerformanceMetricsJson() const {
            "mode\"}";
   }
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
   json metrics = {
       {"messages_sent", performance_metrics_.messages_sent.load()},
       {"messages_received", performance_metrics_.messages_received.load()},
@@ -1180,7 +1183,7 @@ std::string MQTTWorker::GetRealtimeDashboardData() const {
            "mode\"}";
   }
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
   json dashboard;
   // const 메서드에서 비const 메서드 호출 방지 - const_cast 사용
   dashboard["status"] = const_cast<MQTTWorker *>(this)->CheckConnection()
@@ -1204,7 +1207,7 @@ std::string MQTTWorker::GetDetailedDiagnostics() const {
            "mode\"}";
   }
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
   auto now = steady_clock::now();
   auto uptime = duration_cast<seconds>(now - start_time_);
 
@@ -1520,234 +1523,73 @@ bool MQTTWorker::ParseMQTTConfig() {
 }
 
 bool MQTTWorker::InitializeMQTTDriver() {
-  try {
-    LogMessage(LogLevel::INFO, "🔧 Initializing MQTT Driver...");
+  LogMessage(LogLevel::INFO, "Initializing MQTT Driver...");
 
-    // MqttDriver 생성 (Plugin System via Factory)
-    mqtt_driver_ =
-        PulseOne::Drivers::DriverFactory::GetInstance().CreateDriver("MQTT");
+  // MqttDriver 생성 (Plugin System via Factory)
+  mqtt_driver_ =
+      PulseOne::Drivers::DriverFactory::GetInstance().CreateDriver("MQTT");
 
-    if (!mqtt_driver_) {
-      LogMessage(LogLevel::LOG_ERROR,
-                 "❌ Failed to create MqttDriver instance via Factory");
-      return false;
-    }
-
-    LogMessage(LogLevel::DEBUG_LEVEL, "✅ MqttDriver instance created");
-
-    // =======================================================================
-    // 🔥 핵심 수정: device_info_.driver_config 직접 사용 (ModbusTcpWorker와
-    // 동일)
-    // =======================================================================
-
-    // WorkerFactory에서 완전 매핑된 DriverConfig 사용
-    PulseOne::Structs::DriverConfig driver_config = device_info_.driver_config;
-
-    // =======================================================================
-    // 기본 필드 업데이트 (MQTT 특화)
-    // =======================================================================
-    driver_config.device_id = device_info_.id;
-    driver_config.name = device_info_.name;
-    driver_config.endpoint = mqtt_config_.broker_url; // MQTT 브로커 URL
-    driver_config.protocol = PulseOne::Enums::ProtocolType::MQTT;
-
-    // MQTT 설정의 timeout이 더 정확한 경우 업데이트
-    if (mqtt_config_.connection_timeout_sec > 0) {
-      driver_config.timeout_ms = mqtt_config_.connection_timeout_sec * 1000;
-    }
-
-    // 🔥 수정: DeviceInfo 필드들 안전하게 접근 (ModbusTcpWorker와 동일)
-    if (device_info_.retry_count > 0) {
-      driver_config.retry_count =
-          static_cast<uint32_t>(device_info_.retry_count);
-    } else {
-      driver_config.retry_count =
-          mqtt_config_.max_retry_count > 0 ? mqtt_config_.max_retry_count : 3;
-    }
-
-    if (device_info_.polling_interval_ms > 0) {
-      driver_config.polling_interval_ms =
-          static_cast<uint32_t>(device_info_.polling_interval_ms);
-    } else {
-      driver_config.polling_interval_ms = 1000; // 기본값
-    }
-
-    // 🔥 수정: auto_reconnect는 DriverConfig에서 기본값 사용 또는
-    // properties에서 설정
-    if (device_info_.properties.count("auto_reconnect")) {
-      driver_config.auto_reconnect =
-          (device_info_.properties.at("auto_reconnect") == "true");
-    } else {
-      driver_config.auto_reconnect = true; // 기본값: 자동 재연결 활성화
-    }
-
-    // =======================================================================
-    // 🔥 MQTT 프로토콜 특화 설정들 추가 (기존 properties 보존)
-    // =======================================================================
-
-    // 기존 properties가 이미 WorkerFactory에서 설정되었으므로 유지
-    // MQTT 특화 설정만 추가
-    driver_config.properties["broker_url"] = mqtt_config_.broker_url;
-    driver_config.properties["client_id"] = mqtt_config_.client_id;
-
-    // 인증 정보 (있는 경우)
-    if (!mqtt_config_.username.empty()) {
-      driver_config.properties["username"] = mqtt_config_.username;
-    }
-    if (!mqtt_config_.password.empty()) {
-      driver_config.properties["password"] = mqtt_config_.password;
-    }
-
-    // MQTT 프로토콜 설정
-    driver_config.properties["qos"] =
-        std::to_string(QosToInt(mqtt_config_.default_qos));
-    driver_config.properties["clean_session"] =
-        mqtt_config_.clean_session ? "true" : "false";
-    driver_config.properties["use_ssl"] =
-        mqtt_config_.use_ssl ? "true" : "false";
-    driver_config.properties["keepalive_interval"] =
-        std::to_string(mqtt_config_.keepalive_interval_sec);
-    driver_config.properties["connection_timeout"] =
-        std::to_string(mqtt_config_.connection_timeout_sec);
-
-    // Worker 레벨 설정
-    driver_config.properties["message_timeout_ms"] =
-        std::to_string(default_message_timeout_ms_);
-    driver_config.properties["max_publish_queue_size"] =
-        std::to_string(max_publish_queue_size_);
-    driver_config.properties["auto_reconnect_enabled"] =
-        auto_reconnect_enabled_ ? "true" : "false";
-
-    // 프로덕션 모드 설정 (해당되는 경우)
-    if (IsProductionMode()) {
-      driver_config.properties["worker_mode"] = "PRODUCTION";
-      driver_config.properties["metrics_collection_interval"] =
-          std::to_string(metrics_collection_interval_.load());
-      driver_config.properties["backpressure_threshold"] =
-          std::to_string(backpressure_threshold_.load());
-    } else {
-      driver_config.properties["worker_mode"] = "BASIC";
-    }
-
-    // =======================================================================
-    // 🔥 중요: properties 상태 로깅 (디버깅용) - ModbusTcpWorker와 동일
-    // =======================================================================
-    LogMessage(LogLevel::INFO, "📊 Final DriverConfig state:");
-    LogMessage(LogLevel::INFO,
-               "   - properties count: " +
-                   std::to_string(driver_config.properties.size()));
-    LogMessage(LogLevel::INFO,
-               "   - timeout_ms: " + std::to_string(driver_config.timeout_ms));
-    LogMessage(LogLevel::INFO, "   - retry_count: " +
-                                   std::to_string(driver_config.retry_count));
-    LogMessage(
-        LogLevel::INFO,
-        "   - auto_reconnect: " +
-            std::string(driver_config.auto_reconnect ? "true" : "false"));
-
-    // DeviceSettings 핵심 필드들 확인 (ModbusTcpWorker와 동일)
-    std::vector<std::string> key_fields = {
-        "retry_interval_ms", "backoff_time_ms", "keep_alive_enabled",
-        "broker_url",        "client_id",       "qos",
-        "clean_session" // MQTT 특화 필드 추가
-    };
-
-    LogMessage(LogLevel::INFO, "📋 Key properties status:");
-    for (const auto &field : key_fields) {
-      if (driver_config.properties.count(field)) {
-        LogMessage(LogLevel::INFO, "   ✅ " + field + ": " +
-                                       driver_config.properties.at(field));
-      } else {
-        LogMessage(LogLevel::WARN, "   ❌ " + field + ": NOT FOUND");
-      }
-    }
-
-    // =======================================================================
-    // MqttDriver 초기화 (ModbusTcpWorker와 동일한 로깅)
-    // =======================================================================
-
-    std::string config_msg = "📋 DriverConfig prepared:\n";
-    config_msg += "   - device_id: " + driver_config.device_id + "\n";
-    config_msg += "   - endpoint: " + driver_config.endpoint + "\n";
-    config_msg += "   - protocol: MQTT\n";
-    config_msg +=
-        "   - timeout: " + std::to_string(driver_config.timeout_ms) + "ms\n";
-    config_msg +=
-        "   - properties: " + std::to_string(driver_config.properties.size()) +
-        " items";
-
-    LogMessage(LogLevel::DEBUG_LEVEL, config_msg);
-
-    // 드라이버 초기화
-    bool success = mqtt_driver_->Initialize(driver_config);
-
-    if (success) {
-      LogMessage(LogLevel::DEBUG_LEVEL,
-                 "✅ MqttDriver initialization successful");
-
-      // 드라이버 콜백 설정 (필요한 경우)
-      SetupMQTTDriverCallbacks();
-
-      // 최종 결과 로깅 (ModbusTcpWorker와 동일한 상세도)
-      std::string final_msg = "✅ MQTT Driver initialized successfully:\n";
-      final_msg += "   📡 Connection details:\n";
-      final_msg += "      - broker_url: " + mqtt_config_.broker_url + "\n";
-      final_msg += "      - client_id: " + mqtt_config_.client_id + "\n";
-      final_msg +=
-          "      - timeout: " + std::to_string(driver_config.timeout_ms) +
-          "ms\n";
-      final_msg += "   ⚙️  MQTT settings:\n";
-      final_msg +=
-          "      - qos: " + std::to_string(QosToInt(mqtt_config_.default_qos)) +
-          "\n";
-      final_msg += "      - clean_session: " +
-                   (mqtt_config_.clean_session ? std::string("true")
-                                               : std::string("false")) +
-                   "\n";
-      final_msg +=
-          "      - use_ssl: " +
-          (mqtt_config_.use_ssl ? std::string("true") : std::string("false")) +
-          "\n";
-      final_msg += "      - keepalive: " +
-                   std::to_string(mqtt_config_.keepalive_interval_sec) + "s\n";
-      final_msg += "   🔧 Advanced settings:\n";
-      final_msg +=
-          "      - max_retries: " + std::to_string(driver_config.retry_count) +
-          "\n";
-      final_msg += "      - message_timeout: " +
-                   std::to_string(default_message_timeout_ms_) + "ms\n";
-      final_msg +=
-          "      - queue_size: " + std::to_string(max_publish_queue_size_) +
-          "\n";
-      final_msg += "      - worker_mode: " +
-                   std::string(IsProductionMode() ? "PRODUCTION" : "BASIC") +
-                   "\n";
-      final_msg += "   📊 Total properties: " +
-                   std::to_string(driver_config.properties.size());
-
-      LogMessage(LogLevel::INFO, final_msg);
-
-    } else {
-      LogMessage(LogLevel::LOG_ERROR, "❌ Failed to initialize MqttDriver");
-
-      // 에러 상세 정보 (MqttDriver에서 제공되는 경우)
-      // const auto& error = mqtt_driver_->GetLastError();
-      // LogMessage(LogLevel::LOG_ERROR, "   Error details: " + error.message);
-    }
-
-    return success;
-
-  } catch (const std::exception &e) {
+  if (!mqtt_driver_) {
     LogMessage(LogLevel::LOG_ERROR,
-               "❌ Exception during MqttDriver initialization: " +
-                   std::string(e.what()));
-
-    if (mqtt_driver_) {
-      mqtt_driver_.reset();
-    }
-
+               "Failed to create MqttDriver instance via Factory");
     return false;
   }
+
+  LogMessage(LogLevel::DEBUG_LEVEL, "MqttDriver instance created");
+
+  // WorkerFactory에서 완전 매핑된 DriverConfig 사용
+  PulseOne::Structs::DriverConfig driver_config = device_info_.driver_config;
+
+  // device_info_.properties의 모든 내용을 driver_config.properties로 복사
+  for (const auto &[key, value] : device_info_.properties) {
+    driver_config.properties[key] = value;
+  }
+
+  // 기본 필드 업데이트 (MQTT 특화)
+  driver_config.device_id = device_info_.id;
+  driver_config.name = device_info_.name;
+  driver_config.endpoint = mqtt_config_.broker_url;
+  driver_config.protocol = "MQTT";
+
+  if (mqtt_config_.connection_timeout_sec > 0) {
+    driver_config.timeout_ms = mqtt_config_.connection_timeout_sec * 1000;
+  }
+
+  if (device_info_.retry_count > 0) {
+    driver_config.retry_count = static_cast<uint32_t>(device_info_.retry_count);
+  } else {
+    driver_config.retry_count = 3;
+  }
+
+  if (device_info_.polling_interval_ms > 0) {
+    driver_config.polling_interval_ms =
+        static_cast<uint32_t>(device_info_.polling_interval_ms);
+  } else {
+    driver_config.polling_interval_ms = 1000;
+  }
+
+  // MQTT 특화 설정 추가
+  driver_config.properties["broker_url"] = mqtt_config_.broker_url;
+  driver_config.properties["client_id"] = mqtt_config_.client_id;
+  if (!mqtt_config_.username.empty())
+    driver_config.properties["username"] = mqtt_config_.username;
+  if (!mqtt_config_.password.empty())
+    driver_config.properties["password"] = mqtt_config_.password;
+  driver_config.properties["qos"] =
+      std::to_string(QosToInt(mqtt_config_.default_qos));
+
+  // 드라이버 초기화
+  if (!mqtt_driver_->Initialize(driver_config)) {
+    LogMessage(LogLevel::LOG_ERROR, "Failed to initialize MqttDriver");
+    return false;
+  }
+
+  LogMessage(LogLevel::INFO, "MqttDriver initialized successfully");
+
+  // 🔥 드라이버 콜백 등록 (이게 빠져서 메시지 처리가 안 됨)
+  SetupMQTTDriverCallbacks();
+
+  return true;
 }
 
 // =============================================================================
@@ -1759,47 +1601,20 @@ void MQTTWorker::MessageProcessorThreadFunction() {
 
   while (message_thread_running_) {
     try {
-      // 주기적으로 연결 상태 확인 및 재연결 (필요시)
+      // 주기적으로 연결 상태 확인 및 재연결 요청 (BaseDeviceWorker 엔진 활용)
       if (!CheckConnection() && auto_reconnect_enabled_) {
-        LogMessage(LogLevel::WARN,
-                   "Connection lost, attempting reconnection...");
-        if (!EstablishConnection()) {
-          current_retry_count_++;
-          int sleep_time = mqtt_config_.retry_interval_ms;
-
-          // 최대 재시도 횟수 초과 시 백오프 적용
-          if (current_retry_count_ > mqtt_config_.max_retry_count) {
-            sleep_time = mqtt_config_.backoff_time_ms;
-            LogMessage(LogLevel::WARN,
-                       "Max retries (" +
-                           std::to_string(mqtt_config_.max_retry_count) +
-                           ") reached. Backing off for " +
-                           std::to_string(sleep_time) + "ms...");
-            // 백오프 후에는 다시 짧은 주기로 재시도하기 위해 카운터 리셋
-            current_retry_count_ = 0;
-          } else {
-            LogMessage(LogLevel::WARN,
-                       "Reconnection failed (Attempt " +
-                           std::to_string(current_retry_count_) + "/" +
-                           std::to_string(mqtt_config_.max_retry_count) +
-                           "). Retrying in " + std::to_string(sleep_time) +
-                           "ms...");
-          }
-
-          std::this_thread::sleep_for(std::chrono::milliseconds(sleep_time));
-        } else {
-          // 연결 성공 시 카운터 리셋
-          if (current_retry_count_ > 0) {
-            LogMessage(LogLevel::INFO,
-                       "Reconnected successfully after " +
-                           std::to_string(current_retry_count_) + " attempts.");
-          }
-          current_retry_count_ = 0;
+        // 이미 RECONNECTING 상태거나 WAITING_RETRY인 경우는 중복 요청 방지
+        WorkerState current = GetState();
+        if (current != WorkerState::RECONNECTING &&
+            current != WorkerState::WAITING_RETRY) {
+          LogMessage(LogLevel::WARN,
+                     "MQTT connection lost, triggering unified reconnection.");
+          HandleConnectionError("MQTT connection lost");
         }
       }
 
       // 메시지 처리는 MqttDriver의 콜백을 통해 처리됨
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     } catch (const std::exception &e) {
       LogMessage(LogLevel::LOG_ERROR,
@@ -2376,7 +2191,7 @@ void MQTTWorker::MessageCallback(MQTTWorker *worker, const std::string &topic,
   }
 }
 
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
 bool MQTTWorker::ConvertJsonToDataValue(
     const nlohmann::json &json_val, PulseOne::Structs::DataValue &data_value) {
   try {
@@ -2655,7 +2470,7 @@ std::string MQTTWorker::BuildControlTopic(const std::string &device_id,
 
 std::string MQTTWorker::CreateJsonPayload(const DataValue &value) {
   try {
-#ifdef HAVE_JSON
+#ifdef HAS_JSON
     nlohmann::json payload_json;
 
     if (std::holds_alternative<bool>(value)) {

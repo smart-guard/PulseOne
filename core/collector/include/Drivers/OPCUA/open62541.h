@@ -27602,8 +27602,8 @@ UA_Server_browseSimplifiedBrowsePath(UA_Server *server, const UA_NodeId origin,
                                      size_t browsePathSize,
                                      const UA_QualifiedName *browsePath);
 
-#ifndef HAVE_NODEITER_CALLBACK
-#define HAVE_NODEITER_CALLBACK
+#ifndef HAS_NODEITER_CALLBACK
+#define HAS_NODEITER_CALLBACK
 /* Iterate over all nodes referenced by parentNodeId by calling the callback
  * function for each child node (in ifdef because GCC/CLANG handle include order
  * differently) */
@@ -29896,8 +29896,8 @@ UA_StatusCode UA_EXPORT
 UA_Client_NamespaceGetIndex(UA_Client *client, UA_String *namespaceUri,
                             UA_UInt16 *namespaceIndex);
 
-#ifndef HAVE_NODEITER_CALLBACK
-#define HAVE_NODEITER_CALLBACK
+#ifndef HAS_NODEITER_CALLBACK
+#define HAS_NODEITER_CALLBACK
 /* Iterate over all nodes referenced by parentNodeId by calling the callback
    function for each child node */
 typedef UA_StatusCode (*UA_NodeIteratorCallback)(UA_NodeId childId, UA_Boolean isInverse,

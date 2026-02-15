@@ -266,7 +266,7 @@ void BaseDeviceWorker::StopAllThreads() {
 // =============================================================================
 
 bool BaseDeviceWorker::AddDataPoint(const PulseOne::Structs::DataPoint &point) {
-  std::lock_guard<std::mutex> lock(data_points_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
 
   // 중복 확인 (GitHub 구조: point_id -> id)
   for (const auto &existing_point : data_points_) {
@@ -283,7 +283,7 @@ bool BaseDeviceWorker::AddDataPoint(const PulseOne::Structs::DataPoint &point) {
 
 void BaseDeviceWorker::ReloadSettings(
     const PulseOne::Structs::DeviceInfo &new_info) {
-  std::lock_guard<std::mutex> lock(data_points_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
   device_info_ = new_info;
   LogMessage(LogLevel::INFO,
              "설정 동기화 완료: (auto_reg=" +
@@ -295,7 +295,7 @@ void BaseDeviceWorker::ReloadSettings(
 
 void BaseDeviceWorker::ReloadDataPoints(
     const std::vector<PulseOne::Structs::DataPoint> &new_points) {
-  std::lock_guard<std::mutex> lock(data_points_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
   size_t old_size = data_points_.size();
   data_points_ = new_points;
   LogMessage(LogLevel::INFO,
@@ -305,7 +305,7 @@ void BaseDeviceWorker::ReloadDataPoints(
 
 std::vector<PulseOne::Structs::DataPoint>
 BaseDeviceWorker::GetDataPoints() const {
-  std::lock_guard<std::mutex> lock(data_points_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
   return data_points_;
 }
 
@@ -508,6 +508,21 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
              current_state == WorkerState::RECONNECTING ||
              current_state == WorkerState::WORKER_ERROR) &&
             !is_connected_.load()) {
+
+          // 🔥 현재 설정값 명확히 로깅 (디버깅용)
+          if (current_retry_count_.load() == 0) {
+            LogMessage(
+                LogLevel::INFO,
+                "재연결 프로세스 시작: 간격=" +
+                    std::to_string(reconnection_settings_.retry_interval_ms) +
+                    "ms, 최대재시도=" +
+                    std::to_string(
+                        reconnection_settings_.max_retries_per_cycle) +
+                    ", 쿨다운=" +
+                    std::to_string(
+                        reconnection_settings_.wait_time_after_max_retries_ms) +
+                    "ms");
+          }
 
           // 최대 재시도 횟수 도달 확인
           if (current_retry_count_.load() >=
@@ -738,6 +753,7 @@ bool BaseDeviceWorker::SendDataToPipeline(
     // 테넌트 정보
     message.tenant_id = device_info_.tenant_id;
     message.site_id = device_info_.site_id;
+    message.edge_server_id = device_info_.edge_server_id.value_or(0);
 
     // 처리 제어 (프로토콜별 최적화)
     // 처리 제어 (모든 프로토콜에 대해 가상 포인트 활성화)
@@ -948,7 +964,7 @@ uint32_t BaseDeviceWorker::RegisterNewDataPoint(
 
           // 내부 캐시 동기화
           {
-            std::lock_guard<std::mutex> lock(data_points_mutex_);
+            std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
             bool found_in_cache = false;
             for (const auto &dp : data_points_) {
               if (dp.id == std::to_string(existing_id)) {
@@ -1034,7 +1050,7 @@ uint32_t BaseDeviceWorker::RegisterNewDataPoint(
         dp.data_type = "number";
 
       {
-        std::lock_guard<std::mutex> lock(data_points_mutex_);
+        std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
         data_points_.push_back(dp);
       }
 

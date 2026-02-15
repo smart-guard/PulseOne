@@ -9,6 +9,7 @@
 #include "Logging/LogManager.h"
 #include "Transform/PayloadTransformer.h"
 #include <algorithm>
+#include <nlohmann/json.hpp>
 #include <thread>
 
 namespace PulseOne {

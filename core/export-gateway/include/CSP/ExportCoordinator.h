@@ -23,10 +23,10 @@
 #include <vector>
 
 #include "AlarmMessage.h"
+#include "Export/ExportTypes.h"
+#include "Export/FailureProtectorTypes.h"
 #include "Export/GatewayExportTypes.h"
 #include "Export/TargetSendResult.h"
-#include "Export/FailureProtectorTypes.h"
-#include "Export/ExportTypes.h"
 #include <nlohmann/json.hpp>
 
 #include "Client/RedisClient.h"
@@ -109,7 +109,7 @@ struct ExportCoordinatorStats {
   std::chrono::system_clock::time_point start_time;
   std::chrono::system_clock::time_point last_export_time;
 
-  using json = nlohmann::json;
+  // using json = nlohmann::json; // Removed: Using PulseOne::json
   json to_json() const {
     auto now = std::chrono::system_clock::now();
     auto uptime =
@@ -221,7 +221,7 @@ private:
    */
   void sendManualExportResult(const std::string &target_name, bool success,
                               const std::string &error_message,
-                              const nlohmann::json &payload);
+                              const json &payload);
 
   ExportCoordinatorConfig config_;
   std::atomic<bool> is_running_{false};

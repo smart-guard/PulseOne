@@ -39,9 +39,10 @@
 #include <unordered_map>
 #include <vector>
 
+namespace PulseOne {
+
 using json = nlohmann::json;
 
-namespace PulseOne {
 namespace Event {
 
 // =============================================================================

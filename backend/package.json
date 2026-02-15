@@ -79,7 +79,7 @@
       "app.js",
       "!**/__tests__/**",
       "!**/__mocks__/**",
-      "!**/node_modules/**"
+      "!**/nnode_modules/**"
     ],
     "coverageDirectory": "coverage",
     "coverageReporters": [
