@@ -5,10 +5,10 @@
 # 기본 설정
 CXX = x86_64-w64-mingw32-g++
 CC = x86_64-w64-mingw32-gcc
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0601
-CFLAGS = -Wall -O2 -DWIN32 -D_WIN32_WINNT=0x0601
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00
+CFLAGS = -Wall -O2 -DWIN32 -D_WIN32_WINNT=0x0A00
 CXXFLAGS += -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE
-CXXFLAGS += -DHAVE_MODBUS=1 -DHAVE_MQTT=1 -DHAVE_BACNET=1 -DHAVE_QUICKJS=1 -DHAVE_HTTPLIB=1 -DHAVE_REDIS=1 -DHAVE_JSON=1
+CXXFLAGS += -DHAS_MODBUS=1 -DHAS_MQTT=1 -DHAS_BACNET=1 -DHAS_QUICKJS=1 -DHAS_HTTPLIB=1 -DHAS_REDIS=1 -DHAS_JSON=1
 CXXFLAGS += -DBACAPP_ALL -DBACAPP_REAL -DBACAPP_DOUBLE -DBACAPP_BOOLEAN -DBACAPP_UNSIGNED -DBACAPP_SIGNED -DBACAPP_ENUMERATED -DBACAPP_CHARACTER_STRING -DBACAPP_OBJECT_ID
 CXXFLAGS += -DDBLIB_EXPORTS -DLOGLIB_EXPORTS
 
@@ -54,7 +54,8 @@ INCLUDES = -I$(SHARED_INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Pipeline \
            -I$(INCLUDE_DIR)/Storage \
            -I$(INCLUDE_DIR)/Client \
-           -I$(MINGW_PREFIX)/include
+           -I$(MINGW_PREFIX)/include \
+           -I$(SHARED_MODULES_DIR)/DbLib/include
 
 # 라이브러리 경로
 LDFLAGS = -L$(MINGW_PREFIX)/lib -static
@@ -68,29 +69,29 @@ ifneq ($(wildcard $(MINGW_PREFIX)/lib/libopen62541.a),)
 endif
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libmodbus.a),)
     PROTOCOL_LIBS += -lmodbus
-    CXXFLAGS += -DHAVE_MODBUS=1
+    CXXFLAGS += -DHAS_MODBUS=1
 endif
 
 # MQTT 라이브러리들 (올바른 순서)
 MQTT_LIBS = 
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libpaho-mqttpp3-static.a),)
     MQTT_LIBS += -lpaho-mqttpp3-static
-    CXXFLAGS += -DHAVE_MQTT_CPP=1
+    CXXFLAGS += -DHAS_MQTT_CPP=1
 endif
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libpaho-mqtt3a.a),)
     MQTT_LIBS += -lpaho-mqtt3a
-    CXXFLAGS += -DHAVE_MQTT_ASYNC=1
+    CXXFLAGS += -DHAS_MQTT_ASYNC=1
 endif
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libpaho-mqtt3c.a),)
     MQTT_LIBS += -lpaho-mqtt3c
-    CXXFLAGS += -DHAVE_MQTT=1
+    CXXFLAGS += -DHAS_MQTT=1
 endif
 
 # BACnet 라이브러리
 BACNET_LIBS = 
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libbacnet.a),)
     BACNET_LIBS += -lbacnet
-    CXXFLAGS += -DHAVE_BACNET=1
+    CXXFLAGS += -DHAS_BACNET=1 -DHAS_BACNET_STACK=1
 endif
 
 # 기타 라이브러리들

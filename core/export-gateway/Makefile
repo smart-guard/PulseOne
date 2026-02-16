@@ -30,8 +30,8 @@ CC = gcc
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
     CXX = x86_64-w64-mingw32-g++-posix
     CC = x86_64-w64-mingw32-gcc-posix
-    CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DCURL_STATICLIB -DDBLIB_STATIC -DLOGLIB_STATIC
-    CFLAGS += -DWIN32 -D_WIN32_WINNT=0x0601 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DCURL_STATICLIB -DDBLIB_STATIC -DLOGLIB_STATIC
+    CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DCURL_STATICLIB -DDBLIB_STATIC -DLOGLIB_STATIC
+    CFLAGS += -DWIN32 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DCURL_STATICLIB -DDBLIB_STATIC -DLOGLIB_STATIC
     IS_WINDOWS := 1
     PLATFORM := Windows-Cross
     MINGW_PREFIX = /usr/x86_64-w64-mingw32
@@ -236,7 +236,7 @@ else
 endif
 
 ifeq ($(HAS_HTTPLIB),1)
-    CXXFLAGS += -DHAVE_HTTPLIB=1
+    CXXFLAGS += -DHAS_HTTPLIB=1
 endif
 
 ifeq ($(HAS_NLOHMANN_JSON),1)
@@ -453,6 +453,14 @@ debug-vars:
 	@echo "CXXFLAGS: $(CXXFLAGS)"
 	@echo "INCLUDES: $(INCLUDES)"
 	@echo "LDFLAGS: $(LDFLAGS)"
+
+# =============================================================================
+# 크로스 컴파일 지원
+# =============================================================================
+
+windows-cross:
+	@echo -e "$(YELLOW)🔧 Building for Windows (cross-compile)...$(NC)"
+	$(MAKE) CROSS_COMPILE_WINDOWS=1 all
 
 # =============================================================================
 # 테스트 타겟들

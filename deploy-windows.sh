@@ -67,45 +67,22 @@ if ! command -v node &> /dev/null; then
 fi
 
 # =============================================================================
-# 2.1 📥 Pre-downloading dependencies for Offline/Air-Gapped Setup
+# 2.1 📥 Pre-downloading dependencies (Dockerized to protect host)
 # =============================================================================
 echo "2.1 📥 Pre-downloading dependencies for offline support..."
 
-# Node.js MSI (LTS)
-NODE_VERSION="v22.13.1"
-NODE_MSI="node-$NODE_VERSION-x64.msi"
-if [ ! -f "$DEPS_DIR/$NODE_MSI" ]; then
-    echo "Downloading Node.js $NODE_VERSION..."
-    curl -L -o "$DEPS_DIR/$NODE_MSI" "https://nodejs.org/dist/$NODE_VERSION/$NODE_MSI"
-fi
+# Use a lightweight container to download assets to the DEPS_DIR
+docker run --rm -v "$DEPS_DIR:/assets" alpine:latest sh -c "
+  apk add --no-cache curl && \
+  cd /assets && \
+  ( [ -f node-v22.13.1-x64.msi ] || curl -L -O https://nodejs.org/dist/v22.13.1/node-v22.13.1-x64.msi ) && \
+  ( [ -f redis.zip ] || curl -L -o redis.zip https://github.com/tporadowski/redis/releases/download/v5.0.14.1/Redis-x64-5.0.14.1.zip ) && \
+  ( [ -f influxdb.zip ] || curl -L -o influxdb.zip https://download.influxdata.com/influxdb/releases/influxdb2-2.7.11-windows-amd64.zip ) && \
+  ( [ -f WinSW-x64.exe ] || curl -L -o WinSW-x64.exe https://github.com/winsw/winsw/releases/download/v2.11.0/WinSW-x64.exe ) && \
+  ( [ -f sqlite.zip ] || curl -L -o sqlite.zip https://www.sqlite.org/2024/sqlite-dll-win-x64-3460100.zip )
+"
 
-# Redis Windows
-REDIS_VER="5.0.14.1"
-if [ ! -f "$DEPS_DIR/redis.zip" ]; then
-    echo "Downloading Redis $REDIS_VER..."
-    curl -L -o "$DEPS_DIR/redis.zip" "https://github.com/tporadowski/redis/releases/download/v$REDIS_VER/Redis-x64-$REDIS_VER.zip"
-fi
-
-# InfluxDB Windows
-INFLUX_VER="2.7.11"
-if [ ! -f "$DEPS_DIR/influxdb.zip" ]; then
-    echo "Downloading InfluxDB $INFLUX_VER..."
-    curl -L -o "$DEPS_DIR/influxdb.zip" "https://download.influxdata.com/influxdb/releases/influxdb2-$INFLUX_VER-windows-amd64.zip"
-fi
-
-# WinSW
-if [ ! -f "$DEPS_DIR/WinSW-x64.exe" ]; then
-    echo "Downloading WinSW..."
-    curl -L -o "$DEPS_DIR/WinSW-x64.exe" "https://github.com/winsw/winsw/releases/download/v2.11.0/WinSW-x64.exe"
-fi
-
-# SQLite DLL
-if [ ! -f "$DEPS_DIR/sqlite.zip" ]; then
-    echo "Downloading SQLite DLL..."
-    curl -L -o "$DEPS_DIR/sqlite.zip" "https://www.sqlite.org/2024/sqlite-dll-win-x64-3460100.zip"
-fi
-
-echo "✅ All dependencies pre-downloaded in setup_assets/"
+echo "✅ All dependencies verified/downloaded via Docker"
 
 echo "✅ Build environment setup completed"
 

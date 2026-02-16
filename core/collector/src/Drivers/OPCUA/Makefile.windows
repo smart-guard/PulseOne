@@ -11,18 +11,20 @@ MINGW_PREFIX = /usr/x86_64-w64-mingw32
 # Compiler & Flags
 CXX = x86_64-w64-mingw32-g++
 CC = x86_64-w64-mingw32-gcc
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0601 -shared
-CFLAGS = -Wall -O2 -DWIN32 -D_WIN32_WINNT=0x0601
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00 -shared
+CFLAGS = -Wall -O2 -DWIN32 -D_WIN32_WINNT=0x0A00
 
 INCLUDES = -I$(COLLECTOR_ROOT)include \
+           -I$(COLLECTOR_ROOT)include/Drivers/OPCUA \
            -I$(COLLECTOR_ROOT)src \
            -I$(COLLECTOR_ROOT)../shared/include \
            -I$(COLLECTOR_ROOT)../shared/modules/DbLib/include \
-           -I$(COLLECTOR_ROOT)../shared/modules/LogLib/include
+           -I$(COLLECTOR_ROOT)../shared/modules/LogLib/include \
+           -I$(MINGW_PREFIX)/include
 
 # Libraries
 IMPLIB = $(BIN_DIR)/libcollector.a
-LIBS = -lopen62541 -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread
+LIBS = -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread
 
 # Target
 TARGET = $(PLUGINS_DIR)/opcua_driver.dll

@@ -5,8 +5,7 @@
 #include "Workers/WorkerFactory.h"
 #include "Workers/Base/BaseDeviceWorker.h"
 
-// Worker 구현체들 (Windows DLL 빌드 시에는 정적 링크에서 제외됨)
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__linux__)
 #ifdef HAS_BACNET
 #include "Workers/Protocol/BACnetWorker.h"
 #endif
@@ -35,9 +34,10 @@
 #include "Workers/Protocol/ROSWorker.h"
 #endif
 
-// Universal Dynamic Worker
+#endif // !defined(_WIN32) && !defined(__linux__)
+
+// Universal Dynamic Worker (Core wrapper for driver DLLs on Windows)
 #include "Workers/Protocol/GenericDeviceWorker.h"
-#endif
 
 // Database
 #include "Database/Entities/DeviceEntity.h"
@@ -667,8 +667,9 @@ WorkerFactory::LoadProtocolCreators() const {
         "LoadProtocolCreators - HAS_HTTP_REST is NOT DEFINED");
 #endif
 
-    // 지원하는 프로토콜들 등록 (Windows DLL 빌드 시에는 런타임에 DLL이 등록함)
-#ifndef _WIN32
+    // 지원하는 프로토콜들 등록 (Windows DLL/Linux Plugin 빌드 시에는 런타임에
+    // 등록함)
+#if !defined(_WIN32) && !defined(__linux__)
 #ifdef HAS_MODBUS
     creators["MODBUS_TCP"] = [](const PulseOne::Structs::DeviceInfo &info)
         -> std::unique_ptr<BaseDeviceWorker> {

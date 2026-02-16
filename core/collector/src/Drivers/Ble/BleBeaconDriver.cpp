@@ -7,19 +7,23 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #if HAS_BLUETOOTH
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 #include <sys/ioctl.h>
-#include <sys/socket.h>
-#else
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #endif
+
 #include <atomic>
 #include <nlohmann/json.hpp>
 #include <thread>
@@ -88,7 +92,11 @@ bool BleBeaconDriver::Connect() {
 
   if (bind(hci_socket_, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
     LogManager::getInstance().Error("[BLE] Failed to bind simulation socket");
+#ifdef _WIN32
+    closesocket(hci_socket_);
+#else
     close(hci_socket_);
+#endif
     hci_socket_ = -1;
     return false;
   }
@@ -104,7 +112,12 @@ bool BleBeaconDriver::Connect() {
       struct timeval tv;
       tv.tv_sec = 1;
       tv.tv_usec = 0;
+#ifdef _WIN32
+      setsockopt(hci_socket_, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv,
+                 sizeof(tv));
+#else
       setsockopt(hci_socket_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#endif
 
       int len = recvfrom(hci_socket_, buffer, sizeof(buffer) - 1, 0,
                          (struct sockaddr *)&src_addr, &addr_len);
@@ -140,6 +153,19 @@ bool BleBeaconDriver::Disconnect() {
 
   EnableScanning(false);
   CloseHciSocket();
+#else
+  is_scanning_ = false;
+  if (scan_thread_.joinable()) {
+    scan_thread_.join();
+  }
+  if (hci_socket_ >= 0) {
+#ifdef _WIN32
+    closesocket(hci_socket_);
+#else
+    close(hci_socket_);
+#endif
+    hci_socket_ = -1;
+  }
 #endif
 
   is_connected_ = false;

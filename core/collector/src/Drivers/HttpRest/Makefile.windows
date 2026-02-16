@@ -10,7 +10,7 @@ MINGW_PREFIX = /usr/x86_64-w64-mingw32
 
 # Compiler & Flags
 CXX = x86_64-w64-mingw32-g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0601 -shared
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00 -shared
 
 INCLUDES = -I$(COLLECTOR_ROOT)include \
            -I$(COLLECTOR_ROOT)src \

@@ -38,54 +38,52 @@ find "$PACKAGE_DIR/collector" -mindepth 1 -delete 2>/dev/null || true
 find "$PACKAGE_DIR/setup_assets" -mindepth 1 -delete 2>/dev/null || true
 
 # =============================================================================
-# 3. Dependency Bundling (Air-Gapped Support)
+# 3. Dependency Bundling (Dockerized Air-Gapped Support)
 # =============================================================================
-echo "3. 📥 Bundling dependencies for offline installation..."
-mkdir -p "$PROJECT_ROOT/setup_assets" # Cache directory
+echo "3. 📥 Bundling dependencies for offline installation via Docker..."
 
-# Node.js (Linux x64 LTS)
-NODE_VERSION="v22.13.1"
-NODE_PACKAGE="node-$NODE_VERSION-linux-x64.tar.xz"
-if [ ! -f "$PROJECT_ROOT/setup_assets/$NODE_PACKAGE" ]; then
-    echo "   Downloading Node.js $NODE_VERSION..."
-    curl -L "https://nodejs.org/dist/$NODE_VERSION/$NODE_PACKAGE" -o "$PROJECT_ROOT/setup_assets/$NODE_PACKAGE"
-fi
-cp "$PROJECT_ROOT/setup_assets/$NODE_PACKAGE" "$PACKAGE_DIR/setup_assets/"
+# Use Docker to download Linux assets
+docker run --rm -v "$PROJECT_ROOT/setup_assets:/assets" alpine:latest sh -c "
+  apk add --no-cache curl && \
+  cd /assets && \
+  ( [ -f node-v22.13.1-linux-x64.tar.xz ] || curl -L -O https://nodejs.org/dist/v22.13.1/node-v22.13.1-linux-x64.tar.xz ) && \
+  ( [ -f redis-7.2.4.tar.gz ] || curl -L -o redis-7.2.4.tar.gz http://download.redis.io/releases/redis-7.2.4.tar.gz ) && \
+  ( [ -f influxdb2-2.7.5-linux-amd64.tar.gz ] || curl -L -o influxdb2-2.7.5-linux-amd64.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-2.7.5-linux-amd64.tar.gz )
+"
 
-# Redis (Source for compilation on target)
-REDIS_VERSION="7.2.4"
-REDIS_PACKAGE="redis-$REDIS_VERSION.tar.gz"
-if [ ! -f "$PROJECT_ROOT/setup_assets/$REDIS_PACKAGE" ]; then
-    echo "   Downloading Redis $REDIS_VERSION..."
-    curl -L "http://download.redis.io/releases/$REDIS_PACKAGE" -o "$PROJECT_ROOT/setup_assets/$REDIS_PACKAGE"
-fi
-cp "$PROJECT_ROOT/setup_assets/$REDIS_PACKAGE" "$PACKAGE_DIR/setup_assets/"
+cp "$PROJECT_ROOT/setup_assets/node-v22.13.1-linux-x64.tar.xz" "$PACKAGE_DIR/setup_assets/"
+cp "$PROJECT_ROOT/setup_assets/redis-7.2.4.tar.gz" "$PACKAGE_DIR/setup_assets/"
+cp "$PROJECT_ROOT/setup_assets/influxdb2-2.7.5-linux-amd64.tar.gz" "$PACKAGE_DIR/setup_assets/"
 
-# InfluxDB (Linux x64)
-INFLUX_VERSION="2.7.5"
-INFLUX_PACKAGE="influxdb2-$INFLUX_VERSION-linux-amd64.tar.gz"
-if [ ! -f "$PROJECT_ROOT/setup_assets/$INFLUX_PACKAGE" ]; then
-    echo "   Downloading InfluxDB $INFLUX_VERSION..."
-    curl -L "https://dl.influxdata.com/influxdb/releases/$INFLUX_PACKAGE" -o "$PROJECT_ROOT/setup_assets/$INFLUX_PACKAGE"
-fi
-cp "$PROJECT_ROOT/setup_assets/$INFLUX_PACKAGE" "$PACKAGE_DIR/setup_assets/"
+echo "✅ Linux dependencies verified/downloaded"
 
 # =============================================================================
-# 4. Frontend & Backend Preparation
+# 4. Frontend & Backend Preparation (Dockerized)
 # =============================================================================
-echo "4. 🎨 Building frontend & Bundling backend..."
+echo "4. 🎨 Preparing Frontend & Backend..."
 
-# Frontend
-cd "$PROJECT_ROOT/frontend"
-npm install --silent
-npm run build
+# Frontend (Release.sh should have built it, but we double check or copy)
+if [ "${SKIP_FRONTEND:-false}" != "true" ]; then
+    echo "   ⚠️ Warning: release.sh should handle frontend. Forcing check..."
+    if [ ! -d "$PROJECT_ROOT/frontend/dist" ]; then
+        echo "   ❌ Frontend dist not found. Please run via release.sh"
+        exit 1
+    fi
+fi
 
-# Backend (Bundle nnnode_modules)
-echo "   📦 Preparing backend nnnode_modules (Linux compatibility)..."
-cd "$PROJECT_ROOT/backend"
-# We should use a linux-compatible install if possible, but for JS-only deps it's usually fine.
-# If native deps exist, we might need to build them inside the linux container.
-npm install --production --silent
+# Backend (Bundle with production dependencies inside Docker)
+echo "   📦 Bundling backend dependencies inside Docker..."
+rsync -a \
+    --exclude='node_modules' \
+    --exclude='.git' \
+    "$PROJECT_ROOT/backend/" "$PACKAGE_DIR/backend/"
+
+docker run --rm \
+    -v "$PACKAGE_DIR/backend:/app" \
+    -w /app \
+    node:22-alpine sh -c "npm install --production --silent"
+
+echo "✅ Backend bundled with production dependencies"
 
 # =============================================================================
 # 5. Collector Build (Docker for Linux)

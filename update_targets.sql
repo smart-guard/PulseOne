@@ -1,3 +1,0 @@
-UPDATE export_targets SET config = '{"bucket_name":"icos-test-bucket","AccessKeyID":"${CSP_S3_ACCESS_KEY}","SecretAccessKey":"${CSP_S3_SECRET_KEY}","S3ServiceUrl":"https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com","region":"ap-northeast-2","Folder":"icons/alarm","BucketName":"hdcl-csp-stg"}' WHERE id = 19;
-
-UPDATE export_targets SET config = '[{"url":"https://rhnkxbwgb9.execute-api.ap-northeast-2.amazonaws.com/icos5Api/alarm","method":"POST","headers":{"Content-Type":"application/json","x-api-key":"${CSP_API_GATEWAY_KEY}","Authorization":"${CSP_S3_ACCESS_KEY}"},"timeout":10000,"retry":3,"retryDelay":2000,"lambdaFunction":"icos_5_csp_alarm","auth":{"type":"x-api-key","apiKey":"${CSP_API_GATEWAY_KEY}"},"execution_order":2}]' WHERE id = 18;

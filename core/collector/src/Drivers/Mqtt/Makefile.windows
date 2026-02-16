@@ -10,7 +10,7 @@ MINGW_PREFIX = /usr/x86_64-w64-mingw32
 
 # Compiler & Flags
 CXX = x86_64-w64-mingw32-g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0601 -shared
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00 -shared
 CXXFLAGS += -DHAS_MQTT_CPP=1 -DHAS_MQTT_ASYNC=1 -DHAS_MQTT=1
 
 INCLUDES = -I$(COLLECTOR_ROOT)include \
@@ -23,7 +23,7 @@ INCLUDES = -I$(COLLECTOR_ROOT)include \
 # Order: paho-mqttpp3 -> paho-mqtt3a -> paho-mqtt3c
 IMPLIB = $(BIN_DIR)/libcollector.a
 LIBS = -lpaho-mqttpp3-static -lpaho-mqtt3a -lpaho-mqtt3c \
-       -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread
+       -lws2_32 -lwsock32 -liphlpapi -lcrypt32 -lrpcrt4 -lsqlite3 -lpthread
 
 # Target
 TARGET = $(PLUGINS_DIR)/mqtt_driver.dll

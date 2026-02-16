@@ -7,7 +7,7 @@
 #include "Logging/LogManager.h"
 #include "Storage/RedisDataWriter.h"
 #include "Workers/Base/BaseDeviceWorker.h"
-#ifdef HAS_BACNET
+#if defined(HAS_BACNET) && !defined(_WIN32) && !defined(__linux__)
 #include "Workers/Protocol/BACnetDiscoveryService.h"
 #endif
 #include "Workers/WorkerMonitor.h"
@@ -44,8 +44,9 @@ WorkerManager::WorkerManager() {
       return;
     }
 
-#ifdef HAS_BACNET
-    // Initialize BACnet Discovery Service (Only if not Windows/static build)
+#if defined(HAS_BACNET) && !defined(_WIN32) && !defined(__linux__)
+    // Initialize BACnet Discovery Service (Only if not Windows/Linux modular
+    // build)
     bacnet_discovery_service_ = std::make_shared<BACnetDiscoveryService>(
         repo_factory.getDeviceRepository(),
         repo_factory.getDataPointRepository(),
@@ -185,7 +186,7 @@ WorkerManager::DiscoverDevicePoints(const std::string &device_id) {
 bool WorkerManager::StartNetworkScan(const std::string &protocol,
                                      const std::string &range, int timeout_ms) {
   if (protocol == "BACNET" || protocol == "BACnet") {
-#ifdef HAS_BACNET
+#if defined(HAS_BACNET) && !defined(_WIN32) && !defined(__linux__)
     if (bacnet_discovery_service_) {
       LogManager::getInstance().Info(
           "WorkerManager: Starting BACnet network scan");
@@ -197,7 +198,7 @@ bool WorkerManager::StartNetworkScan(const std::string &protocol,
     }
 #else
     LogManager::getInstance().Warn("WorkerManager: BACnet Discovery Service "
-                                   "not available in this build");
+                                   "not available in this build (or modular)");
     return false;
 #endif
   } else if (protocol == "MODBUS_TCP" || protocol == "MODBUS_RTU") {
@@ -222,7 +223,7 @@ bool WorkerManager::StartNetworkScan(const std::string &protocol,
 
 void WorkerManager::StopNetworkScan(const std::string &protocol) {
   if (protocol == "BACNET" || protocol == "BACnet") {
-#ifdef HAS_BACNET
+#if defined(HAS_BACNET) && !defined(_WIN32) && !defined(__linux__)
     if (bacnet_discovery_service_)
       bacnet_discovery_service_->StopNetworkScan();
 #endif
