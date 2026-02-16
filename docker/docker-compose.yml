@@ -199,7 +199,7 @@ services:
       - ../data:/app/data
       - ../logs:/app/logs
       - shared_libs:/app/core/shared/lib
-    command: /bin/bash -c "apt-get update && apt-get install -y libpaho-mqttpp-dev libpaho-mqttpp3-1 libpaho-mqtt-dev libpaho-mqtt1.3 && chmod +x core/export-gateway/bin/export-gateway && chmod +x core/export-gateway/scripts/gateway_launcher.sh && ./core/export-gateway/scripts/gateway_launcher.sh"
+    command: /bin/bash -c "chmod +x core/export-gateway/bin/export-gateway && chmod +x core/export-gateway/scripts/gateway_launcher.sh && ./core/export-gateway/scripts/gateway_launcher.sh"
     deploy:
       resources:
         limits:

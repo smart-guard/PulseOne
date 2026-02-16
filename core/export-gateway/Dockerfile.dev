@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     wget unzip vim nano \
     libssl-dev uuid-dev \
     libcurl4-openssl-dev \
+    libpaho-mqtt-dev libpaho-mqttpp-dev \
     tree htop procps \
     redis-tools \
     tzdata \

@@ -106,7 +106,11 @@ endif
 HAS_PQXX := $(shell pkg-config --exists libpqxx 2>/dev/null && echo "1" || echo "0")
 
 # 🔥 Paho MQTT C++ 라이브러리 감지 (v3.1 추가)
-HAS_PAHO_MQTT := $(shell [ -f /usr/include/mqtt/async_client.h ] && echo "1" || echo "0")
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    HAS_PAHO_MQTT := $(shell [ -f $(MINGW_PREFIX)/include/mqtt/async_client.h ] && echo "1" || echo "0")
+else
+    HAS_PAHO_MQTT := $(shell [ -f /usr/include/mqtt/async_client.h ] && echo "1" || echo "0")
+endif
 
 # 🔥 1순위: Shared 라이브러리 상세 include
 ifneq ($(wildcard $(SHARED_INCLUDE_DIR)),)
@@ -227,7 +231,11 @@ endif
 # 🔥 Paho MQTT C++ 링크 (v3.1 추가 - Collector와 동일)
 # Linker order matters: -lpaho-mqttpp3 must come before -lpaho-mqtt3a
 ifeq ($(HAS_PAHO_MQTT),1)
-    UTILITY_LIBS += -lpaho-mqttpp3 -lpaho-mqtt3a
+    ifeq ($(IS_WINDOWS),1)
+        UTILITY_LIBS += -lpaho-mqttpp3-static -lpaho-mqtt3a
+    else
+        UTILITY_LIBS += -lpaho-mqttpp3 -lpaho-mqtt3a
+    endif
     CXXFLAGS += -DHAS_PAHO_MQTT=1
     $(info ✅ Paho MQTT C++ found and linked)
 else
@@ -246,7 +254,7 @@ endif
 # 🔥 기본 시스템 라이브러리 (SQLite3 추가!)
 ifeq ($(IS_WINDOWS),1)
     BASIC_LIBS = -lpthread -lstdc++ -lm -lsqlite3
-    PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi -lodbc32 -lodbccp32 -lcrypt32 -ladvapi32 -lwldap32
+    PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi -lodbc32 -lodbccp32 -lcrypt32 -ladvapi32 -lwldap32 -lrpcrt4 -luuid
 else
     BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
     ifeq ($(HAS_PQXX),1)

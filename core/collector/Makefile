@@ -71,8 +71,13 @@ HAS_MODBUS := 1
 HAS_MQTT_C := 1
 HAS_MQTT_CPP := 1
 HAS_BACNET := 1
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+HAS_BLE := 0
+HAS_OPCUA := 0
+else
 HAS_BLE := 1
 HAS_OPCUA := 1
+endif
 HAS_ROS := 1
 HAS_HTTP_REST := 1
 
@@ -137,15 +142,18 @@ CXXFLAGS += -DHAS_NLOHMANN_JSON=$(HAS_NLOHMANN_JSON)
 CXXFLAGS += -DHAS_HTTPLIB=$(HAS_HTTPLIB)
 
 # 플랫폼별 플래그
-ifeq ($(IS_WINDOWS),1)
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+PLATFORM := Windows-Cross
+CXX := x86_64-w64-mingw32-g++
+CXXFLAGS += -DPULSEONE_WINDOWS=1 -DPULSEONE_LINUX=0 -DWIN32 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DPULSEONE_STATIC
+LDFLAGS += -static -L/usr/x86_64-w64-mingw32/lib
+PLATFORM_LIBS := -lws2_32 -lwsock32 -liphlpapi -lrpcrt4 -luuid -lwinmm -lkernel32 -luser32 -ladvapi32 -lodbc32 -lodbccp32
+BIN_EXT := .exe
+else ifeq ($(IS_WINDOWS),1)
 CXXFLAGS += -DPULSEONE_WINDOWS=1 -DPULSEONE_LINUX=0
 CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0A00
 CXXFLAGS += -DWIN32_LEAN_AND_MEAN -DNOMINMAX
-ifeq ($(CROSS_COMPILE_WINDOWS),1)
-LDFLAGS := -L$(MINGW_PREFIX)/lib -static
-else
 LDFLAGS := -Wl,--gc-sections -static
-endif
 else
     CXXFLAGS += -DPULSEONE_WINDOWS=0 -DPULSEONE_LINUX=1
     CXXFLAGS += -march=native -mtune=native
@@ -218,6 +226,7 @@ endif
 ifeq ($(HAS_BACNET),1)
 PROTOCOL_LIBS += -lbacnet
 CXXFLAGS += -DHAS_BACNET=1
+CXXFLAGS += -DBACAPP_ALL -DBACAPP_CHARACTER_STRING -DBACAPP_UNSIGNED -DBACAPP_SIGNED -DBACAPP_REAL -DBACAPP_DOUBLE -DBACAPP_BOOLEAN -DBACAPP_ENUMERATED -DBACAPP_DATE -DBACAPP_TIME -DBACAPP_OBJECT_ID
 endif
 
 # BLE for Linux (BlueZ)
@@ -272,7 +281,14 @@ endif
 CXXFLAGS += -DHAS_JSON=1
 
 # 최종 라이브러리 링킹 순서
+ifeq ($(PLATFORM),Windows-Cross)
+# Windows-Cross: 지원되는 라이브러리만 포함
+LIBS := -Wl,--start-group $(SHARED_LIBS) -Wl,--end-group $(PROTOCOL_LIBS) $(UTILITY_LIBS) $(BASIC_LIBS) $(PLATFORM_LIBS)
+# paho-mqttpp3 -> paho-mqttpp3-static (Dockerfile.windows 명칭에 맞춤)
+LIBS := $(subst -lpaho-mqttpp3,-lpaho-mqttpp3-static,$(LIBS))
+else
 LIBS := -Wl,--start-group $(SHARED_LIBS) -Wl,--end-group $(PROTOCOL_LIBS) $(UTILITY_LIBS) -lpqxx -lpq -lmysqlclient $(BASIC_LIBS) $(PLATFORM_LIBS)
+endif
 
 # =============================================================================
 # 소스 파일 수집

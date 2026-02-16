@@ -93,14 +93,21 @@ RUN echo "Installing spdlog..." && \
     make -j$(nproc) && make install && ldconfig && \
     cd / && rm -rf /tmp/spdlog && echo "spdlog installed"
 
-# 7. BACnet Stack 설치 (기존과 동일)
+# 7. BACnet Stack (Manual build with unique object names to avoid collision)
 RUN echo "Installing BACnet Stack..." && \
     cd /tmp && \
     git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
     cd bacnet-stack && \
-    make BACNET_PORT=linux BACDL_DEFINE=-DBACDL_BIP=1 CC="gcc -fPIC" library && \
-    cp apps/lib/libbacnet.a /usr/local/lib/ && \
-    cp -r src/bacnet /usr/local/include/ && \
+    # Compile all .c files in src/bacnet recursively, excluding ports
+    # Use unique names for .o files to avoid collisions from different subdirs
+    find src/bacnet -name "*.c" ! -path "*/ports/*" | while read -r file; do \
+    obj=$(echo "$file" | sed 's/\//_/g').o; \
+    gcc -c -fPIC -DBACDL_BIP=1 -DBACAPP_ALL=ON -DPRINT_ENABLED=1 -Isrc "$file" -o "$obj"; \
+    done && \
+    ar rcs libbacnet.a *.o && \
+    cp libbacnet.a /usr/local/lib/ && \
+    mkdir -p /usr/local/include/bacnet && \
+    cp -r src/bacnet/* /usr/local/include/bacnet/ && \
     ldconfig && \
     cd / && rm -rf /tmp/bacnet-stack && \
     echo "BACnet Stack installed"

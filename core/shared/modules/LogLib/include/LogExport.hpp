@@ -6,6 +6,10 @@
  * @brief DLL/SO export macros for LogLib
  */
 
+#if defined(PULSEONE_STATIC) && !defined(LOGLIB_STATIC)
+#define LOGLIB_STATIC
+#endif
+
 #if defined(_WIN32) || defined(__CYGWIN__)
 #ifdef LOGLIB_STATIC
 #define LOGLIB_API

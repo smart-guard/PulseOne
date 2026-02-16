@@ -6,6 +6,7 @@ FROM gcc:12 AS builder
 RUN apt-get update && apt-get install -y \
     cmake make build-essential \
     libsqlite3-dev libcurl4-openssl-dev libssl-dev uuid-dev \
+    libpqxx-dev libmariadb-dev \
     git pkg-config wget \
     && rm -rf /var/lib/apt/lists/*
 
@@ -24,7 +25,6 @@ RUN git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && 
 # Build PulseOne Export Gateway
 WORKDIR /app
 COPY core /app/core
-RUN cat core/export-gateway/src/CSP/DynamicTargetManager.cpp | grep -E "publish_client_|m_redis_publish_client_"
 RUN cd core/export-gateway && \
     mkdir build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release && \
@@ -37,6 +37,7 @@ FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y \
     libsqlite3-0 libcurl4 libssl3 uuid-runtime \
+    libpq5 libmariadb3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

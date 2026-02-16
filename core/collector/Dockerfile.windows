@@ -333,6 +333,20 @@ RUN cd /tmp/bacnet-stack && \
 
 /* Application Layer - 모든 기능 활성화 */
 #define BACAPP_ALL 1
+#define BACAPP_NULL
+#define BACAPP_BOOLEAN
+#define BACAPP_UNSIGNED_INT
+#define BACAPP_SIGNED_INT
+#define BACAPP_REAL
+#define BACAPP_DOUBLE
+#define BACAPP_OCTET_STRING
+#define BACAPP_CHARACTER_STRING
+#define BACAPP_BIT_STRING
+#define BACAPP_ENUMERATED
+#define BACAPP_DATE
+#define BACAPP_TIME
+#define BACAPP_OBJECT_ID
+#define BACAPP_TYPES_EXTRA
 #define BACFILE 1
 #define INTRINSIC_REPORTING 1
 #define PRINT_ENABLED 1
@@ -347,40 +361,49 @@ RUN cd /tmp/bacnet-stack && \
 #define BACNET_STACK_DEPRECATED(msg)
 #endif
 
-#ifndef min
-#define min(a,b) ((a) < (b) ? (a) : (b))
-#endif
-
 #endif /* CONFIG_H */
 CONFIG_EOF
 
 # BACnet 라이브러리 빌드 (에러 수정 플래그 포함)
-RUN cd /tmp/bacnet-stack && \
-    mkdir -p /tmp/bacnet-win32 && \
-    cd /tmp/bacnet-win32 && \
+RUN cd /tmp && \
+    rm -rf bacnet-stack && \
+    git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
+    cd bacnet-stack && \
+    echo "BACnet Stack 소스 빌드 시작 (Robust Build)..." && \
+    mkdir -p build-win32 && cd build-win32 && \
+    # 1. 라이브러리에 필요한 모든 소스 파일 수집 (부적절한 포트 및 메인 제외)
+    find ../src/bacnet -name "*.c" | \
+    grep -vE "ucix|stm32|pic18|at91sam7s|avr|atmega|pic32|lpc17xx|lpc21xx|lpc24xx|mstp|main.c" | \
+    sort -u > sources.txt && \
+    # 2. 컴파일 (고유한 오브젝트 이름 사용)
     echo "핵심 BACnet 파일들 컴파일 시작..." && \
-    for file in /tmp/bacnet-stack/src/bacnet/*.c; do \
-    echo "Compiling $(basename $file)..."; \
+    while read -r file; do \
+    # /bin/sh 호환성을 위해 sed 사용
+    obj=$(echo "$file" | sed 's/^\.\.\/src\///' | tr '/' '_').o; \
+    echo "Compiling $file -> $obj"; \
     x86_64-w64-mingw32-gcc -c \
     -DBACDL_BIP=1 -DBACAPP_ALL -DPRINT_ENABLED=1 \
     -DBACNET_STACK_DEPRECATED= \
-    -Wno-macro-redefined \
-    -I/tmp/bacnet-stack/src \
-    -I/tmp/bacnet-stack/src/bacnet \
-    "$file" 2>/dev/null || echo "Failed: $(basename $file)"; \
-    done && \
-    echo "BACnet 정적 라이브러리 생성..." && \
+    -I../src \
+    -I../src/bacnet \
+    "$file" -o "$obj" || exit 1; \
+    done < sources.txt && \
+    # 3. 정적 라이브러리 생성 및 검증
     x86_64-w64-mingw32-ar rcs libbacnet.a *.o && \
     BACNET_SIZE_KB=$(du -k libbacnet.a | cut -f1) && \
-    if [ "$BACNET_SIZE_KB" -lt 300 ]; then \
-    echo "❌ BACnet 라이브러리가 너무 작음: ${BACNET_SIZE_KB}KB"; \
+    echo "BACnet 라이브러리 크기: ${BACNET_SIZE_KB}KB" && \
+    if [ "$BACNET_SIZE_KB" -lt 800 ]; then \
+    echo "❌ BACnet 라이브러리가 너무 작음 (800KB 미만)"; \
     exit 1; \
     fi && \
-    echo "✅ BACnet 라이브러리 검증 통과: ${BACNET_SIZE_KB}KB" && \
+    # 4. 필수 심볼 검증
+    x86_64-w64-mingw32-nm libbacnet.a | grep -q " T rp_ack_decode_service_request" || (echo "❌ 심볼 rp_ack_decode_service_request 누락!" && exit 1) && \
+    x86_64-w64-mingw32-nm libbacnet.a | grep -q " T bacapp_decode_application_data" || (echo "❌ 심볼 bacapp_decode_application_data 누락!" && exit 1) && \
+    # 5. 설치
     cp libbacnet.a ${MINGW_PREFIX}/lib/ && \
     mkdir -p ${MINGW_PREFIX}/include/bacnet && \
-    cp -r /tmp/bacnet-stack/src/bacnet/* ${MINGW_PREFIX}/include/bacnet/ && \
-    rm -rf /tmp/bacnet-stack /tmp/bacnet-win32 && \
+    cp -r ../src/bacnet/* ${MINGW_PREFIX}/include/bacnet/ && \
+    cd /tmp && rm -rf /tmp/bacnet-stack && \
     echo "BACnet Stack 설치 완료"
 
 # =============================================================================
@@ -390,6 +413,7 @@ RUN cd /tmp && \
     git clone --depth 1 --branch v3.11.3 https://github.com/nlohmann/json.git && \
     cd json && \
     mkdir -p ${MINGW_PREFIX}/include/nlohmann && \
+    cp -r include/nlohmann/* ${MINGW_PREFIX}/include/nlohmann/ && \
     cp single_include/nlohmann/json.hpp ${MINGW_PREFIX}/include/nlohmann/ && \
     rm -rf /tmp/json && \
     echo "nlohmann/json 설치 완료"
@@ -412,13 +436,13 @@ RUN cat > /usr/local/bin/build-pulseone << 'BUILDEOF'
 #!/bin/bash
 echo "🏗️ PulseOne Collector Windows 빌드 시작..."
 
-if [ ! -d "/src/collector" ]; then
-echo "❌ /src/collector 디렉토리가 없습니다"
+if [ ! -d "/src/core/collector" ]; then
+echo "❌ /src/core/collector 디렉토리가 없습니다"
 echo "💡 사용법: docker run -v $(pwd):/src pulseone-windows-builder build-pulseone"
 exit 1
 fi
 
-cd /src/collector
+cd /src/core/collector
 
 echo "🔍 빌드 환경 확인..."
 echo "  작업 디렉토리: $(pwd)"

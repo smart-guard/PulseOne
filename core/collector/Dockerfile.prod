@@ -7,6 +7,8 @@ FROM gcc:12 AS builder
 RUN apt-get update && apt-get install -y \
     cmake make build-essential \
     libsqlite3-dev libcurl4-openssl-dev libssl-dev uuid-dev \
+    libmbedtls-dev libbluetooth-dev \
+    libpqxx-dev libmariadb-dev \
     git pkg-config wget unzip \
     && rm -rf /var/lib/apt/lists/*
 
@@ -44,6 +46,34 @@ RUN git clone --depth 1 --branch v1.3.9 https://github.com/open62541/open62541.g
     cmake -S open62541 -B open62541/build -DUA_ENABLE_AMALGAMATION=ON -DUA_ENABLE_ENCRYPTION=ON && \
     make -C open62541/build -j$(nproc) install
 
+# 7. QuickJS
+RUN git clone --depth 1 https://github.com/bellard/quickjs.git && \
+    cd quickjs && \
+    sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' Makefile && \
+    make -j$(nproc) libquickjs.a && \
+    cp quickjs.h quickjs-libc.h /usr/local/include/ && \
+    cp libquickjs.a /usr/local/lib/
+
+# 8. spdlog (header-only)
+RUN git clone --depth 1 --branch v1.12.0 https://github.com/gabime/spdlog.git && \
+    cp -r spdlog/include/spdlog /usr/local/include/
+
+# 9. BACnet Stack (Manual build with unique object names to avoid collision)
+RUN git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
+    cd bacnet-stack && \
+    # Compile all .c files in src/bacnet recursively, excluding ports
+    # Use unique names for .o files to avoid collisions from different subdirs
+    # We use sed instead of bash parameter expansion for compatibility
+    find src/bacnet -name "*.c" ! -path "*/ports/*" | while read -r file; do \
+    obj=$(echo "$file" | sed 's/\//_/g').o; \
+    gcc -c -fPIC -DBACDL_BIP=1 -DBACAPP_ALL=ON -DPRINT_ENABLED=1 -Isrc "$file" -o "$obj"; \
+    done && \
+    ar rcs libbacnet.a *.o && \
+    cp libbacnet.a /usr/local/lib/ && \
+    mkdir -p /usr/local/include/bacnet && \
+    cp -r src/bacnet/* /usr/local/include/bacnet/ && \
+    cd .. && rm -rf bacnet-stack
+
 # Build PulseOne Collector
 WORKDIR /app
 COPY core /app/core
@@ -58,6 +88,7 @@ FROM ubuntu:22.04
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     libsqlite3-0 libcurl4 libssl3 uuid-runtime libpaho-mqtt1.3 \
+    libpq5 libmariadb3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -70,7 +101,7 @@ COPY --from=builder /app/core/collector/bin/plugins /app/plugins/
 COPY --from=builder /usr/local/lib/libhiredis.so* /usr/local/lib/
 COPY --from=builder /usr/local/lib/libpaho-mqttpp3.so* /usr/local/lib/
 COPY --from=builder /usr/local/lib/libmodbus.so* /usr/local/lib/
-COPY --from=builder /usr/local/lib/libopen62541.so* /usr/local/lib/ 2>/dev/null || true
+COPY --from=builder /usr/local/lib/libopen62541.so* /usr/local/lib/
 
 RUN ldconfig
 

@@ -32,6 +32,11 @@ PulseOne의 배포는 **"단일 코드베이스(Single Source)"**와 **"완전 �
 - **방식**: `Dockerfile.prod` 또는 플랫폼 기반 빌드 이미지 사용.
 - **심볼**: `PULSEONE_LINUX` 매크로 정의.
 
+### C. Linux Native 배포 (Bare-metal)
+- **도구**: 전용 호스트 기반 빌드 또는 도커화된 리눅스 빌더 사용.
+- **방식**: `deploy-linux.sh`를 통한 패키징 및 Systemd 서비스 등록.
+- **심볼**: `PULSEONE_LINUX` 매크로 정의 (컨테이너와 동일).
+
 ---
 
 ## 3. 조건부 컴파일 가이드 (C++)
@@ -42,7 +47,7 @@ OS별 로직이 필요한 경우 반드시 아래 표준 패턴을 사용한다.
 #ifdef _WIN32
     // Windows 전용 핸들러 (예: WinAPI, WinSW 연동)
 #else
-    // Linux/Container 전용 핸들러 (예: Systemd, Docker Signal)
+    // Linux (Container & Native 공용) 전용 핸들러 (예: Systemd, Docker Signal)
 #endif
 ```
 
@@ -52,21 +57,20 @@ OS별 로직이 필요한 경우 반드시 아래 표준 패턴을 사용한다.
 
 ### A. Windows 바이너리 (Cross-Compile)
 ```bash
-# 빌드용 이미지 생성 (이미 있는 경우 생략)
-docker build -t pulseone-win-builder -f core/collector/Dockerfile.windows .
-
 # 빌드 실행 (collector.exe, export-gateway.exe 생성)
-docker run --rm -v $(pwd):/src pulseone-win-builder /bin/bash -c "
-  cd /src/core/shared && make windows-cross && \
-  cd /src/core/collector && make windows-cross && \
-  cd /src/core/export-gateway && make windows-cross
-"
+./release.sh --windows
 ```
 
-### B. Linux 바이너리 (Prod Build)
+### B. Linux Container (Production Image)
 ```bash
-# 리눅스 전용 빌드 및 패키징
-docker-compose -f docker-compose.prod.yml build --no-cache
+# 리눅스 전용 빌드 및 이미지 생성
+docker-compose -f docker/docker-compose.prod.yml build
+```
+
+### C. Linux Native Package (Systemd)
+```bash
+# 리눅스 네이티브용 패키지(tar) 및 설치 스크립트 생성
+./deploy-linux.sh
 ```
 
 ## 5. 배포 검증 체크리스트

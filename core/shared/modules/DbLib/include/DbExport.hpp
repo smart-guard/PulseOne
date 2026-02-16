@@ -6,6 +6,10 @@
  * @brief DLL/SO export macros for DbLib
  */
 
+#if defined(PULSEONE_STATIC) && !defined(DBLIB_STATIC)
+#define DBLIB_STATIC
+#endif
+
 #if defined(_WIN32) || defined(__CYGWIN__)
 #ifdef DBLIB_STATIC
 #define DBLIB_API
