@@ -7,6 +7,7 @@ const BaseService = require('./BaseService');
 const RepositoryFactory = require('../database/repositories/RepositoryFactory');
 const CrossPlatformManager = require('./crossPlatformManager');
 const MonitoringService = require('./MonitoringService');
+const redisClient = require('../connection/redis');
 
 class DashboardService extends BaseService {
     constructor() {
@@ -130,38 +131,67 @@ class DashboardService extends BaseService {
                 };
             }));
 
-            // 1c. 활성 상태 보정 (Local Process OR DB Heartbeat)
-            // 엣지 서버 및 Export 게이트웨이의 경우 로컬 프로세스 감지가 안 될 수 있으므로(Docker/Remote), last_seen을 함께 확인
+            // 1c. 활성 상태 보정 (Local Process OR DB Heartbeat OR Redis Heartbeat)
+            const redis = await redisClient.getRedisClient();
             const now = new Date();
-            const finalizedCollectors = collectorsWithDevices.map(collector => {
+            const finalizedCollectors = await Promise.all(collectorsWithDevices.map(async (collector) => {
                 const es = edgeServers.find(s => s.id === collector.collectorId);
                 let status = collector.status;
 
+                // 1. Redis 실시간 하트비트 확인 (가장 정확)
+                if (redis && collector.collectorId) {
+                    const redisKey = `collector:status:${collector.collectorId}`;
+                    const liveData = await redis.get(redisKey);
+                    if (liveData) {
+                        try {
+                            const parsed = JSON.parse(liveData);
+                            if (parsed.status === 'online' || parsed.status === 'running') {
+                                status = 'running';
+                            }
+                        } catch (e) { }
+                    }
+                }
+
+                // 2. DB last_seen 기반 폴백 (2분 내)
                 if (status !== 'running' && es && es.last_seen) {
                     const lastSeen = new Date(es.last_seen);
                     const diff = (now - lastSeen) / 1000;
-                    if (diff < 120) { // 2분
+                    if (diff < 120) {
                         status = 'running';
                     }
                 }
 
                 return { ...collector, status };
-            });
+            }));
 
-            const finalizedGateways = mergedGateways.map(gateway => {
+            const finalizedGateways = await Promise.all(mergedGateways.map(async (gateway) => {
                 const gw = exportGateways.find(s => s.id === gateway.gatewayId);
                 let status = gateway.status;
+
+                // 1. Redis 실시간 하트비트 확인
+                if (redis && gateway.gatewayId) {
+                    const redisKey = `gateway:status:${gateway.gatewayId}`;
+                    const liveData = await redis.get(redisKey);
+                    if (liveData) {
+                        try {
+                            const parsed = JSON.parse(liveData);
+                            if (parsed.status === 'online' || parsed.status === 'running') {
+                                status = 'running';
+                            }
+                        } catch (e) { }
+                    }
+                }
 
                 if (status !== 'running' && gw && gw.last_seen) {
                     const lastSeen = new Date(gw.last_seen);
                     const diff = (now - lastSeen) / 1000;
-                    if (diff < 120) { // 2분
+                    if (diff < 120) {
                         status = 'running';
                     }
                 }
 
                 return { ...gateway, status };
-            });
+            }));
 
             // 1d. 계층형 그룹화 (Site -> Collector -> Device)
             const allSitesResult = await this.siteRepo.findAll(tenantId).catch(() => ({ items: [] }));

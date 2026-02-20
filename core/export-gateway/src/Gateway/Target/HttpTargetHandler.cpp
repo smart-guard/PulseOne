@@ -207,28 +207,109 @@ std::string HttpTargetHandler::extractUrl(const json &config) const {
   return "";
 }
 
+// ─── Retry helper (shared by all overloads) ──────────────────────────────────
+namespace {
+
+RetryConfig loadRetryConfig(const nlohmann::json &config) {
+  RetryConfig rc;
+  rc.max_attempts = config.value("retry_max_attempts", rc.max_attempts);
+  rc.initial_delay_ms =
+      config.value("retry_initial_delay_ms", rc.initial_delay_ms);
+  rc.max_delay_ms = config.value("retry_max_delay_ms", rc.max_delay_ms);
+  rc.backoff_multiplier =
+      config.value("retry_backoff_multiplier", rc.backoff_multiplier);
+  return rc;
+}
+
+bool shouldRetry(const PulseOne::Export::TargetSendResult &r) {
+  // Retry on network errors (status 0) or 5xx server errors
+  return !r.success &&
+         (r.status_code == 0 || (r.status_code >= 500 && r.status_code < 600));
+}
+
+} // anonymous namespace
+// ─────────────────────────────────────────────────────────────────────────────
+
 TargetSendResult HttpTargetHandler::executeWithRetry(
     const json &payload, const PulseOne::Gateway::Model::AlarmMessage &alarm,
     const json &config, const std::string &url) {
-  // Retry logic implementation (Simplified for brevity, matches original
-  // pattern)
-  return executeSingleRequest(payload, alarm, config, url);
+  RetryConfig rc = loadRetryConfig(config);
+  TargetSendResult result;
+  uint32_t delay_ms = rc.initial_delay_ms;
+
+  for (int attempt = 1; attempt <= rc.max_attempts; ++attempt) {
+    result = executeSingleRequest(payload, alarm, config, url);
+    if (!shouldRetry(result))
+      break;
+
+    if (attempt < rc.max_attempts) {
+      LogManager::getInstance().Warn(
+          "[RETRY] Alarm send failed (attempt " + std::to_string(attempt) +
+          "/" + std::to_string(rc.max_attempts) +
+          "), HTTP=" + std::to_string(result.status_code) + ". Retrying in " +
+          std::to_string(delay_ms) + "ms...");
+      std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+      delay_ms =
+          std::min(static_cast<uint32_t>(delay_ms * rc.backoff_multiplier),
+                   rc.max_delay_ms);
+    }
+  }
+  return result;
 }
 
 TargetSendResult HttpTargetHandler::executeWithRetry(
     const json &payload, const PulseOne::Gateway::Model::ValueMessage &value,
     const json &config, const std::string &url) {
-  // Retry logic implementation
-  return executeSingleRequest(payload, value, config, url);
+  RetryConfig rc = loadRetryConfig(config);
+  TargetSendResult result;
+  uint32_t delay_ms = rc.initial_delay_ms;
+
+  for (int attempt = 1; attempt <= rc.max_attempts; ++attempt) {
+    result = executeSingleRequest(payload, value, config, url);
+    if (!shouldRetry(result))
+      break;
+
+    if (attempt < rc.max_attempts) {
+      LogManager::getInstance().Warn(
+          "[RETRY] Value send failed (attempt " + std::to_string(attempt) +
+          "/" + std::to_string(rc.max_attempts) +
+          "), HTTP=" + std::to_string(result.status_code) + ". Retrying in " +
+          std::to_string(delay_ms) + "ms...");
+      std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+      delay_ms =
+          std::min(static_cast<uint32_t>(delay_ms * rc.backoff_multiplier),
+                   rc.max_delay_ms);
+    }
+  }
+  return result;
 }
 
 TargetSendResult HttpTargetHandler::executeWithRetry(
     const std::vector<json> &payloads,
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &config, const std::string &url) {
-  // Retry logic implementation (Simplified for brevity, matches original
-  // pattern)
-  return executeSingleRequest(payloads, values, config, url);
+  RetryConfig rc = loadRetryConfig(config);
+  TargetSendResult result;
+  uint32_t delay_ms = rc.initial_delay_ms;
+
+  for (int attempt = 1; attempt <= rc.max_attempts; ++attempt) {
+    result = executeSingleRequest(payloads, values, config, url);
+    if (!shouldRetry(result))
+      break;
+
+    if (attempt < rc.max_attempts) {
+      LogManager::getInstance().Warn(
+          "[RETRY] Batch send failed (attempt " + std::to_string(attempt) +
+          "/" + std::to_string(rc.max_attempts) +
+          "), HTTP=" + std::to_string(result.status_code) + ". Retrying in " +
+          std::to_string(delay_ms) + "ms...");
+      std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+      delay_ms =
+          std::min(static_cast<uint32_t>(delay_ms * rc.backoff_multiplier),
+                   rc.max_delay_ms);
+    }
+  }
+  return result;
 }
 
 TargetSendResult HttpTargetHandler::executeSingleRequest(

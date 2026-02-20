@@ -7,6 +7,7 @@
 #define GATEWAY_SERVICE_I_TARGET_REGISTRY_H
 
 #include "Export/GatewayExportTypes.h"
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -32,6 +33,14 @@ public:
 
   virtual bool loadFromDatabase() = 0;
   virtual bool forceReload() = 0;
+
+  // [v3.2] edge_servers.config target_priorities 기반 허용 타겟 ID + 우선순위
+  // 설정 key=target_id, value=priority(낮을수록 먼저). loadFromDatabase() 호출
+  // 전에 세팅.
+  virtual void setTargetPriorities(const std::map<int, int> &priority_map) {}
+
+  // backward compat
+  virtual void setAllowedTargetIds(const std::set<int> &ids) {}
 
   virtual std::optional<DynamicTarget>
   getTarget(const std::string &name) const = 0;

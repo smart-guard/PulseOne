@@ -889,31 +889,33 @@ class DeviceService extends BaseService {
             await Promise.all(Object.entries(groupedByServer).map(async ([serverId, devices]) => {
                 try {
                     const id = parseInt(serverId);
-                    const workerResult = await this.collectorProxy.getWorkerStatus(id);
+                    // 🚀 [HOTFIX] 콜렉터 응답 지연이 전체 API를 죽이지 않도록 1초 타임아웃 강제 적용
+                    const workerResult = await Promise.race([
+                        this.collectorProxy.getWorkerStatus(id),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Collector status timeout')), 1000))
+                    ]);
 
-                    // 수집기 프록시의 응답 구조 대응: workerResult.data.data.workers 또는 workerResult.data.workers
                     const statuses = (workerResult.data?.data?.workers || workerResult.data?.workers || {});
 
                     devices.forEach(d => {
                         const rawStatus = statuses[d.id.toString()] || { status: 'unknown' };
-
-                        // 수집기 'state' 또는 'status' 필드를 프론트엔드 규격인 'status'로 정규화
                         const rawState = rawStatus.state || rawStatus.status || 'unknown';
                         const status = rawState.toLowerCase();
 
                         d.collector_status = {
                             ...rawStatus,
-                            status: status // 프론트엔드 호환용 (DeviceRow.tsx)
+                            status: status
                         };
 
-                        // 🔥 워커가 동작 중이 아니면 실제 DB 상태와 관계없이 연결 상태도 끊김으로 표시 (논리적 정합성)
                         if (status !== 'running') {
                             d.connection_status = 'disconnected';
                         }
                     });
                 } catch (e) {
-                    this.logger.warn(`Collector [${serverId}] status enrichment failed:`, e.message);
-                    devices.forEach(d => { d.collector_status = { status: 'unknown', error: e.message }; });
+                    this.logger.warn(`⚠️ Collector [${serverId}] status enrichment skipped: ${e.message}`);
+                    devices.forEach(d => {
+                        d.collector_status = { status: 'unknown', error: e.message };
+                    });
                 }
             }));
         } catch (e) {

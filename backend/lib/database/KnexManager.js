@@ -45,54 +45,57 @@ class KnexManager {
      */
     _createKnexConfig(type) {
         switch (type) {
-        case 'sqlite':
-        case 'sqlite3':
-            return {
-                client: 'sqlite3',
-                connection: {
-                    filename: this.configManager.getDatabaseConfig().sqlite.path
-                },
-                useNullAsDefault: true,
-                pool: {
-                    afterCreate: (conn, cb) => {
-                        conn.run('PRAGMA journal_mode = WAL', cb);
+            case 'sqlite':
+            case 'sqlite3':
+                return {
+                    client: 'sqlite3',
+                    connection: {
+                        filename: this.configManager.getDatabaseConfig().sqlite.path
+                    },
+                    useNullAsDefault: true,
+                    pool: {
+                        afterCreate: (conn, cb) => {
+                            conn.run('PRAGMA journal_mode = WAL', (err) => {
+                                if (err) return cb(err);
+                                conn.run('PRAGMA busy_timeout = 5000', cb);
+                            });
+                        }
                     }
-                }
-            };
+                };
 
-        case 'postgresql':
-        case 'postgres':
-            const pg = this.configManager.getDatabaseConfig().postgresql;
-            return {
-                client: 'pg',
-                connection: {
-                    host: pg.host,
-                    port: pg.port,
-                    user: pg.user,
-                    password: pg.password,
-                    database: pg.database,
-                    ssl: pg.ssl ? { rejectUnauthorized: false } : false
-                },
-                pool: { min: pg.poolMin, max: pg.poolMax }
-            };
+            case 'postgresql':
+            case 'postgres':
+                const pg = this.configManager.getDatabaseConfig().postgresql;
+                return {
+                    client: 'pg',
+                    connection: {
+                        host: pg.host,
+                        port: pg.port,
+                        user: pg.user,
+                        password: pg.password,
+                        database: pg.database,
+                        ssl: pg.ssl ? { rejectUnauthorized: false } : false
+                    },
+                    pool: { min: pg.poolMin, max: pg.poolMax }
+                };
 
-        case 'mariadb':
-        case 'mysql':
-            const maria = this.configManager.getDatabaseConfig().mariadb;
-            return {
-                client: 'mysql2',
-                connection: {
-                    host: maria.host,
-                    port: maria.port,
-                    user: maria.user,
-                    password: maria.password,
-                    database: maria.database
-                },
-                pool: { min: 2, max: maria.connectionLimit || 10 }
-            };
+            case 'mariadb':
+            case 'mysql':
+                const maria = this.configManager.getDatabaseConfig().mariadb;
+                return {
+                    client: 'mysql2',
+                    connection: {
+                        host: maria.host,
+                        port: maria.port,
+                        user: maria.user,
+                        password: maria.password,
+                        database: maria.database
+                    },
+                    pool: { min: 2, max: maria.connectionLimit || 10 }
+                };
 
-        default:
-            throw new Error(`Knex는 아직 ${type} 타입을 지원하지 않습니다.`);
+            default:
+                throw new Error(`Knex는 아직 ${type} 타입을 지원하지 않습니다.`);
         }
     }
 

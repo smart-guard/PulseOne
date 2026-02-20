@@ -80,19 +80,23 @@ void SecureString::zeroMemory() {
 // =============================================================================
 
 SecretManager::SecretManager()
-    : config_manager_(nullptr), encryption_mode_(EncryptionMode::XOR),
+    : encryption_mode_(EncryptionMode::XOR),
       encryption_key_(DEFAULT_ENCRYPTION_KEY) {
 
   // 암호화 키 설정 (환경 변수 우선)
   const char *env_key = std::getenv("PULSEONE_SECRET_KEY");
   if (env_key && std::strlen(env_key) > 0) {
     encryption_key_ = env_key;
+    /*
     LOG_SECRET(LogLevel::INFO,
                "SecretManager: 환경 변수에서 암호화 키를 로드했습니다.");
+    */
   } else {
+    /*
     LOG_SECRET(LogLevel::WARN,
                "SecretManager: 기본 암호화 키를 사용 중입니다. 보안을 위해 "
                "PULSEONE_SECRET_KEY 환경 변수를 설정하십시오.");
+    */
   }
 
   // 통계 초기화
@@ -104,7 +108,7 @@ SecretManager::SecretManager()
   stats_.invalid_permissions = 0;
   stats_.last_cleanup = std::chrono::system_clock::now();
 
-  LOG_SECRET(LogLevel::INFO, "SecretManager 초기화됨");
+  // LOG_SECRET(LogLevel::INFO, "SecretManager 초기화됨");
 }
 
 SecretManager::~SecretManager() { secureShutdown(); }
@@ -307,22 +311,11 @@ bool SecretManager::setMultipleSecrets(
   return all_success;
 }
 
-bool SecretManager::setCSPSecrets(const std::string &api_key,
-                                  const std::string &aws_access_key,
-                                  const std::string &aws_secret_key) {
-  std::map<std::string, std::pair<std::string, std::string>> csp_secrets = {
-      {"csp_api_key", {api_key, "CSP_API_KEY_FILE"}},
-      {"aws_access_key", {aws_access_key, "CSP_S3_ACCESS_KEY_FILE"}},
-      {"aws_secret_key", {aws_secret_key, "CSP_S3_SECRET_KEY_FILE"}}};
-
-  return setMultipleSecrets(csp_secrets);
-}
-
 // =============================================================================
 // SSL 인증서 관리
 // =============================================================================
 
-SecretManager::SSLCertificates SecretManager::getSSLCertificates() {
+SSLCertificates SecretManager::getSSLCertificates() {
   SSLCertificates certs;
 
   auto cert_content = getSecret("ssl_cert", "CSP_SSL_CERT_FILE");
@@ -360,7 +353,7 @@ bool SecretManager::setSSLCertificates(const SSLCertificates &certs) {
 // 유효성 검사 및 모니터링
 // =============================================================================
 
-SecretManager::SecretStats SecretManager::getStats() const {
+SecretStats SecretManager::getStats() const {
   std::lock_guard<std::mutex> lock(cache_mutex_);
 
   SecretStats current_stats = stats_;
@@ -514,6 +507,19 @@ bool SecretManager::setEncryptionKey(const std::string &key) {
   return true;
 }
 
+/**
+ * @brief 시크릿 관리자 초기화 (Passive Mode)
+ */
+void SecretManager::initialize(const std::string &secrets_dir,
+                               ExpansionProvider expander) {
+  std::lock_guard<std::mutex> lock(cache_mutex_);
+  _secretsDir = secrets_dir;
+  _expander = expander;
+
+  LOG_SECRET(LogLevel::INFO, "SecretManager: Passive Mode 초기화 완료 (Path: " +
+                                 maskSensitivePath(_secretsDir) + ")");
+}
+
 // =============================================================================
 // 내부 구현 메서드들
 // =============================================================================
@@ -630,30 +636,27 @@ bool SecretManager::writeSecretToFile(const std::string &file_path,
 std::string
 SecretManager::determineSecretFilePath(const std::string &secret_name,
                                        const std::string &config_key) const {
-  if (!config_manager_) {
-    // ConfigManager가 없으면 기본 경로 생성
-    std::string filename = secret_name + ".key";
-    return "./config/secrets/" + filename;
+  // 주입된 설정 사용 (Passive Mode)
+  if (_secretsDir.empty()) {
+    // 초기화 전이거나 데이터 디렉토리가 지정되지 않은 경우
+    LOG_SECRET(LogLevel::DEBUG,
+               "SecretManager: 기본 경로 사용 (" + secret_name + ")");
+    return secret_name + ".secret";
   }
 
-  std::string actual_config_key =
-      config_key.empty() ? secret_name + "_FILE" : config_key;
-
-  // ConfigManager에서 경로 조회
-  std::string config_path =
-      config_manager_->getOrDefault(actual_config_key, "");
-
-  if (!config_path.empty()) {
-    // 변수 확장 적용
-    return config_manager_->expandVariables(config_path);
+  // 1. 변수 확장 수행 (주입된 익스팬더 사용)
+  std::string expanded_key = config_key.empty() ? secret_name : config_key;
+  if (_expander) {
+    // 힌트가 있다면 치환 시도
+    std::string result = _expander(expanded_key);
+    if (!result.empty() &&
+        (result[0] == '/' || (result.length() > 1 && result[1] == ':'))) {
+      return result; // 절대 경로 반환
+    }
   }
 
-  // 기본 경로 생성
-  std::string filename = secret_name;
-  std::transform(filename.begin(), filename.end(), filename.begin(), ::tolower);
-  filename += ".key";
-
-  return Path::Join(config_manager_->getSecretsDirectory(), filename);
+  // 2. 최종 경로 조립
+  return Path::Join(_secretsDir, secret_name + ".secret");
 }
 
 bool SecretManager::isEncryptedContent(const std::string &content) const {

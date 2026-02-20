@@ -39,6 +39,7 @@ namespace PulseOne {
 namespace Gateway {
 namespace Target {
 
+using json = nlohmann::json;
 using TargetSendResult = PulseOne::Export::TargetSendResult;
 
 /**
@@ -54,18 +55,18 @@ public:
 
   // Essential methods
   virtual TargetSendResult
-  sendAlarm(const json &payload,
+  sendAlarm(const nlohmann::json &payload,
             const PulseOne::Gateway::Model::AlarmMessage &alarm,
-            const json &config) = 0;
+            const nlohmann::json &config) = 0;
 
   virtual TargetSendResult
-  sendValue(const json &payload,
+  sendValue(const nlohmann::json &payload,
             const PulseOne::Gateway::Model::ValueMessage &value,
-            const json &config) = 0;
+            const nlohmann::json &config) = 0;
 
-  virtual bool testConnection(const json &config) = 0;
+  virtual bool testConnection(const nlohmann::json &config) = 0;
   virtual std::string getHandlerType() const = 0;
-  virtual bool validateConfig(const json &config,
+  virtual bool validateConfig(const nlohmann::json &config,
                               std::vector<std::string> &errors) = 0;
 
   std::string getTargetName() const override { return target_name_; }
@@ -73,24 +74,24 @@ public:
 
   // Optional file transfer
   virtual TargetSendResult sendFile(const std::string &local_path,
-                                    const json &config) {
+                                    const nlohmann::json &config) {
     TargetSendResult result;
     result.error_message = "File export not supported by this handler";
     return result;
   }
 
-  virtual bool initialize(const json & /* config */) { return true; }
+  virtual bool initialize(const nlohmann::json & /* config */) { return true; }
   virtual void cleanup() {}
 
-  virtual json getStatus() const {
-    return json{{"type", getHandlerType()}, {"status", "active"}};
+  virtual nlohmann::json getStatus() const {
+    return nlohmann::json{{"type", getHandlerType()}, {"status", "active"}};
   }
 
   // Batch methods
   virtual std::vector<TargetSendResult> sendAlarmBatch(
-      const std::vector<json> &payloads,
+      const std::vector<nlohmann::json> &payloads,
       const std::vector<PulseOne::Gateway::Model::AlarmMessage> &alarms,
-      const json &config) {
+      const nlohmann::json &config) {
     std::vector<TargetSendResult> results;
     for (size_t i = 0; i < alarms.size() && i < payloads.size(); ++i) {
       results.push_back(sendAlarm(payloads[i], alarms[i], config));
@@ -99,9 +100,9 @@ public:
   }
 
   virtual std::vector<TargetSendResult> sendValueBatch(
-      const std::vector<json> &payloads,
+      const std::vector<nlohmann::json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
-      const json &config) {
+      const nlohmann::json &config) {
     return {};
   }
 };

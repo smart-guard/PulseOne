@@ -24,6 +24,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
         description: '',
         country: '',
         website: '',
+        logo_url: '',
         is_active: true
     });
     const [saving, setSaving] = useState(false);
@@ -60,6 +61,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                 description: manufacturer.description || '',
                 country: manufacturer.country || '',
                 website: manufacturer.website || '',
+                logo_url: manufacturer.logo_url || '',
                 is_active: manufacturer.is_active
             });
             // 기존 국가명이 리스트에 없으면 직접 입력 모드로 시작
@@ -71,6 +73,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                 description: '',
                 country: '',
                 website: '',
+                logo_url: '',
                 is_active: true
             });
             setIsManualCountry(false);
@@ -269,6 +272,22 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
                                         placeholder="https://..."
                                         disabled={saving}
                                     />
+                                </div>
+                                <div className="mgmt-modal-form-group">
+                                    <label>로고 이미지 URL</label>
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        value={formData.logo_url}
+                                        onChange={e => setFormData({ ...formData, logo_url: e.target.value })}
+                                        placeholder="https://.../logo.png"
+                                        disabled={saving}
+                                    />
+                                    {formData.logo_url && (
+                                        <div className="logo-preview" style={{ marginTop: '8px', textAlign: 'center' }}>
+                                            <img src={formData.logo_url} alt="Logo Preview" style={{ maxHeight: '40px', maxWidth: '100px' }} onError={(e) => (e.currentTarget.style.display = 'none')} />
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="checkbox-group">
                                     <label className="checkbox-label">

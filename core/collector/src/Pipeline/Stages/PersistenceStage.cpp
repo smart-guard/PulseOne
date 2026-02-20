@@ -51,7 +51,8 @@ bool PersistenceStage::Process(PipelineContext &context) {
         alarm_data.rule_id = alarm.rule_id;
         alarm_data.tenant_id = alarm.tenant_id;
         alarm_data.site_id = alarm.site_id; // Added site_id population
-        alarm_data.device_id = context.enriched_message.device_id;
+        alarm_data.device_id =
+            alarm.device_id; // AlarmEngine이 std::to_string(device_id)로 세팅
         alarm_data.point_id = alarm.point_id;
         alarm_data.state = alarm.getStateString();
         alarm_data.severity = alarm.getSeverityString();

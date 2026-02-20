@@ -7,13 +7,9 @@
 #define EXPORT_TARGET_SEND_RESULT_H
 
 #include <chrono>
-#include <nlohmann/json.hpp>
 #include <string>
 
 namespace PulseOne {
-
-using json = nlohmann::json;
-
 namespace Export {
 
 struct TargetSendResult {
@@ -50,20 +46,8 @@ public:
   bool isClientError() const { return status_code >= 400 && status_code < 500; }
   bool isServerError() const { return status_code >= 500 && status_code < 600; }
 
-  json toJson() const {
-    return json{{"success", success},
-                {"error_message", error_message},
-                {"response_time_ms", response_time.count()},
-                {"content_size", content_size},
-                {"retry_count", retry_count},
-                {"target_name", target_name},
-                {"target_type", target_type},
-                {"status_code", status_code},
-                {"response_body", response_body},
-                {"file_path", file_path},
-                {"s3_object_key", s3_object_key},
-                {"mqtt_topic", mqtt_topic}};
-  }
+  // Implementation in GatewayExportTypes.cpp
+  nlohmann::json toJson() const;
 };
 
 } // namespace Export

@@ -742,7 +742,7 @@ bool ExportLogRepository::save(ExportLogEntity &entity) {
         "converted_value",    "status",        "error_message",
         "error_code",         "response_data", "http_status_code",
         "processing_time_ms", "timestamp",     "client_info",
-        "gateway_id",         "sent_payload"};
+        "gateway_id",         "sent_payload",  "tenant_id"};
 
     // ✅ 순서대로 파라미터 치환
     size_t search_pos = 0;
@@ -758,7 +758,7 @@ bool ExportLogRepository::save(ExportLogEntity &entity) {
           if (key == "service_id" || key == "target_id" ||
               key == "mapping_id" || key == "point_id" ||
               key == "http_status_code" || key == "processing_time_ms" ||
-              key == "gateway_id") {
+              key == "gateway_id" || key == "tenant_id") {
             // 정수형: NULL
             replacement = "NULL";
           } else {
@@ -821,7 +821,7 @@ bool ExportLogRepository::update(const ExportLogEntity &entity) {
           if (key == "service_id" || key == "target_id" ||
               key == "mapping_id" || key == "point_id" ||
               key == "http_status_code" || key == "processing_time_ms" ||
-              key == "gateway_id") {
+              key == "gateway_id" || key == "tenant_id") {
             replacement = "NULL";
           } else {
             replacement = "''";
@@ -1630,6 +1630,12 @@ ExportLogEntity ExportLogRepository::mapRowToEntity(
       entity.setPointId(safeStoi(it->second, 0));
     }
 
+    // tenant_id [v3.2.1]
+    it = row.find("tenant_id");
+    if (it != row.end()) {
+      entity.setTenantId(safeStoi(it->second, 0));
+    }
+
     // -----------------------------------------------------------------
     // 4. 데이터 필드 (텍스트)
     // -----------------------------------------------------------------
@@ -1827,6 +1833,7 @@ ExportLogRepository::entityToParams(const ExportLogEntity &entity) {
   params["timestamp"] = oss.str();
 
   params["client_info"] = entity.getClientInfo();
+  params["tenant_id"] = std::to_string(entity.getTenantId()); // [v3.2.1]
 
   params["gateway_id"] =
       entity.getGatewayId() > 0 ? std::to_string(entity.getGatewayId()) : "";

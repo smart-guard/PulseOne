@@ -6,6 +6,14 @@
 const BaseRepository = require('./BaseRepository');
 const AlarmQueries = require('../queries/AlarmQueries');
 
+// KST(UTC+9) 기준 로컬 datetime 문자열 반환 (Collector와 timezone 통일)
+// Collector(C++)는 localtime으로 occurrence_time 저장 → Backend도 KST로 맞춤
+function nowKST() {
+    const now = new Date();
+    const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    return kst.toISOString().replace('T', ' ').substring(0, 19);
+}
+
 class AlarmOccurrenceRepository extends BaseRepository {
     constructor() {
         // ProtocolRepository와 동일한 패턴: 매개변수 없는 생성자
@@ -642,11 +650,11 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .where('id', id)
                 .where('tenant_id', tenantId || 1)
                 .update({
-                    acknowledged_time: this.knex.fn.now(),
+                    acknowledged_time: nowKST(),
                     acknowledged_by: userId,
                     acknowledge_comment: comment,
                     state: 'acknowledged',
-                    updated_at: this.knex.fn.now()
+                    updated_at: nowKST()
                 });
 
             if (result > 0) {
@@ -670,11 +678,11 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .whereIn('id', ids)
                 .where('tenant_id', tenantId || 1)
                 .update({
-                    acknowledged_time: this.knex.fn.now(),
+                    acknowledged_time: nowKST(),
                     acknowledged_by: userId,
                     acknowledge_comment: comment,
                     state: 'acknowledged',
-                    updated_at: this.knex.fn.now()
+                    updated_at: nowKST()
                 });
 
             this.logger?.info(`✅ ${result} Alarms acknowledged bulk`);
@@ -695,11 +703,11 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .whereNull('acknowledged_time')
                 .whereIn('state', ['active', 'ACTIVE'])
                 .update({
-                    acknowledged_time: this.knex.fn.now(),
+                    acknowledged_time: nowKST(),
                     acknowledged_by: userId,
                     acknowledge_comment: comment,
                     state: 'acknowledged',
-                    updated_at: this.knex.fn.now()
+                    updated_at: nowKST()
                 });
 
             this.logger?.info(`✅ ${result} Alarms acknowledged (All)`);
@@ -719,12 +727,12 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .where('id', id)
                 .where('tenant_id', tenantId || 1)
                 .update({
-                    cleared_time: this.knex.fn.now(),
+                    cleared_time: nowKST(),
                     cleared_value: clearedValue ? JSON.stringify(clearedValue) : null,
                     clear_comment: comment,
                     cleared_by: userId,
                     state: 'cleared',
-                    updated_at: this.knex.fn.now()
+                    updated_at: nowKST()
                 });
 
             if (result > 0) {
@@ -748,12 +756,12 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .whereIn('id', ids)
                 .where('tenant_id', tenantId || 1)
                 .update({
-                    cleared_time: this.knex.fn.now(),
+                    cleared_time: nowKST(),
                     cleared_value: clearedValue ? JSON.stringify(clearedValue) : null,
                     clear_comment: comment,
                     cleared_by: userId,
                     state: 'cleared',
-                    updated_at: this.knex.fn.now()
+                    updated_at: nowKST()
                 });
 
             this.logger?.info(`✅ ${result} Alarms cleared bulk`);
@@ -773,12 +781,12 @@ class AlarmOccurrenceRepository extends BaseRepository {
                 .where('tenant_id', tenantId || 1)
                 .whereIn('state', ['acknowledged', 'ACKNOWLEDGED'])
                 .update({
-                    cleared_time: this.knex.fn.now(),
+                    cleared_time: nowKST(),
                     cleared_value: clearedValue ? JSON.stringify(clearedValue) : null,
                     clear_comment: comment,
                     cleared_by: userId,
                     state: 'cleared',
-                    updated_at: this.knex.fn.now()
+                    updated_at: nowKST()
                 });
 
             this.logger?.info(`✅ ${result} Alarms cleared (All)`);

@@ -22,6 +22,7 @@ namespace Service {
 class GatewayContext {
 private:
   int gateway_id_{0};
+  int tenant_id_{0}; // [v3.2.1] Tenant identity for proper log isolation
   std::unique_ptr<RedisClient> redis_client_;
   std::unique_ptr<ITargetRegistry> registry_;
   std::unique_ptr<ITargetRunner> runner_;
@@ -34,6 +35,8 @@ public:
         registry_(std::move(registry)), runner_(std::move(runner)) {}
 
   int getGatewayId() const { return gateway_id_; }
+  int getTenantId() const { return tenant_id_; }
+  void setTenantId(int tenant_id) { tenant_id_ = tenant_id; }
   RedisClient *getRedisClient() const { return redis_client_.get(); }
   ITargetRegistry &getRegistry() const { return *registry_; }
   ITargetRunner &getRunner() const { return *runner_; }

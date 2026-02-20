@@ -6,10 +6,11 @@
 #ifndef GATEWAY_SERVICE_GATEWAY_SERVICE_H
 #define GATEWAY_SERVICE_GATEWAY_SERVICE_H
 
-#include "Event/EventSubscriber.h"
+#include "Event/GatewayEventSubscriber.h"
 #include "Gateway/Service/EventDispatcher.h"
 #include "Gateway/Service/GatewayContext.h"
 #include "Gateway/Service/HeartbeatService.h"
+#include "Gateway/Service/TargetRunner.h"
 #include <atomic>
 #include <memory>
 
@@ -25,7 +26,7 @@ private:
   std::unique_ptr<GatewayContext> context_;
   std::unique_ptr<HeartbeatService> heartbeat_service_;
   std::unique_ptr<EventDispatcher> event_dispatcher_;
-  std::unique_ptr<PulseOne::Event::EventSubscriber> event_subscriber_;
+  std::unique_ptr<PulseOne::Event::GatewayEventSubscriber> event_subscriber_;
 
   std::atomic<bool> is_running_{false};
 

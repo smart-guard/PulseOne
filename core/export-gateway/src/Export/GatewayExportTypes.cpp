@@ -685,5 +685,77 @@ std::string sanitizeFileName(const std::string &filename) {
  */
 std::string getCurrentTimestamp() { return getCurrentTimestamp("filename"); }
 
+// =============================================================================
+// TargetSendResult::toJson() - moved from TargetSendResult.h
+// =============================================================================
+nlohmann::json TargetSendResult::toJson() const {
+  return nlohmann::json{{"success", success},
+                        {"error_message", error_message},
+                        {"response_time_ms", response_time.count()},
+                        {"content_size", content_size},
+                        {"retry_count", retry_count},
+                        {"target_name", target_name},
+                        {"target_type", target_type},
+                        {"status_code", status_code},
+                        {"response_body", response_body},
+                        {"file_path", file_path},
+                        {"s3_object_key", s3_object_key},
+                        {"mqtt_topic", mqtt_topic}};
+}
+
+// =============================================================================
+// FailureProtectorStats::toJson() - moved from FailureProtectorTypes.h
+// =============================================================================
+nlohmann::json FailureProtectorStats::toJson() const {
+  return nlohmann::json{{"target_name", target_name},
+                        {"current_state", current_state},
+                        {"failure_count", failure_count},
+                        {"success_count", success_count},
+                        {"total_attempts", total_attempts},
+                        {"total_successes", total_successes},
+                        {"total_failures", total_failures},
+                        {"half_open_attempts", half_open_attempts},
+                        {"success_rate", success_rate},
+                        {"state_duration_ms", state_duration_ms}};
+}
+
+} // namespace Export
+} // namespace PulseOne
+// =============================================================================
+// DynamicTarget::toJson() - moved from GatewayExportTypes.h
+// =============================================================================
+namespace PulseOne {
+namespace Export {
+
+nlohmann::json DynamicTarget::toJson() const {
+  return nlohmann::json{{"id", id},
+                        {"name", name},
+                        {"type", type},
+                        {"config", config},
+                        {"enabled", enabled},
+                        {"is_active", is_active},
+                        {"priority", priority},
+                        {"execution_order", execution_order},
+                        {"execution_delay_ms", execution_delay_ms},
+                        {"description", description}};
+}
+
+// =============================================================================
+// BatchTargetResult::toJson() - moved from GatewayExportTypes.h
+// =============================================================================
+nlohmann::json BatchTargetResult::toJson() const {
+  nlohmann::json j_results = nlohmann::json::array();
+  for (const auto &r : results) {
+    j_results.push_back(r.toJson());
+  }
+  return nlohmann::json{{"success", success},
+                        {"total_count", total_count},
+                        {"success_count", success_count},
+                        {"failure_count", failure_count},
+                        {"last_error", last_error},
+                        {"total_time_ms", total_time.count()},
+                        {"results", j_results}};
+}
+
 } // namespace Export
 } // namespace PulseOne

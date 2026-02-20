@@ -82,6 +82,15 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
                     </button>
                 </div>
             </div>
+            <div className="mgmt-modal-form-group">
+                <label>모델 번호</label>
+                <input
+                    className="mgmt-input"
+                    value={formData.model_number || ''}
+                    onChange={e => setFormData({ ...formData, model_number: e.target.value })}
+                    placeholder="예: ACS880-01-045A-4"
+                />
+            </div>
             <div className="mgmt-modal-form-group mgmt-span-full">
                 <label>참조 매뉴얼 URL</label>
                 <input

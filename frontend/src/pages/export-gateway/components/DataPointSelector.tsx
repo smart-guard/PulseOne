@@ -4,13 +4,14 @@ import exportGatewayApi, { DataPoint } from '../../../api/services/exportGateway
 import { DeviceApiService, Device } from '../../../api/services/deviceApi';
 
 interface DataPointSelectorProps {
+    siteId?: number | null;
     selectedPoints: any[];
     onSelect: (point: any) => void;
     onAddAll?: (points: any[]) => void;
     onRemove: (pointId: number) => void;
 }
 
-const DataPointSelector: React.FC<DataPointSelectorProps> = ({ selectedPoints, onSelect, onAddAll, onRemove }) => {
+const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedPoints, onSelect, onAddAll, onRemove }) => {
     const [allPoints, setAllPoints] = useState<DataPoint[]>([]);
     const [devices, setDevices] = useState<Device[]>([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState<number | undefined>();
@@ -24,7 +25,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ selectedPoints, o
             console.log('--- [DataPointSelector] Fetching devices START ---');
             try {
                 // 1. Try standard Service call
-                const res = await DeviceApiService.getDevices({ limit: 1000 });
+                const res = await DeviceApiService.getDevices({ limit: 1000, siteId });
                 let items: Device[] = [];
                 if (res && res.success) {
                     const rawData: any = res.data;
@@ -55,7 +56,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ selectedPoints, o
             }
         };
         fetchDevices();
-    }, []);
+    }, [siteId]);
 
     // Debounce search term
     useEffect(() => {
@@ -67,10 +68,10 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ selectedPoints, o
 
     // Generic fetch function so it can be called on mount and on updates
     const fetchPoints = useCallback(async (search: string = debouncedSearch, deviceId?: number) => {
-        console.log('--- [DataPointSelector] Fetching points with:', { search, deviceId });
+        console.log('--- [DataPointSelector] Fetching points with:', { search, deviceId, siteId });
         setLoading(true);
         try {
-            const result = await exportGatewayApi.getDataPoints(search, deviceId);
+            const result = await exportGatewayApi.getDataPoints(search, deviceId, siteId);
             // Since result is now DataPoint[] or {items: [] } depending on my last edit attempt
             // I standardized exportGatewayApi.getDataPoints to return items object
             let points: DataPoint[] = [];

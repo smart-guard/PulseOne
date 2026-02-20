@@ -8,13 +8,9 @@
 #ifndef GATEWAY_MODEL_VALUE_MESSAGE_H
 #define GATEWAY_MODEL_VALUE_MESSAGE_H
 
-#include <nlohmann/json.hpp>
 #include <string>
 
 namespace PulseOne {
-
-using json = nlohmann::json;
-
 namespace Gateway {
 namespace Model {
 
@@ -30,30 +26,12 @@ struct ValueMessage {
   int status_code = 0;
   std::string data_type = "dbl";
 
-  json extra_info;
+  nlohmann::json extra_info; // default object; set in constructor
 
-  json to_json() const {
-    // [v3.2.1] Engine Standard Format (Tokens for Templates)
-    json j = json{
-        {"bd", site_id},
-        {"nm", point_name},
-        {"vl", measured_value},
-        {"tm", timestamp},
-        {"st", status_code},
-        {"ty", data_type},
-        {"point_id", point_id},
-        {"is_control", (data_type == "bit" || data_type == "bool") ? 1 : 0}};
+  ValueMessage(); // defined in ValueMessage.cpp (initializes extra_info)
 
-    // Metadata Harvesting (mi, mx, il, xl 등)
-    if (!extra_info.is_null() && extra_info.is_object()) {
-      for (auto it = extra_info.begin(); it != extra_info.end(); ++it) {
-        if (!j.contains(it.key())) {
-          j[it.key()] = it.value();
-        }
-      }
-    }
-    return j;
-  }
+  // Implementation in ValueMessage.cpp
+  nlohmann::json to_json() const;
 };
 
 } // namespace Model

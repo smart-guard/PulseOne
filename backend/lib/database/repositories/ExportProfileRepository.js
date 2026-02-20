@@ -11,13 +11,15 @@ class ExportProfileRepository extends BaseRepository {
 
     /**
      * 전체 프로파일 조회
+     * @param {number} [tenantId] 테넌트 ID (null인 경우 전체 조회 - Admin용)
      */
-    /**
-     * 전체 프로파일 조회
-     */
-    async findAll() {
+    async findAll(tenantId = null) {
         try {
-            const results = await this.query().orderBy('name', 'ASC');
+            const query = this.query();
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
+            const results = await query.orderBy('name', 'ASC');
             return results.map(item => this._parseItem(item));
         } catch (error) {
             this.logger.error('ExportProfileRepository.findAll 오류:', error);
@@ -27,10 +29,16 @@ class ExportProfileRepository extends BaseRepository {
 
     /**
      * ID로 프로파일 조회
+     * @param {number} id 프로파일 ID
+     * @param {number} [tenantId] 테넌트 ID
      */
-    async findById(id) {
+    async findById(id, tenantId = null) {
         try {
-            const item = await this.query().where('id', id).first();
+            const query = this.query().where('id', id);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
+            const item = await query.first();
             return this._parseItem(item);
         } catch (error) {
             this.logger.error('ExportProfileRepository.findById 오류:', error);
@@ -41,19 +49,23 @@ class ExportProfileRepository extends BaseRepository {
     /**
      * 이름으로 프로파일 찾기
      */
-    async findByName(name) {
-        return await this.query()
-            .where({ name })
-            .first();
+    async findByName(name, tenantId = null) {
+        const query = this.query().where({ name });
+        if (tenantId) {
+            query.where('tenant_id', tenantId);
+        }
+        return await query.first();
     }
 
     /**
      * 활성화된 프로파일 조회
      */
-    async findActive() {
-        const results = await this.query()
-            .where({ is_enabled: 1 })
-            .orderBy('name', 'ASC');
+    async findActive(tenantId = null) {
+        const query = this.query().where({ is_enabled: 1 });
+        if (tenantId) {
+            query.where('tenant_id', tenantId);
+        }
+        const results = await query.orderBy('name', 'ASC');
         return results.map(item => this._parseItem(item));
     }
 
@@ -75,9 +87,14 @@ class ExportProfileRepository extends BaseRepository {
     /**
      * 프로파일 생성
      */
-    async save(data) {
+    async save(data, tenantId) {
+        if (!tenantId && !data.tenant_id) {
+            throw new Error('tenant_id is required for ExportProfile');
+        }
+
         try {
             const dataToInsert = {
+                tenant_id: tenantId || data.tenant_id,
                 name: data.name,
                 description: data.description || '',
                 data_points: typeof data.data_points === 'object' ? JSON.stringify(data.data_points) : (data.data_points || '[]'),
@@ -87,7 +104,7 @@ class ExportProfileRepository extends BaseRepository {
             };
 
             const [id] = await this.knex(this.tableName).insert(dataToInsert);
-            return await this.findById(id);
+            return await this.findById(id, tenantId || data.tenant_id);
         } catch (error) {
             this.logger.error('ExportProfileRepository.save 오류:', error);
             throw error;
@@ -115,9 +132,12 @@ class ExportProfileRepository extends BaseRepository {
             });
 
             const query = this.query().where('id', id);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
 
             const affected = await query.update(dataToUpdate);
-            return affected > 0 ? await this.findById(id) : null;
+            return affected > 0 ? await this.findById(id, tenantId) : null;
         } catch (error) {
             this.logger.error('ExportProfileRepository.update 오류:', error);
             throw error;
@@ -127,9 +147,12 @@ class ExportProfileRepository extends BaseRepository {
     /**
      * 프로파일 삭제
      */
-    async deleteById(id) {
+    async deleteById(id, tenantId = null) {
         try {
             const query = this.query().where('id', id);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
 
             const affected = await query.delete();
             return affected > 0;

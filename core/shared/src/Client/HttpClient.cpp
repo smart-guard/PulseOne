@@ -127,6 +127,36 @@ void HttpClient::initializeHttpLibrary() {
     curl_handle_ = curl_easy_init();
     if (curl_handle_) {
       library_type_ = HttpLibraryType::CURL;
+
+#ifdef _WIN32
+      // Wine/Windows: WinSSL(Schannel)은 Wine에서 완전히 지원되지 않습니다.
+      // Linux CA 인증서 번들을 명시적으로 지정하거나 검증을 비활성화합니다.
+      const char *ca_bundle_paths[] = {
+          "/etc/ssl/certs/ca-certificates.crt", // Debian/Ubuntu
+          "/etc/pki/tls/certs/ca-bundle.crt",   // RHEL/CentOS
+          "/etc/ssl/cert.pem",                  // Alpine
+          nullptr};
+      bool ca_found = false;
+      for (int i = 0; ca_bundle_paths[i] != nullptr; ++i) {
+        FILE *f = fopen(ca_bundle_paths[i], "r");
+        if (f) {
+          fclose(f);
+          curl_easy_setopt(curl_handle_, CURLOPT_CAINFO, ca_bundle_paths[i]);
+          LOG_DEBUG("[WIN32] Using CA bundle: " +
+                    std::string(ca_bundle_paths[i]));
+          ca_found = true;
+          break;
+        }
+      }
+      if (!ca_found) {
+        // CA 번들을 찾지 못하면 SSL 검증 비활성화 (Wine 환경)
+        curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYHOST, 0L);
+        LOG_DEBUG("[WIN32] CA bundle not found - SSL verification disabled for "
+                  "Wine compatibility");
+      }
+#endif
+
       LOG_DEBUG("HttpClient initialized with curl successfully");
       return;
     } else {
@@ -344,6 +374,12 @@ HttpResponse HttpClient::executeWithCurl(
       curl_easy_setopt(curl_handle_, CURLOPT_SSL_VERIFYHOST, 0L);
       LOG_DEBUG("  SSL verification disabled");
     }
+#ifdef _WIN32
+    else {
+      // WIN32: curl이 CAINFO를 초기화 시 이미 설정했으므로 여기서는 재확인만
+      LOG_DEBUG("  WIN32 SSL: using pre-configured CA bundle or Wine fallback");
+    }
+#endif
 
     curl_easy_setopt(curl_handle_, CURLOPT_VERBOSE, 1L);
     LOG_DEBUG("HttpClient::executeCurlRequest - Content-Type argument: [" +

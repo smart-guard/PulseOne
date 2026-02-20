@@ -1,0 +1,71 @@
+version: "3.8"
+
+services:
+  simulator-modbus:
+    container_name: pulseone-win-sim-modbus
+    image: node:20-slim
+    working_dir: /app/backend
+    environment:
+      - MODBUS_PORT=50502
+      - TZ=Asia/Seoul
+    volumes:
+      - ../backend:/app/backend
+    command: node scripts/modbus_simulator.js
+    ports:
+      - "50502:50502"
+    networks:
+      - shared_network
+
+  win-collector:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.win-verify
+    container_name: pulseone-win-collector
+    platform: linux/amd64
+    environment:
+      - PULSEONE_CONFIG_DIR=Z:/app/config
+      - PULSEONE_DATA_DIR=Z:/app/data
+      - SQLITE_PATH=Z:/app/data/db/pulseone.db
+      - REDIS_HOST=redis
+      - LOG_LEVEL=debug
+      - TZ=KST-9
+    volumes:
+      - ../bin-windows:/app/bin-windows
+      - ../config:/app/config
+      - ../data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - shared_network
+    depends_on:
+      - simulator-modbus
+    command: wine64 bin-windows/collector.exe --id 1
+
+  win-gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.win-verify
+    container_name: pulseone-win-gateway
+    platform: linux/amd64
+    environment:
+      - PULSEONE_CONFIG_DIR=Z:/app/config
+      - PULSEONE_DATA_DIR=Z:/app/data
+      - SQLITE_PATH=Z:/app/data/db/pulseone.db
+      - REDIS_HOST=redis
+      - TZ=KST-9
+    volumes:
+      - ../bin-windows:/app/bin-windows
+      - ../config:/app/config
+      - ../data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - shared_network
+    depends_on:
+      - win-collector
+    command: wine64 bin-windows/export-gateway.exe --id 6
+
+networks:
+  shared_network:
+    name: docker_default
+    external: true

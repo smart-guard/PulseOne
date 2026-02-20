@@ -66,6 +66,8 @@ services:
       - ../core:/app/core
       - ../data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
+    user: root
+    command: /bin/bash -c "chmod 666 /var/run/docker.sock && su node -c 'nodemon --inspect=0.0.0.0:9229 app.js'"
     networks:
       - pulseone_network
 
@@ -198,7 +200,6 @@ services:
       - ../config:/app/config
       - ../data:/app/data
       - ../logs:/app/logs
-      - shared_libs:/app/core/shared/lib
     command: /bin/bash -c "chmod +x core/export-gateway/bin/export-gateway && chmod +x core/export-gateway/scripts/gateway_launcher.sh && ./core/export-gateway/scripts/gateway_launcher.sh"
     deploy:
       resources:

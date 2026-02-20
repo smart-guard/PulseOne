@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Steps, Form, Input, Row, Col, Radio, Select, Checkbox, Button, Divider, Space, InputNumber, Tag } from 'antd';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
+import { apiClient } from '../../../api/client';
 import exportGatewayApi, { Gateway, Assignment, ExportTarget, ExportProfile, PayloadTemplate, DataPoint, ExportTargetMapping, ExportSchedule } from '../../../api/services/exportGatewayApi';
 import DataPointSelector from '../components/DataPointSelector';
 
@@ -106,12 +107,60 @@ interface ExportGatewayWizardProps {
     assignments?: Assignment[];
     schedules?: ExportSchedule[];
     onDelete?: (gateway: Gateway) => Promise<void>; // [NEW] Delete handler for edit mode
+    siteId?: number | null; // [NEW] Site context
+    tenantId?: number | null; // [NEW] Tenant context
 }
 
-const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onClose, onSuccess, profiles, targets, templates, allPoints, editingGateway, assignments = [], schedules = [], onDelete }) => {
+const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onClose, onSuccess, profiles, targets, templates, allPoints, editingGateway, assignments = [], schedules = [], onDelete, siteId, tenantId }) => {
     const { confirm } = useConfirmContext();
     const [currentStep, setCurrentStep] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(true); // Forced true for dev convenience
+    const [tenants, setTenants] = useState<any[]>([]);
+    const [sites, setSites] = useState<any[]>([]);
+    const [wizardTenantId, setWizardTenantId] = useState<number | null>(tenantId || null);
+    const [wizardSiteId, setWizardSiteId] = useState<number | null>(siteId || null);
+
+    useEffect(() => {
+        setIsAdmin(true);
+        fetchTenants();
+    }, []);
+
+    useEffect(() => {
+        setWizardTenantId(tenantId || null);
+    }, [tenantId]);
+
+    useEffect(() => {
+        setWizardSiteId(siteId || null);
+    }, [siteId]);
+
+    useEffect(() => {
+        if (visible && wizardTenantId) {
+            fetchSites(wizardTenantId);
+        }
+    }, [visible, wizardTenantId]);
+
+    const fetchTenants = async () => {
+        try {
+            const res = await apiClient.get<any>('/api/tenants');
+            if (res.success && res.data) {
+                setTenants(res.data.items || []);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const fetchSites = async (tId: number) => {
+        try {
+            const res = await apiClient.get<any>('/api/sites', { tenantId: tId, limit: 100 });
+            if (res.success && res.data) {
+                setSites(res.data.items || []);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    };
 
     // Track previous states to prevent redundant resets during polling
     const prevVisibleRef = React.useRef(visible);
@@ -218,6 +267,14 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             return changed ? next : prev;
         });
     }, [selectedTargetIds, targets, editingGateway]);
+
+    // [FIX] Auto-sync targetMode tab: when entering Step 4 or when selectedTargetIds changes,
+    // auto-select '기존 타겟 연결' if targets exist, '새 타겟 생성' if empty.
+    useEffect(() => {
+        if (currentStep === 3) {
+            setTargetMode(selectedTargetIds.length > 0 ? 'existing' : 'new');
+        }
+    }, [currentStep, selectedTargetIds]);
 
 
     const [mappings, setMappings] = useState<Partial<ExportTargetMapping>[]>([]);
@@ -372,6 +429,17 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             config: editingGateway.config || {}
         });
 
+        // [FIX] Hydrate Tenant and Site Context (v3.2.2)
+        if (editingGateway.tenant_id) {
+            setWizardTenantId(editingGateway.tenant_id);
+            fetchTenants(); // Ensure list is loaded
+            fetchSites(editingGateway.tenant_id); // Load sites for this tenant
+        }
+
+        if (editingGateway.site_id) {
+            setWizardSiteId(editingGateway.site_id);
+        }
+
         // Profile & Targets
         // Profile & Targets - Pick the LATEST assignment if multiple exist
         const sortedAssignments = [...myAssignments].sort((a, b) => (b.id || 0) - (a.id || 0));
@@ -382,19 +450,22 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
         setProfileMode('existing');
 
         // Mappings Population - Robust Fallback
-        const p = profiles.find(x => x.id === assign.profile_id);
+        const p = profiles.find(x => String(x.id) === String(assign.profile_id));
         if (p && p.data_points) {
             const initialMappings = (p.data_points || []).map((dp: any) => ({
                 point_id: dp.id,
                 site_id: dp.site_id || dp.building_id || 0,
-                target_field_name: dp.name,
+                target_field_name: dp.target_field_name || dp.name,
                 is_enabled: true,
-                conversion_config: { scale: 1, offset: 0 }
+                conversion_config: {
+                    scale: dp.scale !== undefined ? dp.scale : 1,
+                    offset: dp.offset !== undefined ? dp.offset : 0
+                }
             }));
             setMappings(initialMappings);
         }
 
-        const linkedTargets = targets.filter(t => t.profile_id === assign.profile_id);
+        const linkedTargets = targets.filter(t => String(t.profile_id) === String(assign.profile_id));
         if (linkedTargets.length > 0) {
             setTargetMode('existing');
             setSelectedTargetIds(linkedTargets.map(t => t.id));
@@ -410,14 +481,24 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             // Mappings (Fetch from server if available, overwrite defaults)
             (async () => {
                 try {
-                    const mRes = await exportGatewayApi.getTargetMappings(primaryTarget.id);
-                    if (mRes.success && mRes.data && mRes.data.length > 0) {
-                        setMappings(mRes.data);
+                    const mappingsRes = await exportGatewayApi.getTargetMappings(primaryTarget.id, wizardSiteId, wizardTenantId);
+                    if (mappingsRes.success && mappingsRes.data && mappingsRes.data.length > 0) {
+                        setMappings(mappingsRes.data);
                     }
                 } catch (err) {
                     console.error("Failed to fetch existing mappings", err);
                 }
             })();
+
+            // [NEW] If editing gateway, also pre-populate editingTargets from targets prop
+            // so that if use clicks "Save" without touching Step 3, they still get updated.
+            const initialEditingTargets: Record<number, any[]> = {};
+            targets.forEach(t => {
+                if (t.config) {
+                    initialEditingTargets[t.id] = Array.isArray(t.config) ? t.config : [t.config];
+                }
+            });
+            setEditingTargets(initialEditingTargets);
 
             // Schedule
             const linkedSchedule = schedules.find(s => s.target_id === primaryTarget.id);
@@ -449,9 +530,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 const initialMappings = newProfileData.data_points.map(p => ({
                     point_id: p.id,
                     site_id: p.site_id || p.building_id || 0,
-                    target_field_name: p.name,
+                    target_field_name: p.target_field_name || p.name,
                     is_enabled: true,
-                    conversion_config: { scale: 1, offset: 0 }
+                    conversion_config: {
+                        scale: p.scale !== undefined ? p.scale : 1,
+                        offset: p.offset !== undefined ? p.offset : 0
+                    }
                 }));
                 setMappings(initialMappings);
             }
@@ -465,8 +549,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 const p = profiles.find(x => x.id === selectedProfileId);
                 if (p && p.data_points?.length > 0) {
                     if (isProfileChanged) {
-                        console.log(`[Wizard] Profile changed (${lastMappedProfileIdRef.current} -> ${selectedProfileId}). Resetting targets and regenerating mappings...`);
-                        setSelectedTargetIds([]); // Reset on manual profile change
+                        console.log(`[Wizard] Profile changed (${lastMappedProfileIdRef.current} -> ${selectedProfileId}). Regenerating mappings...`);
                     } else {
                         console.log(`[Wizard] Mappings empty for Profile ${selectedProfileId}. Generating defaults from points...`);
                     }
@@ -474,17 +557,32 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     const initialMappings = (p.data_points || []).map((dp: any) => ({
                         point_id: dp.id,
                         site_id: dp.site_id || dp.building_id || 0,
-                        target_field_name: dp.name,
+                        target_field_name: dp.target_field_name || dp.name,
                         is_enabled: true,
-                        conversion_config: { scale: 1, offset: 0 }
+                        conversion_config: {
+                            scale: dp.scale !== undefined ? dp.scale : 1,
+                            offset: dp.offset !== undefined ? dp.offset : 0
+                        }
                     }));
 
                     setMappings(initialMappings);
                     lastMappedProfileIdRef.current = selectedProfileId;
+
+                    // [NEW] Auto-select targets that belong to this profile
+                    const belongsToProfile = targets
+                        .filter(t => String(t.profile_id) === String(selectedProfileId))
+                        .map(t => t.id);
+                    if (belongsToProfile.length > 0) {
+                        setSelectedTargetIds(belongsToProfile);
+                        setTargetMode('existing');
+                    } else {
+                        // If no targets for this profile, default to 'new' for user convenience
+                        setTargetMode('new');
+                    }
                 }
             }
         }
-    }, [profileMode, newProfileData.data_points, selectedProfileId, profiles]);
+    }, [profileMode, newProfileData.data_points, selectedProfileId, profiles, targets]);
 
 
     const steps = [
@@ -498,6 +596,10 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
     const handleNext = () => {
         // Validation logic
         if (currentStep === 0) {
+            if (!wizardTenantId && !editingGateway) {
+                confirm({ title: '입력 오류', message: '테넌트를 선택해주세요. 새 게이트웨이 등록 시 테넌트는 필수입니다.', showCancelButton: false, confirmButtonType: 'danger' });
+                return;
+            }
             if (!gatewayData.name) { confirm({ title: '입력 오류', message: '게이트웨이 명칭을 입력해주세요.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
         }
         if (currentStep === 1) {
@@ -534,8 +636,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
         try {
             // 1. Create/Update Gateway (Ensure ID exists first)
             if (!gatewayId) {
-                const res = await exportGatewayApi.registerGateway(gatewayData);
+                const res = await exportGatewayApi.registerGateway({ ...gatewayData, site_id: wizardSiteId || undefined, tenant_id: wizardTenantId || undefined }, wizardSiteId, wizardTenantId);
+                if (!res.success) throw new Error(res.message || "게이트웨이 등록 실패");
                 gatewayId = res.data?.id;
+            } else {
+                // [NEW] Update metadata for existing gateway
+                const updateRes = await exportGatewayApi.updateGateway(gatewayId, { ...gatewayData, site_id: wizardSiteId || undefined, tenant_id: wizardTenantId || undefined }, wizardSiteId, wizardTenantId);
+                if (!updateRes.success) throw new Error(updateRes.message || "게이트웨이 정보 수정 실패");
             }
 
             if (!gatewayId) throw new Error("게이트웨이 ID 확보 실패");
@@ -548,8 +655,30 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     description: newProfileData.description,
                     data_points: newProfileData.data_points,
                     is_enabled: true
-                });
+                }, wizardTenantId);
+                if (!pRes.success) throw new Error(pRes.message || "프로파일 생성 실패");
                 profileId = pRes.data?.id;
+            } else if (profileMode === 'existing' && profileId && mappings.length > 0) {
+                // [CORE FIX] Persist mapping edits (target_field_name, site_id, scale, offset) back to the profile's data_points
+                // Without this, edits in Step 2 are displayed but NEVER saved to the profile.
+                const existingProfile = profiles.find(p => p.id === profileId);
+                if (existingProfile && existingProfile.data_points) {
+                    const updatedDataPoints = existingProfile.data_points.map((dp: any) => {
+                        const editedMapping = mappings.find((m: any) => String(m.point_id) === String(dp.id));
+                        if (editedMapping) {
+                            return {
+                                ...dp,
+                                target_field_name: editedMapping.target_field_name ?? dp.target_field_name,
+                                site_id: editedMapping.site_id ?? dp.site_id,
+                                scale: editedMapping.conversion_config?.scale ?? dp.scale ?? 1,
+                                offset: editedMapping.conversion_config?.offset ?? dp.offset ?? 0,
+                            };
+                        }
+                        return dp;
+                    });
+                    const upRes = await exportGatewayApi.updateProfile(profileId, { data_points: updatedDataPoints }, wizardTenantId);
+                    if (!upRes.success) console.warn(`[Wizard] Profile data_points update failed: ${upRes.message}`);
+                }
             }
 
             if (!profileId) throw new Error("프로파일 ID 확보 실패");
@@ -557,28 +686,29 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             // 2. Profile Assignment (Single-Profile Triage)
             if (profileId) {
                 try {
-                    const assignmentsRes = await exportGatewayApi.getAssignments(gatewayId);
-                    if (assignmentsRes.success && Array.isArray(assignmentsRes.data)) {
-                        const oldAssignments = assignmentsRes.data;
-                        // Unassign all BUT the current desired profile
-                        for (const old of oldAssignments) {
-                            if (old.profile_id !== profileId) {
-                                await exportGatewayApi.unassignProfile(gatewayId, old.profile_id);
-                            }
-                        }
+                    const assignmentsRes = await exportGatewayApi.getAssignments(gatewayId, wizardSiteId, wizardTenantId);
+                    const oldAssignments = (assignmentsRes.data as any)?.items || (Array.isArray(assignmentsRes.data) ? assignmentsRes.data : []);
 
-                        // Only assign if it's not already there
-                        const alreadyAssigned = oldAssignments.some(a => a.profile_id === profileId);
-                        if (!alreadyAssigned) {
-                            await exportGatewayApi.assignProfile(gatewayId, profileId);
+                    let currentIsAlreadyAssigned = false;
+                    for (const old of oldAssignments) {
+                        if (String(old.profile_id) === String(profileId)) {
+                            currentIsAlreadyAssigned = true;
+                        } else {
+                            // strictly remove anything else
+                            const unRes = await exportGatewayApi.unassignProfile(gatewayId, old.profile_id, wizardSiteId, wizardTenantId);
+                            if (!unRes.success) console.warn(`Failed to unassign old profile ${old.profile_id}: ${unRes.message}`);
                         }
-                    } else {
-                        // Fallback
-                        await exportGatewayApi.assignProfile(gatewayId, profileId).catch(() => { });
+                    }
+
+                    if (!currentIsAlreadyAssigned) {
+                        const assignRes = await exportGatewayApi.assignProfile(gatewayId, profileId, wizardSiteId, wizardTenantId);
+                        if (!assignRes.success) throw new Error(assignRes.message || "프로파일 할당 실패");
                     }
                 } catch (err) {
                     console.error("Assignment triage failed", err);
-                    await exportGatewayApi.assignProfile(gatewayId, profileId).catch(() => { });
+                    // Fallback to blind assign if everything else fails
+                    const fbRes = await exportGatewayApi.assignProfile(gatewayId, profileId, wizardSiteId, wizardTenantId);
+                    if (!fbRes.success) throw new Error(fbRes.message || "프로파일 최종 할당 실패");
                 }
             }
 
@@ -588,7 +718,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                 const tRes = await exportGatewayApi.createTemplate({
                     ...newTemplateData,
                     is_active: true
-                });
+                }, wizardTenantId);
+                if (!tRes.success) throw new Error(tRes.message || "템플릿 생성 실패");
                 templateId = tRes.data?.id;
             }
 
@@ -597,30 +728,47 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             if (targetMode === 'existing') {
                 finalTargetIds = selectedTargetIds;
 
+                // [NEW] Identify targets to UNLINK (those currently in this profile but NOT selected)
+                const currentProfileTargets = targets.filter(t => String(t.profile_id) === String(profileId));
+                const targetIdsToUnlink = currentProfileTargets
+                    .filter(t => !selectedTargetIds.some(sid => String(sid) === String(t.id)))
+                    .map(t => t.id);
+
+                if (targetIdsToUnlink.length > 0) {
+                    console.log(`[Wizard] Unlinking ${targetIdsToUnlink.length} targets from Profile ${profileId}`);
+                    await Promise.all(targetIdsToUnlink.map(tid =>
+                        exportGatewayApi.updateTarget(tid, { profile_id: 0 }, wizardTenantId)
+                    ));
+                }
+
                 // [FIXED] Update existing targets with ALL fields (profile, template, mode, config)
                 await Promise.all(selectedTargetIds.map(async (tid) => {
-                    const editedConfigs = editingTargets[tid]; // This is an Array
-                    if (editedConfigs && editedConfigs.length > 0) {
-                        try {
-                            // Store priority for gateway map
-                            const priority = editedConfigs[0]?.execution_order || 100;
-                            priorityMap[tid.toString()] = priority;
+                    const editedConfigs = editingTargets[tid]; // Should be populated now
 
-                            await exportGatewayApi.updateTarget(tid, {
-                                profile_id: profileId, // [NEW] Ensure target stays on current profile
-                                config: editedConfigs,
-                                template_id: templateId || undefined,
-                                export_mode: transmissionMode === 'EVENT' ? 'REALTIME' : 'batched'
-                            });
-                        } catch (err) {
-                            console.error(`Failed to update target for ${tid}`, err);
+                    try {
+                        // Store priority for gateway map
+                        const priority = editedConfigs?.[0]?.execution_order || 100;
+                        priorityMap[tid.toString()] = priority;
+
+                        const uRes = await exportGatewayApi.updateTarget(tid, {
+                            profile_id: profileId, // [NEW] Ensure target stays on current profile
+                            config: editedConfigs || [], // Falls back to empty if truly missing
+                            template_id: templateId || undefined,
+                            export_mode: transmissionMode === 'EVENT' ? 'REALTIME' : 'batched'
+                        }, wizardTenantId);
+
+                        if (!uRes.success) {
+                            console.error(`Failed to update target for ${tid}: ${uRes.message}`);
                         }
+                    } catch (err) {
+                        console.error(`Failed to update target for ${tid}`, err);
                     }
 
                     // [NEW] Always save current mappings to selected targets 
                     if (mappings.length > 0) {
                         try {
-                            await exportGatewayApi.saveTargetMappings(tid, mappings);
+                            const mRes = await exportGatewayApi.saveTargetMappings(tid, mappings, wizardSiteId, wizardTenantId);
+                            if (!mRes.success) console.error(`Failed to save mappings for target ${tid}: ${mRes.message}`);
                         } catch (err) {
                             console.error(`Failed to save mappings for target ${tid}`, err);
                         }
@@ -643,7 +791,9 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             config: [cfg], // Save as array of one
                             is_enabled: true,
                             export_mode: transmissionMode === 'EVENT' ? 'REALTIME' : 'batched'
-                        });
+                        }, wizardTenantId);
+
+                        if (!tRes.success) throw new Error(tRes.message || "전송 타겟 생성 실패");
 
                         if (tRes.data?.id) {
                             finalTargetIds.push(tRes.data.id);
@@ -651,7 +801,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             priorityMap[tRes.data.id.toString()] = cfg.execution_order || (cIdx + 1);
                             // Save Mappings
                             if (mappings.length > 0) {
-                                await exportGatewayApi.saveTargetMappings(tRes.data.id, mappings);
+                                const mRes = await exportGatewayApi.saveTargetMappings(tRes.data.id, mappings, wizardSiteId, wizardTenantId);
+                                if (!mRes.success) throw new Error(mRes.message || "매핑 저장 실패");
                             }
                         }
                     }
@@ -669,7 +820,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                         data_range: scheduleData.data_range,
                         lookback_periods: 1,
                         is_enabled: true
-                    });
+                    }, wizardTenantId);
                 }
             }
 
@@ -683,13 +834,19 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             };
 
             // Ensure ID is passed for update
-            await exportGatewayApi.updateGateway(gatewayId, finalGatewayData);
+            await exportGatewayApi.updateGateway(gatewayId, finalGatewayData, wizardSiteId, wizardTenantId);
 
             await confirm({ title: '설정 완료', message: '게이트웨이 및 전송 설정이 완료되었습니다.', showCancelButton: false, confirmButtonType: 'success' });
             onSuccess();
-        } catch (e) {
-            console.error(e);
-            await confirm({ title: '설정 실패', message: '저장 중 오류가 발생했습니다. 로그를 확인해주세요.', showCancelButton: false, confirmButtonType: 'danger' });
+        } catch (e: any) {
+            console.error("GATEWAY_SAVE_ERROR:", e);
+            const errMsg = e?.response?.data?.message || e?.message || '저장 중 오류가 발생했습니다. 로그를 확인해주세요.';
+            await confirm({
+                title: '설정 실패',
+                message: errMsg,
+                showCancelButton: false,
+                confirmButtonType: 'danger'
+            });
         } finally {
             setLoading(false);
         }
@@ -719,19 +876,58 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     {currentStep === 0 && (
                         <div style={{
                             padding: '32px',
+                            paddingBottom: '60px',
                             background: 'white',
                             borderRadius: '12px',
-                            height: '100%',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '24px',
                             boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
-                            border: '1px solid #f0f0f0'
+                            border: '1px solid #f0f0f0',
+                            minHeight: '100%',
+                            alignItems: 'stretch'
                         }}>
                             <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a1a', display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
                                 <i className="fas fa-server" style={{ marginRight: '12px', color: '#1890ff' }} />
                                 게이트웨이 기본 정보 설정
                             </div>
+
+                            {isAdmin && (
+                                <Row gutter={16}>
+                                    <Col span={12}>
+                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>테넌트 선택 (Admin)</div>
+                                        <Select
+                                            style={{ width: '100%' }}
+                                            placeholder="테넌트 선택"
+                                            value={wizardTenantId}
+                                            onChange={(val) => {
+                                                setWizardTenantId(val);
+                                                setWizardSiteId(null);
+                                                fetchSites(val);
+                                            }}
+                                        >
+                                            {tenants.map(t => (
+                                                <Select.Option key={t.id} value={t.id}>{t.company_name}</Select.Option>
+                                            ))}
+                                        </Select>
+                                    </Col>
+                                    <Col span={12}>
+                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>사이트 선택 (Admin)</div>
+                                        <Select
+                                            style={{ width: '100%' }}
+                                            placeholder="사이트 선택"
+                                            value={wizardSiteId}
+                                            onChange={setWizardSiteId}
+                                            disabled={!wizardTenantId}
+                                        >
+                                            <Select.Option value={null}>전체 사이트 (Shared)</Select.Option>
+                                            {sites.map(s => (
+                                                <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
+                                            ))}
+                                        </Select>
+                                    </Col>
+                                </Row>
+                            )}
 
                             <Form layout="vertical">
                                 <Form.Item label="게이트웨이 명칭 (Unique Name)" required tooltip="시스템 내에서 유일한 식별자입니다.">
@@ -1219,7 +1415,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             </Radio.Group>
 
                             {targetMode === 'existing' ? (
-                                <div style={{ padding: '24px', textAlign: 'left', background: 'white', borderRadius: '8px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ padding: '24px', textAlign: 'left', background: 'white', borderRadius: '8px', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
                                     <div style={{ marginBottom: '8px', fontWeight: 600 }}>사용할 타겟 선택 및 수정</div>
                                     <Select
                                         mode="multiple"

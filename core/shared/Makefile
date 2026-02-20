@@ -20,7 +20,8 @@ endif
 CXX ?= g++
 AR ?= ar
 RANLIB ?= ranlib
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -fPIC -DHAS_SHARED_LIBS=1
+CXXFLAGS = -std=c++17 -Wall -Wextra -O0 -fPIC -DHAS_SHARED_LIBS=1
+# 메모리 절약용 --param ggc-min-expand=0 제거 (빌드 속도 저하 주범)
 
 # Windows 크로스 컴파일 지원
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
@@ -43,8 +44,10 @@ endif
 # 디렉토리 설정
 SRC_DIR = src
 INCLUDE_DIR = include
-BUILD_DIR = build
-LIB_DIR = lib
+BUILD_ROOT = build
+BUILD_DIR = $(BUILD_ROOT)/$(PLATFORM)
+LIB_ROOT = lib
+LIB_DIR = $(LIB_ROOT)/$(PLATFORM)
 
 # Include 경로 (Data 추가!)
 INCLUDES = -I$(INCLUDE_DIR) \
@@ -59,6 +62,7 @@ INCLUDES = -I$(INCLUDE_DIR) \
            -I$(INCLUDE_DIR)/Data \
            -I$(INCLUDE_DIR)/Alarm \
            -I$(INCLUDE_DIR)/Logging \
+           -I$(INCLUDE_DIR)/Event \
            -Imodules/LogLib/include \
            -Imodules/DbLib/include \
            -I../collector/include
@@ -149,6 +153,7 @@ DATA_SOURCES = $(wildcard $(SRC_DIR)/Data/*.cpp)
 EXPORT_SOURCES = $(wildcard $(SRC_DIR)/Export/*.cpp)
 
 ALARM_SOURCES = $(wildcard $(SRC_DIR)/Alarm/*.cpp)
+EVENT_SOURCES = $(wildcard $(SRC_DIR)/Event/*.cpp)
 
 # 오브젝트 파일 (src/ 아래 소스들)
 COMMON_OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(filter $(SRC_DIR)/%,$(COMMON_SOURCES))) \
@@ -159,6 +164,7 @@ CLIENT_OBJECTS = $(CLIENT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 DATA_OBJECTS = $(DATA_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 EXPORT_OBJECTS = $(EXPORT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 ALARM_OBJECTS = $(ALARM_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
+EVENT_OBJECTS = $(EVENT_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o)
 DBLIB_OBJECTS = $(patsubst modules/DbLib/src/%.cpp,$(BUILD_DIR)/DbLib/src/%.o,$(DBLIB_SOURCES))
 
 # 라이브러리 파일들 (Data 추가!)
@@ -169,6 +175,7 @@ CLIENT_LIB = $(LIB_DIR)/libpulseone-client$(LIB_SUFFIX)
 DATA_LIB = $(LIB_DIR)/libpulseone-data$(LIB_SUFFIX)
 EXPORT_LIB = $(LIB_DIR)/libpulseone-export$(LIB_SUFFIX)
 ALARM_LIB = $(LIB_DIR)/libpulseone-alarm$(LIB_SUFFIX)
+EVENT_LIB = $(LIB_DIR)/libpulseone-event$(LIB_SUFFIX)
 DBLIB_LIB = $(LIB_DIR)/libpulseone-dblib$(LIB_SUFFIX)
 
 # 색상 정의
@@ -182,9 +189,9 @@ NC = \033[0m
 # 메인 타겟들
 # =============================================================================
 
-.PHONY: all clean common security database client data export alarm dblib test-dblib test-headers help info openssl-check
+.PHONY: all clean common security database client data export alarm event dblib test-dblib test-headers help info openssl-check
 
-all: $(BUILD_DIR) $(LIB_DIR) common security database client data export alarm dblib
+all: $(BUILD_DIR) $(LIB_DIR) common security database client data export alarm event dblib
 	@echo -e "$(GREEN)✅ 모든 공유 라이브러리 빌드 완료 [$(PLATFORM)]$(NC)"
 
 # 디렉토리 생성 (Data 추가!)
@@ -197,6 +204,7 @@ $(BUILD_DIR) $(LIB_DIR):
 	@mkdir -p $(BUILD_DIR)/Data
 	@mkdir -p $(BUILD_DIR)/Export
 	@mkdir -p $(BUILD_DIR)/Alarm
+	@mkdir -p $(BUILD_DIR)/Event
 	@mkdir -p $(BUILD_DIR)/LogLib
 	@mkdir -p $(BUILD_DIR)/DbLib/src
 	@mkdir -p $(BUILD_DIR)/Logging
@@ -299,6 +307,18 @@ ifneq ($(DBLIB_OBJECTS),)
 else
 	@echo '/* Header-only library - dummy object */' > /tmp/dummy.c && $(CXX) -c /tmp/dummy.c -o /tmp/dummy.o
 	@$(AR) rcs $@ /tmp/dummy.o && rm -f /tmp/dummy.c /tmp/dummy.o
+endif
+
+# 🆕 Event 라이브러리 빌드
+event: $(EVENT_LIB)
+$(EVENT_LIB): $(EVENT_OBJECTS) | $(LIB_DIR)
+	@echo -e "$(BLUE)🔧 Building libpulseone-event [$(PLATFORM)]$(NC)"
+ifneq ($(EVENT_OBJECTS),)
+	@$(AR) rcs $@ $(EVENT_OBJECTS)
+	@$(RANLIB) $@
+else
+	@echo '/* Header-only library - dummy object */' > /tmp/dummy_event.c && $(CXX) -c /tmp/dummy_event.c -o /tmp/dummy_event.o
+	@$(AR) rcs $@ /tmp/dummy_event.o && rm -f /tmp/dummy_event.c /tmp/dummy_event.o
 endif
 
 # =============================================================================

@@ -16,6 +16,9 @@
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
 #include "Export/GatewayExportTypes.h"
+#include "Gateway/Model/AlarmMessage.h"
+#include "Gateway/Model/ValueMessage.h"
+#include "Gateway/Service/ITargetRunner.h"
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 
@@ -24,14 +27,16 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
 #include <vector>
 
 namespace PulseOne {
-
-using json = nlohmann::json;
+namespace Gateway {
+namespace Service {
+class TargetRunner;
+}
+} // namespace Gateway
 
 namespace Schedule {
 
@@ -56,19 +61,10 @@ struct ExportDataPoint {
   int64_t timestamp = 0;
   int quality = 0;
   std::string unit;
-  json extra_info;
+  nlohmann::json extra_info;
 
-  json to_json() const {
-    return json::object({{"point_id", point_id},
-                         {"building_id", building_id},
-                         {"point_name", point_name},
-                         {"mapped_name", mapped_name},
-                         {"value", value},
-                         {"timestamp", timestamp},
-                         {"quality", quality},
-                         {"unit", unit},
-                         {"extra_info", extra_info}});
-  }
+  // Implementation in ScheduledExporter.cpp
+  nlohmann::json to_json() const;
 };
 
 struct ScheduleExecutionResult {
@@ -87,16 +83,8 @@ struct ScheduleExecutionResult {
   int failed_points = 0;
   std::chrono::milliseconds execution_time{0};
 
-  json to_json() const {
-    return json{{"schedule_id", schedule_id},
-                {"success", success},
-                {"error_message", error_message},
-                {"data_point_count", data_point_count},
-                {"execution_time_ms", execution_time_ms},
-                {"target_names", target_names},
-                {"successful_targets", successful_targets},
-                {"failed_targets", failed_targets}};
-  }
+  // Implementation in ScheduledExporter.cpp
+  nlohmann::json to_json() const;
 };
 
 class ScheduledExporter {
@@ -114,6 +102,10 @@ public:
   void stop();
   bool isRunning() const { return is_running_.load(); }
 
+  void setTargetRunner(PulseOne::Gateway::Service::ITargetRunner *runner) {
+    target_runner_ = runner;
+  }
+
   ScheduleExecutionResult executeSchedule(int schedule_id);
   int executeAllSchedules();
 
@@ -126,19 +118,19 @@ public:
   std::map<int, std::chrono::system_clock::time_point>
   getUpcomingSchedules() const;
 
-  json getStatistics() const;
+  nlohmann::json getStatistics() const;
   void resetStatistics();
 
   // 실패 데이터 처리 (Persistent Retry) - Public for ExportCoordinator use
-  void
-  saveFailedBatchToFile(const std::string &target_name,
-                        const std::vector<PulseOne::CSP::ValueMessage> &values,
-                        const json &target_config);
+  void saveFailedBatchToFile(
+      const std::string &target_name,
+      const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
+      const nlohmann::json &target_config);
 
   void saveFailedAlarmBatchToFile(
       const std::string &target_name,
-      const std::vector<PulseOne::CSP::AlarmMessage> &alarms,
-      const json &target_config);
+      const std::vector<PulseOne::Gateway::Model::AlarmMessage> &alarms,
+      const nlohmann::json &target_config);
 
   void startRetryThread();
   void stopRetryThread();
@@ -178,9 +170,9 @@ private:
 
   void processFailedExports();
 
-  json
-  transformDataWithTemplate(const json &template_json,
-                            const json &field_mappings,
+  nlohmann::json
+  transformDataWithTemplate(const nlohmann::json &template_json,
+                            const nlohmann::json &field_mappings,
                             const std::vector<ExportDataPoint> &data_points);
 
   std::vector<std::vector<ExportDataPoint>>
@@ -229,6 +221,7 @@ private:
   std::unique_ptr<std::thread> worker_thread_;
   std::atomic<bool> is_running_{false};
   std::atomic<bool> should_stop_{false};
+  PulseOne::Gateway::Service::ITargetRunner *target_runner_ = nullptr;
 
   // 재시도 스레드
   std::unique_ptr<std::thread> retry_thread_;

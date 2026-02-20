@@ -48,8 +48,29 @@ class ProcessService extends BaseService {
         return await this.handleRequest(async () => {
             const isDocker = process.env.DOCKER_CONTAINER === 'true';
 
-            // Docker 환경에서 외부 서비스(DB 등)는 포트 체크로 확인
+            // Docker 환경에서 외부 서비스(DB 등)는 Docker API로 우선 확인
             if (isDocker) {
+                const processes = await crossPlatformManager.getRunningProcesses();
+                const dockerInfo = processes.dockerContainers || [];
+
+                // 서비스 이름 매칭
+                const container = dockerInfo.find(c => {
+                    const names = c.Names.map(n => n.replace(/^\//, '').toLowerCase());
+                    return names.some(name => name.includes(processName.toLowerCase()));
+                });
+
+                if (container) {
+                    const isRunning = container.State === 'running' || container.Status.toLowerCase().includes('up');
+                    return {
+                        name: processName,
+                        status: isRunning ? 'running' : 'stopped',
+                        timestamp: new Date().toISOString(),
+                        checkMethod: 'docker-api',
+                        containerStatus: container.Status
+                    };
+                }
+
+                // Docker API로 찾지 못한 경우 (또는 중지된 경우) TCP 포트 체크로 폴백
                 const ports = {
                     'postgresql': 5432,
                     'influxdb': 8086,

@@ -11,12 +11,16 @@ class ExportTargetMappingRepository extends BaseRepository {
 
     /**
      * 특정 타겟의 모든 매핑 조회
+     * @param {number} targetId 타겟 ID
+     * @param {number} [tenantId] 테넌트 ID
      */
-    async findByTargetId(targetId) {
+    async findByTargetId(targetId, tenantId = null) {
         try {
-            const results = await this.query()
-                .where('target_id', targetId)
-                .orderBy('id', 'ASC');
+            const query = this.query().where('target_id', targetId);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
+            const results = await query.orderBy('id', 'ASC');
             return results.map(item => this._parseItem(item));
         } catch (error) {
             this.logger.error('ExportTargetMappingRepository.findByTargetId 오류:', error);
@@ -27,10 +31,13 @@ class ExportTargetMappingRepository extends BaseRepository {
     /**
      * 특정 포인트의 매핑 조회
      */
-    async findByPointId(pointId) {
+    async findByPointId(pointId, tenantId = null) {
         try {
-            const results = await this.query()
-                .where('point_id', pointId);
+            const query = this.query().where('point_id', pointId);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
+            const results = await query;
             return results.map(item => this._parseItem(item));
         } catch (error) {
             this.logger.error('ExportTargetMappingRepository.findByPointId 오류:', error);
@@ -41,12 +48,17 @@ class ExportTargetMappingRepository extends BaseRepository {
     /**
      * 매핑 생성
      */
-    async save(data) {
+    async save(data, tenantId, siteId = null) {
+        if (!tenantId && !data.tenant_id) {
+            throw new Error('tenant_id is required for ExportTargetMapping');
+        }
+
         try {
             const dataToInsert = {
+                tenant_id: tenantId || data.tenant_id,
                 target_id: data.target_id,
                 point_id: data.point_id,
-                site_id: data.site_id || data.building_id, // [RESTORE] site_id as primary
+                site_id: siteId || data.site_id || data.building_id,
                 target_field_name: data.target_field_name,
                 target_description: data.target_description || '',
                 conversion_config: typeof data.conversion_config === 'object' ? JSON.stringify(data.conversion_config) : (data.conversion_config || '{}'),
@@ -66,7 +78,7 @@ class ExportTargetMappingRepository extends BaseRepository {
     /**
      * 매핑 수정
      */
-    async update(id, data) {
+    async update(id, data, tenantId = null) {
         try {
             const dataToUpdate = {
                 updated_at: this.knex.fn.now()
@@ -83,14 +95,18 @@ class ExportTargetMappingRepository extends BaseRepository {
                 }
             });
 
-            // Handle building_id fallback for site_id if building_id is provided but site_id isn't
             if (data.building_id !== undefined && data.site_id === undefined) {
                 dataToUpdate.site_id = data.building_id;
             }
 
-            const affected = await this.query().where('id', id).update(dataToUpdate);
+            const query = this.query().where('id', id);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
+
+            const affected = await query.update(dataToUpdate);
             if (affected > 0) {
-                const item = await this.query().where('id', id).first();
+                const item = await this.findById(id, tenantId);
                 return this._parseItem(item);
             }
             return null;
@@ -98,6 +114,17 @@ class ExportTargetMappingRepository extends BaseRepository {
             this.logger.error('ExportTargetMappingRepository.update 오류:', error);
             throw error;
         }
+    }
+
+    /**
+     * ID로 조회 (Helper)
+     */
+    async findById(id, tenantId = null) {
+        const query = this.query().where('id', id);
+        if (tenantId) {
+            query.where('tenant_id', tenantId);
+        }
+        return await query.first();
     }
 
     /**
@@ -118,9 +145,16 @@ class ExportTargetMappingRepository extends BaseRepository {
     /**
      * 특정 타겟의 모든 매핑 삭제
      */
-    async deleteByTargetId(targetId) {
+    async deleteByTargetId(targetId, tenantId = null, siteId = null) {
         try {
-            const affected = await this.query().where('target_id', targetId).delete();
+            const query = this.query().where('target_id', targetId);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
+            if (siteId) {
+                query.where('site_id', siteId);
+            }
+            const affected = await query.delete();
             return affected > 0;
         } catch (error) {
             this.logger.error('ExportTargetMappingRepository.deleteByTargetId 오류:', error);
@@ -131,9 +165,13 @@ class ExportTargetMappingRepository extends BaseRepository {
     /**
      * ID로 매핑 삭제
      */
-    async deleteById(id) {
+    async deleteById(id, tenantId = null) {
         try {
-            const affected = await this.query().where('id', id).delete();
+            const query = this.query().where('id', id);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
+            const affected = await query.delete();
             return affected > 0;
         } catch (error) {
             this.logger.error('ExportTargetMappingRepository.deleteById 오류:', error);

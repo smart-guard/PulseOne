@@ -29,6 +29,8 @@ struct redisReply {
 #define REDIS_REPLY_ERROR 6
 #endif
 
+namespace PulseOne {
+
 // =============================================================================
 // 생성자/소멸자
 // =============================================================================
@@ -1554,3 +1556,5 @@ bool RedisClientImpl::isConnectionError() const {
   return context_ && context_->err != 0;
 }
 #endif
+
+} // namespace PulseOne

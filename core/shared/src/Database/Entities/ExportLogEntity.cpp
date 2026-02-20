@@ -193,6 +193,7 @@ json ExportLogEntity::toJson() const {
     j["target_id"] = target_id_;
     j["mapping_id"] = mapping_id_;
     j["point_id"] = point_id_;
+    j["tenant_id"] = tenant_id_; // [v3.2.1]
 
     // 데이터
     j["source_value"] = source_value_;
@@ -259,6 +260,9 @@ bool ExportLogEntity::fromJson(const json &data) {
 
     if (data.contains("point_id")) {
       point_id_ = data["point_id"].get<int>();
+    }
+    if (data.contains("tenant_id")) { // [v3.2.1]
+      tenant_id_ = data["tenant_id"].get<int>();
     }
 
     if (data.contains("source_value")) {

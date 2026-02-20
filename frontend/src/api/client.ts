@@ -63,6 +63,13 @@ class UnifiedHttpClient {
     // 🔐 인증 토큰 자동 추가 (기존 axios 인터셉터와 동일)
     let token = localStorage.getItem('auth_token');
 
+    // 🏢 테넌트 오버라이드 자동 추가 (Admin용)
+    const selectedTenantId = localStorage.getItem('selected_tenant_id');
+    if (selectedTenantId) {
+      const separator = url.includes('?') ? '&' : '?';
+      url = `${url}${separator}tenantId=${selectedTenantId}`;
+    }
+
     // 🛠️ 개발 환경에서 토큰이 없으면 더미 토큰 추가
     if (!token && import.meta.env.MODE === 'development') {
       token = 'dev-dummy-token';

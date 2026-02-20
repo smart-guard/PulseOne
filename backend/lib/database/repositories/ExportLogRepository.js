@@ -31,6 +31,17 @@ class ExportLogRepository extends BaseRepository {
                     'g.server_name as gateway_name'
                 );
 
+            if (filters.tenant_id) {
+                query.where('l.tenant_id', filters.tenant_id);
+            }
+            if (filters.site_id) {
+                // Logs for site-specific targets OR logs for global targets within this tenant
+                query.where(function () {
+                    this.where('t.site_id', filters.site_id)
+                        .orWhereNull('t.site_id');
+                });
+            }
+
             if (filters.target_id) {
                 query.where('l.target_id', filters.target_id);
             }
@@ -95,6 +106,16 @@ class ExportLogRepository extends BaseRepository {
                 .leftJoin('export_targets as t', 'l.target_id', 't.id')
                 .leftJoin('export_profiles as p', 't.profile_id', 'p.id')
                 .leftJoin('edge_servers as g', 'l.gateway_id', 'g.id');
+
+            if (filters.tenant_id) {
+                query.where('l.tenant_id', filters.tenant_id);
+            }
+            if (filters.site_id) {
+                query.where(function () {
+                    this.where('t.site_id', filters.site_id)
+                        .orWhereNull('t.site_id');
+                });
+            }
 
             if (filters.date_from) {
                 query.where('l.timestamp', '>=', filters.date_from);

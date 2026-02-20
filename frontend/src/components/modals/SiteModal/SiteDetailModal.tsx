@@ -202,6 +202,39 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                                 />
                             </div>
                         </div>
+                        <div className="mgmt-modal-form-section">
+                            <h3><i className="fas fa-user-tie"></i> 담당자 정보</h3>
+                            <div className="mgmt-modal-form-group">
+                                <label>담당자 성함</label>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    value={formData.manager_name || formData.contact_name || ''}
+                                    onChange={e => setFormData({ ...formData, manager_name: e.target.value })}
+                                    placeholder="담당자 성함을 입력하세요"
+                                />
+                            </div>
+                            <div className="mgmt-modal-form-group">
+                                <label>이메일</label>
+                                <input
+                                    type="email"
+                                    className="form-control"
+                                    value={formData.manager_email || formData.contact_email || ''}
+                                    onChange={e => setFormData({ ...formData, manager_email: e.target.value })}
+                                    placeholder="example@pulseone.com"
+                                />
+                            </div>
+                            <div className="mgmt-modal-form-group">
+                                <label>연락처</label>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    value={formData.manager_phone || formData.contact_phone || ''}
+                                    onChange={e => setFormData({ ...formData, manager_phone: e.target.value })}
+                                    placeholder="010-0000-0000"
+                                />
+                            </div>
+                        </div>
                     </div>
                 </form>
             );
@@ -237,6 +270,21 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                     <div className="detail-item">
                         <div className="detail-label">타임존</div>
                         <div className="detail-value">{site.timezone}</div>
+                    </div>
+                </div>
+                <div className="mgmt-modal-form-section">
+                    <h3><i className="fas fa-user-tie"></i> 담당자 정보</h3>
+                    <div className="detail-item">
+                        <div className="detail-label">담당자</div>
+                        <div className="detail-value">{site.manager_name || site.contact_name || '-'}</div>
+                    </div>
+                    <div className="detail-item">
+                        <div className="detail-label">이메일</div>
+                        <div className="detail-value">{site.manager_email || site.contact_email || '-'}</div>
+                    </div>
+                    <div className="detail-item">
+                        <div className="detail-label">연락처</div>
+                        <div className="detail-value">{site.manager_phone || site.contact_phone || '-'}</div>
                     </div>
                 </div>
             </div>

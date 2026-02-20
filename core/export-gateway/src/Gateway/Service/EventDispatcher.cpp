@@ -13,6 +13,7 @@
 #include "Database/RepositoryFactory.h"
 #include "Export/ExportLogService.h"
 #include "Logging/LogManager.h"
+#include "Schedule/ScheduledExporter.h"
 #include <algorithm>
 
 namespace PulseOne {
@@ -57,8 +58,21 @@ EventDispatcher::EventDispatcher(GatewayContext &context) : context_(context) {}
 EventDispatcher::~EventDispatcher() {}
 
 void EventDispatcher::registerHandlers(
-    PulseOne::Event::EventSubscriber &subscriber) {
+    PulseOne::Event::GatewayEventSubscriber &subscriber) {
   subscriber.setAlarmCallback(AlarmHandlerBridge(*this));
+
+  // [v3.2 BUG_FIX] base EventSubscriber::workerLoop is used (non-virtual).
+  // It only calls IEventHandler if registered. We must register alarm channels
+  // so that base workerLoop can dispatch them via GenericHandlerBridge →
+  // routeAlarmMessage → parseAlarmMessage → handleAlarm.
+  subscriber.registerHandler(
+      "alarms:*",
+      std::make_shared<GenericHandlerBridge>(
+          *this, "AlarmHandler", &EventDispatcher::routeAlarmMessage));
+  subscriber.registerHandler(
+      "device:*",
+      std::make_shared<GenericHandlerBridge>(
+          *this, "DeviceAlarmHandler", &EventDispatcher::routeAlarmMessage));
 
   subscriber.registerHandler(
       "schedule:*",
@@ -111,10 +125,78 @@ void EventDispatcher::handleAlarm(const PulseOne::CSP::AlarmMessage &alarm) {
   }
 }
 
+void EventDispatcher::routeAlarmMessage(const std::string &channel,
+                                        const std::string &message) {
+  // [v3.2 BUG_FIX] base workerLoop에서 알람 채널 메시지를 처리하기 위한 bridge.
+  // device:* 채널은 알람 채널인지 확인 후 처리.
+  if (channel.find("device:") == 0 &&
+      channel.find(":alarms") == std::string::npos) {
+    return; // device:ID:status 등 알람이 아닌 채널 무시
+  }
+
+  try {
+    auto j = nlohmann::json::parse(message);
+    PulseOne::CSP::AlarmMessage alarm;
+    alarm.from_json(j);
+
+    if (alarm.point_name.empty()) {
+      LogManager::getInstance().Warn(
+          "[routeAlarmMessage] Skipped empty point_name, channel=" + channel);
+      return;
+    }
+
+    handleAlarm(alarm);
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Warn("[routeAlarmMessage] Parse error on " +
+                                   channel + ": " + e.what());
+  }
+}
+
 void EventDispatcher::handleScheduleEvent(const std::string &channel,
                                           const std::string &message) {
-  LogManager::getInstance().Info("EventDispatcher: Schedule event: " + channel);
-  // Integration with ScheduledExporter...
+  try {
+    LogManager::getInstance().Info(
+        "EventDispatcher: Schedule event received: " + channel);
+
+    auto &scheduler = PulseOne::Schedule::ScheduledExporter::getInstance();
+
+    // 1. schedule:reload
+    if (channel == ExportConst::Redis::CHANNEL_SCHEDULE_RELOAD) {
+      int loaded = scheduler.reloadSchedules();
+      LogManager::getInstance().Info(
+          "✅ Schedule reload triggered via Redis. Loaded: " +
+          std::to_string(loaded));
+    }
+    // 2. schedule:execute:{id}
+    else if (channel.find(ExportConst::Redis::PATTERN_SCHEDULE_EXECUTE.substr(
+                 0, 17)) == 0) {
+      std::string id_str = channel.substr(17); // "schedule:execute:" length
+      try {
+        int schedule_id = std::stoi(id_str);
+        LogManager::getInstance().Info(
+            "⚡ Manual schedule execution request: ID=" +
+            std::to_string(schedule_id));
+
+        auto result = scheduler.executeSchedule(schedule_id);
+
+        if (result.success) {
+          LogManager::getInstance().Info(
+              "✅ Schedule execution success: " +
+              std::to_string(result.data_point_count) + " points exported.");
+        } else {
+          LogManager::getInstance().Error("❌ Schedule execution failed: " +
+                                          result.error_message);
+        }
+      } catch (const std::exception &e) {
+        LogManager::getInstance().Error("Invalid schedule ID in channel: " +
+                                        channel);
+      }
+    }
+  } catch (const std::exception &e) {
+    LogManager::getInstance().Error(
+        "EventDispatcher: Error handling schedule event: " +
+        std::string(e.what()));
+  }
 }
 
 void EventDispatcher::handleConfigEvent(const std::string &channel,
@@ -150,7 +232,7 @@ void EventDispatcher::handleCommandEvent(const std::string &channel,
     nlohmann::json payload = j.value("payload", nlohmann::json::object());
 
     if (command == ExportConst::Command::MANUAL_EXPORT) {
-      handleManualExport(payload);
+      handleManualExport(payload.dump());
     }
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("EventDispatcher: Command error: " +
@@ -158,7 +240,8 @@ void EventDispatcher::handleCommandEvent(const std::string &channel,
   }
 }
 
-void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
+void EventDispatcher::handleManualExport(const std::string &payload_json) {
+  nlohmann::json payload = nlohmann::json::parse(payload_json);
   LogManager::getInstance().Info(
       "EventDispatcher: Starting handleManualExport with payload: " +
       payload.dump());
@@ -291,8 +374,14 @@ void EventDispatcher::handleManualExport(const nlohmann::json &payload) {
 void EventDispatcher::sendManualExportResult(const std::string &target_name,
                                              bool success,
                                              const std::string &error_message,
-                                             const nlohmann::json &payload,
+                                             const std::string &payload_json,
                                              int target_id) {
+  nlohmann::json payload;
+  try {
+    payload = nlohmann::json::parse(payload_json);
+  } catch (...) {
+    payload = nlohmann::json::object();
+  }
   if (context_.getRedisClient() && context_.getRedisClient()->isConnected()) {
     json result;
     result["targetName"] = target_name;
@@ -333,6 +422,8 @@ void EventDispatcher::logExportResult(
                               ? "manual_export"
                               : (alarm ? "alarm_export" : "manual_export"));
     log_entity.setServiceId(context_.getGatewayId());
+    log_entity.setTenantId(
+        context_.getTenantId()); // [v3.2.1] Identity Isolation
 
     // Target ID 및 이름 저장 (ID 매칭 실패 시 에러 메시지에 상세 기록)
     if (result.target_id > 0) {

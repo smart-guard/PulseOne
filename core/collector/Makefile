@@ -110,6 +110,7 @@ INCLUDES += -I$(SHARED_INCLUDE_DIR) \
             -I$(SHARED_INCLUDE_DIR)/Database/Repositories \
             -I$(SHARED_INCLUDE_DIR)/Data \
             -I$(SHARED_INCLUDE_DIR)/Alarm \
+            -I$(SHARED_INCLUDE_DIR)/Event \
             -I$(SHARED_INCLUDE_DIR)/Export \
             -I$(SHARED_INCLUDE_DIR)/Security \
             -I$(SHARED_INCLUDE_DIR)/Client \
@@ -197,6 +198,7 @@ SHARED_LIBS += -lpulseone-client
 SHARED_LIBS += -lpulseone-common
 SHARED_LIBS += -lpulseone-security
 SHARED_LIBS += -lpulseone-dblib
+SHARED_LIBS += -lpulseone-event
 # SHARED_LIBS += -lpulseone-loglib (Common에 통합됨)
 CXXFLAGS += -DHAS_SHARED_LIBS=1
 else
@@ -296,6 +298,7 @@ endif
 
 # Core 소스
 CORE_SOURCES := $(wildcard $(SRC_DIR)/Core/*.cpp)
+CORE_SOURCES += $(wildcard $(SRC_DIR)/Event/*.cpp)
 
 # Config 소스
 CONFIG_SOURCES := $(wildcard $(SRC_DIR)/Config/*.cpp)
@@ -384,7 +387,7 @@ MAIN_OBJECT := $(BUILD_DIR)/main.o
 # 빌드 디렉토리 자동 생성
 # =============================================================================
 
-BUILD_SUBDIRS := $(BUILD_DIR)/Core $(BUILD_DIR)/Config $(BUILD_DIR)/Alarm
+BUILD_SUBDIRS := $(BUILD_DIR)/Core $(BUILD_DIR)/Config $(BUILD_DIR)/Alarm $(BUILD_DIR)/Event
 BUILD_SUBDIRS += $(BUILD_DIR)/Workers $(BUILD_DIR)/Workers/Base
 BUILD_SUBDIRS += $(BUILD_DIR)/Workers/Protocol $(BUILD_DIR)/Workers/Components
 BUILD_SUBDIRS += $(BUILD_DIR)/Drivers $(BUILD_DIR)/Drivers/Common

@@ -106,7 +106,7 @@ const std::string TARGET = "target";
 const std::string TARGET_NAME = "target_name";
 const std::string TARGET_ID = "target_id";
 const std::string SUCCESS = "success";
-const std::string ERROR = "error";
+const std::string ERROR_MSG = "error";
 const std::string COMMAND_ID = "command_id";
 const std::string ALL_TARGETS = "ALL";
 } // namespace JsonKeys

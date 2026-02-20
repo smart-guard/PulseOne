@@ -19,7 +19,7 @@
  */
 
 #include "Platform/PlatformCompat.h"
-#include "Security/SecretManager.h"
+#include "Security/SecurityTypes.h"
 #include <atomic>
 #include <cstdlib>
 #include <map>
@@ -31,7 +31,6 @@
 namespace PulseOne {
 namespace Security {
 class SecretManager;
-class ConfigManagerInterface;
 } // namespace Security
 } // namespace PulseOne
 
@@ -50,7 +49,7 @@ class ConfigManagerInterface;
  * - 설정 파일 쓰기 기능
  * - CSP Gateway 설정 완전 지원
  */
-class ConfigManager : public PulseOne::Security::ConfigManagerInterface {
+class ConfigManager {
 public:
   // ==========================================================================
   // 전역 싱글톤 패턴 (기존 유지)
@@ -71,7 +70,7 @@ public:
   void load(const std::string &filepath) { loadConfigFile(filepath); }
   std::string get(const std::string &key) const;
   std::string getOrDefault(const std::string &key,
-                           const std::string &defaultValue) const override;
+                           const std::string &defaultValue) const;
   void set(const std::string &key, const std::string &value);
   bool hasKey(const std::string &key) const;
   std::map<std::string, std::string> listAll() const;
@@ -81,7 +80,7 @@ public:
   std::string getDataDirectory() const;
   std::string getSQLiteDbPath() const;
   std::string getBackupDirectory() const;
-  std::string getSecretsDirectory() const override;
+  std::string getSecretsDirectory() const;
 
   // 파일 관리 (기존)
   std::vector<std::string> getLoadedFiles() const { return loadedFiles_; }
@@ -98,12 +97,11 @@ public:
 
   // 편의 기능들 (기존)
   int getInt(const std::string &key, int defaultValue = 0) const;
-  bool getBool(const std::string &key,
-               bool defaultValue = false) const override;
+  bool getBool(const std::string &key, bool defaultValue = false) const;
   double getDouble(const std::string &key, double defaultValue = 0.0) const;
 
   // 변수 확장 (SecretManager에서 사용)
-  std::string expandVariables(const std::string &value) const override;
+  std::string expandVariables(const std::string &value) const;
 
   // ==========================================================================
   // 신규: 설정 파일 쓰기 기능
@@ -163,20 +161,12 @@ public:
    */
   bool refreshSecret(const std::string &config_key = "");
 
+  PulseOne::Security::SecretStats getSecretStats() const;
+
   /**
-   * @brief 시크릿 통계 (SecretManager에 위임)
+   * @brief 암호화 모드 설정 (SecretManager에 위임)
    */
-  PulseOne::Security::SecretManager::SecretStats getSecretStats() const;
-
-  // ==========================================================================
-  // CSP Gateway 전용 메서드들 (시크릿 자동 처리)
-  // ==========================================================================
-
-  bool isCSPGatewayEnabled() const {
-    return getBool("CSP_GATEWAY_ENABLED", false);
-  }
-
-  std::string getInstanceKey() const;
+  void setEncryptionMode(PulseOne::Security::EncryptionMode mode);
 
   int getCollectorId() const {
     // 1. memory check
@@ -201,10 +191,6 @@ public:
 
   void setCollectorId(int id) { set("COLLECTOR_ID", std::to_string(id)); }
 
-  int getCSPBuildingId() const {
-    return getInt("CSP_GATEWAY_BUILDING_ID", 1001);
-  }
-
   void setCSPBuildingId(int id) {
     set("CSP_GATEWAY_BUILDING_ID", std::to_string(id));
   }
@@ -213,159 +199,16 @@ public:
 
   void setTenantId(int id) { set("TENANT_ID", std::to_string(id)); }
 
-  std::string getCSPGatewayVersion() const {
-    return getOrDefault("CSP_GATEWAY_VERSION", "1.8");
-  }
+  std::string getInstanceKey() const;
 
-  // CSP 설정 구조체들 (시크릿 자동 로드)
-  struct CSPAPIConfig {
-    bool enabled;
-    std::string endpoint;
-    std::string api_key; // SecretManager에서 자동 복호화
-    int timeout_ms;
-    int max_retry;
-    int retry_delay_ms;
-  };
-
-  struct CSPS3Config {
-    bool enabled;
-    std::string bucket_name;
-    std::string region;
-    std::string access_key; // SecretManager에서 자동 복호화
-    std::string secret_key; // SecretManager에서 자동 복호화
-    std::string object_prefix;
-    std::string file_name_pattern;
-    int timeout_ms;
-    int max_retry;
-  };
-
-  struct CSPInsiteConfig {
-    bool enabled;
-    std::string endpoint;
-    std::string api_key; // SecretManager에서 자동 복호화
-    int timeout_ms;
-    bool control_disabled;
-    int control_clear_interval_hours;
-  };
-
-  struct CSPInbaseConfig {
-    bool enabled;
-    std::string endpoint;
-    std::string api_key; // SecretManager에서 자동 복호화
-    int timeout_ms;
-  };
-
-  struct CSPBEMSConfig {
-    bool enabled;
-    std::string endpoint;
-    std::string api_key; // SecretManager에서 자동 복호화
-    int building_id;
-    int timeout_ms;
-  };
-
-  struct CSPAlarmFilter {
-    int min_priority;
-    int max_priority;
-    std::string tag_include_pattern;
-    std::string tag_exclude_pattern;
-    int max_age_hours;
-  };
-
-  struct CSPModbusConfig {
-    std::string alarm_timezone;
-    std::string update_time_source;
-    long invalid_value_threshold;
-    bool use_previous_on_invalid;
-  };
-
-  struct CSPBatchConfig {
-    bool enabled;
-    int batch_size;
-    int timeout_ms;
-    int flush_interval_ms;
-  };
-
-  struct CSPFailureConfig {
-    bool save_enabled;
-    std::string save_path;
-    std::string file_pattern;
-    bool retry_enabled;
-    int retry_interval_minutes;
-    int max_retry_count;
-  };
-
-  struct CSPLoggingConfig {
-    bool detailed_logging;
-    bool log_value_file_save;
-    bool log_update_time_error;
-    bool log_network_reconnect;
-    bool performance_monitoring;
-    int stats_update_interval_ms;
-    int health_check_interval_ms;
-  };
-
-  struct CSPNetworkConfig {
-    bool reconnect_enabled;
-    int reconnect_timeout_ms;
-    bool service_restart_on_reconnect;
-  };
-
-  struct CSPSSLConfig {
-    bool enabled;
-    bool verify_peer;
-    std::string cert_file;
-    std::string key_file;
-    std::string ca_file;
-  };
-
-  // CSP 설정 조회 메서드들 (시크릿 자동 처리)
-  CSPAPIConfig getCSPAPIConfig() const;
-  CSPS3Config getCSPS3Config() const;
-  CSPInsiteConfig getCSPInsiteConfig() const;
-  CSPInbaseConfig getCSPInbaseConfig() const;
-  CSPBEMSConfig getCSPBEMSConfig() const;
-  CSPAlarmFilter getCSPAlarmFilter() const;
-  CSPModbusConfig getCSPModbusConfig() const;
-  CSPBatchConfig getCSPBatchConfig() const;
-  CSPFailureConfig getCSPFailureConfig() const;
-  CSPLoggingConfig getCSPLoggingConfig() const;
-  CSPNetworkConfig getCSPNetworkConfig() const;
-  CSPSSLConfig getCSPSSLConfig() const;
+  // CSP Gateway 설정 조회 메서드들 - DEPRECATED 및 삭제됨
 
   // ==========================================================================
-  // 편의 메서드들 (시크릿 관리 - SecretManager에 위임)
+  // 편의 메서드들
   // ==========================================================================
 
-  /**
-   * @brief CSP API 키 직접 설정
-   */
-  bool setCSPAPIKey(const std::string &api_key) {
-    return setSecret("CSP_API_KEY_FILE", api_key);
-  }
-
-  /**
-   * @brief AWS 자격증명 설정
-   */
-  bool setAWSCredentials(const std::string &access_key,
-                         const std::string &secret_key);
-
-  /**
-   * @brief SSL 인증서 파일들 설정
-   */
-  bool setSSLCertificates(const std::string &cert_content,
-                          const std::string &key_content,
-                          const std::string &ca_content = "");
-
-  /**
-   * @brief 기존 데이터베이스 비밀번호들 설정 (하위 호환)
-   */
   bool setDatabasePassword(const std::string &db_type,
                            const std::string &password);
-
-  /**
-   * @brief 모든 CSP 시크릿 일괄 설정
-   */
-  bool setAllCSPSecrets(const std::map<std::string, std::string> &csp_secrets);
 
 private:
   // ==========================================================================
@@ -392,26 +235,8 @@ private:
   void loadAdditionalConfigs();
   void loadConfigFile(const std::string &filepath);
 
-  // 경로 탐색 (기존)
-  std::string findConfigDirectory();
-  std::string findDataDirectory();
-  bool directoryExists(const std::string &path);
-  std::string getExecutableDirectory();
-
-  // 설정 파일 생성 (기존)
-  void createMainEnvFile();
-  void createDatabaseEnvFile();
-  void createRedisEnvFile();
-  void createTimeseriesEnvFile();
-  void createMessagingEnvFile();
-  void createSecurityEnvFile();
-  void createSecretsDirectory();
-  bool createFileFromTemplate(const std::string &filepath,
-                              const std::string &content);
-
   // 디렉토리 관리
   void ensureDataDirectories();
-  void ensureCSPDirectories();
 
   // ==========================================================================
   // 신규: 파일 쓰기 관련
@@ -450,7 +275,6 @@ private:
 
   // 변수 확장 (기존)
   void expandAllVariables();
-  std::string expandCSPVariables(const std::string &value) const;
 
   // ==========================================================================
   // 멤버 변수들
@@ -532,37 +356,10 @@ inline std::string GetSecretsDir() {
   return ConfigManager::getInstance().getSecretsDirectory();
 }
 
-// CSP Gateway 전용 편의 함수들
-inline bool IsCSPGatewayEnabled() {
-  return ConfigManager::getInstance().isCSPGatewayEnabled();
-}
-
 inline int GetCollectorId() {
   return ConfigManager::getInstance().getCollectorId();
 }
 
 inline void SetCollectorId(int id) {
   ConfigManager::getInstance().setCollectorId(id);
-}
-
-inline int GetCSPBuildingId() {
-  return ConfigManager::getInstance().getCSPBuildingId();
-}
-
-inline ConfigManager::CSPAPIConfig GetCSPAPIConfig() {
-  return ConfigManager::getInstance().getCSPAPIConfig();
-}
-
-inline ConfigManager::CSPS3Config GetCSPS3Config() {
-  return ConfigManager::getInstance().getCSPS3Config();
-}
-
-// 신규: 시크릿 관리 편의 함수들
-inline bool SetCSPAPIKey(const std::string &api_key) {
-  return ConfigManager::getInstance().setCSPAPIKey(api_key);
-}
-
-inline bool SetAWSCredentials(const std::string &access_key,
-                              const std::string &secret_key) {
-  return ConfigManager::getInstance().setAWSCredentials(access_key, secret_key);
 }

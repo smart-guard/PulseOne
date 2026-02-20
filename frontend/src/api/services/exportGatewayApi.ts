@@ -35,6 +35,7 @@ export interface Gateway {
     };
     processes?: any;
     config?: any;
+    site_id?: number; // [NEW] Site ID
 }
 
 export interface ExportProfile {
@@ -170,24 +171,24 @@ export class ExportGatewayApiService {
     // -------------------------------------------------------------------------
     // Gateways
     // -------------------------------------------------------------------------
-    static async getGateways(params: { page?: number; limit?: number } = {}): Promise<ApiResponse<{ items: Gateway[]; pagination: any }>> {
+    static async getGateways(params: { page?: number; limit?: number; siteId?: number | null; tenantId?: number | null } = {}): Promise<ApiResponse<{ items: Gateway[]; pagination: any }>> {
         return apiClient.get<any>(this.GATEWAY_URL, params);
     }
 
-    static async getGatewayById(id: number): Promise<ApiResponse<Gateway>> {
-        return apiClient.get<Gateway>(`${this.GATEWAY_URL}/${id}`);
+    static async getGatewayById(id: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<Gateway>> {
+        return apiClient.get<Gateway>(`${this.GATEWAY_URL}/${id}`, { siteId, tenantId });
     }
 
-    static async registerGateway(data: Partial<Gateway>): Promise<ApiResponse<Gateway>> {
-        return apiClient.post<Gateway>(this.GATEWAY_URL, data);
+    static async registerGateway(data: Partial<Gateway>, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<Gateway>> {
+        return apiClient.post<Gateway>(this.GATEWAY_URL, { ...data, site_id: siteId || data.site_id, tenant_id: tenantId });
     }
 
-    static async updateGateway(id: number, data: Partial<Gateway>): Promise<ApiResponse<Gateway>> {
-        return apiClient.put<Gateway>(`${this.GATEWAY_URL}/${id}`, data);
+    static async updateGateway(id: number, data: Partial<Gateway>, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<Gateway>> {
+        return apiClient.put<Gateway>(`${this.GATEWAY_URL}/${id}`, { ...data, site_id: siteId, tenant_id: tenantId });
     }
 
-    static async deleteGateway(id: number): Promise<ApiResponse<void>> {
-        return apiClient.delete<void>(`${this.GATEWAY_URL}/${id}`);
+    static async deleteGateway(id: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<void>> {
+        return apiClient.delete<void>(`${this.GATEWAY_URL}/${id}?siteId=${siteId || ''}&tenantId=${tenantId || ''}`);
     }
 
     // -------------------------------------------------------------------------
@@ -197,20 +198,20 @@ export class ExportGatewayApiService {
         return apiClient.post<any>(`${this.GATEWAY_URL}/${id}/command`, { command, payload });
     }
 
-    static async deployConfig(id: number): Promise<ApiResponse<any>> {
-        return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${id}/deploy`);
+    static async deployConfig(id: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<any>> {
+        return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${id}/deploy?siteId=${siteId || ''}&tenantId=${tenantId || ''}`);
     }
 
-    static async startGatewayProcess(id: number): Promise<ApiResponse<any>> {
-        return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${id}/start`);
+    static async startGatewayProcess(id: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<any>> {
+        return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${id}/start?siteId=${siteId || ''}&tenantId=${tenantId || ''}`);
     }
 
-    static async stopGatewayProcess(id: number): Promise<ApiResponse<any>> {
-        return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${id}/stop`);
+    static async stopGatewayProcess(id: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<any>> {
+        return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${id}/stop?siteId=${siteId || ''}&tenantId=${tenantId || ''}`);
     }
 
-    static async restartGatewayProcess(id: number): Promise<ApiResponse<any>> {
-        return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${id}/restart`);
+    static async restartGatewayProcess(id: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<any>> {
+        return apiClient.post<any>(`${this.EXPORT_URL}/gateways/${id}/restart?siteId=${siteId || ''}&tenantId=${tenantId || ''}`);
     }
 
     static async triggerManualExport(gatewayId: number, payload: {
@@ -227,43 +228,43 @@ export class ExportGatewayApiService {
     // -------------------------------------------------------------------------
     // Export Profiles
     // -------------------------------------------------------------------------
-    static async getProfiles(): Promise<ApiResponse<ExportProfile[]>> {
-        return apiClient.get<ExportProfile[]>(`${this.EXPORT_URL}/profiles`);
+    static async getProfiles(params: { tenantId?: number | null } = {}): Promise<ApiResponse<ExportProfile[]>> {
+        return apiClient.get<ExportProfile[]>(`${this.EXPORT_URL}/profiles`, params);
     }
 
-    static async getProfileById(id: number): Promise<ApiResponse<ExportProfile>> {
-        return apiClient.get<ExportProfile>(`${this.EXPORT_URL}/profiles/${id}`);
+    static async getProfileById(id: number, tenantId?: number | null): Promise<ApiResponse<ExportProfile>> {
+        return apiClient.get<ExportProfile>(`${this.EXPORT_URL}/profiles/${id}`, { tenantId });
     }
 
-    static async createProfile(data: Partial<ExportProfile>): Promise<ApiResponse<ExportProfile>> {
-        return apiClient.post<ExportProfile>(`${this.EXPORT_URL}/profiles`, data);
+    static async createProfile(data: Partial<ExportProfile>, tenantId?: number | null): Promise<ApiResponse<ExportProfile>> {
+        return apiClient.post<ExportProfile>(`${this.EXPORT_URL}/profiles`, { ...data, tenant_id: tenantId });
     }
 
-    static async updateProfile(id: number, data: Partial<ExportProfile>): Promise<ApiResponse<ExportProfile>> {
-        return apiClient.put<ExportProfile>(`${this.EXPORT_URL}/profiles/${id}`, data);
+    static async updateProfile(id: number, data: Partial<ExportProfile>, tenantId?: number | null): Promise<ApiResponse<ExportProfile>> {
+        return apiClient.put<ExportProfile>(`${this.EXPORT_URL}/profiles/${id}`, { ...data, tenant_id: tenantId });
     }
 
-    static async deleteProfile(id: number): Promise<ApiResponse<void>> {
-        return apiClient.delete<void>(`${this.EXPORT_URL}/profiles/${id}`);
+    static async deleteProfile(id: number, tenantId?: number | null): Promise<ApiResponse<void>> {
+        return apiClient.delete<void>(`${this.EXPORT_URL}/profiles/${id}?tenantId=${tenantId || ''}`);
     }
 
     // -------------------------------------------------------------------------
     // Export Targets
     // -------------------------------------------------------------------------
-    static async getTargets(): Promise<ApiResponse<ExportTarget[]>> {
-        return apiClient.get<ExportTarget[]>(`${this.EXPORT_URL}/targets`);
+    static async getTargets(params: { tenantId?: number | null } = {}): Promise<ApiResponse<ExportTarget[]>> {
+        return apiClient.get<ExportTarget[]>(`${this.EXPORT_URL}/targets`, params);
     }
 
-    static async createTarget(data: Partial<ExportTarget>): Promise<ApiResponse<ExportTarget>> {
-        return apiClient.post<ExportTarget>(`${this.EXPORT_URL}/targets`, data);
+    static async createTarget(data: Partial<ExportTarget>, tenantId?: number | null): Promise<ApiResponse<ExportTarget>> {
+        return apiClient.post<ExportTarget>(`${this.EXPORT_URL}/targets`, { ...data, tenant_id: tenantId });
     }
 
-    static async updateTarget(id: number, data: Partial<ExportTarget>): Promise<ApiResponse<ExportTarget>> {
-        return apiClient.put<ExportTarget>(`${this.EXPORT_URL}/targets/${id}`, data);
+    static async updateTarget(id: number, data: Partial<ExportTarget>, tenantId?: number | null): Promise<ApiResponse<ExportTarget>> {
+        return apiClient.put<ExportTarget>(`${this.EXPORT_URL}/targets/${id}`, { ...data, tenant_id: tenantId });
     }
 
-    static async deleteTarget(id: number): Promise<ApiResponse<void>> {
-        return apiClient.delete<void>(`${this.EXPORT_URL}/targets/${id}`);
+    static async deleteTarget(id: number, tenantId?: number | null): Promise<ApiResponse<void>> {
+        return apiClient.delete<void>(`${this.EXPORT_URL}/targets/${id}?tenantId=${tenantId || ''}`);
     }
 
     static async testTargetConnection(data: { target_type: string, config: any }): Promise<ApiResponse<any>> {
@@ -273,65 +274,70 @@ export class ExportGatewayApiService {
     // -------------------------------------------------------------------------
     // Payload Templates
     // -------------------------------------------------------------------------
-    static async getTemplates(): Promise<ApiResponse<PayloadTemplate[]>> {
-        return apiClient.get<PayloadTemplate[]>(`${this.EXPORT_URL}/templates`);
+    static async getTemplates(params: { tenantId?: number | null } = {}): Promise<ApiResponse<PayloadTemplate[]>> {
+        return apiClient.get<PayloadTemplate[]>(`${this.EXPORT_URL}/templates`, params);
     }
 
-    static async createTemplate(data: Partial<PayloadTemplate>): Promise<ApiResponse<PayloadTemplate>> {
-        return apiClient.post<PayloadTemplate>(`${this.EXPORT_URL}/templates`, data);
+    static async createTemplate(data: Partial<PayloadTemplate>, tenantId?: number | null): Promise<ApiResponse<PayloadTemplate>> {
+        return apiClient.post<PayloadTemplate>(`${this.EXPORT_URL}/templates`, { ...data, tenant_id: tenantId });
     }
 
-    static async updateTemplate(id: number, data: Partial<PayloadTemplate>): Promise<ApiResponse<PayloadTemplate>> {
-        return apiClient.put<PayloadTemplate>(`${this.EXPORT_URL}/templates/${id}`, data);
+    static async updateTemplate(id: number, data: Partial<PayloadTemplate>, tenantId?: number | null): Promise<ApiResponse<PayloadTemplate>> {
+        return apiClient.put<PayloadTemplate>(`${this.EXPORT_URL}/templates/${id}`, { ...data, tenant_id: tenantId });
     }
 
-    static async deleteTemplate(id: number): Promise<ApiResponse<void>> {
-        return apiClient.delete<void>(`${this.EXPORT_URL}/templates/${id}`);
+    static async deleteTemplate(id: number, tenantId?: number | null): Promise<ApiResponse<void>> {
+        return apiClient.delete<void>(`${this.EXPORT_URL}/templates/${id}?tenantId=${tenantId || ''}`);
     }
 
     // -------------------------------------------------------------------------
     // Target Mappings
     // -------------------------------------------------------------------------
-    static async getTargetMappings(targetId: number): Promise<ApiResponse<ExportTargetMapping[]>> {
-        return apiClient.get<ExportTargetMapping[]>(`${this.EXPORT_URL}/targets/${targetId}/mappings`);
+    static async getTargetMappings(targetId: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<ExportTargetMapping[]>> {
+        const url = `${this.EXPORT_URL}/targets/${targetId}/mappings`;
+        return apiClient.get<ExportTargetMapping[]>(url, { siteId, tenantId });
     }
 
-    static async saveTargetMappings(targetId: number, mappings: Partial<ExportTargetMapping>[]): Promise<ApiResponse<ExportTargetMapping[]>> {
-        return apiClient.post<ExportTargetMapping[]>(`${this.EXPORT_URL}/targets/${targetId}/mappings`, { mappings });
+    static async saveTargetMappings(targetId: number, mappings: Partial<ExportTargetMapping>[], siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<ExportTargetMapping[]>> {
+        const url = `${this.EXPORT_URL}/targets/${targetId}/mappings`;
+        return apiClient.post<ExportTargetMapping[]>(url, { mappings, site_id: siteId, tenant_id: tenantId });
     }
 
     // -------------------------------------------------------------------------
     // Export Schedules
     // -------------------------------------------------------------------------
-    static async getSchedules(): Promise<ApiResponse<ExportSchedule[]>> {
-        return apiClient.get<ExportSchedule[]>(`${this.EXPORT_URL}/schedules`);
+    static async getSchedules(params: { tenantId?: number | null } = {}): Promise<ApiResponse<ExportSchedule[]>> {
+        return apiClient.get<ExportSchedule[]>(`${this.EXPORT_URL}/schedules`, params);
     }
 
-    static async createSchedule(data: Partial<ExportSchedule>): Promise<ApiResponse<ExportSchedule>> {
-        return apiClient.post<ExportSchedule>(`${this.EXPORT_URL}/schedules`, data);
+    static async createSchedule(data: Partial<ExportSchedule>, tenantId?: number | null): Promise<ApiResponse<ExportSchedule>> {
+        return apiClient.post<ExportSchedule>(`${this.EXPORT_URL}/schedules`, { ...data, tenant_id: tenantId });
     }
 
-    static async updateSchedule(id: number, data: Partial<ExportSchedule>): Promise<ApiResponse<ExportSchedule>> {
-        return apiClient.put<ExportSchedule>(`${this.EXPORT_URL}/schedules/${id}`, data);
+    static async updateSchedule(id: number, data: Partial<ExportSchedule>, tenantId?: number | null): Promise<ApiResponse<ExportSchedule>> {
+        return apiClient.put<ExportSchedule>(`${this.EXPORT_URL}/schedules/${id}`, { ...data, tenant_id: tenantId });
     }
 
-    static async deleteSchedule(id: number): Promise<ApiResponse<void>> {
-        return apiClient.delete<void>(`${this.EXPORT_URL}/schedules/${id}`);
+    static async deleteSchedule(id: number, tenantId?: number | null): Promise<ApiResponse<void>> {
+        return apiClient.delete<void>(`${this.EXPORT_URL}/schedules/${id}?tenantId=${tenantId || ''}`);
     }
 
     // -------------------------------------------------------------------------
     // Assignments
     // -------------------------------------------------------------------------
-    static async getAssignments(gatewayId: number): Promise<ApiResponse<Assignment[]>> {
-        return apiClient.get<Assignment[]>(`${this.EXPORT_URL}/gateways/${gatewayId}/assignments`);
+    static async getAssignments(gatewayId: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<Assignment[]>> {
+        const url = `${this.EXPORT_URL}/gateways/${gatewayId}/assignments`;
+        return apiClient.get<Assignment[]>(url, { siteId, tenantId });
     }
 
-    static async assignProfile(gatewayId: number, profileId: number): Promise<ApiResponse<void>> {
-        return apiClient.post<void>(`${this.EXPORT_URL}/gateways/${gatewayId}/assign`, { profileId });
+    static async assignProfile(gatewayId: number, profileId: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<void>> {
+        const url = `${this.EXPORT_URL}/gateways/${gatewayId}/assign`;
+        return apiClient.post<void>(url, { profileId, site_id: siteId, tenant_id: tenantId });
     }
 
-    static async unassignProfile(gatewayId: number, profileId: number): Promise<ApiResponse<void>> {
-        return apiClient.post<void>(`${this.EXPORT_URL}/gateways/${gatewayId}/unassign`, { profileId });
+    static async unassignProfile(gatewayId: number, profileId: number, siteId?: number | null, tenantId?: number | null): Promise<ApiResponse<void>> {
+        const url = `${this.EXPORT_URL}/gateways/${gatewayId}/unassign`;
+        return apiClient.post<void>(url, { profileId, site_id: siteId, tenant_id: tenantId });
     }
 
     // -------------------------------------------------------------------------
@@ -368,11 +374,13 @@ export class ExportGatewayApiService {
     // -------------------------------------------------------------------------
     // Shared / Utility
     // -------------------------------------------------------------------------
-    static async getDataPoints(searchTerm: string = '', deviceId?: number): Promise<DataPoint[]> {
+    static async getDataPoints(searchTerm: string = '', deviceId?: number, siteId?: number | null, tenantId?: number | null): Promise<DataPoint[]> {
         try {
             const response = await apiClient.get<any>('/api/data/points', {
                 search: searchTerm,
                 device_id: deviceId,
+                site_id: siteId,
+                tenant_id: tenantId,
                 limit: 500
             });
 

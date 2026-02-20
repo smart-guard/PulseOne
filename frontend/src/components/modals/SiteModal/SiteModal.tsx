@@ -57,15 +57,10 @@ export const SiteModal: React.FC<SiteModalProps> = ({
             loadPotentialParents();
             if (site) {
                 setFormData({
-                    name: site.name,
-                    code: site.code,
-                    site_type: site.site_type,
+                    ...site, // 🔥 기존의 모든 필드(metadata, tags 등) 보존
                     description: site.description || '',
                     location: site.location || '',
-                    address: site.address || '',
-                    timezone: site.timezone,
-                    parent_site_id: site.parent_site_id,
-                    is_active: site.is_active
+                    address: site.address || ''
                 });
             } else {
                 setFormData({

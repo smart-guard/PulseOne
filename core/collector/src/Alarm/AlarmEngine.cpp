@@ -220,7 +220,8 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
         auto occ_id = raiseAlarm(rule, eval, tv.value);
         if (occ_id.has_value()) {
           AlarmEvent ev;
-          ev.device_id = getDeviceIdForPoint(tv.point_id);
+          // getDeviceIdForPoint()는 int 반환 → UniqueId(=std::string) 변환
+          ev.device_id = std::to_string(getDeviceIdForPoint(tv.point_id));
           ev.point_id = tv.point_id;
           ev.site_id = 0;
 
@@ -249,7 +250,7 @@ AlarmEngine::evaluateForPoint(int tenant_id, const TimestampedValue &tv) {
         // Clear alarm
         if (clearActiveAlarm(rule.getId(), tv.value)) {
           AlarmEvent ev;
-          ev.device_id = getDeviceIdForPoint(tv.point_id);
+          ev.device_id = std::to_string(getDeviceIdForPoint(tv.point_id));
           ev.point_id = tv.point_id;
           ev.site_id = 0;
 

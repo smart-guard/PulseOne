@@ -8,6 +8,7 @@ PulseOne의 배포는 **"단일 코드베이스(Single Source)"**와 **"완전 �
 - 로컬 맥(Mac) 터미널에서의 직접적인 `make`나 `gcc` 컴파일은 원천 금지한다.
 - 모든 운영용 바이너리는 플랫폼별 전용 도커 빌드 이미지(Linux, Windows-Cross) 내에서 생성한다.
 - 맥은 오직 `docker` 명령어와 스크립트 실행기 역할만 수행한다.
+- 호스트 자원 보호를 위해 모든 빌드는 `-O0` 최적화 레벨을 기본으로 하며, 공격적인 가비지 컬렉션을 수행한다.
 
 ### 🚨 Rule 2: 코드 파편화 절대 금지 (Single Codebase)
 - 윈도우용, 리눅스용 코드를 따로 파일로 분리하거나 복제하지 않는다.
@@ -54,6 +55,14 @@ OS별 로직이 필요한 경우 반드시 아래 표준 패턴을 사용한다.
 ## 4. 플랫폼별 빌드 실행 가이드 (How-to Build)
 
 맥 터미널에서는 오직 아래의 도커 명령어만 수행하며, 소스 코드는 볼륨 마운트를 통해 컨테이너와 공유한다.
+
+### Unified Release Dispatcher
+전체 플랫폼을 한 번에 배포하기 위해 `release.sh`를 사용한다.
+
+```bash
+# 전체 플랫폼 배포 (Windows, Linux Native, Docker)
+./release.sh --all --skip-ui
+```
 
 ### A. Windows 바이너리 (Cross-Compile)
 ```bash

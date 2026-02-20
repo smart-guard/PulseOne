@@ -426,7 +426,7 @@ LOG_LEVEL=INFO
 
 [DATABASE]
 TYPE=sqlite
-PATH=data/pulseone.db
+PATH=data/db/pulseone.db
 AUTO_CREATE=true
 CONNECTION_POOL_SIZE=10
 

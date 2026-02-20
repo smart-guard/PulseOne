@@ -16,6 +16,7 @@ namespace PulseOne {
 namespace Gateway {
 namespace Service {
 
+using json = nlohmann::json;
 namespace ExportConst = PulseOne::Constants::Export;
 
 TargetRunner::TargetRunner(ITargetRegistry &registry) : registry_(registry) {
@@ -232,7 +233,53 @@ BatchTargetResult TargetRunner::sendValueBatch(
     const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const std::string &specific_target) {
   BatchTargetResult batch_result;
-  // Implementation for value batch...
+  auto targets = registry_.getAllTargets();
+
+  for (const auto &target : targets) {
+    if (!target.is_active)
+      continue;
+
+    const json &target_config = target.config;
+    if (!specific_target.empty() && target.name != specific_target)
+      continue;
+
+    auto *handler = registry_.getHandler(target.name);
+    if (!handler)
+      continue;
+
+    // Pre-execution delay (Optional, usually per-message but for batch maybe
+    // once?) Batch processing usually skips delay or handles it internally.
+
+    std::vector<json> payloads;
+    auto &transformer = PulseOne::Transform::PayloadTransformer::getInstance();
+
+    for (const auto &value : values) {
+      // ValueMessage는 이미 ScheduledExporter에서 필터링/매핑되었다고 가정
+      // 하지만 필요하다면 여기서 추가 필터링 가능 (whitelist 등)
+      // 현재는 ScheduledExporter가 타겟별로 수집하므로 그대로 진행
+
+      payloads.push_back(transformer.buildPayload(value, target_config));
+    }
+
+    // Handler에게 배치 전송 위임
+    auto results = handler->sendValueBatch(payloads, values, target_config);
+
+    for (const auto &res : results) {
+      batch_result.results.push_back(res);
+      if (res.success) {
+        batch_result.success_count++;
+        batch_result.successful_targets++; // Compatibility alias
+      } else {
+        batch_result.failure_count++;
+        batch_result.failed_targets++; // Compatibility alias
+      }
+    }
+  }
+
+  batch_result.total_count =
+      batch_result.success_count + batch_result.failure_count;
+  batch_result.total_targets = batch_result.total_count; // Compatibility alias
+
   return batch_result;
 }
 
@@ -251,7 +298,7 @@ void TargetRunner::resetAllFailureProtectors() {
   }
 }
 
-PulseOne::CSP::FailureProtector *
+FailureProtector *
 TargetRunner::getOrCreateProtector(const std::string &target_name,
                                    const json &config) {
   std::lock_guard<std::mutex> lock(protectors_mutex_);
@@ -259,13 +306,12 @@ TargetRunner::getOrCreateProtector(const std::string &target_name,
   if (it != failure_protectors_.end())
     return it->second.get();
 
-  PulseOne::CSP::FailureProtectorConfig fp_config;
+  FailureProtectorConfig fp_config;
   if (config.contains(ExportConst::ConfigKeys::FAILURE_THRESHOLD))
     fp_config.failure_threshold =
         config[ExportConst::ConfigKeys::FAILURE_THRESHOLD];
 
-  auto protector =
-      std::make_unique<PulseOne::CSP::FailureProtector>(target_name, fp_config);
+  auto protector = std::make_unique<FailureProtector>(target_name, fp_config);
   auto *ptr = protector.get();
   failure_protectors_[target_name] = std::move(protector);
   return ptr;
@@ -316,6 +362,18 @@ PulseOne::Gateway::Model::AlarmMessage TargetRunner::applyMappings(
     }
   } else if (site_id != alarm.site_id) {
     processed.site_id = site_id;
+  }
+
+  // [FIX] Scale / Offset → measured_value (vl = raw * scale + offset)
+  double scale = registry_.getScale(target.id, alarm.point_id);
+  double offset = registry_.getOffset(target.id, alarm.point_id);
+  if (scale != 1.0 || offset != 0.0) {
+    processed.measured_value = alarm.measured_value * scale + offset;
+    LogManager::getInstance().Info(
+        "[SCALE] Point=" + std::to_string(alarm.point_id) +
+        " raw=" + std::to_string(alarm.measured_value) + " scale=" +
+        std::to_string(scale) + " offset=" + std::to_string(offset) +
+        " -> vl=" + std::to_string(processed.measured_value));
   }
 
   return processed;

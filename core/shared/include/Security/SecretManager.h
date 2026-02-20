@@ -18,6 +18,7 @@
  */
 
 #include "Platform/PlatformCompat.h"
+#include "Security/SecurityTypes.h"
 #include <chrono>
 #include <functional>
 #include <map>
@@ -82,20 +83,6 @@ struct SecretEntry {
 };
 
 // =============================================================================
-// ConfigManagerInterface - 느슨한 결합을 위한 인터페이스
-// =============================================================================
-
-class ConfigManagerInterface {
-public:
-  virtual ~ConfigManagerInterface() = default;
-  virtual std::string getOrDefault(const std::string &key,
-                                   const std::string &defaultValue) const = 0;
-  virtual std::string getSecretsDirectory() const = 0;
-  virtual std::string expandVariables(const std::string &value) const = 0;
-  virtual bool getBool(const std::string &key, bool defaultValue) const = 0;
-};
-
-// =============================================================================
 // SecretManager 클래스 - 전용 시크릿 관리
 // =============================================================================
 
@@ -108,13 +95,6 @@ public:
   static SecretManager &getInstance() {
     static SecretManager instance;
     return instance;
-  }
-
-  /**
-   * @brief ConfigManager 인스턴스 설정 (의존성 주입)
-   */
-  void setConfigManager(ConfigManagerInterface *config_manager) {
-    config_manager_ = config_manager;
   }
 
   // ==========================================================================
@@ -178,34 +158,6 @@ public:
    */
   std::string maskSensitiveJson(const std::string &json_str) const;
 
-  // ==========================================================================
-  // CSP Gateway 전용 편의 메서드들
-  // ==========================================================================
-
-  SecureString getCSPAPIKey() {
-    return getSecret("csp_api_key", "CSP_API_KEY_FILE");
-  }
-
-  SecureString getAWSAccessKey() {
-    return getSecret("aws_access_key", "CSP_S3_ACCESS_KEY_FILE");
-  }
-
-  SecureString getAWSSecretKey() {
-    return getSecret("aws_secret_key", "CSP_S3_SECRET_KEY_FILE");
-  }
-
-  SecureString getInsiteAPIKey() {
-    return getSecret("insite_api_key", "CSP_INSITE_API_KEY_FILE");
-  }
-
-  SecureString getInbaseAPIKey() {
-    return getSecret("inbase_api_key", "CSP_INBASE_API_KEY_FILE");
-  }
-
-  SecureString getBEMSAPIKey() {
-    return getSecret("bems_api_key", "CSP_BEMS_API_KEY_FILE");
-  }
-
   SecureString getJWTSecret() {
     return getSecret("jwt_secret", "JWT_SECRET_FILE");
   }
@@ -246,48 +198,27 @@ public:
       const std::map<std::string, std::pair<std::string, std::string>>
           &secrets);
 
-  /**
-   * @brief CSP Gateway 시크릿 일괄 설정
-   */
-  bool setCSPSecrets(const std::string &api_key,
-                     const std::string &aws_access_key,
-                     const std::string &aws_secret_key);
-
   // ==========================================================================
   // SSL 인증서 관리
   // ==========================================================================
 
-  struct SSLCertificates {
-    std::string cert_content;
-    std::string key_content;
-    std::string ca_content;
-  };
+  // SSLCertificates is now in SecurityTypes.h
 
   /**
    * @brief SSL 인증서 조회
    */
-  SSLCertificates getSSLCertificates();
+  ::PulseOne::Security::SSLCertificates getSSLCertificates();
 
   /**
    * @brief SSL 인증서 설정
    */
-  bool setSSLCertificates(const SSLCertificates &certs);
+  bool setSSLCertificates(const ::PulseOne::Security::SSLCertificates &certs);
 
   // ==========================================================================
   // 유효성 검사 및 모니터링
   // ==========================================================================
 
-  struct SecretStats {
-    int total_secrets;
-    int cached_secrets;
-    int expired_secrets;
-    int encrypted_secrets;
-    int plaintext_secrets;
-    int invalid_permissions;
-    std::chrono::system_clock::time_point last_cleanup;
-  };
-
-  SecretStats getStats() const;
+  ::PulseOne::Security::SecretStats getStats() const;
   std::map<std::string, bool> validateAllSecrets() const;
   std::vector<std::string> getExpiredSecrets() const;
 
@@ -312,14 +243,20 @@ public:
   /**
    * @brief 암호화 모드 설정 (AES, XOR 등)
    */
-  enum class EncryptionMode {
-    NONE = 0, // 평문
-    XOR = 1,  // 간단한 XOR
-    AES = 2   // AES-256 (향후 구현)
-  };
+  void setEncryptionMode(::PulseOne::Security::EncryptionMode mode) {
+    encryption_mode_ = mode;
+  }
+  ::PulseOne::Security::EncryptionMode getEncryptionMode() const {
+    return encryption_mode_;
+  }
 
-  void setEncryptionMode(EncryptionMode mode) { encryption_mode_ = mode; }
-  EncryptionMode getEncryptionMode() const { return encryption_mode_; }
+  /**
+   * @brief 시크릿 관리자 초기화 (Passive Mode)
+   * @param secrets_dir 시크릿 파일들이 위치한 디렉토리
+   * @param expander 변수 치환을 위한 프로바이더
+   */
+  void initialize(const std::string &secrets_dir,
+                  ::PulseOne::Security::ExpansionProvider expander);
 
 private:
   // ==========================================================================
@@ -398,19 +335,16 @@ private:
   // 멤버 변수들
   // ==========================================================================
 
-  /// ConfigManager 인터페이스 (의존성 주입)
-  ConfigManagerInterface *config_manager_;
-
   /// 시크릿 캐시 (thread-safe)
   mutable std::mutex cache_mutex_;
   std::map<std::string, SecretEntry> secret_cache_;
 
   /// 통계 정보
   mutable std::mutex stats_mutex_;
-  SecretStats stats_;
+  ::PulseOne::Security::SecretStats stats_;
 
   /// 암호화 설정
-  EncryptionMode encryption_mode_;
+  ::PulseOne::Security::EncryptionMode encryption_mode_;
   std::string encryption_key_;
   mutable std::mutex encryption_mutex_;
 
@@ -419,6 +353,10 @@ private:
   static constexpr size_t MAX_CACHE_SIZE = 100;
   static constexpr char DEFAULT_ENCRYPTION_KEY[] =
       "PulseOne_Secure_Vault_Key_2026_v3.2.0_Unified";
+
+  /// 주입받은 설정
+  std::string _secretsDir;
+  ::PulseOne::Security::ExpansionProvider _expander = nullptr;
 };
 
 // =============================================================================

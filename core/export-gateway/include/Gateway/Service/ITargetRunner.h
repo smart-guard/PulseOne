@@ -9,6 +9,7 @@
 #include "Export/GatewayExportTypes.h"
 #include "Gateway/Model/AlarmMessage.h"
 #include "Gateway/Model/ValueMessage.h"
+#include "Gateway/Service/ITargetRegistry.h"
 #include <string>
 #include <vector>
 
@@ -58,6 +59,10 @@ public:
   virtual BatchTargetResult sendValueBatch(
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
       const std::string &specific_target = "") = 0;
+
+  // Registry access
+  virtual ITargetRegistry &getRegistry() = 0;
+  virtual const ITargetRegistry &getRegistry() const = 0;
 
   // Failure Protector operations
   virtual void resetFailureProtector(const std::string &target_name) = 0;

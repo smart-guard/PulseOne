@@ -19,8 +19,8 @@ endif
 # Include directories
 INCLUDES = -Iinclude -Isrc -I../shared/include
 # Compiler flags
-CFLAGS = $(INCLUDES) -std=c11 -Wall -Wextra -O2 -fPIC
-CXXFLAGS = $(INCLUDES) -std=c++17 -Wall -Wextra -O2 -fPIC
+CFLAGS = $(INCLUDES) -std=c11 -Wall -Wextra -O0 -fPIC
+CXXFLAGS = $(INCLUDES) -std=c++17 -Wall -Wextra -O0 -fPIC
 
 # 컴파일러 설정
 CXX = g++
@@ -55,7 +55,7 @@ ifeq ($(BUILD_TYPE),Debug)
     CXXFLAGS += -g -O0 -fno-omit-frame-pointer
     CXXFLAGS += -DPULSEONE_DEBUG=1
 else
-    CXXFLAGS += -DNDEBUG -O2
+    CXXFLAGS += -DNDEBUG -O0
     CXXFLAGS += -DPULSEONE_DEBUG=0
 endif
 
@@ -69,11 +69,20 @@ SHARED_DIR = $(PROJECT_ROOT)/core/shared
 
 SRC_DIR = src
 INCLUDE_DIR = include
-BUILD_DIR = build
-BIN_DIR = bin
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    BUILD_DIR = build-win
+    BIN_DIR = bin-win
+else
+    BUILD_DIR = build
+    BIN_DIR = bin
+endif
 
 SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
-SHARED_LIB_DIR = $(SHARED_DIR)/lib
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    SHARED_LIB_DIR = $(SHARED_DIR)/lib/Windows-Cross
+else
+    SHARED_LIB_DIR = $(SHARED_DIR)/lib/Linux
+endif
 
 # =============================================================================
 # 라이브러리 감지
@@ -132,7 +141,8 @@ endif
 
 # 🔥 2순위: 로컬 include
 INCLUDES += -I$(INCLUDE_DIR)
-# INCLUDES += -I$(PROJECT_ROOT)/core/collector/include
+# CLI 테스트 헬퍼 include (테스트 함수 맞실 수 있도록)
+INCLUDES += -I$(SRC_DIR)/../tests/manual
 
 # 🔥 3순위: 시스템 include (Linux/Mac에서만 호환성 위해 유지)
 ifneq ($(CROSS_COMPILE_WINDOWS),1)
@@ -166,6 +176,7 @@ ifeq ($(HAS_SHARED),1)
     CXXFLAGS += -DHAS_SHARED_LIBS=1
     SHARED_LIBS = -L$(SHARED_LIB_DIR)
     SHARED_LIBS += -lpulseone-alarm
+    SHARED_LIBS += -lpulseone-event
     SHARED_LIBS += -lpulseone-export
     SHARED_LIBS += -lpulseone-data
     SHARED_LIBS += -lpulseone-database  
@@ -322,8 +333,12 @@ UTILS_OBJECTS = $(UTILS_CXX_SOURCES:$(SRC_DIR)/%.cpp=$(BUILD_DIR)/%.o) \
 MAIN_SOURCES = $(SRC_DIR)/main.cpp
 MAIN_OBJECT = $(BUILD_DIR)/main.o
 
+# 🔌 CLI 테스트 헬퍼 (--test-* 플래그용, main.cpp에서 분리)
+CLI_TEST_SOURCES = tests/manual/cli_tests.cpp
+CLI_TEST_OBJECTS = $(BUILD_DIR)/tests/manual/cli_tests.o
+
 # 📦 전체 오브젝트 파일 (EVENT_OBJECTS로 변경) ✅
-ALL_OBJECTS = $(EVENT_OBJECTS) $(MODEL_OBJECTS) $(SERVICE_OBJECTS) $(TARGET_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECT)
+ALL_OBJECTS = $(EVENT_OBJECTS) $(MODEL_OBJECTS) $(SERVICE_OBJECTS) $(TARGET_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(CLI_TEST_OBJECTS) $(MAIN_OBJECT)
 
 # 🎯 최종 실행 파일
 TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)
@@ -344,10 +359,28 @@ TEST_EXECUTABLES = $(TEST_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_BIN_DIR)/%)
 # 메인 타겟들
 # =============================================================================
 
-.PHONY: all clean clean-all run test test-mqtt check-libs debug-vars
+.PHONY: all clean clean-all run test test-mqtt check-libs debug-vars pch
+
+# =============================================================================
+# PCH (Precompiled Header) - json.hpp 등 무거운 헤더를 한 번만 컴파일
+# =============================================================================
+
+PCH_HEADER = $(INCLUDE_DIR)/pch.h
+PCH_GCH    = $(BUILD_DIR)/pch.h.gch
+
+# 모든 .cpp TU에 PCH 강제 포함 (-include) + GCC가 BUILD_DIR에서 .gch 자동 검출
+CXXFLAGS += -I$(BUILD_DIR) -include $(PCH_HEADER)
+
+# PCH 컴파일 타겟
+pch: $(PCH_GCH)
+
+$(PCH_GCH): $(PCH_HEADER) | $(BUILD_DIR)
+	@echo -e "$(BLUE)🔧 Compiling PCH: $(PCH_HEADER) → $(PCH_GCH) [$(PLATFORM)]$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -x c++-header $< -o $@
+	@echo -e "$(GREEN)✅ PCH ready: $(PCH_GCH)$(NC)"
 
 # 기본 타겟
-all: check-libs $(TARGET)
+all: check-libs $(PCH_GCH) $(TARGET)
 	@echo -e "$(GREEN)✅ Build completed: $(TARGET)$(NC)"
 
 # 최종 링크
@@ -362,8 +395,8 @@ $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
 $(BUILD_DIR) $(BIN_DIR) $(TEST_BUILD_DIR) $(TEST_BIN_DIR):
 	@mkdir -p $@
 
-# 컴파일 규칙
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
+# 컴파일 규칙 (PCH 의존성 명시)
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp $(PCH_GCH) | $(BUILD_DIR)
 	mkdir -p $(dir $@)
 	@echo -e "$(YELLOW)⚙️  Compiling $< [$(PLATFORM)]$(NC)"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
@@ -373,6 +406,12 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	@echo -e "$(YELLOW)⚙️  Compiling C source $< [$(PLATFORM)]$(NC)"
 	$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
+# CLI 테스트 헬퍼 컴파일 규칙
+$(BUILD_DIR)/tests/manual/cli_tests.o: tests/manual/cli_tests.cpp $(PCH_GCH) | $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)/tests/manual
+	@echo -e "$(YELLOW)⚙️  Compiling CLI test helpers [$(PLATFORM)]$(NC)"
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
 # =============================================================================
 # 유틸리티
 # =============================================================================
@@ -380,7 +419,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 # ✅ clean (빌드 파일만 삭제)
 clean:
 	@echo -e "$(YELLOW)🧹 Cleaning build files...$(NC)"
-	@find $(BUILD_DIR) -type f -name '*.o' -delete 2>/dev/null || true
+	@find $(BUILD_DIR) -type f \( -name '*.o' -o -name '*.gch' \) -delete 2>/dev/null || true
 	@find $(BIN_DIR) -type f -delete 2>/dev/null || true
 	@echo -e "$(GREEN)✅ Clean completed$(NC)"
 

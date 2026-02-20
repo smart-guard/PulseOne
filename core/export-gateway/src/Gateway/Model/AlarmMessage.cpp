@@ -7,6 +7,7 @@
 
 #include "Gateway/Model/AlarmMessage.h"
 #include <iomanip>
+#include <nlohmann/json.hpp>
 #include <sstream>
 
 #ifdef HAS_SHARED_LIBS
@@ -17,6 +18,10 @@
 namespace PulseOne {
 namespace Gateway {
 namespace Model {
+
+using json = nlohmann::json;
+
+AlarmMessage::AlarmMessage() : extra_info(nlohmann::json::object()) {}
 
 json AlarmMessage::to_json() const {
   // [v3.2.1] Manual Override RAW Bypass: 사용자 입력 원본 그대로 반환
@@ -277,6 +282,20 @@ bool AlarmMessage::operator==(const AlarmMessage &other) const {
   return site_id == other.site_id && point_name == other.point_name &&
          timestamp == other.timestamp && alarm_level == other.alarm_level;
 }
+
+} // namespace Model
+} // namespace Gateway
+} // namespace PulseOne
+
+// =============================================================================
+// Free functions for nlohmann::json ADL (moved from AlarmMessage.h)
+// =============================================================================
+namespace PulseOne {
+namespace Gateway {
+namespace Model {
+
+void to_json(nlohmann::json &j, const AlarmMessage &msg) { j = msg.to_json(); }
+void from_json(const nlohmann::json &j, AlarmMessage &msg) { msg.from_json(j); }
 
 } // namespace Model
 } // namespace Gateway

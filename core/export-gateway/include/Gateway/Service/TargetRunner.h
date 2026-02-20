@@ -6,18 +6,14 @@
 #ifndef GATEWAY_SERVICE_TARGET_RUNNER_H
 #define GATEWAY_SERVICE_TARGET_RUNNER_H
 
-#include "CSP/FailureProtector.h"
+#include "Gateway/Service/FailureProtector.h"
 #include "Gateway/Service/ITargetRegistry.h"
 #include "Gateway/Service/ITargetRunner.h"
 #include <memory>
 #include <mutex>
-#include <nlohmann/json.hpp>
 #include <unordered_map>
 
 namespace PulseOne {
-
-using json = nlohmann::json;
-
 namespace Gateway {
 namespace Service {
 
@@ -29,8 +25,7 @@ private:
   ITargetRegistry &registry_;
 
   mutable std::mutex protectors_mutex_;
-  std::unordered_map<std::string,
-                     std::unique_ptr<PulseOne::CSP::FailureProtector>>
+  std::unordered_map<std::string, std::unique_ptr<FailureProtector>>
       failure_protectors_;
 
 public:
@@ -57,15 +52,19 @@ public:
   void resetFailureProtector(const std::string &target_name) override;
   void resetAllFailureProtectors() override;
 
+  // Registry access (for ScheduledExporter failure persistence)
+  ITargetRegistry &getRegistry() { return registry_; }
+  const ITargetRegistry &getRegistry() const { return registry_; }
+
   // Statistics
   GatewayStats getStats() const override;
   void resetStats() override;
 
 private:
-  PulseOne::CSP::FailureProtector *
-  getOrCreateProtector(const std::string &target_name, const json &config);
+  FailureProtector *getOrCreateProtector(const std::string &target_name,
+                                         const nlohmann::json &config);
 
-  bool executeSend(const DynamicTarget &target, const json &payload,
+  bool executeSend(const DynamicTarget &target, const nlohmann::json &payload,
                    const PulseOne::Gateway::Model::AlarmMessage &alarm,
                    TargetSendResult &result);
 

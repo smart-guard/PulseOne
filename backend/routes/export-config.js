@@ -17,7 +17,8 @@ const LogManager = require('../lib/utils/LogManager');
  */
 router.get('/profiles', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        // null = system admin sees all; tenant users pass their tenant_id
+        const tenantId = req.query.tenant_id || req.body.tenant_id || req.query.tenantId || req.body.tenantId || req.user?.tenant_id || null;
         const response = await ExportGatewayService.getAllProfiles(tenantId);
         res.json(response);
     } catch (error) {
@@ -32,7 +33,7 @@ router.get('/profiles', async (req, res) => {
  */
 router.get('/profiles/:id', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.query.tenant_id || req.body.tenant_id || req.query.tenantId || req.body.tenantId || req.user?.tenant_id || null;
         const response = await ExportGatewayService.getProfileById(req.params.id, tenantId);
         res.json(response);
     } catch (error) {
@@ -47,7 +48,7 @@ router.get('/profiles/:id', async (req, res) => {
  */
 router.post('/profiles', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.body.tenant_id || req.body.tenantId || req.query.tenantId || req.user?.tenant_id || null;
         const response = await ExportGatewayService.createProfile(req.body, tenantId);
 
         LogManager.api('INFO', `프로파일 생성됨: ${req.body.name}`);
@@ -64,7 +65,7 @@ router.post('/profiles', async (req, res) => {
  */
 router.put('/profiles/:id', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.body.tenant_id || req.body.tenantId || req.query.tenantId || req.user?.tenant_id || null;
         const response = await ExportGatewayService.updateProfile(req.params.id, req.body, tenantId);
 
         LogManager.api('INFO', `프로파일 수정됨: ID ${req.params.id}`);
@@ -81,7 +82,7 @@ router.put('/profiles/:id', async (req, res) => {
  */
 router.delete('/profiles/:id', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.body.tenant_id || req.query.tenantId || req.user?.tenant_id || null;
         const response = await ExportGatewayService.deleteProfile(req.params.id, tenantId);
 
         LogManager.api('INFO', `프로파일 삭제됨: ID ${req.params.id}`);
@@ -102,7 +103,7 @@ router.delete('/profiles/:id', async (req, res) => {
  */
 router.get('/targets', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.query.tenant_id || req.body.tenant_id || req.query.tenantId || req.body.tenantId || req.user?.tenant_id || null;
         const response = await ExportGatewayService.getAllTargets(tenantId);
         res.json(response);
     } catch (error) {
@@ -117,7 +118,7 @@ router.get('/targets', async (req, res) => {
  */
 router.post('/targets', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.body.tenant_id || req.body.tenantId || req.query.tenantId || req.user?.tenant_id || null;
         const response = await ExportGatewayService.createTarget(req.body, tenantId);
 
         LogManager.api('INFO', `타겟 생성됨: ${req.body.name}`);
@@ -134,7 +135,7 @@ router.post('/targets', async (req, res) => {
  */
 router.put('/targets/:id', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.body.tenant_id || req.body.tenantId || req.query.tenantId || req.user?.tenant_id || null;
         const response = await ExportGatewayService.updateTarget(req.params.id, req.body, tenantId);
 
         LogManager.api('INFO', `타겟 수정됨: ID ${req.params.id}`);
@@ -151,7 +152,7 @@ router.put('/targets/:id', async (req, res) => {
  */
 router.delete('/targets/:id', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.query.tenantId || req.user?.tenant_id || null;
         const response = await ExportGatewayService.deleteTarget(req.params.id, tenantId);
 
         LogManager.api('INFO', `타겟 삭제됨: ID ${req.params.id}`);
@@ -186,7 +187,8 @@ router.post('/targets/test', async (req, res) => {
  */
 router.get('/templates', async (req, res) => {
     try {
-        const response = await ExportGatewayService.getAllPayloadTemplates();
+        const tenantId = req.query.tenantId || req.user?.tenant_id || null;
+        const response = await ExportGatewayService.getAllPayloadTemplates(tenantId);
         res.json(response);
     } catch (error) {
         LogManager.api('ERROR', '템플릿 목록 조회 실패', { error: error.message });
@@ -200,7 +202,8 @@ router.get('/templates', async (req, res) => {
  */
 router.post('/templates', async (req, res) => {
     try {
-        const response = await ExportGatewayService.createPayloadTemplate(req.body);
+        const tenantId = req.body.tenant_id || req.query.tenantId || req.user?.tenant_id || null;
+        const response = await ExportGatewayService.createPayloadTemplate(req.body, tenantId);
         LogManager.api('INFO', `템플릿 생성됨: ${req.body.name}`);
         res.json(response);
     } catch (error) {
@@ -215,7 +218,8 @@ router.post('/templates', async (req, res) => {
  */
 router.put('/templates/:id', async (req, res) => {
     try {
-        const response = await ExportGatewayService.updatePayloadTemplate(req.params.id, req.body);
+        const tenantId = req.body.tenant_id || req.query.tenantId || req.user?.tenant_id || null;
+        const response = await ExportGatewayService.updatePayloadTemplate(req.params.id, req.body, tenantId);
         LogManager.api('INFO', `템플릿 수정됨: ID ${req.params.id}`);
         res.json(response);
     } catch (error) {
@@ -230,7 +234,8 @@ router.put('/templates/:id', async (req, res) => {
  */
 router.delete('/templates/:id', async (req, res) => {
     try {
-        const response = await ExportGatewayService.deletePayloadTemplate(req.params.id);
+        const tenantId = req.query.tenantId || req.user?.tenant_id || null;
+        const response = await ExportGatewayService.deletePayloadTemplate(req.params.id, tenantId);
         LogManager.api('INFO', `템플릿 삭제됨: ID ${req.params.id}`);
         res.json(response);
     } catch (error) {
@@ -249,7 +254,8 @@ router.delete('/templates/:id', async (req, res) => {
  */
 router.get('/schedules', async (req, res) => {
     try {
-        const response = await ExportGatewayService.getAllSchedules();
+        const tenantId = req.query.tenantId || req.user?.tenant_id || null;
+        const response = await ExportGatewayService.getAllSchedules(tenantId);
         res.json(response);
     } catch (error) {
         LogManager.api('ERROR', '스케줄 목록 조회 실패', { error: error.message });
@@ -263,7 +269,8 @@ router.get('/schedules', async (req, res) => {
  */
 router.post('/schedules', async (req, res) => {
     try {
-        const response = await ExportGatewayService.createSchedule(req.body);
+        const tenantId = req.body.tenant_id || req.query.tenantId || req.user?.tenant_id || null;
+        const response = await ExportGatewayService.createSchedule(req.body, tenantId);
         LogManager.api('INFO', `스케줄 생성됨: ${req.body.schedule_name}`);
         res.json(response);
     } catch (error) {
@@ -278,7 +285,8 @@ router.post('/schedules', async (req, res) => {
  */
 router.put('/schedules/:id', async (req, res) => {
     try {
-        const response = await ExportGatewayService.updateSchedule(req.params.id, req.body);
+        const tenantId = req.body.tenant_id || req.query.tenantId || req.user?.tenant_id || null;
+        const response = await ExportGatewayService.updateSchedule(req.params.id, req.body, tenantId);
         LogManager.api('INFO', `스케줄 수정됨: ID ${req.params.id}`);
         res.json(response);
     } catch (error) {
@@ -293,7 +301,8 @@ router.put('/schedules/:id', async (req, res) => {
  */
 router.delete('/schedules/:id', async (req, res) => {
     try {
-        const response = await ExportGatewayService.deleteSchedule(req.params.id);
+        const tenantId = req.query.tenantId || req.user?.tenant_id || null;
+        const response = await ExportGatewayService.deleteSchedule(req.params.id, tenantId);
         LogManager.api('INFO', `스케줄 삭제됨: ID ${req.params.id}`);
         res.json(response);
     } catch (error) {
@@ -312,7 +321,8 @@ router.delete('/schedules/:id', async (req, res) => {
  */
 router.get('/targets/:targetId/mappings', async (req, res) => {
     try {
-        const response = await ExportGatewayService.getTargetMappings(req.params.targetId);
+        const tenantId = req.query.tenantId || req.user?.tenant_id || null;
+        const response = await ExportGatewayService.getTargetMappings(req.params.targetId, tenantId);
         res.json(response);
     } catch (error) {
         LogManager.api('ERROR', `매핑 조회 실패 (${req.params.targetId})`, { error: error.message });
@@ -326,7 +336,9 @@ router.get('/targets/:targetId/mappings', async (req, res) => {
  */
 router.post('/targets/:targetId/mappings', async (req, res) => {
     try {
-        const response = await ExportGatewayService.saveTargetMappings(req.params.targetId, req.body.mappings);
+        const tenantId = req.body.tenant_id || req.body.tenantId || req.query.tenantId || req.user?.tenant_id || null;
+        const siteId = req.user?.site_id || req.body.site_id || req.body.siteId || null;
+        const response = await ExportGatewayService.saveTargetMappings(req.params.targetId, req.body.mappings, tenantId, siteId);
         LogManager.api('INFO', `매핑 저장됨: Target ${req.params.targetId}`);
         res.json(response);
     } catch (error) {
@@ -341,10 +353,15 @@ router.post('/targets/:targetId/mappings', async (req, res) => {
 
 router.get('/gateways', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        // [System Admin Support] If user has no tenant_id, allow viewing all or filtering by query
+        const tenantId = req.user?.tenant_id === undefined || req.user?.tenant_id === null
+            ? (req.query.tenantId || null)
+            : req.user.tenant_id;
+
+        const siteId = req.query.siteId || req.user?.site_id || null;
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 4; // Adjusted to 4 for easier testing vs Grid
-        const response = await ExportGatewayService.getAllGateways(tenantId, page, limit);
+        const limit = parseInt(req.query.limit) || 10;
+        const response = await ExportGatewayService.getAllGateways(tenantId, page, limit, siteId);
         res.json(response);
     } catch (error) {
         LogManager.api('ERROR', '게이트웨이 목록 조회 실패', { error: error.message });
@@ -358,8 +375,11 @@ router.get('/gateways', async (req, res) => {
  */
 router.post('/gateways', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
-        const response = await ExportGatewayService.registerGateway(req.body, tenantId);
+        const tenantId = req.user?.tenant_id === undefined || req.user?.tenant_id === null
+            ? (req.body.tenant_id || req.body.tenantId || req.query.tenantId || null)
+            : req.user.tenant_id;
+        const siteId = req.body.site_id || req.body.siteId || req.user?.site_id || null;
+        const response = await ExportGatewayService.registerGateway(req.body, tenantId, siteId);
 
         LogManager.api('INFO', `게이트웨이 등록됨: ${req.body.name}`);
         res.json(response);
@@ -375,8 +395,11 @@ router.post('/gateways', async (req, res) => {
  */
 router.put('/gateways/:id', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
-        const response = await ExportGatewayService.updateGateway(req.params.id, req.body, tenantId);
+        const tenantId = req.user?.tenant_id === undefined || req.user?.tenant_id === null
+            ? (req.body.tenant_id || req.body.tenantId || req.query.tenantId || null)
+            : req.user.tenant_id;
+        const siteId = req.body.site_id || req.body.siteId || req.user?.site_id || null;
+        const response = await ExportGatewayService.updateGateway(req.params.id, req.body, tenantId, siteId);
 
         LogManager.api('INFO', `게이트웨이 수정됨: ID ${req.params.id}`);
         res.json(response);
@@ -392,8 +415,11 @@ router.put('/gateways/:id', async (req, res) => {
  */
 router.delete('/gateways/:id', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
-        const response = await ExportGatewayService.deleteGateway(req.params.id, tenantId);
+        const tenantId = req.user?.tenant_id === undefined || req.user?.tenant_id === null
+            ? (req.query.tenantId || null)
+            : req.user.tenant_id;
+        const siteId = req.query.site_id || req.user?.site_id || null;
+        const response = await ExportGatewayService.deleteGateway(req.params.id, tenantId, siteId);
 
         LogManager.api('INFO', `게이트웨이 삭제됨: ID ${req.params.id}`);
         res.json(response);
@@ -427,8 +453,10 @@ router.get('/gateways/:gatewayId/assignments', async (req, res) => {
  */
 router.post('/gateways/:gatewayId/assign', async (req, res) => {
     try {
+        const tenantId = req.body.tenant_id || req.body.tenantId || req.query.tenantId || req.user?.tenant_id || 1;
+        const siteId = req.user?.site_id || req.body.site_id || req.body.siteId || null;
         const { profileId } = req.body;
-        const response = await ExportGatewayService.assignProfileToGateway(profileId, req.params.gatewayId);
+        const response = await ExportGatewayService.assignProfileToGateway(profileId, req.params.gatewayId, tenantId, siteId);
 
         LogManager.api('INFO', `프로파일 할당: P${profileId} -> G${req.params.gatewayId}`);
         res.json(response);
@@ -444,8 +472,10 @@ router.post('/gateways/:gatewayId/assign', async (req, res) => {
  */
 router.post('/gateways/:gatewayId/unassign', async (req, res) => {
     try {
+        const tenantId = req.body.tenant_id || req.body.tenantId || req.query.tenantId || req.user?.tenant_id || 1;
+        const siteId = req.user?.site_id || req.body.site_id || req.body.siteId || null;
         const { profileId } = req.body;
-        const response = await ExportGatewayService.unassignProfile(profileId, req.params.gatewayId);
+        const response = await ExportGatewayService.unassignProfile(profileId, req.params.gatewayId, tenantId, siteId);
 
         LogManager.api('INFO', `프로파일 할당 해제: P${profileId} -> G${req.params.gatewayId}`);
         res.json(response);
@@ -461,7 +491,9 @@ router.post('/gateways/:gatewayId/unassign', async (req, res) => {
  */
 router.post('/gateways/:gatewayId/deploy', async (req, res) => {
     try {
-        const response = await ExportGatewayService.deployConfig(req.params.gatewayId);
+        const tenantId = req.query.tenantId || req.user?.tenant_id || 1;
+        const siteId = req.user?.site_id || req.query.siteId || null;
+        const response = await ExportGatewayService.deployConfig(req.params.gatewayId, tenantId, siteId);
         res.json(response);
     } catch (error) {
         LogManager.api('ERROR', `설정 배포 실패 (${req.params.gatewayId})`, { error: error.message });
@@ -475,8 +507,9 @@ router.post('/gateways/:gatewayId/deploy', async (req, res) => {
  */
 router.post('/gateways/:gatewayId/manual-export', async (req, res) => {
     try {
+        const tenantId = req.body.tenantId || req.query.tenantId || req.user?.tenant_id || 1;
         // payload requires { target_name, point_id, command_id }
-        const response = await ExportGatewayService.manualExport(req.params.gatewayId, req.body);
+        const response = await ExportGatewayService.manualExport(req.params.gatewayId, req.body, tenantId);
 
         LogManager.api('INFO', `수동 전송 명령 전송: G${req.params.gatewayId}, Point ${req.body.point_id}`);
         res.json(response);
@@ -492,8 +525,9 @@ router.post('/gateways/:gatewayId/manual-export', async (req, res) => {
  */
 router.post('/gateways/:gatewayId/start', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
-        const response = await ExportGatewayService.startGateway(req.params.gatewayId, tenantId);
+        const tenantId = req.query.tenantId || req.user?.tenant_id || 1;
+        const siteId = req.user?.site_id || req.query.siteId || null;
+        const response = await ExportGatewayService.startGateway(req.params.gatewayId, tenantId, siteId);
         res.json(response);
     } catch (error) {
         LogManager.api('ERROR', `게이트웨이 시작 실패 (${req.params.gatewayId})`, { error: error.message });
@@ -507,7 +541,7 @@ router.post('/gateways/:gatewayId/start', async (req, res) => {
  */
 router.post('/gateways/:gatewayId/stop', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.query.tenantId || req.user?.tenant_id || 1;
         const response = await ExportGatewayService.stopGateway(req.params.gatewayId, tenantId);
         res.json(response);
     } catch (error) {
@@ -522,7 +556,7 @@ router.post('/gateways/:gatewayId/stop', async (req, res) => {
  */
 router.post('/gateways/:gatewayId/restart', async (req, res) => {
     try {
-        const tenantId = req.user?.tenant_id || 1;
+        const tenantId = req.query.tenantId || req.user?.tenant_id || 1;
         const response = await ExportGatewayService.restartGateway(req.params.gatewayId, tenantId);
         res.json(response);
     } catch (error) {
@@ -541,7 +575,14 @@ router.post('/gateways/:gatewayId/restart', async (req, res) => {
  */
 router.get('/logs/statistics', async (req, res) => {
     try {
+        const tenantId = req.user?.tenant_id === undefined || req.user?.tenant_id === null
+            ? (req.query.tenantId || null)
+            : req.user.tenant_id;
+        const siteId = req.user?.site_id || req.query.siteId || null;
+
         const filters = {
+            tenant_id: tenantId,
+            site_id: siteId,
             target_id: req.query.target_id,
             status: req.query.status,
             log_type: req.query.log_type,
@@ -564,7 +605,14 @@ router.get('/logs/statistics', async (req, res) => {
  */
 router.get('/logs', async (req, res) => {
     try {
+        const tenantId = req.user?.tenant_id === undefined || req.user?.tenant_id === null
+            ? (req.query.tenantId || null)
+            : req.user.tenant_id;
+        const siteId = req.user?.site_id || req.query.siteId || null;
+
         const filters = {
+            tenant_id: tenantId,
+            site_id: siteId,
             target_id: req.query.target_id,
             status: req.query.status,
             log_type: req.query.log_type,

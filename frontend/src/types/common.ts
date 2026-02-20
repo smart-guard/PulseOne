@@ -74,11 +74,52 @@ export interface Site {
   code: string;
   site_type: string;
   description?: string;
+
+  // 위치 정보
   location?: string;
   address?: string;
+  coordinates?: string;
+  latitude?: number;  // UI용 가상 필드
+  longitude?: number; // UI용 가상 필드
+  postal_code?: string;
+  country?: string;
+  city?: string;
+  state_province?: string;
+
+  // 연락처 정보 (DB는 manager_*, 코드는 contact_* 혼용될 수 있으나 DB 기준 manager_* 우선)
+  manager_name?: string;
+  manager_email?: string;
+  manager_phone?: string;
+  contact_name?: string;  // 하위 호환성용
+  contact_email?: string; // 하위 호환성용
+  contact_phone?: string; // 하위 호환성용
+  emergency_contact?: string;
+
+  // 운영 및 시설
   timezone: string;
+  operating_hours?: string;
+  shift_pattern?: string;
+  working_days?: string;
+  floor_area?: number;
+  ceiling_height?: number;
+  max_occupancy?: number;
+
+  // 상태 및 설정
   is_active: boolean;
   is_deleted: boolean;
+  is_visible?: boolean;
+  monitoring_enabled?: boolean;
+
+  // 인프라 및 계층
+  edge_server_id?: number;
+  hierarchy_level?: number;
+  hierarchy_path?: string;
+  sort_order?: number;
+
+  // 확장 데이터
+  tags?: string | string[];
+  metadata?: string | Record<string, any>;
+
   created_at: string;
   updated_at: string;
   children?: Site[];

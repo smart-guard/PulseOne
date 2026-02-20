@@ -19,7 +19,12 @@ const getLocalISOString = () => {
     return `${localIso.replace('T', ' ').split('.')[0]}.000`;
 };
 
-const ManualTestTab: React.FC = () => {
+interface ManualTestTabProps {
+    siteId?: number | null;
+    tenantId?: number | null;
+}
+
+const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
     const [gateways, setGateways] = useState<Gateway[]>([]);
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
@@ -43,10 +48,10 @@ const ManualTestTab: React.FC = () => {
         const fetchInitialData = async () => {
             try {
                 const [gwRes, targetsRes, pointsRes, templatesRes] = await Promise.all([
-                    exportGatewayApi.getGateways({ page: 1, limit: 100 }),
-                    exportGatewayApi.getTargets(),
-                    exportGatewayApi.getDataPoints(),
-                    exportGatewayApi.getTemplates()
+                    exportGatewayApi.getGateways({ page: 1, limit: 100, siteId, tenantId }),
+                    exportGatewayApi.getTargets({ tenantId }),
+                    exportGatewayApi.getDataPoints('', undefined, siteId, tenantId),
+                    exportGatewayApi.getTemplates({ tenantId })
                 ]);
 
                 setGateways(gwRes.data?.items || []);
@@ -63,7 +68,7 @@ const ManualTestTab: React.FC = () => {
             }
         };
         fetchInitialData();
-    }, []);
+    }, [siteId, tenantId]);
 
     // Specific logic to fetch assignments for a gateway when needed, IF not already fetched.
     // In original code, it passed `assignments` prop which had ALL assignments.
@@ -71,7 +76,7 @@ const ManualTestTab: React.FC = () => {
     const ensureAssignments = async (gwId: number) => {
         if (assignments[gwId]) return assignments[gwId];
         try {
-            const res = await exportGatewayApi.getAssignments(gwId);
+            const res = await exportGatewayApi.getAssignments(gwId, siteId, tenantId);
             const list = extractItemsRef(res.data);
             setAssignments(prev => ({ ...prev, [gwId]: list }));
             return list;
@@ -218,7 +223,7 @@ const ManualTestTab: React.FC = () => {
 
             const pointGroups: Record<number, any> = {};
             await Promise.all(linkedTargets.map(async (target) => {
-                const res = await exportGatewayApi.getTargetMappings(target.id);
+                const res = await exportGatewayApi.getTargetMappings(target.id, siteId, tenantId);
                 const items = extractItemsRef(res.data);
                 items.forEach((m: any) => {
                     if (!pointGroups[m.point_id]) {

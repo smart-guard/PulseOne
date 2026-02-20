@@ -1,4 +1,5 @@
 #include "DatabaseManager.hpp"
+#include "Client/RedisClientImpl.h"
 #include <algorithm>
 #include <chrono>
 #include <thread>
@@ -367,7 +368,7 @@ void *DatabaseManager::getMSSQLConnection() { return nullptr; }
 // ========================================================================
 bool DatabaseManager::connectRedis() {
   try {
-    redis_client_ = std::make_unique<RedisClientImpl>();
+    redis_client_ = std::make_unique<PulseOne::RedisClientImpl>();
     return redis_client_->connect(current_config_.redis_host,
                                   current_config_.redis_port,
                                   current_config_.redis_pass);

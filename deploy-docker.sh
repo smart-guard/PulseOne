@@ -11,7 +11,7 @@ PACKAGE_NAME="PulseOne_Docker_Deploy"
 PACKAGE_DIR="$DIST_DIR/$PACKAGE_NAME"
 IMAGE_DIR="$PACKAGE_DIR/images"
 
-VERSION="1.0.0"
+VERSION=$(grep '"version"' "$PROJECT_ROOT/version.json" | cut -d'"' -f4 || echo "6.1.0")
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 
 echo "================================================================="

@@ -5,7 +5,7 @@
 # 기본 설정
 CXX = x86_64-w64-mingw32-g++
 CC = x86_64-w64-mingw32-gcc
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00
+CXXFLAGS = $(INCLUDES) -std=c++17 -Wall -Wextra -O0 -fPIC --param ggc-min-expand=0
 CFLAGS = -Wall -O2 -DWIN32 -D_WIN32_WINNT=0x0A00
 CXXFLAGS += -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE
 CXXFLAGS += -DHAS_MODBUS=1 -DHAS_MQTT=1 -DHAS_BACNET=1 -DHAS_QUICKJS=1 -DHAS_HTTPLIB=1 -DHAS_REDIS=1 -DHAS_JSON=1
@@ -138,7 +138,8 @@ SHARED_SOURCES = $(SHARED_SRC_DIR)/Logging/LogManager.cpp \
                  $(wildcard $(SHARED_SRC_DIR)/Database/*.cpp) \
                  $(wildcard $(SHARED_SRC_DIR)/Database/Entities/*.cpp) \
                  $(wildcard $(SHARED_SRC_DIR)/Database/Repositories/*.cpp) \
-                 $(wildcard $(SHARED_SRC_DIR)/Client/*.cpp)
+                 $(wildcard $(SHARED_SRC_DIR)/Client/*.cpp) \
+                 $(SHARED_SRC_DIR)/Event/EventSubscriber.cpp
 
 SHARED_DBLIB_SOURCES = $(wildcard $(SHARED_MODULE_DIR)/DbLib/src/*.cpp)
 SHARED_LOGLIB_SOURCES = $(wildcard $(SHARED_MODULE_DIR)/LogLib/src/*.cpp)
@@ -201,7 +202,7 @@ IMPLIB = $(BIN_DIR)/libcollector.a
 all: check-libs $(BIN_DIR)/$(TARGET) plugins
 
 # 드라이버 플러그인 빌드 (개별 Makefile.windows 호출)
-plugins:
+plugins: $(BIN_DIR)/$(TARGET)
 	@echo "🔨 Building Windows Driver Plugins..."
 	@$(MAKE) -C src/Drivers/Modbus -f Makefile.windows
 	@$(MAKE) -C src/Drivers/Bacnet -f Makefile.windows

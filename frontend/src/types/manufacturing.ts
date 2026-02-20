@@ -22,6 +22,7 @@ export interface DeviceModel {
     config_schema?: any;
     default_config?: any;
     is_active: boolean;
+    model_number?: string;
     manufacturer_name?: string;
     manual_url?: string; // Added metadata
     created_at: string;
@@ -68,6 +69,7 @@ export interface DeviceTemplate {
     polling_interval: number;
     timeout: number;
     is_public: boolean;
+    model_number?: string;
     author_id?: number;
     version: string;
     manufacturer_name?: string;

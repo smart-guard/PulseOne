@@ -263,9 +263,18 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
       // 1. 기본 정보 및 통신 설정 비교
       const checkFields = [
         { key: 'name', label: '디바이스 명' },
+        { key: 'tenant_id', label: '고객사(Tenant)' },
+        { key: 'site_id', label: '설치 사이트' },
+        { key: 'device_group_id', label: '장치 그룹' },
+        { key: 'edge_server_id', label: '담당 콜렉터(Edge Server)' },
+        { key: 'description', label: '설명' },
         { key: 'manufacturer', label: '제조사' },
         { key: 'model', label: '모델' },
+        { key: 'serial_number', label: '시리얼 번호' },
         { key: 'device_type', label: '타입' },
+        { key: 'protocol_type', label: '프로토콜 타입' },
+        { key: 'protocol_id', label: '프로토콜 ID' },
+        { key: 'protocol_instance_id', label: '프로토콜 인스턴스' },
         { key: 'endpoint', label: '엔드포인트' },
         { key: 'polling_interval', label: '폴링 간격', unit: 'ms' },
         { key: 'timeout', label: '타임아웃', unit: 'ms' },
@@ -484,20 +493,27 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
               device_type: editData.device_type,
               manufacturer: editData.manufacturer,
               model: editData.model,
+              serial_number: editData.serial_number, // 🔥 추가
               endpoint: editData.endpoint,
               config: editData.config,
+              site_id: editData.site_id,
+              tenant_id: editData.tenant_id,
+              protocol_id: editData.protocol_id,      // 🔥 추가
+              protocol_type: editData.protocol_type,  // 🔥 추가
+              protocol_instance_id: editData.protocol_instance_id, // 🔥 추가
+              instance_name: editData.instance_name,  // 🔥 추가
               device_group_id: editData.device_group_id,
               edge_server_id: editData.edge_server_id,
-              polling_interval: editData.polling_interval, // 🔥 추가
-              timeout: editData.timeout,                   // 🔥 추가
+              polling_interval: editData.polling_interval,
+              timeout: editData.timeout,
               retry_count: editData.retry_count,
               is_enabled: editData.is_enabled,
-              settings: editData.settings || {},          // 🔥 null 방지
+              settings: editData.settings || {},
               tags: editData.tags,
               metadata: editData.metadata,
               custom_fields: editData.custom_fields,
               group_ids: editData.group_ids,
-              data_points: dataPoints // 🔥 NEW: 일괄 업데이트용 데이터포인트
+              data_points: dataPoints
             };
 
             console.log('🚀 실제 전송할 데이터:', JSON.stringify(updateData, null, 2));

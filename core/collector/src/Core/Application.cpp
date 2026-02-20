@@ -264,6 +264,32 @@ bool CollectorApplication::Initialize() {
                                       std::string(e.what()));
     }
 
+    // ✅ 8. C2 Command Subscriber 시작
+    LogManager::getInstance().Info("Step 8: Starting C2 Command Subscriber...");
+    try {
+      PulseOne::Event::EventSubscriberConfig event_config;
+      event_config.redis_host =
+          ConfigManager::getInstance().getOrDefault("REDIS_HOST", "redis");
+      event_config.redis_port =
+          ConfigManager::getInstance().getInt("REDIS_PORT", 6379);
+      event_config.redis_password =
+          ConfigManager::getInstance().getSecret("REDIS_PASSWORD_FILE");
+      event_config.worker_thread_count = 1;
+
+      command_subscriber_ = std::make_unique<CommandSubscriber>(event_config);
+      if (command_subscriber_->start()) {
+        LogManager::getInstance().Info(
+            "✓ C2 Command Subscriber started successfully");
+      } else {
+        LogManager::getInstance().Warn(
+            "✗ Failed to start C2 Command Subscriber");
+      }
+    } catch (const std::exception &e) {
+      LogManager::getInstance().Error(
+          "✗ CommandSubscriber initialization failed: " +
+          std::string(e.what()));
+    }
+
     LogManager::getInstance().Info("=== SYSTEM INITIALIZATION COMPLETED ===");
     return true;
 
@@ -487,6 +513,15 @@ void CollectorApplication::Cleanup() {
 
     Pipeline::PipelineManager::getInstance().Shutdown();
     LogManager::getInstance().Info("✓ PipelineManager shut down");
+
+    // 2.7. CommandSubscriber 정리
+    if (command_subscriber_) {
+      LogManager::getInstance().Info(
+          "Step 2.7/3: Stopping Command Subscriber...");
+      command_subscriber_->stop();
+      command_subscriber_.reset();
+      LogManager::getInstance().Info("✓ Command Subscriber stopped");
+    }
 
     // 3. 데이터베이스 연결 정리 (자동으로 소멸자에서 처리됨)
     LogManager::getInstance().Info("Step 3/3: Database cleanup...");

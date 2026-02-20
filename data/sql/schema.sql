@@ -4,7 +4,7 @@ CREATE TABLE schema_versions (
     applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     description TEXT
 );
-CREATE TABLE sqlite_sequence(name,seq);
+-- CREATE TABLE sqlite_sequence(name,seq); -- Removed for internal compatibility
 CREATE TABLE tenants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     
@@ -552,7 +552,10 @@ CREATE TABLE devices (
     -- 감사 정보
     created_by INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, protocol_instance_id INTEGER,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    -- 프로토콜 인스턴스 연동 (Latest Migration)
+    protocol_instance_id INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
@@ -1795,6 +1798,8 @@ CREATE TABLE audit_logs (
 );
 CREATE TABLE export_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    site_id INTEGER,                                     -- NULL = 테넌트 공용, 값 있음 = 사이트 전용
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
     is_enabled BOOLEAN DEFAULT 1,
@@ -1803,7 +1808,10 @@ CREATE TABLE export_profiles (
     created_by VARCHAR(50),
     point_count INTEGER DEFAULT 0,
     last_exported_at DATETIME,
-    data_points TEXT DEFAULT '[]'
+    data_points TEXT DEFAULT '[]',
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
 );
 CREATE TABLE export_profile_points (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1859,16 +1867,22 @@ CREATE TABLE protocol_mappings (
 );
 CREATE TABLE payload_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    site_id INTEGER,                                     -- NULL = 테넌트 공용
     name VARCHAR(100) NOT NULL UNIQUE,
     system_type VARCHAR(50) NOT NULL,
     description TEXT,
     template_json TEXT NOT NULL,
     is_active BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
 );
 CREATE TABLE export_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER,
     
     -- 기본 분류
     log_type VARCHAR(20) NOT NULL,
@@ -1899,12 +1913,19 @@ CREATE TABLE export_logs (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     client_info TEXT,
     
+    -- 추가 필드
+    gateway_id INTEGER,
+    sent_payload TEXT,
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (service_id) REFERENCES protocol_services(id) ON DELETE SET NULL,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE SET NULL,
     FOREIGN KEY (mapping_id) REFERENCES protocol_mappings(id) ON DELETE SET NULL
 );
 CREATE TABLE export_schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    site_id INTEGER,                                     -- NULL = 테넌트 공용
     profile_id INTEGER,
     target_id INTEGER NOT NULL,
     schedule_name VARCHAR(100) NOT NULL,
@@ -1923,6 +1944,8 @@ CREATE TABLE export_schedules (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE
 );
@@ -1939,6 +1962,8 @@ CREATE TABLE virtual_point_logs (
 );
 CREATE TABLE export_targets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    site_id INTEGER,                                     -- NULL = 테넌트 공용
     profile_id INTEGER,
     name VARCHAR(100) NOT NULL UNIQUE,
     target_type VARCHAR(20) NOT NULL,
@@ -1952,11 +1977,14 @@ CREATE TABLE export_targets (
     execution_delay_ms INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
     FOREIGN KEY (template_id) REFERENCES payload_templates(id) ON DELETE SET NULL
 );
 CREATE TABLE export_target_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER,
     target_id INTEGER NOT NULL,
     point_id INTEGER,
     site_id INTEGER,
@@ -1965,6 +1993,7 @@ CREATE TABLE export_target_mappings (
     conversion_config TEXT,
     is_enabled BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE,
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
@@ -1976,6 +2005,8 @@ CREATE TABLE export_profile_assignments (
     gateway_id INTEGER NOT NULL,
     is_active INTEGER DEFAULT 1,
     assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,       -- NULL = 시스템 관리자 전역 할당
+    site_id INTEGER REFERENCES sites(id) ON DELETE SET NULL,          -- NULL = 테넌트 공용
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,
     FOREIGN KEY (gateway_id) REFERENCES edge_servers(id) ON DELETE CASCADE
 );
@@ -1998,7 +2029,11 @@ CREATE TABLE protocol_instances (
     
     -- 메타데이터
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL, broker_type VARCHAR(20) DEFAULT 'INTERNAL',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    -- 테넌트 및 브로커 상세 (Latest Migration)
+    tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+    broker_type VARCHAR(20) DEFAULT 'INTERNAL',
     
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE
 );
@@ -2250,6 +2285,10 @@ CREATE INDEX idx_export_target_mappings_point ON export_target_mappings(point_id
 CREATE INDEX idx_export_schedules_target_id ON export_schedules(target_id);
 CREATE INDEX idx_export_schedules_is_enabled ON export_schedules(is_enabled);
 CREATE INDEX idx_export_schedules_next_run_at ON export_schedules(next_run_at);
+CREATE INDEX idx_export_profiles_site ON export_profiles(site_id);
+CREATE INDEX idx_export_targets_site ON export_targets(site_id);
+CREATE INDEX idx_payload_templates_site ON payload_templates(site_id);
+CREATE INDEX idx_export_schedules_site ON export_schedules(site_id);
 CREATE INDEX idx_backups_created_at ON backups(created_at);
 CREATE INDEX idx_backups_status ON backups(status);
 CREATE VIEW v_export_targets_with_templates AS

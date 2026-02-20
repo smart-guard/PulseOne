@@ -55,6 +55,10 @@ using RedisClient = RedisClientImpl;
 #define HAS_REDIS 1
 #endif
 
+namespace PulseOne {
+class RedisClientImpl;
+}
+
 namespace DbLib {
 
 /**
@@ -153,7 +157,7 @@ public:
   bool executeNonQueryMSSQL(const std::string &query);
   void *getMSSQLConnection();
 
-  RedisClientImpl *getRedisClient() { return redis_client_.get(); }
+  PulseOne::RedisClientImpl *getRedisClient() { return redis_client_.get(); }
   bool connectRedis();
   void disconnectRedis();
   bool testRedisConnection();
@@ -213,7 +217,7 @@ private:
   void *mssql_conn_ = nullptr;
 #endif
 
-  std::unique_ptr<RedisClientImpl> redis_client_;
+  std::unique_ptr<PulseOne::RedisClientImpl> redis_client_;
 
   std::map<DatabaseType, bool> enabled_databases_;
   DatabaseType primary_rdb_ = DatabaseType::SQLITE;

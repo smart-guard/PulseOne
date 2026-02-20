@@ -1,0 +1,32 @@
+FROM --platform=linux/amd64 ubuntu:22.04
+
+# Avoid prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Wine and dependencies
+RUN apt-get update && apt-get install -y \
+    wine64 \
+    wine \
+    xvfb \
+    curl \
+    unzip \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Host Timezone to KST
+RUN ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime && \
+    DEBIAN_FRONTEND=noninteractive dpkg-reconfigure -f noninteractive tzdata
+
+# Environment
+ENV WINEDEBUG=-all
+ENV WINEPATH=/app/bin-windows:/app/bin-windows/plugins
+ENV WINEPREFIX=/root/.wine
+ENV TZ=Asia/Seoul
+
+WORKDIR /app
+
+# Entrypoint: Xvfb + Wine KST timezone registry fix
+COPY docker/wine-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

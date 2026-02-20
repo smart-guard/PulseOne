@@ -3,20 +3,31 @@
 -- 
 -- 파일명: 10-export_system.sql
 -- 목적: Export Gateway 및 Protocol Server를 위한 데이터베이스 스키마
--- 버전: 2.2 (template_id 컬럼 추가)
--- 작성일: 2025-10-23
+-- 버전: 3.0 (테넌트 스코핑 완전 적용)
+-- 작성일: 2026-02-19
 --
--- 주요 변경사항 (v2.1 → v2.2):
---   - export_targets: template_id 컬럼 추가 (외래키로 payload_templates 참조)
---   - export_targets: template_id 인덱스 추가
---   - config JSON에서 템플릿 참조 분리 (정규화)
+-- 주요 변경사항 (v2.2 → v3.0):
+--   - export_profiles: tenant_id NOT NULL, site_id(optional) 추가
+--   - export_targets: tenant_id NOT NULL, site_id(optional) 추가
+--   - payload_templates: tenant_id NOT NULL, site_id(optional) 추가
+--   - export_schedules: tenant_id NOT NULL, site_id(optional) 추가
+--   - export_logs: tenant_id 추가
+--   - export_target_mappings: tenant_id 추가
+--   - export_profile_assignments: tenant_id, site_id 추가 (nullable, 시스템관리자=NULL)
+--
+-- 설계 원칙:
+--   - tenant_id = NULL → 시스템 관리자 전역 접근 (모든 테넌트 데이터 조회 가능)
+--   - tenant_id = N    → 해당 테넌트/사이트 관리자만 접근
+--   - site_id = NULL   → 테넌트 전체 공용 리소스
+--   - site_id = N      → 특정 사이트 전용 리소스
 --
 -- 이전 변경사항:
+--   - v2.2: export_targets: template_id 컬럼 추가 (외래키로 payload_templates 참조)
 --   - v2.1: payload_templates 테이블 추가
 --   - v2.0: export_targets 통계 필드 제거, export_logs 확장
 --
 -- 적용 방법:
---   sqlite3 /app/data/pulseone.db < 10-export_system.sql
+--   sqlite3 /app/data/db/pulseone.db < 10-export_system.sql
 -- ============================================================================
 
 PRAGMA foreign_keys = ON;
@@ -27,6 +38,8 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS export_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    site_id INTEGER,                        -- NULL = 테넌트 공용, 값 있음 = 사이트 전용
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
     is_enabled BOOLEAN DEFAULT 1,
@@ -35,9 +48,14 @@ CREATE TABLE IF NOT EXISTS export_profiles (
     created_by VARCHAR(50),
     point_count INTEGER DEFAULT 0,
     last_exported_at DATETIME,
-    data_points TEXT DEFAULT '[]'
+    data_points TEXT DEFAULT '[]',
+
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_export_profiles_tenant ON export_profiles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_export_profiles_site ON export_profiles(site_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_enabled ON export_profiles(is_enabled);
 CREATE INDEX IF NOT EXISTS idx_profiles_created ON export_profiles(created_at DESC);
 
@@ -126,24 +144,32 @@ CREATE INDEX IF NOT EXISTS idx_protocol_mappings_identifier ON protocol_mappings
 
 CREATE TABLE IF NOT EXISTS payload_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    site_id INTEGER,                        -- NULL = 테넌트 공용
     name VARCHAR(100) NOT NULL UNIQUE,
     system_type VARCHAR(50) NOT NULL,
     description TEXT,
     template_json TEXT NOT NULL,
     is_active BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_payload_templates_system ON payload_templates(system_type);
 CREATE INDEX IF NOT EXISTS idx_payload_templates_active ON payload_templates(is_active);
+CREATE INDEX IF NOT EXISTS idx_payload_templates_site ON payload_templates(site_id);
 
 -- ============================================================================
--- 6. export_targets (외부 전송 타겟 - template_id 추가)
+-- 6. export_targets (외부 전송 타겟)
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS export_targets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    site_id INTEGER,                        -- NULL = 테넌트 공용
     profile_id INTEGER,
     
     -- 기본 정보
@@ -155,7 +181,7 @@ CREATE TABLE IF NOT EXISTS export_targets (
     config TEXT NOT NULL,
     is_enabled BOOLEAN DEFAULT 1,
     
-    -- 🆕 템플릿 참조 (v2.2 추가)
+    -- 템플릿 참조 (v2.2+)
     template_id INTEGER,
     
     -- 전송 옵션
@@ -168,10 +194,14 @@ CREATE TABLE IF NOT EXISTS export_targets (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
     FOREIGN KEY (template_id) REFERENCES payload_templates(id) ON DELETE SET NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_export_targets_tenant ON export_targets(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_export_targets_site ON export_targets(site_id);
 CREATE INDEX IF NOT EXISTS idx_export_targets_type ON export_targets(target_type);
 CREATE INDEX IF NOT EXISTS idx_export_targets_profile ON export_targets(profile_id);
 CREATE INDEX IF NOT EXISTS idx_export_targets_enabled ON export_targets(is_enabled);
@@ -184,6 +214,7 @@ CREATE INDEX IF NOT EXISTS idx_export_targets_template ON export_targets(templat
 
 CREATE TABLE IF NOT EXISTS export_target_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
     target_id INTEGER NOT NULL,
     point_id INTEGER,
     site_id INTEGER,
@@ -193,12 +224,14 @@ CREATE TABLE IF NOT EXISTS export_target_mappings (
     is_enabled BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE,
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
     UNIQUE(target_id, point_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_export_target_mappings_tenant ON export_target_mappings(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_export_target_mappings_target ON export_target_mappings(target_id);
 CREATE INDEX IF NOT EXISTS idx_export_target_mappings_point ON export_target_mappings(point_id);
 
@@ -208,6 +241,7 @@ CREATE INDEX IF NOT EXISTS idx_export_target_mappings_point ON export_target_map
 
 CREATE TABLE IF NOT EXISTS export_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER,
     
     -- 기본 분류
     log_type VARCHAR(20) NOT NULL,
@@ -238,6 +272,11 @@ CREATE TABLE IF NOT EXISTS export_logs (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     client_info TEXT,
     
+    -- 추가 필드
+    gateway_id INTEGER,
+    sent_payload TEXT,
+    
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (service_id) REFERENCES protocol_services(id) ON DELETE SET NULL,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE SET NULL,
     FOREIGN KEY (mapping_id) REFERENCES protocol_mappings(id) ON DELETE SET NULL
@@ -256,6 +295,8 @@ CREATE INDEX IF NOT EXISTS idx_export_logs_target_time ON export_logs(target_id,
 
 CREATE TABLE IF NOT EXISTS export_schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    site_id INTEGER,                        -- NULL = 테넌트 공용
     profile_id INTEGER,
     target_id INTEGER NOT NULL,
     schedule_name VARCHAR(100) NOT NULL,
@@ -274,20 +315,48 @@ CREATE TABLE IF NOT EXISTS export_schedules (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE
 );
 
+CREATE INDEX IF NOT EXISTS idx_export_schedules_tenant ON export_schedules(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_export_schedules_site ON export_schedules(site_id);
 CREATE INDEX IF NOT EXISTS idx_export_schedules_enabled ON export_schedules(is_enabled);
 CREATE INDEX IF NOT EXISTS idx_export_schedules_next_run ON export_schedules(next_run_at);
 CREATE INDEX IF NOT EXISTS idx_export_schedules_target ON export_schedules(target_id);
 
 -- ============================================================================
+-- 10. export_profile_assignments (게이트웨이에 프로파일 할당)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS export_profile_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    gateway_id INTEGER NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    tenant_id INTEGER,                      -- NULL = 시스템 관리자 전역 할당
+    site_id INTEGER,                        -- NULL = 테넌트 공용
+
+    FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_id) REFERENCES edge_servers(id) ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_export_assignments_gateway ON export_profile_assignments(gateway_id);
+CREATE INDEX IF NOT EXISTS idx_export_assignments_profile ON export_profile_assignments(profile_id);
+CREATE INDEX IF NOT EXISTS idx_export_assignments_tenant ON export_profile_assignments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_export_assignments_active ON export_profile_assignments(is_active);
+
+-- ============================================================================
 -- 초기 템플릿 데이터 삽입
 -- ============================================================================
 
-INSERT OR IGNORE INTO payload_templates (name, system_type, description, template_json, is_active) VALUES 
-('Insite 기본 템플릿', 'insite', 'Insite 빌딩 모니터링 시스템용 기본 템플릿',
+INSERT OR IGNORE INTO payload_templates (tenant_id, name, system_type, description, template_json, is_active) VALUES 
+(1, 'Insite 기본 템플릿', 'insite', 'Insite 빌딩 모니터링 시스템용 기본 템플릿',
 '{
     "building_id": "{{building_id}}",
     "controlpoint": "{{target_field_name}}",
@@ -297,7 +366,7 @@ INSERT OR IGNORE INTO payload_templates (name, system_type, description, templat
     "status": "{{alarm_status}}"
 }', 1),
 
-('HDC 기본 템플릿', 'hdc', 'HDC 빌딩 시스템용 기본 템플릿',
+(1, 'HDC 기본 템플릿', 'hdc', 'HDC 빌딩 시스템용 기본 템플릿',
 '{
     "building_id": "{{building_id}}",
     "point_id": "{{target_field_name}}",
@@ -312,7 +381,7 @@ INSERT OR IGNORE INTO payload_templates (name, system_type, description, templat
     }
 }', 1),
 
-('BEMS 기본 템플릿', 'bems', 'BEMS 에너지 관리 시스템용 기본 템플릿',
+(1, 'BEMS 기본 템플릿', 'bems', 'BEMS 에너지 관리 시스템용 기본 템플릿',
 '{
     "buildingId": "{{building_id}}",
     "sensorName": "{{target_field_name}}",
@@ -322,7 +391,7 @@ INSERT OR IGNORE INTO payload_templates (name, system_type, description, templat
     "alarmLevel": "{{alarm_status}}"
 }', 1),
 
-('Generic 기본 템플릿', 'custom', '일반 범용 템플릿',
+(1, 'Generic 기본 템플릿', 'custom', '일반 범용 템플릿',
 '{
     "building_id": "{{building_id}}",
     "point_name": "{{point_name}}",
@@ -342,10 +411,12 @@ INSERT OR IGNORE INTO payload_templates (name, system_type, description, templat
 -- 뷰 (View) - 통계 조회용
 -- ============================================================================
 
--- 🆕 타겟 + 템플릿 통합 뷰 (v2.2 추가)
+-- 타겟 + 템플릿 통합 뷰
 CREATE VIEW IF NOT EXISTS v_export_targets_with_templates AS
 SELECT 
     t.id,
+    t.tenant_id,
+    t.site_id,
     t.profile_id,
     t.name,
     t.target_type,
@@ -402,70 +473,6 @@ LEFT JOIN export_logs l ON t.id = l.target_id
     AND l.log_type = 'export'
 GROUP BY t.id;
 
--- 전체 누적 통계
-CREATE VIEW IF NOT EXISTS v_export_targets_stats_all AS
-SELECT 
-    t.id,
-    t.name,
-    t.target_type,
-    t.is_enabled,
-    
-    COALESCE(COUNT(l.id), 0) as total_exports,
-    COALESCE(SUM(CASE WHEN l.status = 'success' THEN 1 ELSE 0 END), 0) as successful_exports,
-    COALESCE(SUM(CASE WHEN l.status = 'failure' THEN 1 ELSE 0 END), 0) as failed_exports,
-    
-    CASE 
-        WHEN COUNT(l.id) > 0 THEN 
-            ROUND((SUM(CASE WHEN l.status = 'success' THEN 1 ELSE 0 END) * 100.0) / COUNT(l.id), 2)
-        ELSE 0 
-    END as success_rate_all,
-    
-    ROUND(AVG(CASE WHEN l.status = 'success' THEN l.processing_time_ms END), 2) as avg_time_ms_all,
-    
-    MIN(l.timestamp) as first_export_at,
-    MAX(l.timestamp) as last_export_at,
-    
-    t.created_at
-    
-FROM export_targets t
-LEFT JOIN export_logs l ON t.id = l.target_id 
-    AND l.log_type = 'export'
-GROUP BY t.id;
-
--- 프로파일 상세 정보
-CREATE VIEW IF NOT EXISTS v_export_profiles_detail AS
-SELECT 
-    p.id,
-    p.name,
-    p.description,
-    p.is_enabled,
-    COUNT(pp.id) as point_count,
-    COUNT(CASE WHEN pp.is_enabled = 1 THEN 1 END) as active_point_count,
-    p.created_at,
-    p.updated_at
-FROM export_profiles p
-LEFT JOIN export_profile_points pp ON p.id = pp.profile_id
-GROUP BY p.id;
-
--- 프로토콜 서비스 상세
-CREATE VIEW IF NOT EXISTS v_protocol_services_detail AS
-SELECT 
-    ps.id,
-    ps.profile_id,
-    p.name as profile_name,
-    ps.service_type,
-    ps.service_name,
-    ps.is_enabled,
-    COUNT(pm.id) as mapping_count,
-    COUNT(CASE WHEN pm.is_enabled = 1 THEN 1 END) as active_mapping_count,
-    ps.active_connections,
-    ps.total_requests,
-    ps.last_request_at
-FROM protocol_services ps
-LEFT JOIN export_profiles p ON ps.profile_id = p.id
-LEFT JOIN protocol_mappings pm ON ps.id = pm.service_id
-GROUP BY ps.id;
-
 -- ============================================================================
 -- 트리거 (Trigger)
 -- ============================================================================
@@ -494,46 +501,14 @@ BEGIN
     WHERE id = NEW.id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS tr_profile_points_insert
-AFTER INSERT ON export_profile_points
-BEGIN
-    UPDATE export_profiles 
-    SET point_count = (
-        SELECT COUNT(*) 
-        FROM export_profile_points 
-        WHERE profile_id = NEW.profile_id
-    )
-    WHERE id = NEW.profile_id;
-END;
-
-CREATE TRIGGER IF NOT EXISTS tr_profile_points_delete
-AFTER DELETE ON export_profile_points
-BEGIN
-    UPDATE export_profiles 
-    SET point_count = (
-        SELECT COUNT(*) 
-        FROM export_profile_points 
-        WHERE profile_id = OLD.profile_id
-    )
-    WHERE id = OLD.profile_id;
-END;
-
--- ============================================================================
--- 초기 테스트 데이터 (개발환경용)
--- ============================================================================
-
-INSERT OR IGNORE INTO export_profiles (name, description) VALUES 
-    ('건물 1층 센서 데이터', '1층의 온도, 습도, CO2 센서 데이터'),
-    ('공조기 실시간 데이터', 'AHU-01의 운전 상태 및 센서값');
-
 -- ============================================================================
 -- 완료 메시지
 -- ============================================================================
 
-SELECT '✅ PulseOne Export System 스키마 생성 완료! (v2.2)' as message;
-SELECT '📊 통계는 VIEW를 통해 조회하세요 (v_export_targets_stats_24h, v_export_targets_stats_all)' as note;
-SELECT '🎨 Payload 템플릿은 payload_templates 테이블에서 관리됩니다' as info;
-SELECT '🔗 export_targets.template_id로 템플릿 참조 가능 (v2.2 신규)' as new_feature;
+SELECT '✅ PulseOne Export System 스키마 생성 완료! (v3.0 - Tenant Scoping)' as message;
+SELECT '🏢 tenant_id=NULL → 시스템 관리자 (전체 데이터 접근)' as note;
+SELECT '🔒 tenant_id=N → 해당 테넌트만 접근 가능' as info;
+SELECT '📊 통계: v_export_targets_stats_24h 뷰 참조' as hint;
 
 -- ============================================================================
 -- 사용 가능한 템플릿 변수
@@ -549,9 +524,9 @@ AlarmMessage 원본:
 
 계산된 필드:
   {{timestamp_iso8601}}, {{timestamp_unix_ms}}, {{alarm_status}}
-  
-v2.2 변경사항:
-  - export_targets에 template_id 컬럼 추가
-  - payload_templates 외래키 참조
-  - v_export_targets_with_templates 뷰 추가
+
+v3.0 변경사항:
+  - 모든 export 테이블에 tenant_id, site_id 추가
+  - export_profile_assignments에 tenant_id, site_id 추가
+  - NULL 테넌트 = 시스템 관리자 전역 접근
 */

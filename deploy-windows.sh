@@ -187,13 +187,13 @@ fi
             cd /src/core/shared
             echo 'Building Shared Libraries (Windows Cross-compile)...'
             rm -rf build lib && mkdir lib
-            make -j2 CROSS_COMPILE_WINDOWS=1
+            make -j1 CROSS_COMPILE_WINDOWS=1
             
             # 1. Build Collector
             cd /src/core/collector
             echo 'Building Collector (Release) with ALL Drivers...'
             rm -rf build-windows bin-windows/*.exe
-            make -f Makefile.windows -j2
+            make -f Makefile.windows -j1
             
             if [ -f bin-windows/collector.exe ]; then
                 x86_64-w64-mingw32-strip --strip-unneeded bin-windows/collector.exe
@@ -216,7 +216,7 @@ fi
             echo 'Building Export Gateway (Release)...'
             if [ -f Makefile ]; then
                 rm -rf build bin/*.exe
-                make -j2 CROSS_COMPILE_WINDOWS=1
+                make -j1 CROSS_COMPILE_WINDOWS=1
                 
                 if [ -f bin/export-gateway.exe ]; then
                     x86_64-w64-mingw32-strip --strip-unneeded bin/export-gateway.exe

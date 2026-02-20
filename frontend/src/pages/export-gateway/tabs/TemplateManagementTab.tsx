@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import exportGatewayApi, { PayloadTemplate } from '../../../api/services/exportGatewayApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 
-const TemplateManagementTab: React.FC = () => {
+interface TemplateManagementTabProps {
+    siteId?: number | null;
+    tenantId?: number | null;
+}
+
+const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, tenantId }) => {
     const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -172,8 +177,8 @@ const TemplateManagementTab: React.FC = () => {
     const fetchTemplates = async () => {
         setLoading(true);
         try {
-            const response = await exportGatewayApi.getTemplates();
-            const data = response.data;
+            const response = await exportGatewayApi.getTemplates({ tenantId });
+            const data: any = response.data;
             // Handle various API formats (items, rows, or direct array) to prevent .map() crash
             const list = Array.isArray(data) ? data : (data?.items || data?.rows || []);
             setTemplates(list);
@@ -226,7 +231,7 @@ const TemplateManagementTab: React.FC = () => {
         }
     };
 
-    useEffect(() => { fetchTemplates(); }, []);
+    useEffect(() => { fetchTemplates(); }, [siteId, tenantId]);
 
     const handleCloseModal = async () => {
         if (hasChanges) {
@@ -286,7 +291,6 @@ const TemplateManagementTab: React.FC = () => {
                         .replace(/\{[^}]+\}/g, '0');
                     JSON.parse(placeholderFree);
                     // Note: We still save the original templateJson with placeholders as a STRING
-                    templateJson = editingTemplate?.template_json;
                 } catch (parseError) {
                     await confirm({
                         title: 'JSON 형식 오류',
@@ -303,11 +307,11 @@ const TemplateManagementTab: React.FC = () => {
                 ...editingTemplate,
                 template_json: templateJson
             };
-
+            let response;
             if (editingTemplate?.id) {
-                await exportGatewayApi.updateTemplate(editingTemplate.id, dataToSave);
+                response = await exportGatewayApi.updateTemplate(editingTemplate.id, dataToSave, tenantId);
             } else {
-                await exportGatewayApi.createTemplate(dataToSave);
+                response = await exportGatewayApi.createTemplate(dataToSave as PayloadTemplate, tenantId);
             }
 
             await confirm({
@@ -440,7 +444,7 @@ const TemplateManagementTab: React.FC = () => {
 
         if (!confirmed) return;
         try {
-            await exportGatewayApi.deleteTemplate(id);
+            await exportGatewayApi.deleteTemplate(id, tenantId);
             fetchTemplates();
         } catch (error) {
             await confirm({ title: '삭제 실패', message: '템플릿을 삭제하는 중 오류가 발생했습니다.', showCancelButton: false, confirmButtonType: 'danger' });

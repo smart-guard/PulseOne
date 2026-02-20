@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAlarmContext } from '../contexts/AlarmContext';
+import { TenantSelector } from '../components/common/TenantSelector';
 import '../styles/base.css';
 
 export const MainLayout: React.FC = () => {
@@ -490,6 +491,7 @@ export const MainLayout: React.FC = () => {
           </div>
 
           <div className="topbar-right">
+            <TenantSelector />
             <div className="connection-status">
               <div className="live-indicator"></div>
               <span className="status-text">실시간 연결됨</span>

@@ -191,14 +191,24 @@ class CrossPlatformManager {
 
     async getRunningProcesses() {
         try {
-            if (this.isWindows) {
-                return await this.getWindowsProcesses();
-            } else {
-                return await this.getUnixProcesses();
+            const results = this.isWindows ?
+                await this.getWindowsProcesses() :
+                await this.getUnixProcesses();
+
+            // Docker 환경이라면 추가적인 컨테이너 정보 수집
+            if (this.isDocker || this.isDevelopment) {
+                try {
+                    const dockerInfo = await this._getDockerStatuses();
+                    results.dockerContainers = dockerInfo;
+                } catch (e) {
+                    this.log('DEBUG', 'Docker API를 통한 상태 조회 실패 (무시 가능)', { error: e.message });
+                }
             }
+
+            return results;
         } catch (error) {
             this.log('ERROR', 'getRunningProcesses 실패', { error: error.message });
-            return { backend: [], collector: [], exportGateway: [], redis: [] };
+            return { backend: [], collector: [], exportGateway: [], redis: [], dockerContainers: [] };
         }
     }
 
@@ -409,8 +419,8 @@ class CrossPlatformManager {
             exists: collectorExists
         }));
 
-        // If no collectors are running, add a stopped one
-        if (collectorServices.length === 0) {
+        // If no collectors are running, add a stopped one (Only on non-docker/bare-metal)
+        if (collectorServices.length === 0 && !this.isDocker) {
             collectorServices.push({
                 name: 'collector',
                 displayName: 'Data Collector',
@@ -484,7 +494,7 @@ class CrossPlatformManager {
             exists: exportGatewayExists
         }));
 
-        if (exportGatewayServices.length === 0) {
+        if (exportGatewayServices.length === 0 && !this.isDocker) {
             exportGatewayServices.push({
                 name: 'export-gateway',
                 displayName: 'Export Gateway',
@@ -506,21 +516,34 @@ class CrossPlatformManager {
         services.push(...exportGatewayServices);
 
         // Redis 및 가상 서비스 네트워크 헬스체크 (Docker 환경 대응)
-        const isDocker = process.env.DOCKER_CONTAINER === 'true' || this.isDevelopment;
+        if (this.isDocker || this.isDevelopment) {
+            const dockerInfo = processes.dockerContainers || [];
 
-        for (const service of services) {
-            if (service.status === 'stopped' && isDocker) {
-                // Docker 환경에서는 ps aux로 조회가 안되는 서비스들이 있음
-                const dockerServices = ['redis', 'collector', 'export-gateway', 'rabbitmq', 'influxdb', 'postgresql'];
-                const baseName = service.name.split('-')[0].toLowerCase();
+            for (const service of services) {
+                if (service.status === 'stopped') {
+                    const baseName = service.name.split('-')[0].toLowerCase();
 
-                if (dockerServices.includes(baseName)) {
-                    // 꼼수: Docker 환경이면 서비스가 떠있을 확률이 매우 높음 (depends_on 등에 의해)
-                    // 또는 여기서도 간이 포트 체크를 할 수 있지만, 우선은 'running'으로 노출하여 
-                    // 사용자에게 혼동을 주지 않도록 함. (실제 연결 실패는 각 기능별 API에서 에러로 노출됨)
-                    service.status = 'running';
-                    if (!service.description.includes('Docker')) {
-                        service.description += ' (Docker Managed)';
+                    // Docker 컨테이너 정보에서 해당 서비스 찾기
+                    // 서비스 이름 매칭 (예: collector, redis, backend, export-gateway)
+                    const container = dockerInfo.find(c => {
+                        const names = c.Names.map(n => n.replace(/^\//, '').toLowerCase());
+                        return names.some(name => name.includes(baseName));
+                    });
+
+                    if (container) {
+                        const isRunning = container.State === 'running' || container.Status.toLowerCase().includes('up');
+                        if (isRunning) {
+                            service.status = 'running';
+                            service.description += ' (Docker Managed)';
+
+                            // Docker API에서 받은 추가 정보 매핑
+                            if (!service.uptime || service.uptime === 'N/A') {
+                                service.uptime = container.Status;
+                            }
+
+                            // 컨테이너 ID 저장
+                            service.containerId = container.Id;
+                        }
                     }
                 }
             }
@@ -887,6 +910,20 @@ class CrossPlatformManager {
     }
 
     /**
+     * Docker API를 통해 컨테이너 상태 정보를 조회합니다.
+     */
+    async _getDockerStatuses() {
+        try {
+            // 모든 컨테이너 목록 조회 (중지된 것 포함)
+            const containers = await this._dockerRequest('GET', '/containers/json?all=1');
+            return containers || [];
+        } catch (error) {
+            this.log('DEBUG', 'Docker 상태 조회 실패', { error: error.message });
+            throw error;
+        }
+    }
+
+    /**
      * Controls a Docker container by name pattern
      */
     async controlDockerContainer(serviceName, action, id = null) {
@@ -899,7 +936,7 @@ class CrossPlatformManager {
             // Filter Logic:
             // 1. Must contain serviceName (e.g., 'export-gateway')
             // 2. If ID provided, maybe match specific number? (Currently mapped to single service)
-            // Compromise: Find the first container matching 'export-gateway' that belongs to our project
+            // Compromise: Find thefirst container matching 'export-gateway' that belongs to our project
             const projectName = process.env.COMPOSE_PROJECT_NAME || 'pulseone';
             const targetContainer = containers.find(c => {
                 const names = c.Names.map(n => n.replace('/', '')); // Remove leading slash

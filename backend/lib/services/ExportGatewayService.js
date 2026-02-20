@@ -3,6 +3,7 @@ const RepositoryFactory = require('../database/repositories/RepositoryFactory');
 const EdgeServerService = require('./EdgeServerService');
 const ProcessService = require('./ProcessService');
 const LogManager = require('../utils/LogManager');
+const KnexManager = require('../database/KnexManager');
 const axios = require('axios');
 const fs = require('fs');
 
@@ -43,6 +44,10 @@ class ExportGatewayService extends BaseService {
         return RepositoryFactory.getInstance().getDatabaseFactory();
     }
 
+    get knex() {
+        return KnexManager.getInstance().getKnex();
+    }
+
     // =========================================================================
     // Export Profile Management
     // =========================================================================
@@ -76,7 +81,7 @@ class ExportGatewayService extends BaseService {
             if (profile && data.data_points) {
                 const points = Array.isArray(data.data_points) ? data.data_points : JSON.parse(data.data_points || '[]');
                 LogManager.api('INFO', `[UpdateProfile] Starting sync for profile ${id}`);
-                await this.syncProfileToTargets(id, points);
+                await this.syncProfileToTargets(id, points, tenantId);
             }
 
             return profile;
@@ -86,11 +91,16 @@ class ExportGatewayService extends BaseService {
     /**
      * 프로파일 변경 내용을 관련 타겟들의 물리적 매핑 테이블(export_target_mappings)에 동기화
      */
-    async syncProfileToTargets(profileId, dataPoints) {
+    async syncProfileToTargets(profileId, dataPoints, tenantId) {
         try {
-            LogManager.api('INFO', `[syncProfileToTargets] Profile: ${profileId}, Points: ${dataPoints.length}`);
+            LogManager.api('INFO', `[syncProfileToTargets] Profile: ${profileId}, Points: ${dataPoints.length}, Tenant: ${tenantId}`);
             // ✅ targetRepository를 사용하여 해당 프로파일을 사용하는 모든 타겟 조회
-            const targets = await this.targetRepository.query().where('profile_id', profileId);
+            const targetsQuery = this.targetRepository.query().where({
+                profile_id: profileId,
+                tenant_id: tenantId
+            });
+
+            const targets = await targetsQuery;
             const rows = Array.isArray(targets) ? targets : [];
 
             LogManager.api('INFO', `[syncProfileToTargets] Found ${rows.length} targets to sync`);
@@ -99,7 +109,7 @@ class ExportGatewayService extends BaseService {
                 LogManager.api('INFO', `[syncProfileToTargets] Syncing target: ${target.name} (ID: ${target.id})`);
 
                 // 기존 매핑 삭제 (동기화를 위해)
-                const deleted = await this.targetMappingRepository.deleteByTargetId(target.id);
+                const deleted = await this.targetMappingRepository.deleteByTargetId(target.id, tenantId);
                 LogManager.api('INFO', `[syncProfileToTargets] Deleted existing mappings for target ${target.id}: ${deleted}`);
 
                 for (const dp of dataPoints) {
@@ -114,7 +124,7 @@ class ExportGatewayService extends BaseService {
                             offset: dp.offset ?? 0
                         },
                         is_enabled: 1
-                    });
+                    }, tenantId);
                 }
             }
         } catch (error) {
@@ -150,7 +160,7 @@ class ExportGatewayService extends BaseService {
     async createTarget(data, tenantId) {
         return await this.handleRequest(async () => {
             if (data.config) {
-                // Ensure config is an object
+                // ... (중략 - 기존 코드 유지)
                 let configObj = data.config;
                 if (typeof configObj === 'string') {
                     try {
@@ -173,7 +183,7 @@ class ExportGatewayService extends BaseService {
             if (data.profile_id) {
                 const profile = await this.profileRepository.findById(data.profile_id, tenantId);
                 if (profile && profile.data_points) {
-                    await this.syncProfileToTargets(data.profile_id, profile.data_points);
+                    await this.syncProfileToTargets(data.profile_id, profile.data_points, tenantId);
                 }
             }
 
@@ -249,7 +259,7 @@ class ExportGatewayService extends BaseService {
             if (data.profile_id) {
                 const profile = await this.profileRepository.findById(data.profile_id, tenantId);
                 if (profile && profile.data_points) {
-                    await this.syncProfileToTargets(data.profile_id, profile.data_points);
+                    await this.syncProfileToTargets(data.profile_id, profile.data_points, tenantId);
                 }
             }
 
@@ -476,36 +486,36 @@ class ExportGatewayService extends BaseService {
     // Payload Template Management
     // =========================================================================
 
-    async getAllPayloadTemplates() {
+    async getAllPayloadTemplates(tenantId) {
         return await this.handleRequest(async () => {
-            return await this.payloadTemplateRepository.findAll();
+            return await this.payloadTemplateRepository.findAll(tenantId);
         }, 'GetAllPayloadTemplates');
     }
 
-    async getPayloadTemplateById(id) {
+    async getPayloadTemplateById(id, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.payloadTemplateRepository.findById(id);
+            return await this.payloadTemplateRepository.findById(id, tenantId);
         }, 'GetPayloadTemplateById');
     }
 
-    async createPayloadTemplate(data) {
+    async createPayloadTemplate(data, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.payloadTemplateRepository.save(data);
+            return await this.payloadTemplateRepository.save(data, tenantId);
         }, 'CreatePayloadTemplate');
     }
 
-    async updatePayloadTemplate(id, data) {
+    async updatePayloadTemplate(id, data, tenantId) {
         return await this.handleRequest(async () => {
-            const template = await this.payloadTemplateRepository.update(id, data);
+            const template = await this.payloadTemplateRepository.update(id, data, tenantId);
             // Templates can affect multiple targets, so broadcast reload
-            await this.signalTargetReload();
+            await this.signalTargetReload(tenantId);
             return template;
         }, 'UpdatePayloadTemplate');
     }
 
-    async deletePayloadTemplate(id) {
+    async deletePayloadTemplate(id, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.payloadTemplateRepository.deleteById(id);
+            return await this.payloadTemplateRepository.deleteById(id, tenantId);
         }, 'DeletePayloadTemplate');
     }
 
@@ -513,37 +523,37 @@ class ExportGatewayService extends BaseService {
     // Export Schedule Management
     // =========================================================================
 
-    async getAllSchedules() {
+    async getAllSchedules(tenantId) {
         return await this.handleRequest(async () => {
-            return await this.scheduleRepository.findAll();
+            return await this.scheduleRepository.findAll(tenantId);
         }, 'GetAllSchedules');
     }
 
-    async getScheduleById(id) {
+    async getScheduleById(id, tenantId) {
         return await this.handleRequest(async () => {
-            const schedule = await this.scheduleRepository.findById(id);
+            const schedule = await this.scheduleRepository.findById(id, tenantId);
             if (!schedule) throw new Error('Export Schedule not found');
             return schedule;
         }, 'GetScheduleById');
     }
 
-    async createSchedule(data) {
+    async createSchedule(data, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.scheduleRepository.save(data);
+            return await this.scheduleRepository.save(data, tenantId);
         }, 'CreateSchedule');
     }
 
-    async updateSchedule(id, data) {
+    async updateSchedule(id, data, tenantId) {
         return await this.handleRequest(async () => {
-            const schedule = await this.scheduleRepository.update(id, data);
-            await this.signalTargetReload();
+            const schedule = await this.scheduleRepository.update(id, data, tenantId);
+            await this.signalTargetReload(tenantId);
             return schedule;
         }, 'UpdateSchedule');
     }
 
-    async deleteSchedule(id) {
+    async deleteSchedule(id, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.scheduleRepository.deleteById(id);
+            return await this.scheduleRepository.deleteById(id, tenantId);
         }, 'DeleteSchedule');
     }
 
@@ -551,23 +561,23 @@ class ExportGatewayService extends BaseService {
     // Target Mapping Management
     // =========================================================================
 
-    async getTargetMappings(targetId) {
+    async getTargetMappings(targetId, tenantId) {
         return await this.handleRequest(async () => {
-            return await this.targetMappingRepository.findByTargetId(targetId);
+            return await this.targetMappingRepository.findByTargetId(targetId, tenantId);
         }, 'GetTargetMappings');
     }
 
-    async saveTargetMappings(targetId, mappings) {
+    async saveTargetMappings(targetId, mappings, tenantId, siteId = null) {
         return await this.handleRequest(async () => {
             // 기존 매핑 삭제 후 재생성 (단순화를 위해)
-            await this.targetMappingRepository.deleteByTargetId(targetId);
+            await this.targetMappingRepository.deleteByTargetId(targetId, tenantId, siteId);
 
             const results = [];
             for (const mapping of mappings) {
                 const saved = await this.targetMappingRepository.save({
                     ...mapping,
                     target_id: targetId
-                });
+                }, tenantId, siteId);
                 results.push(saved);
             }
             return results;
@@ -581,15 +591,26 @@ class ExportGatewayService extends BaseService {
     /**
      * 특정 게이트웨이에 할당된 프로파일 목록 조회
      */
-    async getAssignmentsByGateway(gatewayId) {
+    async getAssignmentsByGateway(gatewayId, tenantId = null, siteId = null) {
         return await this.handleRequest(async () => {
-            const query = `
+            let queryStr = `
                 SELECT ep.*, epa.profile_id, epa.assigned_at
                 FROM export_profile_assignments epa
                 JOIN export_profiles ep ON epa.profile_id = ep.id
                 WHERE epa.gateway_id = ? AND epa.is_active = 1
             `;
-            const results = await this.db.executeQuery(query, [gatewayId]);
+            const params = [gatewayId];
+
+            if (tenantId) {
+                queryStr += ` AND epa.tenant_id = ?`;
+                params.push(tenantId);
+            }
+            if (siteId) {
+                queryStr += ` AND epa.site_id = ?`;
+                params.push(siteId);
+            }
+
+            const results = await this.db.executeQuery(queryStr, params);
             return results.rows || results;
         }, 'GetAssignmentsByGateway');
     }
@@ -597,56 +618,71 @@ class ExportGatewayService extends BaseService {
     /**
      * 프로파일을 게이트웨이에 할당
      */
-    async assignProfileToGateway(profileId, gatewayId, tenantId = null, trx = null) {
-        return await this.handleRequest(async () => {
-            const db = trx || this.db;
-            // [Fix] Ensure IDs are numbers for SQLite compatibility
-            const pid = Number(profileId);
-            const gid = Number(gatewayId);
+    async assignProfileToGateway(profileId, gatewayId, tenantId = null, siteId = null, trx = null) {
+        const db = trx || this.knex;
+        const pid = Number(profileId);
+        const gid = Number(gatewayId);
 
-            // 1. 기존 할당 확인
-            const rows = await db.query('export_profile_assignments')
-                .where({ profile_id: pid, gateway_id: gid });
+        // [FIX 1] Deactivate ALL other active assignments for this gateway first
+        // Prevents multiple is_active=1 records causing profile desync in the UI
+        await db('export_profile_assignments')
+            .where({ gateway_id: gid, is_active: 1 })
+            .whereNot({ profile_id: pid })
+            .update({ is_active: 0 });
 
-            if (rows.length > 0) {
-                // [Modified] If already active, throw error so frontend can show "Duplicate" popup
-                if (rows[0].is_active) {
-                    const error = new Error('Profile is already assigned to this gateway');
-                    error.statusCode = 409;
-                    throw error;
-                }
+        // [FIX 2] Check if this exact profile-gateway pair already exists
+        const existing = await db('export_profile_assignments')
+            .where({ profile_id: pid, gateway_id: gid })
+            .first();
 
-                // If exists but inactive (soft deleted), reactivate it
-                await db.query('export_profile_assignments')
-                    .where('id', rows[0].id)
-                    .update({ assigned_at: this.db.knex.fn.now(), is_active: 1 });
-            } else {
-                // 신규 할당
-                await db.query('export_profile_assignments')
-                    .insert({ profile_id: pid, gateway_id: gid, is_active: 1 });
+        if (existing) {
+            if (existing.is_active) {
+                // Already active — update tenant/site scoping in case it changed
+                await db('export_profile_assignments')
+                    .where('id', existing.id)
+                    .update({ tenant_id: tenantId, site_id: siteId });
+                await this.signalTargetReload(tenantId);
+                return { success: true, profile_id: profileId, gateway_id: gatewayId };
             }
+            // Reactivate with current tenant/site scoping
+            await db('export_profile_assignments')
+                .where('id', existing.id)
+                .update({ is_active: 1, tenant_id: tenantId, site_id: siteId, assigned_at: this.knex.fn.now() });
+        } else {
+            // Insert with full tenant/site scoping (columns now exist in schema)
+            await db('export_profile_assignments')
+                .insert({
+                    profile_id: pid,
+                    gateway_id: gid,
+                    is_active: 1,
+                    tenant_id: tenantId,
+                    site_id: siteId,
+                    assigned_at: this.knex.fn.now()
+                });
+        }
 
-            // Signal reload after assignment
-            await this.signalTargetReload(tenantId);
-
-            return { success: true, profile_id: profileId, gateway_id: gatewayId };
-        }, 'AssignProfileToGateway');
+        await this.signalTargetReload(tenantId);
+        return { success: true, profile_id: profileId, gateway_id: gatewayId };
     }
 
     /**
      * 할당 해제
      */
-    async unassignProfile(profileId, gatewayId) {
-        return await this.handleRequest(async () => {
-            // 현재 프론트엔드는 토글 방식을 사용하므로 데이터 정합성을 위해 삭제 처리
-            const query = `DELETE FROM export_profile_assignments WHERE profile_id = ? AND gateway_id = ?`;
-            await this.db.executeQuery(query, [profileId, gatewayId]);
+    async unassignProfile(profileId, gatewayId, tenantId = null, siteId = null, trx = null) {
+        const db = trx || this.knex;
+        const pid = Number(profileId);
+        const gid = Number(gatewayId);
 
-            // Signal reload after unassignment
-            await this.signalTargetReload();
+        const query = db('export_profile_assignments')
+            .where({ profile_id: pid, gateway_id: gid });
 
-            return { success: true };
-        }, 'UnassignProfile');
+        await query.update({
+            is_active: 0,
+            updated_at: this.knex.fn.now()
+        });
+
+        await this.signalTargetReload(tenantId);
+        return { success: true };
     }
 
     // =========================================================================
@@ -679,11 +715,11 @@ class ExportGatewayService extends BaseService {
     // Gateway Management (Direct Access)
     // =========================================================================
 
-    async getAllGateways(tenantId, page = 1, limit = 10) {
+    async getAllGateways(tenantId, page = 1, limit = 10, siteId = null) {
         return await this.handleRequest(async () => {
-            const result = await this.gatewayRepository.findAll(tenantId, page, limit);
+            const result = await this.gatewayRepository.findAll(tenantId, siteId, page, limit);
             const items = result?.items || [];
-            const pagination = result?.pagination || { current_page: page, total_pages: 0, total_count: 0 };
+            const pagination = result?.pagination || { current_page: page, total_pages: 0, total_count: 0, items_per_page: limit };
 
             // 실시간 상태 및 프로세스 상태 병합
             const enrichedItems = await Promise.all(items.map(async (gw) => {
@@ -709,15 +745,20 @@ class ExportGatewayService extends BaseService {
         }, 'GetAllGateways');
     }
 
-    async registerGateway(data, tenantId) {
+    async registerGateway(data, tenantId, siteId = null) {
         return await this.handleRequest(async () => {
             // [Atomicity] Wrap registration in a database transaction
             // [FIX] Use knex.transaction directly from repository
             return await this.gatewayRepository.knex.transaction(async (trx) => {
                 // 0. Check for duplicate name
-                const existing = await trx('edge_servers')
-                    .where({ server_name: data.name, tenant_id: tenantId, is_deleted: 0 })
-                    .first();
+                const query = trx('edge_servers')
+                    .where({ server_name: data.name, tenant_id: tenantId, is_deleted: 0 });
+
+                if (siteId) {
+                    query.where('site_id', siteId);
+                }
+
+                const existing = await query.first();
 
                 if (existing) {
                     const error = new Error(`Gateway with name "${data.name}" already exists`);
@@ -743,18 +784,16 @@ class ExportGatewayService extends BaseService {
                 }
 
                 // 2. Create Gateway (Pass transaction)
-                const gateway = await this.gatewayRepository.create(data, tenantId, trx);
+                const gateway = await this.gatewayRepository.create(data, tenantId, trx, siteId);
 
                 // 3. Handle Assignments (Profile Linkage)
                 if (data.assignments && Array.isArray(data.assignments)) {
                     for (const assignment of data.assignments) {
                         if (assignment.profileId) {
                             // Link Profile to Gateway (Assuming assignProfileToGateway handles internal errors or should be part of trx)
-                            // [FIX] For true atomicity, assignment should also be within TRK if it uses DB
-                            // Note: assignProfileToGateway uses handleRequest which might interfere with transaction flow if not careful.
-                            // However, we call it here. Let's ensure it doesn't break the outer trx.
-                            await this.assignProfileToGateway(assignment.profileId, gateway.id, tenantId);
-                            console.log(`[ExportGatewayService] Assigned profile ${assignment.profileId} to gateway ${gateway.id}`);
+                            // [FIX] Pass siteId and trx for atomicity and correct data mapping
+                            await this.assignProfileToGateway(assignment.profileId, gateway.id, tenantId, siteId, trx);
+                            console.log(`[ExportGatewayService] Assigned profile ${assignment.profileId} to gateway ${gateway.id} (tenant: ${tenantId}, site: ${siteId})`);
                         }
                     }
                 }
@@ -770,9 +809,9 @@ class ExportGatewayService extends BaseService {
         }, 'DeleteGateway');
     }
 
-    async updateGateway(id, data, tenantId) {
+    async updateGateway(id, data, tenantId, siteId = null) {
         return await this.handleRequest(async () => {
-            return await this.gatewayRepository.update(id, data, tenantId);
+            return await this.gatewayRepository.update(id, data, tenantId, siteId);
         }, 'UpdateGateway');
     }
 
@@ -1058,10 +1097,10 @@ class ExportGatewayService extends BaseService {
     /**
      * 수동 데이터 전송 트리거 (Redis C2)
      */
-    async manualExport(gatewayId, payload) {
+    async manualExport(gatewayId, payload, tenantId = null) {
         return await this.handleRequest(async () => {
             // 1. 게이트웨이 확인
-            const gateway = await this.gatewayRepository.findById(gatewayId);
+            const gateway = await this.gatewayRepository.findById(gatewayId, tenantId);
             if (!gateway) throw new Error('Export Gateway not found');
 
             // 2. Fetch enrichment data from DB

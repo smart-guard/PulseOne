@@ -3,7 +3,12 @@ import exportGatewayApi, { ExportProfile } from '../../../api/services/exportGat
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 import DataPointSelector from '../components/DataPointSelector';
 
-const ProfileManagementTab: React.FC = () => {
+interface ProfileManagementTabProps {
+    siteId?: number | null;
+    tenantId?: number | null;
+}
+
+const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, tenantId }) => {
     const [profiles, setProfiles] = useState<ExportProfile[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -16,17 +21,17 @@ const ProfileManagementTab: React.FC = () => {
         setLoading(true);
         try {
             // 1. Fetch master points for basic metadata (like name/device)
-            const masterPoints = await exportGatewayApi.getDataPoints("");
+            const masterPoints = await exportGatewayApi.getDataPoints("", undefined, siteId, tenantId);
 
             // 2. Fetch all targets to find if any are using THIS profile
-            const targetsRes = await exportGatewayApi.getTargets();
+            const targetsRes = await exportGatewayApi.getTargets({ tenantId });
             const allTargets = (targetsRes.data as any)?.items || (Array.isArray(targetsRes.data) ? targetsRes.data : []);
             const linkedTarget = allTargets.find((t: any) => String(t.profile_id) === String(profile.id));
 
             let liveMappings: any[] = [];
             if (linkedTarget) {
                 // 3. Pull live mapping overrides (the "Wizard" data)
-                const mappingsRes = await exportGatewayApi.getTargetMappings(linkedTarget.id);
+                const mappingsRes = await exportGatewayApi.getTargetMappings(linkedTarget.id, siteId, tenantId);
                 liveMappings = (mappingsRes.data as any)?.items || (Array.isArray(mappingsRes.data) ? mappingsRes.data : []);
             }
 
@@ -60,7 +65,7 @@ const ProfileManagementTab: React.FC = () => {
     const fetchProfiles = async () => {
         setLoading(true);
         try {
-            const response = await exportGatewayApi.getProfiles();
+            const response = await exportGatewayApi.getProfiles({ tenantId });
             setProfiles(response.data || []);
         } catch (error) {
             console.error(error);
@@ -69,7 +74,7 @@ const ProfileManagementTab: React.FC = () => {
         }
     };
 
-    useEffect(() => { fetchProfiles(); }, []);
+    useEffect(() => { fetchProfiles(); }, [siteId, tenantId]);
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -119,9 +124,9 @@ const ProfileManagementTab: React.FC = () => {
 
             let response;
             if (processedProfile?.id) {
-                response = await exportGatewayApi.updateProfile(processedProfile.id, processedProfile);
+                response = await exportGatewayApi.updateProfile(processedProfile.id, processedProfile, tenantId);
             } else {
-                response = await exportGatewayApi.createProfile(processedProfile!);
+                response = await exportGatewayApi.createProfile({ ...processedProfile! }, tenantId);
             }
 
             if (response.success) {
@@ -490,6 +495,7 @@ const ProfileManagementTab: React.FC = () => {
                                     </div>
                                     <div style={{ flex: 1, overflow: 'hidden' }}>
                                         <DataPointSelector
+                                            siteId={siteId}
                                             selectedPoints={editingProfile?.data_points || []}
                                             onSelect={handlePointSelect}
                                             onAddAll={handleAddAllPoints}

@@ -10,12 +10,17 @@ class ExportGatewayRepository extends BaseRepository {
         super('edge_servers'); // Changed from export_gateways
     }
 
-    async findAll(tenantId = null, page = 1, limit = 10) {
+    async findAll(tenantId = null, siteId = null, page = 1, limit = 10) {
         try {
             // Filter by server_type = 'gateway'
             const query = this.query().where('is_deleted', 0).where('server_type', 'gateway');
+
             if (tenantId) {
                 query.where('tenant_id', tenantId);
+            }
+
+            if (siteId) {
+                query.where('site_id', siteId);
             }
 
             // Get total count
@@ -46,7 +51,7 @@ class ExportGatewayRepository extends BaseRepository {
         }
     }
 
-    async findById(id, tenantId = null, trx = null) {
+    async findById(id, tenantId = null, trx = null, siteId = null) {
         try {
             const query = this.query(trx)
                 .select('*', 'server_name as name')
@@ -57,6 +62,11 @@ class ExportGatewayRepository extends BaseRepository {
             if (tenantId) {
                 query.where('tenant_id', tenantId);
             }
+
+            if (siteId) {
+                query.where('site_id', siteId);
+            }
+
             const item = await query.first();
             return this._parseItem(item);
         } catch (error) {
@@ -65,10 +75,11 @@ class ExportGatewayRepository extends BaseRepository {
         }
     }
 
-    async create(data, tenantId = null, trx = null) {
+    async create(data, tenantId = null, trx = null, siteId = null) {
         try {
             const dataToInsert = {
                 tenant_id: tenantId || data.tenant_id,
+                site_id: siteId || data.site_id,
                 server_name: data.name || data.server_name, // Map to server_name
                 server_type: 'gateway',                     // Force type
                 description: data.description || null,
@@ -80,14 +91,14 @@ class ExportGatewayRepository extends BaseRepository {
             };
 
             const [id] = await (trx || this.knex)('edge_servers').insert(dataToInsert);
-            return await this.findById(id, tenantId, trx);
+            return await this.findById(id, tenantId, trx, siteId);
         } catch (error) {
             this.logger.error('ExportGatewayRepository.create 오류:', error);
             throw error;
         }
     }
 
-    async update(id, updateData, tenantId = null) {
+    async update(id, updateData, tenantId = null, siteId = null) {
         try {
             const dataToUpdate = {
                 updated_at: this.knex.fn.now()
@@ -95,7 +106,7 @@ class ExportGatewayRepository extends BaseRepository {
 
             const allowedFields = [
                 'name', 'server_name', 'description', 'ip_address', 'port',
-                'status', 'config', 'last_seen', 'last_heartbeat', 'subscription_mode'
+                'status', 'config', 'last_seen', 'last_heartbeat', 'subscription_mode', 'site_id', 'tenant_id'
             ];
 
             allowedFields.forEach(field => {
@@ -113,9 +124,12 @@ class ExportGatewayRepository extends BaseRepository {
 
             const query = this.query().where('id', id).where('server_type', 'gateway');
             if (tenantId) query.where('tenant_id', tenantId);
+            // [REM] Do NOT filter by siteId in WHERE clause for updates, 
+            // as we may be moving the gateway between sites.
+            // if (siteId) query.where('site_id', siteId);
 
             const affected = await query.update(dataToUpdate);
-            return affected > 0 ? await this.findById(id, tenantId) : null;
+            return affected > 0 ? await this.findById(id, tenantId, null, dataToUpdate.site_id || siteId) : null;
         } catch (error) {
             this.logger.error('ExportGatewayRepository.update 오류:', error);
             throw error;
@@ -154,10 +168,20 @@ class ExportGatewayRepository extends BaseRepository {
         }
     }
 
-    async deleteById(id, tenantId = null) {
+    async findActive(tenantId = null, siteId = null) {
+        const query = this.query().where({ status: 'online', is_deleted: 0 }).where('server_type', 'gateway');
+        if (tenantId) query.where('tenant_id', tenantId);
+        if (siteId) query.where('site_id', siteId);
+        const results = await query.orderBy('server_name', 'ASC');
+        return results.map(item => this._parseItem(item));
+    }
+
+    async deleteById(id, tenantId = null, siteId = null) {
         try {
             const query = this.query().where('id', id).where('server_type', 'gateway');
             if (tenantId) query.where('tenant_id', tenantId);
+            // [REM] siteId filter removed from WHERE for identity-based deletion
+            // if (siteId) query.where('site_id', siteId);
 
             const affected = await query.update({
                 is_deleted: 1,

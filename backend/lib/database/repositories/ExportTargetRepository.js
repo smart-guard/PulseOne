@@ -15,9 +15,9 @@ class ExportTargetRepository extends BaseRepository {
     async findAll(tenantId = null) {
         try {
             const query = this.query();
-            // if (tenantId) {
-            //     query.where('tenant_id', tenantId);
-            // }
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
             const results = await query.orderBy('name', 'ASC');
             return results.map(item => this._parseItem(item));
         } catch (error) {
@@ -32,9 +32,9 @@ class ExportTargetRepository extends BaseRepository {
     async findById(id, tenantId = null) {
         try {
             const query = this.query().where('id', id);
-            // if (tenantId) {
-            //     query.where('tenant_id', tenantId);
-            // }
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
             const item = await query.first();
             return this._parseItem(item);
         } catch (error) {
@@ -46,19 +46,23 @@ class ExportTargetRepository extends BaseRepository {
     /**
      * 이름으로 타겟 찾기
      */
-    async findByName(name, tenantId) {
-        return await this.query()
-            .where({ name }) // Removed tenant_id match
-            .first();
+    async findByName(name, tenantId = null) {
+        const query = this.query().where({ name });
+        if (tenantId) {
+            query.where('tenant_id', tenantId);
+        }
+        return await query.first();
     }
 
     /**
      * 활성화된 타겟 조회
      */
-    async findActive(tenantId) {
-        const results = await this.query()
-            .where({ is_enabled: 1 })
-            .orderBy('name', 'ASC');
+    async findActive(tenantId = null) {
+        const query = this.query().where({ is_enabled: 1 });
+        if (tenantId) {
+            query.where('tenant_id', tenantId);
+        }
+        const results = await query.orderBy('name', 'ASC');
         return results.map(item => this._parseItem(item));
     }
 
@@ -80,10 +84,14 @@ class ExportTargetRepository extends BaseRepository {
     /**
      * 타겟 생성
      */
-    async save(data, tenantId = null) {
+    async save(data, tenantId) {
+        if (!tenantId && !data.tenant_id) {
+            throw new Error('tenant_id is required for ExportTarget');
+        }
+
         try {
             const dataToInsert = {
-                // tenant_id: tenantId || data.tenant_id, // Removed as column does not exist
+                tenant_id: tenantId || data.tenant_id,
                 profile_id: data.profile_id,
                 name: data.name,
                 target_type: data.target_type || data.type,
@@ -99,7 +107,7 @@ class ExportTargetRepository extends BaseRepository {
             };
 
             const [id] = await this.knex(this.tableName).insert(dataToInsert);
-            return await this.findById(id, tenantId);
+            return await this.findById(id, tenantId || data.tenant_id);
         } catch (error) {
             this.logger.error('ExportTargetRepository.save 오류:', error);
             throw error;
@@ -129,7 +137,9 @@ class ExportTargetRepository extends BaseRepository {
             });
 
             const query = this.query().where('id', id);
-            // if (tenantId) query.where('tenant_id', tenantId);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
 
             const affected = await query.update(dataToUpdate);
             return affected > 0 ? await this.findById(id, tenantId) : null;
@@ -145,7 +155,9 @@ class ExportTargetRepository extends BaseRepository {
     async deleteById(id, tenantId = null) {
         try {
             const query = this.query().where('id', id);
-            // if (tenantId) query.where('tenant_id', tenantId);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
 
             const affected = await query.delete();
             return affected > 0;

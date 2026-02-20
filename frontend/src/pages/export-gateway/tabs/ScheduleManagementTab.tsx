@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import exportGatewayApi, { ExportTarget, ExportProfile } from '../../../api/services/exportGatewayApi';
+import exportGatewayApi, { ExportTarget, ExportProfile, ExportSchedule } from '../../../api/services/exportGatewayApi';
 import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 
 const CRON_PRESETS = [
@@ -14,7 +14,12 @@ const CRON_PRESETS = [
     { label: '매주 월요일 (Weekly Mon)', value: '0 0 * * 1', description: '매주 월요일 자정에 데이터를 전송합니다.' },
 ];
 
-const ScheduleManagementTab: React.FC = () => {
+interface ScheduleManagementTabProps {
+    siteId?: number | null;
+    tenantId?: number | null;
+}
+
+const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, tenantId }) => {
     const [schedules, setSchedules] = useState<any[]>([]);
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [profiles, setProfiles] = useState<ExportProfile[]>([]);
@@ -28,9 +33,9 @@ const ScheduleManagementTab: React.FC = () => {
         setLoading(true);
         try {
             const [schedulesRes, targetsRes, profilesRes] = await Promise.all([
-                exportGatewayApi.getSchedules(),
-                exportGatewayApi.getTargets(),
-                exportGatewayApi.getProfiles()
+                exportGatewayApi.getSchedules({ tenantId }),
+                exportGatewayApi.getTargets({ tenantId }),
+                exportGatewayApi.getProfiles({ tenantId })
             ]);
             setSchedules(schedulesRes.data || []);
             setTargets(targetsRes.data || []);
@@ -57,7 +62,7 @@ const ScheduleManagementTab: React.FC = () => {
         setHasChanges(false);
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => { fetchData(); }, [siteId, tenantId]);
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -76,9 +81,9 @@ const ScheduleManagementTab: React.FC = () => {
         try {
             let response;
             if (editingSchedule?.id) {
-                response = await exportGatewayApi.updateSchedule(editingSchedule.id, editingSchedule);
+                response = await exportGatewayApi.updateSchedule(editingSchedule.id, editingSchedule as ExportSchedule, tenantId);
             } else {
-                response = await exportGatewayApi.createSchedule(editingSchedule!);
+                response = await exportGatewayApi.createSchedule(editingSchedule as ExportSchedule, tenantId);
             }
 
             if (response.success) {
@@ -119,7 +124,7 @@ const ScheduleManagementTab: React.FC = () => {
 
         if (!confirmed) return;
         try {
-            await exportGatewayApi.deleteSchedule(id);
+            await exportGatewayApi.deleteSchedule(id, tenantId);
             fetchData();
         } catch (error) {
             await confirm({ title: '삭제 실패', message: '스케줄을 삭제하는 중 오류가 발생했습니다.', showCancelButton: false, confirmButtonType: 'danger' });

@@ -124,7 +124,7 @@ const std::string INSERT_NAMED = R"(
             {rule_id}, {tenant_id}, {occurrence_time}, {trigger_value}, {trigger_condition},
             {alarm_message}, {severity}, {state}, {context_data}, {source_name}, {location},
             {device_id}, {point_id}, {category}, {tags}, {cleared_by},
-            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            datetime('now','localtime'), datetime('now','localtime')
         )
     )";
 
@@ -147,7 +147,7 @@ const std::string UPDATE = R"(
             point_id = {point_id}, 
             category = {category}, 
             tags = {tags},
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = datetime('now','localtime')
         WHERE id = {id}
     )";
 
@@ -155,21 +155,21 @@ const std::string UPDATE = R"(
 const std::string ACKNOWLEDGE = R"(
         UPDATE alarm_occurrences SET
             state = 'acknowledged',
-            acknowledged_time = CURRENT_TIMESTAMP,
+            acknowledged_time = datetime('now','localtime'),
             acknowledged_by = ?,
             acknowledge_comment = ?,
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = datetime('now','localtime')
         WHERE id = ?
     )";
 
 const std::string CLEAR = R"(
         UPDATE alarm_occurrences SET
             state = 'cleared',
-            cleared_time = CURRENT_TIMESTAMP,
+            cleared_time = datetime('now','localtime'),
             cleared_value = ?,
             clear_comment = ?,
             cleared_by = ?,
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = datetime('now','localtime')
         WHERE id = ?
     )";
 
@@ -1316,8 +1316,8 @@ const std::string INSERT = R"(
             log_type, service_id, target_id, mapping_id, point_id,
             source_value, converted_value, status, error_message, error_code,
             response_data, http_status_code, processing_time_ms, timestamp, client_info,
-            gateway_id, sent_payload
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            gateway_id, sent_payload, tenant_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
 const std::string UPDATE = R"(

@@ -210,6 +210,7 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                 const modelRes = await ManufactureApiService.createModel({
                     manufacturer_id: formData.manufacturer_id,
                     name: modelName,
+                    model_number: formData.model_number,
                     device_type: formData.device_type,
                     protocol_id: formData.protocol_id,
                     manual_url: manualUrl
@@ -227,8 +228,11 @@ const MasterModelModal: React.FC<MasterModelModalProps> = ({
                     setLoading(false);
                     return;
                 }
-            } else if (finalModelId && manualUrl !== template?.manual_url) {
-                await ManufactureApiService.updateModel(finalModelId, { manual_url: manualUrl });
+            } else if (finalModelId && (manualUrl !== template?.manual_url || formData.model_number !== template?.model_number)) {
+                await ManufactureApiService.updateModel(finalModelId, {
+                    manual_url: manualUrl,
+                    model_number: formData.model_number
+                });
             }
 
             // Save Template

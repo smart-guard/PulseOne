@@ -7,13 +7,9 @@
 #define EXPORT_FAILURE_PROTECTOR_TYPES_H
 
 #include <cstdint>
-#include <nlohmann/json.hpp>
 #include <string>
 
 namespace PulseOne {
-
-using json = nlohmann::json;
-
 namespace Export {
 
 /**
@@ -51,18 +47,8 @@ struct FailureProtectorStats {
   double success_rate = 0.0;
   int64_t state_duration_ms = 0;
 
-  json toJson() const {
-    return json{{"target_name", target_name},
-                {"current_state", current_state},
-                {"failure_count", failure_count},
-                {"success_count", success_count},
-                {"total_attempts", total_attempts},
-                {"total_successes", total_successes},
-                {"total_failures", total_failures},
-                {"half_open_attempts", half_open_attempts},
-                {"success_rate", success_rate},
-                {"state_duration_ms", state_duration_ms}};
-  }
+  // Implementation in GatewayExportTypes.cpp
+  nlohmann::json toJson() const;
 };
 
 } // namespace Export

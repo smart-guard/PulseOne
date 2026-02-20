@@ -11,14 +11,20 @@ class ExportScheduleRepository extends BaseRepository {
 
     /**
      * 전체 스케줄 조회
+     * @param {number} [tenantId] 테넌트 ID
      */
-    async findAll() {
+    async findAll(tenantId = null) {
         try {
-            return await this.query()
+            const query = this.query()
                 .select('export_schedules.*', 'export_profiles.name as profile_name', 'export_targets.name as target_name')
                 .leftJoin('export_profiles', 'export_schedules.profile_id', 'export_profiles.id')
-                .leftJoin('export_targets', 'export_schedules.target_id', 'export_targets.id')
-                .orderBy('export_schedules.id', 'ASC');
+                .leftJoin('export_targets', 'export_schedules.target_id', 'export_targets.id');
+
+            if (tenantId) {
+                query.where('export_schedules.tenant_id', tenantId);
+            }
+
+            return await query.orderBy('export_schedules.id', 'ASC');
         } catch (error) {
             this.logger.error('ExportScheduleRepository.findAll 오류:', error);
             throw error;
@@ -27,15 +33,22 @@ class ExportScheduleRepository extends BaseRepository {
 
     /**
      * ID로 스케줄 조회
+     * @param {number} id 스케줄 ID
+     * @param {number} [tenantId] 테넌트 ID
      */
-    async findById(id) {
+    async findById(id, tenantId = null) {
         try {
-            return await this.query()
+            const query = this.query()
                 .select('export_schedules.*', 'export_profiles.name as profile_name', 'export_targets.name as target_name')
                 .leftJoin('export_profiles', 'export_schedules.profile_id', 'export_profiles.id')
                 .leftJoin('export_targets', 'export_schedules.target_id', 'export_targets.id')
-                .where('export_schedules.id', id)
-                .first();
+                .where('export_schedules.id', id);
+
+            if (tenantId) {
+                query.where('export_schedules.tenant_id', tenantId);
+            }
+
+            return await query.first();
         } catch (error) {
             this.logger.error('ExportScheduleRepository.findById 오류:', error);
             throw error;
@@ -45,18 +58,25 @@ class ExportScheduleRepository extends BaseRepository {
     /**
      * 활성화된 스케줄 조회
      */
-    async findActive() {
-        return await this.query()
-            .where({ is_enabled: 1 })
-            .orderBy('schedule_name', 'ASC');
+    async findActive(tenantId = null) {
+        const query = this.query().where('export_schedules.is_enabled', 1);
+        if (tenantId) {
+            query.where('export_schedules.tenant_id', tenantId);
+        }
+        return await query.orderBy('schedule_name', 'ASC');
     }
 
     /**
      * 스케줄 생성
      */
-    async save(data) {
+    async save(data, tenantId) {
+        if (!tenantId && !data.tenant_id) {
+            throw new Error('tenant_id is required for ExportSchedule');
+        }
+
         try {
             const dataToInsert = {
+                tenant_id: tenantId || data.tenant_id,
                 profile_id: data.profile_id,
                 target_id: data.target_id,
                 schedule_name: data.schedule_name,
@@ -72,7 +92,7 @@ class ExportScheduleRepository extends BaseRepository {
             };
 
             const [id] = await this.knex(this.tableName).insert(dataToInsert);
-            return await this.findById(id);
+            return await this.findById(id, tenantId || data.tenant_id);
         } catch (error) {
             this.logger.error('ExportScheduleRepository.save 오류:', error);
             throw error;
@@ -82,7 +102,7 @@ class ExportScheduleRepository extends BaseRepository {
     /**
      * 스케줄 업데이트
      */
-    async update(id, data) {
+    async update(id, data, tenantId = null) {
         try {
             const dataToUpdate = {
                 updated_at: this.knex.fn.now()
@@ -100,10 +120,32 @@ class ExportScheduleRepository extends BaseRepository {
                 }
             });
 
-            const affected = await this.query().where('id', id).update(dataToUpdate);
-            return affected > 0 ? await this.findById(id) : null;
+            const query = this.query().where('id', id);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
+
+            const affected = await query.update(dataToUpdate);
+            return affected > 0 ? await this.findById(id, tenantId) : null;
         } catch (error) {
             this.logger.error('ExportScheduleRepository.update 오류:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 스케줄 삭제
+     */
+    async deleteById(id, tenantId = null) {
+        try {
+            const query = this.query().where('id', id);
+            if (tenantId) {
+                query.where('tenant_id', tenantId);
+            }
+            const affected = await query.delete();
+            return affected > 0;
+        } catch (error) {
+            this.logger.error('ExportScheduleRepository.deleteById 오류:', error);
             throw error;
         }
     }

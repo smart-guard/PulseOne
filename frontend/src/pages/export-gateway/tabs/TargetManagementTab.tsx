@@ -60,6 +60,7 @@ const maskSensitiveData = (config: any): any => {
 };
 
 // [NEW] Helper to cleanup config for saving
+// [NEW] Helper to cleanup config for saving
 const cleanupConfig = (config: any): any => {
     const obj = getConfigObject(config);
     // Remove obsolete fields
@@ -67,7 +68,12 @@ const cleanupConfig = (config: any): any => {
     return obj;
 };
 
-const TargetManagementTab: React.FC = () => {
+interface TargetManagementTabProps {
+    siteId?: number | null;
+    tenantId?: number | null;
+}
+
+const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenantId }) => {
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
     const [profiles, setProfiles] = useState<ExportProfile[]>([]);
@@ -88,6 +94,74 @@ const TargetManagementTab: React.FC = () => {
     const [bulkSiteIdForMapping, setBulkSiteIdForMapping] = useState(''); // [NEW] Bulk Site ID state
 
     const { confirm } = useConfirmContext();
+
+    // [FIX] 확실한 UI 반영을 위해 useEffect로 스타일을 head에 직접 주입합니다.
+    useEffect(() => {
+        const styleId = 'target-mgmt-custom-styles-v4';
+        let styleElement = document.getElementById(styleId);
+
+        if (!styleElement) {
+            styleElement = document.createElement('style');
+            styleElement.id = styleId;
+            document.head.appendChild(styleElement);
+        }
+
+        styleElement.innerHTML = `
+            /* 모달 컨테이너 내의 입력창 높이 상향 */
+            .target-mgmt-modal .mgmt-input,
+            .target-mgmt-modal .mgmt-select,
+            .target-mgmt-modal .ant-input,
+            .target-mgmt-modal .ant-select-selector,
+            .target-mgmt-modal .ant-input-password,
+            .target-mgmt-modal .ant-input-affix-wrapper {
+                height: 48px !important;
+                min-height: 48px !important;
+                font-size: 15px !important;
+                border-color: var(--neutral-300) !important; /* 표준 테두리 색상으로 원복 */
+                border-width: 1px !important;
+                border-radius: 8px !important;
+                display: flex !important;
+                align-items: center !important;
+                padding: 0 12px !important;
+            }
+
+            /* Ant Design Select 내부 정렬 보정 */
+            .target-mgmt-modal .ant-select-selection-item,
+            .target-mgmt-modal .ant-select-selection-placeholder {
+                line-height: 46px !important;
+                display: flex !important;
+                align-items: center !important;
+            }
+
+            /* 폼 라벨 강조 및 간격 */
+            .target-mgmt-modal .mgmt-modal-form-group label {
+                margin-bottom: 12px !important;
+                font-weight: 700 !important;
+                color: var(--neutral-800) !important;
+                display: block !important;
+                font-size: 14px !important;
+            }
+
+            /* 고급 설정 (JSON) 및 텍스트 영역 확장 */
+            .target-mgmt-modal textarea.mgmt-input {
+                height: auto !important;
+                min-height: 450px !important; /* 영역이 많으므로 길게 확장 */
+                padding: 16px !important;
+                line-height: 1.6 !important;
+                font-family: var(--font-family-mono) !important;
+                font-size: 13px !important;
+                background-color: #f8fafc !important; /* 연한 배경색으로 구분 */
+                border-color: var(--neutral-300) !important;
+                white-space: pre-wrap !important;    /* [NEW] 줄바꿈 유지 */
+                word-break: break-all !important;     /* [NEW] 긴 URL 강제 줄바꿈 */
+            }
+            
+            /* 매핑 테이블 셀 높이 */
+            .target-mgmt-modal .mgmt-table td {
+                padding: 14px 10px !important;
+            }
+        `;
+    }, []);
 
     const handleCredentialChange = (currentVal: string, newVal: string, onUpdate: (finalVal: string) => void) => {
         // If current value is masked variable and user types something new
@@ -117,10 +191,10 @@ const TargetManagementTab: React.FC = () => {
         setLoading(true);
         try {
             const [targetsRes, templatesRes, pointsRes, profilesRes] = await Promise.all([
-                exportGatewayApi.getTargets(),
-                exportGatewayApi.getTemplates(),
-                exportGatewayApi.getDataPoints(),
-                exportGatewayApi.getProfiles()
+                exportGatewayApi.getTargets({ tenantId }),
+                exportGatewayApi.getTemplates({ tenantId }),
+                exportGatewayApi.getDataPoints('', undefined, siteId, tenantId),
+                exportGatewayApi.getProfiles({ tenantId })
             ]);
             setTargets(extractItems(targetsRes.data));
             setTemplates(extractItems(templatesRes.data));
@@ -138,7 +212,7 @@ const TargetManagementTab: React.FC = () => {
         setIsMappingModalOpen(true);
         setLoading(true);
         try {
-            const response = await exportGatewayApi.getTargetMappings(targetId);
+            const response = await exportGatewayApi.getTargetMappings(targetId, siteId, tenantId);
             setTargetMappings(extractItems(response.data));
             setHasMappingChanges(false);
         } catch (error) {
@@ -191,7 +265,7 @@ const TargetManagementTab: React.FC = () => {
                 conversion_config: m.conversion_config
             }));
 
-            const response = await exportGatewayApi.saveTargetMappings(mappingTargetId, mappingsPayload);
+            const response = await exportGatewayApi.saveTargetMappings(mappingTargetId, mappingsPayload, siteId, tenantId);
 
             if (response.success) {
                 await confirm({
@@ -311,7 +385,7 @@ const TargetManagementTab: React.FC = () => {
         }
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => { fetchData(); }, [siteId, tenantId]);
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -335,13 +409,13 @@ const TargetManagementTab: React.FC = () => {
                     ...editingTarget,
                     config: cleanupConfig(editingTarget.config)
                 };
-                response = await exportGatewayApi.updateTarget(editingTarget.id, cleanTarget);
+                response = await exportGatewayApi.updateTarget(editingTarget.id, cleanTarget, tenantId);
             } else {
                 const cleanTarget = {
                     ...editingTarget,
                     config: cleanupConfig(editingTarget.config)
                 };
-                response = await exportGatewayApi.createTarget(cleanTarget as ExportTarget);
+                response = await exportGatewayApi.createTarget(cleanTarget as ExportTarget, tenantId);
             }
 
             if (response.success) {
@@ -422,7 +496,7 @@ const TargetManagementTab: React.FC = () => {
 
         if (!confirmed) return;
         try {
-            await exportGatewayApi.deleteTarget(id);
+            await exportGatewayApi.deleteTarget(id, tenantId);
             fetchData();
         } catch (error) {
             await confirm({ title: '삭제 실패', message: '타겟을 삭제하는 중 오류가 발생했습니다.', showCancelButton: false, confirmButtonType: 'danger' });
@@ -477,7 +551,7 @@ const TargetManagementTab: React.FC = () => {
 
             {isModalOpen && (
                 <div className="mgmt-modal-overlay">
-                    <div className="mgmt-modal-container" style={{ width: '95vw', maxWidth: '1600px', display: 'flex', flexDirection: 'column', height: '75vh', maxHeight: '85vh', background: 'white', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                    <div className="mgmt-modal-container target-mgmt-modal" style={{ width: '95vw', maxWidth: '1600px', display: 'flex', flexDirection: 'column', height: '75vh', maxHeight: '85vh', background: 'white', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                         <div className="mgmt-modal-header">
                             <div className="mgmt-modal-title">
                                 <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>{editingTarget?.id ? "전송 타겟 수정" : "전송 타겟 추가"}</h2>
@@ -841,7 +915,7 @@ const TargetManagementTab: React.FC = () => {
             )}
             {isMappingModalOpen && (
                 <div className="mgmt-modal-overlay">
-                    <div className="mgmt-modal-content wide-modal" style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div className="mgmt-modal-content wide-modal target-mgmt-modal" style={{ display: 'flex', flexDirection: 'column' }}>
                         <div className="mgmt-modal-header">
                             <h3 className="mgmt-modal-title">데이터 포인트 매핑 설정</h3>
                             <button className="mgmt-close-btn" onClick={handleCloseMapping}>&times;</button>

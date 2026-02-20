@@ -68,6 +68,7 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                     description: res.data.description || '',
                     country: res.data.country || '',
                     website: res.data.website || '',
+                    logo_url: res.data.logo_url || '',
                     is_active: res.data.is_active
                 });
 
@@ -296,6 +297,21 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                                     placeholder="https://..."
                                 />
                             </div>
+                            <div className="mgmt-modal-form-group">
+                                <label>로고 이미지 URL</label>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    value={formData.logo_url || ''}
+                                    onChange={e => setFormData({ ...formData, logo_url: e.target.value })}
+                                    placeholder="https://.../logo.png"
+                                />
+                                {formData.logo_url && (
+                                    <div className="logo-preview" style={{ marginTop: '8px', textAlign: 'center' }}>
+                                        <img src={formData.logo_url} alt="Logo Preview" style={{ maxHeight: '40px', maxWidth: '100px' }} onError={(e) => (e.currentTarget.style.display = 'none')} />
+                                    </div>
+                                )}
+                            </div>
                             <div className="checkbox-group">
                                 <label className="checkbox-label">
                                     <input
@@ -350,6 +366,14 @@ export const ManufacturerDetailModal: React.FC<ManufacturerDetailModalProps> = (
                             </span>
                         </div>
                     </div>
+                    {manufacturer.logo_url && (
+                        <div className="detail-item">
+                            <div className="detail-label">제조사 로고</div>
+                            <div className="detail-value" style={{ marginTop: '8px' }}>
+                                <img src={manufacturer.logo_url} alt="Manufacturer Logo" style={{ maxHeight: '60px', maxWidth: '150px', objectFit: 'contain' }} />
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );

@@ -23,6 +23,8 @@
 #include "Network/RestApiServer.h"
 #endif
 
+#include "Event/CommandSubscriber.h"
+
 // Forward declarations
 class LogManager;
 class ConfigManager;
@@ -142,6 +144,7 @@ private:
 #endif
 
   std::unique_ptr<Pipeline::DataProcessingService> data_processing_service_;
+  std::unique_ptr<CommandSubscriber> command_subscriber_;
 
   // ==========================================================================
   // 실행 상태 관리

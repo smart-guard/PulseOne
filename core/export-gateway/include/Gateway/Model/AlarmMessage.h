@@ -9,7 +9,6 @@
 #define GATEWAY_MODEL_ALARM_MESSAGE_H
 
 #include <chrono>
-#include <nlohmann/json.hpp>
 #include <set>
 #include <string>
 #include <vector>
@@ -19,9 +18,6 @@
 #endif
 
 namespace PulseOne {
-
-using json = nlohmann::json;
-
 namespace Gateway {
 namespace Model {
 
@@ -41,21 +37,23 @@ struct AlarmMessage {
   std::string description;
 
   // Internal Logic Fields
-  // Internal Logic Fields
   int point_id = 0;
   int rule_id = 0;
   bool manual_override = false;
-  json extra_info = json::object();
+  nlohmann::json
+      extra_info; // default-initialized to null; set to object() in constructor
+
+  AlarmMessage(); // defined in AlarmMessage.cpp (initializes extra_info)
 
   /**
    * @brief Convert to JSON
    */
-  json to_json() const;
+  nlohmann::json to_json() const;
 
   /**
    * @brief Load from JSON
    */
-  bool from_json(const json &j);
+  bool from_json(const nlohmann::json &j);
 
 #ifdef HAS_SHARED_LIBS
   /**
@@ -79,9 +77,9 @@ struct AlarmMessage {
   bool operator!=(const AlarmMessage &other) const { return !(*this == other); }
 };
 
-// nlohmann::json support
-inline void to_json(json &j, const AlarmMessage &msg) { j = msg.to_json(); }
-inline void from_json(const json &j, AlarmMessage &msg) { msg.from_json(j); }
+// nlohmann::json support (implementations in AlarmMessage.cpp)
+void to_json(nlohmann::json &j, const AlarmMessage &msg);
+void from_json(const nlohmann::json &j, AlarmMessage &msg);
 
 } // namespace Model
 } // namespace Gateway

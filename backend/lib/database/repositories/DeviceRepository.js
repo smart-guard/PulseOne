@@ -437,6 +437,7 @@ class DeviceRepository extends BaseRepository {
                 'name', 'description', 'device_type', 'manufacturer', 'model', 'serial_number',
                 'protocol_id', 'protocol_instance_id', 'endpoint', 'config', 'polling_interval', 'timeout',
                 'retry_count', 'is_enabled', 'installation_date', 'device_group_id', 'edge_server_id',
+                'site_id', 'tenant_id', // 🔥 핵심 수정: 누락된 필드 추가
                 'tags', 'metadata', 'custom_fields'
             ];
 

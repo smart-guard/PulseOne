@@ -78,6 +78,7 @@ public:
   std::string getClientInfo() const { return client_info_; }
   int getGatewayId() const { return gateway_id_; }
   std::string getSentPayload() const { return sent_payload_; }
+  int getTenantId() const { return tenant_id_; } // [v3.2.1]
 
   // =======================================================================
   // Setter (inline 허용)
@@ -165,6 +166,10 @@ public:
     sent_payload_ = payload;
     markModified();
   }
+  void setTenantId(int tenant_id) { // [v3.2.1]
+    tenant_id_ = tenant_id;
+    markModified();
+  }
 
   // =======================================================================
   // 비즈니스 로직 (선언만, cpp에서 구현)
@@ -234,6 +239,7 @@ private:
   std::string client_info_;                         // 클라이언트 정보
   int gateway_id_ = 0;                              // 게이트웨이 ID
   std::string sent_payload_;                        // 전송된 페이로드
+  int tenant_id_ = 0;                               // [v3.2.1] 테넌트 ID
 };
 
 } // namespace Entities

@@ -87,9 +87,9 @@ docker run --rm \
     -v "$PACKAGE_DIR/collector:/output" \
     pulseone-native-builder bash -c "
         set -e
-        cd /src/core/shared && make clean && make all -j$(nproc)
-        cd /src/core/collector && make clean && make all -j$(nproc)
-        cd /src/core/export-gateway && make clean && make all -j$(nproc)
+        cd /src/core/shared && make clean && make all -j1
+        cd /src/core/collector && make clean && make all -j1
+        cd /src/core/export-gateway && make clean && make all -j1
         
         strip core/collector/bin/pulseone-collector
         strip core/export-gateway/bin/export-gateway
@@ -112,7 +112,11 @@ docker run --rm \
 # 4. Frontend & Backend preparation
 echo "4. 🎨 Preparing Frontend & Backend..."
 # Build Frontend
-docker run --rm -v "$(pwd):/app" -w /app/frontend node:22-alpine sh -c "npm install && npm run build"
+if [ "${SKIP_FRONTEND:-false}" = "true" ]; then
+    echo "⏭️  Skipping frontend build (SKIP_FRONTEND=true)"
+else
+    docker run --rm -v "$(pwd):/app" -w /app/frontend node:22-alpine sh -c "npm install && npm run build"
+fi
 mkdir -p "$PACKAGE_DIR/backend/frontend"
 cp -r "$PROJECT_ROOT/frontend/dist"/* "$PACKAGE_DIR/backend/frontend/"
 

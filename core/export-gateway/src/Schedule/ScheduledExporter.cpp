@@ -13,8 +13,10 @@
  */
 
 #include "Schedule/ScheduledExporter.h"
-#include "CSP/DynamicTargetManager.h"
 #include "Client/RedisClientImpl.h"
+#include "Gateway/Model/AlarmMessage.h"
+#include "Gateway/Model/ValueMessage.h"
+#include "Gateway/Service/TargetRunner.h"
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 #include "Utils/ccronexpr.h"
@@ -23,12 +25,16 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <nlohmann/json.hpp> // full json here; header only has json_fwd.hpp
 #include <sstream>
 
 namespace fs = std::filesystem;
 
 namespace PulseOne {
 namespace Schedule {
+
+// .cpp-local alias replacing the removed global 'using json' in header
+using json = nlohmann::json;
 
 // =============================================================================
 // 생성자 및 소멸자
@@ -69,17 +75,9 @@ bool ScheduledExporter::start() {
 
   LogManager::getInstance().Info("ScheduledExporter 시작 중...");
 
-  // ✅ 1. DynamicTargetManager 확인 (싱글턴이 초기화되었는지)
-  try {
-    auto &manager = PulseOne::CSP::DynamicTargetManager::getInstance();
-    if (!manager.isRunning()) {
-      LogManager::getInstance().Error("DynamicTargetManager가 실행되지 않음");
-      return false;
-    }
-    LogManager::getInstance().Info("✅ DynamicTargetManager 연결 확인");
-  } catch (const std::exception &e) {
-    LogManager::getInstance().Error("DynamicTargetManager 접근 실패: " +
-                                    std::string(e.what()));
+  // 1. TargetRunner 확인
+  if (!target_runner_) {
+    LogManager::getInstance().Error("TargetRunner가 설정되지 않음");
     return false;
   }
 
@@ -697,9 +695,9 @@ bool ScheduledExporter::sendDataToTarget(
 
   try {
     // 1. ValueMessage 벡터로 변환 (C# 호환 포맷)
-    std::vector<PulseOne::CSP::ValueMessage> values;
+    std::vector<PulseOne::Gateway::Model::ValueMessage> values;
     for (const auto &point : data_points) {
-      PulseOne::CSP::ValueMessage msg;
+      PulseOne::Gateway::Model::ValueMessage msg;
       msg.site_id = point.building_id;
       msg.point_id = point.point_id;
       msg.point_name =
@@ -720,25 +718,28 @@ bool ScheduledExporter::sendDataToTarget(
       values.push_back(std::move(msg));
     }
 
-    // 2. DynamicTargetManager 싱글턴 사용
-    auto &manager = PulseOne::CSP::DynamicTargetManager::getInstance();
-
+    // 2. TargetRunner 사용 (이미 주입됨)
     // 3. 특정 타겟으로 전송
-    PulseOne::CSP::BatchTargetResult result =
-        manager.sendValueBatchToTargets(values, "value", target_name);
+    auto result = target_runner_->sendValueBatch(values, target_name);
 
-    if (result.successful_targets > 0) {
+    if (result.success_count > 0) {
       LogManager::getInstance().Info(
           "타겟 전송 성공 [" + target_name +
-          "]: " + std::to_string(result.successful_targets) + "개 성공");
+          "]: " + std::to_string(result.success_count) + "개 성공");
       return true;
     } else {
       LogManager::getInstance().Error("타겟 전송 실패 [" + target_name + "]");
 
-      // ✅ 영구 실패 방지를 위해 파일로 저장 (Local Persistence)
-      auto target_opt = manager.getTargetWithTemplate(target_name);
-      if (target_opt.has_value()) {
-        saveFailedBatchToFile(target_name, values, target_opt->config);
+      // [FIX] 영구 실패 방지: TargetRegistry에서 target config를 조회해
+      // 실패 데이터를 로컬 파일에 저장 (Persistent Retry용)
+      try {
+        auto target_opt = target_runner_->getRegistry().getTarget(target_name);
+        json target_config = target_opt ? target_opt->config : json::object();
+        saveFailedBatchToFile(target_name, values, target_config);
+      } catch (const std::exception &e) {
+        LogManager::getInstance().Error("실패 데이터 로컬 저장 중 예외 [" +
+                                        target_name +
+                                        "]: " + std::string(e.what()));
       }
 
       return false;
@@ -1095,8 +1096,10 @@ void ScheduledExporter::saveExecutionLog(
 
 void ScheduledExporter::saveFailedBatchToFile(
     const std::string &target_name,
-    const std::vector<PulseOne::CSP::ValueMessage> &values,
+    const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
     const json &target_config) {
+  // [FIX] Signature unified with header: CSP::ValueMessage alias ->
+  // Gateway::Model::ValueMessage
 
   try {
     // 1. 저장 경로 확인 (ConfigManager 사용)
@@ -1231,8 +1234,13 @@ void ScheduledExporter::processFailedExports() {
         continue;
       }
 
-      PulseOne::CSP::BatchTargetResult result;
-      auto &manager = PulseOne::CSP::DynamicTargetManager::getInstance();
+      PulseOne::Export::BatchTargetResult result;
+
+      if (!target_runner_) {
+        LogManager::getInstance().Warn("target_runner_ 없음 - 재시도 스킵 [" +
+                                       target_name + "]");
+        continue;
+      }
 
       if (type == "value") {
         json values_json = failed_data["values"];
@@ -1241,9 +1249,9 @@ void ScheduledExporter::processFailedExports() {
           continue;
         }
 
-        std::vector<PulseOne::CSP::ValueMessage> values;
+        std::vector<PulseOne::Gateway::Model::ValueMessage> values;
         for (const auto &v_json : values_json) {
-          PulseOne::CSP::ValueMessage v;
+          PulseOne::Gateway::Model::ValueMessage v;
           v.site_id = v_json.value("site_id", v_json.value("bd", 0));
           v.point_id = v_json.value("point_id", 0);
           v.point_name = v_json.value("point_name", v_json.value("nm", ""));
@@ -1260,7 +1268,7 @@ void ScheduledExporter::processFailedExports() {
             "]: " + std::to_string(values.size()) + "개 (시도 " +
             std::to_string(retry_count + 1) + ")");
 
-        result = manager.sendValueBatchToTargets(values, "value", target_name);
+        result = target_runner_->sendValueBatch(values, target_name);
       } else if (type == "alarm") {
         json alarms_json = failed_data["alarms"];
         if (alarms_json.empty()) {
@@ -1268,9 +1276,9 @@ void ScheduledExporter::processFailedExports() {
           continue;
         }
 
-        std::vector<PulseOne::CSP::AlarmMessage> alarms;
+        std::vector<PulseOne::Gateway::Model::AlarmMessage> alarms;
         for (const auto &a_json : alarms_json) {
-          PulseOne::CSP::AlarmMessage a;
+          PulseOne::Gateway::Model::AlarmMessage a;
           a.site_id = a_json.value("bd", 0);
           a.point_name = a_json.value("nm", "");
           a.measured_value = a_json.value("vl", 0.0);
@@ -1286,7 +1294,7 @@ void ScheduledExporter::processFailedExports() {
                                        "개 (시도 " +
                                        std::to_string(retry_count + 1) + ")");
 
-        result = manager.sendAlarmBatchToTargets(alarms, target_name);
+        result = target_runner_->sendAlarmBatch(alarms, target_name);
       }
 
       if (result.successful_targets > 0) {
@@ -1366,6 +1374,41 @@ void ScheduledExporter::saveFailedAlarmBatchToFile(
     LogManager::getInstance().Error("❌ 실패 데이터 저장 중 예외: " +
                                     std::string(e.what()));
   }
+}
+
+} // namespace Schedule
+} // namespace PulseOne
+
+// =============================================================================
+// ExportDataPoint::to_json() / ScheduleExecutionResult::to_json()
+// moved from ScheduledExporter.h (structs live in PulseOne::Schedule)
+// =============================================================================
+namespace PulseOne {
+namespace Schedule {
+
+nlohmann::json ExportDataPoint::to_json() const {
+  using json = nlohmann::json;
+  return json::object({{"point_id", point_id},
+                       {"building_id", building_id},
+                       {"point_name", point_name},
+                       {"mapped_name", mapped_name},
+                       {"value", value},
+                       {"timestamp", timestamp},
+                       {"quality", quality},
+                       {"unit", unit},
+                       {"extra_info", extra_info}});
+}
+
+nlohmann::json ScheduleExecutionResult::to_json() const {
+  using json = nlohmann::json;
+  return json{{"schedule_id", schedule_id},
+              {"success", success},
+              {"error_message", error_message},
+              {"data_point_count", data_point_count},
+              {"execution_time_ms", execution_time_ms},
+              {"target_names", target_names},
+              {"successful_targets", successful_targets},
+              {"failed_targets", failed_targets}};
 }
 
 } // namespace Schedule

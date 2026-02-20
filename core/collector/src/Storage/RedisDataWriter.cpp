@@ -280,10 +280,12 @@ bool RedisDataWriter::PublishAlarmEvent(
     redis_client_->publish(
         "tenant:" + std::to_string(alarm_data.tenant_id) + ":alarms", json_str);
 
-    // device_id 처리 (이제 string 타입)
+    // device_id 처리: "device_001" → "1" 변환 후 publish
+    // Gateway selective 모드가 "device:{numeric_id}:alarms"를 구독하므로
+    // ExtractDeviceNumber()로 숫자 ID만 추출
     if (!alarm_data.device_id.empty()) {
-      redis_client_->publish("device:" + alarm_data.device_id + ":alarms",
-                             json_str);
+      std::string device_num = ExtractDeviceNumber(alarm_data.device_id);
+      redis_client_->publish("device:" + device_num + ":alarms", json_str);
     }
 
     // 🔧 수정: severity는 std::string 타입 (문자열 비교)

@@ -110,17 +110,32 @@ class SiteRepository extends BaseRepository {
                 site_type: siteData.site_type || 'building',
                 description: siteData.description || null,
                 location: siteData.location || null,
-                timezone: siteData.timezone || 'UTC',
+                timezone: siteData.timezone || 'Asia/Seoul',
                 address: siteData.address || null,
                 city: siteData.city || null,
                 country: siteData.country || null,
-                coordinates: (siteData.latitude && siteData.longitude) ? `${siteData.latitude},${siteData.longitude}` : null,
-                hierarchy_level: siteData.hierarchy_level || 1,
+                postal_code: siteData.postal_code || null,
+                state_province: siteData.state_province || null,
+                coordinates: (siteData.latitude && siteData.longitude) ? `${siteData.latitude},${siteData.longitude}` : (siteData.coordinates || null),
+                hierarchy_level: siteData.hierarchy_level || 0,
                 hierarchy_path: siteData.hierarchy_path || '/',
+                sort_order: siteData.sort_order || 0,
                 is_active: siteData.is_active !== false ? 1 : 0,
-                manager_name: siteData.contact_name || null,
-                manager_email: siteData.contact_email || null,
-                manager_phone: siteData.contact_phone || null
+                is_visible: siteData.is_visible !== false ? 1 : 0,
+                monitoring_enabled: siteData.monitoring_enabled !== false ? 1 : 0,
+                manager_name: siteData.manager_name || siteData.contact_name || null,
+                manager_email: siteData.manager_email || siteData.contact_email || null,
+                manager_phone: siteData.manager_phone || siteData.contact_phone || null,
+                emergency_contact: siteData.emergency_contact || null,
+                operating_hours: siteData.operating_hours || null,
+                shift_pattern: siteData.shift_pattern || null,
+                working_days: siteData.working_days || null,
+                floor_area: siteData.floor_area || null,
+                ceiling_height: siteData.ceiling_height || null,
+                max_occupancy: siteData.max_occupancy || null,
+                edge_server_id: siteData.edge_server_id || null,
+                tags: typeof siteData.tags === 'object' ? JSON.stringify(siteData.tags) : (siteData.tags || '[]'),
+                metadata: typeof siteData.metadata === 'object' ? JSON.stringify(siteData.metadata) : (siteData.metadata || '{}')
             });
             return id;
         } catch (error) {
@@ -142,32 +157,71 @@ class SiteRepository extends BaseRepository {
                 query = query.where('tenant_id', tenantId);
             }
 
-            const result = await query.update({
-                parent_site_id: siteData.parent_site_id,
+            // [보완] 필드 매핑 및 필터링
+            const dataToUpdate = {
+                parent_site_id: siteData.parent_site_id || null,
                 name: siteData.name,
                 code: siteData.code,
                 site_type: siteData.site_type,
-                description: siteData.description,
-                location: siteData.location,
-                timezone: siteData.timezone,
-                address: siteData.address,
-                city: siteData.city,
-                country: siteData.country,
-                hierarchy_level: siteData.hierarchy_level,
-                hierarchy_path: siteData.hierarchy_path,
-                is_active: siteData.is_active !== false ? 1 : 0,
-                manager_name: siteData.contact_name,
-                manager_email: siteData.contact_email,
-                manager_phone: siteData.contact_phone,
-                updated_at: this.knex.fn.now()
-            });
+                description: siteData.description || null,
+                location: siteData.location || null,
+                timezone: siteData.timezone || 'Asia/Seoul',
+                address: siteData.address || null,
+                city: siteData.city || null,
+                country: siteData.country || null,
+                postal_code: siteData.postal_code || null,
+                state_province: siteData.state_province || null,
 
-            if (siteData.latitude !== undefined && siteData.longitude !== undefined) {
-                if (siteData.latitude && siteData.longitude) {
-                    await query.update({ coordinates: `${siteData.latitude},${siteData.longitude}` });
-                }
+                // 계층 정보
+                hierarchy_level: siteData.hierarchy_level || 0,
+                hierarchy_path: siteData.hierarchy_path || '/',
+                sort_order: siteData.sort_order || 0,
+
+                // 연락처 정보 (프론트엔드 contact_name -> manager_name 매핑)
+                manager_name: siteData.manager_name || siteData.contact_name || null,
+                manager_email: siteData.manager_email || siteData.contact_email || null,
+                manager_phone: siteData.manager_phone || siteData.contact_phone || null,
+                emergency_contact: siteData.emergency_contact || null,
+
+                // 운영 및 시설 정보
+                operating_hours: siteData.operating_hours || null,
+                shift_pattern: siteData.shift_pattern || null,
+                working_days: siteData.working_days || null,
+                floor_area: siteData.floor_area || null,
+                ceiling_height: siteData.ceiling_height || null,
+                max_occupancy: siteData.max_occupancy || null,
+
+                // 상태 필드
+                is_active: siteData.is_active !== false ? 1 : 0,
+                is_visible: siteData.is_visible !== false ? 1 : 0,
+                monitoring_enabled: siteData.monitoring_enabled !== false ? 1 : 0,
+
+                // 인프라 연결
+                edge_server_id: siteData.edge_server_id || null,
+
+                updated_at: this.knex.fn.now()
+            };
+
+            // JSON 필드 처리 (tags, metadata)
+            if (siteData.tags !== undefined) {
+                dataToUpdate.tags = typeof siteData.tags === 'object' ? JSON.stringify(siteData.tags) : siteData.tags;
+            }
+            if (siteData.metadata !== undefined) {
+                dataToUpdate.metadata = typeof siteData.metadata === 'object' ? JSON.stringify(siteData.metadata) : siteData.metadata;
             }
 
+            // GPS 좌표 처리
+            if (siteData.latitude !== undefined && siteData.longitude !== undefined) {
+                if (siteData.latitude && siteData.longitude) {
+                    dataToUpdate.coordinates = `${siteData.latitude},${siteData.longitude}`;
+                } else {
+                    dataToUpdate.coordinates = null;
+                }
+            } else if (siteData.coordinates !== undefined) {
+                dataToUpdate.coordinates = siteData.coordinates;
+            }
+
+            const result = await query.update(dataToUpdate);
             return result > 0;
         } catch (error) {
             this.logger.error('SiteRepository.update 오류:', error);
@@ -193,8 +247,45 @@ class SiteRepository extends BaseRepository {
             delete dataToUpdate.tenant_id;
             dataToUpdate.updated_at = this.knex.fn.now();
 
-            if (dataToUpdate.is_active !== undefined) {
-                dataToUpdate.is_active = dataToUpdate.is_active ? 1 : 0;
+            // Field mapping for contact_name
+            if (dataToUpdate.contact_name !== undefined && dataToUpdate.manager_name === undefined) {
+                dataToUpdate.manager_name = dataToUpdate.contact_name;
+                delete dataToUpdate.contact_name;
+            }
+            if (dataToUpdate.contact_email !== undefined && dataToUpdate.manager_email === undefined) {
+                dataToUpdate.manager_email = dataToUpdate.contact_email;
+                delete dataToUpdate.contact_email;
+            }
+            if (dataToUpdate.contact_phone !== undefined && dataToUpdate.manager_phone === undefined) {
+                dataToUpdate.manager_phone = dataToUpdate.contact_phone;
+                delete dataToUpdate.contact_phone;
+            }
+
+            // Status fields mapping
+            const boolFields = ['is_active', 'is_visible', 'monitoring_enabled'];
+            boolFields.forEach(f => {
+                if (dataToUpdate[f] !== undefined) {
+                    dataToUpdate[f] = dataToUpdate[f] ? 1 : 0;
+                }
+            });
+
+            // JSON handling
+            if (dataToUpdate.tags !== undefined && typeof dataToUpdate.tags === 'object') {
+                dataToUpdate.tags = JSON.stringify(dataToUpdate.tags);
+            }
+            if (dataToUpdate.metadata !== undefined && typeof dataToUpdate.metadata === 'object') {
+                dataToUpdate.metadata = JSON.stringify(dataToUpdate.metadata);
+            }
+
+            // Coordinates handling
+            if (dataToUpdate.latitude !== undefined && dataToUpdate.longitude !== undefined) {
+                if (dataToUpdate.latitude && dataToUpdate.longitude) {
+                    dataToUpdate.coordinates = `${dataToUpdate.latitude},${dataToUpdate.longitude}`;
+                } else {
+                    dataToUpdate.coordinates = null;
+                }
+                delete dataToUpdate.latitude;
+                delete dataToUpdate.longitude;
             }
 
             const result = await query.update(dataToUpdate);

@@ -1567,7 +1567,8 @@ const std::string FIND_ALL = R"(
 const std::string FIND_BY_ID = R"(
         SELECT id, tenant_id, server_name as name, factory_name, location,
                ip_address, port, registration_token, status,
-               last_seen, version, created_at, updated_at, subscription_mode
+               last_seen, version, created_at, updated_at, subscription_mode,
+               config
         FROM edge_servers
         WHERE id = ?
     )";

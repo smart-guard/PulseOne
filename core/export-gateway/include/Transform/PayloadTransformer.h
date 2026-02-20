@@ -8,17 +8,14 @@
 #ifndef PAYLOAD_TRANSFORMER_H
 #define PAYLOAD_TRANSFORMER_H
 
-#include "CSP/AlarmMessage.h"
 #include "Export/ExportTypes.h"
+#include "Gateway/Model/AlarmMessage.h"
+#include "Gateway/Model/ValueMessage.h"
 #include <functional>
 #include <map>
-#include <nlohmann/json.hpp>
 #include <string>
 
 namespace PulseOne {
-
-using json = nlohmann::json;
-
 namespace Transform {
 
 using CSP::AlarmMessage;
@@ -70,20 +67,23 @@ public:
   PayloadTransformer &operator=(const PayloadTransformer &) = delete;
 
   // 메인 변환
-  json transform(const json &template_json, const TransformContext &context);
+  nlohmann::json transform(const nlohmann::json &template_json,
+                           const TransformContext &context);
   std::string transformString(const std::string &template_str,
                               const TransformContext &context);
 
   // [v3.0.0] Unified Payload Builder (Refactored from S3TargetHandler)
-  json buildPayload(const AlarmMessage &alarm, const json &config);
-  json buildPayload(const ValueMessage &value, const json &config);
+  nlohmann::json buildPayload(const AlarmMessage &alarm,
+                              const nlohmann::json &config);
+  nlohmann::json buildPayload(const ValueMessage &value,
+                              const nlohmann::json &config);
 
   // 시스템별 기본 템플릿
-  json getInsiteDefaultTemplate();
-  json getHDCDefaultTemplate();
-  json getBEMSDefaultTemplate();
-  json getGenericDefaultTemplate();
-  json getDefaultTemplateForSystem(const std::string &system_type);
+  nlohmann::json getInsiteDefaultTemplate();
+  nlohmann::json getHDCDefaultTemplate();
+  nlohmann::json getBEMSDefaultTemplate();
+  nlohmann::json getGenericDefaultTemplate();
+  nlohmann::json getDefaultTemplateForSystem(const std::string &system_type);
 
   // 컨텍스트 생성 (알람)
   TransformContext createContext(const AlarmMessage &alarm,
@@ -100,7 +100,7 @@ public:
   // 변수 관리
   std::map<std::string, std::string>
   buildVariableMap(const TransformContext &context);
-  void expandJsonRecursive(json &obj,
+  void expandJsonRecursive(nlohmann::json &obj,
                            const std::map<std::string, std::string> &variables,
                            const std::string &current_key = "");
 

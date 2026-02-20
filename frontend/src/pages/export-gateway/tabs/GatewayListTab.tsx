@@ -10,6 +10,7 @@ const extractItems = (response: any): any[] => {
 };
 
 interface GatewayListTabProps {
+    siteId?: number | null;
     gateways: Gateway[];
     loading: boolean;
     onRefresh: () => Promise<void>;
@@ -24,6 +25,7 @@ interface GatewayListTabProps {
 }
 
 const GatewayListTab: React.FC<GatewayListTabProps> = ({
+    siteId,
     gateways,
     loading,
     onRefresh,
@@ -84,7 +86,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
         if (!confirmed) return;
 
         try {
-            const res = await exportGatewayApi.startGatewayProcess(gw.id);
+            const res = await exportGatewayApi.startGatewayProcess(gw.id, siteId);
             if (res.success) {
                 await confirm({
                     title: '시작 완료',
@@ -121,7 +123,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
         if (!confirmed) return;
 
         try {
-            const res = await exportGatewayApi.stopGatewayProcess(gw.id);
+            const res = await exportGatewayApi.stopGatewayProcess(gw.id, siteId);
             if (res.success) {
                 await confirm({
                     title: '중지 완료',
@@ -158,7 +160,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
         if (!confirmed) return;
 
         try {
-            const res = await exportGatewayApi.restartGatewayProcess(gw.id);
+            const res = await exportGatewayApi.restartGatewayProcess(gw.id, siteId);
             if (res.success) {
                 await confirm({
                     title: '재시작 완료',
@@ -196,7 +198,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
         setActionLoading(gw.id);
         try {
-            const res = await exportGatewayApi.deployConfig(gw.id);
+            const res = await exportGatewayApi.deployConfig(gw.id, siteId);
             if (res.success) {
                 await confirm({
                     title: '배포 성공',
@@ -379,6 +381,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             <GatewayDetailModal
                 visible={isDetailModalOpen}
                 onClose={() => setIsDetailModalOpen(false)}
+                siteId={siteId}
                 gateway={selectedGateway}
                 allAssignments={assignments}
                 targets={targets}
@@ -397,6 +400,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 const GatewayDetailModal: React.FC<{
     visible: boolean;
     onClose: () => void;
+    siteId?: number | null;
     gateway: Gateway | null;
     allAssignments: Record<number, Assignment[]>;
     targets: ExportTarget[];
@@ -404,11 +408,11 @@ const GatewayDetailModal: React.FC<{
     schedules: ExportSchedule[];
     onEdit: (gateway: Gateway) => void;
     onDelete: (gateway: Gateway) => void;
-}> = ({ visible, onClose, gateway, allAssignments, targets, allProfiles, schedules, onEdit, onDelete }) => {
+}> = ({ visible, onClose, siteId, gateway, allAssignments, targets, allProfiles, schedules, onEdit, onDelete }) => {
     if (!gateway) return null;
 
     // Derived info with fallback for names (PICK LATEST ONLY)
-    const assignments = gateway ? (Object.entries(allAssignments).find(([k]) => String(k) === String(gateway.id))?.[1] || []) : [];
+    const assignments = gateway ? (allAssignments[gateway.id] || []) : [];
     const sortedAssignments = [...assignments].sort((a, b) => (b.id || 0) - (a.id || 0));
     const latestAssignment = sortedAssignments[0];
 
@@ -419,10 +423,10 @@ const GatewayDetailModal: React.FC<{
         return [];
     })() : [];
 
-    const profileIds = assignedProfiles.map(p => p.id);
-    const linkedTargets = targets.filter(t => profileIds.some(pid => String(pid) === String(t.profile_id)));
-    const targetIds = linkedTargets.map(t => t.id);
-    const linkedSchedules = schedules.filter(s => targetIds.some(tid => String(tid) === String(s.target_id)));
+    const profileIds = assignedProfiles.map(p => String(p.id));
+    const linkedTargets = (targets || []).filter(t => profileIds.includes(String(t.profile_id)));
+    const targetIds = linkedTargets.map(t => String(t.id));
+    const linkedSchedules = (schedules || []).filter(s => targetIds.includes(String(s.target_id)));
 
     return (
         <Modal

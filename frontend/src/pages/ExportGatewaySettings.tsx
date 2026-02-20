@@ -11,7 +11,13 @@ import ManualTestTab from './export-gateway/tabs/ManualTestTab';
 import exportGatewayApi, { DataPoint, Gateway, ExportProfile, ExportTarget, Assignment, PayloadTemplate, ExportSchedule } from '../api/services/exportGatewayApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
+import { Tabs, Button, Row, Col, Space, Input, Table, Tag, Divider, Tooltip } from 'antd';
+import { PlusOutlined, ReloadOutlined, SearchOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined, PauseCircleOutlined, SyncOutlined, SettingOutlined } from '@ant-design/icons';
 import { StatCard } from '../components/common/StatCard';
+import { FilterBar } from '../components/common/FilterBar';
+import { SiteApiService } from '../api/services/siteApi';
+import { TenantApiService } from '../api/services/tenantApi';
+import { Site, Tenant } from '../types/common';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
 import '../styles/management.css';
 import '../styles/pagination.css';
@@ -24,10 +30,6 @@ const extractItems = (data: any): any[] => {
     if (Array.isArray(data.rows)) return data.rows;
     return [];
 };
-
-// =============================================================================
-// Main Page: ExportGatewaySettings
-// =============================================================================
 
 const ExportGatewaySettings: React.FC = () => {
     const { tab } = useParams<{ tab: string }>();
@@ -58,17 +60,50 @@ const ExportGatewaySettings: React.FC = () => {
     const [editingGateway, setEditingGateway] = useState<Gateway | null>(null);
 
     const [allProfiles, setAllProfiles] = useState<ExportProfile[]>([]);
+    const [sites, setSites] = useState<Site[]>([]);
+    const [tenants, setTenants] = useState<Tenant[]>([]);
+    const [isAdmin, setIsAdmin] = useState(true); // Forced true for dev convenience
+
+    // Read from localStorage to sync with global TenantSelector
+    const [currentTenantId, setCurrentTenantId] = useState<number | null>(() => {
+        const stored = localStorage.getItem('selected_tenant_id');
+        return stored ? Number(stored) : null;
+    });
+    const [currentSiteId, setCurrentSiteId] = useState<number | null>(null);
+
+    const loadTenants = async () => {
+        try {
+            const res = await TenantApiService.getTenants();
+            if (res.success && res.data) {
+                setTenants(res.data.items || []);
+            }
+        } catch (error) {
+            console.error('Failed to load tenants:', error);
+        }
+    };
+
+    const loadSites = async (tenantId: number | null = currentTenantId) => {
+        try {
+            const res = await SiteApiService.getSites({ limit: 100, tenantId: tenantId || undefined });
+            if (res.success && res.data) {
+                setSites(res.data.items || []);
+            }
+        } catch (error) {
+            console.error('Failed to load sites:', error);
+        }
+    };
 
     const fetchData = useCallback(async () => {
         if (gateways.length === 0) setLoading(true);
         try {
+            const params = { page, limit: 10, siteId: currentSiteId, tenantId: currentTenantId };
             const [gwRes, targetsRes, templatesRes, pointsRes, profilesRes, schedulesRes] = await Promise.all([
-                exportGatewayApi.getGateways({ page, limit: 10 }),
-                exportGatewayApi.getTargets(),
-                exportGatewayApi.getTemplates(),
-                exportGatewayApi.getDataPoints(),
-                exportGatewayApi.getProfiles(),
-                exportGatewayApi.getSchedules()
+                exportGatewayApi.getGateways(params),
+                exportGatewayApi.getTargets({ tenantId: currentTenantId }),
+                exportGatewayApi.getTemplates({ tenantId: currentTenantId }),
+                exportGatewayApi.getDataPoints('', undefined, currentSiteId, currentTenantId), // Points still site-specific
+                exportGatewayApi.getProfiles({ tenantId: currentTenantId }),
+                exportGatewayApi.getSchedules({ tenantId: currentTenantId })
             ]);
 
             const data = gwRes.data;
@@ -86,7 +121,7 @@ const ExportGatewaySettings: React.FC = () => {
 
             const assignMap: Record<number, Assignment[]> = {};
             await Promise.all((gwList || []).map(async (gw: Gateway) => {
-                const response = await exportGatewayApi.getAssignments(gw.id);
+                const response = await exportGatewayApi.getAssignments(gw.id, undefined, currentTenantId);
                 assignMap[gw.id] = extractItems(response.data);
             }));
             setAssignments(assignMap);
@@ -95,7 +130,25 @@ const ExportGatewaySettings: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [gateways.length, page]);
+    }, [gateways.length, page, currentSiteId, currentTenantId]);
+
+    useEffect(() => {
+        setIsAdmin(true);
+        loadTenants();
+        loadSites();
+
+        // [NEW] Sync with global TenantSelector navbar changes (e.g., user picks tenant in header)
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === 'selected_tenant_id') {
+                const newTenantId = e.newValue ? Number(e.newValue) : null;
+                setCurrentTenantId(newTenantId);
+                setCurrentSiteId(null);
+                loadSites(newTenantId);
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
 
     useEffect(() => {
         fetchData();
@@ -141,6 +194,45 @@ const ExportGatewaySettings: React.FC = () => {
                     <StatCard label="오프라인" value={gateways.length - onlineCount} type="error" />
                 </div>
 
+                <div style={{ marginBottom: '20px' }}>
+                    <FilterBar
+                        filters={[
+                            ...(isAdmin ? [{
+                                label: '테넌트 필터',
+                                value: currentTenantId ? String(currentTenantId) : 'all',
+                                options: [
+                                    { label: '전체 테넌트', value: 'all' },
+                                    ...tenants.map(t => ({ label: t.company_name, value: String(t.id) }))
+                                ],
+                                onChange: (val: string) => {
+                                    const tId = val === 'all' ? null : Number(val);
+                                    setCurrentTenantId(tId);
+                                    setCurrentSiteId(null); // Reset site on tenant change
+                                    if (tId) localStorage.setItem('selected_tenant_id', String(tId));
+                                    else localStorage.removeItem('selected_tenant_id');
+                                    loadSites(tId);
+                                }
+                            }] : []),
+                            {
+                                label: '사이트 필터',
+                                value: currentSiteId ? String(currentSiteId) : 'all',
+                                options: [
+                                    { label: '전체 사이트 (Global)', value: 'all' },
+                                    ...sites.map(s => ({ label: s.name, value: String(s.id) }))
+                                ],
+                                onChange: (val) => setCurrentSiteId(val === 'all' ? null : Number(val))
+                            }
+                        ]}
+                        onReset={() => {
+                            setCurrentTenantId(null);
+                            setCurrentSiteId(null);
+                            localStorage.removeItem('selected_tenant_id');
+                            loadSites(null);
+                        }}
+                        activeFilterCount={(currentTenantId ? 1 : 0) + (currentSiteId ? 1 : 0)}
+                    />
+                </div>
+
                 <div className="mgmt-filter-bar" style={{ marginBottom: '20px', borderBottom: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'visible' }}>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'nowrap', overflow: 'auto' }}>
                         {[
@@ -184,6 +276,7 @@ const ExportGatewaySettings: React.FC = () => {
                 <div className="mgmt-content-area">
                     {activeTab === 'gateways' && (
                         <GatewayListTab
+                            siteId={currentSiteId}
                             gateways={gateways}
                             loading={loading}
                             onRefresh={fetchData}
@@ -200,17 +293,19 @@ const ExportGatewaySettings: React.FC = () => {
                             schedules={schedules}
                         />
                     )}
-                    {activeTab === 'profiles' && <ProfileManagementTab />}
-                    {activeTab === 'targets' && <TargetManagementTab />}
-                    {activeTab === 'templates' && <TemplateManagementTab />}
-                    {activeTab === 'schedules' && <ScheduleManagementTab />}
-                    {activeTab === 'manual-test' && <ManualTestTab />}
+                    {activeTab === 'profiles' && <ProfileManagementTab siteId={currentSiteId} tenantId={currentTenantId} />}
+                    {activeTab === 'targets' && <TargetManagementTab siteId={currentSiteId} tenantId={currentTenantId} />}
+                    {activeTab === 'templates' && <TemplateManagementTab siteId={currentSiteId} tenantId={currentTenantId} />}
+                    {activeTab === 'schedules' && <ScheduleManagementTab siteId={currentSiteId} tenantId={currentTenantId} />}
+                    {activeTab === 'manual-test' && <ManualTestTab siteId={currentSiteId} tenantId={currentTenantId} />}
                 </div>
 
                 {/* Replacement: Wizard used for both Register & Edit */}
                 <ExportGatewayWizard
                     visible={isRegModalOpen}
                     editingGateway={editingGateway}
+                    siteId={currentSiteId}
+                    tenantId={currentTenantId}
                     onClose={() => {
                         setIsRegModalOpen(false);
                         setEditingGateway(null);

@@ -12,7 +12,6 @@
 #include <chrono>
 #include <functional>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -31,9 +30,6 @@ using ValueMessage = PulseOne::Gateway::Model::ValueMessage;
 } // namespace PulseOne
 
 namespace PulseOne {
-
-using json = nlohmann::json;
-
 namespace Export {
 
 // =============================================================================
@@ -53,29 +49,29 @@ public:
   virtual ~ITargetHandler() = default;
 
   virtual TargetSendResult
-  sendAlarm(const json &payload,
+  sendAlarm(const nlohmann::json &payload,
             const PulseOne::Gateway::Model::AlarmMessage &alarm,
-            const json &config) = 0;
+            const nlohmann::json &config) = 0;
 
   virtual std::vector<TargetSendResult> sendAlarmBatch(
-      const std::vector<json> &payloads,
+      const std::vector<nlohmann::json> &payloads,
       const std::vector<PulseOne::Gateway::Model::AlarmMessage> &alarms,
-      const json &config) = 0;
+      const nlohmann::json &config) = 0;
 
   virtual TargetSendResult
-  sendValue(const json &payload,
+  sendValue(const nlohmann::json &payload,
             const PulseOne::Gateway::Model::ValueMessage &value,
-            const json &config) = 0;
+            const nlohmann::json &config) = 0;
 
   virtual std::vector<TargetSendResult> sendValueBatch(
-      const std::vector<json> &payloads,
+      const std::vector<nlohmann::json> &payloads,
       const std::vector<PulseOne::Gateway::Model::ValueMessage> &values,
-      const json &config) = 0;
+      const nlohmann::json &config) = 0;
 
   virtual TargetSendResult sendFile(const std::string &file_path,
-                                    const json &config) = 0;
+                                    const nlohmann::json &config) = 0;
 
-  virtual bool initialize(const json &config) = 0;
+  virtual bool initialize(const nlohmann::json &config) = 0;
   virtual std::string getTargetName() const = 0;
   virtual std::string getTargetType() const = 0;
 };
@@ -88,7 +84,7 @@ struct DynamicTarget {
   int id = 0;
   std::string name = "";
   std::string type = "";
-  json config = json::object();
+  nlohmann::json config = nlohmann::json::object();
   bool enabled = true;
   bool is_active = true;
   int priority = 100;
@@ -99,18 +95,8 @@ struct DynamicTarget {
   bool handler_initialized = false;
   std::string description = "";
 
-  json toJson() const {
-    return json{{"id", id},
-                {"name", name},
-                {"type", type},
-                {"config", config},
-                {"enabled", enabled},
-                {"is_active", is_active},
-                {"priority", priority},
-                {"execution_order", execution_order},
-                {"execution_delay_ms", execution_delay_ms},
-                {"description", description}};
-  }
+  // Implementation in GatewayExportTypes.cpp
+  nlohmann::json toJson() const;
 };
 
 // =============================================================================
@@ -129,19 +115,8 @@ struct BatchTargetResult {
   std::string last_error = "";
   std::chrono::milliseconds total_time{0};
 
-  json toJson() const {
-    json j_results = json::array();
-    for (const auto &r : results) {
-      j_results.push_back(r.toJson());
-    }
-    return json{{"success", success},
-                {"total_count", total_count},
-                {"success_count", success_count},
-                {"failure_count", failure_count},
-                {"last_error", last_error},
-                {"total_time_ms", total_time.count()},
-                {"results", j_results}};
-  }
+  // Implementation in GatewayExportTypes.cpp
+  nlohmann::json toJson() const;
 };
 
 // =============================================================================
