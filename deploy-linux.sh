@@ -91,14 +91,17 @@ docker run --rm \
         cd /src/core/collector && make clean && make all -j1
         cd /src/core/export-gateway && make clean && make all -j1
         
-        strip core/collector/bin/pulseone-collector
-        strip core/export-gateway/bin/export-gateway
+        strip /src/core/collector/bin/pulseone-collector
+        strip /src/core/export-gateway/bin/export-gateway
         
-        cp core/collector/bin/pulseone-collector /output/
-        cp core/export-gateway/bin/export-gateway /output/pulseone-export-gateway
-        if [ -d core/collector/bin/plugins ]; then
-            mkdir -p /output/plugins
-            cp core/collector/bin/plugins/*.so /output/plugins/
+        cp /src/core/collector/bin/pulseone-collector /output/
+        cp /src/core/export-gateway/bin/export-gateway /output/pulseone-export-gateway
+        if [ -d /src/core/collector/bin/drivers ]; then
+            mkdir -p /output/drivers
+            cp /src/core/collector/bin/drivers/*.so /output/drivers/
+        elif [ -d /src/core/collector/bin/plugins ]; then
+            mkdir -p /output/drivers
+            cp /src/core/collector/bin/plugins/*.so /output/drivers/
         fi
         
         # Copy required runtime libraries for portability
@@ -123,6 +126,13 @@ cp -r "$PROJECT_ROOT/frontend/dist"/* "$PACKAGE_DIR/backend/frontend/"
 # Prepare Backend
 rsync -a --exclude='node_modules' --exclude='.git' "$PROJECT_ROOT/backend/" "$PACKAGE_DIR/backend/"
 docker run --rm -v "$PACKAGE_DIR/backend:/app" -w /app node:22-alpine sh -c "npm install --production"
+
+# Copy deploy config templates
+if [ -d "$PROJECT_ROOT/deploy/config" ]; then
+    mkdir -p "$PACKAGE_DIR/config"
+    cp "$PROJECT_ROOT/deploy/config/"*.env "$PACKAGE_DIR/config/"
+    echo "✅ Deploy config templates copied"
+fi
 
 # 5. Infrastructure Assets (for Air-Gapped)
 echo "5. 📥 Bundling infrastructure assets..."

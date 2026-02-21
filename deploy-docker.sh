@@ -58,7 +58,12 @@ docker save rabbitmq:3-management > "$IMAGE_DIR/rabbitmq-3-mgmt.tar"
 # 4. Copy Orchestration Files
 echo "📝 Copying orchestration and config files..."
 cp docker/docker-compose.prod.yml "$PACKAGE_DIR/docker-compose.yml"
-cp config/*.env "$PACKAGE_DIR/config/" 2>/dev/null || true
+# deploy/config/*.env 템플릿 복사 (플레이스홀더 값 - 현장에서 실제 값으로 교체 필요)
+if [ -d "$PROJECT_ROOT/deploy/config" ]; then
+    cp "$PROJECT_ROOT/deploy/config/"*.env "$PACKAGE_DIR/config/" 2>/dev/null || true
+else
+    cp config/*.env "$PACKAGE_DIR/config/" 2>/dev/null || true
+fi
 
 # 5. Create Setup Scripts (Linux & Windows)
 echo "🛠️ Creating setup scripts..."
