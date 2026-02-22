@@ -259,7 +259,7 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
 
                             <div className="modal-form-row" style={{ marginTop: '12px' }}>
                                 <div className="modal-form-group">
-                                    <label>최대 에지 서버</label>
+                                    <label>Collector 할당 한도 <span style={{ fontSize: '11px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(사이트 등록 시 1개씩 사용)</span></label>
                                     <input
                                         type="number"
                                         className="form-control"
@@ -341,10 +341,11 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
                             </div>
                         </div>
                         <div className="detail-item">
-                            <div className="detail-label">Edge 서버</div>
+                            <div className="detail-label">Collector 현황</div>
                             <div className="detail-value">
                                 <span className="usage-indicator">
-                                    <strong>{(tenant as any).edge_servers_count || 0}</strong> / {tenant.max_edge_servers} 대
+                                    <i className="fas fa-server" style={{ marginRight: '4px', color: 'var(--primary-500)' }}></i>
+                                    <strong>{(tenant as any).edge_servers_count || 0}</strong> / {tenant.max_edge_servers} 대 사용
                                 </span>
                             </div>
                         </div>

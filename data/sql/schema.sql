@@ -725,7 +725,7 @@ CREATE TABLE data_points (
     
     -- 🔥 제약조건
     UNIQUE(device_id, address),
-    CONSTRAINT chk_data_type CHECK (data_type IN ('BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32', 'INT64', 'UINT64', 'FLOAT32', 'FLOAT64', 'STRING', 'UNKNOWN')),
+    CONSTRAINT chk_data_type CHECK (data_type IN ('BOOL', 'INT8', 'UINT8', 'INT16', 'UINT16', 'INT32', 'UINT32', 'INT64', 'UINT64', 'FLOAT', 'DOUBLE', 'FLOAT32', 'FLOAT64', 'STRING', 'BINARY', 'DATETIME', 'JSON', 'ARRAY', 'OBJECT', 'UNKNOWN')),
     CONSTRAINT chk_access_mode CHECK (access_mode IN ('read', 'write', 'read_write')),
     CONSTRAINT chk_retention_policy CHECK (retention_policy IN ('standard', 'extended', 'minimal', 'custom'))
 );
@@ -2063,6 +2063,18 @@ CREATE TABLE role_permissions (
     FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
 );
 CREATE TABLE backups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, filename TEXT NOT NULL UNIQUE, type TEXT DEFAULT 'full', status TEXT DEFAULT 'completed', size INTEGER DEFAULT 0, location TEXT DEFAULT '/app/data/backup', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, created_by TEXT, description TEXT, duration INTEGER, is_deleted INTEGER DEFAULT 0);
+-- =============================================================================
+-- 🔥 Views - device_details (SQLQueries.h FIND_WITH_PROTOCOL_INFO 에서 사용)
+-- =============================================================================
+CREATE VIEW IF NOT EXISTS device_details AS
+SELECT
+    d.*,
+    p.protocol_type,
+    p.display_name AS protocol_display_name,
+    p.category AS protocol_category
+FROM devices d
+LEFT JOIN protocols p ON d.protocol_id = p.id;
+
 CREATE INDEX idx_tenants_company_code ON tenants(company_code);
 CREATE INDEX idx_tenants_active ON tenants(is_active);
 CREATE INDEX idx_tenants_subscription ON tenants(subscription_status);

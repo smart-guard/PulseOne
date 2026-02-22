@@ -280,7 +280,7 @@ export const TenantModal: React.FC<TenantModalProps> = ({
 
                                 <div className="mgmt-modal-form-row" style={{ marginTop: '12px' }}>
                                     <div className="mgmt-modal-form-group">
-                                        <label>최대 에지 서버</label>
+                                        <label>Collector 할당 한도 <span style={{ fontSize: '11px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(사이트 등록 시 1개씩 사용)</span></label>
                                         <input
                                             type="number"
                                             className="form-control"

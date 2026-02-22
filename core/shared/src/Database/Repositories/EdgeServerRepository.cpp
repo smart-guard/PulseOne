@@ -128,8 +128,10 @@ EdgeServerEntity EdgeServerRepository::mapRowToEntity(
       entity.setId(std::stoi(row.at("id")));
     if (row.count("tenant_id"))
       entity.setTenantId(std::stoi(row.at("tenant_id")));
-    if (row.count("name"))
-      entity.setName(row.at("name"));
+    if (row.count("server_name"))
+      entity.setName(row.at("server_name"));
+    else if (row.count("name"))
+      entity.setName(row.at("name")); // fallback for compatibility
     if (row.count("status"))
       entity.setEnabled(row.at("status") == "active");
     if (row.count("ip_address"))

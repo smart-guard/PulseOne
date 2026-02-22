@@ -266,7 +266,12 @@ bool MQTTWorker::EstablishConnection() {
 
     return true;
   } else {
-    LogMessage(LogLevel::LOG_ERROR, "Failed to establish MQTT connection");
+    std::string error_detail = "Unknown error";
+    if (mqtt_driver_) {
+      error_detail = mqtt_driver_->GetLastError().message;
+    }
+    LogMessage(LogLevel::LOG_ERROR,
+               "Failed to establish MQTT connection: " + error_detail);
     SetConnectionState(false);
 
     // 프로덕션 모드에서는 에러 카운트 업데이트

@@ -369,11 +369,9 @@ S3TargetHandler::getOrCreateClient(const json &config,
       config.value("secret_key", config.value("SecretAccessKey", ""));
 
   s3_config.access_key =
-      Security::SecretManager::getInstance().decryptEncodedValue(
-          cfg.expandVariables(access_key));
+      Security::SecretManager::getInstance().resolve(access_key);
   s3_config.secret_key =
-      Security::SecretManager::getInstance().decryptEncodedValue(
-          cfg.expandVariables(secret_key));
+      Security::SecretManager::getInstance().resolve(secret_key);
   s3_config.bucket_name = bucket_name;
   s3_config.prefix = config.value("prefix", "");
   s3_config.use_ssl = config.value("use_ssl", true);

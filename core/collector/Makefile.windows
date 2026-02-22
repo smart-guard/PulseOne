@@ -5,10 +5,10 @@
 # 기본 설정
 CXX = x86_64-w64-mingw32-g++
 CC = x86_64-w64-mingw32-gcc
-CXXFLAGS = $(INCLUDES) -std=c++17 -Wall -Wextra -O0 -fPIC --param ggc-min-expand=0
+CXXFLAGS = $(INCLUDES) -std=c++17 -Wall -Wextra -O0
 CFLAGS = -Wall -O2 -DWIN32 -D_WIN32_WINNT=0x0A00
-CXXFLAGS += -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE
-CXXFLAGS += -DHAS_MODBUS=1 -DHAS_MQTT=1 -DHAS_BACNET=1 -DHAS_QUICKJS=1 -DHAS_HTTPLIB=1 -DHAS_REDIS=1 -DHAS_JSON=1
+CXXFLAGS += -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0A00 -DNOMINMAX -DUNICODE -D_UNICODE -DCPPHTTPLIB_USE_POLL=0
+CXXFLAGS += -DHAS_MODBUS=1 -DHAS_MQTT=1 -DHAS_MQTT_CPP=1 -DHAS_BACNET=1 -DHAS_QUICKJS=1 -DHAS_HTTPLIB=1 -DHAS_REDIS=1 -DHAS_JSON=1 -DHAS_ROS=1 -DHAS_OPCUA=1 -DHAS_BLUETOOTH=1 -DHAS_HTTP_REST=1
 CXXFLAGS += -DBACAPP_ALL -DBACAPP_REAL -DBACAPP_DOUBLE -DBACAPP_BOOLEAN -DBACAPP_UNSIGNED -DBACAPP_SIGNED -DBACAPP_ENUMERATED -DBACAPP_CHARACTER_STRING -DBACAPP_OBJECT_ID
 CXXFLAGS += -DDBLIB_EXPORTS -DLOGLIB_EXPORTS
 
@@ -125,6 +125,14 @@ SYS_LIBS = -lpthread -lstdc++ -lm -lgcc -lgcc_eh
 # 의존성이 높은 라이브러리부터 낮은 라이브러리 순으로
 LIBS = $(PROTOCOL_LIBS) $(MQTT_LIBS) $(BACNET_LIBS) $(OTHER_LIBS) $(DB_LIBS) $(WIN_LIBS) $(SYS_LIBS)
 
+# MQTT Paho C++ 헤더 경로 추가 (MQTTWorker 컴파일용)
+MQTT_INCLUDE = $(MINGW_PREFIX)/include
+INCLUDES += -I$(MQTT_INCLUDE)
+
+# MQTTWorker, ModbusWorker는 메인 EXE에 포함
+WORKER_SOURCES = $(SRC_DIR)/Workers/Protocol/MQTTWorker.cpp \
+                 $(SRC_DIR)/Workers/Protocol/ModbusWorker.cpp
+
 # 소스 파일 수집
 ALL_CPP_FILES = $(shell find $(SRC_DIR) -name "*.cpp")
 SHARED_SRC_DIR = ../shared/src
@@ -132,8 +140,7 @@ SHARED_MODULE_DIR = ../shared/modules
 
 # 필요한 공유 소스 파일 수집 (Database, Security, Logging, Utils, Client)
 SHARED_SOURCES = $(SHARED_SRC_DIR)/Logging/LogManager.cpp \
-                 $(SHARED_SRC_DIR)/Utils/ConfigManager.cpp \
-                 $(SHARED_SRC_DIR)/Utils/RedisManager.cpp \
+                 $(wildcard $(SHARED_SRC_DIR)/Utils/*.cpp) \
                  $(SHARED_SRC_DIR)/Security/SecretManager.cpp \
                  $(wildcard $(SHARED_SRC_DIR)/Database/*.cpp) \
                  $(wildcard $(SHARED_SRC_DIR)/Database/Entities/*.cpp) \
@@ -144,24 +151,19 @@ SHARED_SOURCES = $(SHARED_SRC_DIR)/Logging/LogManager.cpp \
 SHARED_DBLIB_SOURCES = $(wildcard $(SHARED_MODULE_DIR)/DbLib/src/*.cpp)
 SHARED_LOGLIB_SOURCES = $(wildcard $(SHARED_MODULE_DIR)/LogLib/src/*.cpp)
 
-# 드라이버 구현 파일 및 관련 워커 제외 목록 (DLL로 별도 빌드됨)
+# Driver DLL 소스만 제외 (DLL로 별도 빌드됨)
+# BACnet: BACnetDriver.cpp만 DLL 제외
+# ServiceManager/BIPPort/Stubs는 BACnetWorker.cpp가 직접 사용 → EXE에 포함 필수
 DRIVER_IMPLEMENTATIONS = $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp) \
-                         $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp) \
+                         $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
                          $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp) \
                          $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp) \
                          $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp) \
                          $(wildcard $(SRC_DIR)/Drivers/Ble/*.cpp) \
-                         $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp) \
-                         $(SRC_DIR)/Workers/Protocol/BACnetWorker.cpp \
-                         $(SRC_DIR)/Workers/Protocol/BACnetDiscoveryService.cpp \
-                         $(SRC_DIR)/Workers/Protocol/MQTTWorker.cpp \
-                         $(SRC_DIR)/Workers/Protocol/OPCUAWorker.cpp \
-                         $(SRC_DIR)/Workers/Protocol/ROSWorker.cpp \
-                         $(SRC_DIR)/Workers/Protocol/BleBeaconWorker.cpp \
-                         $(SRC_DIR)/Workers/Protocol/HttpRestWorker.cpp \
-                         $(SRC_DIR)/Workers/Protocol/ModbusWorker.cpp
+                         $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp)
 
 # 필터링 로직 (main.cpp 및 개별 드라이버 DLL 소스 제외)
+# Bacnet 나머지(ServiceManager/BIPPort/Stubs)는 ALL_CPP_FILES에 포함되어 자동으로 SOURCES에 들어감
 SOURCES = $(filter-out $(SRC_DIR)/main.cpp $(DRIVER_IMPLEMENTATIONS),$(ALL_CPP_FILES))
 MAIN_SOURCE = $(SRC_DIR)/main.cpp
 
@@ -179,7 +181,7 @@ MAIN_OBJECT = $(BUILD_DIR)/main.o
 
 # 타겟
 TARGET = collector.exe
-PLUGINS_DIR = $(BIN_DIR)/plugins
+PLUGINS_DIR = $(BIN_DIR)/drivers
 
 # 드라이버 DLL 목록
 DRIVER_DLLS = $(PLUGINS_DIR)/modbus_driver.dll \
@@ -232,9 +234,7 @@ check-libs:
 # 메인 타겟
 $(BIN_DIR)/$(TARGET): $(OBJECTS) $(ALL_CLEAN_SHARED_OBJECTS) $(MAIN_OBJECT) | $(BIN_DIR)
 	@echo "🔗 Linking $(BIN_DIR)/$(TARGET)..."
-	@echo "Link command:"
-	echo "$(CXX) $(LDFLAGS) -o $@ $(OBJECTS) $(ALL_CLEAN_SHARED_OBJECTS) $(MAIN_OBJECT) $(DB_LIBS) $(OTHER_LIBS) $(WIN_LIBS) $(SYS_LIBS)"
-	$(CXX) $(LDFLAGS) -Wl,--out-implib,$(IMPLIB) -Wl,--export-all-symbols -o $@ $(OBJECTS) $(ALL_CLEAN_SHARED_OBJECTS) $(MAIN_OBJECT) $(DB_LIBS) $(OTHER_LIBS) $(WIN_LIBS) $(SYS_LIBS)
+	$(CXX) $(LDFLAGS) -Wl,--out-implib,$(IMPLIB) -Wl,--export-all-symbols -o $@ $(OBJECTS) $(ALL_CLEAN_SHARED_OBJECTS) $(MAIN_OBJECT) $(LIBS)
 	@echo "✅ Build completed: $@"
 	@echo "File size: $$(du -h $@ | cut -f1)"
 

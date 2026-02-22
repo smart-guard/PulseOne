@@ -9,7 +9,7 @@ DEBUG ?= 1
 COLLECTOR_ROOT = ../../../
 SHARED_ROOT = ../../../../shared
 BIN_DIR = $(COLLECTOR_ROOT)bin
-PLUGINS_DIR = $(BIN_DIR)/plugins
+PLUGINS_DIR = $(BIN_DIR)/drivers
 
 # Target
 TARGET = $(PLUGINS_DIR)/libmodbus_driver.so

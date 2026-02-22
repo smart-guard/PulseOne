@@ -1,1147 +1,489 @@
 #!/bin/bash
-set -euo pipefail
+set -e
 
 # =============================================================================
-# PulseOne Complete Deployment Script v6.1
-# Cross-compile on Mac/Linux → produce a self-contained Windows package
+# PulseOne Windows Deploy Script
+# 실행 환경: Mac/Linux 호스트 (Docker 필요, pulseone-windows-builder 이미지)
+#
+# 사용법:
+#   ./deploy-windows.sh                    # 전체 빌드 + 패키징
+#   ./deploy-windows.sh --skip-shared      # shared 재빌드 스킵
+#   ./deploy-windows.sh --skip-collector   # collector 재빌드 스킵
+#   ./deploy-windows.sh --skip-gateway     # gateway 재빌드 스킵
+#   ./deploy-windows.sh --skip-backend     # backend(pkg) 재빌드 스킵
+#   ./deploy-windows.sh --skip-frontend    # frontend 재빌드 스킵
+#   ./deploy-windows.sh --skip-cpp         # C++ 빌드 전체 스킵
+#   ./deploy-windows.sh --no-package       # ZIP 패키징 없이 bin-windows/만 채움
+#
+# 이미 빌드된 바이너리가 bin-windows/에 있으면 자동으로 스킵됨
 # =============================================================================
 
-PROJECT_ROOT=$(pwd)
-VERSION=$(grep '"version"' "$PROJECT_ROOT/version.json" | cut -d'"' -f4 || echo "6.1.0")
-PACKAGE_NAME="deploy-v$VERSION"
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+VERSION=$(grep '"version"' "$PROJECT_ROOT/version.json" | cut -d'"' -f4 2>/dev/null || echo "6.1.0")
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
-DIST_DIR="$PROJECT_ROOT/dist"
-PACKAGE_DIR="$DIST_DIR/$PACKAGE_NAME"
 
-echo "================================================================="
-echo "🚀 PulseOne Complete Deployment Script v${VERSION}"
-echo "Cross-compile on Mac → Windows deployment package"
-echo "================================================================="
+# 중앙 빌드 결과물 폴더
+BIN_DIR="$PROJECT_ROOT/bin-windows"
 
-# =============================================================================
-# 1. Project Structure Check
-# =============================================================================
+SKIP_SHARED=false
+SKIP_COLLECTOR=false
+SKIP_GATEWAY=false
+SKIP_BACKEND=false
+SKIP_FRONTEND=false
+NO_PACKAGE=false
 
-echo "1. 🔍 Checking project structure..."
-
-REQUIRED_DIRS=("backend" "frontend" "core/collector" "core/export-gateway")
-MISSING_DIRS=()
-
-for dir in "${REQUIRED_DIRS[@]}"; do
-    if [ ! -d "$PROJECT_ROOT/$dir" ]; then
-        MISSING_DIRS+=("$dir")
-    fi
-done
-
-if [ ${#MISSING_DIRS[@]} -gt 0 ]; then
-    echo "❌ Missing directories: ${MISSING_DIRS[*]}"
-    exit 1
-fi
-
-# Docker check for Collector cross-compilation
-if ! command -v docker &> /dev/null; then
-    echo "⚠️ Docker not installed"
-    if [ "${SKIP_COLLECTOR:-false}" != "true" ]; then
-        echo "Set SKIP_COLLECTOR=true to skip native builds"
-        echo "Or install Docker for MinGW cross-compilation"
-        exit 1
-    fi
-fi
-
-echo "✅ Project structure check completed"
-
-# =============================================================================
-# 2. Build Environment Setup
-# =============================================================================
-
-echo "2. 📦 Setting up build environment..."
-
-# Selective cleanup to preserve setup_assets
-mkdir -p "$PACKAGE_DIR"
-DEPS_DIR="$PACKAGE_DIR/setup_assets"
-mkdir -p "$DEPS_DIR"
-find "$PACKAGE_DIR" -mindepth 1 -maxdepth 1 -not -name "setup_assets" -exec rm -rf {} +
-
-if ! command -v node &> /dev/null; then
-    echo "⚠️ Node.js not found on build system — frontend build may fail"
-fi
-
-# =============================================================================
-# 2.1 📥 Pre-downloading dependencies (Dockerized to protect host)
-# =============================================================================
-echo "2.1 📥 Pre-downloading dependencies for offline support..."
-
-# Use a lightweight container to download assets to the DEPS_DIR
-docker run --rm -v "$DEPS_DIR:/assets" alpine:latest sh -c "
-  apk add --no-cache curl && \
-  cd /assets && \
-  ( [ -f node-v22.13.1-x64.msi ] || curl -L -O https://nodejs.org/dist/v22.13.1/node-v22.13.1-x64.msi ) && \
-  ( [ -f redis.zip ] || curl -L -o redis.zip https://github.com/tporadowski/redis/releases/download/v5.0.14.1/Redis-x64-5.0.14.1.zip ) && \
-  ( [ -f influxdb.zip ] || curl -L -o influxdb.zip https://download.influxdata.com/influxdb/releases/influxdb2-2.7.11-windows-amd64.zip ) && \
-  ( [ -f WinSW-x64.exe ] || curl -L -o WinSW-x64.exe https://github.com/winsw/winsw/releases/download/v2.11.0/WinSW-x64.exe ) && \
-  ( [ -f sqlite.zip ] || curl -L -o sqlite.zip https://www.sqlite.org/2024/sqlite-dll-win-x64-3460100.zip )
-"
-
-echo "✅ All dependencies verified/downloaded via Docker"
-
-echo "✅ Build environment setup completed"
-
-# =============================================================================
-# 3. Frontend Build
-# =============================================================================
-
-if [ "${SKIP_FRONTEND:-false}" = "true" ]; then
-    echo "3. 🎨 Skipping frontend build (SKIP_FRONTEND=true)"
-else
-    echo "3. 🎨 Building frontend..."
-    cd "$PROJECT_ROOT/frontend"
-
-    if [ -d "dist" ]; then
-        echo "✅ Frontend already built (dist found), skipping..."
-    else
-        echo "Installing frontend dependencies..."
-        npm install --silent
-
-        echo "Building frontend..."
-        if npm run build; then
-            if [ -d "dist" ]; then
-                FRONTEND_SIZE=$(du -sh dist | cut -f1)
-                echo "✅ Frontend build completed: $FRONTEND_SIZE"
-            else
-                echo "❌ Frontend dist folder not created"
-                exit 1
-            fi
-        else
-            echo "❌ Frontend build failed"
-            exit 1
-        fi
-    fi
-fi
-
-cd "$PROJECT_ROOT"
-
-# =============================================================================
-# 4. Collector & Export Gateway Build (Docker MinGW Cross-compile)
-# =============================================================================
-
-# 4. ⚙️ Cross-compile native components (Collector & Gateway)
-# =============================================================================
-echo "4. ⚙️ Cross-compiling native components for Windows..."
-
-if [ "${SKIP_NATIVE:-false}" = "true" ]; then
-    echo "⏭️  Skipping native component compilation (SKIP_NATIVE=true)"
-else
-    # Check for rebuild flag
-REBUILD_IMAGE=${REBUILD_IMAGE:-false}
 for arg in "$@"; do
-    if [ "$arg" == "--rebuild-image" ]; then
-        REBUILD_IMAGE=true
-    fi
+    case "$arg" in
+        --skip-shared)     SKIP_SHARED=true ;;
+        --skip-collector)  SKIP_COLLECTOR=true ;;
+        --skip-gateway)    SKIP_GATEWAY=true ;;
+        --skip-backend)    SKIP_BACKEND=true ;;
+        --skip-frontend)   SKIP_FRONTEND=true ;;
+        --skip-cpp)        SKIP_SHARED=true; SKIP_COLLECTOR=true; SKIP_GATEWAY=true ;;
+        --no-package)      NO_PACKAGE=true ;;
+    esac
 done
 
-# =============================================================================
-# 1. Build Container Check
-# =============================================================================
-echo "1. 🐳 Checking build container..."
+WIN_BUILDER="pulseone-windows-builder"
 
-IMAGE_NAME="pulseone-windows-builder"
-IMAGE_EXISTS=$(docker image ls -q "$IMAGE_NAME")
+echo "================================================================="
+echo "🪟 PulseOne Windows Deploy v$VERSION"
+echo "   skip: shared=$SKIP_SHARED  collector=$SKIP_COLLECTOR  gateway=$SKIP_GATEWAY"
+echo "         backend=$SKIP_BACKEND  frontend=$SKIP_FRONTEND"
+echo "   output: $BIN_DIR"
+echo "================================================================="
 
-# Perform a quick sanity check if image exists
-if [ -n "$IMAGE_EXISTS" ] && [ "$REBUILD_IMAGE" != "true" ]; then
-    echo "🔍 Verifying image integrity..."
-    # Check for a critical file that should be in the image
-    if ! docker run --rm "$IMAGE_NAME" ls /usr/x86_64-w64-mingw32/include/bacnet/bacdef.h >/dev/null 2>&1; then
-        echo "⚠️  Image appears to be stale or incomplete. Forcing rebuild."
-        REBUILD_IMAGE=true
-    fi
+mkdir -p "$BIN_DIR/drivers"
+
+# 필요한 패키징 도구
+command -v zip   >/dev/null 2>&1 || brew install zip 2>/dev/null || apt-get install -y -qq zip 2>/dev/null || true
+command -v rsync >/dev/null 2>&1 || brew install rsync 2>/dev/null || apt-get install -y -qq rsync 2>/dev/null || true
+
+# =============================================================================
+# [1] Shared Libraries
+# =============================================================================
+SHARED_LIB="$PROJECT_ROOT/core/shared/lib/Windows-Cross/libpulseone-common.a"
+if [ "$SKIP_SHARED" = "false" ] && [ -f "$SHARED_LIB" ]; then
+    echo "⚡ [1/5] Shared: 이미 빌드됨 → 스킵"
+    SKIP_SHARED=true
 fi
 
-if [ -z "$IMAGE_EXISTS" ] || [ "$REBUILD_IMAGE" == "true" ]; then
-    echo "📦 Building Windows build container from Dockerfile.windows..."
-    docker build -f "$PROJECT_ROOT/core/collector/Dockerfile.windows" -t "$IMAGE_NAME" "$PROJECT_ROOT"
-else
-    echo "✅ Found pulseone-windows-builder image"
-fi
-
-    # Use a more stable temporary directory for Docker mount (Bypass Docker for Mac sync issues)
-    TMP_OUTPUT="/tmp/pulseone-dist-$(date +%s)"
-    mkdir -p "$TMP_OUTPUT"
-    chmod 777 "$TMP_OUTPUT"
-    sync
-    sleep 2
-
+if [ "$SKIP_SHARED" = "false" ]; then
+    echo "🔨 [1/5] Shared Libraries (Windows Cross) 빌드 중..."
     docker run --rm \
-        -v "$PROJECT_ROOT/core:/src/core" \
-        -v "$TMP_OUTPUT:/output" \
-        pulseone-windows-builder bash -c "
-            set -e
-            
-            # Use POSIX thread model for C++11/14/17 features (std::thread, std::mutex)
-            export CC=x86_64-w64-mingw32-gcc-posix
-            export CXX=x86_64-w64-mingw32-g++-posix
-            export AR=x86_64-w64-mingw32-ar
-            export RANLIB=x86_64-w64-mingw32-ranlib
-            
-            # 0. Build Shared Libraries (CRITICAL for linking)
+        -v "$PROJECT_ROOT/core":/src/core \
+        $WIN_BUILDER bash -c "
             cd /src/core/shared
-            echo 'Building Shared Libraries (Windows Cross-compile)...'
-            rm -rf build lib && mkdir lib
-            make -j1 CROSS_COMPILE_WINDOWS=1
-            
-            # 1. Build Collector
-            cd /src/core/collector
-            echo 'Building Collector (Release) with ALL Drivers...'
-            rm -rf build-windows bin-windows/*.exe
-            make -f Makefile.windows -j1
-            
-            if [ -f bin-windows/collector.exe ]; then
-                x86_64-w64-mingw32-strip --strip-unneeded bin-windows/collector.exe
-                cp bin-windows/collector.exe /output/pulseone-collector.exe
-                echo '✅ Collector binary copied to output'
-                
-                if [ -d bin-windows/plugins ]; then
-                    echo '📦 Copying driver plugins...'
-                    mkdir -p /output/plugins
-                    cp bin-windows/plugins/*.dll /output/plugins/
-                    echo '✅ Driver plugins copied'
-                fi
-            else
-                echo '❌ Collector binary NOT found after build'
-                exit 1
-            fi
-            
-            # 2. Build Export Gateway
-            cd /src/core/export-gateway
-            echo 'Building Export Gateway (Release)...'
-            if [ -f Makefile ]; then
-                rm -rf build bin/*.exe
-                make -j1 CROSS_COMPILE_WINDOWS=1
-                
-                if [ -f bin/export-gateway.exe ]; then
-                    x86_64-w64-mingw32-strip --strip-unneeded bin/export-gateway.exe
-                    cp bin/export-gateway.exe /output/pulseone-export-gateway.exe
-                    echo '✅ Export Gateway built'
-                else
-                    echo '❌ Export Gateway binary NOT found'
-                    exit 1
-                fi
-            else
-                echo '⚠️ Makefile not found for export-gateway'
-                exit 1
-            fi
+            rm -rf lib/Windows-Cross && mkdir -p lib/Windows-Cross
+            make -j4 CROSS_COMPILE_WINDOWS=1
         "
-
-    # Copy from TMP_OUTPUT to PACKAGE_DIR
-    echo "📦 Copying artifacts from temporary build directory..."
-    cp -r "$TMP_OUTPUT/"* "$PACKAGE_DIR/"
-    rm -rf "$TMP_OUTPUT"
-
-    # Verify binaries
-    if [ -f "$PACKAGE_DIR/pulseone-collector.exe" ]; then
-        COLLECTOR_SIZE=$(du -sh "$PACKAGE_DIR/pulseone-collector.exe" | cut -f1)
-        echo "✅ Collector: $COLLECTOR_SIZE"
-    else
-        echo "❌ Collector build failed"
-        exit 1
-    fi
-
-    if [ -f "$PACKAGE_DIR/pulseone-export-gateway.exe" ]; then
-        GATEWAY_SIZE=$(du -sh "$PACKAGE_DIR/pulseone-export-gateway.exe" | cut -f1)
-        echo "✅ Export Gateway: $GATEWAY_SIZE"
-    else
-        echo "❌ Export Gateway build failed"
-        exit 1
-    fi
-    fi
-# =============================================================================
-# 5. Backend Source Code Copy
-# =============================================================================
-
-if [ "${SKIP_BACKEND:-false}" = "true" ]; then
-    echo "5. ⏭️  Skipping backend source code copy (SKIP_BACKEND=true)"
+    echo "✅ Shared libs 완료"
 else
-    echo "5. 🔧 Copying backend source code..."
-    cd "$PACKAGE_DIR"
-    mkdir -p backend
-
-    # Copy backend source (exclude dev artifacts)
-    rsync -a \
-        --exclude='nnode_modules' \
-        --exclude='.git' \
-        --exclude='__tests__' \
-        --exclude='__mocks__' \
-        --exclude='*.test.js' \
-        --exclude='*.spec.js' \
-        "$PROJECT_ROOT/backend/" ./backend/
-
-    echo "✅ Backend source code copied"
+    echo "⏭️  [1/5] Shared Libraries 스킵"
 fi
 
 # =============================================================================
-# 6. Copy Frontend Build Results
+# [2] Collector + Drivers
 # =============================================================================
+COLLECTOR_EXE="$PROJECT_ROOT/core/collector/bin-windows/collector.exe"
+if [ "$SKIP_COLLECTOR" = "false" ] && [ -f "$COLLECTOR_EXE" ]; then
+    echo "⚡ [2/5] Collector: 이미 빌드됨 → 스킵"
+    SKIP_COLLECTOR=true
+fi
 
-if [ "${SKIP_FRONTEND:-false}" = "true" ]; then
-    echo "6. 🎨 Skipping frontend build results copy (SKIP_FRONTEND=true)"
+if [ "$SKIP_COLLECTOR" = "false" ]; then
+    echo "🔨 [2/5] Collector + Drivers 빌드 중..."
+    docker run --rm \
+        -v "$PROJECT_ROOT/core":/src/core \
+        $WIN_BUILDER bash -c "
+            cd /src/core/collector
+            rm -rf build-windows bin-windows/*.exe 2>/dev/null || true
+            make -f Makefile.windows -j2
+            x86_64-w64-mingw32-strip --strip-unneeded bin-windows/collector.exe
+        "
+    echo "✅ Collector 빌드 완료"
 else
-    echo "6. 🎨 Copying frontend build results..."
-    cd "$PACKAGE_DIR"
-    mkdir -p frontend
-    cp -r "$PROJECT_ROOT/frontend/dist/"* ./frontend/
-    echo "✅ Frontend copy completed"
+    echo "⏭️  [2/5] Collector 스킵"
+fi
+
+# bin-windows/로 복사
+if [ -f "$COLLECTOR_EXE" ]; then
+    cp "$COLLECTOR_EXE" "$BIN_DIR/pulseone-collector.exe"
+    if [ -d "$PROJECT_ROOT/core/collector/bin-windows/drivers" ] && \
+       ls "$PROJECT_ROOT/core/collector/bin-windows/drivers"/*.dll 1>/dev/null 2>&1; then
+        cp "$PROJECT_ROOT/core/collector/bin-windows/drivers"/*.dll "$BIN_DIR/drivers/"
+        echo "✅ Driver DLLs copied"
+    fi
+    # MinGW 런타임 DLLs
+    docker run --rm \
+        -v "$BIN_DIR":/output \
+        $WIN_BUILDER bash -c "
+            for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+                f=\"/usr/x86_64-w64-mingw32/lib/\$dll\"
+                [ -f \"\$f\" ] && cp \"\$f\" /output/
+            done
+        "
+    echo "✅ Collector → $BIN_DIR/ ($(du -sh "$BIN_DIR/pulseone-collector.exe" | cut -f1))"
 fi
 
 # =============================================================================
-# 7. Copy Config and Data Structure
+# [3] Export Gateway
 # =============================================================================
-
-echo "7. 📝 Copying configuration and creating structure..."
-
-# Copy existing config (minus secrets)
-if [ -d "$PROJECT_ROOT/config" ]; then
-    rsync -a --exclude='secrets' "$PROJECT_ROOT/config/" ./config/
+GATEWAY_EXE="$PROJECT_ROOT/core/export-gateway/bin-windows/export-gateway.exe"
+if [ "$SKIP_GATEWAY" = "false" ] && [ -f "$GATEWAY_EXE" ]; then
+    echo "⚡ [3/5] Gateway: 이미 빌드됨 → 스킵"
+    SKIP_GATEWAY=true
 fi
 
-# Create directory structure
-mkdir -p data/db data/backup data/logs data/temp config
+if [ "$SKIP_GATEWAY" = "false" ]; then
+    echo "🔨 [3/5] Export Gateway 빌드 중..."
+    docker run --rm \
+        -v "$PROJECT_ROOT/core":/src/core \
+        $WIN_BUILDER bash -c "
+            cd /src/core/export-gateway
+            rm -rf build-win bin-windows
+            make -j4 CROSS_COMPILE_WINDOWS=1
+            x86_64-w64-mingw32-strip --strip-unneeded bin-windows/export-gateway.exe
+        "
+    echo "✅ Gateway 빌드 완료"
+else
+    echo "⏭️  [3/5] Gateway 스킵"
+fi
 
-echo "✅ Configuration and structure created"
+if [ -f "$GATEWAY_EXE" ]; then
+    cp "$GATEWAY_EXE" "$BIN_DIR/pulseone-export-gateway.exe"
+    echo "✅ Gateway → $BIN_DIR/ ($(du -sh "$BIN_DIR/pulseone-export-gateway.exe" | cut -f1))"
+fi
 
-# 8. Windows Installation Script (install.bat)
 # =============================================================================
+# [4] Backend (pkg → .exe)
+# =============================================================================
+if [ "$SKIP_BACKEND" = "false" ] && [ -f "$BIN_DIR/pulseone-backend.exe" ]; then
+    echo "⚡ [4/5] Backend: 이미 빌드됨 → 스킵"
+    SKIP_BACKEND=true
+fi
 
-echo "8. 🛠️ Creating install.bat (Air-Gapped Support)..."
+if [ "$SKIP_BACKEND" = "false" ]; then
+    echo "📦 [4/5] Backend 빌드 중 (npx pkg)..."
+    docker run --rm \
+        -v "$PROJECT_ROOT/backend":/app/backend \
+        -v "$BIN_DIR":/output \
+        $WIN_BUILDER bash -c "
+            cd /app/backend
+            npm install --silent 2>/dev/null || true
+            npx pkg . --targets node18-win-x64 --output /output/pulseone-backend.exe
+        "
+    echo "✅ Backend → $BIN_DIR/ ($(du -sh "$BIN_DIR/pulseone-backend.exe" 2>/dev/null | cut -f1 || echo 'N/A'))"
+else
+    echo "⏭️  [4/5] Backend 스킵"
+fi
 
-cd "$PACKAGE_DIR"
+# sqlite3 네이티브 바인딩 (Windows x64 전용 다운로드 - 리눅스/ARM 환경 교차 빌드 버그 방지)
+echo "   Downloading Windows x64 sqlite3.node..."
+curl -sL https://github.com/TryGhost/node-sqlite3/releases/download/v5.1.7/sqlite3-v5.1.7-napi-v6-win32-x64.tar.gz | tar -xz -C "$BIN_DIR"
+mv "$BIN_DIR/build/Release/node_sqlite3.node" "$BIN_DIR/node_sqlite3.node" 2>/dev/null || true
+rm -rf "$BIN_DIR/build" 2>/dev/null || true
 
-cat > install.bat << 'INSTALL_EOF'
+# =============================================================================
+# [5] Frontend
+# =============================================================================
+if [ "$SKIP_FRONTEND" = "false" ] && [ -d "$PROJECT_ROOT/frontend/dist" ]; then
+    echo "⚡ [5/5] Frontend: dist/ 이미 있음 → 복사만"
+    mkdir -p "$BIN_DIR/frontend"
+    cp -r "$PROJECT_ROOT/frontend/dist/." "$BIN_DIR/frontend/"
+    echo "✅ Frontend → $BIN_DIR/frontend/"
+elif [ "$SKIP_FRONTEND" = "false" ] && [ -d "$PROJECT_ROOT/frontend" ]; then
+    echo "🎨 [5/5] Frontend 빌드 중..."
+    cd "$PROJECT_ROOT/frontend"
+    npm install --silent && npm run build
+    mkdir -p "$BIN_DIR/frontend"
+    cp -r dist/. "$BIN_DIR/frontend/"
+    cd "$PROJECT_ROOT"
+    echo "✅ Frontend → $BIN_DIR/frontend/"
+else
+    echo "⏭️  [5/5] Frontend 스킵"
+fi
+
+# Config & SQL
+mkdir -p "$BIN_DIR/data/db" "$BIN_DIR/data/backup" "$BIN_DIR/data/logs" \
+          "$BIN_DIR/data/temp" "$BIN_DIR/config" "$BIN_DIR/data/sql"
+[ -d "$PROJECT_ROOT/config" ] && \
+    rsync -a --exclude='secrets' "$PROJECT_ROOT/config/" "$BIN_DIR/config/" 2>/dev/null || true
+cp "$PROJECT_ROOT/data/sql/schema.sql" "$BIN_DIR/data/sql/" 2>/dev/null || true
+cp "$PROJECT_ROOT/data/sql/seed.sql"   "$BIN_DIR/data/sql/" 2>/dev/null || true
+
+echo ""
+echo "================================================================="
+echo "✅ 빌드 완료: $BIN_DIR"
+echo "   Collector: $(du -sh "$BIN_DIR/pulseone-collector.exe" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "   Gateway:   $(du -sh "$BIN_DIR/pulseone-export-gateway.exe" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "   Backend:   $(du -sh "$BIN_DIR/pulseone-backend.exe" 2>/dev/null | cut -f1 || echo 'N/A')"
+echo "   Drivers:   $(ls "$BIN_DIR/drivers/"*.dll 2>/dev/null | wc -l | tr -d ' ') DLLs"
+echo "================================================================="
+
+# =============================================================================
+# 패키징 (--no-package 없을 때만)
+# =============================================================================
+if [ "$NO_PACKAGE" = "false" ]; then
+    PACKAGE_NAME="PulseOne_Windows-v${VERSION}_${TIMESTAMP}"
+    DIST_DIR="$PROJECT_ROOT/dist_windows"
+    PACKAGE_DIR="$DIST_DIR/$PACKAGE_NAME"
+    SETUP_CACHE="$DIST_DIR/setup_assets_cache"
+    mkdir -p "$DIST_DIR" "$SETUP_CACHE"
+
+    echo ""
+    echo "📦 패키징 중: $PACKAGE_DIR"
+    cp -r "$BIN_DIR" "$PACKAGE_DIR"
+
+    # ==========================================================================
+    # setup_assets - 오프라인 설치용 파일 다운로드 (캐시 재사용)
+    # ==========================================================================
+    echo "📥 setup_assets 다운로드 중 (오프라인/에어갭 지원)..."
+    cd "$SETUP_CACHE"
+
+    NODE_MSI="node-v22.13.1-x64.msi"
+    if [ ! -f "$NODE_MSI" ]; then
+        echo "   Downloading Node.js..."
+        curl -fsSL -o "$NODE_MSI" "https://nodejs.org/dist/v22.13.1/$NODE_MSI" || \
+            echo "   ⚠️  Node.js 다운로드 실패"
+    else
+        echo "   ✅ Node.js (cached)"
+    fi
+
+    REDIS_ZIP="Redis-x64-5.0.14.1.zip"
+    if [ ! -f "$REDIS_ZIP" ]; then
+        echo "   Downloading Redis for Windows..."
+        curl -fsSL -o "$REDIS_ZIP" \
+            "https://github.com/tporadowski/redis/releases/download/v5.0.14.1/$REDIS_ZIP" || \
+            echo "   ⚠️  Redis 다운로드 실패"
+    else
+        echo "   ✅ Redis (cached)"
+    fi
+
+    MOSQUITTO_EXE="mosquitto-2.0.21-install-windows-x64.exe"
+    if [ ! -f "$MOSQUITTO_EXE" ]; then
+        echo "   Downloading Mosquitto..."
+        curl -fsSL -o "$MOSQUITTO_EXE" \
+            "https://mosquitto.org/files/binary/win64/$MOSQUITTO_EXE" || \
+            echo "   ⚠️  Mosquitto 다운로드 실패"
+    else
+        echo "   ✅ Mosquitto (cached)"
+    fi
+
+    WINSW_EXE="winsw.exe"
+    if [ ! -f "$WINSW_EXE" ]; then
+        echo "   Downloading WinSW..."
+        curl -fsSL -o "$WINSW_EXE" \
+            "https://github.com/winsw/winsw/releases/download/v2.11.0/WinSW.NET4.exe" || \
+            echo "   ⚠️  WinSW 다운로드 실패"
+    else
+        echo "   ✅ WinSW (cached)"
+    fi
+
+    mkdir -p "$PACKAGE_DIR/setup_assets"
+    cp "$SETUP_CACHE/"* "$PACKAGE_DIR/setup_assets/" 2>/dev/null || true
+    cd "$PROJECT_ROOT"
+    echo "✅ setup_assets ready"
+
+    # ==========================================================================
+    # install.bat
+    # ==========================================================================
+    cat > "$PACKAGE_DIR/install.bat" << 'WIN_INSTALL'
 @echo off
 setlocal enabledelayedexpansion
-
-title PulseOne Installation v6.1 - Complete Offline Setup
-
-echo ================================================================
-echo PulseOne Industrial IoT Platform v6.1
-echo Complete Installation (Air-Gapped Support)
-echo ================================================================
-
+title PulseOne 자동 설치
+echo ==========================================================
+echo  PulseOne Industrial IoT Platform - 자동 설치 시작
+echo ==========================================================
 pushd "%~dp0"
-set "INSTALL_DIR=%CD%"
-set "ASSETS_DIR=%INSTALL_DIR%\setup_assets"
+set "ROOT=%CD%"
 
-:: Check administrator privileges
 net session >nul 2>&1
 if errorlevel 1 (
-    echo [WARNING] Running without administrator privileges.
-    echo Node.js installation may require admin rights.
-    timeout /t 3
+    echo 관리자 권한으로 다시 실행합니다...
+    powershell -Command "Start-Process cmd -ArgumentList '/c cd /d %ROOT% && install.bat' -Verb RunAs -Wait"
+    exit /b 0
 )
 
-echo.
-echo [1/9] Checking Node.js...
-
-:: Check if Node.js is installed
-where node >nul 2>&1
-if not errorlevel 1 (
-    for /f "tokens=*" %%i in ('node --version') do set "NODE_VERSION=%%i"
-    echo Found Node.js !NODE_VERSION!
-    goto install_redis
-)
-
-:: Install Node.js from bundled asset
-echo Node.js not found. Installing from bundled package...
-set "NODE_MSI=node-v22.13.1-x64.msi"
-
-if exist "!ASSETS_DIR!\!NODE_MSI!" (
-    echo Installing Node.js silently (this takes 1-2 minutes)...
-    start /wait msiexec /i "!ASSETS_DIR!\!NODE_MSI!" /quiet /qn /norestart ADDLOCAL=ALL
-    
-    :: Update PATH for current session
-    set "PATH=!PATH!;C:\Program Files\nodejs"
-    
-    if exist "C:\Program Files\nodejs\node.exe" (
-        echo Node.js installed successfully!
-    ) else (
-        echo ERROR: Node.js installation failed.
-        pause & exit /b 1
-    )
+:: [1/6] MSVC Redistributable
+echo [1/6] MSVC Redistributable 설치 중...
+if exist "setup_assets\vc_redist.x64.exe" (
+    start /wait "" "setup_assets\vc_redist.x64.exe" /install /quiet /norestart
+    echo    MSVC Redistributable 설치 완료
 ) else (
-    echo ERROR: Bundled Node.js installer missing in setup_assets\
-    echo Please ensure you are using the complete deployment package.
-    pause & exit /b 1
+    echo    MSVC Redistributable 설치 파일 없음, 건너뜁니다.
 )
 
-:install_redis
-echo.
-echo [2/9] Setting up Redis...
-
-if not exist "redis-server.exe" (
-    if exist "!ASSETS_DIR!\redis.zip" (
-        echo Extracting Redis from bundled asset...
-        tar -xf "!ASSETS_DIR!\redis.zip"
-        del /f /q *.pdb redis-benchmark.exe redis-check-* 2>nul
-        echo Redis setup completed
-    ) else (
-        echo WARNING: Bundled Redis missing. Skipping optional component.
-    )
-) else (
-    echo Redis already installed
-)
-
-:install_influx
-echo.
-echo [3/9] Setting up InfluxDB v2...
-
-if not exist "influxd.exe" (
-    if exist "!ASSETS_DIR!\influxdb.zip" (
-        echo Extracting InfluxDB from bundled asset...
-        tar -xf "!ASSETS_DIR!\influxdb.zip" --strip-components=1
-        echo InfluxDB setup completed
-    ) else (
-        echo WARNING: Bundled InfluxDB missing.
-    )
-) else (
-    echo InfluxDB already installed
-)
-
-:install_sqlite
-echo.
-echo [4/9] Checking SQLite DLL...
-
-if not exist "sqlite3.dll" (
-    if exist "!ASSETS_DIR!\sqlite.zip" (
-        tar -xf "!ASSETS_DIR!\sqlite.zip"
-        echo SQLite DLL extracted
-    )
-)
-
-:install_winsw
-echo.
-echo [5/9] Setting up Service Support (WinSW)...
-
-if exist "!ASSETS_DIR!\WinSW-x64.exe" (
-    copy /y "!ASSETS_DIR!\WinSW-x64.exe" "WinSW-x64.exe" >nul
-    copy /y "WinSW-x64.exe" "pulseone-backend-svc.exe" >nul
-    copy /y "WinSW-x64.exe" "pulseone-collector-svc.exe" >nul
-    copy /y "WinSW-x64.exe" "pulseone-export-gateway-svc.exe" >nul
-    copy /y "WinSW-x64.exe" "pulseone-redis-svc.exe" >nul
-    copy /y "WinSW-x64.exe" "pulseone-influxdb-svc.exe" >nul
-)
-
-:install_backend
-echo.
-echo [6/9] Installing backend packages...
-pushd backend
-if exist "nnode_modules" rd /s /q nnode_modules
-echo Running npm install...
-call npm install --no-audit --no-fund --loglevel=error
-popd
-
-:setup_config
-echo.
-echo [7/9] Creating configuration files (Portable Relative Paths)...
-
-:: Create directories
-if not exist "data" mkdir data
-if not exist "data\db" mkdir data\db
-if not exist "data\logs" mkdir data\logs
-if not exist "data\backup" mkdir data\backup
-if not exist "data\temp" mkdir data\temp
-if not exist "config" mkdir config
-
-:: Create main .env configuration
-if not exist "config\.env" (
-    (
-        echo # PulseOne Main Configuration - PRODUCTION
-        echo NODE_ENV=production
-        echo ENV_STAGE=prod
-        echo LOG_LEVEL=warn
-        echo BACKEND_PORT=3000
-        echo.
-        echo # Database Auto Initialize
-        echo AUTO_INITIALIZE_ON_START=false
-        echo SKIP_IF_INITIALIZED=true
-        echo FAIL_ON_INIT_ERROR=true
-        echo.
-        echo # Directories (Relative to app root)
-        echo DATA_DIR=./data
-        echo LOGS_DIR=./data/logs
-        echo CONFIG_DIR=./config
-        echo.
-        echo # Config Files
-        echo CONFIG_FILES=database.env,redis.env,timeseries.env,messaging.env,collector.env,csp.env,security.env
-        echo.
-        echo # Logging
-        echo LOG_TO_CONSOLE=false
-        echo LOG_TO_FILE=true
-        echo LOG_FILE_PATH=./data/logs/
-        echo LOG_MAX_SIZE_MB=100
-        echo LOG_MAX_FILES=30
-        echo LOG_USE_DATE_FOLDERS=true
-        echo LOG_USE_HOURLY_FILES=false
-        echo LOG_RETENTION_DAYS=30
-        echo.
-        echo # System
-        echo MAX_WORKER_THREADS=8
-        echo DEFAULT_TIMEOUT_MS=5000
-        echo MAINTENANCE_MODE=false
-        echo.
-        echo # Gateways
-        echo CSP_GATEWAY_ENABLED=true
-        echo EXPORT_GATEWAY_ENABLED=true
-        echo.
-        echo # Security
-        echo SECRETS_DIR=./config/secrets
-        echo ENCRYPTION_ENABLED=true
-        echo.
-        echo # Service Ports
-        echo EXPORT_GATEWAY_PORT=8080
-        echo CSP_GATEWAY_HEALTH_CHECK_PORT=8081
-        echo CSP_USE_DYNAMIC_TARGETS=true
-    ) > config\.env
-    echo Created new production configuration
-)
- else (
-    echo Configuration file already exists - checking if update needed...
-
-    :: Check if it's development config
-    findstr /C:"NODE_ENV=development" config\.env >nul
-    if not errorlevel 1 (
-        echo Development configuration detected - updating to production...
-
-        :: Backup existing config
-        copy config\.env config\.env.dev.bak >nul
-
-        :: Update to production settings
-        powershell -Command "(Get-Content config\.env) -replace 'NODE_ENV=development', 'NODE_ENV=production' -replace 'ENV_STAGE=dev', 'ENV_STAGE=prod' -replace 'LOG_LEVEL=info', 'LOG_LEVEL=warn' -replace 'LOG_TO_CONSOLE=true', 'LOG_TO_CONSOLE=false' -replace 'AUTO_INITIALIZE_ON_START=true', 'AUTO_INITIALIZE_ON_START=false' -replace 'MAX_WORKER_THREADS=4', 'MAX_WORKER_THREADS=8' | Set-Content config\.env"
-
-        echo Configuration updated to production mode
-    ) else (
-        echo Production configuration already in place
-    )
-)
-
-:: Create database.env
-if not exist "config\database.env" (
-    (
-        echo # Database Configuration
-        echo DATABASE_TYPE=SQLITE
-        echo.
-        echo # SQLite paths
-        echo SQLITE_PATH=./data/db/pulseone.db
-        echo SQLITE_BACKUP_PATH=./data/backup/
-        echo SQLITE_LOGS_PATH=./data/logs/
-        echo SQLITE_TEMP_PATH=./data/temp/
-        echo.
-        echo # SQLite settings
-        echo SQLITE_JOURNAL_MODE=WAL
-        echo SQLITE_SYNCHRONOUS=NORMAL
-        echo SQLITE_CACHE_SIZE=2000
-        echo SQLITE_BUSY_TIMEOUT_MS=5000
-        echo SQLITE_FOREIGN_KEYS=true
-        echo.
-        echo # PostgreSQL (optional - set POSTGRES_ENABLED=true to use)
-        echo POSTGRES_ENABLED=false
-        echo POSTGRES_HOST=localhost
-        echo POSTGRES_PORT=5432
-        echo POSTGRES_DATABASE=pulseone
-        echo POSTGRES_USER=postgres
-        echo POSTGRES_PASSWORD=CHANGE_ME
-    ) > config\database.env
-)
-
-:: Create redis.env
-if not exist "config\redis.env" (
-    (
-        echo # Redis Configuration
-        echo REDIS_PRIMARY_ENABLED=true
-        echo REDIS_PRIMARY_HOST=127.0.0.1
-        echo REDIS_PRIMARY_PORT=6379
-        echo REDIS_PRIMARY_DB=0
-        echo REDIS_KEY_PREFIX=pulseone:
-        echo REDIS_PRIMARY_TIMEOUT_MS=5000
-        echo REDIS_PRIMARY_CONNECT_TIMEOUT_MS=3000
-        echo REDIS_POOL_SIZE=5
-    ) > config\redis.env
-)
-
-:: Create collector.env
-if not exist "config\collector.env" (
-    (
-        echo # Collector Configuration
-        echo COLLECTOR_EXECUTABLE_PATH=
-        echo COLLECTOR_HOST=localhost
-        echo COLLECTOR_PORT=8001
-        echo COLLECTOR_HEALTH_CHECK_INTERVAL_MS=30000
-        echo COLLECTOR_START_TIMEOUT_MS=10000
-        echo COLLECTOR_STOP_TIMEOUT_MS=5000
-        echo COLLECTOR_AUTO_RESTART=true
-        echo COLLECTOR_MAX_RESTART_ATTEMPTS=3
-        echo COLLECTOR_RESTART_DELAY_MS=5000
-        echo COLLECTOR_DEBUG_MODE=false
-        echo COLLECTOR_LOG_LEVEL=info
-        echo COLLECTOR_LOG_TO_FILE=true
-        echo COLLECTOR_LOG_FILE_PATH=./logs/collector.log
-    ) > config\collector.env
-)
-
-echo Configuration files created
-
-:: Create Service XML Configurations (use -svc suffix to avoid name collision)
-echo.
-echo Creating Service Configurations...
-
-(
-    echo ^<service^>
-    echo   ^<id^>pulseone-backend^</id^>
-    echo   ^<name^>PulseOne Backend^</name^>
-    echo   ^<description^>PulseOne Industrial IoT Backend Service^</description^>
-    echo   ^<executable^>node^</executable^>
-    echo   ^<arguments^>backend\app.js^</arguments^>
-    echo   ^<workingdirectory^>%INSTALL_DIR%^</workingdirectory^>
-    echo   ^<logmode^>roll^</logmode^>
-    echo   ^<onfailure action="restart" delay="10 sec"/^>
-    echo   ^<env name="NODE_ENV" value="production"/^>
-    echo ^</service^>
-) > pulseone-backend-svc.xml
-
-(
-    echo ^<service^>
-    echo   ^<id^>pulseone-collector^</id^>
-    echo   ^<name^>PulseOne Collector^</name^>
-    echo   ^<description^>PulseOne Data Collector Service^</description^>
-    echo   ^<executable^>%INSTALL_DIR%\pulseone-collector.exe^</executable^>
-    echo   ^<workingdirectory^>%INSTALL_DIR%^</workingdirectory^>
-    echo   ^<logmode^>roll^</logmode^>
-    echo   ^<onfailure action="restart" delay="10 sec"/^>
-    echo ^</service^>
-) > pulseone-collector-svc.xml
-
-(
-    echo ^<service^>
-    echo   ^<id^>pulseone-export-gateway^</id^>
-    echo   ^<name^>PulseOne Export Gateway^</name^>
-    echo   ^<description^>PulseOne Export Gateway Service^</description^>
-    echo   ^<executable^>%INSTALL_DIR%\pulseone-export-gateway.exe^</executable^>
-    echo   ^<workingdirectory^>%INSTALL_DIR%^</workingdirectory^>
-    echo   ^<logmode^>roll^</logmode^>
-    echo   ^<onfailure action="restart" delay="10 sec"/^>
-    echo ^</service^>
-) > pulseone-export-gateway-svc.xml
-
-(
-    echo ^<service^>
-    echo   ^<id^>pulseone-redis^</id^>
-    echo   ^<name^>PulseOne Redis^</name^>
-    echo   ^<description^>PulseOne Redis Cache Service^</description^>
-    echo   ^<executable^>%INSTALL_DIR%\redis-server.exe^</executable^>
-    echo   ^<arguments^>--port 6379^</arguments^>
-    echo   ^<workingdirectory^>%INSTALL_DIR%^</workingdirectory^>
-    echo   ^<logmode^>roll^</logmode^>
-    echo   ^<onfailure action="restart" delay="10 sec"/^>
-    echo ^</service^>
-) > pulseone-redis-svc.xml
-
-(
-    echo ^<service^>
-    echo   ^<id^>pulseone-influxdb^</id^>
-    echo   ^<name^>PulseOne InfluxDB^</name^>
-    echo   ^<description^>PulseOne InfluxDB Service^</description^>
-    echo   ^<executable^>%INSTALL_DIR%\influxd.exe^</executable^>
-    echo   ^<arguments^>run^</arguments^>
-    echo   ^<workingdirectory^>%INSTALL_DIR%^</workingdirectory^>
-    echo   ^<logmode^>roll^</logmode^>
-    echo   ^<onfailure action="restart" delay="10 sec"/^>
-    echo ^</service^>
-) > pulseone-influxdb-svc.xml
-
-:: Create Service Installer Script (actual commands, not echo)
-(
-    echo @echo off
-    echo setlocal enabledelayedexpansion
-    echo title PulseOne Service Installer
-    echo.
-    echo :: Check administrator privileges
-    echo net session ^>nul 2^>^&1
-    echo if errorlevel 1 ^(
-    echo     echo [!] ERROR: Please run this script AS ADMINISTRATOR to register services.
-    echo     pause ^& exit /b 1
-    echo ^)
-    echo.
-    echo pushd "%%~dp0"
-    echo.
-    echo echo [1/3] Registering Backend Service...
-    echo pulseone-backend-svc.exe install
-    echo pulseone-backend-svc.exe start
-    echo.
-    echo echo [2/3] Registering Collector Service...
-    echo if exist "pulseone-collector.exe" ^(
-    echo     pulseone-collector-svc.exe install
-    echo     pulseone-collector-svc.exe start
-    echo ^) else ^(
-    echo     echo [-] pulseone-collector.exe not found. Skipping.
-    echo ^)
-    echo.
-    echo echo [3/3] Registering Export Gateway Service...
-    echo if exist "pulseone-export-gateway.exe" ^(
-    echo     pulseone-export-gateway-svc.exe install
-    echo     pulseone-export-gateway-svc.exe start
-    echo ^) else ^(
-    echo     echo [-] pulseone-export-gateway.exe not found. Skipping.
-    echo ^)
-    echo.
-    echo echo [4/5] Registering Redis Service...
-    echo if exist "redis-server.exe" ^(
-    echo     copy WinSW-x64.exe pulseone-redis-svc.exe ^>nul
-    echo     pulseone-redis-svc.exe install
-    echo     pulseone-redis-svc.exe start
-    echo ^)
-    echo.
-    echo echo [5/5] Registering InfluxDB Service...
-    echo if exist "influxd.exe" ^(
-    echo     copy WinSW-x64.exe pulseone-influxdb-svc.exe ^>nul
-    echo     pulseone-influxdb-svc.exe install
-    echo     pulseone-influxdb-svc.exe start
-    echo ^)
-    echo.
-    echo echo.
-    echo echo All services registered and started!
-    echo popd
-    echo pause
-) > install_service.bat
-
-:: Create Service Uninstaller Script
-(
-    echo @echo off
-    echo setlocal enabledelayedexpansion
-    echo title PulseOne Service Uninstaller
-    echo.
-    echo :: Check administrator privileges
-    echo net session ^>nul 2^>^&1
-    echo if errorlevel 1 ^(
-    echo     echo [!] ERROR: Please run this script AS ADMINISTRATOR.
-    echo     pause ^& exit /b 1
-    echo ^)
-    echo.
-    echo pushd "%%~dp0"
-    echo.
-    echo echo [1/3] Removing Backend Service...
-    echo pulseone-backend-svc.exe stop
-    echo pulseone-backend-svc.exe uninstall
-    echo.
-    echo echo [2/3] Removing Collector Service...
-    echo if exist "pulseone-collector-svc.exe" ^(
-    echo     pulseone-collector-svc.exe stop
-    echo     pulseone-collector-svc.exe uninstall
-    echo ^)
-    echo.
-    echo echo [3/3] Removing Export Gateway Service...
-    echo if exist "pulseone-export-gateway-svc.exe" ^(
-    echo     pulseone-export-gateway-svc.exe stop
-    echo     pulseone-export-gateway-svc.exe uninstall
-    echo ^)
-    echo.
-    echo echo [4/5] Removing Redis Service...
-    echo if exist "pulseone-redis-svc.exe" ^(
-    echo     pulseone-redis-svc.exe stop
-    echo     pulseone-redis-svc.exe uninstall
-    echo ^)
-    echo.
-    echo echo [5/5] Removing InfluxDB Service...
-    echo if exist "pulseone-influxdb-svc.exe" ^(
-    echo     pulseone-influxdb-svc.exe stop
-    echo     pulseone-influxdb-svc.exe uninstall
-    echo ^)
-    echo.
-    echo echo All services stopped and unregistered!
-    echo popd
-    echo pause
-) > uninstall_service.bat
-
-:: Installation summary
-echo.
-echo ================================================================
-echo Installation Complete!
-echo ================================================================
-
-:: Check components
-where node >nul 2>&1
-if not errorlevel 1 (
-    for /f "tokens=*" %%i in ('node --version') do echo [OK] Node.js: %%i
-) else (
-    echo [!!] Node.js: Not found - Please restart command prompt
-)
-
-if exist "redis-server.exe" (
-    echo [OK] Redis: Server installed
-) else (
-    echo [--] Redis: Not installed (optional)
-)
-
-if exist "backend\nnode_modules\express" (
-    echo [OK] Backend: Packages installed
-) else (
-    echo [!!] Backend: Packages missing
-)
-
-if exist "backend\nnode_modules\sqlite3" (
-    echo [OK] Database: SQLite3 module installed
-) else (
-    echo [--] Database: SQLite3 module missing
-)
-
-if exist "frontend\index.html" (
-    echo [OK] Frontend: Files ready
-) else (
-    echo [--] Frontend: Files missing
-)
-
-if exist "pulseone-collector.exe" (
-    echo [OK] Collector: Ready
-) else (
-    echo [--] Collector: Not included
-)
-
-if exist "pulseone-export-gateway.exe" (
-    echo [OK] Export Gateway: Ready
-) else (
-    echo [--] Export Gateway: Not included
-)
-
-if exist "config\.env" (
-    echo [OK] Configuration: Created
-) else (
-    echo [!!] Configuration: Missing
-)
-
-echo ================================================================
-echo.
-echo Installation successful!
-echo.
-echo Next steps:
-echo   1. Run: start.bat
-echo   2. Browser will open automatically
-echo   3. Login: admin / admin
-echo.
-pause
-
-popd
-endlocal
-INSTALL_EOF
-
-# =============================================================================
-# 9. Windows Start Script
-# =============================================================================
-
-echo "9. 🚀 Creating Windows start script..."
-
-cat > start.bat << 'START_EOF'
-@echo off
-setlocal enabledelayedexpansion
-
-title PulseOne Industrial IoT Platform
-
-echo ================================================================
-echo PulseOne Industrial IoT Platform v6.1
-echo ================================================================
-
-pushd "%~dp0"
-
-:: Check Node.js
+:: [2/6] Node.js
+echo [2/6] Node.js 확인 중...
 where node >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Node.js is not installed or not in PATH!
-    echo Please run install.bat first
-    pause
-    exit /b 1
-)
-
-:: Environment setup
-echo [1/5] Environment setup...
-
-if not exist "data" mkdir data >nul 2>&1
-if not exist "data\db" mkdir data\db >nul 2>&1
-if not exist "data\logs" mkdir data\logs >nul 2>&1
-if not exist "config" mkdir config >nul 2>&1
-
-echo OK: Environment ready
-
-:: Process cleanup (PulseOne processes only via window title)
-echo [2/5] Process cleanup...
-for /f "tokens=2" %%p in ('tasklist /fi "WINDOWTITLE eq PulseOne*" /fo csv /nh 2^>nul ^| findstr /r "[0-9]"') do (
-    taskkill /pid %%~p /f >nul 2>&1
-)
-taskkill /F /IM redis-server.exe >nul 2>&1
-taskkill /F /IM pulseone-collector.exe >nul 2>&1
-taskkill /F /IM pulseone-export-gateway.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
-echo OK: Processes cleaned
-
-:: Start Redis
-echo [3/5] Starting Redis server...
-if exist "redis-server.exe" (
-    if exist "redis.windows.conf" (
-        start "PulseOne-Redis" /B redis-server.exe redis.windows.conf >nul 2>&1
-    ) else (
-        start "PulseOne-Redis" /B redis-server.exe --port 6379 --maxmemory 512mb >nul 2>&1
-    )
-    timeout /t 2 /nobreak >nul
-    echo OK: Redis started on port 6379
+    echo    Node.js 설치 중...
+    start /wait msiexec /i "setup_assets\node-v22.13.1-x64.msi" /quiet /qn /norestart ADDLOCAL=ALL
+    set "PATH=!PATH!;C:\Program Files\nodejs"
+    echo    Node.js 설치 완료
 ) else (
-    echo INFO: Redis not found, continuing without cache
+    for /f "tokens=*" %%v in ('node --version') do echo    Node.js %%v 확인
 )
 
-:: Start InfluxDB
-echo [4/7] Starting InfluxDB server...
-if exist "influxd.exe" (
-    start "PulseOne-InfluxDB" /B influxd.exe run >nul 2>&1
-    timeout /t 3 /nobreak >nul
-    echo OK: InfluxDB started on port 8086
+:: [3/6] Redis
+echo [3/6] Redis 설정 중...
+if not exist "redis\redis-server.exe" (
+    mkdir redis 2>nul
+    tar -xf "setup_assets\Redis-x64-5.0.14.1.zip" -C redis --strip-components=1 >nul 2>&1
+)
+sc query PulseOne-Redis >nul 2>&1
+if errorlevel 1 (
+    sc create PulseOne-Redis binPath= "\"%ROOT%\redis\redis-server.exe\" --service-run" start= auto
+    sc description PulseOne-Redis "PulseOne Redis Cache"
+)
+sc start PulseOne-Redis >nul 2>&1
+echo    Redis 서비스 등록 완료
+
+:: [4/6] Mosquitto
+echo [4/6] Mosquitto 설정 중...
+if not exist "mosquitto\mosquitto.exe" (
+    start /wait "setup_assets\mosquitto-2.0.21-install-windows-x64.exe" /S /D="%ROOT%\mosquitto"
+)
+sc query PulseOne-MQTT >nul 2>&1
+if errorlevel 1 (
+    sc create PulseOne-MQTT binPath= "\"%ROOT%\mosquitto\mosquitto.exe\" -c \"%ROOT%\mosquitto\mosquitto.conf\"" start= auto
+    sc description PulseOne-MQTT "PulseOne MQTT Broker"
+)
+sc start PulseOne-MQTT >nul 2>&1
+echo    Mosquitto 서비스 등록 완료
+
+:: [5/6] WinSW 서비스 등록
+echo [5/6] PulseOne 서비스 등록 중...
+if exist "setup_assets\winsw.exe" (
+    copy /y "setup_assets\winsw.exe" "%ROOT%\winsw.exe" >nul
 )
 
-:: Start Backend
-echo [5/7] Starting backend server...
-pushd backend
-start "PulseOne-Backend" /B node app.js >nul 2>&1
+if exist "winsw.exe" (
+    echo ^<service^>^<id^>PulseOne-Backend^</id^>^<name^>PulseOne Backend^</name^>^<executable^>%ROOT%\pulseone-backend.exe^</executable^>^<workingdirectory^>%ROOT%^</workingdirectory^>^<env name="NODE_ENV" value="production"/^>^<log mode="roll"^>^<sizeThreshold^>10240^</sizeThreshold^>^</log^>^</service^> > pulseone-backend.xml
+    winsw install pulseone-backend.xml 2>nul
+    winsw start  pulseone-backend.xml 2>nul
+
+    echo ^<service^>^<id^>PulseOne-Collector^</id^>^<name^>PulseOne Collector^</name^>^<executable^>%ROOT%\pulseone-collector.exe^</executable^>^<workingdirectory^>%ROOT%^</workingdirectory^>^<log mode="roll"/^>^</service^> > pulseone-collector.xml
+    winsw install pulseone-collector.xml 2>nul
+    winsw start  pulseone-collector.xml 2>nul
+
+    echo ^<service^>^<id^>PulseOne-Gateway^</id^>^<name^>PulseOne Export Gateway^</name^>^<executable^>%ROOT%\pulseone-export-gateway.exe^</executable^>^<workingdirectory^>%ROOT%^</workingdirectory^>^<log mode="roll"/^>^</service^> > pulseone-gateway.xml
+    winsw install pulseone-gateway.xml 2>nul
+    winsw start  pulseone-gateway.xml 2>nul
+
+    echo    WinSW 서비스 등록 완료
+) else (
+    echo    WinSW 없음 - start.bat으로 수동 실행
+    call start.bat
+)
+
+:: [6/6] 완료
+echo.
+echo ==========================================================
+echo  PulseOne 설치 완료!
+echo  Web UI: http://localhost:3000
+echo ==========================================================
 popd
+WIN_INSTALL
 
-:: Wait for startup
-echo [5/5] Waiting for server startup...
-timeout /t 5 /nobreak >nul
-
-:: Start Collector if available
-if exist "pulseone-collector.exe" (
-    echo Starting data collector...
-    start "PulseOne-Collector" /B pulseone-collector.exe >nul 2>&1
-    echo OK: Collector started
+    # ==========================================================================
+    # start.bat
+    # ==========================================================================
+    cat > "$PACKAGE_DIR/start.bat" << 'WIN_START'
+@echo off
+setlocal
+pushd "%~dp0"
+set "ROOT=%CD%"
+echo Starting PulseOne...
+if exist "redis\redis-server.exe" (
+    start "Redis" /min redis\redis-server.exe
+    timeout /t 2 /nobreak >nul
 )
-
-:: Start Export Gateway if available
-if exist "pulseone-export-gateway.exe" (
-    echo Starting export gateway...
-    start "PulseOne-ExportGW" /B pulseone-export-gateway.exe >nul 2>&1
-    echo OK: Export Gateway started
+if exist "mosquitto\mosquitto.exe" (
+    start "Mosquitto" /min mosquitto\mosquitto.exe -c mosquitto\mosquitto.conf
+    timeout /t 2 /nobreak >nul
 )
+start "PulseOne Backend"   /min cmd /c "cd /d "%ROOT%" && pulseone-backend.exe"
+timeout /t 3 /nobreak >nul
+start "PulseOne Collector" /min cmd /c "cd /d "%ROOT%" && pulseone-collector.exe"
+timeout /t 2 /nobreak >nul
+start "PulseOne Gateway"   /min cmd /c "cd /d "%ROOT%" && pulseone-export-gateway.exe"
+echo PulseOne started! Web UI: http://localhost:3000
+popd
+WIN_START
 
-:: Open browser
-echo.
-echo Opening web browser...
-start http://localhost:3000
-
-:: Display status
-echo.
-echo ================================================================
-echo PulseOne is running!
-echo ================================================================
-echo.
-echo Web Interface: http://localhost:3000
-echo Default Login: admin / admin
-echo.
-echo Active Services:
-echo   * Backend API: Port 3000
-if exist "redis-server.exe" echo   * Redis Cache: Port 6379
-if exist "influxd.exe" echo   * InfluxDB: Port 8086
-if exist "pulseone-collector.exe" echo   * Data Collector: Running
-if exist "pulseone-export-gateway.exe" echo   * Export Gateway: Running
-echo.
-echo Press any key to stop all services...
-echo ================================================================
-pause >nul
-
-:: Stop all services gracefully
-echo.
-echo Stopping all services...
-for /f "tokens=2" %%p in ('tasklist /fi "WINDOWTITLE eq PulseOne*" /fo csv /nh 2^>nul ^| findstr /r "[0-9]"') do (
-    taskkill /pid %%~p /f >nul 2>&1
-)
-taskkill /F /IM redis-server.exe >nul 2>&1
-taskkill /F /IM pulseone-collector.exe >nul 2>&1
-taskkill /F /IM pulseone-export-gateway.exe >nul 2>&1
-
+    # ==========================================================================
+    # stop.bat
+    # ==========================================================================
+    cat > "$PACKAGE_DIR/stop.bat" << 'WIN_STOP'
+@echo off
+echo Stopping PulseOne...
+taskkill /f /im "pulseone-backend.exe"        2>nul
+taskkill /f /im "pulseone-collector.exe"      2>nul
+taskkill /f /im "pulseone-export-gateway.exe" 2>nul
+taskkill /f /im "redis-server.exe"            2>nul
+taskkill /f /im "mosquitto.exe"               2>nul
 echo All services stopped.
-timeout /t 2
+WIN_STOP
 
-popd
-endlocal
-START_EOF
-
-# =============================================================================
-# 10. README Creation
-# =============================================================================
-
-echo "10. 📚 Creating user documentation..."
-
-cat > README.txt << 'README_EOF'
-================================================================
-PulseOne Industrial IoT Platform v6.1
-Complete One-Click Installation Package
-================================================================
-
-QUICK START:
-============
-1. Extract all files to desired location
-2. Run: install.bat (everything installs automatically)
-3. Run: start.bat (starts all services)
-4. Browser opens automatically to http://localhost:3000
-5. Login with: admin / admin
-
-SERVICE MODE (optional):
-========================
-To run PulseOne as Windows background services:
-1. Run: install_service.bat AS ADMINISTRATOR
-2. Services will auto-start on boot
-
-To remove services:
-1. Run: uninstall_service.bat AS ADMINISTRATOR
-
-SYSTEM REQUIREMENTS:
-====================
-- Windows 10 (64-bit) or Windows 11
-- 4GB RAM minimum, 8GB recommended
-- 2GB free disk space
-- Internet connection for initial installation
-- Administrator privileges (recommended for Node.js MSI)
-
-INCLUDED COMPONENTS:
-====================
-Core Files:
-  install.bat               - Automated installer
-  start.bat                 - Service launcher (console mode)
-  install_service.bat       - Register as Windows services
-  uninstall_service.bat     - Unregister Windows services
-  backend/                  - Server application (Node.js)
-  frontend/                 - Web interface (pre-built)
-  pulseone-collector.exe    - Data collector (native)
-  pulseone-export-gateway.exe - Export Gateway (native)
-  config/                   - Configuration files
-  data/                     - Database and logs directory
-
-Auto-Downloaded During Installation:
-  Node.js MSI installer (LTS)
-  Redis server for Windows
-  InfluxDB v2.x server for Windows
-  NPM packages including Express, SQLite3
-  SQLite DLL for Windows
-  WinSW (Windows Service Wrapper)
-
-TROUBLESHOOTING:
-================
-If Node.js installation fails:
-  Download manually from https://nodejs.org
-  Install with default settings
-  Run install.bat again
-
-If backend packages fail:
-  Open Command Prompt as Administrator
-  Navigate to backend folder
-  Run: npm install
-
-If Redis download fails:
-  Redis is optional - system works without it
-
-CONFIGURATION:
-==============
-Main config file: config\.env
-
-Key settings:
-  BACKEND_PORT=3000    - Web server port
-  LOG_LEVEL=warn       - Logging level (debug/info/warn/error)
-
-================================================================
-PulseOne - Industrial IoT Platform
-================================================================
-README_EOF
-
-# =============================================================================
-# 11. Convert line endings to CRLF for Windows
-# =============================================================================
-
-echo "11. 🔄 Converting line endings for Windows..."
-
-WINDOWS_FILES=(
-    install.bat start.bat README.txt
-    install_service.bat uninstall_service.bat
-    pulseone-backend-svc.xml pulseone-collector-svc.xml pulseone-export-gateway-svc.xml
+    # ==========================================================================
+    # uninstall.bat
+    # ==========================================================================
+    cat > "$PACKAGE_DIR/uninstall.bat" << 'WIN_UNINSTALL'
+@echo off
+pushd "%~dp0"
+set "ROOT=%CD%"
+echo ==========================================================
+echo  ⚠️  PulseOne 제거 경고
+echo ==========================================================
+echo.
+echo  이 작업을 실행하면 PulseOne의 모든 서비스가
+echo  중지되고 시스템에서 제거됩니다.
+echo.
+echo  - Backend, Collector, Gateway 서비스 삭제
+echo  - Redis, Mosquitto 서비스 삭제
+echo  - 데이터는 data\ 폴더에 유지됩니다
+echo.
+set /p CONFIRM="계속하려면 Y를 입력하세요 (Y/N): "
+if /i not "%CONFIRM%"=="Y" (
+    echo 취소되었습니다.
+    popd
+    exit /b 0
 )
 
-for script in "${WINDOWS_FILES[@]}"; do
-    if [ -f "$script" ]; then
-        if command -v unix2dos &> /dev/null; then
-            unix2dos "$script" 2>/dev/null
-        else
-            awk '{printf "%s\r\n", $0}' "$script" > "${script}.tmp"
-            mv "${script}.tmp" "$script"
-        fi
-    fi
-done
+net session >nul 2>&1
+if errorlevel 1 (
+    powershell -Command "Start-Process cmd -ArgumentList '/c cd /d %ROOT% && uninstall.bat' -Verb RunAs -Wait"
+    exit /b 0
+)
 
-echo "✅ Windows scripts created with proper line endings"
+echo PulseOne 제거 중...
+for %%s in (pulseone-backend pulseone-collector pulseone-gateway) do (
+    if exist "%%s.xml" (
+        winsw stop    %%s.xml 2>nul
+        winsw uninstall %%s.xml 2>nul
+    )
+    sc stop   "PulseOne-%%s" 2>nul
+    sc delete "PulseOne-%%s" 2>nul
+)
+sc stop   PulseOne-Redis 2>nul
+sc delete PulseOne-Redis  2>nul
+sc stop   PulseOne-MQTT  2>nul
+sc delete PulseOne-MQTT   2>nul
 
-# =============================================================================
-# 12. Create Deployment Package
-# =============================================================================
+echo.
+echo PulseOne 제거 완료. 이 폴더를 삭제하면 완전히 제거됩니다.
+popd
+WIN_UNINSTALL
 
-echo "12. 📦 Creating final deployment package..."
+    echo "✅ Windows scripts created (install/start/stop/uninstall)"
 
-cd "$DIST_DIR"
-
-PACKAGE_ZIP="${PACKAGE_NAME}_v${VERSION}_${TIMESTAMP}.zip"
-
-if command -v zip &> /dev/null; then
-    zip -r "$PACKAGE_ZIP" "$PACKAGE_NAME/" > /dev/null 2>&1
-    PACKAGE_SIZE=$(du -sh "$PACKAGE_ZIP" | cut -f1)
-    echo "✅ ZIP package created: $PACKAGE_ZIP ($PACKAGE_SIZE)"
-elif command -v tar &> /dev/null; then
-    tar -czf "${PACKAGE_NAME}_v${VERSION}_${TIMESTAMP}.tar.gz" "$PACKAGE_NAME/"
-    PACKAGE_SIZE=$(du -sh "${PACKAGE_NAME}_v${VERSION}_${TIMESTAMP}.tar.gz" | cut -f1)
-    echo "✅ TAR.GZ package created ($PACKAGE_SIZE)"
-else
-    echo "⚠️ No compression tool found, package in: $PACKAGE_DIR"
+    # ==========================================================================
+    # ZIP
+    # ==========================================================================
+    echo "📦 ZIP 패키징 중..."
+    cd "$DIST_DIR"
+    zip -r "${PACKAGE_NAME}.zip" "$PACKAGE_NAME/" > /dev/null
+    echo "✅ Windows ZIP: $DIST_DIR/${PACKAGE_NAME}.zip ($(du -sh "${PACKAGE_NAME}.zip" | cut -f1))"
 fi
-
-# =============================================================================
-# 13. Final Summary
-# =============================================================================
-
-echo ""
-echo "================================================================="
-echo "🎉 PulseOne v${VERSION} Deployment Package Created!"
-echo "================================================================="
-echo ""
-echo "📦 Package Details:"
-echo "   Location: $DIST_DIR"
-if [ -f "$DIST_DIR/$PACKAGE_ZIP" ]; then
-    echo "   File: $PACKAGE_ZIP"
-    echo "   Size: $PACKAGE_SIZE"
-fi
-echo ""
-echo "📋 Package Contents:"
-echo "   ✅ Automated installer (install.bat)"
-echo "   ✅ Service launcher (start.bat)"
-echo "   ✅ Service installer/uninstaller"
-echo "   ✅ Backend source code"
-echo "   ✅ Frontend compiled files"
-if [ -f "$PACKAGE_DIR/pulseone-collector.exe" ]; then
-    echo "   ✅ Collector executable"
-else
-    echo "   ⚠️ Collector not included"
-fi
-if [ -f "$PACKAGE_DIR/pulseone-export-gateway.exe" ]; then
-    echo "   ✅ Export Gateway executable"
-else
-    echo "   ⚠️ Export Gateway not included"
-fi
-echo "   ✅ Configuration templates"
-echo "   ✅ Documentation (README.txt)"
-echo ""
-echo "🚀 Deployment:"
-echo "   1. Copy ZIP to Windows machine"
-echo "   2. Extract"
-echo "   3. Run install.bat"
-echo "   4. Run start.bat"
-echo "   5. Access http://localhost:3000"
-echo ""
-echo "================================================================="
-echo "Build completed at: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "================================================================="

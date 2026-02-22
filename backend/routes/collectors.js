@@ -30,6 +30,16 @@ router.get('/active', async (req, res) => {
     }
 });
 
+// 테넌트 Collector 쿼터 현황 (⚠️ /:id 보다 먼저 정의해야 함)
+router.get('/quota/status', async (req, res) => {
+    try {
+        const result = await EdgeServerService.getQuotaStatus(req.tenantId);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Collector 상세 조회 및 실시간 상태
 router.get('/:id', async (req, res) => {
     try {
@@ -99,4 +109,29 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
+// Collector 사이트 재배정 (장치 0개 조건)
+router.patch('/:id/reassign', async (req, res) => {
+    try {
+        const { site_id } = req.body;
+        if (!site_id) {
+            return res.status(400).json({ success: false, error: 'site_id가 필요합니다.' });
+        }
+        const result = await EdgeServerService.reassignToSite(req.params.id, site_id, req.tenantId);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
+// 사이트별 Collector 목록 조회
+router.get('/by-site/:siteId', async (req, res) => {
+    try {
+        const result = await EdgeServerService.getCollectorsBySite(req.params.siteId);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;
+

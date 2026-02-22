@@ -361,7 +361,7 @@ DRIVERS_SOURCES += $(SRC_DIR)/Drivers/Bacnet/BACnetStubs.cpp
 endif
 
 # 플러그인용 경로 설정
-PLUGINS_DIR := $(BIN_DIR)/plugins
+PLUGINS_DIR := $(BIN_DIR)/drivers
 
 # 네트워크 및 API
 ifeq ($(HAS_HTTPLIB),1)

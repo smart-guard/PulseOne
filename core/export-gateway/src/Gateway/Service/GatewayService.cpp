@@ -9,8 +9,6 @@
 #include "Gateway/Service/EventDispatcher.h"
 #include "Logging/LogManager.h"
 #include "Schedule/ScheduledExporter.h"
-#include <climits>
-#include <map>
 
 namespace PulseOne {
 namespace Gateway {
@@ -85,58 +83,35 @@ bool GatewayService::start() {
       LogManager::getInstance().Info("Gateway Subscription Mode: " + sub_mode);
 
       // [v3.2 FIX] edge_servers.config의 target_priorities로 허용 타겟 ID
-      // 필터링 MinGW 크로스컴파일에서 nlohmann iterator 사용 시 wide_string
-      // 에러 발생. 안전하게 문자열 파싱으로 처리.
+      // 필터링 nlohmann::json 직접 파싱 방식으로 교체 (중첩 JSON 파싱 오류
+      // 수정)
       try {
-        // getConfig()는 nlohmann::json& 반환
-        // DB 저장 방식에 따라 json string vs json object 타입 분기
         const auto &cfg_json = gateway_entity->getConfig();
-        std::string config_str;
+        nlohmann::json parsed_cfg;
+
         if (cfg_json.is_string()) {
-          // DB에서 TEXT 컬럼으로 저장된 경우 — 문자열 안에 JSON이 있음
-          config_str = cfg_json.get<std::string>();
+          // DB에서 TEXT로 저장된 경우 — 문자열 안의 JSON 재파싱
+          parsed_cfg = nlohmann::json::parse(cfg_json.get<std::string>());
         } else if (cfg_json.is_object()) {
-          // 이미 파싱된 JSON 오브젝트인 경우
-          config_str = cfg_json.dump();
-        } else {
-          config_str = "";
+          parsed_cfg = cfg_json;
         }
-        auto tp_pos = config_str.find("\"target_priorities\"");
-        if (tp_pos != std::string::npos) {
-          // "target_priorities":{"18":1,"19":2} → map<target_id,
-          // priority_value>
+
+        if (parsed_cfg.contains("target_priorities") &&
+            parsed_cfg["target_priorities"].is_object()) {
           std::map<int, int> priority_map;
-          auto brace_pos = config_str.find('{', tp_pos);
-          auto end_pos = config_str.find('}', brace_pos);
-          if (brace_pos != std::string::npos && end_pos != std::string::npos) {
-            std::string tp_str =
-                config_str.substr(brace_pos, end_pos - brace_pos);
-            // "18":1,"19":2 파싱 — 큰따옴표 key와 뒤따르는 : 이후의 숫자 value
-            std::size_t pos = 0;
-            while ((pos = tp_str.find('"', pos)) != std::string::npos) {
-              auto end_q = tp_str.find('"', pos + 1);
-              if (end_q == std::string::npos)
-                break;
-              std::string key = tp_str.substr(pos + 1, end_q - pos - 1);
-              // 콜론 이후 priority value 추출
-              auto colon_pos = tp_str.find(':', end_q);
-              int priority_val = INT_MAX;
-              if (colon_pos != std::string::npos) {
-                try {
-                  priority_val = std::stoi(tp_str.substr(colon_pos + 1));
-                } catch (...) {
-                }
-              }
-              try {
-                int id = std::stoi(key);
-                priority_map[id] = priority_val;
-              } catch (...) {
-              }
-              pos = end_q + 1;
+          for (const auto &item : parsed_cfg["target_priorities"].items()) {
+            try {
+              int target_id = std::stoi(item.key());
+              int priority_val = item.value().get<int>();
+              priority_map[target_id] = priority_val;
+            } catch (...) {
             }
           }
           if (!priority_map.empty()) {
             context_->getRegistry().setTargetPriorities(priority_map);
+            LogManager::getInstance().Info(
+                "GatewayService: target_priorities loaded (" +
+                std::to_string(priority_map.size()) + " targets allowed)");
           }
         }
       } catch (...) {

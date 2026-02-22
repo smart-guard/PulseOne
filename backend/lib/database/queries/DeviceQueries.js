@@ -581,7 +581,7 @@ class DeviceQueries {
       SELECT 
         d.id,
         d.name,
-        d.protocol_type,
+        d.protocol_id,
         dst.connection_status,
         dst.error_count,
         dst.last_error,
@@ -600,7 +600,7 @@ class DeviceQueries {
       SELECT 
       id, tenant_id, site_id, device_group_id, edge_server_id,
       name, description, device_type, manufacturer, model, 
-      serial_number, protocol_type, endpoint, config,
+      serial_number, protocol_id, endpoint, config,
       polling_interval, timeout, retry_count, is_enabled,
       installation_date, last_maintenance, created_at, updated_at
       FROM devices 

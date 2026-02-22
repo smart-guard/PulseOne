@@ -60,34 +60,61 @@ AlarmEvaluator::evaluateAnalog(const Database::Entities::AlarmRuleEntity &rule,
   eval.tenant_id = rule.getTenantId();
   eval.timestamp = std::chrono::system_clock::now();
 
-  bool triggered = false;
   double hh_limit = rule.getHighHighLimit().value_or(1e18);
   double h_limit = rule.getHighLimit().value_or(1e18);
   double l_limit = rule.getLowLimit().value_or(-1e18);
   double ll_limit = rule.getLowLowLimit().value_or(-1e18);
-
-  if (value >= hh_limit) {
-    triggered = true;
-    eval.condition_met = "HIGH_HIGH";
-  } else if (value >= h_limit) {
-    triggered = true;
-    eval.condition_met = "HIGH";
-  } else if (value <= ll_limit) {
-    triggered = true;
-    eval.condition_met = "LOW_LOW";
-  } else if (value <= l_limit) {
-    triggered = true;
-    eval.condition_met = "LOW";
-  }
+  double deadband = rule.getDeadband(); // 채터링 방지 히스테리시스
 
   auto status = state_cache_.getAlarmStatus(rule.getId());
+
+  bool triggered = false;
+
+  if (status.is_active) {
+    // --- 알람 활성 중: Deadband 적용하여 해제 조건 판단 ---
+    // 해제 임계값 = 알람 임계값 - deadband (아래로 충분히 내려가야 해제)
+    if (value >= hh_limit) {
+      triggered = true;
+      eval.condition_met = "HIGH_HIGH";
+    } else if (value >= (h_limit - deadband)) {
+      triggered = true; // deadband 구간 안 → 아직 알람 유지
+      eval.condition_met = "HIGH";
+    } else if (value <= ll_limit) {
+      triggered = true;
+      eval.condition_met = "LOW_LOW";
+    } else if (value <= (l_limit + deadband)) {
+      triggered = true; // deadband 구간 안 → 아직 알람 유지
+      eval.condition_met = "LOW";
+    }
+    // triggered == false → 임계값+deadband 범위를 완전히 벗어남 → clear 가능
+  } else {
+    // --- 알람 비활성: 일반 임계값 비교로 트리거 판단 ---
+    if (value >= hh_limit) {
+      triggered = true;
+      eval.condition_met = "HIGH_HIGH";
+    } else if (value >= h_limit) {
+      triggered = true;
+      eval.condition_met = "HIGH";
+    } else if (value <= ll_limit) {
+      triggered = true;
+      eval.condition_met = "LOW_LOW";
+    } else if (value <= l_limit) {
+      triggered = true;
+      eval.condition_met = "LOW";
+    }
+  }
 
   if (triggered && !status.is_active) {
     eval.should_trigger = true;
     eval.state_changed = true;
   } else if (!triggered && status.is_active) {
-    eval.should_clear = true;
-    eval.state_changed = true;
+    // Latching: is_latched=true이면 조건이 해소되어도 자동 해제하지 않음
+    // (운전원이 UI에서 직접 확인 버튼을 눌러야 해제됨)
+    if (!rule.isLatched()) {
+      eval.should_clear = true;
+      eval.state_changed = true;
+    }
+    // is_latched=true면 state_changed=false → AlarmEngine이 clear하지 않음
   }
 
   eval.severity = rule.getSeverity();

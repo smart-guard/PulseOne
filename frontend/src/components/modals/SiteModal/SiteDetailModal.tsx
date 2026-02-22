@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Site } from '../../../types/common';
 import { SiteApiService } from '../../../api/services/siteApi';
+import { CollectorApiService, EdgeServer } from '../../../api/services/collectorApi';
 import { useConfirmContext } from '../../common/ConfirmProvider';
 import './SiteModal.css';
 
@@ -22,6 +23,7 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState<Partial<Site>>({});
     const [allSites, setAllSites] = useState<Site[]>([]);
+    const [collectors, setCollectors] = useState<EdgeServer[]>([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -30,9 +32,19 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
         if (isOpen && siteId) {
             loadSite(siteId);
             loadPotentialParents(siteId);
+            loadCollectors(siteId);
             setIsEditing(false);
         }
     }, [isOpen, siteId]);
+
+    const loadCollectors = async (id: number) => {
+        try {
+            const res = await CollectorApiService.getCollectorsBySite(id);
+            if (res.success && res.data) setCollectors(res.data);
+        } catch (e) {
+            setCollectors([]);
+        }
+    };
 
     const loadSite = async (id: number) => {
         try {
@@ -286,6 +298,46 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                         <div className="detail-label">연락처</div>
                         <div className="detail-value">{site.manager_phone || site.contact_phone || '-'}</div>
                     </div>
+                </div>
+                <div className="mgmt-modal-form-section mgmt-span-full" style={{ marginTop: '16px' }}>
+                    <h3><i className="fas fa-server"></i> Collector 현황</h3>
+                    {collectors.length === 0 ? (
+                        <div style={{ color: 'var(--neutral-400)', fontSize: '13px', padding: '8px 0' }}>
+                            이 사이트에 등록된 Collector가 없습니다.
+                        </div>
+                    ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid var(--neutral-200)' }}>
+                                    <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--neutral-500)' }}>Collector 명</th>
+                                    <th style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--neutral-500)' }}>상태</th>
+                                    <th style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--neutral-500)' }}>연결 장치</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {collectors.map(c => (
+                                    <tr key={c.id} style={{ borderBottom: '1px solid var(--neutral-100)' }}>
+                                        <td style={{ padding: '6px 8px' }}>
+                                            <i className="fas fa-server" style={{ marginRight: '6px', color: 'var(--neutral-400)' }}></i>
+                                            {c.name}
+                                        </td>
+                                        <td style={{ textAlign: 'center', padding: '6px 8px' }}>
+                                            <span style={{
+                                                display: 'inline-block', padding: '2px 8px', borderRadius: '12px', fontSize: '11px',
+                                                background: c.status === 'online' ? 'var(--success-100)' : 'var(--neutral-100)',
+                                                color: c.status === 'online' ? 'var(--success-700)' : 'var(--neutral-500)'
+                                            }}>
+                                                {c.status === 'online' ? '🟢 온라인' : '🔴 오프라인'}
+                                            </span>
+                                        </td>
+                                        <td style={{ textAlign: 'center', padding: '6px 8px', color: 'var(--neutral-600)' }}>
+                                            {(c as any).device_count ?? 0}개
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
         );

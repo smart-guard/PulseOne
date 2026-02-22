@@ -20,8 +20,7 @@ endif
 CXX ?= g++
 AR ?= ar
 RANLIB ?= ranlib
-CXXFLAGS = -std=c++17 -Wall -Wextra -O0 -fPIC -DHAS_SHARED_LIBS=1
-# 메모리 절약용 --param ggc-min-expand=0 제거 (빌드 속도 저하 주범)
+CXXFLAGS = -std=c++17 -Wall -Wextra -O0 -DHAS_SHARED_LIBS=1
 
 # Windows 크로스 컴파일 지원
 ifeq ($(CROSS_COMPILE_WINDOWS),1)

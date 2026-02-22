@@ -28,6 +28,7 @@ test_*.db
 core/*/build/
 core/*/bin/
 core/*/build-windows/
+core/*/build-win/
 core/*/bin-windows/
 core/*/lib/
 core/collector/tests/bin/
@@ -50,6 +51,8 @@ dist_linux/
 dist_windows/
 build/
 bin/
+bin-linux/
+bin-windows/
 
 # =============================================================================
 # IDE 및 에디터

@@ -21,7 +21,9 @@
     "test:legacy": "jest --runInBand",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "build:exe": "pkg . --targets node18-win-x64 --output dist/PulseOne-Backend.exe"
+    "build:win": "pkg . --targets node18-win-x64 --output dist/pulseone-backend.exe",
+    "build:linux": "pkg . --targets node18-linux-x64 --output dist/pulseone-backend",
+    "build:exe": "npm run build:win"
   },
   "bin": "app.js",
   "dependencies": {
@@ -120,10 +122,14 @@
       "templates/**/*",
       "data/sql/**/*",
       "config/**/*",
-      "lib/database/schemas/**/*"
+      "lib/database/schemas/**/*",
+      "node_modules/sqlite3/build/Release/*.node",
+      "node_modules/sqlite3/lib/binding/**/*",
+      "node_modules/bcryptjs/**/*"
     ],
     "targets": [
-      "node18-win-x64"
+      "node18-win-x64",
+      "node18-linux-x64"
     ],
     "outputPath": "dist"
   },

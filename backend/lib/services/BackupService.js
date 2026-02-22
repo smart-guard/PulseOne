@@ -62,7 +62,7 @@ class BackupService extends BaseService {
      */
     async createBackup(data, user = null) {
         return await this.handleRequest(async () => {
-            const dbPath = this.configManager.get('SQLITE_DB_PATH', '../data/db/pulseone.db');
+            const dbPath = this.configManager.get('SQLITE_PATH', '../data/db/pulseone.db');
             const absoluteDbPath = path.isAbsolute(dbPath) ? dbPath : path.resolve(__dirname, '../../../', dbPath);
 
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -130,7 +130,7 @@ class BackupService extends BaseService {
             if (!backup) throw new Error('백업을 찾을 수 없습니다.');
 
             const fullBackupPath = path.join(this.backupDir, backup.filename);
-            const dbPath = this.configManager.get('SQLITE_DB_PATH', '../data/db/pulseone.db');
+            const dbPath = this.configManager.get('SQLITE_PATH', '../data/db/pulseone.db');
             const absoluteDbPath = path.isAbsolute(dbPath) ? dbPath : path.resolve(__dirname, '../../../', dbPath);
 
             // 1. 파일 존재 확인

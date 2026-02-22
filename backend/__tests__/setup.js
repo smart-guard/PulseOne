@@ -11,7 +11,6 @@ process.env.LOG_LEVEL = 'error';
 // 테스트용 데이터베이스 설정
 process.env.DB_TYPE = 'sqlite';
 process.env.DB_PATH = '/app/data/db/pulseone_test.db';
-process.env.SQLITE_DB_PATH = '/app/data/db/pulseone_test.db';
 process.env.SQLITE_PATH = '/app/data/db/pulseone_test.db';
 process.env.REDIS_URL = 'redis://localhost:6379/15'; // 테스트용 DB
 process.env.POSTGRES_HOST = 'localhost';

@@ -1,9 +1,0 @@
-$(OBJ_DIR)/test_step13_bacnet_read_write.o: test_step13_bacnet_read_write.cpp
-	@mkdir -p $(OBJ_DIR)
-	@echo -e "$(CYAN)📡 Compiling Step 13 RW Test [$(PLATFORM)]...$(NC)"
-	@$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-step23-test: $(OBJ_DIR)/test_step23_settings_reload.o $(TEST_OBJECTS) $(OBJECTS_NO_MAIN)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
-	./step23-test
-

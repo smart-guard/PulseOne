@@ -686,66 +686,36 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                         }}
                                                     />
                                                 </div>
-                                                {/* [NEW] Authorization Header (First) */}
+
+                                                {/* 인증 키: headers.x-api-key에만 저장 */}
                                                 <div className="mgmt-modal-form-group">
-                                                    <label>Authorization (Token / Signature)</label>
+                                                    <label>인증 키 (API Key / Token)</label>
                                                     <Input.Password
                                                         className="mgmt-input"
-                                                        placeholder="Bearer Token, AWS Signature, or custom auth value"
+                                                        placeholder="x-api-key 값 입력"
                                                         value={(() => {
-                                                            const val = getConfigObject(editingTarget.config).headers?.['Authorization'] || '';
+                                                            const c = getConfigObject(editingTarget.config);
+                                                            const val = c.headers?.['x-api-key'] || '';
                                                             return (val.startsWith('${') && val.endsWith('}')) ? '********' : val;
                                                         })()}
                                                         onChange={e => {
                                                             const c = getConfigObject(editingTarget.config);
-                                                            const currentVal = (getConfigObject(editingTarget.config).headers?.['Authorization'] || '').startsWith('${') ? '********' : (getConfigObject(editingTarget.config).headers?.['Authorization'] || '');
+                                                            const val = c.headers?.['x-api-key'] || '';
+                                                            const currentVal = val.startsWith('${') ? '********' : val;
 
                                                             handleCredentialChange(currentVal, e.target.value, (finalVal) => {
                                                                 const headers = { ...(c.headers || {}) };
                                                                 if (finalVal) {
-                                                                    headers['Authorization'] = finalVal;
+                                                                    headers['x-api-key'] = finalVal;
                                                                 } else {
-                                                                    delete headers['Authorization'];
+                                                                    delete headers['x-api-key'];
                                                                 }
                                                                 setEditingTarget({ ...editingTarget, config: JSON.stringify({ ...c, headers }, null, 2) });
                                                                 setHasChanges(true);
                                                             });
                                                         }}
                                                     />
-                                                </div>
-                                                {/* Access Key / Auth Token (Second) */}
-                                                <div className="mgmt-modal-form-group">
-                                                    <label>인증 키 (API Key / Token)</label>
-                                                    <Input.Password
-                                                        className="mgmt-input"
-                                                        placeholder="x-api-key 또는 Authorization Bearer 토큰 입력"
-                                                        value={(() => {
-                                                            const c = getConfigObject(editingTarget.config);
-                                                            const val = c.auth?.apiKey || c.headers?.['x-api-key'] || '';
-                                                            // Mask variable names to avoid exposing internal security details
-                                                            return (val.startsWith('${') && val.endsWith('}')) ? '********' : val;
-                                                        })()}
-                                                        onChange={e => {
-                                                            const c = getConfigObject(editingTarget.config);
-                                                            const val = c.auth?.apiKey || c.headers?.['x-api-key'] || '';
-                                                            const currentVal = val.startsWith('${') ? '********' : val;
-
-                                                            handleCredentialChange(currentVal, e.target.value, (finalVal) => {
-                                                                const auth = { ...(c.auth || { type: 'x-api-key' }), apiKey: finalVal };
-                                                                const headers = { ...(c.headers || {}) };
-
-                                                                if (finalVal) {
-                                                                    headers['x-api-key'] = finalVal;
-                                                                } else {
-                                                                    delete headers['x-api-key'];
-                                                                }
-
-                                                                setEditingTarget({ ...editingTarget, config: JSON.stringify({ ...c, auth, headers }, null, 2) });
-                                                                setHasChanges(true);
-                                                            });
-                                                        }}
-                                                    />
-                                                    <div className="mgmt-modal-form-hint">입력 시 x-api-key 헤더 및 auth 설정에 자동 반영됩니다.</div>
+                                                    <div className="mgmt-modal-form-hint">입력 시 x-api-key 헤더에 저장됩니다.</div>
                                                 </div>
                                             </>
                                         ) : editingTarget?.target_type?.toLowerCase() === 's3' ? (

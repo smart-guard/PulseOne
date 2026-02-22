@@ -5,7 +5,7 @@
 # Project Paths
 COLLECTOR_ROOT = ../../../
 BIN_DIR = $(COLLECTOR_ROOT)bin-windows
-PLUGINS_DIR = $(BIN_DIR)/plugins
+PLUGINS_DIR = $(BIN_DIR)/drivers
 MINGW_PREFIX = /usr/x86_64-w64-mingw32
 
 # Compiler & Flags
@@ -31,31 +31,9 @@ BACNET_DEFS = -DBACNET_STACK_USE_TSM=1 -DHAS_BACNET_STACK=1 -DMAX_TSM_TRANSACTIO
               -DBACNET_SVC_RPM_A=1 -DBACNET_SVC_RPM_B=1 \
               -DBAC_ROUTING=0 -DHAS_IPPORT=1
 
-# Sources
-SRCS_CPP = BACnetDriver.cpp BACnetBIPPort.cpp BACnetServiceManager.cpp BACnetStubs.cpp
-BACNET_STACK_DIR = $(MINGW_PREFIX)/include/bacnet
-SRCS_C = $(BACNET_STACK_DIR)/basic/service/h_apdu.c \
-         $(BACNET_STACK_DIR)/basic/npdu/h_npdu.c \
-         $(BACNET_STACK_DIR)/basic/service/h_iam.c \
-         $(BACNET_STACK_DIR)/basic/service/s_rp.c \
-         $(BACNET_STACK_DIR)/basic/tsm/tsm.c \
-         $(BACNET_STACK_DIR)/npdu.c \
-         $(BACNET_STACK_DIR)/rp.c \
-         $(BACNET_STACK_DIR)/wp.c \
-         $(BACNET_STACK_DIR)/bacdcode.c \
-         $(BACNET_STACK_DIR)/bacapp.c \
-         $(BACNET_STACK_DIR)/bacstr.c \
-         $(BACNET_STACK_DIR)/bactext.c \
-         $(BACNET_STACK_DIR)/datetime.c \
-         $(BACNET_STACK_DIR)/indtext.c \
-         $(BACNET_STACK_DIR)/bacint.c \
-         $(BACNET_STACK_DIR)/bacreal.c \
-         $(BACNET_STACK_DIR)/bacerror.c \
-         $(BACNET_STACK_DIR)/bacprop.c \
-         $(BACNET_STACK_DIR)/bactimevalue.c \
-         $(BACNET_STACK_DIR)/bacaddr.c \
-         $(BACNET_STACK_DIR)/basic/sys/days.c \
-         $(BACNET_STACK_DIR)/basic/binding/address.c
+# Sources - libbacnet.a가 bip_get_my_address/bip_send_pdu 등을 요구하므로
+# BACnetBIPPort(BIP 구현)와 BACnetStubs(stub 함수들)도 DLL에 포함
+SRCS_CPP = BACnetDriver.cpp BACnetBIPPort.cpp BACnetStubs.cpp
 
 # Libraries
 IMPLIB = $(BIN_DIR)/libcollector.a
@@ -68,18 +46,10 @@ TARGET = $(PLUGINS_DIR)/bacnet_driver.dll
 
 all: $(TARGET)
 
-$(TARGET): $(SRCS_CPP) $(SRCS_C)
+$(TARGET): $(SRCS_CPP)
 	@mkdir -p $(PLUGINS_DIR)
-	@echo "🔨 Building BACnet Windows Plugin (Mixed C/C++)..."
-	@mkdir -p build_objs
-	@for f in $(SRCS_C); do \
-		$(CC) $(CFLAGS) $(BACNET_DEFS) -include stdio.h -I$(BACNET_STACK_DIR)/basic/service -I$(BACNET_STACK_DIR)/basic/tsm $(INCLUDES) -c $$f -o build_objs/$$(basename $$f .c).o; \
-	done
-	@for f in $(SRCS_CPP); do \
-		$(CXX) $(CXXFLAGS) -fpermissive -include bacnet_minmax_fix.h -I$(BACNET_STACK_DIR)/basic/service -I$(BACNET_STACK_DIR)/basic/tsm $(BACNET_DEFS) $(INCLUDES) -c $$f -o build_objs/$$(basename $$f .cpp).o; \
-	done
-	$(CXX) -shared build_objs/*.o $(IMPLIB) -o $@ $(LIBS)
-	@rm -rf build_objs
+	@echo "🔨 Building BACnet Windows Plugin..."
+	$(CXX) $(CXXFLAGS) -fpermissive $(BACNET_DEFS) $(INCLUDES) $^ $(IMPLIB) -Wl,--allow-multiple-definition -o $@ $(LIBS)
 
 clean:
 	rm -f $(TARGET)

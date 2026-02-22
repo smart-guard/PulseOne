@@ -287,6 +287,60 @@ std::string SecretManager::decryptEncodedValue(const std::string &value) const {
   return decryptValue(value);
 }
 
+std::string SecretManager::resolve(const std::string &config_value) const {
+  if (config_value.empty())
+    return "";
+
+  std::string working = config_value;
+
+  // 1. ${VAR_NAME} 형식이면 security.env 파일에서 직접 값 조회
+  if (working.size() > 3 && working[0] == '$' && working[1] == '{' &&
+      working.back() == '}') {
+
+    std::string var_name = working.substr(2, working.size() - 3);
+
+    // config 디렉토리에 있는 security.env 탐색
+    std::vector<std::string> search_paths;
+    if (!_secretsDir.empty()) {
+      search_paths.push_back(_secretsDir + "/security.env");
+      auto pos = _secretsDir.find_last_of("/\\");
+      if (pos != std::string::npos)
+        search_paths.push_back(_secretsDir.substr(0, pos) + "/security.env");
+    }
+    search_paths.push_back("/app/config/security.env"); // Docker absolute
+    search_paths.push_back("config/security.env");
+    search_paths.push_back("../config/security.env");
+
+    for (const auto &path : search_paths) {
+      std::ifstream env_file(path);
+      if (!env_file.is_open())
+        continue;
+
+      std::string line;
+      while (std::getline(env_file, line)) {
+        if (line.empty() || line[0] == '#')
+          continue;
+        auto eq = line.find('=');
+        if (eq == std::string::npos)
+          continue;
+        std::string key = line.substr(0, eq);
+        // 양쪽 공백 제거
+        key.erase(key.find_last_not_of(" \t\r\n") + 1);
+        if (key == var_name) {
+          working = line.substr(eq + 1);
+          working.erase(working.find_last_not_of(" \t\r\n") + 1);
+          break;
+        }
+      }
+      if (working != config_value)
+        break; // 찾았으면 중단
+    }
+  }
+
+  // 2. ENC: 프리픽스가 있으면 XOR 복호화
+  return decryptEncodedValue(working);
+}
+
 // =============================================================================
 // 배치 시크릿 관리
 // =============================================================================

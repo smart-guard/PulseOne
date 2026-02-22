@@ -154,6 +154,16 @@ public:
   std::string decryptEncodedValue(const std::string &value) const;
 
   /**
+   * @brief config 값을 완전 해석: ${VAR} 변수 조회 + ENC: 복호화를 단일 호출로.
+   *        - "${VAR_NAME}" → ConfigManager::expandVariables() → 값 조회
+   *        - "ENC:..."     → XOR 복호화
+   *        - 그 외        → 그대로 반환
+   * @param config_value config JSON에서 읽은 원시 값
+   * @return 복호화된 평문 문자열
+   */
+  std::string resolve(const std::string &config_value) const;
+
+  /**
    * @brief JSON 문자열 내의 민감한 정보를 마스킹 (로그용)
    */
   std::string maskSensitiveJson(const std::string &json_str) const;

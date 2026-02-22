@@ -149,7 +149,7 @@ ExportCoordinatorConfig loadCoordinatorConfig() {
     // 데이터베이스 설정
     config.database_type = cfg_mgr.getOrDefault("DB_TYPE", "SQLITE");
     config.database_path =
-        cfg_mgr.getOrDefault("SQLITE_DB_PATH", "/app/data/db/pulseone.db");
+        cfg_mgr.getOrDefault("SQLITE_PATH", "/app/data/db/pulseone.db");
 
     config.db_host = cfg_mgr.getOrDefault("DB_PRIMARY_HOST", "localhost");
     config.db_port = std::stoi(cfg_mgr.getOrDefault("DB_PRIMARY_PORT", "5432"));

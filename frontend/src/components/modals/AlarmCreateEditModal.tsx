@@ -84,6 +84,7 @@ interface AlarmRuleFormData {
   priority: number;
   auto_acknowledge: boolean;
   auto_clear: boolean;
+  is_latched: boolean;
   is_enabled: boolean;
   category: string;
   tags: string[];
@@ -98,7 +99,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
     name: '', description: '', target_type: 'data_point', target_id: '', selected_device_id: '', target_group: '',
     alarm_type: 'analog', high_high_limit: '', high_limit: '', low_limit: '', low_low_limit: '', deadband: '2.0',
     rate_of_change: '', trigger_condition: '', condition_script: '', message_template: '', severity: 'medium',
-    priority: 100, auto_acknowledge: false, auto_clear: true, is_enabled: true, category: '', tags: []
+    priority: 100, auto_acknowledge: false, auto_clear: true, is_latched: false, is_enabled: true, category: '', tags: []
   });
 
   useEffect(() => {
@@ -112,7 +113,9 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
         deadband: rule.deadband?.toString() || '2.0', rate_of_change: rule.rate_of_change?.toString() || '',
         trigger_condition: rule.trigger_condition || '', condition_script: rule.condition_script || '',
         message_template: rule.message_template || '', severity: rule.severity as any, priority: rule.priority || 100,
-        auto_acknowledge: rule.auto_acknowledge || false, auto_clear: rule.auto_clear || true, is_enabled: rule.is_enabled,
+        auto_acknowledge: rule.auto_acknowledge || false, auto_clear: rule.auto_clear || true,
+        is_latched: (rule as any).is_latched || false,
+        is_enabled: rule.is_enabled,
         category: rule.category || '', tags: rule.tags || []
       });
     } else if (isOpen && mode === 'create') {
@@ -125,7 +128,7 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
       name: '', description: '', target_type: 'data_point', target_id: '', selected_device_id: '', target_group: '',
       alarm_type: 'analog', high_high_limit: '', high_limit: '', low_limit: '', low_low_limit: '', deadband: '2.0',
       rate_of_change: '', trigger_condition: '', condition_script: '', message_template: '', severity: 'medium',
-      priority: 100, auto_acknowledge: false, auto_clear: true, is_enabled: true, category: '', tags: []
+      priority: 100, auto_acknowledge: false, auto_clear: true, is_latched: false, is_enabled: true, category: '', tags: []
     });
   };
 
@@ -434,8 +437,10 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
                       </div>
                     ))}
                     <div className="form-group">
-                      <label className="form-label">DEADBAND</label>
-                      <input type="number" className="form-input" value={formData.deadband} onChange={e => setFormData(prev => ({ ...prev, deadband: e.target.value }))} />
+                      <label className="form-label" title="알람 해제 히스테리시스. 값이 임계값에서 이 값만큼 더 내려가야 알람이 해제됩니다. 채터링 방지에 필수입니다.">
+                        DEADBAND &nbsp;<i className="fas fa-info-circle" style={{ color: 'var(--primary-400)', fontSize: '11px' }} title="채터링 방지: 임계값 ± Deadband 범위 안에서 값이 오락가락해도 알람이 뜨지 않습니다."></i>
+                      </label>
+                      <input type="number" className="form-input" placeholder="예: 5.0" value={formData.deadband} onChange={e => setFormData(prev => ({ ...prev, deadband: e.target.value }))} />
                     </div>
                     <div className="form-group">
                       <label className="form-label">ROC LIMIT</label>
@@ -471,17 +476,52 @@ const AlarmCreateEditModal: React.FC<AlarmCreateEditModalProps> = ({
               {/* --- Section 4: Notifications & Actions --- */}
               <div className="form-section">
                 <div className="section-title">알림 및 조치</div>
+
+                {/* Latching - 가장 중요하므로 최상단 강조 박스 */}
+                <div style={{
+                  background: formData.is_latched ? 'var(--warning-50, #fffbeb)' : 'var(--neutral-50)',
+                  border: `1px solid ${formData.is_latched ? 'var(--warning-300, #fcd34d)' : 'var(--neutral-200)'}`,
+                  borderRadius: '8px', padding: '12px 14px', marginBottom: '12px',
+                  transition: 'all 0.2s ease',
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.is_latched}
+                      onChange={e => setFormData(prev => ({ ...prev, is_latched: e.target.checked }))}
+                      style={{ marginTop: '2px', accentColor: 'var(--warning-500)', transform: 'scale(1.2)', flexShrink: 0 }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '13px', color: formData.is_latched ? 'var(--warning-700, #b45309)' : 'var(--neutral-700)' }}>
+                        발보 잘츠 (Latching)
+                        {formData.is_latched && <span style={{ marginLeft: '8px', fontSize: '11px', background: 'var(--warning-200)', color: 'var(--warning-800)', padding: '1px 6px', borderRadius: '10px' }}>활성화됨</span>}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '2px', lineHeight: 1.4 }}>
+                        상태가 정상으로 복귀돼도 운전원이 <strong>직접 확인 버튼</strong>을 눏러야 알람이 해제됩니다.
+                        Critical 알람에 권장합니다.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
                 <div className="notification-grid">
                   <div className="checkbox-group">
-                    <label className="checkbox-label">
+                    <label className="checkbox-label" title="알람 발생 시 자동으로 확인 처리. 일반적으로 비활성화 권장.">
                       <input type="checkbox" checked={formData.auto_acknowledge} onChange={e => setFormData(prev => ({ ...prev, auto_acknowledge: e.target.checked }))} />
                       자동 확인 (Auto Ack)
                     </label>
                   </div>
                   <div className="checkbox-group">
-                    <label className="checkbox-label">
-                      <input type="checkbox" checked={formData.auto_clear} onChange={e => setFormData(prev => ({ ...prev, auto_clear: e.target.checked }))} />
-                      자동 해제 (Auto Clear)
+                    <label className="checkbox-label" style={{ color: !formData.auto_clear ? 'var(--primary-600)' : undefined }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.auto_clear}
+                        onChange={e => setFormData(prev => ({ ...prev, auto_clear: e.target.checked }))}
+                        disabled={formData.is_latched}
+                      />
+                      <span>자동 해제 (Auto Clear)
+                        {formData.is_latched && <span style={{ fontSize: '10px', color: 'var(--neutral-400)', marginLeft: '4px' }}>— Latching 시 무시됨</span>}
+                      </span>
                     </label>
                   </div>
                   <div className="priority-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

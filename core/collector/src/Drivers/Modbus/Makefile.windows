@@ -5,7 +5,7 @@
 # Project Paths
 COLLECTOR_ROOT = ../../../
 BIN_DIR = $(COLLECTOR_ROOT)bin-windows
-PLUGINS_DIR = $(BIN_DIR)/plugins
+PLUGINS_DIR = $(BIN_DIR)/drivers
 MINGW_PREFIX = /usr/x86_64-w64-mingw32
 
 # Compiler & Flags

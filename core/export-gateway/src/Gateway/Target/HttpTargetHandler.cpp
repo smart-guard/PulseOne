@@ -400,13 +400,9 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
       std::string key = item.key();
       std::string value = item.value().get<std::string>();
 
-      // 1. Expand variables (e.g. ${MY_API_KEY} -> actual key or path)
-      std::string expanded_value = config_manager.expandVariables(value);
-
-      // 2. Decrypt if the value is encrypted (ENC:...)
+      // resolve(): ${VAR} 조회 + ENC: 복호화를 단일 호출로
       std::string final_value =
-          Security::SecretManager::getInstance().decryptEncodedValue(
-              expanded_value);
+          Security::SecretManager::getInstance().resolve(value);
 
       headers[key] = final_value;
     }
@@ -431,11 +427,8 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
     if (type == "x-api-key") {
       std::string key = auth.value("apiKey", "");
       if (!key.empty()) {
-        std::string expanded =
-            ConfigManager::getInstance().expandVariables(key);
         std::string final_value =
-            Security::SecretManager::getInstance().decryptEncodedValue(
-                expanded);
+            Security::SecretManager::getInstance().resolve(key);
 
         // Log masked final value
         std::string masked = "****";
@@ -455,11 +448,8 @@ HttpTargetHandler::buildRequestHeaders(const json &config) {
     } else if (type == "bearer") {
       std::string token = auth.value("token", "");
       if (!token.empty()) {
-        std::string expanded =
-            ConfigManager::getInstance().expandVariables(token);
         std::string final_value =
-            Security::SecretManager::getInstance().decryptEncodedValue(
-                expanded);
+            Security::SecretManager::getInstance().resolve(token);
         headers["Authorization"] = "Bearer " + final_value;
       }
     } else {

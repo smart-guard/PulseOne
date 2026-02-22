@@ -8,7 +8,7 @@ DEBUG ?= 1
 COLLECTOR_ROOT = ../../../
 SHARED_ROOT = ../../../../shared
 BIN_DIR = $(COLLECTOR_ROOT)bin
-PLUGINS_DIR = $(BIN_DIR)/plugins
+PLUGINS_DIR = $(BIN_DIR)/drivers
 
 SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
 SHARED_LIB_DIR = $(SHARED_DIR)/lib

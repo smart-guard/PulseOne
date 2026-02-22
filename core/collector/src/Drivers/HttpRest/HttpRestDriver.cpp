@@ -3,6 +3,12 @@
 // Configuration-driven REST API integration with JSONPath support
 // =============================================================================
 
+#ifndef HAS_CURL
+#define HAS_CURL 1
+#endif
+#undef HAS_CURL
+#define HAS_CURL 1
+
 #include "Drivers/HttpRest/HttpRestDriver.h"
 #include "Common/Enums.h"
 #include "Database/Repositories/ProtocolRepository.h"
@@ -113,7 +119,7 @@ bool HttpRestDriver::Connect() {
                                    endpoint_url_);
 
     auto start = high_resolution_clock::now();
-    std::string response = ExecuteHttpRequest(endpoint_url_, "HEAD");
+    std::string response = ExecuteHttpRequest(endpoint_url_, "GET");
     auto end = high_resolution_clock::now();
 
     double duration_ms = duration_cast<milliseconds>(end - start).count();

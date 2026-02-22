@@ -64,6 +64,12 @@ const ActiveAlarms: React.FC = () => {
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(alarmWebSocketService.getConnectionStatus());
 
+  // Auto-refresh
+  const AUTO_REFRESH_INTERVAL = 10;
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [countdown, setCountdown] = useState(AUTO_REFRESH_INTERVAL);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const fetchStatistics = useCallback(async () => {
     try {
       const response = await AlarmApiService.getAlarmStatistics();
@@ -151,6 +157,26 @@ const ActiveAlarms: React.FC = () => {
       unsubscribeAlarm();
     };
   }, [fetchActiveAlarms, fetchStatistics]);
+
+  // Auto-refresh countdown
+  useEffect(() => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    if (!autoRefresh) { setCountdown(AUTO_REFRESH_INTERVAL); return; }
+
+    setCountdown(AUTO_REFRESH_INTERVAL);
+    countdownRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          fetchActiveAlarms();
+          fetchStatistics();
+          return AUTO_REFRESH_INTERVAL;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+  }, [autoRefresh, fetchActiveAlarms, fetchStatistics]);
 
   // 계산된 통계 (현재 필터링된 결과와 서버 통계 병합)
   const computedStats = useMemo(() => {
@@ -245,14 +271,34 @@ const ActiveAlarms: React.FC = () => {
         description="현재 발생 중인 알람을 실시간으로 확인하고 조치합니다."
         icon="fas fa-exclamation-triangle"
         actions={
-          <span className={`mgmt-status-pill ${connectionStatus.status === 'connected' ? 'active' :
-            connectionStatus.status === 'connecting' ? 'warning' : 'error'
-            }`}>
-            <i className={`fas ${connectionStatus.status === 'connected' ? 'fa-check-circle' :
-              connectionStatus.status === 'connecting' ? 'fa-spinner fa-spin' : 'fa-exclamation-circle'
-              }`} style={{ marginRight: '6px' }}></i>
-            {connectionStatus.status === 'connected' ? '실시간 연결됨' : connectionStatus.status === 'connecting' ? '연결 중...' : '연결 끊김'}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Auto-refresh pill */}
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              background: autoRefresh ? 'var(--primary-50, #eff6ff)' : 'var(--neutral-100)',
+              border: `1px solid ${autoRefresh ? 'var(--primary-200, #bfdbfe)' : 'var(--neutral-200)'}`,
+              borderRadius: '20px', padding: '4px 6px 4px 10px', gap: '6px',
+              transition: 'all 0.2s ease',
+            }}>
+              <span style={{ fontSize: '12px', fontVariantNumeric: 'tabular-nums', color: autoRefresh ? 'var(--primary-600, #2563eb)' : 'var(--neutral-400)', minWidth: '36px', fontWeight: 500 }}>
+                {autoRefresh
+                  ? <><i className="fas fa-circle-notch fa-spin" style={{ marginRight: '4px', fontSize: '10px' }}></i>{countdown}s</>
+                  : <><i className="fas fa-pause" style={{ marginRight: '4px', fontSize: '10px', color: 'var(--neutral-400)' }}></i>정지</>}
+              </span>
+              <button
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', border: 'none', cursor: 'pointer', background: autoRefresh ? 'var(--primary-100, #dbeafe)' : 'var(--neutral-200)', color: autoRefresh ? 'var(--primary-600, #2563eb)' : 'var(--neutral-500)', fontSize: '9px', flexShrink: 0, transition: 'all 0.15s ease' }}
+                onClick={() => setAutoRefresh(v => !v)}
+                title={autoRefresh ? '자동 새로고침 중지' : '자동 새로고침 시작'}
+              >
+                <i className={`fas ${autoRefresh ? 'fa-pause' : 'fa-play'}`}></i>
+              </button>
+            </div>
+            {/* WebSocket status */}
+            <span className={`mgmt-status-pill ${connectionStatus.status === 'connected' ? 'active' : connectionStatus.status === 'connecting' ? 'warning' : 'error'}`}>
+              <i className={`fas ${connectionStatus.status === 'connected' ? 'fa-check-circle' : connectionStatus.status === 'connecting' ? 'fa-spinner fa-spin' : 'fa-exclamation-circle'}`} style={{ marginRight: '6px' }}></i>
+              {connectionStatus.status === 'connected' ? '실시간 연결됨' : connectionStatus.status === 'connecting' ? '연결 중...' : '연결 끊김'}
+            </span>
+          </div>
         }
       />
 
@@ -329,6 +375,16 @@ const ActiveAlarms: React.FC = () => {
       <div className="mgmt-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
         <div style={{ overflowX: 'auto', flex: '1 1 auto' }}>
           <table className="mgmt-table">
+            <colgroup>
+              <col style={{ width: '180px' }} />   {/* 발생 시간 */}
+              <col style={{ width: '80px' }} />    {/* 심각도 */}
+              <col style={{ width: '160px' }} />   {/* 디바이스 / 규칙 */}
+              <col />                              {/* 메시지 - 나머지 공간 전부 */}
+              <col style={{ width: '100px' }} />   {/* 메모 */}
+              <col style={{ width: '110px' }} />   {/* 상태 */}
+              <col style={{ width: '48px' }} />    {/* 상세 */}
+              <col style={{ width: '64px' }} />    {/* 액션 */}
+            </colgroup>
             <thead>
               <tr>
                 <th>발생 시간</th>
@@ -345,7 +401,7 @@ const ActiveAlarms: React.FC = () => {
               {alarms.length > 0 ? (
                 alarms.map(alarm => (
                   <tr key={alarm.id}>
-                    <td>{new Date(alarm.triggered_at).toLocaleString()}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{new Date(alarm.triggered_at).toLocaleString()}</td>
                     <td style={{ textAlign: 'center' }}><span className={`mgmt-status-pill ${alarm.severity}`}>{alarm.severity.toUpperCase()}</span></td>
                     <td>
                       <div><strong>{alarm.device_name}</strong></div>
@@ -357,7 +413,7 @@ const ActiveAlarms: React.FC = () => {
                         {alarm.comment || '-'}
                       </div>
                     </td>
-                    <td style={{ textAlign: 'center' }}>
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <span className={`mgmt-status-pill ${alarm.state === 'active' ? 'error' : 'active'}`}>
                         <i className={`fas ${alarm.state === 'active' ? 'fa-clock' : 'fa-check-circle'}`} style={{ marginRight: '6px' }}></i>
                         {alarm.state === 'active' ? '확인 대기' : '확인됨'}

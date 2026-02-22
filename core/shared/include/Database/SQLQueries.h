@@ -907,7 +907,7 @@ const std::string GET_POLLING_INTERVAL_DISTRIBUTION = R"(
         ORDER BY polling_interval_ms
     )";
 
-// 🔥🔥🔥 CREATE_TABLE - 현재 스키마 완전 반영
+// 🔥🔥🔥 CREATE_TABLE - schema.sql과 완전 동기화 (2025-08-26 업데이트)
 const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS device_settings (
             device_id INTEGER PRIMARY KEY,
@@ -915,11 +915,13 @@ const std::string CREATE_TABLE = R"(
             -- 폴링 및 타이밍 설정
             polling_interval_ms INTEGER DEFAULT 1000,
             scan_rate_override INTEGER, -- 개별 디바이스 스캔 주기 오버라이드
+            scan_group INTEGER DEFAULT 1, -- 스캔 그룹 (동시 스캔 제어)
             
             -- 연결 및 통신 설정
             connection_timeout_ms INTEGER DEFAULT 10000,
             read_timeout_ms INTEGER DEFAULT 5000,
             write_timeout_ms INTEGER DEFAULT 5000,
+            inter_frame_delay_ms INTEGER DEFAULT 10, -- 프레임 간 지연
             
             -- 재시도 정책
             max_retry_count INTEGER DEFAULT 3,
@@ -942,7 +944,13 @@ const std::string CREATE_TABLE = R"(
             -- 로깅 및 진단
             detailed_logging_enabled INTEGER DEFAULT 0,
             diagnostic_mode_enabled INTEGER DEFAULT 0,
+            communication_logging_enabled INTEGER DEFAULT 0, -- 통신 로그 기록
             auto_registration_enabled INTEGER DEFAULT 0,
+            
+            -- 버퍼링 설정
+            read_buffer_size INTEGER DEFAULT 1024,
+            write_buffer_size INTEGER DEFAULT 1024,
+            queue_size INTEGER DEFAULT 100, -- 명령 큐 크기
             
             -- 메타데이터
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

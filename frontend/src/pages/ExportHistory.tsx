@@ -48,6 +48,12 @@ const ExportHistory: React.FC = () => {
     const [activeRowId, setActiveRowId] = useState<number | null>(null);
     const [selectedLog, setSelectedLog] = useState<ExportLog | null>(null);
 
+    // Auto-refresh
+    const AUTO_REFRESH_INTERVAL = 10; // seconds
+    const [autoRefresh, setAutoRefresh] = useState(true);
+    const [countdown, setCountdown] = useState(AUTO_REFRESH_INTERVAL);
+    const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
     // Filters
     const [filters, setFilters] = useState<FilterOptions>({
         dateRange: {
@@ -183,7 +189,28 @@ const ExportHistory: React.FC = () => {
     const handleRefresh = () => {
         fetchLogs(true);
         fetchStatistics();
+        setCountdown(AUTO_REFRESH_INTERVAL); // reset countdown on manual refresh
     };
+
+    // Auto-refresh countdown
+    useEffect(() => {
+        if (countdownRef.current) clearInterval(countdownRef.current);
+        if (!autoRefresh) { setCountdown(AUTO_REFRESH_INTERVAL); return; }
+
+        setCountdown(AUTO_REFRESH_INTERVAL);
+        countdownRef.current = setInterval(() => {
+            setCountdown(prev => {
+                if (prev <= 1) {
+                    fetchLogs(true);
+                    fetchStatistics();
+                    return AUTO_REFRESH_INTERVAL;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+    }, [autoRefresh, fetchLogs, fetchStatistics]);
 
     // ---------------------------------------------------------------------------
     // Event Handlers
@@ -267,14 +294,58 @@ const ExportHistory: React.FC = () => {
                     description="외부 시스템으로 전송된 데이터의 성공/실패 이력을 조회합니다."
                     icon="fas fa-history"
                     actions={
-                        <button
-                            className="mgmt-btn mgmt-btn-outline"
-                            onClick={handleRefresh}
-                            disabled={isRefreshing || isInitialLoading}
-                        >
-                            <i className={`fas fa-sync-alt ${isRefreshing ? 'fa-spin' : ''}`}></i>
-                            새로고침
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {/* Auto-refresh pill */}
+                            <div style={{
+                                display: 'flex', alignItems: 'center',
+                                background: autoRefresh ? 'var(--primary-50, #eff6ff)' : 'var(--neutral-100)',
+                                border: `1px solid ${autoRefresh ? 'var(--primary-200, #bfdbfe)' : 'var(--neutral-200)'}`,
+                                borderRadius: '20px',
+                                padding: '4px 6px 4px 10px',
+                                gap: '6px',
+                                transition: 'all 0.2s ease',
+                            }}>
+                                {/* countdown arc or dot */}
+                                <span style={{
+                                    fontSize: '12px',
+                                    fontVariantNumeric: 'tabular-nums',
+                                    color: autoRefresh ? 'var(--primary-600, #2563eb)' : 'var(--neutral-400)',
+                                    minWidth: '36px',
+                                    fontWeight: 500,
+                                }}>
+                                    {autoRefresh ? (
+                                        <><i className="fas fa-circle-notch fa-spin" style={{ marginRight: '4px', fontSize: '10px' }}></i>{countdown}s</>
+                                    ) : (
+                                        <><i className="fas fa-pause" style={{ marginRight: '4px', fontSize: '10px', color: 'var(--neutral-400)' }}></i>정지</>
+                                    )}
+                                </span>
+                                {/* toggle button */}
+                                <button
+                                    style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        width: '22px', height: '22px', borderRadius: '50%',
+                                        border: 'none', cursor: 'pointer',
+                                        background: autoRefresh ? 'var(--primary-100, #dbeafe)' : 'var(--neutral-200)',
+                                        color: autoRefresh ? 'var(--primary-600, #2563eb)' : 'var(--neutral-500)',
+                                        fontSize: '9px', flexShrink: 0,
+                                        transition: 'all 0.15s ease',
+                                    }}
+                                    onClick={() => setAutoRefresh(v => !v)}
+                                    title={autoRefresh ? '자동 새로고침 중지' : '자동 새로고침 시작'}
+                                >
+                                    <i className={`fas ${autoRefresh ? 'fa-pause' : 'fa-play'}`}></i>
+                                </button>
+                            </div>
+                            {/* manual refresh */}
+                            <button
+                                className="mgmt-btn mgmt-btn-outline"
+                                onClick={handleRefresh}
+                                disabled={isRefreshing || isInitialLoading}
+                            >
+                                <i className={`fas fa-sync-alt ${isRefreshing ? 'fa-spin' : ''}`}></i>
+                                새로고침
+                            </button>
+                        </div>
                     }
                 />
 

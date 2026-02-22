@@ -107,7 +107,7 @@ class SystemService extends BaseService {
     async _checkSQLiteStatus() {
         try {
             const sqlite3 = require('sqlite3');
-            const path = this.configManager.get('SQLITE_DB_PATH', './data/db/pulseone.db');
+            const path = this.configManager.get('SQLITE_PATH', './data/db/pulseone.db');
             return new Promise((resolve) => {
                 const db = new sqlite3.Database(path, (err) => {
                     if (err) resolve({ status: 'error', error: err.message });

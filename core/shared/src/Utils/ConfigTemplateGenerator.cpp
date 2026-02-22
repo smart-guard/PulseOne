@@ -57,7 +57,7 @@ void ConfigTemplateGenerator::createDatabaseEnvFile(
 
   std::string content = R"(# Database Configuration
 DATABASE_TYPE=SQLITE
-SQLITE_DB_PATH=${DATA_DIR}/pulseone.db
+SQLITE_PATH=
 
 # Secondary Database (Optional)
 SECONDARY_DATABASE_ENABLED=false

@@ -11,7 +11,7 @@ describe('MQTT Repository Integration Tests', () => {
         const config = require('../lib/config/ConfigManager').getInstance();
         config.set('DATABASE_TYPE', 'sqlite');
         config.set('SQLITE_PATH', '/app/data/db/pulseone.db');
-        config.set('SQLITE_DB_PATH', '/app/data/db/pulseone.db');
+        config.set('SQLITE_PATH', '/app/data/db/pulseone.db');
         config.set('DB_PATH', '/app/data/db/pulseone.db');
 
         const factory = RepositoryFactory.getInstance();

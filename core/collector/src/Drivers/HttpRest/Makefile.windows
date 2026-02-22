@@ -5,12 +5,12 @@
 # Project Paths
 COLLECTOR_ROOT = ../../../
 BIN_DIR = $(COLLECTOR_ROOT)bin-windows
-PLUGINS_DIR = $(BIN_DIR)/plugins
+PLUGINS_DIR = $(BIN_DIR)/drivers
 MINGW_PREFIX = /usr/x86_64-w64-mingw32
 
 # Compiler & Flags
 CXX = x86_64-w64-mingw32-g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00 -shared
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00 -shared -DHAS_CURL=1 -DCURL_STATICLIB
 
 INCLUDES = -I$(COLLECTOR_ROOT)include \
            -I$(COLLECTOR_ROOT)src \
@@ -20,7 +20,7 @@ INCLUDES = -I$(COLLECTOR_ROOT)include \
 
 # Libraries
 IMPLIB = $(BIN_DIR)/libcollector.a
-LIBS = -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread
+LIBS = -lcurl -lssl -lcrypto -lz -lws2_32 -lwsock32 -liphlpapi -lwldap32 -lcrypt32 -ladvapi32 -lgdi32 -lbcrypt -lsqlite3 -lpthread
 
 # Target
 TARGET = $(PLUGINS_DIR)/httprest_driver.dll

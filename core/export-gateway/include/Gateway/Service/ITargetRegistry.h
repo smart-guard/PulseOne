@@ -56,6 +56,15 @@ public:
   virtual int getOverrideSiteId(int target_id, int point_id) const = 0;
   virtual std::string getExternalBuildingId(int target_id,
                                             int site_id) const = 0;
+
+  // [FIX] Scale / Offset for measured_value transformation
+  // Default: identity (scale=1.0, offset=0.0 → no transformation)
+  virtual double getScale(int /*target_id*/, int /*point_id*/) const {
+    return 1.0;
+  }
+  virtual double getOffset(int /*target_id*/, int /*point_id*/) const {
+    return 0.0;
+  }
 };
 
 } // namespace Service

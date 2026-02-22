@@ -82,9 +82,9 @@ bool CollectorApplication::Initialize() {
   // 드라이버 및 플러그인 동적 로드
   LogManager::getInstance().Info("Loading protocol driver plugins...");
   try {
-    // 실행 파일 기준 ./plugins 디렉토리에서 플러그인 로드
+    // 실행 파일 기준 ./drivers 디렉토리에서 드라이버 로드
     std::string exe_dir = Platform::Path::GetExecutableDirectory();
-    std::string plugin_path = Platform::Path::Join(exe_dir, "plugins");
+    std::string plugin_path = Platform::Path::Join(exe_dir, "drivers");
 
     size_t loaded =
         Drivers::PluginLoader::GetInstance().LoadPlugins(plugin_path);

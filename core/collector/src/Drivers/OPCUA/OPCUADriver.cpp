@@ -327,7 +327,9 @@ bool OPCUADriver::ReadValues(const std::vector<DataPoint> &points,
 
     auto it = value_cache_.find(nodeIdStr);
     if (it != value_cache_.end()) {
-      values.push_back(it->second);
+      TimestampedValue tv = it->second;
+      tv.point_id = std::stoi(point.id);
+      values.push_back(tv);
       UpdateReadStats(true);
     } else {
       // Not in cache yet (waiting for subscription to fire)
@@ -451,32 +453,32 @@ void OPCUADriver::SyncMonitoredItems() {
 void OPCUADriver::DataChangeNotificationCallback(
     UA_Client *client, UA_UInt32 subId, void *subContext, UA_UInt32 monId,
     void *monContext, UA_DataValue *value) {
-  // Get instance from somewhere?
-  // We didn't pass instance to createSubscription.
-  // BUT! We can get the instance if we used a global map or singleton.
-  // Ideally, we should have passed 'this' to CreateSubscription or set user
-  // context. open62541 allows getting client context.
 
-  // Workaround: We need access to 'value_cache_'.
-  // Since this is a plugin, we might need a way to link back.
-  // For now, let's assume we can get the driver instance via a static pointer
-  // if we were a singleton, but we are an instance.
-
-  // Wait, monContext IS the string pointer we passed!
   std::string *nodeIdStr = (std::string *)monContext;
-  if (!nodeIdStr || !value)
+  if (!nodeIdStr) {
+    LogManager::getInstance().Error(
+        "[OPC-UA] Callback with missing monContext!");
     return;
+  }
 
-  // We also need access to the driver instance to lock the mutex and update
-  // cache. This is tricky in C callbacks without a "User Data" passed to
-  // Validating. Ah, 'subContext' is passed! We passed NULL in
-  // CreateSubscription. We should fix CreateSubscription to pass 'this'.
+  if (!value) {
+    LogManager::getInstance().Error("[OPC-UA] Callback with NULL value for " +
+                                    *nodeIdStr);
+    return;
+  }
 
-  // IMPORTANT: We need to fix CreateSubscription first.
-  // Assuming subContext is 'OPCUADriver*'.
+  if (!value->hasValue) {
+    LogManager::getInstance().Warn("[OPC-UA] Value empty for " + *nodeIdStr);
+    return;
+  }
+
+  LogManager::getInstance().Info("[OPC-UA] DataChange for " + *nodeIdStr);
+
   OPCUADriver *driver = (OPCUADriver *)subContext;
-  if (!driver)
-    return; // Can't update if we don't know the driver
+  if (!driver) {
+    LogManager::getInstance().Error("[OPC-UA] Option subContext is NULL!");
+    return;
+  }
 
   PulseOne::Structs::TimestampedValue tv;
   tv.timestamp = std::chrono::system_clock::now();
@@ -484,6 +486,8 @@ void OPCUADriver::DataChangeNotificationCallback(
 
   if (UA_Variant_hasScalarType(&value->value, &UA_TYPES[UA_TYPES_DOUBLE])) {
     tv.value = *(UA_Double *)value->value.data;
+    LogManager::getInstance().Info("[OPC-UA] Received DOUBLE: " +
+                                   std::to_string(std::get<double>(tv.value)));
   } else if (UA_Variant_hasScalarType(&value->value,
                                       &UA_TYPES[UA_TYPES_FLOAT])) {
     tv.value = (double)*(UA_Float *)value->value.data;
@@ -494,11 +498,11 @@ void OPCUADriver::DataChangeNotificationCallback(
                                       &UA_TYPES[UA_TYPES_BOOLEAN])) {
     tv.value = *(UA_Boolean *)value->value.data;
   } else {
-    // Unsupported type or empty
+    LogManager::getInstance().Warn(
+        "[OPC-UA] Unsupported Variant Type Received.");
     return;
   }
 
-  // Update Cache
   std::lock_guard<std::mutex> lock(driver->cache_mutex_);
   driver->value_cache_[*nodeIdStr] = tv;
 }

@@ -260,6 +260,37 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                                     </label>
                                 </div>
                             </div>
+
+                            {!site && (
+                                <div className="mgmt-modal-form-section mgmt-span-full">
+                                    <h3><i className="fas fa-server"></i> Collector 설정 <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(사이트 등록 시 자동 생성)</span></h3>
+                                    <div className="mgmt-modal-form-row">
+                                        <div className="mgmt-modal-form-group">
+                                            <label>Collector 이름</label>
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                value={(formData as any).collector_name || ''}
+                                                onChange={e => setFormData({ ...formData, collector_name: e.target.value } as any)}
+                                                placeholder={`${formData.name || '사이트명'}-Collector`}
+                                                disabled={saving}
+                                            />
+                                            <span className="mgmt-modal-form-hint">비워두면 "사이트명-Collector"로 자동 지정됩니다.</span>
+                                        </div>
+                                        <div className="mgmt-modal-form-group">
+                                            <label>Collector 설명</label>
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                value={(formData as any).collector_description || ''}
+                                                onChange={e => setFormData({ ...formData, collector_description: e.target.value } as any)}
+                                                placeholder="선택 입력"
+                                                disabled={saving}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </form>
                 </div>

@@ -1,1 +1,0 @@
-const Modbus = require("modbus-serial"); const client = new Modbus(); client.connectTCP("127.0.0.1", { port: 50502 }, () => { client.setID(0); client.writeRegister(2, 160, () => { console.log("Triggered Alarm (160)"); client.close(); }); });

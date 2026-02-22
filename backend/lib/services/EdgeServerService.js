@@ -130,6 +130,11 @@ class EdgeServerService extends BaseService {
      * @param {number} serverId 
      * @param {string} serverType 'collector' (default) or 'gateway'
      */
+    /**
+     * 게이트웨이/콜렉터 실시간 상태 조회 (Redis)
+     * @param {number} serverId 
+     * @param {string} serverType 'collector' (default) or 'gateway'
+     */
     async getLiveStatus(serverId, serverType = 'collector') {
         try {
             const prefix = (serverType || 'collector').toLowerCase() === 'gateway'
@@ -147,6 +152,143 @@ class EdgeServerService extends BaseService {
             return null;
         }
     }
+
+    /**
+     * 사이트별 Collector 목록 + 장치 수 조회
+     */
+    async getCollectorsBySite(siteId) {
+        return await this.handleRequest(async () => {
+            const collectors = await this.repository.findBySiteId(siteId);
+
+            // 각 Collector에 연결된 장치 수 병합
+            for (const c of collectors) {
+                c.device_count = await this.repository.countDevicesByCollector(c.id);
+
+                // Redis 실시간 상태 병합
+                try {
+                    const live = await this.getLiveStatus(c.id, 'collector');
+                    if (live) c.live_status = live;
+                } catch (e) { /* ignore */ }
+            }
+
+            return collectors;
+        }, 'GetCollectorsBySite');
+    }
+
+    /**
+     * 테넌트 Collector 쿼터 현황 조회
+     */
+    async getQuotaStatus(tenantId) {
+        return await this.handleRequest(async () => {
+            const tenantRepo = require('../database/repositories/RepositoryFactory').getInstance().getTenantRepository();
+            const tenant = await tenantRepo.findById(tenantId);
+            if (!tenant) throw new Error('테넌트를 찾을 수 없습니다.');
+
+            const used = await this.repository.countByTenant(tenantId);
+            const max = tenant.max_edge_servers || 3;
+
+            // 온라인/오프라인 집계
+            const allCollectors = await this.repository.findAll(tenantId);
+            const online = allCollectors.filter(c => c.status === 'active' || c.status === 'online').length;
+            const offline = used - online;
+
+            return {
+                used,
+                max,
+                available: max - used,
+                is_exceeded: used >= max,
+                online,
+                offline
+            };
+        }, 'GetQuotaStatus');
+    }
+
+    /**
+     * Collector를 다른 사이트로 재배정
+     * 조건: 연결된 device 수 = 0
+     */
+    async reassignToSite(collectorId, newSiteId, tenantId) {
+        return await this.handleRequest(async () => {
+            const collector = await this.repository.findById(collectorId, tenantId);
+            if (!collector) throw new Error('Collector를 찾을 수 없습니다.');
+
+            // 장치 연결 체크
+            const deviceCount = await this.repository.countDevicesByCollector(collectorId);
+            if (deviceCount > 0) {
+                throw new Error(
+                    `Collector에 장치 ${deviceCount}개가 연결되어 있어 이동할 수 없습니다.\n` +
+                    `먼저 연결된 장치를 다른 Collector로 재배정하세요.`
+                );
+            }
+
+            const success = await this.repository.updateSiteId(collectorId, newSiteId, tenantId);
+            if (!success) throw new Error('Collector 재배정에 실패했습니다.');
+
+            return await this.repository.findById(collectorId, tenantId);
+        }, 'ReassignToSite');
+    }
+
+    /**
+     * Collector 등록 (수동)
+     */
+    async registerEdgeServer(data, tenantId, user) {
+        return await this.handleRequest(async () => {
+            const effectiveTenantId = tenantId || data.tenant_id;
+            if (!effectiveTenantId) throw new Error('테넌트 ID가 필요합니다.');
+
+            const server = await this.repository.create({
+                ...data,
+                tenant_id: effectiveTenantId,
+                server_type: data.server_type || 'collector',
+                status: 'pending'
+            });
+            return server;
+        }, 'RegisterEdgeServer');
+    }
+
+    /**
+     * Collector 삭제
+     * 조건: 연결된 device 수 = 0
+     */
+    async unregisterEdgeServer(collectorId, tenantId, user) {
+        return await this.handleRequest(async () => {
+            const collector = await this.repository.findById(collectorId, tenantId);
+            if (!collector) throw new Error('Collector를 찾을 수 없습니다.');
+
+            // 장치 연결 체크
+            const deviceCount = await this.repository.countDevicesByCollector(collectorId);
+            if (deviceCount > 0) {
+                throw new Error(
+                    `Collector에 장치 ${deviceCount}개가 연결되어 있어 삭제할 수 없습니다.\n` +
+                    `먼저 연결된 장치를 다른 Collector로 재배정하세요.`
+                );
+            }
+
+            const success = await this.repository.deleteById(collectorId, tenantId);
+            return { success, id: collectorId };
+        }, 'UnregisterEdgeServer');
+    }
+
+    /**
+     * Edge Server 상태 업데이트
+     */
+    async updateEdgeServerStatus(id, status, remarks) {
+        return await this.handleRequest(async () => {
+            const updated = await this.repository.update(id, { status });
+            return updated;
+        }, 'UpdateEdgeServerStatus');
+    }
+
+    /**
+     * 활성 Edge Server 목록
+     */
+    async getActiveEdgeServers(tenantId) {
+        return await this.handleRequest(async () => {
+            const servers = await this.repository.findAll(tenantId);
+            return servers.filter(s => s.status === 'active');
+        }, 'GetActiveEdgeServers');
+    }
 }
 
 module.exports = new EdgeServerService();
+

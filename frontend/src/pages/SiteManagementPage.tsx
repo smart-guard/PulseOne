@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { SiteApiService } from '../api/services/siteApi';
+import { CollectorApiService } from '../api/services/collectorApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatCard } from '../components/common/StatCard';
@@ -9,7 +10,6 @@ import { Site } from '../types/common';
 import { useConfirmContext } from '../components/common/ConfirmProvider';
 import '../styles/management.css';
 
-// TODO: Create SiteModal and SiteDetailModal
 import { SiteModal } from '../components/modals/SiteModal/SiteModal';
 import { SiteDetailModal } from '../components/modals/SiteModal/SiteDetailModal';
 
@@ -28,8 +28,17 @@ const SiteManagementPage: React.FC = () => {
     const [stats, setStats] = useState({
         total_sites: 0,
         active_sites: 0,
-        main_sites: 0 // Hierarchy level 1
+        main_sites: 0
     });
+
+    const [quota, setQuota] = useState<{ used: number; max: number; available: number; is_exceeded: boolean; online: number; offline: number } | null>(null);
+
+    const loadQuota = useCallback(async () => {
+        try {
+            const res = await CollectorApiService.getQuotaStatus();
+            if (res.success && res.data) setQuota(res.data);
+        } catch (e) { /* ignore */ }
+    }, []);
 
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -67,7 +76,8 @@ const SiteManagementPage: React.FC = () => {
 
     useEffect(() => {
         loadSites();
-    }, [loadSites, includeDeleted]);
+        loadQuota();
+    }, [loadSites, loadQuota, includeDeleted]);
 
     const handleCreate = () => {
         setEditingSite(null);
@@ -124,6 +134,23 @@ const SiteManagementPage: React.FC = () => {
                 <StatCard label="전체 사이트" value={stats.total_sites} type="primary" />
                 <StatCard label="활성 사이트" value={stats.active_sites} type="success" />
                 <StatCard label="본사/메인" value={stats.main_sites} type="neutral" />
+                {quota && (<>
+                    <StatCard
+                        label={`Collector 사용 (/${quota.max})`}
+                        value={quota.used}
+                        type={quota.is_exceeded ? 'error' : 'primary'}
+                    />
+                    <StatCard
+                        label="온라인 Collector"
+                        value={quota.online}
+                        type="success"
+                    />
+                    <StatCard
+                        label="오프라인 Collector"
+                        value={quota.offline}
+                        type={quota.offline > 0 ? 'warning' : 'neutral'}
+                    />
+                </>)}
             </div>
 
             <FilterBar
@@ -170,6 +197,7 @@ const SiteManagementPage: React.FC = () => {
                                 <th>코드</th>
                                 <th>유형</th>
                                 <th>위치/주소</th>
+                                <th>Collector</th>
                                 <th>상태</th>
                                 <th>상위 사이트</th>
                             </tr>
@@ -192,6 +220,12 @@ const SiteManagementPage: React.FC = () => {
                                         <div style={{ fontSize: '12px', color: 'var(--neutral-500)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                             {s.address || s.location || '-'}
                                         </div>
+                                    </td>
+                                    <td>
+                                        <span style={{ fontSize: '12px', color: 'var(--neutral-400)' }}>
+                                            <i className="fas fa-server" style={{ marginRight: '4px' }}></i>
+                                            {(s as any).collector_count ?? '-'}개
+                                        </span>
                                     </td>
                                     <td>
                                         <span className={`mgmt-badge ${s.is_active ? 'success' : 'neutral'}`}>

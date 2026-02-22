@@ -164,6 +164,78 @@ class EdgeServerRepository extends BaseRepository {
     }
 
     /**
+     * 특정 사이트에 속한 Collector 목록 조회
+     */
+    async findBySiteId(siteId) {
+        try {
+            const results = await this.query('es')
+                .leftJoin('sites as s', 's.id', 'es.site_id')
+                .select('es.*', 'es.server_name as name', 's.name as site_name')
+                .where('es.site_id', siteId)
+                .where('es.is_deleted', 0);
+            return results.map(item => this._parseItem(item));
+        } catch (error) {
+            this.logger.error('EdgeServerRepository.findBySiteId 오류:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 테넌트별 Collector 사용 개수 조회 (쿼터 체크용)
+     */
+    async countByTenant(tenantId) {
+        try {
+            const result = await this.knex('edge_servers')
+                .where('tenant_id', tenantId)
+                .where('server_type', 'collector')
+                .where('is_deleted', 0)
+                .count('id as cnt')
+                .first();
+            return parseInt(result.cnt) || 0;
+        } catch (error) {
+            this.logger.error('EdgeServerRepository.countByTenant 오류:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 특정 Collector에 연결된 Device 수 조회 (이동 가능 여부 체크용)
+     */
+    async countDevicesByCollector(collectorId) {
+        try {
+            const result = await this.knex('devices')
+                .where('edge_server_id', collectorId)
+                .where('is_deleted', 0)
+                .count('id as cnt')
+                .first();
+            return parseInt(result.cnt) || 0;
+        } catch (error) {
+            this.logger.error('EdgeServerRepository.countDevicesByCollector 오류:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Collector의 site_id 변경 (재배정)
+     */
+    async updateSiteId(collectorId, newSiteId, tenantId = null) {
+        try {
+            const query = this.knex('edge_servers').where('id', collectorId);
+            if (tenantId) query.where('tenant_id', tenantId);
+
+            const affected = await query.update({
+                site_id: newSiteId,
+                updated_at: this.knex.fn.now()
+            });
+            return affected > 0;
+        } catch (error) {
+            this.logger.error('EdgeServerRepository.updateSiteId 오류:', error);
+            throw error;
+        }
+    }
+
+
+    /**
      * JSON 필드 파싱 헬퍼
      */
     _parseItem(item) {

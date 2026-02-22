@@ -596,5 +596,16 @@ RUN FINAL_SIZE_KB=$(du -k ${MINGW_PREFIX}/lib/libbacnet.a | cut -f1) && \
     fi && \
     echo "✅ BACnet 라이브러리 최종 검증 완료: ${FINAL_SIZE_KB}KB"
 
+# =============================================================================
+# 14. Node.js 18 LTS + pkg (Backend exe 빌드용)
+#     deploy-windows.sh에서 npx pkg로 pulseone-backend.exe를 만들기 위해 필요
+#     Ubuntu 기본 nodejs는 v12라서 NodeSource에서 v18을 설치
+# =============================================================================
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g pkg && \
+    node --version && npm --version && pkg --version && \
+    echo "✅ Node.js $(node --version) + pkg 설치 완료"
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["bash"]

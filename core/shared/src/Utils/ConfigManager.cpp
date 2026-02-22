@@ -169,7 +169,7 @@ std::string ConfigManager::get(const std::string &key) const {
 
 std::string ConfigManager::getOrDefault(const std::string &key,
                                         const std::string &defaultValue) const {
-  if (key == "SQLITE_DB_PATH" || key == "SQLITE_PATH") {
+  if (key == "SQLITE_PATH") {
     return ConfigPathResolver::resolveSQLitePath(
         [this](const std::string &k) { return get(k); }, dataDir_);
   }

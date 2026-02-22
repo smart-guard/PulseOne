@@ -88,6 +88,12 @@ const AlarmHistory: React.FC = () => {
   const [scrollPosition, setScrollPosition] = useState(0);
   const [hasInitialLoad, setHasInitialLoad] = useState(false);
 
+  // Auto-refresh
+  const AUTO_REFRESH_INTERVAL = 10;
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [countdown, setCountdown] = useState(AUTO_REFRESH_INTERVAL);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // =============================================================================
   // 원본 인라인 스타일 객체들 (중요한 레이아웃 유지)
   // =============================================================================
@@ -426,14 +432,22 @@ const AlarmHistory: React.FC = () => {
   }, [filters]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (hasInitialLoad) {
-        handleRefresh();
-      }
-    }, 30000);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    if (!autoRefresh || !hasInitialLoad) { setCountdown(AUTO_REFRESH_INTERVAL); return; }
 
-    return () => clearInterval(interval);
-  }, [handleRefresh, hasInitialLoad]);
+    setCountdown(AUTO_REFRESH_INTERVAL);
+    countdownRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          handleRefresh();
+          return AUTO_REFRESH_INTERVAL;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+  }, [autoRefresh, hasInitialLoad, handleRefresh]);
 
   // =============================================================================
   // 렌더링
@@ -446,7 +460,28 @@ const AlarmHistory: React.FC = () => {
         description="시스템에서 발생한 모든 알람의 이력을 확인하고 분석할 수 있습니다."
         icon="fas fa-history"
         actions={
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {/* Auto-refresh pill */}
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              background: autoRefresh ? 'var(--primary-50, #eff6ff)' : 'var(--neutral-100)',
+              border: `1px solid ${autoRefresh ? 'var(--primary-200, #bfdbfe)' : 'var(--neutral-200)'}`,
+              borderRadius: '20px', padding: '4px 6px 4px 10px', gap: '6px',
+              transition: 'all 0.2s ease',
+            }}>
+              <span style={{ fontSize: '12px', fontVariantNumeric: 'tabular-nums', color: autoRefresh ? 'var(--primary-600, #2563eb)' : 'var(--neutral-400)', minWidth: '36px', fontWeight: 500 }}>
+                {autoRefresh
+                  ? <><i className="fas fa-circle-notch fa-spin" style={{ marginRight: '4px', fontSize: '10px' }}></i>{countdown}s</>
+                  : <><i className="fas fa-pause" style={{ marginRight: '4px', fontSize: '10px', color: 'var(--neutral-400)' }}></i>정지</>}
+              </span>
+              <button
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', border: 'none', cursor: 'pointer', background: autoRefresh ? 'var(--primary-100, #dbeafe)' : 'var(--neutral-200)', color: autoRefresh ? 'var(--primary-600, #2563eb)' : 'var(--neutral-500)', fontSize: '9px', flexShrink: 0, transition: 'all 0.15s ease' }}
+                onClick={() => setAutoRefresh(v => !v)}
+                title={autoRefresh ? '자동 새로고침 중지' : '자동 새로고침 시작'}
+              >
+                <i className={`fas ${autoRefresh ? 'fa-pause' : 'fa-play'}`}></i>
+              </button>
+            </div>
             <button
               className="mgmt-btn mgmt-btn-outline"
               onClick={handleRefresh}

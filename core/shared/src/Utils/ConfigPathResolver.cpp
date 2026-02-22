@@ -87,10 +87,7 @@ ConfigPathResolver::findDataDirectory(const std::string &dataDirFromConfig) {
 std::string ConfigPathResolver::resolveSQLitePath(
     std::function<std::string(const std::string &)> configGetter,
     const std::string &dataDir) {
-  std::string db_path = configGetter("SQLITE_DB_PATH");
-  if (db_path.empty()) {
-    db_path = configGetter("SQLITE_PATH");
-  }
+  std::string db_path = configGetter("SQLITE_PATH");
 
   if (db_path.empty()) {
     db_path = "./data/db/pulseone.db";

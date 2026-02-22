@@ -19,8 +19,8 @@ endif
 # Include directories
 INCLUDES = -Iinclude -Isrc -I../shared/include
 # Compiler flags
-CFLAGS = $(INCLUDES) -std=c11 -Wall -Wextra -O0 -fPIC
-CXXFLAGS = $(INCLUDES) -std=c++17 -Wall -Wextra -O0 -fPIC
+CFLAGS = $(INCLUDES) -std=c11 -Wall -Wextra -O0
+CXXFLAGS = $(INCLUDES) -std=c++17 -Wall -Wextra -O0
 
 # 컴파일러 설정
 CXX = g++
@@ -30,7 +30,7 @@ CC = gcc
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
     CXX = x86_64-w64-mingw32-g++-posix
     CC = x86_64-w64-mingw32-gcc-posix
-    CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DCURL_STATICLIB -DDBLIB_STATIC -DLOGLIB_STATIC
+    CXXFLAGS += -DWIN32 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DCURL_STATICLIB -DDBLIB_STATIC -DLOGLIB_STATIC -DCPPHTTPLIB_USE_POLL=0
     CFLAGS += -DWIN32 -D_WIN32_WINNT=0x0A00 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DCURL_STATICLIB -DDBLIB_STATIC -DLOGLIB_STATIC
     IS_WINDOWS := 1
     PLATFORM := Windows-Cross
@@ -71,7 +71,7 @@ SRC_DIR = src
 INCLUDE_DIR = include
 ifeq ($(CROSS_COMPILE_WINDOWS),1)
     BUILD_DIR = build-win
-    BIN_DIR = bin-win
+    BIN_DIR = bin-windows
 else
     BUILD_DIR = build
     BIN_DIR = bin
@@ -184,7 +184,11 @@ ifeq ($(HAS_SHARED),1)
     SHARED_LIBS += -lpulseone-client
     SHARED_LIBS += -lpulseone-common
     SHARED_LIBS += -lpulseone-security
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    SHARED_LIBS += -L$(MINGW_PREFIX)/lib
+else
     SHARED_LIBS += -L/usr/local/lib
+endif
 endif
 
 # 외부 라이브러리들
@@ -192,48 +196,62 @@ UTILITY_LIBS =
 
 # 🔥 hiredis 링크
 ifeq ($(HAS_HIREDIS),1)
+    CXXFLAGS += -DHAVE_REDIS=1
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    # Windows 크로스: MinGW 정적 라이브러리 직접 링크
+    UTILITY_LIBS += -lhiredis -lws2_32
+    $(info ✅ hiredis found (Windows static))
+else
     HIREDIS_LIBS := $(shell pkg-config --libs hiredis 2>/dev/null)
     ifneq ($(HIREDIS_LIBS),)
         UTILITY_LIBS += $(HIREDIS_LIBS)
-        CXXFLAGS += -DHAVE_REDIS=1
         $(info ✅ hiredis found via pkg-config)
     else
-        UTILITY_LIBS += /usr/local/lib/libhiredis.so.1.1.0
-        CXXFLAGS += -DHAVE_REDIS=1
+        UTILITY_LIBS += -lhiredis
         $(info ✅ hiredis found (direct link))
     endif
+endif
 else
     $(info ⚠️  hiredis not found - Redis features disabled)
 endif
 
 # 🔥 libcurl 링크
 ifeq ($(HAS_CURL),1)
+    CXXFLAGS += -DHAS_CURL=1
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    # Windows 크로스: MinGW 정적 라이브러리 직접 링크
+    UTILITY_LIBS += -lcurl -lssl -lcrypto -lz -lgdi32 -lcrypt32
+    $(info ✅ libcurl found (Windows static))
+else
     CURL_LIBS := $(shell pkg-config --libs libcurl 2>/dev/null)
     ifneq ($(CURL_LIBS),)
         UTILITY_LIBS += $(CURL_LIBS)
-        CXXFLAGS += -DHAS_CURL=1
         $(info ✅ libcurl found via pkg-config)
     else
         UTILITY_LIBS += -lcurl
-        CXXFLAGS += -DHAS_CURL=1
         $(info ✅ libcurl found (direct link))
     endif
+endif
 else
     $(info ⚠️  libcurl not found - HTTP/S3 features disabled)
 endif
 
 # 🔥 OpenSSL 링크 (S3 서명용)
 ifeq ($(HAS_OPENSSL),1)
+    CXXFLAGS += -DHAS_OPENSSL=1
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    # Windows 크로스: curl 블록에서 이미 -lssl -lcrypto 포함됨 (중복 방지)
+    $(info ✅ OpenSSL found (Windows static, via curl block))
+else
     OPENSSL_LIBS := $(shell pkg-config --libs openssl 2>/dev/null)
     ifneq ($(OPENSSL_LIBS),)
         UTILITY_LIBS += $(OPENSSL_LIBS)
-        CXXFLAGS += -DHAS_OPENSSL=1
         $(info ✅ OpenSSL found via pkg-config)
     else
         UTILITY_LIBS += -lssl -lcrypto
-        CXXFLAGS += -DHAS_OPENSSL=1
         $(info ✅ OpenSSL found (direct link))
     endif
+endif
 else
     $(info ⚠️  OpenSSL not found - S3 signature features disabled)
 endif
@@ -361,6 +379,18 @@ TEST_EXECUTABLES = $(TEST_SOURCES:$(TEST_DIR)/%.cpp=$(TEST_BIN_DIR)/%)
 
 .PHONY: all clean clean-all run test test-mqtt check-libs debug-vars pch
 
+# 🔥 명시적 기본 타겟 설정 (pch가 먼저 나오면 pch가 기본 타겟이 되는 문제 방지)
+.DEFAULT_GOAL := all
+
+# =============================================================================
+# 기본 타겟 (all) - PCH 섹션보다 반드시 먼저 선언되어야 기본 타겟이 됨
+# 🔥 주의: $(PCH_GCH)를 여기서 직접 prerequisite으로 쓰지 말 것.
+# PCH는 각 .o의 prerequisite이므로 $(TARGET)→$(ALL_OBJECTS)→$(PCH_GCH) 체인으로 자동 처리됨.
+# =============================================================================
+
+all: check-libs $(TARGET)
+	@echo -e "$(GREEN)✅ Build completed: $(TARGET)$(NC)"
+
 # =============================================================================
 # PCH (Precompiled Header) - json.hpp 등 무거운 헤더를 한 번만 컴파일
 # =============================================================================
@@ -378,10 +408,6 @@ $(PCH_GCH): $(PCH_HEADER) | $(BUILD_DIR)
 	@echo -e "$(BLUE)🔧 Compiling PCH: $(PCH_HEADER) → $(PCH_GCH) [$(PLATFORM)]$(NC)"
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -x c++-header $< -o $@
 	@echo -e "$(GREEN)✅ PCH ready: $(PCH_GCH)$(NC)"
-
-# 기본 타겟
-all: check-libs $(PCH_GCH) $(TARGET)
-	@echo -e "$(GREEN)✅ Build completed: $(TARGET)$(NC)"
 
 # 최종 링크
 $(TARGET): $(ALL_OBJECTS) | $(BIN_DIR)
