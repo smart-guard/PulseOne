@@ -10,7 +10,7 @@ MINGW_PREFIX = /usr/x86_64-w64-mingw32
 
 # Compiler & Flags
 CXX = x86_64-w64-mingw32-g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00 -shared
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00 -shared -static -static-libgcc -static-libstdc++
 
 INCLUDES = -I$(COLLECTOR_ROOT)include \
            -I$(COLLECTOR_ROOT)src \
@@ -19,8 +19,8 @@ INCLUDES = -I$(COLLECTOR_ROOT)include \
            -I$(COLLECTOR_ROOT)../shared/modules/LogLib/include
 
 # Libraries
-IMPLIB = $(BIN_DIR)/libcollector.a
-LIBS = -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread
+IMPLIB = ../../../bin-windows/libpulseone-collector.a
+LIBS = -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread -Wl,--allow-multiple-definition
 
 # Target
 TARGET = $(PLUGINS_DIR)/ros_driver.dll

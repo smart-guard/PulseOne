@@ -164,10 +164,11 @@ bool RepositoryFactory::initialize() {
 
       db_config.use_redis = true; // Always enable Redis support if available
       db_config.redis_host =
-          config_manager_->getOrDefault("REDIS_HOST", "localhost");
-      db_config.redis_port = config_manager_->getInt("REDIS_PORT", 6379);
+          config_manager_->getOrDefault("REDIS_PRIMARY_HOST", "localhost");
+      db_config.redis_port =
+          config_manager_->getInt("REDIS_PRIMARY_PORT", 6379);
       db_config.redis_pass =
-          config_manager_->getOrDefault("REDIS_PASSWORD", "");
+          config_manager_->getOrDefault("REDIS_PRIMARY_PASSWORD", "");
 
       db_config.use_influx =
           (config_manager_->getOrDefault("USE_INFLUXDB", "false") == "true");

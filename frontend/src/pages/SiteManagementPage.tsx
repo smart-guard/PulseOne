@@ -136,17 +136,17 @@ const SiteManagementPage: React.FC = () => {
                 <StatCard label="본사/메인" value={stats.main_sites} type="neutral" />
                 {quota && (<>
                     <StatCard
-                        label={`Collector 사용 (/${quota.max})`}
+                        label={`Edge Server 사용 (/${quota.max})`}
                         value={quota.used}
                         type={quota.is_exceeded ? 'error' : 'primary'}
                     />
                     <StatCard
-                        label="온라인 Collector"
+                        label="온라인 Edge Server"
                         value={quota.online}
                         type="success"
                     />
                     <StatCard
-                        label="오프라인 Collector"
+                        label="오프라인 Edge Server"
                         value={quota.offline}
                         type={quota.offline > 0 ? 'warning' : 'neutral'}
                     />
@@ -197,9 +197,9 @@ const SiteManagementPage: React.FC = () => {
                                 <th>코드</th>
                                 <th>유형</th>
                                 <th>위치/주소</th>
-                                <th>Collector</th>
-                                <th>상태</th>
-                                <th>상위 사이트</th>
+                                <th style={{ textAlign: 'center' }}>Edge Server</th>
+                                <th style={{ textAlign: 'center' }}>상태</th>
+                                <th style={{ textAlign: 'center' }}>상위 사이트</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -221,18 +221,18 @@ const SiteManagementPage: React.FC = () => {
                                             {s.address || s.location || '-'}
                                         </div>
                                     </td>
-                                    <td>
+                                    <td style={{ textAlign: 'center' }}>
                                         <span style={{ fontSize: '12px', color: 'var(--neutral-400)' }}>
                                             <i className="fas fa-server" style={{ marginRight: '4px' }}></i>
-                                            {(s as any).collector_count ?? '-'}개
+                                            {(s as any).collector_count ?? '-'}대
                                         </span>
                                     </td>
-                                    <td>
+                                    <td style={{ textAlign: 'center' }}>
                                         <span className={`mgmt-badge ${s.is_active ? 'success' : 'neutral'}`}>
                                             {s.is_active ? '활성' : '비활성'}
                                         </span>
                                     </td>
-                                    <td>{s.parent_site_id ? `ID: ${s.parent_site_id}` : '최상위'}</td>
+                                    <td style={{ textAlign: 'center' }}>{s.parent_site_id ? `ID: ${s.parent_site_id}` : '최상위'}</td>
                                 </tr>
                             ))}
                         </tbody>

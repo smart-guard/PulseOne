@@ -179,7 +179,7 @@ endif
 
 # 기본 시스템 라이브러리
 ifeq ($(IS_WINDOWS),1)
-BASIC_LIBS := -lpthread -lstdc++ -lm -lsqlite3
+BASIC_LIBS := -lpthread -static-libstdc++ -static-libgcc -lm -lsqlite3
 PLATFORM_LIBS := -lws2_32 -lwsock32 -liphlpapi -lrpcrt4 -luuid
 PLATFORM_LIBS += -lwinmm -lkernel32 -luser32 -ladvapi32
 else

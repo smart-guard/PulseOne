@@ -63,13 +63,52 @@ class TenantService extends BaseService {
 
     /**
      * 테넌트 정보를 업데이트합니다.
+     * max_edge_servers 변경 시 collector 자동 생성/비활성화
      */
     async updateTenant(id, data) {
         return await this.handleRequest(async () => {
+            const edgeServerRepo = RepositoryFactory.getInstance().getEdgeServerRepository();
+
+            // ── max_edge_servers 변경 감지 ──
+            const oldTenant = await this.repository.findById(id);
+            const oldMax = oldTenant ? (oldTenant.max_edge_servers || 3) : 3;
+            const newMax = data.max_edge_servers !== undefined ? data.max_edge_servers : oldMax;
+
+            // DB 업데이트
             const success = await this.repository.update(id, data);
             if (!success) {
                 throw new Error(`테넌트 정보를 업데이트할 수 없습니다. (ID: ${id})`);
             }
+
+            // ── Collector 자동 프로비저닝 (gateway 제외) ──
+            if (data.max_edge_servers !== undefined && newMax !== oldMax) {
+                const currentCount = await edgeServerRepo.countByTenant(id);
+
+                if (newMax > currentCount) {
+                    // 증가: 부족한 만큼 collector 생성 (테넌트 레벨, site_id=NULL)
+                    const toCreate = newMax - currentCount;
+                    for (let i = 0; i < toCreate; i++) {
+                        await edgeServerRepo.create({
+                            tenant_id: id,
+                            site_id: null,
+                            server_name: `Collector-${currentCount + i + 1}`,
+                            server_type: 'collector',
+                            description: `자동 생성 (쿼터 조정)`,
+                            status: 'pending',
+                        });
+                    }
+                    console.log(`[TenantService] 테넌트 ${id}: Collector ${toCreate}개 자동 생성 (${currentCount} → ${newMax})`);
+                } else if (newMax < currentCount) {
+                    // 감소: 초과분 soft delete (디바이스 0개 우선, 그다음 최신 생성순)
+                    const toRemove = currentCount - newMax;
+                    const collectors = await edgeServerRepo.findCollectorsForDeactivation(id, toRemove);
+                    for (const collector of collectors) {
+                        await edgeServerRepo.deleteById(collector.id, id);
+                    }
+                    console.log(`[TenantService] 테넌트 ${id}: Collector ${collectors.length}개 비활성화 (${currentCount} → ${newMax})`);
+                }
+            }
+
             return await this.repository.findById(id);
         }, 'UpdateTenant');
     }

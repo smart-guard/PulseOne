@@ -123,9 +123,18 @@
       "data/sql/**/*",
       "config/**/*",
       "lib/database/schemas/**/*",
+      "routes/**/*.js",
+      "middleware/**/*.js",
+      "lib/**/*.js",
+      "scripts/**/*.js",
       "node_modules/sqlite3/build/Release/*.node",
       "node_modules/sqlite3/lib/binding/**/*",
-      "node_modules/bcryptjs/**/*"
+      "node_modules/bcryptjs/**/*",
+      "node_modules/axios/**/*",
+      "node_modules/ioredis/**/*",
+      "node_modules/socket.io/**/*",
+      "node_modules/socket.io-adapter/**/*",
+      "node_modules/engine.io/**/*"
     ],
     "targets": [
       "node18-win-x64",

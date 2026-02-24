@@ -40,6 +40,16 @@ router.get('/quota/status', async (req, res) => {
     }
 });
 
+// 미배정 Collector 목록 (site_id IS NULL)
+router.get('/unassigned', async (req, res) => {
+    try {
+        const result = await EdgeServerService.getUnassignedCollectors(req.tenantId);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Collector 상세 조회 및 실시간 상태
 router.get('/:id', async (req, res) => {
     try {
@@ -109,11 +119,11 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// Collector 사이트 재배정 (장치 0개 조건)
+// Collector 사이트 재배정 (site_id=0이면 미배정 처리)
 router.patch('/:id/reassign', async (req, res) => {
     try {
         const { site_id } = req.body;
-        if (!site_id) {
+        if (site_id === undefined || site_id === null) {
             return res.status(400).json({ success: false, error: 'site_id가 필요합니다.' });
         }
         const result = await EdgeServerService.reassignToSite(req.params.id, site_id, req.tenantId);

@@ -19,8 +19,10 @@ function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
-    // 🛠️ 개발 환경에서는 인증 스킵 (app.js에서 설정한 devUser 사용 또는 더미 유저 주입)
-    if (process.env.NODE_ENV === 'development' || token === 'dev-dummy-token') {
+    // 🛠️ 개발 환경 또는 no-auth 모드에서는 인증 스킵
+    // ALLOW_NO_AUTH=true: 로그인 미구현 베어메탈 배포용 (Windows 설치 패키지)
+    const allowNoAuth = process.env.ALLOW_NO_AUTH === 'true';
+    if (process.env.NODE_ENV === 'development' || token === 'dev-dummy-token' || allowNoAuth) {
         req.user = {
             id: 1,
             email: 'admin@pulseone.com',

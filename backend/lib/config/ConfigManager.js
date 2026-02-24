@@ -116,28 +116,45 @@ class ConfigManager {
             let envLoaded = false;
             let loadedFile = null;
 
-            for (const envFile of envFiles) {
-                const envPath = path.join(cwd, envFile);
-                this.logger.log(`🔍 환경 파일 탐색: ${envPath}`);
-
-                // Windows에서 파일 존재 확인 강화
-                if (this.platform.isWindows) {
-                    try {
-                        const stats = fs.statSync(envPath);
-                        if (stats.isFile()) {
-                            this.logger.log(`✅ Windows: 파일 확인됨 ${envFile} (크기: ${stats.size} bytes)`);
-                        }
-                    } catch (err) {
-                        this.logger.log(`❌ Windows: 파일 없음 ${envFile} - ${err.code}`);
-                        continue;
+            // CONFIG_DIR 환경변수가 있는 경우 가장 먼저 탐색 (명시적 경로 최우선)
+            if (process.env.CONFIG_DIR) {
+                const configDir = process.env.CONFIG_DIR;
+                this.logger.log(`🔍 명시적 CONFIG_DIR 탐색: ${configDir}`);
+                for (const envFile of envFiles) {
+                    const envPath = path.join(configDir, envFile);
+                    if (this.loadEnvFile(envPath, false)) {
+                        envLoaded = true;
+                        loadedFile = envFile;
+                        this.logger.log(`✅ 명시적 CONFIG_DIR에서 로드 성공: ${envPath}`);
+                        break;
                     }
                 }
+            }
 
-                if (this.loadEnvFile(envPath, false)) {
-                    envLoaded = true;
-                    loadedFile = envFile;
-                    this.logger.log(`✅ 환경 파일 로드 성공: ${envFile}`);
-                    break; // 첫 번째로 찾은 파일만 로드 (우선순위)
+            if (!envLoaded) {
+                for (const envFile of envFiles) {
+                    const envPath = path.join(cwd, envFile);
+                    this.logger.log(`🔍 환경 파일 탐색: ${envPath}`);
+
+                    // Windows에서 파일 존재 확인 강화
+                    if (this.platform.isWindows) {
+                        try {
+                            const stats = fs.statSync(envPath);
+                            if (stats.isFile()) {
+                                this.logger.log(`✅ Windows: 파일 확인됨 ${envFile} (크기: ${stats.size} bytes)`);
+                            }
+                        } catch (err) {
+                            this.logger.log(`❌ Windows: 파일 없음 ${envFile} - ${err.code}`);
+                            continue;
+                        }
+                    }
+
+                    if (this.loadEnvFile(envPath, false)) {
+                        envLoaded = true;
+                        loadedFile = envFile;
+                        this.logger.log(`✅ 환경 파일 로드 성공: ${envFile}`);
+                        break; // 첫 번째로 찾은 파일만 로드 (우선순위)
+                    }
                 }
             }
 

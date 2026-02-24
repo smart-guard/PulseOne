@@ -18,8 +18,6 @@ const tenantIsolation = (req, res, next) => {
     next();
 };
 
-router.use(authenticateToken);
-router.use(tenantIsolation);
 
 // 응답 헬퍼
 function createResponse(success, data, message, error_code) {

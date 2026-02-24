@@ -268,10 +268,10 @@ bool CollectorApplication::Initialize() {
     LogManager::getInstance().Info("Step 8: Starting C2 Command Subscriber...");
     try {
       PulseOne::Event::EventSubscriberConfig event_config;
-      event_config.redis_host =
-          ConfigManager::getInstance().getOrDefault("REDIS_HOST", "redis");
+      event_config.redis_host = ConfigManager::getInstance().getOrDefault(
+          "REDIS_PRIMARY_HOST", "localhost");
       event_config.redis_port =
-          ConfigManager::getInstance().getInt("REDIS_PORT", 6379);
+          ConfigManager::getInstance().getInt("REDIS_PRIMARY_PORT", 6379);
       event_config.redis_password =
           ConfigManager::getInstance().getSecret("REDIS_PASSWORD_FILE");
       event_config.worker_thread_count = 1;
@@ -546,12 +546,12 @@ bool CollectorApplication::InitializeRestApiServer() {
 #if HAS_HTTPLIB
   try {
     // ConfigManager에서 API 포트 읽기
-    int api_port = 8080; // 기본값
+    int api_port = 8501; // 기본값
     try {
-      api_port = ConfigManager::getInstance().getInt("api.port", 8080);
+      api_port = ConfigManager::getInstance().getInt("api.port", 8501);
     } catch (const std::exception &e) {
       LogManager::getInstance().Warn(
-          "Could not read API port from config, using default 8080: " +
+          "Could not read API port from config, using default 8501: " +
           std::string(e.what()));
     }
 

@@ -89,7 +89,13 @@ void ConfigManager::loadAdditionalConfigs() {
 }
 
 void ConfigManager::loadConfigFile(const std::string &filepath) {
+#if PULSEONE_WINDOWS
+  std::wstring wPath = FileSystem::ToUtf16(filepath);
+  std::ifstream file(wPath.c_str());
+#else
   std::ifstream file(filepath);
+#endif
+
   if (!file.is_open()) {
     LogManager::getInstance().log("config", LogLevel::LOG_ERROR,
                                   "파일 열기 실패: " + filepath);
@@ -241,7 +247,13 @@ bool ConfigManager::writeConfigToFile(
       FileSystem::CreateDirectoryRecursive(dir);
     }
 
+#if PULSEONE_WINDOWS
+    std::wstring wPath = FileSystem::ToUtf16(filepath);
+    std::ofstream file(wPath.c_str());
+#else
     std::ofstream file(filepath);
+#endif
+
     if (!file.is_open()) {
       return false;
     }
@@ -280,7 +292,13 @@ ConfigManager::parseConfigFile(const std::string &filepath) const {
     return result;
   }
 
+#if PULSEONE_WINDOWS
+  std::wstring wPath = FileSystem::ToUtf16(filepath);
+  std::ifstream file(wPath.c_str());
+#else
   std::ifstream file(filepath);
+#endif
+
   if (!file.is_open()) {
     return result;
   }

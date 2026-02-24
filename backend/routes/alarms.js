@@ -42,8 +42,6 @@ const tenantIsolation = (req, res, next) => {
     next();
 };
 
-router.use(authenticateToken);
-router.use(tenantIsolation);
 
 // ============================================================================
 // 알람 발생 (Alarm Occurrences) API - 16개 엔드포인트

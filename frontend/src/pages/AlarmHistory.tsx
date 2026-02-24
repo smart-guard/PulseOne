@@ -44,7 +44,7 @@ interface FilterOptions {
 
 const AlarmHistory: React.FC = () => {
   const { confirm } = useConfirmContext();
-  const { decrementAlarmCount } = useAlarmContext();
+  const { decrementAlarmCount, refreshAlarmCount } = useAlarmContext();
   const isSmallScreen = useMediaQuery('(max-width: 1600px)');
   // 기본 상태들
   const [alarmEvents, setAlarmEvents] = useState<AlarmOccurrence[]>([]);
@@ -342,7 +342,8 @@ const AlarmHistory: React.FC = () => {
       }
 
       if (response.success) {
-        decrementAlarmCount();
+        // 전역 뱃지 재조회 (단순 -1 대신 서버에서 정확한 미확인 개수 조회)
+        await refreshAlarmCount();
         await Promise.all([
           fetchAlarmHistory(),
           fetchStatistics()

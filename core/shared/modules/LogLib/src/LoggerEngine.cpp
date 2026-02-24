@@ -5,12 +5,24 @@
 #include <iostream>
 #include <sstream>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 namespace LogLib {
 
 LoggerEngine::LoggerEngine()
     : minLevel_(LogLevel::INFO), log_base_path_("./logs/"),
       console_output_enabled_(true), file_output_enabled_(true),
-      max_log_size_mb_(100), max_log_files_(30) {}
+      max_log_size_mb_(100), max_log_files_(30) {
+#ifdef _WIN32
+  // Windows 콘솔에서 UTF-8 로그가 깨지지 않도록 강제 설정
+  SetConsoleOutputCP(CP_UTF8);
+#endif
+}
 
 LoggerEngine::~LoggerEngine() { flushAll(); }
 

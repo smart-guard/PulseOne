@@ -133,152 +133,97 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
         }
     };
 
-    const renderContent = () => {
-        if (loading) {
-            return (
-                <div className="loading-spinner">
-                    <i className="fas fa-spinner fa-spin"></i> 로딩 중...
-                </div>
-            );
-        }
+    const sectionStyle: React.CSSProperties = { border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '12px 14px' };
+    const sectionTitleStyle: React.CSSProperties = { fontSize: '13px', fontWeight: 700, color: 'var(--neutral-700)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' };
+    const fieldLabel: React.CSSProperties = { fontSize: '11px', fontWeight: 600, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: '2px' };
+    const fieldValue: React.CSSProperties = { fontSize: '13px', fontWeight: 500, color: 'var(--neutral-800)' };
+    const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', border: '1px solid var(--neutral-200)', borderRadius: '6px', fontSize: '13px', outline: 'none' };
 
-        if (!tenant) {
-            return <div className="mgmt-alert mgmt-alert-danger">고객사 정보를 불러오지 못했습니다.</div>;
-        }
+    const renderContent = () => {
+        if (loading) return <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--neutral-400)', fontSize: '13px' }}><i className="fas fa-spinner fa-spin" style={{ marginRight: '6px' }}></i>로딩 중...</div>;
+        if (!tenant) return <div className="mgmt-alert mgmt-alert-danger">고객사 정보를 불러오지 못했습니다.</div>;
 
         if (isEditing) {
             return (
                 <form id="tenant-detail-form" onSubmit={handleSubmit}>
-                    <div className="mgmt-modal-form-grid">
-                        <div className="mgmt-modal-form-section">
-                            <h3><i className="fas fa-building"></i> 기본 정보</h3>
-                            <div className="mgmt-modal-form-group">
-                                <label className="required">회사명</label>
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    value={formData.company_name}
-                                    onChange={e => setFormData({ ...formData, company_name: e.target.value })}
-                                    required
-                                />
-                            </div>
-                            <div className="mgmt-modal-form-group">
-                                <label>회사 코드</label>
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    value={formData.company_code}
-                                    disabled
-                                    title="회사 코드는 변경할 수 없습니다."
-                                />
-                            </div>
-                            <div className="mgmt-modal-form-group">
-                                <label>도메인</label>
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    value={formData.domain || ''}
-                                    onChange={e => setFormData({ ...formData, domain: e.target.value })}
-                                />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        {/* 기본 정보 */}
+                        <div style={sectionStyle}>
+                            <div style={sectionTitleStyle}><i className="fas fa-building"></i> 기본 정보</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div>
+                                    <div style={fieldLabel}>회사명 <span style={{ color: 'var(--error-500)' }}>*</span></div>
+                                    <input type="text" style={inputStyle} value={formData.company_name} onChange={e => setFormData({ ...formData, company_name: e.target.value })} required />
+                                </div>
+                                <div>
+                                    <div style={fieldLabel}>회사 코드</div>
+                                    <input type="text" style={{ ...inputStyle, background: 'var(--neutral-50)', color: 'var(--neutral-500)' }} value={formData.company_code} disabled />
+                                </div>
+                                <div>
+                                    <div style={fieldLabel}>도메인</div>
+                                    <input type="text" style={inputStyle} value={formData.domain || ''} onChange={e => setFormData({ ...formData, domain: e.target.value })} />
+                                </div>
                             </div>
                         </div>
 
-                        <div className="mgmt-modal-form-section">
-                            <h3><i className="fas fa-user-tie"></i> 담당자 정보</h3>
-                            <div className="mgmt-modal-form-group">
-                                <label>이름</label>
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    value={formData.contact_name || ''}
-                                    onChange={e => setFormData({ ...formData, contact_name: e.target.value })}
-                                />
-                            </div>
-                            <div className="mgmt-modal-form-group">
-                                <label>이메일</label>
-                                <input
-                                    type="email"
-                                    className="form-control"
-                                    value={formData.contact_email || ''}
-                                    onChange={e => setFormData({ ...formData, contact_email: e.target.value })}
-                                />
-                            </div>
-                            <div className="mgmt-modal-form-group">
-                                <label>연락처</label>
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    value={formData.contact_phone || ''}
-                                    onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
-                                />
+                        {/* 담당자 정보 */}
+                        <div style={sectionStyle}>
+                            <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> 담당자 정보</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div>
+                                    <div style={fieldLabel}>이름</div>
+                                    <input type="text" style={inputStyle} value={formData.contact_name || ''} onChange={e => setFormData({ ...formData, contact_name: e.target.value })} />
+                                </div>
+                                <div>
+                                    <div style={fieldLabel}>이메일</div>
+                                    <input type="email" style={inputStyle} value={formData.contact_email || ''} onChange={e => setFormData({ ...formData, contact_email: e.target.value })} />
+                                </div>
+                                <div>
+                                    <div style={fieldLabel}>연락처</div>
+                                    <input type="text" style={inputStyle} value={formData.contact_phone || ''} onChange={e => setFormData({ ...formData, contact_phone: e.target.value })} />
+                                </div>
                             </div>
                         </div>
 
-                        <div className="mgmt-modal-form-section mgmt-span-full">
-                            <h3><i className="fas fa-cog"></i> 설정 및 상태</h3>
-                            <div className="mgmt-modal-form-row">
-                                <div className="mgmt-modal-form-group">
-                                    <label>구독 플랜</label>
-                                    <select
-                                        className="form-control"
-                                        value={formData.subscription_plan}
-                                        onChange={e => setFormData({ ...formData, subscription_plan: e.target.value as any })}
-                                    >
+                        {/* 설정 및 상태 */}
+                        <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
+                            <div style={sectionTitleStyle}><i className="fas fa-cog"></i> 설정 및 상태</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <div style={fieldLabel}>구독 플랜</div>
+                                    <select style={inputStyle} value={formData.subscription_plan} onChange={e => setFormData({ ...formData, subscription_plan: e.target.value as any })}>
                                         <option value="starter">스타터 (Starter)</option>
                                         <option value="professional">프로페셔널 (Professional)</option>
                                         <option value="enterprise">엔터프라이즈 (Enterprise)</option>
                                     </select>
                                 </div>
-                                <div className="modal-form-group">
-                                    <label>구독 상태</label>
-                                    <select
-                                        className="form-control"
-                                        value={formData.subscription_status}
-                                        onChange={e => setFormData({ ...formData, subscription_status: e.target.value as any })}
-                                    >
+                                <div>
+                                    <div style={fieldLabel}>구독 상태</div>
+                                    <select style={inputStyle} value={formData.subscription_status} onChange={e => setFormData({ ...formData, subscription_status: e.target.value as any })}>
                                         <option value="active">활성 (Active)</option>
                                         <option value="trial">트라이얼 (Trial)</option>
                                         <option value="suspended">정지 (Suspended)</option>
                                         <option value="cancelled">취소 (Cancelled)</option>
                                     </select>
                                 </div>
-                                <div className="modal-form-group">
-                                    <label>계정 상태</label>
-                                    <div className="checkbox-group" style={{ height: '38px', display: 'flex', alignItems: 'center' }}>
-                                        <label className="checkbox-label" style={{ margin: 0 }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={formData.is_active}
-                                                onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
-                                            />
+                                <div>
+                                    <div style={fieldLabel}>계정 상태</div>
+                                    <div style={{ padding: '6px 10px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-200)', height: '32px', display: 'flex', alignItems: 'center' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', margin: 0 }}>
+                                            <input type="checkbox" checked={formData.is_active} onChange={e => setFormData({ ...formData, is_active: e.target.checked })} />
                                             계정 활성화
                                         </label>
                                     </div>
                                 </div>
                             </div>
-
-                            <div className="modal-form-row" style={{ marginTop: '12px' }}>
-                                <div className="modal-form-group">
-                                    <label>Collector 할당 한도 <span style={{ fontSize: '11px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(사이트 등록 시 1개씩 사용)</span></label>
-                                    <input
-                                        type="number"
-                                        className="form-control"
-                                        value={formData.max_edge_servers || ''}
-                                        onChange={e => setFormData({ ...formData, max_edge_servers: parseInt(e.target.value) || 0 })}
-                                        min="1"
-                                        placeholder="1"
-                                    />
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
+                                <div>
+                                    <div style={fieldLabel}>Edge Server 할당 한도 <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(사이트 등록 시 1개씩 사용)</span></div>
+                                    <input type="number" style={inputStyle} value={formData.max_edge_servers || ''} onChange={e => setFormData({ ...formData, max_edge_servers: parseInt(e.target.value) || 0 })} min="1" />
                                 </div>
-                                <div className="modal-form-group">
-                                    <label>최대 데이터 포인트</label>
-                                    <input
-                                        type="number"
-                                        className="form-control"
-                                        value={formData.max_data_points || ''}
-                                        onChange={e => setFormData({ ...formData, max_data_points: parseInt(e.target.value) || 0 })}
-                                        min="100"
-                                        placeholder="100"
-                                    />
+                                <div>
+                                    <div style={fieldLabel}>최대 데이터 포인트</div>
+                                    <input type="number" style={inputStyle} value={formData.max_data_points || ''} onChange={e => setFormData({ ...formData, max_data_points: parseInt(e.target.value) || 0 })} min="100" />
                                 </div>
                             </div>
                         </div>
@@ -287,71 +232,81 @@ export const TenantDetailModal: React.FC<TenantDetailModalProps> = ({
             );
         }
 
+        // 상세 보기 모드
         return (
-            <div className="mgmt-modal-form-grid">
-                <div className="mgmt-modal-form-section">
-                    <h3><i className="fas fa-building"></i> 기본 정보</h3>
-                    <div className="detail-item">
-                        <div className="detail-label">회사명</div>
-                        <div className="detail-value highlight">{tenant.company_name}</div>
-                    </div>
-                    <div className="detail-item">
-                        <div className="detail-label">회사 코드</div>
-                        <div className="detail-value"><code>{tenant.company_code}</code></div>
-                    </div>
-                    <div className="detail-item">
-                        <div className="detail-label">도메인</div>
-                        <div className="detail-value">{tenant.domain || '-'}</div>
-                    </div>
-                </div>
-
-                <div className="mgmt-modal-form-section">
-                    <h3><i className="fas fa-user-tie"></i> 담당자 정보</h3>
-                    <div className="detail-item">
-                        <div className="detail-label">이름</div>
-                        <div className="detail-value">{tenant.contact_name || '-'}</div>
-                    </div>
-                    <div className="detail-item">
-                        <div className="detail-label">연락처</div>
-                        <div className="detail-value">
-                            {tenant.contact_email && <div><i className="fas fa-envelope"></i> {tenant.contact_email}</div>}
-                            {tenant.contact_phone && <div><i className="fas fa-phone"></i> {tenant.contact_phone}</div>}
-                            {!tenant.contact_email && !tenant.contact_phone && '-'}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {/* 기본 정보 */}
+                <div style={sectionStyle}>
+                    <div style={sectionTitleStyle}><i className="fas fa-building"></i> 기본 정보</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div>
+                            <div style={fieldLabel}>회사명</div>
+                            <div style={{ ...fieldValue, fontSize: '15px', fontWeight: 700 }}>{tenant.company_name}</div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                                <div style={fieldLabel}>회사 코드</div>
+                                <div style={fieldValue}><code style={{ background: 'var(--neutral-100)', padding: '1px 5px', borderRadius: '4px', fontSize: '12px' }}>{tenant.company_code}</code></div>
+                            </div>
+                            <div>
+                                <div style={fieldLabel}>도메인</div>
+                                <div style={fieldValue}>{tenant.domain || '-'}</div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="mgmt-modal-form-section mgmt-span-full">
-                    <h3><i className="fas fa-chart-pie"></i> 구독 및 사용량</h3>
-                    <div className="modal-form-grid-inner">
-                        <div className="detail-item">
-                            <div className="detail-label">플랜</div>
-                            <div className="detail-value">
-                                <span className={`badge ${tenant.subscription_plan === 'enterprise' ? 'primary' : 'neutral'}`}>
+                {/* 담당자 정보 */}
+                <div style={sectionStyle}>
+                    <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> 담당자 정보</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div>
+                            <div style={fieldLabel}>이름</div>
+                            <div style={fieldValue}>{tenant.contact_name || '-'}</div>
+                        </div>
+                        <div>
+                            <div style={fieldLabel}>연락처</div>
+                            <div style={fieldValue}>
+                                {tenant.contact_email && <div style={{ fontSize: '12px' }}><i className="fas fa-envelope" style={{ marginRight: '4px', color: 'var(--neutral-400)' }}></i>{tenant.contact_email}</div>}
+                                {tenant.contact_phone && <div style={{ fontSize: '12px', marginTop: '2px' }}><i className="fas fa-phone" style={{ marginRight: '4px', color: 'var(--neutral-400)' }}></i>{tenant.contact_phone}</div>}
+                                {!tenant.contact_email && !tenant.contact_phone && '-'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 구독 및 사용량 */}
+                <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
+                    <div style={sectionTitleStyle}><i className="fas fa-chart-pie"></i> 구독 및 사용량</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
+                        <div>
+                            <div style={fieldLabel}>플랜</div>
+                            <div style={fieldValue}>
+                                <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, background: tenant.subscription_plan === 'enterprise' ? '#dbeafe' : 'var(--neutral-100)', color: tenant.subscription_plan === 'enterprise' ? '#1e40af' : 'var(--neutral-600)' }}>
                                     {tenant.subscription_plan ? tenant.subscription_plan.toUpperCase() : '-'}
                                 </span>
                             </div>
                         </div>
-                        <div className="detail-item">
-                            <div className="detail-label">상태</div>
-                            <div className="detail-value">
-                                <span className={`badge ${tenant.subscription_status === 'active' ? 'success' : 'warning'}`}>
+                        <div>
+                            <div style={fieldLabel}>상태</div>
+                            <div style={fieldValue}>
+                                <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, background: tenant.subscription_status === 'active' ? '#dcfce7' : '#fef3c7', color: tenant.subscription_status === 'active' ? '#15803d' : '#92400e' }}>
                                     {tenant.subscription_status ? tenant.subscription_status.toUpperCase() : '-'}
                                 </span>
                             </div>
                         </div>
-                        <div className="detail-item">
-                            <div className="detail-label">Collector 현황</div>
-                            <div className="detail-value">
+                        <div>
+                            <div style={fieldLabel}>Edge Server 현황</div>
+                            <div style={fieldValue}>
                                 <span className="usage-indicator">
                                     <i className="fas fa-server" style={{ marginRight: '4px', color: 'var(--primary-500)' }}></i>
-                                    <strong>{(tenant as any).edge_servers_count || 0}</strong> / {tenant.max_edge_servers} 대 사용
+                                    <strong>{(tenant as any).edge_servers_count || 0}</strong> / {tenant.max_edge_servers} 대
                                 </span>
                             </div>
                         </div>
-                        <div className="detail-item">
-                            <div className="detail-label">데이터 포인트</div>
-                            <div className="detail-value">
+                        <div>
+                            <div style={fieldLabel}>데이터 포인트</div>
+                            <div style={fieldValue}>
                                 <span className="usage-indicator">
                                     <strong>{(tenant as any).data_points_count || 0}</strong> / {(tenant.max_data_points || 0).toLocaleString()} 개
                                 </span>

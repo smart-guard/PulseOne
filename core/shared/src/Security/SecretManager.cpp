@@ -138,6 +138,14 @@ SecureString SecretManager::getSecret(const std::string &secret_name,
       return SecureString();
     }
 
+    // 파일 존재 여부 확인
+    if (!FileSystem::FileExists(file_path)) {
+      LOG_SECRET(LogLevel::DEBUG,
+                 "시크릿 파일이 존재하지 않음 (기본값 사용): " +
+                     maskSensitivePath(file_path));
+      return SecureString();
+    }
+
     // 파일 권한 검증
     if (!validateFilePermissions(file_path)) {
       LOG_SECRET(LogLevel::LOG_ERROR,
@@ -472,12 +480,9 @@ std::vector<std::string> SecretManager::getExpiredSecrets() const {
 
 bool SecretManager::validateFilePermissions(
     const std::string &file_path) const {
-  if (!FileSystem::FileExists(file_path)) {
-    return false;
-  }
-
 #ifdef _WIN32
   return true; // Windows에서는 파일 존재만 확인
+
 #else
   struct stat file_stat;
   if (stat(file_path.c_str(), &file_stat) == 0) {

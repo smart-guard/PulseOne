@@ -282,7 +282,7 @@ endif
 
 # 🔥 기본 시스템 라이브러리 (SQLite3 추가!)
 ifeq ($(IS_WINDOWS),1)
-    BASIC_LIBS = -lpthread -lstdc++ -lm -lsqlite3
+    BASIC_LIBS = -lpthread -static-libstdc++ -static-libgcc -lm -lsqlite3
     PLATFORM_LIBS = -lws2_32 -lwsock32 -liphlpapi -lodbc32 -lodbccp32 -lcrypt32 -ladvapi32 -lwldap32 -lrpcrt4 -luuid
 else
     BASIC_LIBS = -lpthread -lm -ldl -lsqlite3
@@ -356,7 +356,7 @@ CLI_TEST_SOURCES = tests/manual/cli_tests.cpp
 CLI_TEST_OBJECTS = $(BUILD_DIR)/tests/manual/cli_tests.o
 
 # 📦 전체 오브젝트 파일 (EVENT_OBJECTS로 변경) ✅
-ALL_OBJECTS = $(EVENT_OBJECTS) $(MODEL_OBJECTS) $(SERVICE_OBJECTS) $(TARGET_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(CLI_TEST_OBJECTS) $(MAIN_OBJECT)
+ALL_OBJECTS = $(EVENT_OBJECTS) $(MODEL_OBJECTS) $(SERVICE_OBJECTS) $(TARGET_OBJECTS) $(SCHEDULE_OBJECTS) $(TRANSFORM_OBJECTS) $(CSP_OBJECTS) $(EXPORT_OBJECTS) $(UTILS_OBJECTS) $(MAIN_OBJECT)
 
 # 🎯 최종 실행 파일
 TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)

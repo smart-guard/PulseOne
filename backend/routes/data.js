@@ -12,8 +12,6 @@ const {
 } = require('../middleware/tenantIsolation');
 
 // 글로벌 미들웨어는 app.js에서 적용되지만, 개별 라우터에서도 명시적으로 사용 가능
-router.use(authenticateToken);
-router.use(tenantIsolation);
 
 // 응답 헬퍼
 function createResponse(success, data, message, errorCode) {

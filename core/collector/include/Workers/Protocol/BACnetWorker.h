@@ -17,19 +17,21 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 // =============================================================================
 // PulseOne 헤더들 (순서 중요!)
 // =============================================================================
 #include "Common/DriverStatistics.h"
 #include "Common/Structs.h"
-#include "Drivers/Bacnet/BACnetServiceManager.h"
 #include "Drivers/Bacnet/BACnetTypes.h"
 #include "Drivers/Common/DriverFactory.h"   // 팩토리 사용
 #include "Drivers/Common/IProtocolDriver.h" // 인터페이스 사용
@@ -349,10 +351,6 @@ private:
 
   // 독립 BACnetDriver 객체 (인터페이스 사용)
   std::unique_ptr<PulseOne::Drivers::IProtocolDriver> bacnet_driver_;
-
-  // BACnet 서비스 매니저
-  std::shared_ptr<PulseOne::Drivers::BACnetServiceManager>
-      bacnet_service_manager_;
 
   // 워커 통계
   BACnetWorkerStats worker_stats_;

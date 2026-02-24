@@ -1,13 +1,26 @@
-/* TenantModal.css */
-.tenant-modal {
+/* TenantModal.css — higher specificity to override management.css (same pattern as SiteModal.css) */
+.mgmt-modal-container.tenant-modal {
     max-width: 900px !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
 }
 
-.tenant-modal .mgmt-modal-body {
-    padding: 16px 20px;
-    /* Reduced vertical padding */
-    max-height: calc(90vh - 120px);
-    overflow-y: auto;
+.mgmt-modal-container.tenant-modal>.mgmt-modal-header {
+    min-height: auto !important;
+    padding: 14px 20px !important;
+}
+
+.mgmt-modal-container.tenant-modal>.mgmt-modal-body {
+    flex: 0 0 auto !important;
+    padding: 16px 20px !important;
+    overflow-y: auto !important;
+    max-height: 70vh;
+}
+
+.mgmt-modal-container.tenant-modal>.mgmt-modal-footer {
+    min-height: auto !important;
+    padding: 12px 20px !important;
 }
 
 .mgmt-modal-form-grid {

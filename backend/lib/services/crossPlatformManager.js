@@ -86,8 +86,8 @@ class CrossPlatformManager {
             development: {
                 win32: {
                     root: projectRoot,
-                    collector: customCollectorPath || path.resolve(projectRoot, 'collector.exe'),
-                    exportGateway: path.resolve(projectRoot, 'export-gateway.exe'),
+                    collector: customCollectorPath || path.resolve(projectRoot, 'pulseone-collector.exe'),
+                    exportGateway: path.resolve(projectRoot, 'pulseone-export-gateway.exe'),
                     redis: customRedisPath || path.resolve(projectRoot, 'redis-server.exe'),
                     config: path.join(projectRoot, 'config'),
                     data: path.join(projectRoot, 'data'),
@@ -121,8 +121,8 @@ class CrossPlatformManager {
             production: {
                 win32: {
                     root: projectRoot,
-                    collector: customCollectorPath || path.resolve(projectRoot, 'collector.exe'),
-                    exportGateway: path.resolve(projectRoot, 'export-gateway.exe'),
+                    collector: customCollectorPath || path.resolve(projectRoot, 'pulseone-collector.exe'),
+                    exportGateway: path.resolve(projectRoot, 'pulseone-export-gateway.exe'),
                     redis: customRedisPath || path.resolve(projectRoot, 'redis-server.exe'),
                     config: path.resolve(projectRoot, 'config'),
                     data: path.resolve(projectRoot, 'data'),
@@ -244,19 +244,18 @@ class CrossPlatformManager {
                     memory: memUsage
                 };
 
-                // 프로세스 분류
+                // 프로세스 분류 - pkg로 컴파일된 실제 exe명 기준
                 const lowerImageName = imageName.toLowerCase();
 
-                if (lowerImageName.includes('node.exe')) {
+                if (lowerImageName.includes('pulseone-backend.exe') || lowerImageName.includes('node.exe')) {
                     processes.backend.push(processInfo);
-                } else if (lowerImageName.includes('collector.exe')) {
-                    // Windows에서 상세 커맨드라인 확인을 위해 추가 정보 수집 가능 (필요시)
+                } else if (lowerImageName.includes('pulseone-collector.exe') || lowerImageName.includes('collector.exe')) {
                     this.log('INFO', `Collector 프로세스 발견: PID ${pid}`);
                     processes.collector.push(processInfo);
                 } else if (lowerImageName.includes('redis-server.exe')) {
                     this.log('INFO', `Redis 프로세스 발견: PID ${pid}`);
                     processes.redis.push(processInfo);
-                } else if (lowerImageName.includes('export-gateway.exe')) {
+                } else if (lowerImageName.includes('pulseone-export-gateway.exe') || lowerImageName.includes('export-gateway.exe')) {
                     this.log('INFO', `Export Gateway 프로세스 발견: PID ${pid}`);
                     processes.exportGateway.push(processInfo);
                 }

@@ -11,6 +11,7 @@
  *   - Docker 컨테이너 (docker compose)
  */
 
+#include "Utils/ProcessSupervisor.h"
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -22,13 +23,13 @@
 #include <vector>
 
 // ✅ v2.0 헤더
+#include <cstdlib>
 // ✅ v2.0 헤더 (CSP Removed)
 #include "Export/ExportLogService.h"
 #include "Logging/LogManager.h"
 #include "Utils/ConfigManager.h"
 
-// ✅ CLI 테스트 헬퍼 (--test-* 플래그용, 분리됨)
-#include "../tests/manual/cli_tests.h"
+// ✅ CLI 테스트 헬퍼 (--test-* 플래그용, 분리됨) - 제거됨
 
 // ✅ Refactored Services
 #include "Client/RedisClientImpl.h"
@@ -86,6 +87,7 @@ struct ExportCoordinatorConfig {
 
 // 전역 종료 플래그
 std::atomic<bool> g_shutdown_requested{false};
+PulseOne::Utils::ProcessSupervisor *g_supervisor = nullptr;
 
 // =============================================================================
 // 시그널 핸들러
@@ -97,6 +99,9 @@ void signal_handler(int signal) {
   LogManager::getInstance().Info("Shutdown signal received: " +
                                  std::to_string(signal));
   g_shutdown_requested.store(true);
+  if (g_supervisor) {
+    g_supervisor->requestShutdown();
+  }
 }
 
 // =============================================================================
@@ -148,8 +153,7 @@ ExportCoordinatorConfig loadCoordinatorConfig() {
 
     // 데이터베이스 설정
     config.database_type = cfg_mgr.getOrDefault("DB_TYPE", "SQLITE");
-    config.database_path =
-        cfg_mgr.getOrDefault("SQLITE_PATH", "/app/data/db/pulseone.db");
+    config.database_path = cfg_mgr.getSQLiteDbPath();
 
     config.db_host = cfg_mgr.getOrDefault("DB_PRIMARY_HOST", "localhost");
     config.db_port = std::stoi(cfg_mgr.getOrDefault("DB_PRIMARY_PORT", "5432"));
@@ -157,10 +161,11 @@ ExportCoordinatorConfig loadCoordinatorConfig() {
     config.db_user = cfg_mgr.getOrDefault("DB_PRIMARY_USER", "pulseone");
     config.db_pass = cfg_mgr.getOrDefault("DB_PRIMARY_PASS", "");
 
-    // Redis 설정
-    config.redis_host = cfg_mgr.getOrDefault("REDIS_HOST", "localhost");
-    config.redis_port = std::stoi(cfg_mgr.getOrDefault("REDIS_PORT", "6379"));
-    config.redis_password = cfg_mgr.getOrDefault("REDIS_PASSWORD", "");
+    // Redis 설정 (redis.env의 REDIS_PRIMARY_* 키명과 통일)
+    config.redis_host = cfg_mgr.getOrDefault("REDIS_PRIMARY_HOST", "localhost");
+    config.redis_port =
+        std::stoi(cfg_mgr.getOrDefault("REDIS_PRIMARY_PORT", "6379"));
+    config.redis_password = cfg_mgr.getOrDefault("REDIS_PRIMARY_PASSWORD", "");
 
     // AlarmSubscriber 설정
     config.alarm_worker_threads =
@@ -256,19 +261,10 @@ void runDaemonMode(PulseOne::Gateway::Service::GatewayService &service) {
   std::cout << "데몬 모드로 실행 중...\n";
   std::cout << "종료하려면 Ctrl+C를 누르세요.\n\n";
 
-  int stats_counter = 0;
-  const int stats_interval = 60; // 60초마다 통계 출력
-
   auto &runner = service.getContext().getRunner();
 
   while (!g_shutdown_requested.load()) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
-
-    stats_counter++;
-    if (stats_counter >= stats_interval) {
-      printStatistics(runner);
-      stats_counter = 0;
-    }
   }
 
   LogManager::getInstance().Info("데몬 모드 종료");
@@ -345,10 +341,47 @@ int main(int argc, char **argv) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
+    // ── Supervisor 모드: --id 미지정 시 ──
+    if (gateway_id == "default") {
+      std::cout << "📡 Supervisor 모드 진입 (--id 미지정)" << std::endl;
+
+      if (!config_path.empty()) {
+#if PULSEONE_WINDOWS
+        _putenv_s("PULSEONE_CONFIG_DIR", config_path.c_str());
+#else
+        setenv("PULSEONE_CONFIG_DIR", config_path.c_str(), 1);
+#endif
+      }
+      ConfigManager::getInstance().initialize();
+
+      DbLib::DatabaseConfig db_config;
+      db_config.type =
+          ConfigManager::getInstance().getOrDefault("DATABASE_TYPE", "SQLITE");
+      db_config.sqlite_path = ConfigManager::getInstance().getSQLiteDbPath();
+      if (!DbLib::DatabaseManager::getInstance().initialize(db_config)) {
+        std::cerr << "❌ DB 초기화 실패" << std::endl;
+        return 1;
+      }
+
+      PulseOne::Utils::ProcessSupervisor supervisor("gateway", argv[0],
+                                                    config_path);
+      g_supervisor = &supervisor;
+      supervisor.run();
+      g_supervisor = nullptr;
+      return 0;
+    }
+
+    // ── Worker 모드: --id=N으로 실행 ──
+
     // 1. 설정 로드
     if (!config_path.empty()) {
-      ConfigManager::getInstance().load(config_path);
+#if PULSEONE_WINDOWS
+      _putenv_s("PULSEONE_CONFIG_DIR", config_path.c_str());
+#else
+      setenv("PULSEONE_CONFIG_DIR", config_path.c_str(), 1);
+#endif
     }
+    ConfigManager::getInstance().initialize();
     auto config = loadCoordinatorConfig();
 
     LogManager::getInstance().Info("Export Gateway 시작 (ID: " + gateway_id +
@@ -425,19 +458,7 @@ int main(int argc, char **argv) {
     auto runner =
         std::make_unique<PulseOne::Gateway::Service::TargetRunner>(*registry);
 
-    // 단독 테스트 모드들 (cli_tests.cpp 함수 사용)
-    if (test_alarm) {
-      testSingleAlarm(*runner);
-      return 0;
-    }
-    if (test_targets) {
-      testTargets(*registry);
-      return 0;
-    }
-    if (test_connection) {
-      testConnection(*runner, *registry);
-      return 0;
-    }
+    // 단독 테스트 모드들 (제거됨)
 
     // 6. GatewayContext + GatewayService 시작
     auto redis_client = std::make_unique<RedisClientImpl>();
@@ -468,14 +489,14 @@ int main(int argc, char **argv) {
 
     // 8. 데몬 / 인터랙티브 / 테스트 모드
     if (interactive) {
-      runInteractiveMode(service.getContext().getRunner(),
-                         service.getContext().getRegistry());
+      // runInteractiveMode(service.getContext().getRunner(),
+      //                    service.getContext().getRegistry());
     } else if (test_all) {
-      testSingleAlarm(service.getContext().getRunner());
-      testTargets(service.getContext().getRegistry());
-      testConnection(service.getContext().getRunner(),
-                     service.getContext().getRegistry());
-      testSchedule();
+      // testSingleAlarm(service.getContext().getRunner());
+      // testTargets(service.getContext().getRegistry());
+      // testConnection(service.getContext().getRunner(),
+      //                service.getContext().getRegistry());
+      // testSchedule();
     } else {
       runDaemonMode(service);
     }

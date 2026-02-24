@@ -1331,7 +1331,6 @@
 
 .mgmt-modal-body {
     padding: 12px 16px 4px 16px !important;
-    /* Added 12px top padding */
     overflow-y: auto !important;
     flex: 1 1 auto !important;
     background: #ffffff !important;

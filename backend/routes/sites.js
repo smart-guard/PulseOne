@@ -6,11 +6,11 @@
 const express = require('express');
 const router = express.Router();
 const SiteService = require('../lib/services/SiteService');
-const { authenticateToken, tenantIsolation, requireRole } = require('../middleware/tenantIsolation');
+const { requireRole } = require('../middleware/tenantIsolation');
 
-// 모든 라우트에 대해 인증 및 테넌트 격리 기본 적용
-router.use(authenticateToken);
-router.use(tenantIsolation);
+// 인증/테넌트 격리는 app.js에서 /api/* 전역으로 이미 적용됨
+// router.use(authenticateToken); ← 중복 제거 (이중 적용 시 req.tenantId 덮어씌워짐)
+// router.use(tenantIsolation);   ← 중복 제거
 
 /**
  * @route   GET /api/sites

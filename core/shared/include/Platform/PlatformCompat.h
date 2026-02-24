@@ -17,7 +17,10 @@
 #include <vector>
 
 // C++17 filesystem 지원 확인
-#if __cplusplus >= 201703L && __has_include(<filesystem>)
+// (단, Windows/MinGW 환경에서는 GetModuleFileNameA가 반환하는 CP949(ANSI)
+// 경로와 std::filesystem의 UTF-8 인코딩 가정이 충돌하므로 사용하지 않고 Windows
+// API 폴백 사용)
+#if __cplusplus >= 201703L && __has_include(<filesystem>) && !defined(_WIN32)
 #include <algorithm>
 #include <filesystem>
 #define HAS_FILESYSTEM 1
@@ -55,6 +58,7 @@
 #endif
 
 // 순서 중요: winsock2.h -> ws2tcpip.h -> windows.h
+#include <algorithm>
 #include <shlwapi.h> // 경로 처리용
 #include <windows.h>
 #include <winsock2.h>
@@ -212,6 +216,55 @@ public:
   }
 
   /**
+   * @brief ANSI (CP949) 문자열을 UTF-8(로그 출력용)으로 변환
+   */
+  static std::string ToUtf8(const char *ansiStr) {
+#if PULSEONE_WINDOWS
+    if (!ansiStr || !ansiStr[0])
+      return "";
+    // 1. ANSI -> UTF-16
+    int wLen = MultiByteToWideChar(CP_ACP, 0, ansiStr, -1, nullptr, 0);
+    if (wLen <= 0)
+      return ansiStr;
+    std::wstring wStr(wLen, 0);
+    MultiByteToWideChar(CP_ACP, 0, ansiStr, -1, &wStr[0], wLen);
+
+    // 2. UTF-16 -> UTF-8
+    int uLen = WideCharToMultiByte(CP_UTF8, 0, wStr.c_str(), -1, nullptr, 0,
+                                   nullptr, nullptr);
+    if (uLen <= 0)
+      return ansiStr;
+    std::string uStr(uLen - 1, 0); // null terminator 제거
+    WideCharToMultiByte(CP_UTF8, 0, wStr.c_str(), -1, &uStr[0], uLen, nullptr,
+                        nullptr);
+    return uStr;
+#else
+    return ansiStr ? ansiStr : "";
+#endif
+  }
+
+#if PULSEONE_WINDOWS
+  /**
+   * @brief UTF-16 문자열을 UTF-8로 변환 (GetModuleFileNameW 등 W API 결과
+   * 처리용)
+   */
+  static std::string ToUtf8(const wchar_t *wStr) {
+    if (!wStr || !wStr[0])
+      return "";
+    int uLen =
+        WideCharToMultiByte(CP_UTF8, 0, wStr, -1, nullptr, 0, nullptr, nullptr);
+    if (uLen <= 0)
+      return "";
+    std::string uStr(uLen - 1, 0); // Remove null terminator
+    WideCharToMultiByte(CP_UTF8, 0, wStr, -1, &uStr[0], uLen, nullptr, nullptr);
+    return uStr;
+  }
+  static std::string ToUtf8(const std::wstring &wStr) {
+    return ToUtf8(wStr.c_str());
+  }
+#endif
+
+  /**
    * @brief 절대 경로로 변환
    */
   static std::string GetAbsolute(const std::string &path) {
@@ -226,7 +279,7 @@ public:
 #if PULSEONE_WINDOWS
     char abs_path[MAX_PATH];
     if (GetFullPathNameA(path.c_str(), MAX_PATH, abs_path, nullptr)) {
-      return std::string(abs_path);
+      return ToUtf8(abs_path);
     }
 #else
     char abs_path[PATH_MAX];
@@ -303,10 +356,10 @@ public:
    */
   static std::string GetExecutableDirectory() {
 #if PULSEONE_WINDOWS
-    char buffer[MAX_PATH];
-    DWORD result = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
+    wchar_t buffer[MAX_PATH];
+    DWORD result = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
     if (result > 0 && result < MAX_PATH) {
-      return GetDirectory(std::string(buffer));
+      return GetDirectory(ToUtf8(buffer));
     }
 #else
     char buffer[PATH_MAX];
@@ -342,6 +395,22 @@ public:
 // =============================================================================
 class FileSystem {
 public:
+#if PULSEONE_WINDOWS
+  /**
+   * @brief UTF-8 문자열을 UTF-16 (Windows API용)으로 변환
+   */
+  static std::wstring ToUtf16(const std::string &utf8Str) {
+    if (utf8Str.empty())
+      return L"";
+    int wLen = MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), -1, nullptr, 0);
+    if (wLen <= 0)
+      return L"";
+    std::wstring wStr(wLen - 1, 0); // null terminator 제거
+    MultiByteToWideChar(CP_UTF8, 0, utf8Str.c_str(), -1, &wStr[0], wLen);
+    return wStr;
+  }
+#endif
+
   static bool CreateDirectory(const std::string &path) {
 #if HAS_FILESYSTEM
     try {
@@ -352,7 +421,8 @@ public:
 #endif
 
 #if PULSEONE_WINDOWS
-    return ::CreateDirectoryA(path.c_str(), nullptr) != 0 ||
+    std::wstring wPath = ToUtf16(path);
+    return ::CreateDirectoryW(wPath.c_str(), nullptr) != 0 ||
            ::GetLastError() == ERROR_ALREADY_EXISTS;
 #else
     return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
@@ -370,7 +440,8 @@ public:
 #endif
 
 #if PULSEONE_WINDOWS
-    DWORD attrs = ::GetFileAttributesA(path.c_str());
+    std::wstring wPath = ToUtf16(path);
+    DWORD attrs = ::GetFileAttributesW(wPath.c_str());
     return (attrs != INVALID_FILE_ATTRIBUTES) &&
            (attrs & FILE_ATTRIBUTE_DIRECTORY);
 #else
@@ -390,7 +461,8 @@ public:
 #endif
 
 #if PULSEONE_WINDOWS
-    DWORD attrs = ::GetFileAttributesA(path.c_str());
+    std::wstring wPath = ToUtf16(path);
+    DWORD attrs = ::GetFileAttributesW(wPath.c_str());
     return (attrs != INVALID_FILE_ATTRIBUTES) &&
            !(attrs & FILE_ATTRIBUTE_DIRECTORY);
 #else
@@ -409,7 +481,8 @@ public:
 #endif
 
 #if PULSEONE_WINDOWS
-    return ::GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+    std::wstring wPath = ToUtf16(path);
+    return ::GetFileAttributesW(wPath.c_str()) != INVALID_FILE_ATTRIBUTES;
 #else
     struct stat st;
     return stat(path.c_str(), &st) == 0;
@@ -438,15 +511,19 @@ public:
 
     if (files.empty()) {
 #if PULSEONE_WINDOWS
-      WIN32_FIND_DATAA find_data;
+      WIN32_FIND_DATAW find_data;
       std::string search_path = directory_path + "\\*";
-      HANDLE hFind = FindFirstFileA(search_path.c_str(), &find_data);
+      std::wstring wSearchPath = ToUtf16(search_path);
+      HANDLE hFind = FindFirstFileW(wSearchPath.c_str(), &find_data);
       if (hFind != INVALID_HANDLE_VALUE) {
         do {
           if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            files.push_back(Path::Join(directory_path, find_data.cFileName));
+            // find_data.cFileName is a wide string (UTF-16)
+            // Convert it back to UTF-8 for our internal string representations
+            std::string utf8_filename = Path::ToUtf8(find_data.cFileName);
+            files.push_back(Path::Join(directory_path, utf8_filename));
           }
-        } while (FindNextFileA(hFind, &find_data));
+        } while (FindNextFileW(hFind, &find_data));
         FindClose(hFind);
       }
 #else
@@ -553,7 +630,8 @@ class DynamicLibrary {
 public:
   static void *LoadLibrary(const std::string &filename) {
 #if PULSEONE_WINDOWS
-    return ::LoadLibraryA(filename.c_str());
+    std::wstring wFilename = FileSystem::ToUtf16(filename);
+    return ::LoadLibraryW(wFilename.c_str());
 #else
     return dlopen(filename.c_str(), RTLD_LAZY);
 #endif

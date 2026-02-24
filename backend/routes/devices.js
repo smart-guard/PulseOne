@@ -12,8 +12,6 @@ const {
 } = require('../middleware/tenantIsolation');
 
 // 글로벌 미들웨어 적용
-router.use(authenticateToken);
-router.use(tenantIsolation);
 router.use(validateTenantStatus);
 
 const DeviceGroupService = require('../lib/services/DeviceGroupService');

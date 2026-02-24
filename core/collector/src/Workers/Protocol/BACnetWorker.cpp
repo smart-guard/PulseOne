@@ -8,7 +8,6 @@
 #include "Logging/LogManager.h"
 
 #if HAS_BACNET
-#include "Drivers/Bacnet/BACnetServiceManager.h"
 #include "Drivers/Common/IProtocolDriver.h"
 #endif
 
@@ -38,7 +37,7 @@ BACnetWorker::BACnetWorker(const DeviceInfo &device_info)
 #if HAS_BACNET
   // BACnet Driver 생성 (Factory 사용)
   bacnet_driver_ =
-      PulseOne::Drivers::DriverFactory::GetInstance().CreateDriver("BACNET");
+      PulseOne::Drivers::DriverFactory::GetInstance().CreateDriver("BACNET_IP");
   if (!bacnet_driver_) {
     LogMessage(LogLevel::LOG_ERROR,
                "Failed to create BACnetDriver instance via Factory");
@@ -59,18 +58,6 @@ BACnetWorker::BACnetWorker(const DeviceInfo &device_info)
   if (!InitializeBACnetDriver()) {
     LogMessage(LogLevel::LOG_ERROR, "Failed to initialize BACnet driver");
     return;
-  }
-
-  // BACnetServiceManager 초기화
-  if (bacnet_driver_) {
-    // IProtocolDriver 인터페이스를 직접 전달
-    bacnet_service_manager_ =
-        std::make_shared<PulseOne::Drivers::BACnetServiceManager>(
-            bacnet_driver_.get());
-    LogMessage(LogLevel::INFO, "BACnetServiceManager initialized successfully");
-  } else {
-    LogMessage(LogLevel::LOG_ERROR,
-               "Cannot initialize BACnetServiceManager: BACnet driver is null");
   }
 
   LogMessage(LogLevel::INFO, "BACnetWorker initialization completed");

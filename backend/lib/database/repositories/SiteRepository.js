@@ -36,7 +36,11 @@ class SiteRepository extends BaseRepository {
             const countResult = await countBuilder.first();
             const total = countResult ? (parseInt(countResult.count) || 0) : 0;
 
-            let query = this.query().select('*');
+            let query = this.query()
+                .select('sites.*')
+                .select(this.knex.raw(
+                    '(SELECT COUNT(*) FROM edge_servers WHERE edge_servers.site_id = sites.id AND edge_servers.is_deleted = 0) as collector_count'
+                ));
             buildQuery(query);
 
             const limit = parseInt(options.limit) || 1000;

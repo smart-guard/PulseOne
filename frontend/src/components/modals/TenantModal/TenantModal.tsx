@@ -154,156 +154,97 @@ export const TenantModal: React.FC<TenantModalProps> = ({
                     {error && <div className="mgmt-alert mgmt-alert-danger">{error}</div>}
 
                     <form id="tenant-form" onSubmit={handleSubmit}>
-                        <div className="mgmt-modal-form-grid">
-                            <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-building"></i> 기본 정보</h3>
-                                <div className="mgmt-modal-form-group">
-                                    <label className="required">회사명</label>
-                                    <input
-                                        type="text"
-                                        className="form-control"
-                                        value={formData.company_name}
-                                        onChange={e => setFormData({ ...formData, company_name: e.target.value })}
-                                        placeholder="회사명을 입력하세요"
-                                        disabled={saving}
-                                        required
-                                    />
-                                </div>
-                                <div className="mgmt-modal-form-group">
-                                    <label className="required">회사 코드</label>
-                                    <input
-                                        type="text"
-                                        className="form-control"
-                                        value={formData.company_code}
-                                        onChange={e => setFormData({ ...formData, company_code: e.target.value })}
-                                        placeholder="회사 식별 코드를 입력하세요 (예: ABC)"
-                                        disabled={saving || !!tenant}
-                                        required
-                                    />
-                                    {tenant && <span className="mgmt-modal-form-hint">회사 코드는 변경할 수 없습니다.</span>}
-                                </div>
-                                <div className="mgmt-modal-form-group">
-                                    <label>도메인</label>
-                                    <input
-                                        type="text"
-                                        className="form-control"
-                                        value={formData.domain}
-                                        onChange={e => setFormData({ ...formData, domain: e.target.value })}
-                                        placeholder="example.com"
-                                        disabled={saving}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-user-tie"></i> 담당자 정보</h3>
-                                <div className="mgmt-modal-form-group">
-                                    <label>이름</label>
-                                    <input
-                                        type="text"
-                                        className="form-control"
-                                        value={formData.contact_name}
-                                        onChange={e => setFormData({ ...formData, contact_name: e.target.value })}
-                                        placeholder="담당자 이름을 입력하세요"
-                                        disabled={saving}
-                                    />
-                                </div>
-                                <div className="mgmt-modal-form-group">
-                                    <label>이메일</label>
-                                    <input
-                                        type="email"
-                                        className="form-control"
-                                        value={formData.contact_email}
-                                        onChange={e => setFormData({ ...formData, contact_email: e.target.value })}
-                                        placeholder="contact@company.com"
-                                        disabled={saving}
-                                    />
-                                </div>
-                                <div className="mgmt-modal-form-group">
-                                    <label>연락처</label>
-                                    <input
-                                        type="text"
-                                        className="form-control"
-                                        value={formData.contact_phone}
-                                        onChange={e => setFormData({ ...formData, contact_phone: e.target.value })}
-                                        placeholder="010-0000-0000"
-                                        disabled={saving}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="mgmt-modal-form-section mgmt-span-full">
-                                <h3><i className="fas fa-credit-card"></i> 구독 및 사용량</h3>
-                                <div className="mgmt-modal-form-row">
-                                    <div className="mgmt-modal-form-group">
-                                        <label>구독 플랜</label>
-                                        <select
-                                            className="form-control"
-                                            value={formData.subscription_plan}
-                                            onChange={e => setFormData({ ...formData, subscription_plan: e.target.value as any })}
-                                            disabled={saving}
-                                        >
-                                            <option value="starter">스타터 (Starter)</option>
-                                            <option value="professional">프로페셔널 (Professional)</option>
-                                            <option value="enterprise">엔터프라이즈 (Enterprise)</option>
-                                        </select>
+                        {(() => {
+                            const sectionStyle: React.CSSProperties = { border: '1px solid var(--neutral-200)', borderRadius: '8px', padding: '12px 14px' };
+                            const sectionTitleStyle: React.CSSProperties = { fontSize: '13px', fontWeight: 700, color: 'var(--neutral-700)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' };
+                            const labelStyle: React.CSSProperties = { fontSize: '11px', fontWeight: 600, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: '2px' };
+                            const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', border: '1px solid var(--neutral-200)', borderRadius: '6px', fontSize: '13px', outline: 'none' };
+                            return (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                    {/* 기본 정보 */}
+                                    <div style={sectionStyle}>
+                                        <div style={sectionTitleStyle}><i className="fas fa-building"></i> 기본 정보</div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div>
+                                                <div style={labelStyle}>회사명 <span style={{ color: 'var(--error-500)' }}>*</span></div>
+                                                <input type="text" style={inputStyle} value={formData.company_name} onChange={e => setFormData({ ...formData, company_name: e.target.value })} placeholder="회사명을 입력하세요" disabled={saving} required />
+                                            </div>
+                                            <div>
+                                                <div style={labelStyle}>회사 코드 <span style={{ color: 'var(--error-500)' }}>*</span></div>
+                                                <input type="text" style={{ ...inputStyle, ...(tenant ? { background: 'var(--neutral-50)', color: 'var(--neutral-500)' } : {}) }} value={formData.company_code} onChange={e => setFormData({ ...formData, company_code: e.target.value })} placeholder="ABC" disabled={saving || !!tenant} required />
+                                                {tenant && <span style={{ fontSize: '10px', color: 'var(--neutral-400)', marginTop: '2px' }}>회사 코드는 변경할 수 없습니다.</span>}
+                                            </div>
+                                            <div>
+                                                <div style={labelStyle}>도메인</div>
+                                                <input type="text" style={inputStyle} value={formData.domain} onChange={e => setFormData({ ...formData, domain: e.target.value })} placeholder="example.com" disabled={saving} />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="mgmt-modal-form-group">
-                                        <label>구독 상태</label>
-                                        <select
-                                            className="form-control"
-                                            value={formData.subscription_status}
-                                            onChange={e => setFormData({ ...formData, subscription_status: e.target.value as any })}
-                                            disabled={saving}
-                                        >
-                                            <option value="active">Active</option>
-                                            <option value="trial">Trial</option>
-                                            <option value="suspended">Suspended</option>
-                                            <option value="cancelled">Cancelled</option>
-                                        </select>
+
+                                    {/* 담당자 정보 */}
+                                    <div style={sectionStyle}>
+                                        <div style={sectionTitleStyle}><i className="fas fa-user-tie"></i> 담당자 정보</div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div>
+                                                <div style={labelStyle}>이름</div>
+                                                <input type="text" style={inputStyle} value={formData.contact_name} onChange={e => setFormData({ ...formData, contact_name: e.target.value })} placeholder="담당자 이름" disabled={saving} />
+                                            </div>
+                                            <div>
+                                                <div style={labelStyle}>이메일</div>
+                                                <input type="email" style={inputStyle} value={formData.contact_email} onChange={e => setFormData({ ...formData, contact_email: e.target.value })} placeholder="contact@company.com" disabled={saving} />
+                                            </div>
+                                            <div>
+                                                <div style={labelStyle}>연락처</div>
+                                                <input type="text" style={inputStyle} value={formData.contact_phone} onChange={e => setFormData({ ...formData, contact_phone: e.target.value })} placeholder="010-0000-0000" disabled={saving} />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="mgmt-modal-form-group">
-                                        <label>계정 상태</label>
-                                        <div className="checkbox-group" style={{ height: '38px', display: 'flex', alignItems: 'center' }}>
-                                            <label className="checkbox-label" style={{ margin: 0 }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={formData.is_active}
-                                                    onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
-                                                    disabled={saving}
-                                                />
-                                                계정 활성화
-                                            </label>
+
+                                    {/* 구독 및 사용량 */}
+                                    <div style={{ ...sectionStyle, gridColumn: '1 / -1' }}>
+                                        <div style={sectionTitleStyle}><i className="fas fa-credit-card"></i> 구독 및 사용량</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                                            <div>
+                                                <div style={labelStyle}>구독 플랜</div>
+                                                <select style={inputStyle} value={formData.subscription_plan} onChange={e => setFormData({ ...formData, subscription_plan: e.target.value as any })} disabled={saving}>
+                                                    <option value="starter">스타터 (Starter)</option>
+                                                    <option value="professional">프로페셔널 (Professional)</option>
+                                                    <option value="enterprise">엔터프라이즈 (Enterprise)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <div style={labelStyle}>구독 상태</div>
+                                                <select style={inputStyle} value={formData.subscription_status} onChange={e => setFormData({ ...formData, subscription_status: e.target.value as any })} disabled={saving}>
+                                                    <option value="active">활성 (Active)</option>
+                                                    <option value="trial">트라이얼 (Trial)</option>
+                                                    <option value="suspended">정지 (Suspended)</option>
+                                                    <option value="cancelled">취소 (Cancelled)</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <div style={labelStyle}>계정 상태</div>
+                                                <div style={{ padding: '6px 10px', background: 'var(--neutral-50)', borderRadius: '6px', border: '1px solid var(--neutral-200)', height: '32px', display: 'flex', alignItems: 'center' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', margin: 0 }}>
+                                                        <input type="checkbox" checked={formData.is_active} onChange={e => setFormData({ ...formData, is_active: e.target.checked })} disabled={saving} />
+                                                        계정 활성화
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
+                                            <div>
+                                                <div style={labelStyle}>Edge Server 할당 한도 <span style={{ fontSize: '10px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(사이트 등록 시 1개씩 사용)</span></div>
+                                                <input type="number" style={inputStyle} value={formData.max_edge_servers} onChange={e => setFormData({ ...formData, max_edge_servers: parseInt(e.target.value) })} disabled={saving} min="1" />
+                                            </div>
+                                            <div>
+                                                <div style={labelStyle}>최대 데이터 포인트</div>
+                                                <input type="number" style={inputStyle} value={formData.max_data_points} onChange={e => setFormData({ ...formData, max_data_points: parseInt(e.target.value) })} disabled={saving} min="100" />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-
-                                <div className="mgmt-modal-form-row" style={{ marginTop: '12px' }}>
-                                    <div className="mgmt-modal-form-group">
-                                        <label>Collector 할당 한도 <span style={{ fontSize: '11px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(사이트 등록 시 1개씩 사용)</span></label>
-                                        <input
-                                            type="number"
-                                            className="form-control"
-                                            value={formData.max_edge_servers}
-                                            onChange={e => setFormData({ ...formData, max_edge_servers: parseInt(e.target.value) })}
-                                            disabled={saving}
-                                            min="1"
-                                        />
-                                    </div>
-                                    <div className="mgmt-modal-form-group">
-                                        <label>최대 데이터 포인트</label>
-                                        <input
-                                            type="number"
-                                            className="form-control"
-                                            value={formData.max_data_points}
-                                            onChange={e => setFormData({ ...formData, max_data_points: parseInt(e.target.value) })}
-                                            disabled={saving}
-                                            min="100"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                            );
+                        })()}
                     </form>
                 </div>
 

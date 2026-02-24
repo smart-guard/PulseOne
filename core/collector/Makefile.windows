@@ -87,11 +87,10 @@ ifneq ($(wildcard $(MINGW_PREFIX)/lib/libpaho-mqtt3c.a),)
     CXXFLAGS += -DHAS_MQTT=1
 endif
 
-# BACnet 라이브러리
+# BACnet 라이브러리 (libbacnet.a 링킹은 DLL에서 처리하므로 EXE에는 제외)
 BACNET_LIBS = 
 ifneq ($(wildcard $(MINGW_PREFIX)/lib/libbacnet.a),)
-    BACNET_LIBS += -lbacnet
-    CXXFLAGS += -DHAS_BACNET=1 -DHAS_BACNET_STACK=1
+    CXXFLAGS += -DHAS_BACNET=1
 endif
 
 # 기타 라이브러리들
@@ -152,10 +151,9 @@ SHARED_DBLIB_SOURCES = $(wildcard $(SHARED_MODULE_DIR)/DbLib/src/*.cpp)
 SHARED_LOGLIB_SOURCES = $(wildcard $(SHARED_MODULE_DIR)/LogLib/src/*.cpp)
 
 # Driver DLL 소스만 제외 (DLL로 별도 빌드됨)
-# BACnet: BACnetDriver.cpp만 DLL 제외
-# ServiceManager/BIPPort/Stubs는 BACnetWorker.cpp가 직접 사용 → EXE에 포함 필수
+# BACnet: 모든 드라이버 상세 구현은 DLL로 분리 (BACnetWorker는 IProtocolDriver만 사용)
 DRIVER_IMPLEMENTATIONS = $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp) \
-                         $(SRC_DIR)/Drivers/Bacnet/BACnetDriver.cpp \
+                         $(wildcard $(SRC_DIR)/Drivers/Bacnet/*.cpp) \
                          $(wildcard $(SRC_DIR)/Drivers/Mqtt/*.cpp) \
                          $(wildcard $(SRC_DIR)/Drivers/OPCUA/*.cpp) \
                          $(wildcard $(SRC_DIR)/Drivers/Ros/*.cpp) \
@@ -163,7 +161,6 @@ DRIVER_IMPLEMENTATIONS = $(wildcard $(SRC_DIR)/Drivers/Modbus/*.cpp) \
                          $(wildcard $(SRC_DIR)/Drivers/HttpRest/*.cpp)
 
 # 필터링 로직 (main.cpp 및 개별 드라이버 DLL 소스 제외)
-# Bacnet 나머지(ServiceManager/BIPPort/Stubs)는 ALL_CPP_FILES에 포함되어 자동으로 SOURCES에 들어감
 SOURCES = $(filter-out $(SRC_DIR)/main.cpp $(DRIVER_IMPLEMENTATIONS),$(ALL_CPP_FILES))
 MAIN_SOURCE = $(SRC_DIR)/main.cpp
 
@@ -180,7 +177,7 @@ ALL_CLEAN_SHARED_OBJECTS = $(SHARED_OBJECTS) $(DBLIB_OBJECTS) $(LOGLIB_OBJECTS)
 MAIN_OBJECT = $(BUILD_DIR)/main.o
 
 # 타겟
-TARGET = collector.exe
+TARGET = pulseone-collector.exe
 PLUGINS_DIR = $(BIN_DIR)/drivers
 
 # 드라이버 DLL 목록
@@ -199,7 +196,7 @@ DRIVER_DLLS = $(PLUGINS_DIR)/modbus_driver.dll \
 .PHONY: all clean info check-libs rebuild plugins
 
 # Import Library for EXE symbols (needed by DLLs on Windows)
-IMPLIB = $(BIN_DIR)/libcollector.a
+IMPLIB = $(BIN_DIR)/libpulseone-collector.a
 
 all: check-libs $(BIN_DIR)/$(TARGET) plugins
 

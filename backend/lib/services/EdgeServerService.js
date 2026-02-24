@@ -154,24 +154,11 @@ class EdgeServerService extends BaseService {
     }
 
     /**
-     * 사이트별 Collector 목록 + 장치 수 조회
+     * 사이트별 Collector 목록 + 장치 수 조회 (단일 쿼리)
      */
     async getCollectorsBySite(siteId) {
         return await this.handleRequest(async () => {
-            const collectors = await this.repository.findBySiteId(siteId);
-
-            // 각 Collector에 연결된 장치 수 병합
-            for (const c of collectors) {
-                c.device_count = await this.repository.countDevicesByCollector(c.id);
-
-                // Redis 실시간 상태 병합
-                try {
-                    const live = await this.getLiveStatus(c.id, 'collector');
-                    if (live) c.live_status = live;
-                } catch (e) { /* ignore */ }
-            }
-
-            return collectors;
+            return await this.repository.findBySiteIdWithDeviceCount(siteId);
         }, 'GetCollectorsBySite');
     }
 
@@ -204,6 +191,15 @@ class EdgeServerService extends BaseService {
     }
 
     /**
+     * 미배정 Collector 목록 (site_id IS NULL, 서버사이드 필터)
+     */
+    async getUnassignedCollectors(tenantId) {
+        return await this.handleRequest(async () => {
+            return await this.repository.findUnassigned(tenantId);
+        }, 'GetUnassignedCollectors');
+    }
+
+    /**
      * Collector를 다른 사이트로 재배정
      * 조건: 연결된 device 수 = 0
      */
@@ -221,7 +217,9 @@ class EdgeServerService extends BaseService {
                 );
             }
 
-            const success = await this.repository.updateSiteId(collectorId, newSiteId, tenantId);
+            // site_id=0이면 미배정(NULL) 처리
+            const effectiveSiteId = newSiteId === 0 ? null : newSiteId;
+            const success = await this.repository.updateSiteId(collectorId, effectiveSiteId, tenantId);
             if (!success) throw new Error('Collector 재배정에 실패했습니다.');
 
             return await this.repository.findById(collectorId, tenantId);

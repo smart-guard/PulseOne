@@ -128,7 +128,7 @@ let createChromeCacheBuster = null;
 let createSPACacheMiddleware = null;
 
 try {
-    const cacheControlModule = require('./lib/middleware/cacheControl');
+    const cacheControlModule = require('./middleware/cacheControl');
     CacheControlMiddleware = cacheControlModule.CacheControlMiddleware;
     createChromeCacheBuster = cacheControlModule.createChromeCacheBuster;
     createSPACacheMiddleware = cacheControlModule.createSPACacheMiddleware;
@@ -405,7 +405,12 @@ const staticMaxAge = serverConfig.env === 'production' ? '1d' : 0;
 // 개발 환경에서는 Frontend를 별도 컨테이너(Vite 개발 서버, 포트 5173)에서 제공
 // 프로덕션 환경에서만 Backend가 빌드된 정적 파일을 서빙
 if (serverConfig.env === 'production') {
-    app.use(express.static(path.join(__dirname, '../frontend'), {
+    // pkg로 패키징된 환경에서는 __dirname이 스냅샷 내부를 가리키므로 process.cwd() 사용
+    const frontendPath = process.pkg
+        ? path.join(process.cwd(), 'frontend')
+        : path.join(__dirname, '../frontend');
+
+    app.use(express.static(frontendPath, {
         maxAge: staticMaxAge,
         setHeaders: (res, filepath) => {
             // 정적 파일에도 캐시 방지 헤더 추가
@@ -420,7 +425,7 @@ if (serverConfig.env === 'production') {
     }));
 
     logger.system('INFO', '정적 파일 서빙 활성화 (프로덕션)', {
-        staticPath: path.join(__dirname, '../frontend'),
+        staticPath: frontendPath,
         maxAge: staticMaxAge
     });
 } else {
@@ -889,33 +894,122 @@ try {
     logger.system('WARN', '디버그 알람 라우트 등록됨');
 }
 
-// 선택적 라우트들
-const optionalRoutes = [
-    { path: './routes/tenants', mount: '/api/tenants', name: 'Tenant Management' },
-    { path: './routes/collector-proxy', mount: '/api/collector', name: 'Collector Proxy' },
-    { path: './routes/dashboard', mount: '/api/dashboard', name: 'Dashboard' },
-    { path: './routes/realtime', mount: '/api/realtime', name: 'Realtime Data' },
-    { path: './routes/virtual-points', mount: '/api/virtual-points', name: 'Virtual Points' },
-    { path: './routes/sites', mount: '/api/sites', name: 'Site Management' },
-    { path: './routes/groups', mount: '/api/groups', name: 'Device Groups' },
-    { path: './routes/collectors', mount: '/api/collectors', name: 'Collector Management' },
-    { path: './routes/data-points', mount: '/api/data-points', name: 'Data Points' },
-    { path: './routes/monitoring', mount: '/api/monitoring', name: 'System Monitoring' },
-    { path: './routes/errors', mount: '/api/errors', name: 'Error Monitoring' },
-    { path: './routes/backup', mount: '/api/backup', name: 'Backup/Restore' },
-    { path: './routes/websocket', mount: '/api/websocket', name: 'WebSocket Management' },
-    { path: './routes/blobs', mount: '/api/blobs', name: 'Blob Storage' }
-];
+// 테넌트 관리 라우트
+try {
+    const tenantRoutes = require('./routes/tenants');
+    app.use('/api/tenants', tenantRoutes);
+    logger.system('INFO', 'Tenant Management API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Tenant Management 라우트 로드 실패', { error: error.message });
+}
 
-optionalRoutes.forEach(route => {
-    try {
-        const routeModule = require(route.path);
-        app.use(route.mount, routeModule);
-        logger.system('INFO', `${route.name} API 라우트 등록 완료`);
-    } catch (error) {
-        logger.system('DEBUG', `${route.name} 라우트 로드 실패`, { error: error.message });
-    }
-});
+// Collector Proxy 라우트
+try {
+    const collectorProxyRoutes = require('./routes/collector-proxy');
+    app.use('/api/collector', collectorProxyRoutes);
+    logger.system('INFO', 'Collector Proxy API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Collector Proxy 라우트 로드 실패', { error: error.message });
+}
+
+// 대시보드 라우트
+try {
+    const dashboardRoutes = require('./routes/dashboard');
+    app.use('/api/dashboard', dashboardRoutes);
+    logger.system('INFO', 'Dashboard API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Dashboard 라우트 로드 실패', { error: error.message });
+}
+
+// 실시간 데이터 라우트
+try {
+    const realtimeRoutes = require('./routes/realtime');
+    app.use('/api/realtime', realtimeRoutes);
+    logger.system('INFO', 'Realtime Data API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Realtime Data 라우트 로드 실패', { error: error.message });
+}
+
+// 가상 포인트 라우트
+try {
+    const virtualPointRoutes = require('./routes/virtual-points');
+    app.use('/api/virtual-points', virtualPointRoutes);
+    logger.system('INFO', 'Virtual Points API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Virtual Points 라우트 로드 실패', { error: error.message });
+}
+
+// 사이트 관리 라우트
+try {
+    const siteRoutes = require('./routes/sites');
+    app.use('/api/sites', siteRoutes);
+    logger.system('INFO', 'Site Management API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Site Management 라우트 로드 실패', { error: error.message });
+}
+
+// 디바이스 그룹 라우트
+try {
+    const groupRoutes = require('./routes/groups');
+    app.use('/api/groups', groupRoutes);
+    logger.system('INFO', 'Device Groups API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Device Groups 라우트 로드 실패', { error: error.message });
+}
+
+// Collector 관리 라우트
+try {
+    const collectorRoutes = require('./routes/collectors');
+    app.use('/api/collectors', collectorRoutes);
+    logger.system('INFO', 'Collector Management API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Collector Management 라우트 로드 실패', { error: error.message });
+}
+
+// 시스템 모니터링 라우트
+try {
+    const monitoringRoutes = require('./routes/monitoring');
+    app.use('/api/monitoring', monitoringRoutes);
+    logger.system('INFO', 'System Monitoring API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'System Monitoring 라우트 로드 실패', { error: error.message });
+}
+
+// 에러 모니터링 라우트
+try {
+    const errorRoutes = require('./routes/errors');
+    app.use('/api/errors', errorRoutes);
+    logger.system('INFO', 'Error Monitoring API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Error Monitoring 라우트 로드 실패', { error: error.message });
+}
+
+// 백업/복구 라우트
+try {
+    const backupRoutes = require('./routes/backup');
+    app.use('/api/backup', backupRoutes);
+    logger.system('INFO', 'Backup/Restore API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Backup/Restore 라우트 로드 실패', { error: error.message });
+}
+
+// WebSocket 관리 라우트
+try {
+    const websocketRoutes = require('./routes/websocket');
+    app.use('/api/websocket', websocketRoutes);
+    logger.system('INFO', 'WebSocket Management API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'WebSocket Management 라우트 로드 실패', { error: error.message });
+}
+
+// Blob Storage 라우트
+try {
+    const blobRoutes = require('./routes/blobs');
+    app.use('/api/blobs', blobRoutes);
+    logger.system('INFO', 'Blob Storage API 라우트 등록 완료');
+} catch (error) {
+    logger.system('WARN', 'Blob Storage 라우트 로드 실패', { error: error.message });
+}
 
 logger.system('INFO', 'API 라우트 등록 완료');
 
@@ -978,7 +1072,10 @@ app.use((error, req, res, next) => {
 if (serverConfig.env === 'production') {
     // 프로덕션: SPA를 위한 catch-all 라우트
     app.get('*', (req, res) => {
-        res.sendFile(path.join(__dirname, '../frontend/index.html'));
+        const frontendPath = process.pkg
+            ? path.join(process.cwd(), 'frontend/index.html')
+            : path.join(__dirname, '../frontend/index.html');
+        res.sendFile(frontendPath);
     });
 
     logger.system('INFO', 'SPA Catch-all 라우트 등록 (프로덕션)');

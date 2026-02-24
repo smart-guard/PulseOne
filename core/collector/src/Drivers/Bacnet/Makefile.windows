@@ -11,7 +11,7 @@ MINGW_PREFIX = /usr/x86_64-w64-mingw32
 # Compiler & Flags
 CXX = x86_64-w64-mingw32-g++
 CC = x86_64-w64-mingw32-gcc
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00 -shared
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -DWIN32 -D_WIN32_WINNT=0x0A00 -shared -static -static-libgcc -static-libstdc++
 CFLAGS = -Wall -O2 -DWIN32 -D_WIN32_WINNT=0x0A00
 
 INCLUDES = -I$(COLLECTOR_ROOT)include \
@@ -33,11 +33,11 @@ BACNET_DEFS = -DBACNET_STACK_USE_TSM=1 -DHAS_BACNET_STACK=1 -DMAX_TSM_TRANSACTIO
 
 # Sources - libbacnet.a가 bip_get_my_address/bip_send_pdu 등을 요구하므로
 # BACnetBIPPort(BIP 구현)와 BACnetStubs(stub 함수들)도 DLL에 포함
-SRCS_CPP = BACnetDriver.cpp BACnetBIPPort.cpp BACnetStubs.cpp
+SRCS_CPP = BACnetDriver.cpp BACnetServiceManager.cpp BACnetBIPPort.cpp BACnetStubs.cpp
 
 # Libraries
-IMPLIB = $(BIN_DIR)/libcollector.a
-LIBS = -lbacnet -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread
+IMPLIB = ../../../bin-windows/libpulseone-collector.a
+LIBS = -lbacnet -lws2_32 -lwsock32 -liphlpapi -lsqlite3 -lpthread -Wl,--allow-multiple-definition
 
 # Target
 TARGET = $(PLUGINS_DIR)/bacnet_driver.dll
@@ -49,7 +49,7 @@ all: $(TARGET)
 $(TARGET): $(SRCS_CPP)
 	@mkdir -p $(PLUGINS_DIR)
 	@echo "🔨 Building BACnet Windows Plugin..."
-	$(CXX) $(CXXFLAGS) -fpermissive $(BACNET_DEFS) $(INCLUDES) $^ $(IMPLIB) -Wl,--allow-multiple-definition -o $@ $(LIBS)
+	$(CXX) $(CXXFLAGS) -fpermissive $(BACNET_DEFS) $(INCLUDES) $^ $(IMPLIB) -Wl,--exclude-all-symbols -Wl,--exclude-libs=ALL -Wl,--allow-multiple-definition -o $@ $(LIBS)
 
 clean:
 	rm -f $(TARGET)

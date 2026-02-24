@@ -13,6 +13,7 @@ interface AlarmContextType {
   updateAlarmCount: (count: number) => void;
   incrementAlarmCount: () => void;
   decrementAlarmCount: () => void;
+  refreshAlarmCount: () => Promise<void>;
 }
 
 const AlarmContext = createContext<AlarmContextType | undefined>(undefined);
@@ -100,13 +101,19 @@ export const AlarmProvider: React.FC<AlarmProviderProps> = ({ children }) => {
     setActiveAlarmCount(prev => Math.max(0, prev - 1));
   };
 
+  // 확인/해제 등 API 액션 후 뱃지를 명시적으로 재조회
+  const refreshAlarmCount = async () => {
+    await loadAlarmCounts();
+  };
+
   return (
     <AlarmContext.Provider value={{
       activeAlarmCount, // 이제 미확인 알람 개수를 의미함
       criticalAlarmCount,
       updateAlarmCount,
       incrementAlarmCount,
-      decrementAlarmCount
+      decrementAlarmCount,
+      refreshAlarmCount
     }}>
       {children}
     </AlarmContext.Provider>

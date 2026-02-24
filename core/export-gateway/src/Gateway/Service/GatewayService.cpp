@@ -24,11 +24,12 @@ GatewayService::GatewayService(std::unique_ptr<GatewayContext> context)
   // [FIX] Populate EventSubscriberConfig from environment variables
   // Previously used defaults (redis_host="localhost") which fails in Docker
   PulseOne::Event::EventSubscriberConfig sub_config;
-  const char *redis_host_env = std::getenv("REDIS_HOST");
-  const char *redis_port_env = std::getenv("REDIS_PORT");
-  const char *redis_pass_env = std::getenv("REDIS_PASSWORD");
-  sub_config.redis_host =
-      (redis_host_env && redis_host_env[0] != '\0') ? redis_host_env : "redis";
+  const char *redis_host_env = std::getenv("REDIS_PRIMARY_HOST");
+  const char *redis_port_env = std::getenv("REDIS_PRIMARY_PORT");
+  const char *redis_pass_env = std::getenv("REDIS_PRIMARY_PASSWORD");
+  sub_config.redis_host = (redis_host_env && redis_host_env[0] != '\0')
+                              ? redis_host_env
+                              : "localhost";
   sub_config.redis_port = (redis_port_env && redis_port_env[0] != '\0')
                               ? std::stoi(redis_port_env)
                               : 6379;

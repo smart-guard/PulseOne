@@ -72,4 +72,9 @@ export class CollectorApiService {
     static async getQuotaStatus(): Promise<ApiResponse<{ used: number; max: number; available: number; is_exceeded: boolean; online: number; offline: number }>> {
         return apiClient.get(`${this.BASE_URL}/quota/status`);
     }
+
+    // 미배정 Collector 목록 (site_id IS NULL, 서버사이드 필터)
+    static async getUnassignedCollectors(): Promise<ApiResponse<EdgeServer[]>> {
+        return apiClient.get<EdgeServer[]>(`${this.BASE_URL}/unassigned`);
+    }
 }

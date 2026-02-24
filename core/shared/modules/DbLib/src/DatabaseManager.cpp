@@ -103,7 +103,14 @@ bool DatabaseManager::connectSQLite() {
   std::string db_path = current_config_.sqlite_path;
   log(1, "Attempting SQLite connection: " + db_path);
 
-  int result = sqlite3_open(db_path.c_str(), &sqlite_conn_);
+  int result;
+#if PULSEONE_WINDOWS
+  std::wstring wPath = PulseOne::Platform::FileSystem::ToUtf16(db_path);
+  result = sqlite3_open16(wPath.c_str(), &sqlite_conn_);
+#else
+  result = sqlite3_open(db_path.c_str(), &sqlite_conn_);
+#endif
+
   if (result == SQLITE_OK) {
     log(1, "SQLite connection successful: " + db_path);
 

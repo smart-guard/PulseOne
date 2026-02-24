@@ -44,7 +44,7 @@ interface ActiveAlarm {
 
 const ActiveAlarms: React.FC = () => {
   const { confirm } = useConfirmContext();
-  const { decrementAlarmCount } = useAlarmContext();
+  const { decrementAlarmCount, refreshAlarmCount } = useAlarmContext();
   const [alarms, setAlarms] = useState<ActiveAlarm[]>([]);
   const [statistics, setStatistics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -247,7 +247,10 @@ const ActiveAlarms: React.FC = () => {
       }
 
       if (response && response.success) {
+        // 페이지 로컈 데이터 갱신
         await Promise.all([fetchActiveAlarms(), fetchStatistics()]);
+        // 전역 뱃지 재조회 (AlarmContext 미확인 개수 동기화)
+        await refreshAlarmCount();
         setShowActionModal(false);
       } else {
         alert(`${actionType === 'acknowledge' ? '확인' : '해제'} 처리 실패: ${response?.message || 'Unknown error'}`);

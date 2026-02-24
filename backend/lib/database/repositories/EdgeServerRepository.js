@@ -181,6 +181,32 @@ class EdgeServerRepository extends BaseRepository {
     }
 
     /**
+     * 사이트별 Collector + 장치 수 (단일 JOIN 쿼리, N+1 없음)
+     */
+    async findBySiteIdWithDeviceCount(siteId) {
+        try {
+            const results = await this.knex('edge_servers as es')
+                .leftJoin('devices as d', function () {
+                    this.on('d.edge_server_id', '=', 'es.id')
+                        .andOnVal('d.is_deleted', '=', 0);
+                })
+                .select(
+                    'es.id', 'es.server_name', 'es.server_name as name',
+                    'es.server_type', 'es.status', 'es.site_id', 'es.tenant_id'
+                )
+                .count('d.id as device_count')
+                .where('es.site_id', siteId)
+                .where('es.is_deleted', 0)
+                .groupBy('es.id')
+                .orderBy('es.server_name', 'asc');
+            return results;
+        } catch (error) {
+            this.logger.error('EdgeServerRepository.findBySiteIdWithDeviceCount 오류:', error);
+            throw error;
+        }
+    }
+
+    /**
      * 테넌트별 Collector 사용 개수 조회 (쿼터 체크용)
      */
     async countByTenant(tenantId) {
@@ -234,6 +260,53 @@ class EdgeServerRepository extends BaseRepository {
         }
     }
 
+
+    /**
+     * 비활성화 대상 Collector 조회 (쿼터 감소 시)
+     * 우선순위: 1) 연결된 디바이스 0개, 2) 최근 생성 순
+     * @param {number} tenantId
+     * @param {number} limit - 비활성화할 개수
+     */
+    async findCollectorsForDeactivation(tenantId, limit) {
+        try {
+            const results = await this.knex('edge_servers as es')
+                .leftJoin('devices as d', function () {
+                    this.on('d.edge_server_id', '=', 'es.id')
+                        .andOnVal('d.is_deleted', '=', 0);
+                })
+                .select('es.id', 'es.server_name')
+                .count('d.id as device_count')
+                .where('es.tenant_id', tenantId)
+                .where('es.server_type', 'collector')
+                .where('es.is_deleted', 0)
+                .groupBy('es.id')
+                .orderByRaw('COUNT(d.id) ASC, es.created_at DESC')
+                .limit(limit);
+            return results;
+        } catch (error) {
+            this.logger.error('EdgeServerRepository.findCollectorsForDeactivation 오류:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 미배정 Collector 목록 (site_id IS NULL, DB 서버사이드 필터)
+     */
+    async findUnassigned(tenantId) {
+        try {
+            const results = await this.knex('edge_servers')
+                .select('id', 'tenant_id', 'site_id', 'server_name', 'server_type', 'status', 'created_at')
+                .where('tenant_id', tenantId)
+                .where('server_type', 'collector')
+                .where('is_deleted', 0)
+                .whereNull('site_id')
+                .orderBy('created_at', 'asc');
+            return results.map(r => ({ ...r, name: r.server_name }));
+        } catch (error) {
+            this.logger.error('EdgeServerRepository.findUnassigned 오류:', error);
+            throw error;
+        }
+    }
 
     /**
      * JSON 필드 파싱 헬퍼

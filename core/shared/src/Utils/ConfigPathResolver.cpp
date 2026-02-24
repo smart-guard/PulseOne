@@ -67,10 +67,10 @@ ConfigPathResolver::findDataDirectory(const std::string &dataDirFromConfig) {
   const char *data_dir_env = std::getenv("DATA_DIR");
 
   if (pulseone_data_dir) {
-    return std::string(pulseone_data_dir);
+    return Path::Normalize(std::string(pulseone_data_dir));
   }
   if (data_dir_env) {
-    return std::string(data_dir_env);
+    return Path::Normalize(std::string(data_dir_env));
   }
 
   std::string actual_path =
@@ -81,7 +81,7 @@ ConfigPathResolver::findDataDirectory(const std::string &dataDirFromConfig) {
     actual_path = Path::Join(exe_dir, actual_path);
   }
 
-  return actual_path;
+  return Path::Normalize(actual_path);
 }
 
 std::string ConfigPathResolver::resolveSQLitePath(
@@ -90,15 +90,23 @@ std::string ConfigPathResolver::resolveSQLitePath(
   std::string db_path = configGetter("SQLITE_PATH");
 
   if (db_path.empty()) {
-    db_path = "./data/db/pulseone.db";
+    db_path = "data/db/pulseone.db";
   }
 
-  // 상대 경로일 경우 dataDir와 결합
-  if (db_path[0] != '/' && db_path.find(":\\") == std::string::npos) {
-    db_path = Path::Join(dataDir, db_path);
+  bool is_absolute =
+      (db_path[0] == '/' || db_path.find(":\\") != std::string::npos);
+  if (!is_absolute) {
+    std::string exe_dir = getExecutableDirectory();
+    // prefix 제거
+    if (db_path.size() >= 2 &&
+        (db_path.substr(0, 2) == "./" || db_path.substr(0, 2) == ".\\")) {
+      db_path = db_path.substr(2);
+    }
+    db_path = Path::Join(exe_dir, db_path);
   }
 
-  // 디렉토리 생성 보장
+  db_path = Path::Normalize(db_path);
+
   try {
     std::string dir = Path::GetDirectory(db_path);
     ensureDirectory(dir);
@@ -115,19 +123,19 @@ std::string ConfigPathResolver::resolveBackupDirectory(
 
   if (backup_dir.empty()) {
     backup_dir = Path::Join(dataDir, "backups");
-  }
-
-  if (backup_dir[0] != '/' && backup_dir.find(":\\") == std::string::npos) {
+  } else if (backup_dir[0] != '/' &&
+             backup_dir.find(":\\") == std::string::npos) {
     backup_dir = Path::Join(dataDir, backup_dir);
   }
 
+  backup_dir = Path::Normalize(backup_dir);
   ensureDirectory(backup_dir);
   return backup_dir;
 }
 
 std::string
 ConfigPathResolver::getSecretsDirectory(const std::string &configDir) {
-  return Path::Join(configDir, "secrets");
+  return Path::Normalize(Path::Join(configDir, "secrets"));
 }
 
 bool ConfigPathResolver::ensureDirectory(const std::string &path) {

@@ -13,8 +13,6 @@ const {
 } = require('../middleware/tenantIsolation');
 
 // 모든 라우트에 인증 및 테넌트 격리 적용
-router.use(authenticateToken);
-router.use(tenantIsolation);
 
 /**
  * @route   GET /api/users

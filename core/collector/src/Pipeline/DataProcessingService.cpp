@@ -169,7 +169,7 @@ bool DataProcessingService::Start() {
       } else {
         std::string host =
             env_host ? env_host
-                     : config.getOrDefault("INFLUXDB_HOST", "influxdb");
+                     : config.getOrDefault("INFLUXDB_HOST", "localhost");
         std::string port =
             env_port ? env_port : config.getOrDefault("INFLUXDB_PORT", "8086");
         url = "http://" + host + ":" + port;

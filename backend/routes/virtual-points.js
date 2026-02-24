@@ -20,7 +20,6 @@ const authenticateToken = (req, res, next) => {
     next();
 };
 
-router.use(authenticateToken);
 
 // =============================================================================
 // 통계 API
