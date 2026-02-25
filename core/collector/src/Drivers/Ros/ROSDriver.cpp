@@ -352,7 +352,6 @@ void RegisterPlugin() {
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "ROS_BRIDGE",
       []() { return std::make_unique<PulseOne::Drivers::ROSDriver>(); });
-  std::cout << "[ROSDriver] Plugin Registered Successfully" << std::endl;
 }
 
 // Legacy wrapper for static linking

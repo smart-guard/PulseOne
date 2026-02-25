@@ -10,7 +10,6 @@ class AlarmRuleRepository extends BaseRepository {
     constructor() {
         // ProtocolRepository와 동일한 패턴: 매개변수 없는 생성자
         super('alarm_rules');
-        console.log('📋 AlarmRuleRepository initialized with standard pattern');
     }
 
     // ==========================================================================
@@ -111,7 +110,6 @@ class AlarmRuleRepository extends BaseRepository {
 
             const total = countResult ? parseInt(countResult.total) : 0;
 
-            console.log(`✅ 알람 규칙 ${items.length}개 조회 완료 (전체: ${total}개)`);
 
             return {
                 items: items.map(rule => this.parseAlarmRule(rule)),
@@ -133,7 +131,6 @@ class AlarmRuleRepository extends BaseRepository {
 
     async findById(id, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.findById 호출 (Knex): id=${id}, tenantId=${tenantId}`);
 
             const query = this.query('ar')
                 .leftJoin('devices as d', (clause) => {
@@ -171,11 +168,9 @@ class AlarmRuleRepository extends BaseRepository {
             const rule = await query.first();
 
             if (!rule) {
-                console.log(`알람 규칙 ID ${id} 찾을 수 없음`);
                 return null;
             }
 
-            console.log(`✅ 알람 규칙 ID ${id} 조회 성공`);
             return this.parseAlarmRule(rule);
 
         } catch (error) {
@@ -358,7 +353,6 @@ class AlarmRuleRepository extends BaseRepository {
             const [id] = await this.query().insert(dataToInsert);
 
             if (id) {
-                console.log(`✅ 알람 규칙 생성 완료 (ID: ${id})`);
                 return await this.findById(id, ruleData.tenant_id);
             } else {
                 throw new Error('Alarm rule creation failed - no ID returned');
@@ -406,7 +400,6 @@ class AlarmRuleRepository extends BaseRepository {
             const affected = await query.update(dataToUpdate);
 
             if (affected > 0) {
-                console.log(`✅ 알람 규칙 ID ${id} 업데이트 완료`);
                 return await this.findById(id, tenantId);
             }
             return null;
@@ -418,7 +411,6 @@ class AlarmRuleRepository extends BaseRepository {
 
     async updateEnabledStatus(id, isEnabled, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.updateEnabledStatus 호출 (Knex): ID ${id}, isEnabled=${isEnabled}`);
             let query = this.query().where('id', id);
             if (tenantId) query.where('tenant_id', tenantId);
 
@@ -428,7 +420,6 @@ class AlarmRuleRepository extends BaseRepository {
             });
 
             if (affected > 0) {
-                console.log(`✅ 알람 규칙 ID ${id} 상태 업데이트 완료`);
                 return { id: parseInt(id), is_enabled: isEnabled };
             }
             throw new Error(`Alarm rule with ID ${id} not found`);
@@ -440,7 +431,6 @@ class AlarmRuleRepository extends BaseRepository {
 
     async updateSettings(id, settings, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.updateSettings 호출 (Knex): ID ${id}`);
 
             const dataToUpdate = {
                 message_config: typeof settings.message_config === 'object' ? JSON.stringify(settings.message_config) : (settings.message_config || null),
@@ -457,7 +447,6 @@ class AlarmRuleRepository extends BaseRepository {
             const affected = await query.update(dataToUpdate);
 
             if (affected > 0) {
-                console.log(`✅ 알람 규칙 ID ${id} 설정 업데이트 완료`);
                 return { id: parseInt(id), updated_settings: settings };
             } else {
                 throw new Error(`Alarm rule with ID ${id} not found`);
@@ -471,7 +460,6 @@ class AlarmRuleRepository extends BaseRepository {
 
     async updateName(id, name, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.updateName 호출 (Knex): ID ${id}, name=${name}`);
 
             let query = this.query().where('id', id);
             if (tenantId) query.where('tenant_id', tenantId);
@@ -482,7 +470,6 @@ class AlarmRuleRepository extends BaseRepository {
             });
 
             if (affected > 0) {
-                console.log(`✅ 알람 규칙 ID ${id} 이름 업데이트 완료`);
                 return { id: parseInt(id), name: name };
             } else {
                 throw new Error(`Alarm rule with ID ${id} not found`);
@@ -496,7 +483,6 @@ class AlarmRuleRepository extends BaseRepository {
 
     async updateSeverity(id, severity, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.updateSeverity 호출 (Knex): ID ${id}, severity=${severity}`);
 
             let query = this.query().where('id', id);
             if (tenantId) query.where('tenant_id', tenantId);
@@ -507,7 +493,6 @@ class AlarmRuleRepository extends BaseRepository {
             });
 
             if (affected > 0) {
-                console.log(`✅ 알람 규칙 ID ${id} 심각도 업데이트 완료`);
                 return { id: parseInt(id), severity: severity };
             } else {
                 throw new Error(`Alarm rule with ID ${id} not found`);
@@ -531,7 +516,6 @@ class AlarmRuleRepository extends BaseRepository {
             });
 
             if (affected > 0) {
-                console.log(`✅ 알람 규칙 ID ${id} 삭제(Soft Delete) 완료`);
                 return true;
             } else {
                 return false;
@@ -544,7 +528,6 @@ class AlarmRuleRepository extends BaseRepository {
 
     async restore(id, tenantId = null) {
         try {
-            console.log(`AlarmRuleRepository.restore 호출 (Knex): ID ${id}`);
             let query = this.query().where('id', id);
             if (tenantId) query.where('tenant_id', tenantId);
 
@@ -554,7 +537,6 @@ class AlarmRuleRepository extends BaseRepository {
             });
 
             if (affected > 0) {
-                console.log(`✅ 알람 규칙 ID ${id} 복원 완료`);
                 return true;
             } else {
                 return false;

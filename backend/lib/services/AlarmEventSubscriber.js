@@ -15,12 +15,6 @@ class AlarmEventSubscriber {
         // ConfigManager를 통해 Redis 설정 가져오기
         const redisConfig = configManager.getRedisConfig();
         
-        console.log('🔧 AlarmEventSubscriber Redis 설정:', {
-            host: redisConfig.host,
-            port: redisConfig.port,
-            enabled: redisConfig.enabled,
-            keyPrefix: redisConfig.keyPrefix
-        });
         
         this.subscriber = new Redis({
             host: redisConfig.host,
@@ -356,7 +350,6 @@ class AlarmEventSubscriber {
     async testConnection() {
         try {
             const result = await this.subscriber.ping();
-            console.log('🏓 Redis ping 결과:', result);
             return result === 'PONG';
         } catch (error) {
             console.error('❌ Redis ping 실패:', error.message);

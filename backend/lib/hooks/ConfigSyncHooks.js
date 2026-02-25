@@ -25,7 +25,7 @@ class ConfigSyncHooks {
             retryDelayMs: 1000
         };
 
-        console.log(`🔄 ConfigSyncHooks initialized (enabled: ${this.isEnabled}, errorPolicy: ${this.errorPolicy.onSyncFailure})`);
+
     }
 
     // =============================================================================
@@ -88,7 +88,7 @@ class ConfigSyncHooks {
 
     async afterDeviceCreate(device) {
         return await this.handleSyncOperation('device_create', async () => {
-            console.log(`🔄 Device created hook: ${device.id} (${device.name})`);
+
 
             const proxy = getCollectorProxy();
             const edgeServerId = device.edge_server_id;
@@ -111,7 +111,7 @@ class ConfigSyncHooks {
     async afterDeviceUpdate(oldDevice, newDevice) {
         // 🚨 Critical Operation - 항상 성공해야 함
         return await this.handleSyncOperation('device_update', async () => {
-            console.log(`🔄 Device updated hook: ${newDevice.id} (${newDevice.name})`);
+
 
             const proxy = getCollectorProxy();
             const deviceId = newDevice.id.toString();
@@ -127,7 +127,7 @@ class ConfigSyncHooks {
                 settings: newDevice.settings || {}
             };
 
-            console.log(`➡️ [ConfigSyncHooks] Syncing device settings to proxy: ${deviceId}`, JSON.stringify(syncPayload));
+
 
             await proxy.syncDeviceSettings(deviceId, syncPayload, { edgeServerId });
 
@@ -151,7 +151,7 @@ class ConfigSyncHooks {
     async afterDeviceDelete(device) {
         // 🚨 Critical Operation - 항상 성공해야 함
         return await this.handleSyncOperation('device_delete', async () => {
-            console.log(`🔄 Device deleted hook: ${device.id} (${device.name})`);
+
 
             const proxy = getCollectorProxy();
             const deviceId = device.id.toString();
@@ -162,7 +162,7 @@ class ConfigSyncHooks {
                 await proxy.stopDevice(deviceId, { edgeServerId });
                 console.log(`✅ Device worker stopped for deleted device: ${deviceId}`);
             } catch (error) {
-                console.log(`ℹ️ Device worker was not running or failed: ${deviceId}`);
+
             }
 
             // 2. 해당 콜렉터 설정 재로드
@@ -179,7 +179,7 @@ class ConfigSyncHooks {
 
     async afterAlarmRuleCreate(alarmRule) {
         return await this.handleSyncOperation('alarm_create', async () => {
-            console.log(`🔄 Alarm rule created hook: ${alarmRule.id} (${alarmRule.name})`);
+
 
             const proxy = getCollectorProxy();
             await proxy.notifyConfigChange('alarm_rule', alarmRule.id, {
@@ -193,7 +193,7 @@ class ConfigSyncHooks {
 
     async afterAlarmRuleUpdate(oldRule, newRule) {
         return await this.handleSyncOperation('alarm_update', async () => {
-            console.log(`🔄 Alarm rule updated hook: ${newRule.id} (${newRule.name})`);
+
 
             const proxy = getCollectorProxy();
 
@@ -213,7 +213,7 @@ class ConfigSyncHooks {
 
     async afterAlarmRuleDelete(alarmRule) {
         return await this.handleSyncOperation('alarm_delete', async () => {
-            console.log(`🔄 Alarm rule deleted hook: ${alarmRule.id} (${alarmRule.name})`);
+
 
             const proxy = getCollectorProxy();
             await proxy.notifyConfigChange('alarm_rule', alarmRule.id, {
@@ -230,7 +230,7 @@ class ConfigSyncHooks {
 
     async afterVirtualPointCreate(virtualPoint) {
         return await this.handleSyncOperation('virtual_point_create', async () => {
-            console.log(`🔄 Virtual point created hook: ${virtualPoint.id} (${virtualPoint.name})`);
+
 
             const proxy = getCollectorProxy();
             await proxy.notifyConfigChange('virtual_point', virtualPoint.id, {
@@ -244,7 +244,7 @@ class ConfigSyncHooks {
 
     async afterVirtualPointUpdate(oldPoint, newPoint) {
         return await this.handleSyncOperation('virtual_point_update', async () => {
-            console.log(`🔄 Virtual point updated hook: ${newPoint.id} (${newPoint.name})`);
+
 
             const proxy = getCollectorProxy();
 
@@ -262,7 +262,7 @@ class ConfigSyncHooks {
 
     async afterVirtualPointDelete(virtualPoint) {
         return await this.handleSyncOperation('virtual_point_delete', async () => {
-            console.log(`🔄 Virtual point deleted hook: ${virtualPoint.id} (${virtualPoint.name})`);
+
 
             const proxy = getCollectorProxy();
             await proxy.notifyConfigChange('virtual_point', virtualPoint.id, {
@@ -277,13 +277,13 @@ class ConfigSyncHooks {
 
     async afterDataPointUpdate(oldPoint, newPoint) {
         return await this.handleSyncOperation('datapoint_update', async () => {
-            console.log(`🔄 Data point updated hook: ${newPoint.id} (${newPoint.point_name})`);
+
 
             // 데이터포인트가 변경되면 해당 디바이스 재시작
             if (newPoint.device_id) {
                 // 🔥 명칭 변경 감지 시 이전 Redis 키 정리
                 if (oldPoint && oldPoint.name !== newPoint.name) {
-                    console.log(`🧹 Point name changed: ${oldPoint.name} -> ${newPoint.name}. Cleaning up old Redis keys.`);
+
                     await RedisCleanupService.cleanupDataPoint(newPoint.device_id, newPoint.id, oldPoint.name);
                 }
 
@@ -314,7 +314,7 @@ class ConfigSyncHooks {
     setErrorPolicy(policy) {
         if (['throw', 'log', 'ignore'].includes(policy)) {
             this.errorPolicy.onSyncFailure = policy;
-            console.log(`🔄 Sync error policy changed to: ${policy}`);
+
         } else {
             console.error(`❌ Invalid error policy: ${policy}. Must be 'throw', 'log', or 'ignore'`);
         }
@@ -327,7 +327,7 @@ class ConfigSyncHooks {
     // 기존 메소드들 유지
     setEnabled(enabled) {
         this.isEnabled = enabled;
-        console.log(`🔄 ConfigSyncHooks ${enabled ? 'enabled' : 'disabled'}`);
+
     }
 
     isHookEnabled() {
@@ -340,7 +340,7 @@ class ConfigSyncHooks {
 
     clearAllHooks() {
         this.hooks.clear();
-        console.log('🔄 All hooks cleared');
+
     }
 
     // =============================================================================
@@ -353,7 +353,7 @@ class ConfigSyncHooks {
             this.hooks.set(key, []);
         }
         this.hooks.get(key).push(callback);
-        console.log(`🎣 Hook registered: ${key}`);
+
     }
 
     async executeHooks(entityType, eventType, ...args) {

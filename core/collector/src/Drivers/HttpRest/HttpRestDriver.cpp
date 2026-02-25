@@ -604,7 +604,6 @@ void RegisterPlugin() {
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "HTTP_REST",
       []() { return std::make_unique<PulseOne::Drivers::HttpRestDriver>(); });
-  std::cout << "[HttpRestDriver] Plugin Registered Successfully" << std::endl;
 }
 
 // Legacy wrapper for static linking

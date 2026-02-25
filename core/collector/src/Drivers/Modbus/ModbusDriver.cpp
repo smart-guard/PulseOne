@@ -1679,7 +1679,6 @@ void RegisterPlugin() {
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "MODBUS_RTU",
       []() { return std::make_unique<PulseOne::Drivers::ModbusDriver>(); });
-  std::cout << "[ModbusDriver] Plugin Registered Successfully" << std::endl;
 }
 
 // Legacy wrapper for static linking

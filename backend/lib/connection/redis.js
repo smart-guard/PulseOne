@@ -93,7 +93,6 @@ class RedisManager {
                             return false;
                         }
                         const delay = Math.min(retries * 1000, 5000);
-                        console.log(`🔄 ${delay}ms 후 Redis 재연결 시도 (${retries}/3)`);
                         return delay;
                     }
                 },

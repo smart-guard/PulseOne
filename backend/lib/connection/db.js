@@ -6,7 +6,6 @@ const ConfigManager = require('../config/ConfigManager');
 
 const config = ConfigManager.getInstance();
 
-console.log('🔗 데이터베이스 연결 모듈 로드 중...');
 
 // 데이터베이스 타입에 따른 연결 함수들
 const connectionMap = {
@@ -14,7 +13,6 @@ const connectionMap = {
     sqlite: () => {
         try {
             const sqliteConnection = require('./sqlite');
-            console.log('✅ SQLite 연결 모듈 로드 성공');
             return sqliteConnection;
         } catch (error) {
             console.warn('⚠️ SQLite 연결 모듈 로드 실패:', error.message);
@@ -26,7 +24,6 @@ const connectionMap = {
     postgres: () => {
         try {
             const postgresConnection = require('./postgres');
-            console.log('✅ PostgreSQL 연결 모듈 로드 성공');
             return postgresConnection;
         } catch (error) {
             console.warn('⚠️ PostgreSQL 연결 모듈 로드 실패:', error.message);
@@ -38,7 +35,6 @@ const connectionMap = {
     redis: () => {
         try {
             const redisConnection = require('./redis');
-            console.log('✅ Redis 연결 모듈 로드 성공');
             return redisConnection;
         } catch (error) {
             console.warn('⚠️ Redis 연결 모듈 로드 실패:', error.message);
@@ -50,7 +46,6 @@ const connectionMap = {
     influx: () => {
         try {
             const influxConnection = require('./influx');
-            console.log('✅ InfluxDB 연결 모듈 로드 성공');
             return influxConnection;
         } catch (error) {
             console.warn('⚠️ InfluxDB 연결 모듈 로드 실패:', error.message);
@@ -62,7 +57,6 @@ const connectionMap = {
     mq: () => {
         try {
             const mqConnection = require('./mq');
-            console.log('✅ RabbitMQ 연결 모듈 로드 성공');
             return mqConnection;
         } catch (error) {
             console.warn('⚠️ RabbitMQ 연결 모듈 로드 실패:', error.message);
@@ -74,7 +68,6 @@ const connectionMap = {
     rpc: () => {
         try {
             const rpcConnection = require('./rpc');
-            console.log('✅ RPC 연결 모듈 로드 성공');
             return rpcConnection;
         } catch (error) {
             console.warn('⚠️ RPC 연결 모듈 로드 실패:', error.message);
@@ -86,7 +79,6 @@ const connectionMap = {
     timeseries: () => {
         try {
             const timeseriesConnection = require('./timeseries');
-            console.log('✅ TimeSeries 연결 모듈 로드 성공');
             return timeseriesConnection;
         } catch (error) {
             console.warn('⚠️ TimeSeries 연결 모듈 로드 실패:', error.message);
@@ -99,12 +91,10 @@ const connectionMap = {
         try {
             const mysqlEnabled = config.getBoolean('MYSQL_ENABLED', false);
             if (!mysqlEnabled) {
-                console.log('📝 MySQL 연결 비활성화됨 (MYSQL_ENABLED=false)');
                 return null;
             }
             
             const mysqlConnection = require('./mysql');
-            console.log('✅ MySQL 연결 모듈 로드 성공');
             return mysqlConnection;
         } catch (error) {
             console.warn('⚠️ MySQL 연결 모듈 로드 실패:', error.message);
@@ -117,12 +107,10 @@ const connectionMap = {
         try {
             const mssqlEnabled = config.getBoolean('MSSQL_ENABLED', false);
             if (!mssqlEnabled) {
-                console.log('📝 MSSQL 연결 비활성화됨 (MSSQL_ENABLED=false)');
                 return null;
             }
             
             const mssqlConnection = require('./mssql');
-            console.log('✅ MSSQL 연결 모듈 로드 성공');
             return mssqlConnection;
         } catch (error) {
             console.warn('⚠️ MSSQL 연결 모듈 로드 실패:', error.message);

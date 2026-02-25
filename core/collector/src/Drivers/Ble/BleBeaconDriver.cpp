@@ -452,7 +452,6 @@ void RegisterPlugin() {
       "BLE_BEACON", []() {
         return std::make_unique<PulseOne::Drivers::Ble::BleBeaconDriver>();
       });
-  std::cout << "[BleDriver] Plugin Registered Successfully" << std::endl;
 }
 
 // Legacy wrapper for static linking

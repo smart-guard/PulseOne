@@ -955,7 +955,6 @@ void RegisterPlugin() {
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "BACNET_IP",
       []() { return std::make_unique<PulseOne::Drivers::BACnetDriver>(); });
-  std::cout << "[BACnetDriver] Plugin Registered Successfully" << std::endl;
 }
 
 // Legacy wrapper for static linking

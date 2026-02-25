@@ -123,7 +123,6 @@ bool PipelineManager::SendDeviceData(
         
         // 큐에 추가
         data_queue_.push(std::move(message));
-        std::cout << "[PipelineManager] Pushed data. Queue size: " << data_queue_.size() << std::endl;
         LogManager::getInstance().Info("PipelineManager::SendDeviceData pushed (Instance: " + std::to_string((uintptr_t)this) + "), QSize: " + std::to_string(data_queue_.size()));
     }
     

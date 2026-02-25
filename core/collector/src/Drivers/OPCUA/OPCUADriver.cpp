@@ -557,7 +557,6 @@ void RegisterPlugin() {
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "OPC_UA",
       []() { return std::make_unique<PulseOne::Drivers::OPCUADriver>(); });
-  std::cout << "[OPCUA] Plugin Registered Successfully" << std::endl;
 }
 
 // Legacy wrapper for static linking

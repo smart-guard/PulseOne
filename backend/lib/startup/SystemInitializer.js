@@ -19,23 +19,18 @@ class SystemInitializer {
 
         try {
             // ConfigManager 설정 확인
-            console.log('설정 정보 로드 중...');
             this.printConfigInfo();
 
             // 1. Infrastructure 초기화 (순서 중요)
-            console.log('Infrastructure 초기화 중...');
             await this.initializeInfrastructure();
 
             // 2. 시스템 헬스 체크
-            console.log('시스템 헬스 체크...');
             await this.performHealthCheck();
 
             // 3. Collector 상태 확인 및 시작
-            console.log('Collector 초기화 중...');
             await this.initializeCollector();
 
             // 4. 최종 검증
-            console.log('시스템 최종 검증 중...');
             await this.finalValidation();
 
             console.log('시스템 초기화 완료!');
@@ -59,15 +54,12 @@ class SystemInitializer {
 
     async initializeInfrastructure() {
         // RabbitMQ 설정
-        console.log('  - RabbitMQ 연결 및 설정...');
         await this.setupRabbitMQ();
 
         // Redis 설정  
-        console.log('  - Redis 연결 및 설정...');
         await this.setupRedis();
 
         // Database 검증
-        console.log('  - Database 스키마 검증...');
         await this.verifyDatabase();
     }
 
@@ -225,7 +217,6 @@ class SystemInitializer {
     async initializeCollector() {
         try {
             // Collector 상태 확인 (CrossPlatformManager 사용)
-            console.log('  - Collector 상태 확인 중...');
             const isRunning = await this.checkCollectorStatus();
 
             if (isRunning) {
@@ -234,11 +225,9 @@ class SystemInitializer {
             }
 
             // Collector 시작 (CrossPlatformManager 사용)
-            console.log('  - Collector 시작 중...');
             await this.startCollector();
 
             // 시작 대기 (최대 30초)
-            console.log('  - Collector 시작 대기 중...');
             await this.waitForCollectorReady(30000);
 
             console.log('    ✅ Collector 시작 완료');

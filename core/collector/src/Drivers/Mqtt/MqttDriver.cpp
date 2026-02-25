@@ -1861,7 +1861,6 @@ void RegisterPlugin() {
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver("MQTT", []() {
     return std::make_unique<PulseOne::Drivers::MqttDriver>();
   });
-  std::cout << "[MqttDriver] Plugin Registered Successfully" << std::endl;
 }
 
 // Legacy wrapper for static linking
