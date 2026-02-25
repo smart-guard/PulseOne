@@ -7,7 +7,6 @@
 #include <future>
 #include <memory>
 #include <nlohmann/json.hpp> // Added for full JSON type definition
-#include <nlohmann/json_fwd.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>

@@ -224,7 +224,7 @@ class ConfigManager {
             }
 
             // CONFIG_FILES 기반 추가 파일 로드
-            const configFiles = this.get('CONFIG_FILES') || 'database.env,redis.env,timeseries.env,messaging.env';
+            const configFiles = this.get('CONFIG_FILES') || 'database.env,redis.env,timeseries.env,messaging.env,collector.env';
             const configDirs = [
                 path.join(cwd, 'config'),
                 path.join(__dirname, '../../../config'),
@@ -314,9 +314,14 @@ class ConfigManager {
                 // 따옴표 제거
                 const cleanValue = value.replace(/^["']|["']$/g, '');
 
-                // 환경변수 설정 (파일의 최신값으로 업데이트)
-                this.env.set(key, cleanValue);
-                process.env[key] = cleanValue;
+                // 환경변수 설정 (Docker 환경변수 등 기존 process.env 값이 없을 때만 파일 값 적용)
+                if (process.env[key] === undefined) {
+                    this.env.set(key, cleanValue);
+                    process.env[key] = cleanValue;
+                } else {
+                    // 이미 시스템/Docker 환경변수로 주입된 값이 있다면 그 값을 유지
+                    this.env.set(key, process.env[key]);
+                }
                 loadedCount++;
             });
 

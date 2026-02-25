@@ -595,6 +595,39 @@ bool RedisDataWriter::SaveWorkerStatus(const std::string &device_id,
 }
 
 // =============================================================================
+// Collector 레벨 Heartbeat 저장
+// =============================================================================
+
+bool RedisDataWriter::SaveCollectorHeartbeat(
+    const std::string &collector_id, const nlohmann::json &heartbeat_data,
+    int ttl_seconds) {
+
+  if (!IsConnected()) {
+    return false;
+  }
+
+  try {
+    std::lock_guard<std::mutex> lock(redis_mutex_);
+
+    // collector:heartbeat:{collector_id} 키에 TTL과 함께 저장
+    // DashboardService가 이 키를 읽어 Collector 생존 판단
+    std::string hb_key = "collector:heartbeat:" + collector_id;
+    redis_client_->setex(hb_key, heartbeat_data.dump(), ttl_seconds);
+
+    LogManager::getInstance().log("redis_writer", LogLevel::DEBUG_LEVEL,
+                                  "Collector heartbeat 저장: " + hb_key +
+                                      " (TTL=" + std::to_string(ttl_seconds) +
+                                      "s)");
+
+    return true;
+
+  } catch (const std::exception &e) {
+    HandleError("SaveCollectorHeartbeat", e.what());
+    return false;
+  }
+}
+
+// =============================================================================
 // 내부 데이터 변환 메서드들
 // =============================================================================
 

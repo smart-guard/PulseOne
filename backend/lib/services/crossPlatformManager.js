@@ -166,7 +166,7 @@ class CrossPlatformManager {
     initializeCommands() {
         if (this.isWindows) {
             return {
-                processFind: 'tasklist /fo csv | findstr /i "collector.exe redis-server.exe node.exe"',
+                processFind: 'tasklist /fo csv | findstr /i "collector redis-server node pulseone"',
                 processKill: (pid) => `taskkill /PID ${pid} /F`,
                 serviceList: 'sc query type=service state=all | findstr "PulseOne"',
                 systemInfo: 'wmic OS get TotalVisibleMemorySize,FreePhysicalMemory /value',
@@ -175,7 +175,7 @@ class CrossPlatformManager {
             };
         } else {
             return {
-                processFind: 'ps aux | grep -E "(collector|redis-server|node.*app\.js)" | grep -v grep',
+                processFind: 'ps aux | grep -E "(collector|export-gateway|redis-server|node.*app\\.js|pulseone)" | grep -v grep',
                 processKill: (pid) => `kill -9 ${pid}`,
                 serviceList: 'systemctl list-units --type=service | grep pulseone',
                 systemInfo: 'free -h && df -h',
@@ -275,10 +275,10 @@ class CrossPlatformManager {
 
             // 폴백 방식
             try {
-                const collectorCheck = await this.execCommand('tasklist | findstr collector.exe');
-                const redisCheck = await this.execCommand('tasklist | findstr redis-server.exe');
+                const collectorCheck = await this.execCommand('tasklist | findstr /i "collector pulseone-collector"');
+                const redisCheck = await this.execCommand('tasklist | findstr /i "redis-server"');
 
-                const processes = { backend: [], collector: [], redis: [] };
+                const processes = { backend: [], collector: [], redis: [], exportGateway: [] };
 
                 if (collectorCheck.stdout.trim()) {
                     this.log('INFO', 'Collector 프로세스 발견 (폴백)');
@@ -418,8 +418,8 @@ class CrossPlatformManager {
             exists: collectorExists
         }));
 
-        // If no collectors are running, add a stopped one (Only on non-docker/bare-metal)
-        if (collectorServices.length === 0 && !this.isDocker) {
+        // If no collectors are running locally, add a stopped one so Docker API logic can update its status if applicable
+        if (collectorServices.length === 0) {
             collectorServices.push({
                 name: 'collector',
                 displayName: 'Data Collector',
@@ -493,7 +493,7 @@ class CrossPlatformManager {
             exists: exportGatewayExists
         }));
 
-        if (exportGatewayServices.length === 0 && !this.isDocker) {
+        if (exportGatewayServices.length === 0) {
             exportGatewayServices.push({
                 name: 'export-gateway',
                 displayName: 'Export Gateway',
@@ -526,7 +526,12 @@ class CrossPlatformManager {
                     // 서비스 이름 매칭 (예: collector, redis, backend, export-gateway)
                     const container = dockerInfo.find(c => {
                         const names = c.Names.map(n => n.replace(/^\//, '').toLowerCase());
-                        return names.some(name => name.includes(baseName));
+                        return names.some(name => {
+                            if (baseName === 'export') {
+                                return name.includes('export-gateway') || name.includes('win-gateway') || name.includes('gateway');
+                            }
+                            return name.includes(baseName);
+                        });
                     });
 
                     if (container) {

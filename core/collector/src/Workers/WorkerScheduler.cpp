@@ -50,6 +50,21 @@ bool WorkerScheduler::StartWorker(const std::string &device_id) {
       return true;
     }
 
+    if (state == WorkerState::PAUSED) {
+      LogManager::getInstance().Info(
+          "WorkerScheduler - Resuming paused worker: " + device_id);
+      try {
+        auto resume_future = worker->Resume();
+        AddPendingFuture(std::move(resume_future));
+        return true;
+      } catch (const std::exception &e) {
+        LogManager::getInstance().Error(
+            "WorkerScheduler - Exception resuming worker " + device_id + ": " +
+            e.what());
+        return false;
+      }
+    }
+
     if (state == WorkerState::STOPPED || state == WorkerState::WORKER_ERROR) {
       LogManager::getInstance().Info(
           "WorkerScheduler - Restarting stopped worker: " + device_id);
@@ -361,6 +376,37 @@ void WorkerScheduler::InitializeWorkerRedisData(const std::string &device_id) {
 
           redis_writer_->SaveWorkerStatus(device_id, "initialized", metadata);
         }
+      }
+    }
+
+    // Collector 전체의 생존 신호(heartbeat)를 Redis에 기록
+    // DashboardService가 collector:heartbeat:{collector_id}를 읽어 Collector
+    // 생존 판단 TTL 170초: Collector가 주기적으로 Status를 써주지 않으면 약 3분
+    // 후 자동 만료
+    if (redis_writer_ && redis_writer_->IsConnected()) {
+      // 환경변수에서 Collector ID 읽기
+      const char *collector_id_env = std::getenv("COLLECTOR_ID");
+      std::string collector_id = collector_id_env ? collector_id_env : "1";
+
+      try {
+        // RedisDataWriter를 통해 heartbeat 키 기록
+        json heartbeat;
+        heartbeat["status"] = "running";
+        heartbeat["alive"] = true;
+        heartbeat["collector_id"] = collector_id;
+        heartbeat["last_device_started"] = device_id;
+        heartbeat["timestamp"] =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count();
+
+        redis_writer_->SaveCollectorHeartbeat(collector_id, heartbeat, 170);
+
+        LogManager::getInstance().Info(
+            "Collector heartbeat 기록: collector:heartbeat:" + collector_id);
+      } catch (const std::exception &e) {
+        LogManager::getInstance().Warn("Collector heartbeat 기록 실패: " +
+                                       std::string(e.what()));
       }
     }
   } catch (...) {

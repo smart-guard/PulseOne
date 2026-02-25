@@ -28,6 +28,7 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
   mode,
   onClose,
   onSave,
+  onDeviceCreated,
   onDelete,
   onEdit,
   initialTab,
@@ -456,23 +457,14 @@ const DeviceDetailModal: React.FC<DeviceModalProps> = ({
                 cancelText: '닫기',
                 showCancel: true,
                 onConfirm: () => {
-                  console.log('🔥 생성 성공 - 데이터포인트 탭으로 전환');
-                  // 부모에게 알림 (목록 갱신 등을 위해)
+                  console.log('구 생성 성공 - 수정 모드로 전환 후 데이터포인트 탭 오픈');
                   if (onSave) onSave(savedDevice);
-
-                  // 모달을 닫지 않고 해당 디바이스의 편집 모드로 전환
-                  // URL 파라미터를 통해 다시 열기 위해 부모 콜백 호출 or 로컬 상태 변경
-                  // 여기서는 부모가 device prop을 업데이트해주면 자동으로 다음 useEffect에서 처리될 것임
-                  // 하지만 가장 확실한 방법은 URL을 업데이트하고 모달은 그대로 두는 것
-                  const url = new URL(window.location.href);
-                  url.searchParams.set('deviceId', savedDevice.id.toString());
-                  url.searchParams.set('mode', 'edit');
-                  url.searchParams.set('tab', 'datapoints');
-                  window.history.replaceState({}, '', url.pathname + url.search);
-
-                  // 강제 리로드나 상태 동기화가 필요할 수 있음
-                  // 여기서는 단순하게 부모에게만 알리고 수동으로 탭을 바꾸는 방식 시도
-                  // (실제 리스트 페이지에서 URL 감시 중이므로 부모가 새 device를 넣어줄 것)
+                  // onDeviceCreated가 있으면 부모가 edit 모드+datapoints 탭으로 이동
+                  if (onDeviceCreated) {
+                    onDeviceCreated(savedDevice);
+                  } else {
+                    onClose();
+                  }
                 },
                 onCancel: () => {
                   if (onSave) onSave(savedDevice);

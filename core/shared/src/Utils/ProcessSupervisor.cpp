@@ -86,9 +86,12 @@ std::vector<int> ProcessSupervisor::queryActiveInstances() {
   std::vector<int> ids;
   try {
     auto &db_mgr = DbLib::DatabaseManager::getInstance();
-    std::string query =
-        "SELECT id FROM edge_servers WHERE server_type = '" + server_type_ +
-        "' AND status = 'active' AND is_deleted = 0 ORDER BY id";
+    // is_enabled=1: Backend가 device 생성/삭제 시 자동 관리하는 활성화 플래그
+    // status='active': 관리자가 수동으로 비활성화한 경우 제외
+    std::string query = "SELECT id FROM edge_servers WHERE server_type = '" +
+                        server_type_ +
+                        "' AND status = 'active' AND is_enabled = 1 AND "
+                        "is_deleted = 0 ORDER BY id";
 
     std::vector<std::vector<std::string>> results;
     if (db_mgr.executeQuery(query, results)) {
@@ -102,7 +105,7 @@ std::vector<int> ProcessSupervisor::queryActiveInstances() {
       }
     }
     LogManager::getInstance().Info("📋 Found " + std::to_string(ids.size()) +
-                                   " active " + server_type_ +
+                                   " active (is_enabled=1) " + server_type_ +
                                    " instance(s) in DB");
   } catch (const std::exception &e) {
     LogManager::getInstance().Error("DB query failed: " +

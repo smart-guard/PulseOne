@@ -26,13 +26,14 @@ export interface Gateway {
 
     live_status?: {
         id: number;
-        status: 'online' | 'offline';
+        status: string;  // 'online' | 'offline' | 'running' 등
         cpu?: string;
         ram?: string;
         ups?: string;
         last_heartbeat?: string;
         memory_usage?: number; // compat
     };
+
     processes?: any;
     config?: any;
     site_id?: number; // [NEW] Site ID

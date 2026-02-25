@@ -333,10 +333,10 @@ void RegisterPlugin() {
     auto &repo_factory = PulseOne::Database::RepositoryFactory::getInstance();
     auto protocol_repo = repo_factory.getProtocolRepository();
     if (protocol_repo) {
-      if (!protocol_repo->findByType("ROS").has_value()) {
+      if (!protocol_repo->findByType("ROS_BRIDGE").has_value()) {
         PulseOne::Database::Entities::ProtocolEntity entity;
-        entity.setProtocolType("ROS");
-        entity.setDisplayName("Robot Operating System");
+        entity.setProtocolType("ROS_BRIDGE");
+        entity.setDisplayName("ROS Bridge");
         entity.setCategory("industrial");
         entity.setDescription(
             "ROS (Robot Operating System) Driver via ROS Bridge");
@@ -349,8 +349,6 @@ void RegisterPlugin() {
   }
 
   // 2. 메모리 Factory에 드라이버 생성자 등록
-  PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
-      "ROS", []() { return std::make_unique<PulseOne::Drivers::ROSDriver>(); });
   PulseOne::Drivers::DriverFactory::GetInstance().RegisterDriver(
       "ROS_BRIDGE",
       []() { return std::make_unique<PulseOne::Drivers::ROSDriver>(); });

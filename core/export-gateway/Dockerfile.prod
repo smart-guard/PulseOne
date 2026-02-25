@@ -22,13 +22,30 @@ RUN git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && 
     cmake -S hiredis -B hiredis/build -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_SSL=ON && \
     make -C hiredis/build -j$(nproc) install
 
+# 3. httplib (header-only)
+RUN wget -O /usr/local/include/httplib.h https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.14.1/httplib.h
+
+# 4. Paho MQTT C/C++ (Gateway MQTT 기능용)
+RUN git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git && \
+    cmake -S paho.mqtt.c -B paho.mqtt.c/build -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_DOCUMENTATION=FALSE && \
+    make -C paho.mqtt.c/build -j$(nproc) install && \
+    git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
+    cmake -S paho.mqtt.cpp -B paho.mqtt.cpp/build -DPAHO_WITH_SSL=TRUE -DPAHO_BUILD_DOCUMENTATION=FALSE -DPAHO_BUILD_SAMPLES=FALSE && \
+    make -C paho.mqtt.cpp/build -j$(nproc) install
+
+# 5. spdlog (header-only)
+RUN git clone --depth 1 --branch v1.12.0 https://github.com/gabime/spdlog.git && \
+    cp -r spdlog/include/spdlog /usr/local/include/
+
 # Build PulseOne Export Gateway
 WORKDIR /app
 COPY core /app/core
-RUN cd core/export-gateway && \
-    mkdir build && cd build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
-    make -j$(nproc)
+
+# Shared 라이브러리 먼저 빌드
+RUN cd core/shared && make all -j$(nproc)
+
+# Gateway 빌드
+RUN cd core/export-gateway && make all -j$(nproc)
 
 # ==========================================
 # Phase 2: Final
@@ -47,6 +64,8 @@ COPY --from=builder /app/core/export-gateway/bin/export-gateway /app/pulseone-ex
 
 # Copy required Shared Libraries
 COPY --from=builder /usr/local/lib/libhiredis.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libpaho-mqttpp3.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libpaho-mqtt3a.so* /usr/local/lib/
 RUN ldconfig
 
 # Create data/logs directory

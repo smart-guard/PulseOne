@@ -34,14 +34,13 @@ services:
       - "${BACKEND_PORT:-3000}:3000"
     env_file:
       - ../config/.env
-      - ../config/redis.env
-      - ../config/database.env
-      - ../config/messaging.env
-      - ../config/timeseries.env
       - ../config/security.env
-      - ../config/collector.env
+      - ./config/redis.env
+      - ./config/database.env
+      - ./config/messaging.env
+      - ./config/timeseries.env
+      - ./config/collector.env
     depends_on:
-
       rabbitmq:
         condition: service_started
     healthcheck:
@@ -50,20 +49,16 @@ services:
       timeout: 10s
       retries: 3
     environment:
-      - INFLUXDB_HOST=influxdb
-      - INFLUXDB_PORT=8086
-      - INFLUXDB_ORG=pulseone
-      - INFLUXDB_TOKEN=my-super-secret-auth-token
-      - INFLUXDB_BUCKET=history
-      - USE_INFLUXDB=true
-      - START_COLLECTOR_ON_BOOT=false
       - TZ=Asia/Seoul
       - DOCKER_CONTAINER=true
       - COMPOSE_PROJECT_NAME=pulseone
+      - START_COLLECTOR_ON_BOOT=false
+      - PULSEONE_DATA_DIR=/app/data
+      - PULSEONE_CONFIG_DIR=/app/config
     volumes:
       - ../backend:/app/backend
       - ../config:/app/config
-      - ../core:/app/core
+      - ./config:/app/docker-config
       - ../data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
     user: root
@@ -78,22 +73,19 @@ services:
     restart: always
     hostname: docker-collector-1
     ports:
-      - "5001:8080"
+      - "5001:8501"
     depends_on:
       rabbitmq:
         condition: service_started
     env_file:
-      - ../config/redis.env
-      - ../config/database.env
-      - ../config/messaging.env
-      - ../config/timeseries.env
+      - ./config/redis.env
+      - ./config/database.env
+      - ./config/messaging.env
+      - ./config/timeseries.env
+      - ./config/collector.env
     environment:
-      - COLLECTOR_ID=1
       - PULSEONE_CONFIG_DIR=/app/config
       - PULSEONE_DATA_DIR=/app/data
-      - SQLITE_PATH=/app/data/db/pulseone.db
-      - LOG_LEVEL=debug
-      - INFLUXDB_BUCKET=history
       - TZ=Asia/Seoul
     networks:
       - pulseone_network
@@ -101,10 +93,9 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ../data:/app/data
-      - ../config:/app/config
-      - ../core:/app/core
-    tty: true
-    command: /bin/bash -c "tail -f /dev/null"
+      - ./config:/app/config
+      - ../core/collector/logs:/app/core/collector/logs
+    command: [ "/usr/local/bin/pulseone-collector", "--id", "1" ]
 
   simulator-modbus:
     container_name: docker-simulator-modbus-1
@@ -195,6 +186,9 @@ services:
       - AUTO_RUN=true
       - SQLITE_PATH=/app/data/db/pulseone.db
       - TZ=Asia/Seoul
+      # [Docker Override] redis.env의 127.0.0.1 → Docker 서비스명으로 교체
+      - REDIS_PRIMARY_HOST=redis
+      - REDIS_PRIMARY_PORT=6379
     volumes:
       - ../core:/app/core
       - ../config:/app/config

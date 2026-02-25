@@ -72,8 +72,13 @@ const SystemStatus: React.FC = () => {
 
         const gatewayServices: ServiceInfo[] = gateways.map(gw => ({
           name: `export-gateway-${gw.id}`,
-          displayName: gw.name || 'Unnamed Gateway',
-          status: gw.status === 'online' ? 'running' : 'stopped',
+          displayName: gw.server_name || gw.name || 'Unnamed Gateway',
+          status: (
+            gw.live_status?.status === 'online' ||
+            gw.live_status?.status === 'running' ||
+            gw.status === 'online' ||
+            gw.status === 'active'   // edge_servers.status = 'active' = ALIVE
+          ) ? 'running' : 'stopped',
           icon: 'fas fa-server',
           controllable: true,
           description: gw.description || `Export Gateway (ID: ${gw.id})`,
@@ -640,209 +645,209 @@ const SystemStatus: React.FC = () => {
 
   return (
     <div className="service-management-container" style={{ padding: '24px 24px 150px 24px', background: '#f7fafc', minHeight: '100vh' }}>
-        {/* ... (Header section remains) ... */}
-        <div className="page-header" style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '20px 24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <div>
-            <h1 className="page-title" style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#1a202c' }}>시스템 상태 및 서비스 관리</h1>
-            <p style={{ margin: '4px 0 0 0', color: '#718096', fontSize: '0.9rem' }}>산업용 데이터 허브의 모든 서비스 상태를 실시간으로 모니터링합니다.</p>
+      {/* ... (Header section remains) ... */}
+      <div className="page-header" style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '20px 24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div>
+          <h1 className="page-title" style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#1a202c' }}>시스템 상태 및 서비스 관리</h1>
+          <p style={{ margin: '4px 0 0 0', color: '#718096', fontSize: '0.9rem' }}>산업용 데이터 허브의 모든 서비스 상태를 실시간으로 모니터링합니다.</p>
+        </div>
+        <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ textAlign: 'right' }}>
+            {error && <div className="text-error-600" style={{ color: '#e53e3e', fontSize: '0.85rem', fontWeight: 500 }}>{error}</div>}
+            <span className="text-sm text-neutral-600" style={{ fontSize: '0.85rem', color: '#718096' }}>
+              갱신: {formatTimeAgo(lastUpdate)}
+            </span>
           </div>
-          <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ textAlign: 'right' }}>
-              {error && <div className="text-error-600" style={{ color: '#e53e3e', fontSize: '0.85rem', fontWeight: 500 }}>{error}</div>}
-              <span className="text-sm text-neutral-600" style={{ fontSize: '0.85rem', color: '#718096' }}>
-                갱신: {formatTimeAgo(lastUpdate)}
-              </span>
+          <button
+            className="btn btn-primary"
+            onClick={fetchStatus}
+            disabled={isProcessing}
+            style={{ padding: '10px 20px', borderRadius: '8px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', color: 'white', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <i className={`fas fa-sync-alt ${isProcessing ? 'fa-spin' : ''}`}></i>
+            새로고침
+          </button>
+        </div>
+      </div>
+
+      <div className="status-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '32px' }}>
+        {/* Core Infrastructure Section */}
+        <div className="status-card" style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <i className="fas fa-microchip" style={{ color: '#4a5568' }}></i> 핵심 인프라
+          </h3>
+          <div className="service-mini-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {coreServices.map(s => (
+              <div key={s.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <i className={s.icon || 'fas fa-cog'} style={{ color: s.status === 'running' ? '#48bb78' : '#718096' }}></i>
+                  <span style={{ fontWeight: 500, fontSize: '0.95rem' }}>{s.displayName}</span>
+                </div>
+                <span style={{
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  background: s.status === 'running' ? '#def7ec' : '#fde2e2',
+                  color: s.status === 'running' ? '#03543f' : '#9b1c1c'
+                }}>
+                  {s.status === 'running' ? 'ALIVE' : 'DOWN'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Collector Partitions Section */}
+        <div className="status-card" style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <i className="fas fa-network-wired" style={{ color: '#667eea' }}></i> 수집기 파티션
+          </h3>
+          <div className="collector-summary" style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+            <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: '#ebf4ff', borderRadius: '8px' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2b6cb0' }}>{collectorServices.length}</div>
+              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>총 파티션</div>
             </div>
-            <button
-              className="btn btn-primary"
-              onClick={fetchStatus}
-              disabled={isProcessing}
-              style={{ padding: '10px 20px', borderRadius: '8px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', color: 'white', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <i className={`fas fa-sync-alt ${isProcessing ? 'fa-spin' : ''}`}></i>
-              새로고침
+            <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: '#f0fff4', borderRadius: '8px' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2f855a' }}>{collectorServices.filter(s => s.status === 'running').length}</div>
+              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>활성 수집기</div>
+            </div>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0 }}>각 엣지 서버별 데이터 수집 엔진이 독립적으로 동작하고 있습니다.</p>
+        </div>
+      </div>
+
+      <div className="main-service-panel" style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid #edf2f7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>상세 서비스 목록</h3>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn btn-sm" onClick={() => handleBulkAction('restart')} style={{ padding: '6px 12px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer' }}>
+              <i className="fas fa-redo"></i> 일괄 재시작
             </button>
           </div>
         </div>
 
-        <div className="status-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '32px' }}>
-          {/* Core Infrastructure Section */}
-          <div className="status-card" style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <i className="fas fa-microchip" style={{ color: '#4a5568' }}></i> 핵심 인프라
-            </h3>
-            <div className="service-mini-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {coreServices.map(s => (
-                <div key={s.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <i className={s.icon || 'fas fa-cog'} style={{ color: s.status === 'running' ? '#48bb78' : '#718096' }}></i>
-                    <span style={{ fontWeight: 500, fontSize: '0.95rem' }}>{s.displayName}</span>
-                  </div>
-                  <span style={{
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    background: s.status === 'running' ? '#def7ec' : '#fde2e2',
-                    color: s.status === 'running' ? '#03543f' : '#9b1c1c'
-                  }}>
-                    {s.status === 'running' ? 'ALIVE' : 'DOWN'}
-                  </span>
-                </div>
-              ))}
+        <div className="grouped-service-list" style={{ marginBottom: '150px' }}>
+          {/* Core Infrastructure Group */}
+          <div className="service-group">
+            <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              핵심 인프라 (Core Services)
             </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {coreServices.map(service => renderServiceRow(service))}
+              </tbody>
+            </table>
           </div>
 
-          {/* Collector Partitions Section */}
-          <div className="status-card" style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <i className="fas fa-network-wired" style={{ color: '#667eea' }}></i> 수집기 파티션
-            </h3>
-            <div className="collector-summary" style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
-              <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: '#ebf4ff', borderRadius: '8px' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2b6cb0' }}>{collectorServices.length}</div>
-                <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>총 파티션</div>
-              </div>
-              <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: '#f0fff4', borderRadius: '8px' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2f855a' }}>{collectorServices.filter(s => s.status === 'running').length}</div>
-                <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>활성 수집기</div>
-              </div>
-            </div>
-            <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0 }}>각 엣지 서버별 데이터 수집 엔진이 독립적으로 동작하고 있습니다.</p>
-          </div>
-        </div>
-
-        <div className="main-service-panel" style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-          <div style={{ padding: '20px 24px', borderBottom: '1px solid #edf2f7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>상세 서비스 목록</h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button className="btn btn-sm" onClick={() => handleBulkAction('restart')} style={{ padding: '6px 12px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer' }}>
-                <i className="fas fa-redo"></i> 일괄 재시작
-              </button>
-            </div>
-          </div>
-
-          <div className="grouped-service-list" style={{ marginBottom: '150px' }}>
-            {/* Core Infrastructure Group */}
-            <div className="service-group">
-              <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                핵심 인프라 (Core Services)
+          {/* Export Services Group */}
+          {exportGatewayServices.length > 0 && (
+            <div className="service-group" style={{ marginTop: '20px' }}>
+              <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#805ad5', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '2px solid #faf5ff' }}>
+                데이터 외부 연동 (Export Gateways)
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
-                  {coreServices.map(service => renderServiceRow(service))}
+                  {exportGatewayServices.map(service => renderServiceRow(service))}
                 </tbody>
               </table>
             </div>
+          )}
 
-            {/* Export Services Group */}
-            {exportGatewayServices.length > 0 && (
-              <div className="service-group" style={{ marginTop: '20px' }}>
-                <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#805ad5', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '2px solid #faf5ff' }}>
-                  데이터 외부 연동 (Export Gateways)
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <tbody>
-                    {exportGatewayServices.map(service => renderServiceRow(service))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          {/* Collector Partitions Group (Hierarchical) */}
+          <div className="service-group" style={{ marginTop: '20px' }}>
+            <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#667eea', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '2px solid #ebf4ff' }}>
+              수집기 파티션 (Hierarchical Overview)
+            </div>
 
-            {/* Collector Partitions Group (Hierarchical) */}
-            <div className="service-group" style={{ marginTop: '20px' }}>
-              <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#667eea', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '2px solid #ebf4ff' }}>
-                수집기 파티션 (Hierarchical Overview)
-              </div>
-
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <tbody>
-                  {/* 1. Sites and their Collectors */}
-                  {hierarchy.map(site => (
-                    <React.Fragment key={`site-${site.id}`}>
-                      <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
-                        <td colSpan={6} style={{ padding: '8px 24px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <button
-                              onClick={() => toggleSite(site.id)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-                            >
-                              <i className={`fas ${expandedSites.includes(site.id) ? 'fa-minus-square' : 'fa-plus-square'}`}></i>
-                            </button>
-                            <i className="fas fa-industry" style={{ color: '#4a5568' }}></i>
-                            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#334155' }}>
-                              SITE: {site.name} ({site.code})
-                            </span>
-                            <span style={{ fontSize: '0.7rem', color: '#94a3b8', background: 'white', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                              {site.collectors?.length || 0} Collectors
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedSites.includes(site.id) && (
-                        site.collectors && site.collectors.length > 0 ? (
-                          site.collectors.map(service => renderServiceRow(service))
-                        ) : (
-                          <tr style={{ background: 'white' }}>
-                            <td colSpan={6} style={{ padding: '12px 60px', color: '#94a3b8', fontSize: '0.8rem', fontStyle: 'italic' }}>
-                              이 사이트에 할당된 수집기가 없습니다.
-                            </td>
-                          </tr>
-                        )
-                      )}
-                    </React.Fragment>
-                  ))}
-
-                  {/* 2. Unassigned Registered Collectors */}
-                  {unassignedCollectors.length > 0 && (
-                    <React.Fragment>
-                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                        <td colSpan={6} style={{ padding: '8px 24px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <i className="fas fa-question-circle" style={{ color: '#718096' }}></i>
-                            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#4a5568' }}>
-                              UNASSIGNED COLLECTORS (Registered but no Site)
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                      {unassignedCollectors.map(service => renderServiceRow(service))}
-                    </React.Fragment>
-                  )}
-
-                  {/* 3. Shadow Collectors (Running but not in DB) */}
-                  {services.filter(s => s.name.startsWith('collector') && !s.exists).map(service => (
-                    <React.Fragment key={service.name}>
-                      <tr style={{ background: '#fff5f5', borderBottom: '1px solid #fed7d7' }}>
-                        <td colSpan={6} style={{ padding: '8px 24px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <i className="fas fa-exclamation-triangle" style={{ color: '#e53e3e' }}></i>
-                            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#c53030' }}>
-                              UNREGISTERED PROCESS (Detected but not in DB)
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                      {renderServiceRow(service)}
-                    </React.Fragment>
-                  ))}
-
-                  {hierarchy.length === 0 && unassignedCollectors.length === 0 && collectorServices.length === 0 && (
-                    <tr>
-                      <td colSpan={6} style={{ padding: '48px', textAlign: 'center', color: '#a0aec0' }}>
-                        <i className="fas fa-search fa-2x" style={{ marginBottom: '12px', display: 'block' }}></i>
-                        데이터가 없습니다.
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {/* 1. Sites and their Collectors */}
+                {hierarchy.map(site => (
+                  <React.Fragment key={`site-${site.id}`}>
+                    <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #e2e8f0' }}>
+                      <td colSpan={6} style={{ padding: '8px 24px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <button
+                            onClick={() => toggleSite(site.id)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                          >
+                            <i className={`fas ${expandedSites.includes(site.id) ? 'fa-minus-square' : 'fa-plus-square'}`}></i>
+                          </button>
+                          <i className="fas fa-industry" style={{ color: '#4a5568' }}></i>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#334155' }}>
+                            SITE: {site.name} ({site.code})
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8', background: 'white', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                            {site.collectors?.length || 0} Collectors
+                          </span>
+                        </div>
                       </td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    {expandedSites.includes(site.id) && (
+                      site.collectors && site.collectors.length > 0 ? (
+                        site.collectors.map(service => renderServiceRow(service))
+                      ) : (
+                        <tr style={{ background: 'white' }}>
+                          <td colSpan={6} style={{ padding: '12px 60px', color: '#94a3b8', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                            이 사이트에 할당된 수집기가 없습니다.
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </React.Fragment>
+                ))}
+
+                {/* 2. Unassigned Registered Collectors */}
+                {unassignedCollectors.length > 0 && (
+                  <React.Fragment>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <td colSpan={6} style={{ padding: '8px 24px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <i className="fas fa-question-circle" style={{ color: '#718096' }}></i>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#4a5568' }}>
+                            UNASSIGNED COLLECTORS (Registered but no Site)
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {unassignedCollectors.map(service => renderServiceRow(service))}
+                  </React.Fragment>
+                )}
+
+                {/* 3. Shadow Collectors (Running but not in DB) */}
+                {services.filter(s => s.name.startsWith('collector') && !s.exists).map(service => (
+                  <React.Fragment key={service.name}>
+                    <tr style={{ background: '#fff5f5', borderBottom: '1px solid #fed7d7' }}>
+                      <td colSpan={6} style={{ padding: '8px 24px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <i className="fas fa-exclamation-triangle" style={{ color: '#e53e3e' }}></i>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#c53030' }}>
+                            UNREGISTERED PROCESS (Detected but not in DB)
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {renderServiceRow(service)}
+                  </React.Fragment>
+                ))}
+
+                {hierarchy.length === 0 && unassignedCollectors.length === 0 && collectorServices.length === 0 && (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '48px', textAlign: 'center', color: '#a0aec0' }}>
+                      <i className="fas fa-search fa-2x" style={{ marginBottom: '12px', display: 'block' }}></i>
+                      데이터가 없습니다.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        </div><div style={{ height: "150px" }}></div>
-      </div>
-      );
+        </div>
+      </div><div style={{ height: "150px" }}></div>
+    </div>
+  );
 };
 
-      export default SystemStatus;
+export default SystemStatus;
 

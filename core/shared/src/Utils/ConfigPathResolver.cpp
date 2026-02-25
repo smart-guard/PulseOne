@@ -5,6 +5,7 @@
 
 #include "Utils/ConfigPathResolver.h"
 #include "Platform/PlatformCompat.h"
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -87,6 +88,11 @@ ConfigPathResolver::findDataDirectory(const std::string &dataDirFromConfig) {
 std::string ConfigPathResolver::resolveSQLitePath(
     std::function<std::string(const std::string &)> configGetter,
     const std::string &dataDir) {
+
+  // configMap(파일값) 또는 기본값으로 처리
+  // Docker: docker/config/database.env에서 SQLITE_PATH=/app/data/db/pulseone.db
+  // (절대경로) 읽음 Native: config/database.env에서
+  // SQLITE_PATH=./data/db/pulseone.db (상대경로) 읽음
   std::string db_path = configGetter("SQLITE_PATH");
 
   if (db_path.empty()) {

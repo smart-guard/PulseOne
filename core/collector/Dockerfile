@@ -293,7 +293,22 @@ COPY core /app/core
 
 # 빌드 수행
 RUN cd /app/core/shared && make all -j$(nproc)
+
+# shared lib을 /usr/local/lib에 설치하여 driver 링크 시 찾을 수 있도록
+RUN cp /app/core/shared/lib/Linux/*.a /usr/local/lib/ 2>/dev/null || true && \
+    cp /app/core/shared/lib/Linux/*.so* /usr/local/lib/ 2>/dev/null || true && \
+    ldconfig && \
+    echo "✅ shared libs installed to /usr/local/lib"
+
 RUN cd /app/core/collector && make all -j$(nproc)
 
+# binary를 volume mount 영향 없는 경로에 설치
+# 런타임 시 ../core:/app/core 마운트가 /app/core/bin을 덮어쓰는 것을 방지
+RUN cp /app/core/collector/bin/pulseone-collector /usr/local/bin/pulseone-collector && \
+    chmod +x /usr/local/bin/pulseone-collector && \
+    mkdir -p /usr/local/bin/drivers && \
+    cp -r /app/core/collector/bin/drivers/. /usr/local/bin/drivers/ 2>/dev/null || true && \
+    echo "✅ Collector binary + drivers installed to /usr/local/bin/"
+
 WORKDIR /app/core/collector
-CMD ["/app/core/collector/bin/pulseone-collector"]
+CMD ["/usr/local/bin/pulseone-collector"]

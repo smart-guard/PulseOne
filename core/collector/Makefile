@@ -289,7 +289,7 @@ LIBS := -Wl,--start-group $(SHARED_LIBS) -Wl,--end-group $(PROTOCOL_LIBS) $(UTIL
 # paho-mqttpp3 -> paho-mqttpp3-static (Dockerfile.windows 명칭에 맞춤)
 LIBS := $(subst -lpaho-mqttpp3,-lpaho-mqttpp3-static,$(LIBS))
 else
-LIBS := -Wl,--start-group $(SHARED_LIBS) -Wl,--end-group $(PROTOCOL_LIBS) $(UTILITY_LIBS) -lpqxx -lpq -lmysqlclient $(BASIC_LIBS) $(PLATFORM_LIBS)
+LIBS := -Wl,--start-group $(SHARED_LIBS) -Wl,--end-group $(PROTOCOL_LIBS) $(UTILITY_LIBS) $(BASIC_LIBS) $(PLATFORM_LIBS)
 endif
 
 # =============================================================================

@@ -273,6 +273,21 @@ const DeviceList: React.FC = () => {
     await loadDeviceStats();
   }, [loadDevices, loadDeviceStats]);
 
+  // 생성 완료 후 edit 모드 + datapoints 탭으로 이동
+  const handleDeviceCreated = useCallback(async (savedDevice: Device) => {
+    await loadDevices(true);
+    await loadDeviceStats();
+    // 생성된 디바이스의 edit + datapoints 탭으로 URL 업데이트
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev);
+      newParams.set('deviceId', savedDevice.id.toString());
+      newParams.set('mode', 'edit');
+      newParams.set('tab', 'datapoints');
+      newParams.delete('bulk');
+      return newParams;
+    }, { replace: true });
+  }, [loadDevices, loadDeviceStats, setSearchParams]);
+
   const handleDeviceDelete = useCallback(async (deletedDeviceId: number) => {
     setSelectedDevices(prev => prev.filter(id => id !== deletedDeviceId));
     await loadDevices(true);
@@ -909,6 +924,7 @@ const DeviceList: React.FC = () => {
             isOpen={isModalOpen}
             onClose={handleCloseModal}
             onSave={handleDeviceSave}
+            onDeviceCreated={handleDeviceCreated}
             onDelete={handleDeviceDelete}
             onEdit={() => {
               setSearchParams(prev => {

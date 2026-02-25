@@ -1172,6 +1172,25 @@ class DeviceRepository extends BaseRepository {
 
         return pointData;
     }
+
+    /**
+     * 특정 edge_server에 할당된 활성(비삭제) 디바이스 수 조회
+     * Collector 생명주기 관리에 사용
+     */
+    async countByEdgeServer(edgeServerId) {
+        try {
+            const db = this.getConnection();
+            const result = await db('devices')
+                .where('edge_server_id', edgeServerId)
+                .where('is_deleted', 0)
+                .count('id as count')
+                .first();
+            return parseInt(result?.count || 0, 10);
+        } catch (e) {
+            this.logger?.warn(`[DeviceRepository] countByEdgeServer(${edgeServerId}) failed: ${e.message}`);
+            return 0;
+        }
+    }
 }
 
 module.exports = DeviceRepository;

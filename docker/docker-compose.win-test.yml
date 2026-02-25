@@ -1,0 +1,192 @@
+version: "3.8"
+
+# ============================================================
+# PulseOne Windows Test Environment
+# 목적: Wine64 기반 Windows 바이너리를 Linux 컨테이너에서 실행 테스트
+# 네트워크: docker_win_test_net (external)
+# ============================================================
+
+services:
+
+  # ── Redis ──────────────────────────────────────────────────
+  redis:
+    container_name: pulseone-win-redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - win_redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - win_test_net
+
+  # ── Backend (Node.js) ──────────────────────────────────────
+  win-backend:
+    container_name: pulseone-win-backend
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile.dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../config/.env
+      - ../config/database.env
+      - ../config/messaging.env
+      - ../config/security.env
+    environment:
+      # [Docker Override] Redis 서비스명으로 연결 (127.0.0.1 아님)
+      - REDIS_PRIMARY_HOST=redis
+      - REDIS_HOST=redis
+      - REDIS_PRIMARY_PORT=6379
+      - REDIS_PORT=6379
+      # SQLite 경로
+      - DATABASE_TYPE=SQLITE
+      - SQLITE_PATH=/app/data/db/pulseone.db
+      # 기타
+      - TZ=Asia/Seoul
+      - DOCKER_CONTAINER=true
+      - NODE_ENV=development
+      - START_COLLECTOR_ON_BOOT=false
+      - PULSEONE_CONFIG_DIR=/app/config
+      - PULSEONE_DATA_DIR=/app/data
+    volumes:
+      - ../backend:/app/backend
+      - ../config:/app/config
+      - ../data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: root
+    command: /bin/bash -c "chmod 666 /var/run/docker.sock && su node -c 'node app.js'"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - win_test_net
+
+  # ── Frontend ───────────────────────────────────────────────
+  win-frontend:
+    container_name: pulseone-win-frontend
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.dev
+      args:
+        - VITE_API_URL=http://localhost:3000
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - TZ=Asia/Seoul
+      - NODE_ENV=development
+      - VITE_MODE=development
+      - VITE_API_URL=http://localhost:3000
+      - VITE_WEBSOCKET_URL=ws://localhost:3000
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_HMR_HOST=0.0.0.0
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    networks:
+      - win_test_net
+
+  # ── Collector (Wine64 + Windows EXE) ───────────────────────
+  win-collector:
+    container_name: pulseone-win-collector
+    image: docker-win-collector
+    restart: unless-stopped
+    environment:
+      - TZ=KST-9
+      - PULSEONE_DATA_DIR=Z:/app/data
+      - PULSEONE_CONFIG_DIR=Z:/app/config
+      - SQLITE_PATH=Z:/app/data/db/pulseone.db
+      - LOG_LEVEL=debug
+      - REDIS_PRIMARY_HOST=redis
+      - REDIS_HOST=redis
+      - REDIS_PRIMARY_PORT=6379
+      - WINEDEBUG=-all
+      - WINEPATH=Z:/app/bin-windows
+      - WINEPREFIX=/root/.wine
+    volumes:
+      - /Users/kyungho/Project/PulseOne/bin-windows:/app/bin-windows
+      - /Users/kyungho/Project/PulseOne/config:/app/config
+      - /Users/kyungho/Project/PulseOne/data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    command: bash -c "cd /app/bin-windows && wine64 pulseone-collector.exe --id 1"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - win_test_net
+
+  # ── Export Gateway (Wine64 + Windows EXE) ──────────────────
+  win-gateway:
+    container_name: pulseone-win-gateway
+    image: docker-win-gateway
+    restart: unless-stopped
+    environment:
+      - TZ=KST-9
+      - PULSEONE_DATA_DIR=Z:/app/data
+      - PULSEONE_CONFIG_DIR=Z:/app/config
+      - SQLITE_PATH=Z:/app/data/db/pulseone.db
+      - REDIS_PRIMARY_HOST=redis
+      - REDIS_HOST=redis
+      - REDIS_PRIMARY_PORT=6379
+      - REDIS_PORT=6379
+      - ACCESS_CONTROL_ENABLED=true
+      - SSL_ENABLED=false
+      - SESSION_SECRET_FILE=/session_secret.key
+      - JWT_SECRET_FILE=/jwt_secret.key
+      - WINEDEBUG=-all
+      - WINEPATH=/app/bin-windows:/app/bin-windows/plugins
+      - WINEPREFIX=/root/.wine
+    volumes:
+      - /Users/kyungho/Project/PulseOne/bin-windows:/app/bin-windows
+      - /Users/kyungho/Project/PulseOne/config:/app/config
+      - /Users/kyungho/Project/PulseOne/data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    command: wine64 /app/bin-windows/pulseone-export-gateway.exe --id 6
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - win_test_net
+
+  # ── MQTT Broker (Mosquitto) ─────────────────────────────────
+  win-mosquitto:
+    container_name: pulseone-win-mosquitto
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    networks:
+      - win_test_net
+
+  # ── Modbus Simulator ────────────────────────────────────────
+  win-sim-modbus:
+    container_name: pulseone-win-sim-modbus
+    image: node:20-slim
+    working_dir: /app/backend
+    environment:
+      - MODBUS_PORT=50502
+      - TZ=Asia/Seoul
+    volumes:
+      - ../backend:/app/backend
+    command: node scripts/modbus_simulator.js
+    ports:
+      - "50502:50502"
+    networks:
+      - win_test_net
+
+networks:
+  win_test_net:
+    name: docker_win_test_net
+    external: true
+
+volumes:
+  win_redis_data:

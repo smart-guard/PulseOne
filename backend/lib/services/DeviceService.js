@@ -46,6 +46,13 @@ class DeviceService extends BaseService {
         return this._configSyncHooks;
     }
 
+    get redis() {
+        if (!this._redis) {
+            this._redis = require('../connection/redis');
+        }
+        return this._redis;
+    }
+
     get auditLogService() {
         if (!this._auditLogService) {
             const AuditLogService = require('./AuditLogService');
@@ -449,6 +456,11 @@ class DeviceService extends BaseService {
             // 설정 동기화 후크 실행
             await this.configSyncHooks.afterDeviceCreate(newDevice);
 
+            // Collector 자동 활성화: 디바이스가 생기면 해당 Collector를 enable + start
+            if (newDevice.edge_server_id) {
+                await this._syncCollectorLifecycle(newDevice.edge_server_id);
+            }
+
             return newDevice;
         }, 'CreateDevice');
     }
@@ -511,34 +523,57 @@ class DeviceService extends BaseService {
                 }
             }
 
-            // 설정 동기화 후크 실행 (Collector 연동)
-            this.logger.log(`🔄 [DeviceService] Initiating config sync for device ${id}...`);
-            try {
-                await this.configSyncHooks.afterDeviceUpdate(oldDevice, updatedDevice);
-                this.logger.log(`✅ [DeviceService] Config sync successful for device ${id}`);
-            } catch (syncError) {
-                this.logger.error(`❌ [DeviceService] Config sync failed for device ${id}:`, syncError.message);
-
-                // 🔥 DEADLOCK PREVENTION:
-                // SyncError이고 데이터베이스 업데이트는 이미 성공한 상황임.
-                // Circuit breaker가 열려있는 등의 통신 장애는 경고와 함께 성공 응답을 반환하여 
-                // 사용자가 설정을 수정하여 통신을 복구할 기회를 제공함.
-                if (syncError.name === 'SyncError' || syncError.message.includes('Circuit breaker is OPEN')) {
-                    this.logger.warn(`⚠️ [DeviceService] Returning partial success for ${id} due to sync failure`);
-
-                    // Attach warning info directly to the device object so it's not double-wrapped
-                    // handleRequest will wrap this in a { success: true, data: updatedDevice } structure
-                    updatedDevice.sync_warning = `Database updated, but Collector sync failed: ${syncError.message}`;
-                    updatedDevice.sync_error = syncError.message;
-
-                    return updatedDevice;
+            // 설정 동기화 + Collector 생명주기 = fire-and-forget (Collector 오프라인이어도 즉시 응답)
+            const oldEdgeId = oldDevice.edge_server_id;
+            const newEdgeId = updatedDevice.edge_server_id;
+            setImmediate(async () => {
+                try {
+                    await this.configSyncHooks.afterDeviceUpdate(oldDevice, updatedDevice);
+                } catch (syncError) {
+                    this.logger.warn(`⚠️ [DeviceService] Config sync failed (background, non-critical): ${syncError.message}`);
                 }
-
-                throw syncError;
-            }
+                if (oldEdgeId !== newEdgeId) {
+                    if (oldEdgeId) await this._syncCollectorLifecycle(oldEdgeId);
+                    if (newEdgeId) await this._syncCollectorLifecycle(newEdgeId);
+                }
+            });
 
             return updatedDevice;
         }, 'UpdateDevice');
+    }
+
+
+    /**
+     * Collector 생명주기 자동 관리
+     * - 자동 활성화만: 디바이스가 생기면 is_enabled=1 + startCollector
+     * - 자동 비활성화 없음: 디바이스가 0이 돼도 컬렉터를 강제로 끄지 않음
+     *   (비활성화는 관리자가 명시적으로 처리)
+     */
+    async _syncCollectorLifecycle(edgeServerId) {
+        try {
+            const edgeRepo = RepositoryFactory.getInstance().getEdgeServerRepository();
+            const edgeServer = await edgeRepo.findById(edgeServerId);
+            if (!edgeServer || edgeServer.server_type !== 'collector') return;
+
+            // 해당 Collector에 속한 활성 디바이스 수 조회
+            const deviceCount = await this.repository.countByEdgeServer(edgeServerId);
+            const isCurrentlyEnabled = !!edgeServer.is_enabled;
+
+            if (deviceCount > 0 && !isCurrentlyEnabled) {
+                // 0 → 1: 디바이스가 생겼는데 비활성화 상태면 활성화 + spawn
+                this.logger.log(`🟢 [CollectorLifecycle] Collector ${edgeServerId} has ${deviceCount} device(s) → enabling & starting`);
+                await edgeRepo.update(edgeServerId, { is_enabled: 1 });
+                const crossPlatform = require('./crossPlatformManager');
+                await crossPlatform.startCollector(edgeServerId).catch(e =>
+                    this.logger.warn(`⚠️ [CollectorLifecycle] startCollector(${edgeServerId}) failed (non-critical): ${e.message}`)
+                );
+            } else {
+                this.logger.log(`ℹ️ [CollectorLifecycle] Collector ${edgeServerId}: ${deviceCount} device(s), enabled=${isCurrentlyEnabled} → no change`);
+            }
+        } catch (e) {
+            // 생명주기 실패는 디바이스 CRUD를 블록하지 않음
+            this.logger.warn(`⚠️ [CollectorLifecycle] sync failed for collector ${edgeServerId}: ${e.message}`);
+        }
     }
 
     /**
@@ -578,6 +613,7 @@ class DeviceService extends BaseService {
             const device = await this.repository.findById(id, tenantId);
             if (!device) throw new Error('Device not found');
 
+            const edgeServerId = device.edge_server_id; // 삭제 전에 기록
             const result = await this.repository.deleteById(id, tenantId);
 
             // Audit Log
@@ -611,6 +647,11 @@ class DeviceService extends BaseService {
                 }
                 // 다른 치명적 에러는 전파
                 throw syncError;
+            }
+
+            // Collector 생명주기 재평가: 디바이스 없어진 Collector를 비활성화할 수 있음
+            if (edgeServerId) {
+                await this._syncCollectorLifecycle(edgeServerId);
             }
 
             return result;
@@ -873,6 +914,33 @@ class DeviceService extends BaseService {
         return devices;
     }
 
+    /**
+     * Redis에서 device 상태를 직접 읽어옴 (Collector HTTP 타임아웃 시 fallback)
+     * Collector가 worker 상태 변경 시 `device:{num}:status`, `worker:{device_id}:status` 키에 씀
+     */
+    async getDeviceStatusFromRedis(device) {
+        try {
+            const redisClient = await this.redis?.getRedisClient?.();
+            if (!redisClient) return null;
+
+            // Collector writes: device:{numeric_id}:status
+            const deviceNum = device.id.toString();
+            const deviceKey = `device:${deviceNum}:status`;
+            const raw = await redisClient.get(deviceKey);
+            if (!raw) return null;
+
+            const data = JSON.parse(raw);
+            return {
+                status: data.worker_status || 'unknown',
+                connection_status: data.connection_status || 'disconnected',
+                last_communication: data.last_communication || null,
+                source: 'redis'
+            };
+        } catch (e) {
+            return null;
+        }
+    }
+
     async enrichWithCollectorStatus(items) {
         if (!items || items.length === 0) return;
 
@@ -907,15 +975,26 @@ class DeviceService extends BaseService {
                             status: status
                         };
 
-                        if (status !== 'running') {
+                        // PAUSED 상태는 워커가 일시정지된 것이지 연결이 끊긴 게 아님
+                        // RUNNING/PAUSED → connection_status 유지, STOPPED/ERROR/UNKNOWN → disconnected
+                        if (status !== 'running' && status !== 'paused') {
                             d.connection_status = 'disconnected';
                         }
                     });
                 } catch (e) {
-                    this.logger.warn(`⚠️ Collector [${serverId}] status enrichment skipped: ${e.message}`);
-                    devices.forEach(d => {
-                        d.collector_status = { status: 'unknown', error: e.message };
-                    });
+                    // Collector HTTP 실패 → Redis에서 직접 읽기 (실시간 상태 보존)
+                    this.logger.warn(`⚠️ Collector [${serverId}] HTTP 실패, Redis fallback: ${e.message}`);
+                    await Promise.all(devices.map(async d => {
+                        const redisStatus = await this.getDeviceStatusFromRedis(d);
+                        if (redisStatus) {
+                            d.collector_status = { status: redisStatus.status, source: 'redis' };
+                            d.connection_status = redisStatus.connection_status;
+                        } else {
+                            // Redis에도 없으면 → Collector가 한 번도 상태를 안 썼거나 TTL 만료
+                            d.collector_status = { status: 'unknown', error: e.message };
+                            d.connection_status = 'disconnected';
+                        }
+                    }));
                 }
             }));
         } catch (e) {

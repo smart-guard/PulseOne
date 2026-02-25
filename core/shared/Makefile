@@ -36,7 +36,7 @@ else ifeq ($(IS_WINDOWS),1)
     CXXFLAGS += -DPULSEONE_WINDOWS=1
     LIB_SUFFIX = .a
 else
-    CXXFLAGS += -DPULSEONE_LINUX=1
+    CXXFLAGS += -DPULSEONE_LINUX=1 -fPIC
     LIB_SUFFIX = .a
 endif
 

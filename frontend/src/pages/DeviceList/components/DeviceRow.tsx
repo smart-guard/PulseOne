@@ -64,6 +64,7 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
 
         let label = status;
         if (status === 'running') label = '운영';
+        else if (status === 'paused') label = '일시정지';
         else if (status === 'stopped') label = '정지';
         else if (status === 'error') label = '오류';
         else if (status === 'initializing') label = '초기화';
@@ -151,7 +152,7 @@ const DeviceRow: React.FC<DeviceRowProps> = ({
                                 <i className="fas fa-exchange-alt"></i>
                             </button>
 
-                            {device.collector_status?.status === 'running' ? (
+                            {(device.collector_status?.status === 'running' || device.collector_status?.status === 'paused') ? (
                                 <>
                                     <button className="mgmt-btn-icon error" onClick={onStopWorker} title="워커 정지">
                                         <i className="fas fa-stop"></i>

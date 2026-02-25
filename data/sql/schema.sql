@@ -94,7 +94,9 @@ CREATE TABLE edge_servers (
     is_deleted INTEGER DEFAULT 0,
     site_id INTEGER,
     max_devices INTEGER DEFAULT 100,
-    max_data_points INTEGER DEFAULT 1000, subscription_mode TEXT DEFAULT 'all',
+    max_data_points INTEGER DEFAULT 1000,
+    subscription_mode TEXT DEFAULT 'all',
+    is_enabled INTEGER DEFAULT 1,             -- Supervisor spawn 여부 (1=활성, 0=비활성)
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,

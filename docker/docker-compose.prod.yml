@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   backend:
-    image: pulseone-backend:prod
+    image: pulseone-backend:latest
     container_name: pulseone-backend
     restart: always
     ports:
@@ -26,11 +26,12 @@ services:
       - pulseone_net
 
   collector:
-    image: pulseone-collector:prod
+    image: pulseone-collector:latest
     container_name: pulseone-collector
     restart: always
     environment:
       - REDIS_HOST=redis
+      - MQTT_HOST=mosquitto
       - SQLITE_PATH=/app/data/db/pulseone.db
       - PULSEONE_DATA_DIR=/app/data
       - LOG_LEVEL=warn
@@ -39,11 +40,12 @@ services:
       - ./data:/app/data
     depends_on:
       - backend
+      - mosquitto
     networks:
       - pulseone_net
 
   export-gateway:
-    image: pulseone-export-gateway:prod
+    image: pulseone-gateway:latest
     container_name: pulseone-export-gateway
     restart: always
     environment:
@@ -95,6 +97,18 @@ services:
     networks:
       - pulseone_net
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: pulseone-mosquitto
+    restart: always
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./config/mosquitto:/mosquitto/config:ro
+      - mosquitto_data:/mosquitto/data
+    networks:
+      - pulseone_net
+
 networks:
   pulseone_net:
     driver: bridge
@@ -102,3 +116,4 @@ networks:
 volumes:
   redis_data:
   influxdb_data:
+  mosquitto_data:

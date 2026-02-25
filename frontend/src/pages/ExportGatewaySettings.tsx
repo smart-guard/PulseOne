@@ -177,7 +177,12 @@ const ExportGatewaySettings: React.FC = () => {
         }
     };
 
-    const onlineCount = gateways.filter(gw => gw.live_status?.status === 'online').length;
+    const onlineCount = gateways.filter(gw =>
+        gw.live_status?.status === 'online' ||
+        gw.live_status?.status === 'running' ||
+        gw.status === 'online' ||
+        gw.status === 'active'
+    ).length;
 
     return (
         <>

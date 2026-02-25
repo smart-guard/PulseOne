@@ -149,7 +149,7 @@ void ConfigManager::reload() {
 // =============================================================================
 
 std::string ConfigManager::get(const std::string &key) const {
-  // 1. 메모리 설정 확인 (Manual override or file load)
+  // 1. 메모리 설정 확인 (config 파일 또는 수동 set)
   {
     std::lock_guard<std::mutex> lock(configMutex);
     auto it = configMap.find(key);
@@ -158,7 +158,7 @@ std::string ConfigManager::get(const std::string &key) const {
     }
   }
 
-  // 2. 환경변수 확인 (Fall-back or Docker defaults)
+  // 2. 환경변수 폴백
   const char *env_val = std::getenv(key.c_str());
   if (env_val) {
     return std::string(env_val);
@@ -194,10 +194,8 @@ void ConfigManager::set(const std::string &key, const std::string &value) {
   std::lock_guard<std::mutex> lock(configMutex);
   configMap[key] = value;
 
-  // Sync to environment so that get() (which checks getenv first) sees the
-  // update
 #ifndef _WIN32
-  setenv(key.c_str(), value.c_str(), 1);
+  setenv(key.c_str(), value.c_str(), 1); // 1 = overwrite
 #else
   _putenv_s(key.c_str(), value.c_str());
 #endif

@@ -87,7 +87,7 @@ FROM ubuntu:22.04
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
-    libsqlite3-0 libcurl4 libssl3 uuid-runtime libpaho-mqtt1.3 \
+    libsqlite3-0 libcurl4 libssl3 uuid-runtime \
     libpq5 libmariadb3 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -95,11 +95,13 @@ WORKDIR /app
 
 # Copy Binaries and Plugins
 COPY --from=builder /app/core/collector/bin/pulseone-collector /app/
-COPY --from=builder /app/core/collector/bin/plugins /app/plugins/
+COPY --from=builder /app/core/collector/bin/drivers /app/drivers/
 
 # Copy required Shared Libraries from builder
 COPY --from=builder /usr/local/lib/libhiredis.so* /usr/local/lib/
 COPY --from=builder /usr/local/lib/libpaho-mqttpp3.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libpaho-mqtt3a.so* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libpaho-mqtt3c.so* /usr/local/lib/
 COPY --from=builder /usr/local/lib/libmodbus.so* /usr/local/lib/
 COPY --from=builder /usr/local/lib/libopen62541.so* /usr/local/lib/
 

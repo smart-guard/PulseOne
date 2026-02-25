@@ -380,10 +380,30 @@ class CollectorProxyService {
             const server = await repo.findById(id);
             if (!server) return this.defaultClient;
 
+            // Collector 자기등록에 의해 DB에 항상 올바른 IP가 저장됨
+            // Docker: "collector", Windows 동일PC: "127.0.0.1", 분리배포: "실제IP"
+            let host = server.ip_address || this.config.get('COLLECTOR_HOST', 'localhost');
+            const port = server.port || this.config.getNumber('COLLECTOR_API_PORT', 8501);
+
+            // Docker 서비스명 감지: 점이 없고 'localhost'가 아닌 경우
+            // (예: "collector", "mqtt-gateway" 등 Docker 내부 서비스명)
+            // Windows/Linux 네이티브 환경에서는 resolve 안 되므로 127.0.0.1로 fallback
+            if (host && !host.includes('.') && host !== 'localhost') {
+                const envOverride = this.config.get('COLLECTOR_HOST', '');
+                if (envOverride && envOverride !== host) {
+                    host = envOverride;
+                } else {
+                    console.warn(`🔄 [CollectorProxy] '${host}' looks like a Docker service name - falling back to 127.0.0.1`);
+                    host = '127.0.0.1';
+                }
+            }
+
+            console.log(`🔌 [CollectorProxy] Connecting to edge_server[${id}]: ${host}:${port}`);
+
             const client = new CollectorClient(
                 server.id,
-                server.ip_address,
-                server.port,
+                host,
+                port,
                 { ...this.defaultClient.config }
             );
             this.clients.set(id, client);

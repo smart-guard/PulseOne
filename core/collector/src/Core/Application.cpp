@@ -33,6 +33,18 @@
 #include <iostream>
 #include <thread>
 
+// 크로스플랫폼 소켓 (IP 자동 감지용)
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 namespace PulseOne {
 namespace Core {
 
@@ -155,6 +167,47 @@ bool CollectorApplication::Initialize() {
                                       std::to_string(collector_id) +
                                       " is DISABLED in database.");
       return false;
+    }
+
+    // ✅ [자동 자기등록] Collector 시작 시 자신의 IP를 자동 감지 → DB 저장
+    // - COLLECTOR_HOST 설정됨 (Docker): 해당 값 사용 (서비스명 "collector")
+    // - COLLECTOR_HOST 미설정 (네이티브): UDP 소켓으로 주 outbound IP 자동 감지
+    //   → 설정파일에 자기 IP를 넣을 필요 없음
+    {
+      const char *env_host = std::getenv("COLLECTOR_HOST");
+      const char *env_port = std::getenv("COLLECTOR_API_PORT");
+
+      std::string my_ip;
+      if (env_host && std::strlen(env_host) > 0) {
+        my_ip = std::string(env_host); // Docker: "collector"
+      } else {
+        my_ip = DetectOutboundIP(); // 자동 감지: 192.168.x.x 또는 127.0.0.1
+      }
+
+      // 멀티 인스턴스: BASE_PORT + (collector_id - 1)
+      // ID 1 → 8501, ID 2 → 8502, ID 3 → 8503, ...
+      int base_port =
+          (env_port && std::strlen(env_port) > 0) ? std::atoi(env_port) : 8501;
+      int my_port = base_port + (collector_id - 1);
+
+      bool ip_changed = (edge_server->getIpAddress() != my_ip);
+      bool port_changed = (edge_server->getPort() != my_port);
+
+      if (ip_changed || port_changed) {
+        edge_server->setIpAddress(my_ip);
+        edge_server->setPort(my_port);
+        if (edge_repo->update(*edge_server)) {
+          LogManager::getInstance().Info("📍 [Self-Register] edge_server[" +
+                                         std::to_string(collector_id) + "] → " +
+                                         my_ip + ":" + std::to_string(my_port));
+        } else {
+          LogManager::getInstance().Warn(
+              "⚠️  [Self-Register] DB update failed — using existing value");
+        }
+      } else {
+        LogManager::getInstance().Info("📍 [Self-Register] IP unchanged: " +
+                                       my_ip + ":" + std::to_string(my_port));
+      }
     }
 
     // 2. 테넌트 정보 확인 및 이름 조회
@@ -298,6 +351,52 @@ bool CollectorApplication::Initialize() {
     LogManager::getInstance().Error("Exception: " + std::string(e.what()));
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// DetectOutboundIP: UDP 라우팅 트릭으로 주 outbound IP 자동 감지
+// 실제 패킷 미전송. Windows/Linux/macOS/Raspberry Pi 전부 동작.
+// ---------------------------------------------------------------------------
+std::string CollectorApplication::DetectOutboundIP() {
+#ifdef _WIN32
+  WSADATA wsa;
+  WSAStartup(MAKEWORD(2, 2), &wsa);
+#endif
+
+  std::string result = "127.0.0.1"; // fallback
+
+  int sock = static_cast<int>(socket(AF_INET, SOCK_DGRAM, 0));
+  if (sock < 0)
+    return result;
+
+  struct sockaddr_in remote{};
+  remote.sin_family = AF_INET;
+  remote.sin_port = htons(53);
+  inet_pton(AF_INET, "8.8.8.8", &remote.sin_addr);
+
+  if (connect(sock, reinterpret_cast<struct sockaddr *>(&remote),
+              sizeof(remote)) == 0) {
+    struct sockaddr_in local{};
+    socklen_t len = sizeof(local);
+    if (getsockname(sock, reinterpret_cast<struct sockaddr *>(&local), &len) ==
+        0) {
+      char buf[INET_ADDRSTRLEN];
+      if (inet_ntop(AF_INET, &local.sin_addr, buf, sizeof(buf))) {
+        result = std::string(buf);
+      }
+    }
+  }
+
+#ifdef _WIN32
+  closesocket(sock);
+  WSACleanup();
+#else
+  close(sock);
+#endif
+
+  LogManager::getInstance().Info("🌐 [Self-Register] Detected outbound IP: " +
+                                 result);
+  return result;
 }
 
 int CollectorApplication::ResolveCollectorId() {
@@ -546,9 +645,15 @@ bool CollectorApplication::InitializeRestApiServer() {
 #if HAS_HTTPLIB
   try {
     // ConfigManager에서 API 포트 읽기
-    int api_port = 8501; // 기본값
+    // 멀티 인스턴스: COLLECTOR_API_PORT(기본 8501) + (collector_id - 1)
+    // ID 1 → 8501, ID 2 → 8502, ID 3 → 8503, ...
+    int api_port = 8501;
+    int resolved_id = ResolveCollectorId();
     try {
-      api_port = ConfigManager::getInstance().getInt("api.port", 8501);
+      const char *env_port = std::getenv("COLLECTOR_API_PORT");
+      int base_port =
+          (env_port && std::strlen(env_port) > 0) ? std::atoi(env_port) : 8501;
+      api_port = (resolved_id > 0) ? base_port + (resolved_id - 1) : base_port;
     } catch (const std::exception &e) {
       LogManager::getInstance().Warn(
           "Could not read API port from config, using default 8501: " +

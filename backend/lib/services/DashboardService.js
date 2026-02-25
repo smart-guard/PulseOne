@@ -43,14 +43,20 @@ class DashboardService extends BaseService {
     async getOverviewData(tenantId) {
         return await this.handleRequest(async () => {
             // 1. 서비스 상태 및 시스템 메트릭 (병렬 조회)
-            const [servicesResult, systemInfo, systemMetrics, edgeServers, exportGateways, performanceData] = await Promise.all([
+            const [servicesResult, systemInfo, systemMetrics, edgeServers, performanceData] = await Promise.all([
                 CrossPlatformManager.getServicesForAPI(),
                 CrossPlatformManager.getSystemInfo(),
                 this._getProcessMetrics(),
                 this.deviceRepo.knex('edge_servers').where('tenant_id', tenantId).where('is_deleted', false).catch(() => []),
-                this.deviceRepo.knex('export_gateways').where('tenant_id', tenantId).where('is_deleted', false).catch(() => []),
                 MonitoringService.getPerformanceMetrics().catch(() => null)
             ]);
+
+            // edge_servers를 server_type으로 분리
+            const collectorServers = edgeServers.filter(s => s.server_type === 'collector');
+            const gatewayServers = edgeServers.filter(s => s.server_type === 'gateway');
+            // export_gateways 테이블이 없으므로 edge_servers의 gateway type을 대신 사용
+            const exportGateways = gatewayServers;
+
 
             let services = servicesResult.data || [];
 
@@ -59,7 +65,8 @@ class DashboardService extends BaseService {
             const runningGateways = services.filter(s => s.name.startsWith('export-gateway'));
             const otherServices = services.filter(s => !s.name.startsWith('collector') && !s.name.startsWith('export-gateway'));
 
-            const mergedCollectors = edgeServers.map(server => {
+            const mergedCollectors = collectorServers.map(server => {
+
                 const running = runningCollectors.find(c => c.collectorId === server.id);
                 if (running) {
                     return {
@@ -91,25 +98,28 @@ class DashboardService extends BaseService {
                 if (running) {
                     return {
                         ...running,
-                        displayName: gw.name,
+                        displayName: gw.server_name || gw.name || 'Gateway',
                         description: `데이터 내보내기 서비스: ${gw.ip_address || 'local'}`,
                         gatewayId: gw.id,
+                        ip: gw.ip_address,
                         exists: true
                     };
                 }
                 return {
                     name: `export-gateway-${gw.id}`,
-                    displayName: gw.name,
+                    displayName: gw.server_name || gw.name || 'Gateway',
                     icon: 'fas fa-satellite-dish',
                     description: `데이터 내보내기 서비스: ${gw.ip_address || 'local'}`,
                     controllable: true,
-                    status: 'stopped',
+                    status: gw.status === 'active' ? 'running' : 'stopped',
                     pid: null,
                     gatewayId: gw.id,
+                    ip: gw.ip_address,
                     exists: true,
                     uptime: 'N/A'
                 };
             });
+
 
             // 1b. 각 콜렉터에 할당된 디바이스 목록 상세 조회 (ID, 이름, 상태 포함)
             const collectorsWithDevices = await Promise.all(mergedCollectors.map(async (collector) => {
@@ -138,25 +148,34 @@ class DashboardService extends BaseService {
                 const es = edgeServers.find(s => s.id === collector.collectorId);
                 let status = collector.status;
 
-                // 1. Redis 실시간 하트비트 확인 (가장 정확)
+                // 1. Redis 하트비트 확인 (C++가 실제로 쓰는 키 패턴 사용)
                 if (redis && collector.collectorId) {
-                    const redisKey = `collector:status:${collector.collectorId}`;
-                    const liveData = await redis.get(redisKey);
-                    if (liveData) {
-                        try {
-                            const parsed = JSON.parse(liveData);
-                            if (parsed.status === 'online' || parsed.status === 'running') {
-                                status = 'running';
-                            }
-                        } catch (e) { }
+                    // C++ Collector는 worker:heartbeat:{collectorId} 또는
+                    // collector:heartbeat:{collectorId} 키에 heartbeat를 씀
+                    const heartbeatKeys = [
+                        `collector:heartbeat:${collector.collectorId}`,
+                        `collector:status:${collector.collectorId}`,
+                        `worker:heartbeat:${collector.collectorId}`
+                    ];
+                    for (const redisKey of heartbeatKeys) {
+                        const liveData = await redis.get(redisKey);
+                        if (liveData) {
+                            try {
+                                const parsed = JSON.parse(liveData);
+                                if (parsed.status === 'online' || parsed.status === 'running' || parsed.alive === true) {
+                                    status = 'running';
+                                    break;
+                                }
+                            } catch (e) { }
+                        }
                     }
                 }
 
-                // 2. DB last_seen 기반 폴백 (2분 내)
+                // 2. DB last_seen 기반 폴백 (5분 내) - Collector가 주기적으로 갱신
                 if (status !== 'running' && es && es.last_seen) {
                     const lastSeen = new Date(es.last_seen);
                     const diff = (now - lastSeen) / 1000;
-                    if (diff < 120) {
+                    if (diff < 300) {
                         status = 'running';
                     }
                 }
@@ -166,32 +185,58 @@ class DashboardService extends BaseService {
 
             const finalizedGateways = await Promise.all(mergedGateways.map(async (gateway) => {
                 const gw = exportGateways.find(s => s.id === gateway.gatewayId);
+                // export_gateways 테이블의 live_status (가장 신뢰할 수 있는 소스)
+                const gwLiveStatus = gw?.live_status ? (typeof gw.live_status === 'string' ? JSON.parse(gw.live_status) : gw.live_status) : null;
                 let status = gateway.status;
 
-                // 1. Redis 실시간 하트비트 확인
-                if (redis && gateway.gatewayId) {
-                    const redisKey = `gateway:status:${gateway.gatewayId}`;
-                    const liveData = await redis.get(redisKey);
-                    if (liveData) {
-                        try {
-                            const parsed = JSON.parse(liveData);
-                            if (parsed.status === 'online' || parsed.status === 'running') {
-                                status = 'running';
-                            }
-                        } catch (e) { }
+                // 1. export_gateways 테이블의 live_status 우선 확인
+                if (gwLiveStatus?.status === 'online' || gwLiveStatus?.status === 'running') {
+                    status = 'running';
+                }
+                // 2. export_gateways DB status 확인
+                else if (gw?.status === 'online' || gw?.status === 'active') {
+                    status = 'running';
+                }
+                // 3. Redis 하트비트 확인
+                else if (redis && gateway.gatewayId) {
+                    const heartbeatKeys = [
+                        `gateway:heartbeat:${gateway.gatewayId}`,
+                        `gateway:status:${gateway.gatewayId}`
+                    ];
+                    for (const redisKey of heartbeatKeys) {
+                        const liveData = await redis.get(redisKey);
+                        if (liveData) {
+                            try {
+                                const parsed = JSON.parse(liveData);
+                                if (parsed.status === 'online' || parsed.status === 'running' || parsed.alive === true) {
+                                    status = 'running';
+                                    break;
+                                }
+                            } catch (e) { }
+                        }
                     }
                 }
 
-                if (status !== 'running' && gw && gw.last_seen) {
-                    const lastSeen = new Date(gw.last_seen);
-                    const diff = (now - lastSeen) / 1000;
-                    if (diff < 120) {
+                // 4. edge_servers 중 gateway type인 서버의 last_seen/status 폴백
+                const gwEdge = edgeServers.find(es => es.server_type === 'gateway' && es.id === gateway.gatewayId);
+                if (status !== 'running' && gwEdge) {
+                    if (gwEdge.status === 'active') {
                         status = 'running';
+                    } else if (gwEdge.last_seen) {
+                        const diff = (now - new Date(gwEdge.last_seen)) / 1000;
+                        if (diff < 300) status = 'running';
                     }
+                }
+
+                // 5. export_gateways DB last_seen 폴백 (5분 내)
+                if (status !== 'running' && gw && gw.last_seen) {
+                    const diff = (now - new Date(gw.last_seen)) / 1000;
+                    if (diff < 300) status = 'running';
                 }
 
                 return { ...gateway, status };
             }));
+
 
             // 1d. 계층형 그룹화 (Site -> Collector -> Device)
             const allSitesResult = await this.siteRepo.findAll(tenantId).catch(() => ({ items: [] }));

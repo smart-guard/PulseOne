@@ -1,0 +1,106 @@
+FROM --platform=linux/arm64 ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# =============================================================================
+# Raspberry Pi (ARM64) 전용 빌더
+# Apple Silicon Mac에서 QEMU를 통해 arm64 컨테이너로 실행
+# Windows/Linux builder와 동일 구조 — 컨테이너 안에서 직접 make 실행
+# =============================================================================
+
+# 1. 기본 빌드 도구 + 라이브러리 의존성
+RUN apt-get update && apt-get install -y \
+    build-essential gcc g++ cmake make \
+    libsqlite3-dev libcurl4-openssl-dev libssl-dev \
+    uuid-dev libbluetooth-dev \
+    git pkg-config wget curl autoconf automake libtool \
+    rsync zip sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. hiredis
+RUN cd /tmp && \
+    git clone --depth 1 --branch v1.2.0 https://github.com/redis/hiredis.git && \
+    cmake -S hiredis -B hiredis/build \
+    -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DENABLE_SSL=ON \
+    -DCMAKE_BUILD_TYPE=Release && \
+    make -C hiredis/build -j$(nproc) install && \
+    rm -rf /tmp/hiredis && \
+    echo "✅ hiredis (ARM64) 설치 완료"
+
+# 3. paho.mqtt.c / paho.mqtt.cpp
+RUN cd /tmp && \
+    git clone --depth 1 --branch v1.3.13 https://github.com/eclipse/paho.mqtt.c.git && \
+    cmake -S paho.mqtt.c -B paho.mqtt.c/build \
+    -DPAHO_WITH_SSL=TRUE \
+    -DPAHO_BUILD_DOCUMENTATION=FALSE \
+    -DCMAKE_BUILD_TYPE=Release && \
+    make -C paho.mqtt.c/build -j$(nproc) install && \
+    rm -rf /tmp/paho.mqtt.c && \
+    echo "✅ paho.mqtt.c (ARM64) 설치 완료"
+
+RUN cd /tmp && \
+    git clone --depth 1 --branch v1.3.2 https://github.com/eclipse/paho.mqtt.cpp.git && \
+    cmake -S paho.mqtt.cpp -B paho.mqtt.cpp/build \
+    -DPAHO_WITH_SSL=TRUE \
+    -DPAHO_BUILD_DOCUMENTATION=FALSE \
+    -DPAHO_BUILD_SAMPLES=FALSE \
+    -DCMAKE_BUILD_TYPE=Release && \
+    make -C paho.mqtt.cpp/build -j$(nproc) install && \
+    rm -rf /tmp/paho.mqtt.cpp && \
+    echo "✅ paho.mqtt.cpp (ARM64) 설치 완료"
+
+# 4. libmodbus
+RUN cd /tmp && \
+    git clone --depth 1 --branch v3.1.10 https://github.com/stephane/libmodbus.git && \
+    cd libmodbus && ./autogen.sh && \
+    ./configure --prefix=/usr/local && \
+    make -j$(nproc) install && \
+    rm -rf /tmp/libmodbus && \
+    echo "✅ libmodbus (ARM64) 설치 완료"
+
+RUN ldconfig
+
+# 5. QuickJS (JS 스크립팅 엔진) ARM64
+RUN cd /tmp && \
+    git clone --depth 1 https://github.com/bellard/quickjs.git && \
+    cd quickjs && \
+    make -j$(nproc) && \
+    make install prefix=/usr/local && \
+    mkdir -p /usr/local/include/quickjs && \
+    cp quickjs.h /usr/local/include/ && \
+    cp quickjs.h /usr/local/include/quickjs/ && \
+    cp libquickjs.a /usr/local/lib/ && \
+    rm -rf /tmp/quickjs && \
+    echo "✅ QuickJS (ARM64) 설치 완료"
+
+RUN ldconfig
+
+# 6. BACnet Stack (ARM64 native)
+RUN cd /tmp && \
+    git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
+    cd bacnet-stack && \
+    echo "Building BACnet Stack for ARM64..." && \
+    make BACNET_PORT=linux \
+    BACNET_DEFINES="-DBACAPP_ALL -DBACAPP_CHARACTER_STRING -DBACAPP_UNSIGNED -DBACAPP_SIGNED -DBACAPP_REAL -DBACAPP_DOUBLE -DBACAPP_BOOLEAN -DBACAPP_ENUMERATED -DBACAPP_DATE -DBACAPP_TIME -DBACAPP_OBJECT_ID" \
+    -j$(nproc) library 2>&1 | tail -5 && \
+    mkdir -p /usr/local/include/bacnet && \
+    cp -r src/bacnet/* /usr/local/include/bacnet/ && \
+    find . -name "libbacnet.a" -exec cp {} /usr/local/lib/ \; || \
+    (ar rcs /usr/local/lib/libbacnet.a $(find . -name '*.o' | head -500) && echo "libbacnet.a created") && \
+    rm -rf /tmp/bacnet-stack && \
+    echo "✅ BACnet Stack (ARM64) 설치 완료"
+
+RUN ldconfig
+
+
+# 5. Node.js 18 LTS + pkg
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g pkg && \
+    node --version && npm --version && pkg --version && \
+    echo "✅ Node.js $(node --version) + pkg (ARM64) 설치 완료"
+
+WORKDIR /workspace
+CMD ["bash"]

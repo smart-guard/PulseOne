@@ -250,11 +250,11 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                 <div className="mgmt-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                                     <div className="mgmt-card-title" style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <h4 style={{ margin: 0, fontSize: '15px' }}>{gw.name}</h4>
+                                            <h4 style={{ margin: 0, fontSize: '15px' }}>{gw.server_name || gw.name}</h4>
                                             <div style={{ display: 'flex', gap: '8px' }}>
-                                                <div className={`badge ${gw.live_status?.status === 'online' ? 'success' : 'neutral'}`}>
+                                                <div className={`badge ${(gw.live_status?.status === 'online' || gw.live_status?.status === 'running' || gw.status === 'online' || gw.status === 'active') ? 'success' : 'neutral'}`}>
                                                     <i className={`fas fa-circle`} style={{ fontSize: '8px', marginRight: '5px' }} />
-                                                    {gw.live_status?.status === 'online' ? 'ONLINE' : 'OFFLINE'}
+                                                    {(gw.live_status?.status === 'online' || gw.live_status?.status === 'running' || gw.status === 'online' || gw.status === 'active') ? 'ONLINE' : 'OFFLINE'}
                                                 </div>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDelete(gw); }}
@@ -298,8 +298,8 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                         <div style={{ marginTop: '8px', padding: '8px', background: 'var(--neutral-50)', borderRadius: '4px' }}>
                                             <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
                                                 <span>프로세스 상태</span>
-                                                <span style={{ fontWeight: 600, color: gw.processes && gw.processes.length > 0 ? 'var(--success-600)' : 'var(--error-600)' }}>
-                                                    {gw.processes && gw.processes.length > 0 ? 'RUNNING' : 'STOPPED'}
+                                                <span style={{ fontWeight: 600, color: (gw.processes && gw.processes.length > 0) || gw.status === 'active' ? 'var(--success-600)' : 'var(--error-600)' }}>
+                                                    {(gw.processes && gw.processes.length > 0) || gw.status === 'active' ? 'RUNNING' : 'STOPPED'}
                                                 </span>
                                             </div>
                                             {gw.processes && gw.processes.length > 0 && (
@@ -308,7 +308,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                                 </div>
                                             )}
                                             <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
-                                                {(gw.processes?.[0]?.status !== 'running' && gw.live_status?.status !== 'online') ? (
+                                                {(gw.processes?.[0]?.status !== 'running' && gw.live_status?.status !== 'online' && gw.status !== 'active') ? (
                                                     <button
                                                         className="btn btn-outline btn-xs"
                                                         style={{ flex: 1 }}
@@ -360,7 +360,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                     <button className="btn btn-outline btn-sm" onClick={() => { setSelectedGateway(gw); setIsDetailModalOpen(true); }} style={{ flex: 1 }}>
                                         <i className="fas fa-search-plus" /> 상세
                                     </button>
-                                    <button className="btn btn-primary btn-sm" onClick={() => onDeploy(gw)} style={{ flex: 1 }} disabled={gw.live_status?.status !== 'online'}>
+                                    <button className="btn btn-primary btn-sm" onClick={() => onDeploy(gw)} style={{ flex: 1 }} disabled={gw.live_status?.status !== 'online' && gw.live_status?.status !== 'running' && gw.status !== 'active'}>
                                         <i className="fas fa-rocket" /> 배포
                                     </button>
                                 </div>
@@ -461,9 +461,9 @@ const GatewayDetailModal: React.FC<{
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
-                                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'white' }}>{gateway.name}</h2>
-                                <Tag color={gateway.live_status?.status === 'online' ? 'success' : 'default'} style={{ border: 'none', borderRadius: '4px', fontSize: '11px', height: '22px', lineHeight: '22px', fontWeight: 700, flexShrink: 0 }}>
-                                    {gateway.live_status?.status === 'online' ? 'ONLINE' : 'OFFLINE'}
+                                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'white' }}>{gateway.server_name || gateway.name}</h2>
+                                <Tag color={(gateway.live_status?.status === 'online' || gateway.live_status?.status === 'running' || gateway.status === 'online' || gateway.status === 'active') ? 'success' : 'default'} style={{ border: 'none', borderRadius: '4px', fontSize: '11px', height: '22px', lineHeight: '22px', fontWeight: 700, flexShrink: 0 }}>
+                                    {(gateway.live_status?.status === 'online' || gateway.live_status?.status === 'running' || gateway.status === 'online' || gateway.status === 'active') ? 'ONLINE' : 'OFFLINE'}
                                 </Tag>
                             </div>
                             <div style={{ fontSize: '14px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '16px' }}>

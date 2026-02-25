@@ -172,7 +172,8 @@ class EdgeServerRepository extends BaseRepository {
                 .leftJoin('sites as s', 's.id', 'es.site_id')
                 .select('es.*', 'es.server_name as name', 's.name as site_name')
                 .where('es.site_id', siteId)
-                .where('es.is_deleted', 0);
+                .where('es.is_deleted', 0)
+                .where('es.server_type', 'collector');  // gateway는 수집기 파티션에서 제외
             return results.map(item => this._parseItem(item));
         } catch (error) {
             this.logger.error('EdgeServerRepository.findBySiteId 오류:', error);

@@ -2,7 +2,7 @@
 set -e
 
 # =============================================================================
-# PulseOne Master Release Orchestrator v7.0
+# PulseOne Master Release Orchestrator v8.0
 # =============================================================================
 
 PROJECT_ROOT=$(pwd)
@@ -20,7 +20,8 @@ usage() {
     echo "Usage: ./release.sh [options]"
     echo "Options:"
     echo "  --windows     Build Windows deployment package"
-    echo "  --linux       Build Linux deployment package"
+    echo "  --linux       Build Linux (x64) deployment package"
+    echo "  --rpi         Build Raspberry Pi (ARM64) deployment package"
     echo "  --docker      Build Docker container images"
     echo "  --all         Build all platforms"
     echo "  --skip-ui     Skip frontend build"
@@ -32,6 +33,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --windows)    TARGET_OS="windows";  shift ;;
         --linux)      TARGET_OS="linux";    shift ;;
+        --rpi)        TARGET_OS="rpi";      shift ;;
         --docker)     TARGET_OS="docker";   shift ;;
         --all)        TARGET_OS="all";      shift ;;
         --skip-ui)    SKIP_FRONTEND=true;   shift ;;
@@ -76,16 +78,35 @@ run_windows() {
 }
 
 run_linux() {
-    echo "🐧 Linux: running deploy-linux.sh inside Docker (Alpine + docker CLI)..."
+    echo "🐧 Linux: running deploy-linux.sh inside pulseone-linux-builder..."
+    # 이미지 없으면 자동 빌드 (최초 1회)
+    if ! docker image inspect pulseone-linux-builder > /dev/null 2>&1; then
+        echo "   Building pulseone-linux-builder image (최초 1회)..."
+        docker build -t pulseone-linux-builder -f "$PROJECT_ROOT/Dockerfile.linux-builder" "$PROJECT_ROOT"
+    fi
     docker run --rm \
         -v "$PROJECT_ROOT:/workspace" \
-        -v /var/run/docker.sock:/var/run/docker.sock \
         -w /workspace \
         -e PROJECT_ROOT=/workspace \
-        -e HOST_PROJECT_ROOT="$PROJECT_ROOT" \
         -e SKIP_FRONTEND=true \
         -e SKIP_BUILD="$SKIP_BUILD" \
-        alpine:latest sh -c "apk add --no-cache bash rsync zip docker-cli >/dev/null 2>&1 && bash /workspace/deploy-linux.sh"
+        pulseone-linux-builder bash /workspace/deploy-linux.sh
+}
+
+run_rpi() {
+    echo "🍓 RPi: running deploy-rpi.sh inside pulseone-rpi-builder (linux/arm64)..."
+    # 이미지 없으면 자동 빌드 (최초 1회 — QEMU 에뮬레이션으로 ARM64 빌드)
+    if ! docker image inspect pulseone-rpi-builder > /dev/null 2>&1; then
+        echo "   Building pulseone-rpi-builder image (최초 1회, ARM64 — 시간이 걸립니다)..."
+        docker build --platform linux/arm64 -t pulseone-rpi-builder -f "$PROJECT_ROOT/Dockerfile.rpi-builder" "$PROJECT_ROOT"
+    fi
+    docker run --rm --platform linux/arm64 \
+        -v "$PROJECT_ROOT:/workspace" \
+        -w /workspace \
+        -e PROJECT_ROOT=/workspace \
+        -e SKIP_FRONTEND=true \
+        -e SKIP_BUILD="$SKIP_BUILD" \
+        pulseone-rpi-builder bash /workspace/deploy-rpi.sh
 }
 
 run_docker() {
@@ -96,10 +117,12 @@ run_docker() {
 case $TARGET_OS in
     windows) run_windows ;;
     linux)   run_linux ;;
+    rpi)     run_rpi ;;
     docker)  run_docker ;;
     all)
         run_windows
         run_linux
+        run_rpi
         run_docker
         ;;
 esac

@@ -33,14 +33,20 @@ class EdgeServerService extends BaseService {
                 const client = await this.redis.getRedisClient();
                 if (client) {
                     for (const server of servers) {
-                        const prefix = (server.server_type || 'collector').toLowerCase() === 'gateway'
-                            ? 'gateway:status'
-                            : 'collector:status';
+                        const type = (server.server_type || 'collector').toLowerCase();
+                        const isGateway = type === 'gateway';
 
-                        const key = `${prefix}:${server.id}`;
-                        const data = await client.get(key);
-                        if (data) {
-                            server.live_status = JSON.parse(data);
+                        // C++이 실제로 쓰는 키 패턴 우선 시도
+                        const keys = isGateway
+                            ? [`gateway:heartbeat:${server.id}`, `gateway:status:${server.id}`]
+                            : [`collector:heartbeat:${server.id}`, `collector:status:${server.id}`];
+
+                        for (const key of keys) {
+                            const data = await client.get(key);
+                            if (data) {
+                                server.live_status = JSON.parse(data);
+                                break;
+                            }
                         }
                     }
                 }
@@ -137,16 +143,24 @@ class EdgeServerService extends BaseService {
      */
     async getLiveStatus(serverId, serverType = 'collector') {
         try {
-            const prefix = (serverType || 'collector').toLowerCase() === 'gateway'
-                ? 'gateway:status'
-                : 'collector:status';
+            const type = (serverType || 'collector').toLowerCase();
+            const isGateway = type === 'gateway';
 
-            const key = `${prefix}:${serverId}`;
+            // C++이 실제로 쓰는 키 패턴 우선 시도:
+            // 1) {type}:heartbeat:{id}  (C++ TTL heartbeat 키)
+            // 2) {type}:status:{id}     (기존 레거시 키)
+            const keys = isGateway
+                ? [`gateway:heartbeat:${serverId}`, `gateway:status:${serverId}`]
+                : [`collector:heartbeat:${serverId}`, `collector:status:${serverId}`];
+
             const client = await this.redis.getRedisClient();
             if (!client) return null;
 
-            const data = await client.get(key);
-            return data ? JSON.parse(data) : null;
+            for (const key of keys) {
+                const data = await client.get(key);
+                if (data) return JSON.parse(data);
+            }
+            return null;
         } catch (error) {
             console.error(`Failed to get live status for server ${serverId}:`, error);
             return null;

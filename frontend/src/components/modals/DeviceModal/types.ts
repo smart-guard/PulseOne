@@ -134,6 +134,7 @@ export interface DeviceModalProps {
   mode: 'view' | 'edit' | 'create';
   onClose: () => void;
   onSave?: (device: Device) => void;
+  onDeviceCreated?: (device: Device) => void;  // 생성 완료 후 edit 모드로 이동하기 위한 콜백
   onDelete?: (deviceId: number) => void;
   onEdit?: () => void;
   initialTab?: string;

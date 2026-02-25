@@ -181,7 +181,7 @@ bool ConfigManager::updateMultipleConfigs(
     const std::map<std::string, std::string> &updates,
     const std::string &config_file) {
   for (const auto &[key, value] : updates) {
-    set(key, value);
+    set(key, value); // UI/API 명시적 변경: Docker env도 덮어씀
   }
 
   std::lock_guard<std::mutex> write_lock(write_mutex_);

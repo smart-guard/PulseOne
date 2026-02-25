@@ -52,7 +52,9 @@ dist_windows/
 build/
 bin/
 bin-linux/
+bin-rpi/
 bin-windows/
+dist_rpi/
 
 # =============================================================================
 # IDE 및 에디터

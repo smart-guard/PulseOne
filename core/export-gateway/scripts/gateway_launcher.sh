@@ -1,7 +1,8 @@
 #!/bin/bash
 # gateway_launcher.sh - PulseOne Export Gateway Production Launcher (DB-Agnostic Version)
 
-set -e
+# [주의] set -e 제거: --list-gateways 실패 시 스크립트 전체 종료 방지
+# 루프 안에서 개별 실패를 처리함
 
 # [환경변수 설정] 배포 환경에 따라 오버라이드 가능
 # DB_TYPE, DB_PRIMARY_HOST, DB_PRIMARY_USER 등이 설정되어 있으면 C++ 바이너리가 이를 사용함
