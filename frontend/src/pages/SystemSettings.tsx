@@ -140,12 +140,20 @@ const SystemSettings = () => {
   const handleSaveSettings = async () => {
     setSaving(true);
     try {
-      // API 호출로 설정 저장
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 시뮬레이션
+      const response = await fetch('/api/system/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          logging: settings[SETTING_CATEGORIES.LOGGING],
+          general: settings[SETTING_CATEGORIES.GENERAL],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '저장 실패');
       setHasChanges(false);
       alert('설정이 성공적으로 저장되었습니다.');
-    } catch (error) {
-      alert('설정 저장 중 오류가 발생했습니다.');
+    } catch (error: any) {
+      alert('설정 저장 중 오류가 발생했습니다: ' + error.message);
     } finally {
       setSaving(false);
     }

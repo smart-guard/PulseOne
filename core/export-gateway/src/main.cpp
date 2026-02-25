@@ -221,32 +221,11 @@ ExportCoordinatorConfig loadCoordinatorConfig() {
 }
 
 void logLoadedConfig(const ExportCoordinatorConfig &config) {
-  std::cout << "\n========================================\n";
-  std::cout << "Export Coordinator 설정:\n";
-  std::cout << "========================================\n";
-  std::cout << "데이터베이스: " << config.database_path << "\n";
-  std::cout << "Redis: " << config.redis_host << ":" << config.redis_port
-            << "\n";
-  std::cout << "\n[AlarmSubscriber 설정]\n";
-  std::cout << "구독 채널 (" << config.alarm_channels.size() << "개):\n";
-  for (const auto &channel : config.alarm_channels) {
-    std::cout << "  - " << channel << "\n";
-  }
-  std::cout << "워커 스레드: " << config.alarm_worker_threads << "개\n";
-  std::cout << "최대 큐 크기: " << config.alarm_max_queue_size << "\n";
-  std::cout << "\n[ScheduledExporter 설정]\n";
-  std::cout << "체크 간격: " << config.schedule_check_interval_seconds
-            << "초\n";
-  std::cout << "리로드 간격: " << config.schedule_reload_interval_seconds
-            << "초\n";
-  std::cout << "배치 크기: " << config.schedule_batch_size << "\n";
-  std::cout << "\n[공통 설정]\n";
-  std::cout << "디버그 로그: "
-            << (config.enable_debug_log ? "활성화" : "비활성화") << "\n";
-  std::cout << "로그 보관 기간: " << config.log_retention_days << "일\n";
-  std::cout << "최대 동시 Export: " << config.max_concurrent_exports << "\n";
-  std::cout << "Export 타임아웃: " << config.export_timeout_seconds << "초\n";
-  std::cout << "========================================\n\n";
+  auto &logger = LogManager::getInstance();
+  logger.Info("Export Coordinator: db=" + config.database_path + ", redis=" +
+              config.redis_host + ":" + std::to_string(config.redis_port) +
+              ", channels=" + std::to_string(config.alarm_channels.size()) +
+              ", threads=" + std::to_string(config.alarm_worker_threads));
 }
 
 // =============================================================================
@@ -257,16 +236,10 @@ void logLoadedConfig(const ExportCoordinatorConfig &config) {
  * @brief 데몬 모드 실행 - Linux/Windows/Docker 모두 이 경로로 실행
  */
 void runDaemonMode(PulseOne::Gateway::Service::GatewayService &service) {
-  LogManager::getInstance().Info("데몬 모드 시작");
-  std::cout << "데몬 모드로 실행 중...\n";
-  std::cout << "종료하려면 Ctrl+C를 누르세요.\n\n";
-
-  auto &runner = service.getContext().getRunner();
-
+  LogManager::getInstance().Info("데몬 모드 시작. 종료: Ctrl+C");
   while (!g_shutdown_requested.load()) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
-
   LogManager::getInstance().Info("데몬 모드 종료");
 }
 
@@ -288,7 +261,6 @@ void runDaemonMode(PulseOne::Gateway::Service::GatewayService &service) {
  *  8. 데몬 루프 (또는 테스트/인터랙티브 모드)
  */
 int main(int argc, char **argv) {
-  std::cout << "🔥🔥🔥 GATEWAY BINARY EXECUTING 🔥🔥🔥" << std::endl;
   try {
     std::string config_path = "";
     std::string gateway_id = "default";
@@ -485,7 +457,8 @@ int main(int argc, char **argv) {
         PulseOne::Schedule::ScheduledExporter::getInstance(schedule_config);
     scheduled_exporter.start();
 
-    std::cout << "GatewayService 시작 완료 ✅ (ID: " << gateway_id << ")\n\n";
+    LogManager::getInstance().Info(
+        "GatewayService 시작 완료 (ID: " + gateway_id + ")");
 
     // 8. 데몬 / 인터랙티브 / 테스트 모드
     if (interactive) {
@@ -505,7 +478,8 @@ int main(int argc, char **argv) {
     scheduled_exporter.stop();
     service.stop();
     PulseOne::Export::ExportLogService::getInstance().stop();
-    std::cout << "\nExport Gateway 종료 완료 (ID: " << gateway_id << ")\n";
+    LogManager::getInstance().Info(
+        "Export Gateway 종료 완료 (ID: " + gateway_id + ")");
 
     return 0;
   } catch (const std::exception &e) {

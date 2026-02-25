@@ -6,7 +6,7 @@
 #include "Drivers/Common/DriverFactory.h"
 #include "Logging/LogManager.h"
 #include <algorithm>
-#include <iostream>
+
 #include <stdexcept>
 #include <vector>
 
@@ -39,13 +39,13 @@ bool DriverFactory::RegisterDriver(const std::string &protocol_name,
   std::string key = NormalizeKey(protocol_name);
 
   if (creators_.find(key) != creators_.end()) {
-    std::cout << "[DriverFactory] Driver '" << key << "' is already registered."
-              << std::endl;
+    LogManager::getInstance().Warn("[DriverFactory] Driver '" + key +
+                                   "' is already registered.");
     return false;
   }
   creators_[key] = creator;
-  std::cout << "[DriverFactory] Registered Driver: '" << key << "'"
-            << std::endl;
+  LogManager::getInstance().Info("[DriverFactory] Registered Driver: '" + key +
+                                 "'");
   return true;
 }
 
@@ -64,20 +64,21 @@ DriverFactory::CreateDriver(const std::string &protocol_name) {
     try {
       return it->second();
     } catch (const std::exception &e) {
-      std::cout << "[DriverFactory] Exception creating driver '" << key
-                << "': " << e.what() << std::endl;
+      LogManager::getInstance().Error(
+          "[DriverFactory] Exception creating driver '" + key +
+          "': " + e.what());
       return nullptr;
     } catch (...) {
       return nullptr;
     }
   }
 
-  std::cout << "[DriverFactory] CreateDriver failed: '" << key
-            << "' not found. Available keys: ";
+  std::string available;
   for (const auto &pair : creators_) {
-    std::cout << "'" << pair.first << "' ";
+    available += "'" + pair.first + "' ";
   }
-  std::cout << std::endl;
+  LogManager::getInstance().Error("[DriverFactory] CreateDriver failed: '" +
+                                  key + "' not found. Available: " + available);
 
   return nullptr;
 }

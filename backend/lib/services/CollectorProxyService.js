@@ -570,6 +570,39 @@ class CollectorProxyService {
         return { success: true, results: flatResults };
     }
 
+    /**
+     * 모든 연결된 Collector에 로그레벨 변경 전파
+     * @param {string} level - 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL' | 'TRACE'
+     * @param {number|null} edgeServerId - null이면 전체 전파
+     */
+    async setLogLevel(level, edgeServerId = null) {
+        const validLevels = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'];
+        const normalized = level.toUpperCase();
+        if (!validLevels.includes(normalized)) {
+            throw new Error(`Invalid log level: ${level}. Must be one of: ${validLevels.join(', ')}`);
+        }
+
+        const payload = { key: 'log.level', value: normalized };
+
+        if (edgeServerId === null || edgeServerId === 'all') {
+            // 모든 클라이언트에 전파
+            const results = await Promise.allSettled(
+                Array.from(this.clients.values()).map(client =>
+                    client.proxyRequest('POST', '/api/config', payload)
+                )
+            );
+            const failed = results.filter(r => r.status === 'rejected');
+            if (failed.length > 0) {
+                console.warn(`⚠️ setLogLevel: ${failed.length}개 Collector 실패`);
+            }
+            return { success: true, level: normalized, propagated: results.length, failed: failed.length };
+        }
+
+        const client = await this.getClient(edgeServerId);
+        await client.proxyRequest('POST', '/api/config', payload);
+        return { success: true, level: normalized };
+    }
+
     async gracefulShutdown() {
         for (const client of this.clients.values()) {
             client.shutdown();

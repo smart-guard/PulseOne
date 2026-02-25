@@ -873,9 +873,6 @@ bool BaseDeviceWorker::SendDataToPipeline(
     }
 
     total_attempts_++;
-    std::cout << "[BaseDeviceWorker] SendDataToPipeline returning " << success
-              << std::endl
-              << std::flush;
     return success;
 
   } catch (const std::exception &e) {
