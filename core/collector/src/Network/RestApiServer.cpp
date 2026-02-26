@@ -281,6 +281,108 @@ void RestApiServer::SetupRoutes() {
         HandlePostReloadConfig(req, res);
       });
 
+  // 로그레벨 실시간 변경 (UI → Backend → Collector)
+  httplib_server->Post(
+      "/api/system/log-level",
+      [this](const httplib::Request &req, httplib::Response &res) {
+        try {
+          auto body = json::parse(req.body);
+          std::string level = body.value("level", "");
+          if (level.empty()) {
+            res.status = 400;
+            res.set_content(CreateErrorResponse("Missing 'level' field"),
+                            "application/json");
+            return;
+          }
+          std::transform(level.begin(), level.end(), level.begin(), ::toupper);
+          auto &lm = LogManager::getInstance();
+          if (level == "DEBUG")
+            lm.setLogLevel(LogLevel::DEBUG_LEVEL);
+          else if (level == "INFO")
+            lm.setLogLevel(LogLevel::INFO);
+          else if (level == "WARN")
+            lm.setLogLevel(LogLevel::WARN);
+          else if (level == "ERROR")
+            lm.setLogLevel(LogLevel::LOG_ERROR);
+          else if (level == "FATAL")
+            lm.setLogLevel(LogLevel::LOG_FATAL);
+          else if (level == "TRACE")
+            lm.setLogLevel(LogLevel::TRACE);
+          else {
+            res.status = 400;
+            res.set_content(CreateErrorResponse("Invalid level: " + level),
+                            "application/json");
+            return;
+          }
+          json result;
+          result["success"] = true;
+          result["level"] = level;
+          res.set_content(result.dump(), "application/json");
+        } catch (const std::exception &e) {
+          res.status = 500;
+          res.set_content(CreateErrorResponse(e.what()), "application/json");
+        }
+      });
+
+  // 로깅 설정 일괄 적용 (UI → Backend → Collector)
+  httplib_server->Post(
+      "/api/system/logging-config",
+      [this](const httplib::Request &req, httplib::Response &res) {
+        try {
+          auto body = json::parse(req.body);
+          auto &lm = LogManager::getInstance();
+          json result;
+          result["applied"] = json::object();
+
+          // enable_debug_logging: true면 DEBUG, false면 INFO로 복원
+          if (body.contains("enable_debug_logging")) {
+            bool enable = body["enable_debug_logging"].get<bool>();
+            if (enable) {
+              lm.setLogLevel(LogLevel::DEBUG);
+            } else {
+              // DEBUG가 켜져있었을 때만 INFO로 복원
+              if (lm.getLogLevel() == LogLevel::DEBUG ||
+                  lm.getLogLevel() == LogLevel::DEBUG_LEVEL) {
+                lm.setLogLevel(LogLevel::INFO);
+              }
+            }
+            result["applied"]["enable_debug_logging"] = enable;
+          }
+
+          // log_to_file
+          if (body.contains("log_to_file")) {
+            bool enable = body["log_to_file"].get<bool>();
+            lm.setFileOutput(enable);
+            result["applied"]["log_to_file"] = enable;
+          }
+
+          // max_log_file_size_mb
+          if (body.contains("max_log_file_size_mb")) {
+            int size_mb = body["max_log_file_size_mb"].get<int>();
+            if (size_mb > 0) {
+              lm.setMaxLogSizeMB(static_cast<size_t>(size_mb));
+              result["applied"]["max_log_file_size_mb"] = size_mb;
+            }
+          }
+
+          // packet_logging_enabled: LogManager의 패킷 로그 on/off
+          if (body.contains("packet_logging_enabled")) {
+            bool enable = body["packet_logging_enabled"].get<bool>();
+            // packet_logging은 별도 카테고리 레벨로 제어
+            // TRACE 레벨로 설정하면 패킷 데이터도 출력됨
+            lm.setCategoryLogLevel(DriverLogCategory::COMMUNICATION,
+                                   enable ? LogLevel::TRACE : LogLevel::INFO);
+            result["applied"]["packet_logging_enabled"] = enable;
+          }
+
+          result["success"] = true;
+          res.set_content(result.dump(), "application/json");
+        } catch (const std::exception &e) {
+          res.status = 500;
+          res.set_content(CreateErrorResponse(e.what()), "application/json");
+        }
+      });
+
   httplib_server->Post(
       "/api/system/reinitialize",
       [this](const httplib::Request &req, httplib::Response &res) {

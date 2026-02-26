@@ -335,7 +335,8 @@ echo "=========================================="
 
 mkdir -p "$INSTALL_DIR/data/db" "$INSTALL_DIR/data/logs" \
          "$INSTALL_DIR/data/backup" "$INSTALL_DIR/data/temp" \
-         "$INSTALL_DIR/data/influxdb"
+         "$INSTALL_DIR/data/influxdb" \
+         "$INSTALL_DIR/logs/packets"
 
 # [1/5] Redis
 echo "[1/5] Redis 설치 중..."
@@ -437,6 +438,7 @@ ExecStart=$INSTALL_DIR/pulseone-backend --auto-init
 WorkingDirectory=$INSTALL_DIR
 Environment=NODE_ENV=production
 Environment=DATA_DIR=$INSTALL_DIR/data
+Environment=COLLECTOR_LOG_DIR=$INSTALL_DIR/logs/packets
 Restart=always
 RestartSec=5
 StandardOutput=journal

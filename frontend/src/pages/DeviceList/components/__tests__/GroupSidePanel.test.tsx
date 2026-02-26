@@ -5,7 +5,9 @@ import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import GroupSidePanel from '../GroupSidePanel';
 import { GroupApiService } from '../../../../api/services/groupApi';
-import '../../../../setupTests'; // Ensure matchers are loaded
+import { ConfirmProvider } from '../../../../components/common/ConfirmProvider';
+import * as matchers from '@testing-library/jest-dom/matchers';
+expect.extend(matchers);
 
 // Mock the API Service
 vi.mock('../../../../api/services/groupApi', () => ({
@@ -33,7 +35,11 @@ describe('GroupSidePanel Integration Test', () => {
             data: []
         });
 
-        render(<GroupSidePanel selectedGroupId="all" onGroupSelect={mockOnGroupSelect} />);
+        render(
+            <ConfirmProvider>
+                <GroupSidePanel selectedGroupId="all" onGroupSelect={mockOnGroupSelect} />
+            </ConfirmProvider>
+        );
 
         // Verify initial load
         await waitFor(() => expect(GroupApiService.getGroupTree).toHaveBeenCalledTimes(1));

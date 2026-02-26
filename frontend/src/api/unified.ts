@@ -3,7 +3,7 @@
 // 통합된 API 서비스 (선택사항)
 // ============================================================================
 
-import { systemApiService } from '../services/apiService';
+import systemApiService from '../services/apiService';
 import { DeviceApiService } from './services/deviceApi';
 import { AlarmApiService } from './services/alarmApi';
 
@@ -14,13 +14,13 @@ import { AlarmApiService } from './services/alarmApi';
 export class UnifiedApiService {
   // 🔧 시스템 관리 (기존)
   static system = systemApiService;
-  
+
   // 📱 디바이스 관리 (신규)
   static device = DeviceApiService;
-  
+
   // 🚨 알람 관리 (신규)
   static alarm = AlarmApiService;
-  
+
   // 향후 추가될 서비스들
   // static user = UserApiService;
   // static virtualPoint = VirtualPointApiService;

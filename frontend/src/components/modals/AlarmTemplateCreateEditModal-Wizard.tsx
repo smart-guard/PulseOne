@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import alarmTemplatesApi, { 
-    AlarmTemplate, 
-    AlarmRuleSettings 
+import alarmTemplatesApi, {
+    AlarmTemplate
 } from '../../api/services/alarmTemplatesApi';
 import { useConfirmContext } from '../common/ConfirmProvider';
 import '../../styles/management.css';
@@ -39,12 +38,12 @@ const SEVERITY_CARDS = [
     { id: 'critical', label: 'CRITICAL', icon: 'fa-radiation', color: '#ef4444' },
 ];
 
-const AlarmTemplateCreateEditModal: React.FC<Props> = ({ 
-    isOpen, 
-    onClose, 
-    onSuccess, 
-    mode, 
-    template 
+const AlarmTemplateCreateEditModal: React.FC<Props> = ({
+    isOpen,
+    onClose,
+    onSuccess,
+    mode,
+    template
 }) => {
     const { confirm } = useConfirmContext();
     const [step, setStep] = useState(1);
@@ -54,7 +53,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
     const [formData, setFormData] = useState<Partial<AlarmTemplate>>({
         name: '',
         category: 'general',
-        template_type: 'threshold',
+        template_type: 'simple',
         trigger_condition: '',
         severity: 'medium',
         message_template: '알람: {device_name}의 값이 임계치를 초과했습니다.',
@@ -74,8 +73,8 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
             if (mode === 'edit' && template) {
                 setFormData({
                     ...template,
-                    default_config: typeof template.default_config === 'string' 
-                        ? JSON.parse(template.default_config) 
+                    default_config: typeof template.default_config === 'string'
+                        ? JSON.parse(template.default_config)
                         : (template.default_config || {})
                 });
                 setStep(1);
@@ -83,7 +82,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                 setFormData({
                     name: '',
                     category: 'general',
-                    template_type: 'threshold',
+                    template_type: 'simple',
                     trigger_condition: '',
                     severity: 'medium',
                     message_template: '알람: {device_name}의 값이 임계치를 초과했습니다.',
@@ -147,11 +146,11 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                 default_config: JSON.stringify(formData.default_config)
             };
 
-            const res = mode === 'create' 
+            const res = mode === 'create'
                 ? await alarmTemplatesApi.createTemplate(payload as any)
                 : await alarmTemplatesApi.updateTemplate(template!.id, payload as any);
 
-            if (res.success) {
+            if ((res as any).success) {
                 onSuccess();
                 onClose();
             }
@@ -189,7 +188,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                 </div>
 
                 <div className="modal-content" style={{ padding: '0 40px 40px 40px', minHeight: '450px' }}>
-                    
+
                     {/* Step 1: Identity & Presets */}
                     {step === 1 && (
                         <div className="wizard-content-fade-in">
@@ -218,7 +217,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                     <div className="section-title">빠른 시작 프리셋 (추천 로직)</div>
                                     <div className="quick-start-row">
                                         {PRESETS.map(preset => (
-                                            <div key={preset.id} 
+                                            <div key={preset.id}
                                                 className={`preset-card ${activePreset === preset.id ? 'active' : ''}`}
                                                 onClick={() => applyPreset(preset)}>
                                                 <div className="preset-icon">{preset.icon}</div>
@@ -245,7 +244,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                 <p className="form-desc" style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
                                     알람이 발생하는 조건을 정의합니다. 아래의 토큰을 클릭하여 논리식을 구성하세요.
                                 </p>
-                                
+
                                 <div className="logic-builder-container" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '32px', borderRadius: '16px' }}>
                                     <div className="token-row" style={{ marginBottom: '24px' }}>
                                         {LOGIC_TOKENS.map(token => (
@@ -279,7 +278,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="section-title">알람 심각도 (Severity)</div>
                                         <div className="severity-grid">
                                             {SEVERITY_CARDS.map(s => (
-                                                <div key={s.id} 
+                                                <div key={s.id}
                                                     className={`intensity-card ${s.id} ${formData.severity === s.id ? 'active' : ''}`}
                                                     onClick={() => setFormData(p => ({ ...p, severity: s.id as any }))}>
                                                     <i className={`fas ${s.icon}`}></i>
@@ -295,13 +294,13 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-group">
                                             <label className="form-label">High Limit (상한)</label>
                                             <input type="number" className="form-input" placeholder="80"
-                                                value={formData.default_config?.high_limit} 
+                                                value={formData.default_config?.high_limit}
                                                 onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, high_limit: e.target.value } as any }))} />
                                         </div>
                                         <div className="form-group">
                                             <label className="form-label">Low Limit (하한)</label>
                                             <input type="number" className="form-input" placeholder="20"
-                                                value={formData.default_config?.low_limit} 
+                                                value={formData.default_config?.low_limit}
                                                 onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, low_limit: e.target.value } as any }))} />
                                         </div>
                                     </div>
@@ -352,7 +351,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                             <i className="fas fa-arrow-left"></i> 이전
                         </button>
                     )}
-                    
+
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px' }}>
                         <button className="btn btn-ghost" onClick={onClose}>취소</button>
                         {step < 4 ? (

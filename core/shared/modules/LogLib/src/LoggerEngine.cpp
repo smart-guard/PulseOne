@@ -133,6 +133,124 @@ void LoggerEngine::flushAll() {
 
 void LoggerEngine::rotateLogs() { flushAll(); }
 
+// =============================================================================
+// Log Retention & Disk Management
+// =============================================================================
+
+void LoggerEngine::cleanupOldLogs(int retentionDays) {
+  if (retentionDays <= 0)
+    return;
+
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+  try {
+    namespace fs = std::filesystem;
+    auto cutoff = fs::file_time_type::clock::now() -
+                  std::chrono::hours(24 * retentionDays);
+
+    if (!fs::exists(log_base_path_))
+      return;
+
+    size_t deleted_count = 0;
+    for (const auto &entry : fs::recursive_directory_iterator(
+             log_base_path_, fs::directory_options::skip_permission_denied)) {
+      if (!entry.is_regular_file())
+        continue;
+      auto ext = entry.path().extension().string();
+      if (ext != ".log" && ext != ".gz")
+        continue;
+
+      if (entry.last_write_time() < cutoff) {
+        // 파일이 현재 열려있으면 닫기
+        auto path_str = entry.path().string();
+        auto it = logFiles_.find(path_str);
+        if (it != logFiles_.end()) {
+          it->second.close();
+          logFiles_.erase(it);
+        }
+        fs::remove(entry.path());
+        ++deleted_count;
+      }
+    }
+
+    if (deleted_count > 0) {
+      // 삭제 후 새 로그에 기록 (재귀 방지 위해 직접 작성)
+      std::string msg = "[" + getCurrentTimestamp() +
+                        "][INFO] "
+                        "🧹 Log cleanup: deleted " +
+                        std::to_string(deleted_count) + " file(s) older than " +
+                        std::to_string(retentionDays) + " days";
+      if (console_output_enabled_)
+        std::cout << msg << std::endl;
+    }
+  } catch (const std::exception &e) {
+    if (console_output_enabled_)
+      std::cout << "[LoggerEngine] cleanupOldLogs error: " << e.what()
+                << std::endl;
+  }
+}
+
+size_t LoggerEngine::getAvailableDiskSpaceMB() const {
+  try {
+    auto space = std::filesystem::space(log_base_path_);
+    return static_cast<size_t>(space.available / (1024ULL * 1024ULL));
+  } catch (...) {
+    return SIZE_MAX; // 에러 시 무한대 반환 (긴급 삭제 미발동)
+  }
+}
+
+void LoggerEngine::emergencyCleanupLogs(size_t targetFreeMB) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+  try {
+    namespace fs = std::filesystem;
+    if (!fs::exists(log_base_path_))
+      return;
+
+    // 모든 .log 파일을 수정일 오름차순 수집
+    std::vector<fs::directory_entry> log_files;
+    for (const auto &entry : fs::recursive_directory_iterator(
+             log_base_path_, fs::directory_options::skip_permission_denied)) {
+      if (!entry.is_regular_file())
+        continue;
+      auto ext = entry.path().extension().string();
+      if (ext == ".log" || ext == ".gz")
+        log_files.push_back(entry);
+    }
+
+    std::sort(log_files.begin(), log_files.end(),
+              [](const auto &a, const auto &b) {
+                return a.last_write_time() < b.last_write_time();
+              });
+
+    size_t deleted_count = 0;
+    for (const auto &entry : log_files) {
+      if (getAvailableDiskSpaceMB() >= targetFreeMB)
+        break;
+
+      auto path_str = entry.path().string();
+      auto it = logFiles_.find(path_str);
+      if (it != logFiles_.end()) {
+        it->second.close();
+        logFiles_.erase(it);
+      }
+      fs::remove(entry.path());
+      ++deleted_count;
+    }
+
+    if (deleted_count > 0 && console_output_enabled_) {
+      std::cout << "[" << getCurrentTimestamp() << "][WARN] "
+                << "🚨 Emergency cleanup: deleted " << deleted_count
+                << " log file(s), free=" << getAvailableDiskSpaceMB() << " MB"
+                << std::endl;
+    }
+  } catch (const std::exception &e) {
+    if (console_output_enabled_)
+      std::cout << "[LoggerEngine] emergencyCleanupLogs error: " << e.what()
+                << std::endl;
+  }
+}
+
 LogStatistics LoggerEngine::getStatistics() const {
   std::lock_guard<std::recursive_mutex> lock(mutex_);
   return statistics_;

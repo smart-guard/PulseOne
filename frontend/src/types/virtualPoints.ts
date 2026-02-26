@@ -39,6 +39,13 @@ export interface VirtualPoint {
   // 메타데이터
   tags?: string[];
   priority?: number;
+  decimal_places?: number;
+  timeout_ms?: number;
+  error_handling?: string;
+  default_value?: any;
+  scope_id?: number;
+  min_value?: number;
+  max_value?: number;
 
   // 관계 데이터
   inputs?: VirtualPointInput[];
@@ -82,10 +89,11 @@ export interface VirtualPointFormData {
 
 export interface VirtualPointInputFormData {
   input_name: string;
+  variable_name: string; // required to match virtualPointsApi
   source_type: 'data_point' | 'virtual_point' | 'constant';
   source_id?: number;
   constant_value?: any;
-  data_type: 'number' | 'boolean' | 'string';
+  data_type: 'number' | 'boolean' | 'string' | string;
   description?: string;
   is_required: boolean;
 }
@@ -94,12 +102,45 @@ export interface VirtualPointFilters {
   tenant_id?: number;
   site_id?: number;
   device_id?: number;
-  scope_type?: 'site' | 'device' | 'global';
+  scope_type?: 'site' | 'device' | 'global' | string;
   is_enabled?: boolean;
   include_deleted?: boolean;
   category?: string;
   calculation_trigger?: 'time_based' | 'event_driven' | 'manual';
+  calculation_status?: string;  // 'active' | 'error' | 'disabled' | 'calculating' | 'all'
   search?: string;
   limit?: number;
   offset?: number;
+}
+
+/** Full virtual point page/hook state (used by useVirtualPoints) */
+export interface VirtualPointPageState {
+  // 데이터
+  virtualPoints: VirtualPoint[];
+  selectedPoint: VirtualPoint | null;
+  categoryStats: any[];
+  performanceStats: any;
+
+  // UI 상태
+  loading: boolean;
+  saving: boolean;
+  testing: boolean;
+  error: string | null;
+
+  // 모달 상태
+  showCreateModal: boolean;
+  showEditModal: boolean;
+  showDeleteConfirm: boolean;
+  showTestModal: boolean;
+
+  // 필터 상태
+  filters: VirtualPointFilters;
+  viewMode: 'card' | 'table';
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
+
+  // 페이징
+  currentPage: number;
+  pageSize: number;
+  totalCount: number;
 }

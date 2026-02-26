@@ -282,4 +282,90 @@ router.post('/:id/test-connection', async (req, res) => {
     }
 });
 
+// 📦 디바이스 패킷 로그 조회 (./logs/packets/ 경로에서 파일 파싱)
+router.get('/:id/packet-logs', async (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+
+    try {
+        const { id } = req.params;
+        const { tenantId } = req;
+        const limit = parseInt(req.query.limit) || 200;
+        const dateStr = req.query.date; // YYYY-MM-DD, 없으면 오늘
+
+        // 디바이스 정보 조회 (이름 필요)
+        const deviceResult = await DeviceService.getDeviceById(parseInt(id), tenantId);
+        if (!deviceResult.success) {
+            return res.status(404).json({ success: false, message: 'Device not found' });
+        }
+        const deviceName = deviceResult.data?.name || String(id);
+
+        // 로그 경로: COLLECTOR_LOG_DIR 환경변수 우선, 없으면 cwd/logs/packets
+        let logDir;
+        if (process.env.COLLECTOR_LOG_DIR) {
+            // Docker / 명시적 설정
+            logDir = process.env.COLLECTOR_LOG_DIR;
+        } else {
+            // 기본값: 실행 위치(WorkingDirectory) 기준 logs/packets
+            // - 네이티브(systemd): WorkingDirectory=$INSTALL_DIR → $INSTALL_DIR/logs/packets ✅
+            // - 개발환경(node): cwd=프로젝트루트 → {root}/logs/packets ✅
+            logDir = path.join(process.cwd(), 'logs', 'packets');
+        }
+
+        const targetDate = dateStr || new Date().toISOString().slice(0, 10);
+        const dateDir = path.join(logDir, targetDate);
+
+        // 해당 날짜 디렉토리에서 디바이스명이 포함된 파일 탐색
+        const entries = [];
+
+        if (fs.existsSync(dateDir)) {
+            const files = fs.readdirSync(dateDir).filter(f => {
+                // {Protocol}_{deviceName}.log 형식 매칭
+                return f.endsWith('.log') && f.includes(deviceName.replace(/[/\\:*?"<>|]/g, '_'));
+            });
+
+            for (const file of files) {
+                const filePath = path.join(dateDir, file);
+                const protocol = file.split('_')[0]; // Modbus / MQTT / BACnet
+                const content = fs.readFileSync(filePath, 'utf8');
+                const lines = content.split('\n').filter(l => l.trim());
+
+                // 파싱: [timestamp]\n[RAW] ...\n[DECODED] ... 형식
+                let i = 0;
+                while (i < lines.length && entries.length < limit) {
+                    const tsMatch = lines[i].match(/^\[(.+?)\]$/);
+                    if (tsMatch) {
+                        const timestamp = tsMatch[1];
+                        const rawLine = lines[i + 1] || '';
+                        const decodedLine = lines[i + 2] || '';
+                        const raw = rawLine.startsWith('[RAW]') ? rawLine.slice(6).trim() : rawLine;
+                        const decoded = decodedLine.startsWith('[DECODED]') ? decodedLine.slice(10).trim() : decodedLine;
+                        entries.push({ timestamp, protocol, raw, decoded });
+                        i += 3;
+                    } else {
+                        i++;
+                    }
+                }
+            }
+        }
+
+        // 최신 순 정렬
+        entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+        res.json({
+            success: true,
+            data: {
+                device_id: parseInt(id),
+                device_name: deviceName,
+                date: targetDate,
+                log_dir: dateDir,
+                entries: entries.slice(0, limit)
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message, error: 'PACKET_LOGS_ERROR' });
+    }
+});
+
 module.exports = router;

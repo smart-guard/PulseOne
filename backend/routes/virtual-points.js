@@ -148,6 +148,26 @@ router.get('/:id/logs', async (req, res) => {
 });
 
 /**
+ * POST /api/virtual-points/:id/execute
+ */
+router.post('/:id/execute', async (req, res) => {
+    try {
+        const options = req.body || {};
+        const result = await VirtualPointService.execute(req.params.id, options, req.tenantId);
+
+        // 프론트엔드는 result.result 및 success 여부를 확인
+        if (result.success) {
+            res.json(createResponse(true, result, 'Execution successful'));
+        } else {
+            res.status(400).json(createResponse(false, result, result.error || 'Execution failed', 'EXECUTION_ERROR'));
+        }
+    } catch (error) {
+        const status = error.message.includes('찾을 수 없습니다') ? 404 : 500;
+        res.status(status).json(createResponse(false, null, error.message, 'EXECUTION_ERROR'));
+    }
+});
+
+/**
  * PUT /api/virtual-points/:id
  */
 router.put('/:id', async (req, res) => {

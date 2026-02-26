@@ -127,8 +127,8 @@ const MainLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const toggleMenu = (menuId: string) => {
-    setExpandedMenus(prev => 
-      prev.includes(menuId) 
+    setExpandedMenus(prev =>
+      prev.includes(menuId)
         ? prev.filter(id => id !== menuId)
         : [...prev, menuId]
     );
@@ -141,7 +141,7 @@ const MainLayout: React.FC = () => {
 
     return (
       <li key={item.id} className={`menu-item level-${level}`}>
-        <div 
+        <div
           className={`menu-link ${isActive ? 'active' : ''} ${hasChildren ? 'has-children' : ''}`}
           onClick={() => {
             if (hasChildren) {
@@ -163,7 +163,7 @@ const MainLayout: React.FC = () => {
             </>
           )}
         </div>
-        
+
         {hasChildren && isExpanded && !sidebarCollapsed && (
           <ul className="submenu">
             {item.children?.map(child => renderMenuItem(child, level + 1))}
@@ -186,7 +186,7 @@ const MainLayout: React.FC = () => {
       case 'historical':
         return <HistoricalData />;
       case 'virtual-points':
-        return <VirtualPoints />;  
+        return <VirtualPoints />;
       case 'data-export':
         return <DataExport />;
       case 'active-alarms':
@@ -196,7 +196,7 @@ const MainLayout: React.FC = () => {
       case 'alarm-config':
         return <AlarmSettings />;
       case 'alarm-type':
-        return <AlarmRules />;
+        return <AlarmRuleTemplates />;
       case 'alarm-rules':
         return <AlarmRuleTemplates />;
       case 'notification':
@@ -213,7 +213,7 @@ const MainLayout: React.FC = () => {
         return <PermissionManagement />;
       case 'backup':
         return <BackupRestore />;
-        
+
 
     }
   };
@@ -227,14 +227,14 @@ const MainLayout: React.FC = () => {
             <i className="fas fa-bolt text-primary"></i>
             {!sidebarCollapsed && <span className="logo-text">PulseOne</span>}
           </div>
-          <button 
+          <button
             className="sidebar-toggle"
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           >
             <i className={`fas fa-${sidebarCollapsed ? 'expand' : 'compress'}-alt`}></i>
           </button>
         </div>
-        
+
         <nav className="sidebar-nav">
           <ul className="menu">
             {menuItems.map(item => renderMenuItem(item))}
@@ -253,13 +253,13 @@ const MainLayout: React.FC = () => {
               </span>
             </div>
           </div>
-          
+
           <div className="topbar-right">
             <div className="connection-status">
               <div className="live-indicator"></div>
               <span className="status-text">실시간 연결됨</span>
             </div>
-            
+
             <div className="user-menu">
               <div className="user-avatar">
                 <i className="fas fa-user"></i>

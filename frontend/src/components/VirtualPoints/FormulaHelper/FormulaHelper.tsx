@@ -4,7 +4,7 @@
 // ============================================================================
 
 import React, { useState } from 'react';
-import { ScriptFunction } from '../../../types/virtualPoints';
+import { ScriptFunction } from '../../../types/scriptEngine';
 
 interface FormulaHelperProps {
   isOpen: boolean;
@@ -39,7 +39,7 @@ export const FormulaHelper: React.FC<FormulaHelperProps> = ({
       ],
       returnType: 'number',
       examples: [
-        { code: 'Math.max(10, 20, 5)', description: '20을 반환', expectedResult: 20 }
+        { code: 'Math.max(10, 20, 5)', description: '20을 반환', expectedResult: 20, title: 'Math.max 예제' }
       ],
       isBuiltIn: true
     },
@@ -56,7 +56,7 @@ export const FormulaHelper: React.FC<FormulaHelperProps> = ({
       ],
       returnType: 'number',
       examples: [
-        { code: 'Math.min(10, 20, 5)', description: '5를 반환', expectedResult: 5 }
+        { code: 'Math.min(10, 20, 5)', description: '5를 반환', expectedResult: 5, title: 'Math.min 예제' }
       ],
       isBuiltIn: true
     },
@@ -72,7 +72,7 @@ export const FormulaHelper: React.FC<FormulaHelperProps> = ({
       ],
       returnType: 'number',
       examples: [
-        { code: 'Math.round(4.7)', description: '5를 반환', expectedResult: 5 }
+        { code: 'Math.round(4.7)', description: '5를 반환', expectedResult: 5, title: 'Math.round 예제' }
       ],
       isBuiltIn: true
     },
@@ -88,7 +88,7 @@ export const FormulaHelper: React.FC<FormulaHelperProps> = ({
       ],
       returnType: 'number',
       examples: [
-        { code: 'Math.abs(-5)', description: '5를 반환', expectedResult: 5 }
+        { code: 'Math.abs(-5)', description: '5를 반환', expectedResult: 5, title: 'Math.abs 예제' }
       ],
       isBuiltIn: true
     }
@@ -98,10 +98,10 @@ export const FormulaHelper: React.FC<FormulaHelperProps> = ({
 
   const filteredFunctions = availableFunctions.filter(func => {
     const matchesCategory = selectedCategory === 'all' || func.category === selectedCategory;
-    const matchesSearch = searchTerm === '' || 
+    const matchesSearch = searchTerm === '' ||
       func.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       func.displayName.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     return matchesCategory && matchesSearch;
   });
 
@@ -137,7 +137,7 @@ export const FormulaHelper: React.FC<FormulaHelperProps> = ({
             />
             <i className="fas fa-search search-icon"></i>
           </div>
-          
+
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}

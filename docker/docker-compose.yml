@@ -55,12 +55,14 @@ services:
       - START_COLLECTOR_ON_BOOT=false
       - PULSEONE_DATA_DIR=/app/data
       - PULSEONE_CONFIG_DIR=/app/config
+      - COLLECTOR_LOG_DIR=/app/logs/packets
     volumes:
       - ../backend:/app/backend
       - ../config:/app/config
       - ./config:/app/docker-config
       - ../data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - ../logs:/app/logs
     user: root
     command: /bin/bash -c "chmod 666 /var/run/docker.sock && su node -c 'nodemon --inspect=0.0.0.0:9229 app.js'"
     networks:
@@ -94,7 +96,7 @@ services:
     volumes:
       - ../data:/app/data
       - ./config:/app/config
-      - ../core/collector/logs:/app/core/collector/logs
+      - ../logs:/app/core/collector/logs
     command: [ "/usr/local/bin/pulseone-collector", "--id", "1" ]
 
   simulator-modbus:

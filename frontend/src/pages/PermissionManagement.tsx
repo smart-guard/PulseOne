@@ -117,7 +117,7 @@ const PermissionManagement: React.FC = () => {
 
       <div className="mgmt-stats-panel">
         <StatCard label="전체 역할" value={stats.total} type="primary" />
-        <StatCard label="시스템 역할" value={stats.system} type="purple" />
+        <StatCard label="시스템 역할" value={stats.system} type="blueprint" />
         <StatCard label="사용자 정의 역할" value={stats.custom} type="success" />
       </div>
 

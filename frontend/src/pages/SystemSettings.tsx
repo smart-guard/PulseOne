@@ -47,7 +47,8 @@ const initialSettings = {
     max_concurrent_devices: 1000,
     device_timeout: 5000, // ms
     retry_attempts: 3,
-    enable_packet_logging: false,
+    influxdb_storage_interval: 0, // ms (0: 스캔 시 즉시 저장)
+
     packet_log_retention_hours: 24,
     virtual_point_calculation_interval: 500, // ms
     alarm_check_interval: 1000 // ms
@@ -99,10 +100,9 @@ const initialSettings = {
     log_level: 'info',
     log_retention_days: 30,
     enable_debug_logging: false,
-    log_to_file: true,
-    log_to_database: true,
+    log_to_file: true, // 항상 파일 저장 (변경 불가)
     max_log_file_size: 100, // MB
-    compress_old_logs: true,
+    enable_packet_logging: false,
     enable_error_notifications: true
   }
 };
@@ -124,6 +124,72 @@ const SystemSettings = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [testResults, setTestResults] = useState<{ [key: string]: string }>({});
 
+  // 마운트 시 DB에서 설정 로드
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const [loggingRes, generalRes, collectionRes] = await Promise.all([
+          fetch('/api/system/logging-settings'),
+          fetch('/api/system/general-settings'),
+          fetch('/api/system/data-collection-settings'),
+        ]);
+        const [loggingData, generalData, collectionData] = await Promise.all([
+          loggingRes.json(),
+          generalRes.json(),
+          collectionRes.json(),
+        ]);
+
+        setSettings(prev => {
+          const next = { ...prev };
+
+          if (loggingData.success && loggingData.data) {
+            const s = loggingData.data;
+            next[SETTING_CATEGORIES.LOGGING] = {
+              ...prev[SETTING_CATEGORIES.LOGGING],
+              log_level: s.log_level?.toLowerCase() || prev[SETTING_CATEGORIES.LOGGING].log_level,
+              log_retention_days: s.log_retention_days ?? prev[SETTING_CATEGORIES.LOGGING].log_retention_days,
+              max_log_file_size: s.max_log_file_size_mb ?? prev[SETTING_CATEGORIES.LOGGING].max_log_file_size,
+              enable_packet_logging: s.packet_logging_enabled ?? prev[SETTING_CATEGORIES.LOGGING].enable_packet_logging,
+              enable_debug_logging: s.enable_debug_logging ?? prev[SETTING_CATEGORIES.LOGGING].enable_debug_logging,
+            };
+          }
+
+          if (generalData.success && generalData.data) {
+            const g = generalData.data;
+            next[SETTING_CATEGORIES.GENERAL] = {
+              ...prev[SETTING_CATEGORIES.GENERAL],
+              system_name: g.system_name ?? prev[SETTING_CATEGORIES.GENERAL].system_name,
+              timezone: g.timezone ?? prev[SETTING_CATEGORIES.GENERAL].timezone,
+              language: g.language ?? prev[SETTING_CATEGORIES.GENERAL].language,
+              date_format: g.date_format ?? prev[SETTING_CATEGORIES.GENERAL].date_format,
+              time_format: g.time_format ?? prev[SETTING_CATEGORIES.GENERAL].time_format,
+              session_timeout: g.session_timeout ?? prev[SETTING_CATEGORIES.GENERAL].session_timeout,
+              max_login_attempts: g.max_login_attempts ?? prev[SETTING_CATEGORIES.GENERAL].max_login_attempts,
+              account_lockout_duration: g.account_lockout_duration ?? prev[SETTING_CATEGORIES.GENERAL].account_lockout_duration,
+            };
+          }
+
+          if (collectionData.success && collectionData.data) {
+            const c = collectionData.data;
+            next[SETTING_CATEGORIES.COLLECTION] = {
+              ...prev[SETTING_CATEGORIES.COLLECTION],
+              default_polling_interval: c.default_polling_interval ?? prev[SETTING_CATEGORIES.COLLECTION].default_polling_interval,
+              max_concurrent_devices: c.max_concurrent_connections ?? prev[SETTING_CATEGORIES.COLLECTION].max_concurrent_devices,
+              device_timeout: c.device_response_timeout ?? prev[SETTING_CATEGORIES.COLLECTION].device_timeout,
+              influxdb_storage_interval: c.influxdb_storage_interval ?? prev[SETTING_CATEGORIES.COLLECTION].influxdb_storage_interval,
+            };
+          }
+
+          return next;
+        });
+      } catch (e) {
+        // 로드 실패 시 기본값 유지
+      }
+    };
+    loadSettings();
+  }, []);
+
+
   // 설정값 변경 핸들러
   const handleSettingChange = (category, key, value) => {
     setSettings(prev => ({
@@ -140,12 +206,30 @@ const SystemSettings = () => {
   const handleSaveSettings = async () => {
     setSaving(true);
     try {
+      // 필드명 정규화 (프런트 키 → 백엔드 키)
+      const L = settings[SETTING_CATEGORIES.LOGGING];
+      const loggingPayload = {
+        log_level: L.log_level,
+        log_retention_days: L.log_retention_days,
+        enable_debug_logging: L.enable_debug_logging,
+        log_to_file: L.log_to_file,
+        max_log_file_size_mb: L.max_log_file_size,         // 키 변환
+        packet_logging_enabled: L.enable_packet_logging,     // 키 변환
+        enable_error_notifications: L.enable_error_notifications,
+      };
+
       const response = await fetch('/api/system/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          logging: settings[SETTING_CATEGORIES.LOGGING],
+          logging: loggingPayload,
           general: settings[SETTING_CATEGORIES.GENERAL],
+          data_collection: {
+            default_polling_interval: settings[SETTING_CATEGORIES.COLLECTION].default_polling_interval,
+            max_concurrent_connections: settings[SETTING_CATEGORIES.COLLECTION].max_concurrent_devices, // 프론트는 devices, 백엔드는 connections
+            device_response_timeout: settings[SETTING_CATEGORIES.COLLECTION].device_timeout, // 프론트는 timeout, 백엔드는 response_timeout
+            influxdb_storage_interval: settings[SETTING_CATEGORIES.COLLECTION].influxdb_storage_interval,
+          }
         }),
       });
       const data = await response.json();
@@ -158,6 +242,7 @@ const SystemSettings = () => {
       setSaving(false);
     }
   };
+
 
   // 기본값으로 복원
   const handleResetToDefaults = () => {
@@ -269,6 +354,7 @@ const SystemSettings = () => {
             margin: 0,
             fontWeight: '500',
             wordBreak: 'keep-all',
+            whiteSpace: 'pre-line',
             opacity: 0.9
           }}>
             {description}
@@ -405,12 +491,14 @@ const SystemSettings = () => {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="mgmt-select"
+        style={{ width: '100%', minWidth: '180px' }}
       >
         {options.map(option => (
           <option key={option.value} value={option.value}>{option.label}</option>
         ))}
       </select>
     </SettingRow>
+
   );
 
   return (
@@ -682,11 +770,15 @@ const SystemSettings = () => {
                     min={1000}
                     max={30000}
                   />
-                  <CheckboxField
-                    label="패킷 로깅 활성화"
-                    checked={settings.collection.enable_packet_logging}
-                    onChange={(value) => handleSettingChange('collection', 'enable_packet_logging', value)}
-                    description="분석을 위해 송수신되는 원시 패킷 데이터를 로그로 기록합니다."
+                  <InputField
+                    label="시계열 데이터 저장 주기"
+                    type="number"
+                    value={settings.collection.influxdb_storage_interval}
+                    onChange={(value) => handleSettingChange('collection', 'influxdb_storage_interval', value)}
+                    description={"과거 이력 조회를 위해 시계열 데이터를\n저장하는 주기입니다\n(0 지정시 스캔 즉시 저장)."}
+                    suffix="ms"
+                    min={0}
+                    max={3600000}
                   />
                 </div>
               )}
@@ -891,27 +983,6 @@ const SystemSettings = () => {
                     max={365}
                   />
 
-                  <CheckboxField
-                    label="디버그 로깅 활성화"
-                    checked={settings.logging.enable_debug_logging}
-                    onChange={(value) => handleSettingChange('logging', 'enable_debug_logging', value)}
-                    description="상세한 디버그 정보를 로그에 포함합니다. 성능에 영향을 줄 수 있습니다."
-                  />
-
-                  <CheckboxField
-                    label="파일로 로그 저장"
-                    checked={settings.logging.log_to_file}
-                    onChange={(value) => handleSettingChange('logging', 'log_to_file', value)}
-                    description="시스템 로그를 서버 내 물리 파일로 기록합니다."
-                  />
-
-                  <CheckboxField
-                    label="데이터베이스에 로그 저장"
-                    checked={settings.logging.log_to_database}
-                    onChange={(value) => handleSettingChange('logging', 'log_to_database', value)}
-                    description="로그를 DB에 저장하여 UI에서 쉽게 검색할 수 있도록 합니다."
-                  />
-
                   <InputField
                     label="최대 로그 파일 크기"
                     type="number"
@@ -924,11 +995,12 @@ const SystemSettings = () => {
                   />
 
                   <CheckboxField
-                    label="오래된 로그 압축"
-                    checked={settings.logging.compress_old_logs}
-                    onChange={(value) => handleSettingChange('logging', 'compress_old_logs', value)}
-                    description="저장 공간 절약을 위해 지난 로그 파일을 자동으로 압축합니다."
+                    label="패킷 로깅 활성화"
+                    checked={settings.logging.enable_packet_logging}
+                    onChange={(value) => handleSettingChange('logging', 'enable_packet_logging', value)}
+                    description="송수신되는 원시 패킷 데이터를 로그 파일로 기록합니다."
                   />
+
                 </div>
               )}
             </div>

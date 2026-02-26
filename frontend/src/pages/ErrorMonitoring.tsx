@@ -3,9 +3,10 @@ import { AlertTriangle, Wifi, Settings, Wrench, Zap, AlertCircle } from 'lucide-
 
 // PulseOne 에러 대시보드 컴포넌트
 const PulseOneErrorDashboard = () => {
-  const [errors, setErrors] = useState([]);
-  const [errorStats, setErrorStats] = useState({});
-  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [errors, setErrors] = useState<any[]>([]);
+  interface ErrorStats { totalErrors: number; connectionErrors: number; protocolErrors: number; deviceErrors: number; maintenanceEvents: number; systemErrors: number; }
+  const [errorStats, setErrorStats] = useState<ErrorStats>({ totalErrors: 0, connectionErrors: 0, protocolErrors: 0, deviceErrors: 0, maintenanceEvents: 0, systemErrors: 0 });
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
 
   // HTTP 상태코드별 아이콘 매핑
   const getErrorIcon = (httpStatus) => {
@@ -67,7 +68,7 @@ const PulseOneErrorDashboard = () => {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-3xl font-bold text-gray-900 mb-8">PulseOne 에러 모니터링 대시보드</h1>
-      
+
       {/* 에러 통계 카드들 */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
@@ -143,7 +144,7 @@ const PulseOneErrorDashboard = () => {
           <h2 className="text-xl font-semibold text-gray-900">실시간 에러 로그</h2>
           <p className="text-sm text-gray-600">각 HTTP 상태코드별로 구분된 에러 정보</p>
         </div>
-        
+
         <div className="divide-y divide-gray-200">
           {errors.map((error) => (
             <div key={error.id} className={`p-4 border-l-4 ${getErrorColor(error.httpStatus)}`}>
@@ -152,7 +153,7 @@ const PulseOneErrorDashboard = () => {
                   <div className={`p-2 rounded-full ${error.httpStatus >= 470 && error.httpStatus <= 489 ? 'bg-red-100' : 'bg-orange-100'}`}>
                     {getErrorIcon(error.httpStatus)}
                   </div>
-                  
+
                   <div className="flex-1">
                     <div className="flex items-center space-x-2">
                       <h3 className="text-lg font-medium text-gray-900">
@@ -161,23 +162,22 @@ const PulseOneErrorDashboard = () => {
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                         HTTP {error.httpStatus}
                       </span>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        error.category === 'connection' ? 'bg-red-100 text-red-800' :
-                        error.category === 'device' ? 'bg-orange-100 text-orange-800' :
-                        error.category === 'maintenance' ? 'bg-blue-100 text-blue-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${error.category === 'connection' ? 'bg-red-100 text-red-800' :
+                          error.category === 'device' ? 'bg-orange-100 text-orange-800' :
+                            error.category === 'maintenance' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
+                        }`}>
                         {error.category}
                       </span>
                     </div>
-                    
+
                     <p className="text-sm text-gray-600 mt-1">{error.message}</p>
                     <p className="text-xs text-gray-500 mt-1">
                       디바이스: {error.deviceId} | 시간: {error.timestamp.toLocaleTimeString()}
                     </p>
                   </div>
                 </div>
-                
+
                 <div className="flex space-x-2">
                   {/* 에러별 액션 버튼들 */}
                   {error.httpStatus === 420 && (
@@ -200,8 +200,8 @@ const PulseOneErrorDashboard = () => {
                       점검 상태 확인
                     </button>
                   )}
-                  
-                  <button 
+
+                  <button
                     className="px-3 py-1 text-xs bg-gray-100 text-gray-800 rounded-md hover:bg-gray-200"
                     onClick={() => setSelectedDevice(error.deviceId)}
                   >
@@ -220,7 +220,7 @@ const PulseOneErrorDashboard = () => {
           <h2 className="text-xl font-semibold text-gray-900">HTTP 상태코드 참조표</h2>
           <p className="text-sm text-gray-600">각 에러코드의 의미와 대응 방법</p>
         </div>
-        
+
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* 연결 관련 에러 */}
@@ -379,7 +379,7 @@ const PulseOneErrorDashboard = () => {
                 디바이스 {selectedDevice} 에러 상세 정보
               </h3>
             </div>
-            
+
             <div className="p-6">
               <div className="space-y-4">
                 <div className="bg-gray-50 rounded-lg p-4">
@@ -430,14 +430,14 @@ const PulseOneErrorDashboard = () => {
                     <p>재시도 횟수: 3/5</p>
                     <div className="mt-2">
                       <div className="w-full bg-green-200 rounded-full h-2">
-                        <div className="bg-green-600 h-2 rounded-full" style={{width: '60%'}}></div>
+                        <div className="bg-green-600 h-2 rounded-full" style={{ width: '60%' }}></div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-            
+
             <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
               <button
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
@@ -467,7 +467,7 @@ const PulseOneErrorDashboard = () => {
               <p className="text-xs text-gray-500">네트워크 상태 점검</p>
             </div>
           </button>
-          
+
           <button className="flex items-center justify-center p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow">
             <Zap className="h-6 w-6 text-orange-500 mr-2" />
             <div className="text-left">
@@ -475,7 +475,7 @@ const PulseOneErrorDashboard = () => {
               <p className="text-xs text-gray-500">디바이스 상태 확인</p>
             </div>
           </button>
-          
+
           <button className="flex items-center justify-center p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow">
             <Settings className="h-6 w-6 text-purple-500 mr-2" />
             <div className="text-left">
@@ -483,7 +483,7 @@ const PulseOneErrorDashboard = () => {
               <p className="text-xs text-gray-500">구성 파일 점검</p>
             </div>
           </button>
-          
+
           <button className="flex items-center justify-center p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow">
             <Wrench className="h-6 w-6 text-blue-500 mr-2" />
             <div className="text-left">

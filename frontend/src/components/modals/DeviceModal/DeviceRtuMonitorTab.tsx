@@ -829,7 +829,7 @@ const DeviceRtuMonitorTab: React.FC<DeviceRtuMonitorTabProps> = ({
         {selectedTab === 'diagnostics' && renderDiagnosticsTab()}
       </div>
 
-      <style jsx>{`
+      <style>{`
         .rtu-monitor-tab {
           flex: 1;
           display: flex;

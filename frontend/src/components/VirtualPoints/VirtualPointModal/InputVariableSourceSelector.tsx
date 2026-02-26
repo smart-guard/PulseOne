@@ -8,13 +8,16 @@ import { DataApiService } from '../../../api/services/dataApi';
 interface DataPoint {
   id: number;
   device_id: number;
-  device_name: string;
+  device_name?: string; // optional to match dataApi.DataPoint
   name: string;
-  description: string;
-  data_type: 'number' | 'boolean' | 'string';
-  current_value: any;
+  description?: string;
+  data_type: 'number' | 'boolean' | 'string' | string;
+  current_value?: any;
   unit?: string;
   address: string;
+  is_enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface VirtualPoint {
@@ -45,7 +48,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [deviceFilter, setDeviceFilter] = useState<number | null>(null);
-  const [devices, setDevices] = useState<Array<{id: number, name: string}>>([]);
+  const [devices, setDevices] = useState<Array<{ id: number, name: string }>>([]);
 
   // ========================================================================
   // 데이터 로딩 함수들 - useCallback 최적화
@@ -53,11 +56,11 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
   const loadDataPoints = useCallback(async () => {
     if (sourceType !== 'data_point') return; // 불필요한 호출 방지
-    
+
     setLoading(true);
     try {
       console.log('🔄 데이터포인트 로딩:', { deviceFilter, searchTerm, dataType });
-      
+
       const result = await DataApiService.getDataPoints({
         limit: 1000,
         enabled_only: true,
@@ -69,12 +72,12 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
       console.log(`✅ 데이터포인트 ${result.points.length}개 로드됨`);
       setDataPoints(result.points);
-      
+
       // 디바이스 필터가 설정되어 있는데 결과가 없는 경우 로그
       if (deviceFilter && result.points.length === 0) {
         console.warn(`⚠️ 디바이스 ID ${deviceFilter}에 대한 데이터포인트가 없습니다.`);
       }
-      
+
     } catch (error) {
       console.error('❌ 데이터포인트 로딩 실패:', error);
       setDataPoints([]);
@@ -85,11 +88,11 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
   const loadVirtualPoints = useCallback(async () => {
     if (sourceType !== 'virtual_point') return; // 불필요한 호출 방지
-    
+
     setLoading(true);
     try {
       console.log('🔄 가상포인트 로딩');
-      
+
       const response = await fetch('/api/virtual-points?' + new URLSearchParams({
         limit: '1000',
         is_enabled: 'true',
@@ -100,7 +103,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
       if (response.ok) {
         const result = await response.json();
         console.log('📦 가상포인트 API 응답:', result);
-        
+
         if (result.success && Array.isArray(result.data)) {
           setVirtualPoints(result.data);
           console.log(`✅ 가상포인트 ${result.data.length}개 로드됨`);
@@ -113,7 +116,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
       }
     } catch (error) {
       console.error('❌ 가상포인트 로딩 실패:', error);
-      
+
       // 백엔드 실패 시 목 데이터
       console.log('🎭 목 가상포인트 데이터 사용');
       setVirtualPoints([
@@ -143,17 +146,17 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
   const loadDevices = useCallback(async () => {
     if (sourceType !== 'data_point') return; // 데이터포인트일 때만 로드
-    
+
     try {
       console.log('🔄 디바이스 목록 로딩');
-      
+
       const devices = await DataApiService.getDevices();
-      
+
       setDevices(devices.map(d => ({ id: d.id, name: d.name })));
       console.log(`✅ 디바이스 ${devices.length}개 로드됨`);
     } catch (error) {
       console.error('❌ 디바이스 로딩 실패:', error);
-      
+
       // 목 데이터
       setDevices([
         { id: 1, name: 'PLC-001 (보일러)' },
@@ -170,14 +173,14 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
   // 초기 로딩
   useEffect(() => {
     console.log(`🎯 sourceType 변경: ${sourceType}`);
-    
+
     if (sourceType === 'data_point') {
       loadDevices(); // 디바이스 목록 먼저 로드
       loadDataPoints();
     } else if (sourceType === 'virtual_point') {
       loadVirtualPoints();
     }
-    
+
     // 소스 타입이 변경되면 필터 초기화
     setSearchTerm('');
     setDeviceFilter(null);
@@ -187,7 +190,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
       console.log(`🔍 필터 변경 - 검색어: "${searchTerm}", 디바이스: ${deviceFilter}`);
-      
+
       if (sourceType === 'data_point') {
         loadDataPoints();
       } else if (sourceType === 'virtual_point') {
@@ -223,31 +226,31 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
   const filteredDataPoints = React.useMemo(() => {
     let points = dataPoints;
-    
+
     // 클라이언트 사이드에서 추가 필터링 (API 필터가 완벽하지 않은 경우 대비)
     if (deviceFilter) {
       points = points.filter(point => point.device_id === deviceFilter);
     }
-    
+
     if (searchTerm && searchTerm.length > 0) {
       const search = searchTerm.toLowerCase();
       points = points.filter(point =>
         point.name.toLowerCase().includes(search) ||
         point.description.toLowerCase().includes(search) ||
-        point.device_name.toLowerCase().includes(search)
+        (point.device_name || '').toLowerCase().includes(search)
       );
     }
-    
+
     if (dataType) {
       points = points.filter(point => point.data_type === dataType);
     }
-    
+
     return points;
   }, [dataPoints, deviceFilter, searchTerm, dataType]);
 
   const filteredVirtualPoints = React.useMemo(() => {
     let points = virtualPoints;
-    
+
     if (searchTerm && searchTerm.length > 0) {
       const search = searchTerm.toLowerCase();
       points = points.filter(point =>
@@ -256,11 +259,11 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
         point.category.toLowerCase().includes(search)
       );
     }
-    
+
     if (dataType) {
       points = points.filter(point => point.data_type === dataType);
     }
-    
+
     return points;
   }, [virtualPoints, searchTerm, dataType]);
 
@@ -270,9 +273,9 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
   if (sourceType === 'constant') {
     return (
-      <div style={{ 
-        padding: '16px', 
-        textAlign: 'center', 
+      <div style={{
+        padding: '16px',
+        textAlign: 'center',
         color: '#6c757d',
         background: '#f8f9fa',
         borderRadius: '8px',
@@ -285,7 +288,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '400px' }}>
-      
+
       {/* 검색 및 필터 */}
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
         <input
@@ -302,7 +305,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
             fontSize: '14px'
           }}
         />
-        
+
         {sourceType === 'data_point' && devices.length > 0 && (
           <select
             value={deviceFilter || ''}
@@ -325,8 +328,8 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
       {/* 로딩 상태 */}
       {loading && (
-        <div style={{ 
-          textAlign: 'center', 
+        <div style={{
+          textAlign: 'center',
           padding: '20px',
           color: '#6c757d'
         }}>
@@ -346,18 +349,20 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
       )}
 
       {/* 데이터포인트 목록 */}
-      {sourceType === 'data_point' && !loading && (
-        <div style={{ 
-          maxHeight: '300px', 
+      {sourceType === 'data_point' && (
+        <div style={{
+          maxHeight: '300px',
           overflowY: 'auto',
           border: '1px solid #e9ecef',
-          borderRadius: '6px'
+          borderRadius: '6px',
+          opacity: loading ? 0.5 : 1, // 깜박임 방지: 목록 제거 대신 투명도만 낮춤
+          transition: 'opacity 0.2s'
         }}>
           {filteredDataPoints.length === 0 ? (
-            <div style={{ 
-              padding: '20px', 
-              textAlign: 'center', 
-              color: '#6c757d' 
+            <div style={{
+              padding: '20px',
+              textAlign: 'center',
+              color: '#6c757d'
             }}>
               {deviceFilter ? (
                 <>
@@ -374,7 +379,7 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
               )}
             </div>
           ) : (
-            filteredDataPoints.map(point => (
+            filteredDataPoints.slice(0, 100).map(point => ( // 성능 최적화: 최대 100개까지만 렌더링
               <div
                 key={point.id}
                 onClick={() => handleSelect(point)}
@@ -396,17 +401,17 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
                   }
                 }}
               >
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
                   alignItems: 'flex-start',
                   marginBottom: '4px'
                 }}>
                   <div style={{ fontWeight: '500', color: '#495057' }}>
                     {point.name}
                   </div>
-                  <div style={{ 
-                    fontSize: '12px', 
+                  <div style={{
+                    fontSize: '12px',
                     color: '#6c757d',
                     background: '#f8f9fa',
                     padding: '2px 6px',
@@ -415,13 +420,13 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
                     {point.data_type}
                   </div>
                 </div>
-                
+
                 <div style={{ fontSize: '13px', color: '#6c757d', marginBottom: '2px' }}>
                   {point.description}
                 </div>
-                
+
                 <div style={{ fontSize: '12px', color: '#868e96' }}>
-                  {point.device_name} • {point.address}
+                  {point.device_name || ''} • {point.address}
                   {point.current_value !== undefined && (
                     <>
                       {' • '}
@@ -438,25 +443,27 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
       )}
 
       {/* 가상포인트 목록 */}
-      {sourceType === 'virtual_point' && !loading && (
-        <div style={{ 
-          maxHeight: '300px', 
+      {sourceType === 'virtual_point' && (
+        <div style={{
+          maxHeight: '300px',
           overflowY: 'auto',
           border: '1px solid #e9ecef',
-          borderRadius: '6px'
+          borderRadius: '6px',
+          opacity: loading ? 0.5 : 1, // 깜박임 방지
+          transition: 'opacity 0.2s'
         }}>
           {filteredVirtualPoints.length === 0 ? (
-            <div style={{ 
-              padding: '20px', 
-              textAlign: 'center', 
-              color: '#6c757d' 
+            <div style={{
+              padding: '20px',
+              textAlign: 'center',
+              color: '#6c757d'
             }}>
-              {virtualPoints.length === 0 ? 
-                '가상포인트가 없습니다' : 
+              {virtualPoints.length === 0 ?
+                '가상포인트가 없습니다' :
                 '검색 조건에 맞는 가상포인트가 없습니다'}
             </div>
           ) : (
-            filteredVirtualPoints.map(point => (
+            filteredVirtualPoints.slice(0, 100).map(point => ( // 성능 최적화
               <div
                 key={point.id}
                 onClick={() => handleSelect(point)}
@@ -478,17 +485,17 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
                   }
                 }}
               >
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
                   alignItems: 'flex-start',
                   marginBottom: '4px'
                 }}>
                   <div style={{ fontWeight: '500', color: '#495057' }}>
                     {point.name}
                   </div>
-                  <div style={{ 
-                    fontSize: '12px', 
+                  <div style={{
+                    fontSize: '12px',
                     color: '#6c757d',
                     background: '#f8f9fa',
                     padding: '2px 6px',
@@ -497,11 +504,11 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
                     {point.data_type}
                   </div>
                 </div>
-                
+
                 <div style={{ fontSize: '13px', color: '#6c757d', marginBottom: '2px' }}>
                   {point.description}
                 </div>
-                
+
                 <div style={{ fontSize: '12px', color: '#868e96' }}>
                   {point.category}
                   {point.current_value !== undefined && (
@@ -521,14 +528,14 @@ const InputVariableSourceSelector: React.FC<SourceSelectorProps> = ({
 
       {/* 디버그 정보 */}
       {process.env.NODE_ENV === 'development' && (
-        <div style={{ 
-          fontSize: '11px', 
-          color: '#868e96', 
+        <div style={{
+          fontSize: '11px',
+          color: '#868e96',
           background: '#f8f9fa',
           padding: '8px',
           borderRadius: '4px'
         }}>
-          디버그: {sourceType === 'data_point' ? 
+          디버그: {sourceType === 'data_point' ?
             `전체 ${dataPoints.length}개, 필터링 ${filteredDataPoints.length}개 표시${deviceFilter ? ` (디바이스 ID: ${deviceFilter})` : ''}` :
             `전체 ${virtualPoints.length}개, 필터링 ${filteredVirtualPoints.length}개 표시`
           }

@@ -664,7 +664,7 @@ const DeviceRtuScanDialog: React.FC<DeviceRtuScanDialogProps> = ({
           </div>
         </div>
 
-        <style jsx>{`
+        <style>{`
           .modal-overlay {
             position: fixed;
             top: 0;

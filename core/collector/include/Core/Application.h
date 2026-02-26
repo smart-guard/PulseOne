@@ -167,6 +167,11 @@ private:
   // Fast shutdown support
   std::condition_variable stop_cv_;
   std::mutex stop_mutex_;
+
+  // Log Retention Settings (loaded from DB)
+  int log_retention_days_{30};
+  size_t log_disk_min_free_mb_{500};
+  std::chrono::steady_clock::time_point last_log_cleanup_time_;
 };
 
 } // namespace Core

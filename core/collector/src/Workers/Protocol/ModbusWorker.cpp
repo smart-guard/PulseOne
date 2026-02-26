@@ -278,6 +278,33 @@ void ModbusWorker::PollingThreadFunction() {
         bool success = modbus_driver_->ReadValues(points_to_read, results);
 
         if (success) {
+          // packet_logging: COMMUNICATION 카테고리가 TRACE 이하면 기록
+          if (static_cast<int>(LogManager::getInstance().getCategoryLogLevel(
+                  DriverLogCategory::COMMUNICATION)) <=
+              static_cast<int>(LogLevel::TRACE)) {
+            for (const auto &tv : results) {
+              // RAW: point_id + raw_value (스케일 전), DECODED: scaled value +
+              // source
+              std::string raw_str = "point_id=" + std::to_string(tv.point_id) +
+                                    " raw=" + std::to_string(tv.raw_value);
+              std::string decoded_str = "value=";
+              std::visit(
+                  [&decoded_str](const auto &v) {
+                    using T = std::decay_t<decltype(v)>;
+                    if constexpr (std::is_same_v<T, bool>)
+                      decoded_str += (v ? "true" : "false");
+                    else if constexpr (std::is_same_v<T, std::string>)
+                      decoded_str += v;
+                    else
+                      decoded_str += std::to_string(v);
+                  },
+                  tv.value);
+              if (!tv.source.empty())
+                decoded_str += " name=" + tv.source;
+              LogManager::getInstance().logPacket("Modbus", device_info_.name,
+                                                  raw_str, decoded_str);
+            }
+          }
           // Send to pipeline
           if (!results.empty()) {
             SendValuesToPipelineWithLogging(results, "Polling", 0);

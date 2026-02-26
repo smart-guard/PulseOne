@@ -17,20 +17,22 @@ interface BulkDataPoint extends Partial<DataPoint> {
 }
 
 interface DeviceDataPointsBulkModalProps {
-    deviceId: number;
+    deviceId?: number;
     isOpen: boolean;
     onClose: () => void;
-    onSave: (points: Partial<DataPoint>[]) => Promise<void>;
-    existingAddresses: string[];
+    onSave?: (points: Partial<DataPoint>[]) => Promise<void>;
+    onImport?: (points: Partial<DataPoint>[]) => void;
+    existingAddresses?: string[];
     protocolType?: string;
 }
 
 const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
-    deviceId,
+    deviceId = 0,
     isOpen,
     onClose,
     onSave,
-    existingAddresses,
+    onImport,
+    existingAddresses = [],
     protocolType
 }) => {
     const { confirm } = useConfirmContext();
@@ -633,9 +635,15 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
         try {
             setIsProcessing(true);
             const payload = validPoints.map(({ isValid, errors, tempId, ...rest }) => rest);
-            await onSave(payload);
-            localStorage.removeItem(STORAGE_KEY); // 저장 성공 시 임시 데이터 삭제
-            onClose();
+            if (onImport) {
+                onImport(payload);
+                localStorage.removeItem(STORAGE_KEY);
+                onClose();
+            } else if (onSave) {
+                await onSave(payload);
+                localStorage.removeItem(STORAGE_KEY); // 저장 성공 시 임시 데이터 삭제
+                onClose();
+            }
         } catch (e) {
             console.error(e);
             confirm({

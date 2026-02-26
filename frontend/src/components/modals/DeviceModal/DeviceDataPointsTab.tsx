@@ -752,7 +752,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               <div className="td col-val">
                 {dp.current_value && dp.current_value.value !== undefined ? (
                   <span className="val">
-                    {(dp.data_type === 'DATETIME' || dp.data_type === 'datetime' || dp.name.toLowerCase().includes('timestamp')) ? (
+                    {((dp.data_type as string) === 'DATETIME' || (dp.data_type as string) === 'datetime' || dp.name.toLowerCase().includes('timestamp')) ? (
                       (() => {
                         const val = Number(dp.current_value.value);
                         if (isNaN(val) || val <= 0) return String(dp.current_value.value);

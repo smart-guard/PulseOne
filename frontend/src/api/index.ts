@@ -7,11 +7,11 @@
 // 🔧 기존 시스템 관리 API (유지)
 // ==========================================================================
 export { default as systemApiService } from '../services/apiService';
-export type { 
-  ServiceStatus, 
-  SystemMetrics, 
-  PlatformInfo, 
-  HealthStatus 
+export type {
+  ServiceStatus,
+  SystemMetrics,
+  PlatformInfo,
+  HealthStatus
 } from '../services/apiService';
 
 // ==========================================================================
@@ -20,14 +20,11 @@ export type {
 
 // 🏭 디바이스 관리 API
 export { DeviceApiService } from './services/deviceApi';
-export type { 
+export type {
   Device,
   DeviceStats,
-  DeviceListParams,
-  DeviceCreateData,
-  DeviceUpdateData,
+  GetDevicesParams,
   ConnectionTestResult,
-  BulkActionRequest,
   BulkActionResult
 } from './services/deviceApi';
 
@@ -82,13 +79,13 @@ export { API_CONFIG } from './config';
 // ==========================================================================
 // 📄 공통 타입들
 // ==========================================================================
-export type { 
-  ApiResponse, 
-  PaginatedApiResponse, 
+export type {
+  ApiResponse,
+  PaginatedApiResponse,
   PaginationParams,
   PaginationMeta,
   BulkActionRequest,
-  BulkActionResponse 
+  BulkActionResponse
 } from '../types/common';
 
 // ==========================================================================
@@ -99,6 +96,7 @@ import { DeviceApiService } from './services/deviceApi';
 import { DataApiService } from './services/dataApi';
 import { RealtimeApiService } from './services/realtimeApi';
 import { AlarmApiService } from './services/alarmApi';
+import { DashboardApiService } from './services/dashboardApi';
 import systemApiService from '../services/apiService';
 
 /**
@@ -108,23 +106,23 @@ import systemApiService from '../services/apiService';
 export class ApiService {
   // 🔧 시스템 관리 (기존)
   static system = systemApiService;
-  
+
   // 🏭 디바이스 관리 (신규)
   static device = DeviceApiService;
-  
+
   // 📊 데이터 익스플로러 (신규)
   static data = DataApiService;
-  
+
   // ⚡ 실시간 데이터 (신규)
   static realtime = RealtimeApiService;
-  
+
   // 🚨 알람 관리 (기존)
   static alarm = AlarmApiService;
-  
+
   // =======================================================================
   // 🔧 통합 유틸리티 메서드들
   // =======================================================================
-  
+
   /**
    * 모든 API 서비스의 헬스체크
    */
@@ -144,15 +142,15 @@ export class ApiService {
       alarm: false,
       overall: false
     };
-    
+
     try {
-      // 시스템 API 헬스체크
-      const systemHealth = await this.system.getSystemHealth();
-      results.system = systemHealth.overall === 'healthy';
+      // 대시보드 API를 통해 시스템 헬스체크 (GET /api/dashboard/system-health)
+      const systemHealth = await DashboardApiService.getSystemHealth();
+      results.system = (systemHealth?.data as any)?.overall === 'healthy' || systemHealth?.success === true;
     } catch (error) {
       console.warn('System API health check failed:', error);
     }
-    
+
     try {
       // 디바이스 API 헬스체크
       const deviceStats = await this.device.getDeviceStatistics();
@@ -160,7 +158,7 @@ export class ApiService {
     } catch (error) {
       console.warn('Device API health check failed:', error);
     }
-    
+
     try {
       // 데이터 API 헬스체크
       const dataStats = await this.data.getDataStatistics();
@@ -168,7 +166,7 @@ export class ApiService {
     } catch (error) {
       console.warn('Data API health check failed:', error);
     }
-    
+
     try {
       // 실시간 API 헬스체크
       const realtimeStats = await this.realtime.getRealtimeStats();
@@ -176,7 +174,7 @@ export class ApiService {
     } catch (error) {
       console.warn('Realtime API health check failed:', error);
     }
-    
+
     try {
       // 알람 API 헬스체크 (테스트 엔드포인트 사용)
       const alarmTest = await fetch('/api/alarms/test');
@@ -184,13 +182,13 @@ export class ApiService {
     } catch (error) {
       console.warn('Alarm API health check failed:', error);
     }
-    
+
     // 전체 상태는 중요한 API들이 모두 동작할 때만 true
     results.overall = results.system && results.device && results.data;
-    
+
     return results;
   }
-  
+
   /**
    * 전체 시스템 통계 조회
    */
@@ -206,9 +204,9 @@ export class ApiService {
       this.data.getDataStatistics(),
       this.realtime.getRealtimeStats(),
       fetch('/api/alarms/statistics').then(r => r.json()),
-      this.system.getSystemHealth()
+      (this.system as any).getSystemHealth()
     ]);
-    
+
     return {
       devices: deviceStats.status === 'fulfilled' ? deviceStats.value.data : null,
       data: dataStats.status === 'fulfilled' ? dataStats.value.data : null,
@@ -217,7 +215,7 @@ export class ApiService {
       system: systemHealth.status === 'fulfilled' ? systemHealth.value : null
     };
   }
-  
+
   /**
    * 통합 검색 (디바이스, 데이터포인트 등)
    */
@@ -236,9 +234,9 @@ export class ApiService {
       dataPoints: [] as any[],
       total: 0
     };
-    
+
     const searchPromises: Promise<any>[] = [];
-    
+
     if (includeDevices) {
       searchPromises.push(
         this.device.getDevices({ search: query, limit: Math.floor(limit / 2) })
@@ -248,26 +246,26 @@ export class ApiService {
     } else {
       searchPromises.push(Promise.resolve([]));
     }
-    
+
     if (includeDataPoints) {
       searchPromises.push(
-        this.data.searchDataPoints({ search: query, limit: Math.floor(limit / 2) })
+        this.data.searchDataPoints({ search: query, limit: Math.floor(limit / 2), page: 1 })
           .then(response => response.success ? response.data.items : [])
           .catch(() => [])
       );
     } else {
       searchPromises.push(Promise.resolve([]));
     }
-    
+
     const [devices, dataPoints] = await Promise.all(searchPromises);
-    
+
     results.devices = devices;
     results.dataPoints = dataPoints;
     results.total = devices.length + dataPoints.length;
-    
+
     return results;
   }
-  
+
   /**
    * 실시간 데이터 스트림 시작
    */
@@ -280,17 +278,17 @@ export class ApiService {
   }): Promise<string | null> {
     try {
       const subscriptionResponse = await this.realtime.createSubscription({
-        device_ids: config.deviceIds,
-        point_ids: config.pointIds,
+        device_ids: config.deviceIds as any,
+        point_ids: config.pointIds as any,
         update_interval: config.updateInterval || 1000
       });
-      
+
       if (!subscriptionResponse.success || !subscriptionResponse.data) {
         throw new Error('구독 생성 실패');
       }
-      
+
       const subscriptionId = subscriptionResponse.data.subscription_id;
-      
+
       // WebSocket 연결 시작
       this.realtime.connectWebSocket(subscriptionId, {
         onMessage: config.onData,
@@ -298,7 +296,7 @@ export class ApiService {
         onOpen: () => console.log('실시간 스트림 시작:', subscriptionId),
         onClose: () => console.log('실시간 스트림 종료:', subscriptionId)
       });
-      
+
       return subscriptionId;
     } catch (error) {
       console.error('실시간 스트림 시작 실패:', error);
@@ -306,7 +304,7 @@ export class ApiService {
       return null;
     }
   }
-  
+
   /**
    * 실시간 데이터 스트림 중지
    */
@@ -314,7 +312,7 @@ export class ApiService {
     try {
       // WebSocket 연결 해제
       this.realtime.disconnectWebSocket();
-      
+
       // 구독 해제
       const response = await this.realtime.unsubscribe(subscriptionId);
       return response.success;

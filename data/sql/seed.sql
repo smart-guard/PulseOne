@@ -75,6 +75,9 @@ INSERT INTO schema_versions VALUES(2,'2.1.0','2026-01-29 07:55:48','Complete Pul
 INSERT INTO schema_versions VALUES(3,'2.1.0','2026-01-29 09:38:43','Complete PulseOne v2.1.0 schema - C++ SQLQueries.h compatible');
 -- Table: system_settings
 INSERT INTO system_settings VALUES(1,'backup.auto_enabled','false',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789924);
+INSERT INTO system_settings VALUES(5,'data_collection.influxdb_storage_interval','0',NULL,'collection','integer',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
+INSERT INTO system_settings VALUES(6,'collection.max_concurrent_connections','20',NULL,'collection','integer',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
+INSERT INTO system_settings VALUES(7,'collection.device_response_timeout','3000',NULL,'collection','integer',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
 INSERT INTO system_settings VALUES(2,'backup.schedule_time','02:00',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
 INSERT INTO system_settings VALUES(3,'backup.retention_days','3130',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789931);
 INSERT INTO system_settings VALUES(4,'backup.include_logs','true',NULL,'general','string',0,0,NULL,NULL,NULL,NULL,1,1770072789931);

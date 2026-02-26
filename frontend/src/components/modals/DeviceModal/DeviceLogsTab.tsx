@@ -1,376 +1,326 @@
 // ============================================================================
-// frontend/src/components/modals/DeviceModal/DeviceLogsTab.tsx
-// 📄 디바이스 로그 탭 컴포넌트 - 시스템 로그 & 통신 패킷 뷰어 (Modbus 파서 포함)
+// DeviceLogsTab.tsx - 실제 API 연동 버전
+// GET /api/devices/:id/packet-logs  → C++ logPacket 파일 파싱
 // ============================================================================
 
-import React, { useState, useEffect, useRef } from 'react';
-import { DeviceLogsTabProps, DeviceLogEntry, PacketLogEntry } from './types';
-import '../../../styles/management.css';
+import React, { useState, useEffect, useCallback } from 'react';
+import apiClient from '../../../api/client';
 
-const DeviceLogsTab: React.FC<DeviceLogsTabProps> = ({ deviceId }) => {
-  // ========================================================================
-  // 상태 관리
-  // ========================================================================
-  const [logType, setLogType] = useState<'system' | 'packet'>('system');
+// ── 타입 ────────────────────────────────────────────────────────────────────
+interface PacketEntry {
+  timestamp: string;
+  protocol: string;
+  raw: string;
+  decoded: string;
+}
 
-  const [logs, setLogs] = useState<DeviceLogEntry[]>([]);
-  const [packetLogs, setPacketLogs] = useState<PacketLogEntry[]>([]);
 
+// ── Modbus raw 텍스트 파서 (point_id=XX raw=YY) ──────────────────────────
+const parseModbusDecoded = (decoded: string) => {
+  const kv: Record<string, string> = {};
+  decoded.split(' ').forEach(part => {
+    const [k, v] = part.split('=');
+    if (k && v !== undefined) kv[k] = v;
+  });
+  return kv; // { value, name, ... }
+};
+
+const parseModbusRaw = (raw: string) => {
+  const kv: Record<string, string> = {};
+  raw.split(' ').forEach(part => {
+    const [k, v] = part.split('=');
+    if (k && v !== undefined) kv[k] = v;
+  });
+  return kv; // { point_id, raw }
+};
+
+// ── 프로토콜별 해석 패널 ─────────────────────────────────────────────────
+const AnalysisPanel: React.FC<{ entry: PacketEntry }> = ({ entry }) => {
+  const p = entry.protocol?.toUpperCase();
+
+  if (p === 'MODBUS') {
+    const r = parseModbusRaw(entry.raw);
+    const d = parseModbusDecoded(entry.decoded);
+    return (
+      <div className="analysis-grid">
+        <div className="a-item"><span className="a-label">🔢 Point ID</span>{r.point_id ?? '-'}</div>
+        <div className="a-item"><span className="a-label">📡 Raw Value</span>{r.raw ?? '-'}</div>
+        <div className="a-item"><span className="a-label">✅ Scaled Value</span>{d.value ?? '-'}</div>
+        <div className="a-item"><span className="a-label">🏷️ Point Name</span>{d.name ?? '-'}</div>
+        <div className="a-item a-full">
+          <span className="a-label">💡 해석</span>
+          {d.name ? (
+            <span>포인트 <strong>{d.name}</strong> (ID:{r.point_id}) 폴링 완료 — 원시값 {r.raw} → 스케일값 {d.value}</span>
+          ) : (
+            <span>Modbus 폴링 데이터 (ID:{r.point_id})</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (p === 'MQTT') {
+    return (
+      <div className="analysis-grid">
+        <div className="a-item"><span className="a-label">📨 Topic</span>{entry.raw}</div>
+        <div className="a-item a-full"><span className="a-label">📦 Payload</span>
+          <pre className="payload-pre">{(() => {
+            try { return JSON.stringify(JSON.parse(entry.decoded), null, 2); }
+            catch { return entry.decoded; }
+          })()}</pre>
+        </div>
+        <div className="a-item a-full">
+          <span className="a-label">💡 해석</span>
+          토픽 <strong>{entry.raw}</strong>으로 메시지 수신 — 페이로드 {entry.decoded.length}자
+        </div>
+      </div>
+    );
+  }
+
+  if (p === 'BACNET') {
+    // raw = HEX 덤프
+    const bytes = entry.raw.trim().split(' ').filter(Boolean);
+    const byteCount = bytes.length;
+    const pduType = bytes[0] ? parseInt(bytes[0], 16) : null;
+    return (
+      <div className="analysis-grid">
+        <div className="a-item"><span className="a-label">📏 길이</span>{byteCount} bytes</div>
+        <div className="a-item"><span className="a-label">🔖 PDU Type (byte0)</span>0x{bytes[0] ?? '--'}</div>
+        <div className="a-item a-full"><span className="a-label">🔢 HEX Dump</span>
+          <pre className="hex-dump">{entry.raw}</pre>
+        </div>
+        <div className="a-item a-full">
+          <span className="a-label">💡 해석</span>
+          BACnet 패킷 수신 ({byteCount} bytes)
+          {pduType !== null && `, PDU 타입 0x${bytes[0]}`}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="analysis-grid">
+      <div className="a-item a-full"><span className="a-label">RAW</span>{entry.raw}</div>
+      <div className="a-item a-full"><span className="a-label">DECODED</span>{entry.decoded}</div>
+    </div>
+  );
+};
+
+// ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
+interface Props { deviceId: number; }
+
+const DeviceLogsTab: React.FC<Props> = ({ deviceId }) => {
+  const [entries, setEntries] = useState<PacketEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // 필터 상태
-  const [filterLevel, setFilterLevel] = useState<string>('ALL');
-  const [filterCategory, setFilterCategory] = useState<string>('ALL');
-  const [searchTerm, setSearchTerm] = useState('');
-
+  const [expanded, setExpanded] = useState<number[]>([]);
+  const [search, setSearch] = useState('');
+  const [dateStr, setDateStr] = useState(new Date().toISOString().slice(0, 10));
+  const [logDir, setLogDir] = useState('');
   const [isRealTime, setIsRealTime] = useState(false);
-  const [expandedLogs, setExpandedLogs] = useState<number[]>([]);
 
-  const logsEndRef = useRef<HTMLTableRowElement>(null);
-
-  // ========================================================================
-  // Modbus 패킷 파서
-  // ========================================================================
-  const parseModbusPacket = (hexStr: string, direction: 'TX' | 'RX') => {
-    // 공백 제거 및 바이트 배열 변환
-    const cleanHex = hexStr.replace(/\s/g, '');
-    const bytes = [];
-    for (let i = 0; i < cleanHex.length; i += 2) {
-      bytes.push(parseInt(cleanHex.substr(i, 2), 16));
-    }
-
-    if (bytes.length < 7) return null; // 최소 헤더 길이 미달
-
-    const txId = (bytes[0] << 8) | bytes[1];
-    const protoId = (bytes[2] << 8) | bytes[3];
-    const len = (bytes[4] << 8) | bytes[5];
-    const unitId = bytes[6];
-    const funcCode = bytes[7];
-
-    let type = 'UNKNOWN';
-    let details = '';
-
-    // Function Code 해석
-    if (funcCode === 0x01) type = 'Read Coils (01)';
-    else if (funcCode === 0x02) type = 'Read Discrete Inputs (02)';
-    else if (funcCode === 0x03) type = 'Read Holding Regs (03)';
-    else if (funcCode === 0x04) type = 'Read Input Regs (04)';
-    else if (funcCode === 0x05) type = 'Write Single Coil (05)';
-    else if (funcCode === 0x06) type = 'Write Single Reg (06)';
-    else if (funcCode === 0x0F) type = 'Write Multiple Coils (15)';
-    else if (funcCode === 0x10) type = 'Write Multiple Regs (16)';
-    else if (funcCode & 0x80) type = `Exception (Error ${bytes[8]})`;
-
-    // 상세 내용 해석 (간략화)
-    if (direction === 'TX') {
-      if ([0x01, 0x02, 0x03, 0x04].includes(funcCode) && bytes.length >= 12) {
-        const addr = (bytes[8] << 8) | bytes[9];
-        const count = (bytes[10] << 8) | bytes[11];
-        details = `Start Addr: ${addr}, Count: ${count}`;
-      } else if ([0x05, 0x06].includes(funcCode) && bytes.length >= 12) {
-        const addr = (bytes[8] << 8) | bytes[9];
-        const val = (bytes[10] << 8) | bytes[11];
-        details = `Addr: ${addr}, Value: ${val}`;
-      }
-    } else {
-      if ([0x01, 0x02, 0x03, 0x04].includes(funcCode)) {
-        const byteCount = bytes[8];
-        details = `Byte Count: ${byteCount}, Data: ${cleanHex.substring(18)}`;
-      }
-    }
-
-    return { txId, unitId, type, details };
-  };
-
-  // ========================================================================
-  // Mock 데이터 생성
-  // ========================================================================
-  const generateMockLogs = (): DeviceLogEntry[] => {
-    const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'] as const;
-    const categories = ['COMMUNICATION', 'DATA_COLLECTION', 'CONNECTION', 'SYSTEM', 'PROTOCOL'];
-    const messages = [
-      'Successfully connected to device', 'Polling cycle started', 'Error parsing data frame',
-      'Heartbeat received', 'Diagnostic mode enabled', 'TCP connection timeout after 30 seconds',
-      'Modbus register 40001 read successfully',
-    ];
-
-    return Array.from({ length: 50 }, (_, i) => {
-      const timestamp = new Date(Date.now() - (i * 60000));
-      const level = levels[Math.floor(Math.random() * levels.length)];
-      return {
-        id: Date.now() - i,
-        device_id: deviceId,
-        timestamp: timestamp.toISOString(),
-        level,
-        category: categories[Math.floor(Math.random() * categories.length)],
-        message: messages[Math.floor(Math.random() * messages.length)],
-        details: level === 'ERROR' ? { error: 'Timeout', code: 504 } : undefined
-      };
-    });
-  };
-
-  const generateMockPacketLogs = (): PacketLogEntry[] => {
-    return Array.from({ length: 50 }, (_, i) => {
-      const isTx = i % 2 === 0;
-      const timestamp = new Date(Date.now() - (i * 1000));
-      const dataHex = isTx
-        ? '00 01 00 00 00 06 01 03 00 00 00 0A'
-        : '00 01 00 00 00 17 01 03 14 00 0A 00 0B 00 0C 00 00 00 00 00 00 00 00 00 00 00 00';
-
-      return {
-        id: i,
-        device_id: deviceId,
-        timestamp: timestamp.toISOString(),
-        direction: isTx ? 'TX' : 'RX',
-        protocol: 'MODBUS_TCP',
-        length: dataHex.replace(/ /g, '').length / 2,
-        data_hex: dataHex,
-        data_ascii: '....................'
-      };
-    });
-  };
-
-  const loadLogs = async () => {
+  const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (logType === 'system') {
-        setLogs(generateMockLogs());
+      const result = await apiClient.get<{
+        device_id: number;
+        device_name: string;
+        date: string;
+        log_dir: string;
+        entries: PacketEntry[];
+      }>(`/api/devices/${deviceId}/packet-logs`, { date: dateStr, limit: 200 });
+      if (result.success && result.data) {
+        setEntries(result.data.entries);
+        setLogDir(result.data.log_dir);
       } else {
-        setPacketLogs(generateMockPacketLogs());
+        setError(result.message || '로그 조회 실패');
       }
-    } catch (err) {
-      setError('로그 로드 실패');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '네트워크 오류');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [deviceId, dateStr]);
 
-  useEffect(() => { loadLogs(); }, [deviceId, logType]);
+  useEffect(() => { load(); }, [load]);
 
-  // ========================================================================
-  // 헬퍼 함수
-  // ========================================================================
-  const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString('ko-KR', {
-      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-    });
-  };
+  // 실시간 모드: 10초마다 갱신
+  useEffect(() => {
+    if (!isRealTime) return;
+    const timer = setInterval(load, 10000);
+    return () => clearInterval(timer);
+  }, [isRealTime, load]);
 
-  const filteredLogs = logs.filter(log => {
-    if (filterLevel !== 'ALL' && log.level !== filterLevel) return false;
-    if (filterCategory !== 'ALL' && log.category !== filterCategory) return false;
-    if (searchTerm && !log.message.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-    return true;
+  const filtered = entries.filter(e => {
+    if (!search) return true;
+    return (
+      e.raw.toLowerCase().includes(search.toLowerCase()) ||
+      e.decoded.toLowerCase().includes(search.toLowerCase()) ||
+      e.protocol.toLowerCase().includes(search.toLowerCase())
+    );
   });
 
-  const filteredPackets = packetLogs.filter(pkt => {
-    if (searchTerm && !pkt.data_hex.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-    return true;
-  });
+  const toggle = (i: number) =>
+    setExpanded(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]);
 
-  const toggleExpand = (id: number) => {
-    setExpandedLogs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const protocolColor = (p: string) => {
+    if (p === 'Modbus') return '#3b82f6';
+    if (p === 'MQTT') return '#8b5cf6';
+    if (p === 'BACnet') return '#f59e0b';
+    return '#64748b';
   };
 
-  // ========================================================================
-  // 렌더링
-  // ========================================================================
   return (
-    <div className="logs-wrapper">
+    <div className="plt-wrapper">
       {/* 컨트롤 바 */}
-      <div className="logs-controls-bar">
-        <div className="left-controls">
-          <div className="log-type-toggle">
-            <button
-              className={`toggle-btn ${logType === 'system' ? 'active' : ''}`}
-              onClick={() => setLogType('system')}
-            >시스템 로그</button>
-            <button
-              className={`toggle-btn ${logType === 'packet' ? 'active' : ''}`}
-              onClick={() => setLogType('packet')}
-            >통신 패킷</button>
-          </div>
-
-          <div className="divider"></div>
-
-          <div className="search-wrapper">
-            <i className="fas fa-search"></i>
-            <input
-              type="text"
-              placeholder={logType === 'system' ? "메시지 검색..." : "Hex 데이터 검색..."}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          {logType === 'system' && (
-            <>
-              <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)} className="compact-select">
-                <option value="ALL">모든 레벨</option>
-                <option value="ERROR">ERROR</option>
-                <option value="WARN">WARN</option>
-                <option value="INFO">INFO</option>
-                <option value="DEBUG">DEBUG</option>
-              </select>
-              <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="compact-select">
-                <option value="ALL">모든 카테고리</option>
-                <option value="COMMUNICATION">통신</option>
-                <option value="SYSTEM">시스템</option>
-                <option value="CONNECTION">연결</option>
-              </select>
-            </>
-          )}
+      <div className="plt-controls">
+        <div className="plt-left">
+          <span className="plt-title">통신 패킷 로그</span>
+          <span className="plt-subtitle">
+            {logDir ? <code>{logDir}</code> : '로그 파일 조회'}
+          </span>
         </div>
-
-        <div className="right-controls">
-          <label className="checkbox-label">
-            <input type="checkbox" checked={isRealTime} onChange={(e) => setIsRealTime(e.target.checked)} />
-            <span>실시간</span>
+        <div className="plt-right">
+          <input
+            type="date"
+            value={dateStr}
+            onChange={e => setDateStr(e.target.value)}
+            className="plt-datepicker"
+          />
+          <input
+            type="text"
+            placeholder="검색..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="plt-search"
+          />
+          <label className="plt-realtime">
+            <input type="checkbox" checked={isRealTime} onChange={e => setIsRealTime(e.target.checked)} />
+            실시간
           </label>
-          <button className="btn-icon" onClick={loadLogs} title="새로고침">
-            <i className={`fas fa-sync ${isLoading ? 'fa-spin' : ''}`}></i>
+          <button className="plt-btn" onClick={load} disabled={isLoading} title="새로고침">
+            <span className={isLoading ? 'spin' : ''}>⟳</span>
           </button>
         </div>
       </div>
 
-      {/* 테이블 영역 */}
-      <div className="logs-table-container">
-        {logType === 'system' ? (
-          <table className="logs-table system">
+      {/* 상태 메시지 */}
+      {error && (
+        <div className="plt-error">
+          ⚠️ {error}
+          {error.includes('ENOENT') || error.includes('없') ? (
+            <span> — packet_logging_enabled=true 설정 후 재시작하면 로그가 생성됩니다.</span>
+          ) : null}
+        </div>
+      )}
+
+      {!error && !isLoading && entries.length === 0 && (
+        <div className="plt-empty">
+          <div>📭 패킷 로그 없음</div>
+          <div className="plt-empty-hint">
+            시스템 설정에서 <strong>packet_logging_enabled = true</strong>로 설정하면
+            <br />Modbus / MQTT / BACnet 통신 데이터가 <code>logs/packets/</code>에 기록됩니다.
+          </div>
+        </div>
+      )}
+
+      {/* 테이블 */}
+      {filtered.length > 0 && (
+        <div className="plt-table-wrap">
+          <table className="plt-table">
             <thead>
               <tr>
-                <th style={{ width: '200px' }}>시간</th>
-                <th style={{ width: '80px' }}>레벨</th>
-                <th style={{ width: '160px' }}>카테고리</th>
-                <th>메시지</th>
+                <th style={{ width: 180 }}>시간</th>
+                <th style={{ width: 90 }}>프로토콜</th>
+                <th>RAW</th>
+                <th>DECODED</th>
               </tr>
             </thead>
             <tbody>
-              {filteredLogs.map(log => (
-                <React.Fragment key={log.id}>
-                  <tr onClick={() => log.details && toggleExpand(log.id)} className={expandedLogs.includes(log.id) ? 'expanded' : ''}>
-                    <td className="col-time">{formatTimestamp(log.timestamp)}</td>
-                    <td><span className={`badge ${log.level}`}>{log.level}</span></td>
-                    <td className="col-cat">{log.category}</td>
-                    <td className="col-msg">{log.message} {log.details && <i className="fas fa-chevron-down"></i>}</td>
+              {filtered.map((e, i) => (
+                <React.Fragment key={i}>
+                  <tr
+                    className={`plt-row ${expanded.includes(i) ? 'exp' : ''}`}
+                    onClick={() => toggle(i)}
+                  >
+                    <td className="plt-ts">{e.timestamp}</td>
+                    <td>
+                      <span
+                        className="plt-proto"
+                        style={{ background: protocolColor(e.protocol) + '22', color: protocolColor(e.protocol), border: `1px solid ${protocolColor(e.protocol)}44` }}
+                      >
+                        {e.protocol}
+                      </span>
+                    </td>
+                    <td className="plt-raw">{e.raw}</td>
+                    <td className="plt-decoded">{e.decoded}</td>
                   </tr>
-                  {expandedLogs.includes(log.id) && log.details && (
-                    <tr className="details-row"><td colSpan={4}><pre>{JSON.stringify(log.details, null, 2)}</pre></td></tr>
+                  {expanded.includes(i) && (
+                    <tr className="plt-detail-row">
+                      <td colSpan={4}>
+                        <div className="plt-analysis">
+                          <div className="plt-analysis-header">
+                            🔬 엔지니어 해석 — {e.protocol} @ {e.timestamp}
+                          </div>
+                          <AnalysisPanel entry={e} />
+                        </div>
+                      </td>
+                    </tr>
                   )}
                 </React.Fragment>
               ))}
             </tbody>
           </table>
-        ) : (
-          <table className="logs-table packet">
-            <thead>
-              <tr>
-                <th style={{ width: '200px' }}>시간</th>
-                <th style={{ width: '60px' }}>방향</th>
-                <th style={{ width: '100px' }}>프로토콜</th>
-                <th style={{ width: '60px', textAlign: 'right' }}>길이</th>
-                <th>Raw Data (Hex)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPackets.map(pkt => {
-                const parsed = parseModbusPacket(pkt.data_hex, pkt.direction);
-                return (
-                  <React.Fragment key={pkt.id}>
-                    <tr onClick={() => toggleExpand(pkt.id)} className={expandedLogs.includes(pkt.id) ? 'expanded' : ''} style={{ cursor: 'pointer' }}>
-                      <td className="col-time">{formatTimestamp(pkt.timestamp)}</td>
-                      <td><span className={`dir-badge ${pkt.direction}`}>{pkt.direction}</span></td>
-                      <td className="col-proto">{pkt.protocol}</td>
-                      <td align="right" className="col-len">{pkt.length}B</td>
-                      <td className="col-hex">
-                        <span className="hex-text">{pkt.data_hex}</span>
-                        {expandedLogs.includes(pkt.id) ?
-                          <i className="fas fa-chevron-up expand-icon"></i> :
-                          <i className="fas fa-chevron-down expand-icon"></i>
-                        }
-                      </td>
-                    </tr>
-                    {expandedLogs.includes(pkt.id) && parsed && (
-                      <tr className="packet-details-row">
-                        <td colSpan={5}>
-                          <div className="packet-analysis">
-                            <div className="analysis-item"><span className="label">Transaction ID:</span> {parsed.txId}</div>
-                            <div className="analysis-item"><span className="label">Unit ID:</span> {parsed.unitId}</div>
-                            <div className="analysis-item"><span className="label">Function:</span> {parsed.type}</div>
-                            <div className="analysis-item"><span className="label">Details:</span> {parsed.details}</div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-        <div ref={logsEndRef}></div>
-      </div>
+        </div>
+      )}
 
       <style>{`
-         .logs-wrapper { display: flex; flex-direction: column; height: 100%; background: white; font-family: 'Inter', sans-serif; padding: 0; }
-         .logs-controls-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
-         .left-controls, .right-controls { display: flex; align-items: center; gap: 12px; }
-         
-         .log-type-toggle { display: flex; background: #e2e8f0; padding: 2px; border-radius: 6px; }
-         .toggle-btn { border: none; background: none; padding: 4px 12px; font-size: 12px; font-weight: 500; color: #64748b; cursor: pointer; border-radius: 4px; }
-         .toggle-btn.active { background: white; color: #0f172a; shadow: 0 1px 2px rgba(0,0,0,0.1); font-weight: 600; }
-         
-         .divider { width: 1px; height: 20px; background: #cbd5e1; margin: 0 4px; }
-         
-         .search-wrapper { position: relative; width: 220px; }
-         .search-wrapper i { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #94a3b8; }
-         .search-wrapper input { width: 100%; height: 30px; padding: 0 8px 0 28px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; outline: none; }
-         
-         .compact-select { height: 30px; padding: 0 24px 0 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; background: white; outline: none; }
-         
-         .btn-icon { background: none; border: none; cursor: pointer; font-size: 14px; color: #64748b; padding: 4px; }
-         .btn-icon:hover { color: #3b82f6; }
+        .plt-wrapper { display: flex; flex-direction: column; height: 100%; font-family: 'Inter', sans-serif; background: #fff; }
 
-         .logs-table-container { flex: 1; overflow: auto; }
-         .logs-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
-         .logs-table th { position: sticky; top: 0; background: #f1f5f9; padding: 8px 12px; text-align: left; font-weight: 600; color: #475569; border-bottom: 1px solid #e2e8f0; }
-         .logs-table td { padding: 6px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
-         .logs-table tr:hover { background: #f8fafc; }
-         
-         .col-time { font-family: 'JetBrains Mono', monospace; color: #64748b; font-size: 11px; }
-         .col-cat { color: #475569; }
-         .col-msg { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-         
-         .badge { padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 10px; border: 1px solid transparent; }
-         .badge.DEBUG { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
-         .badge.INFO { background: #f0f9ff; color: #0284c7; border-color: #bae6fd; }
-         .badge.WARN { background: #fffbeb; color: #d97706; border-color: #fde68a; }
-         .badge.ERROR { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+        .plt-controls { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; gap: 12px; flex-wrap: wrap; }
+        .plt-left  { display: flex; align-items: center; gap: 10px; }
+        .plt-right { display: flex; align-items: center; gap: 8px; }
+        .plt-title { font-weight: 700; font-size: 13px; color: #0f172a; }
+        .plt-subtitle { font-size: 11px; color: #64748b; }
+        .plt-subtitle code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 10px; }
 
-         /* Packet Log Styles */
-         .dir-badge { font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
-         .dir-badge.TX { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
-         .dir-badge.RX { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-         
-         .col-proto { font-weight: 500; color: #475569; }
-         .col-len { font-family: monospace; color: #64748b; }
-         .col-hex { font-family: 'JetBrains Mono', monospace; color: #334155; font-size: 11px; display: flex; align-items: center; justify-content: space-between; }
-         .hex-text { background: #f8fafc; padding: 2px 6px; border-radius: 3px; border: 1px solid #e2e8f0; display: inline-block; overflow: hidden; text-overflow: ellipsis; max-width: 90%; }
-         
-         .expand-icon { font-size: 10px; color: #cbd5e1; margin-left: 8px; }
+        .plt-datepicker { height: 28px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; padding: 0 6px; }
+        .plt-search { height: 28px; width: 180px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; padding: 0 8px; }
+        .plt-realtime { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #475569; cursor: pointer; }
+        .plt-btn { background: none; border: 1px solid #e2e8f0; border-radius: 4px; width: 28px; height: 28px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; color: #475569; }
+        .plt-btn:hover { background: #f1f5f9; }
+        .spin { display: inline-block; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-         .details-row td { background: #f8fafc; padding: 0; }
-         .details-row pre { margin: 0; padding: 12px; font-family: monospace; font-size: 11px; color: #475569; white-space: pre-wrap; }
-         
-         .packet-details-row td { background: #f1f5f9; padding: 0; }
-         .packet-analysis { padding: 12px 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-         .analysis-item { font-size: 11px; color: #334155; }
-         .analysis-item .label { font-weight: 600; color: #64748b; margin-right: 4px; }
-         
-         .expanded { background: #f0f9ff !important; }
+        .plt-error { margin: 12px 14px; padding: 10px 14px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; font-size: 12px; color: #dc2626; }
+        .plt-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #94a3b8; font-size: 14px; padding: 40px; }
+        .plt-empty-hint { font-size: 12px; color: #64748b; text-align: center; line-height: 1.7; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px 20px; }
+        .plt-empty-hint code { background: #e2e8f0; padding: 1px 5px; border-radius: 3px; }
+
+        .plt-table-wrap { flex: 1; overflow: auto; }
+        .plt-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+        .plt-table th { position: sticky; top: 0; background: #f1f5f9; padding: 7px 12px; text-align: left; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; }
+        .plt-table td { padding: 6px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .plt-row { cursor: pointer; }
+        .plt-row:hover { background: #f8fafc; }
+        .plt-row.exp { background: #eff6ff !important; }
+
+        .plt-ts  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #64748b; }
+        .plt-proto { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+        .plt-raw     { font-family: monospace; font-size: 11px; color: #334155; }
+        .plt-decoded { font-family: monospace; font-size: 11px; color: #475569; }
+
+        .plt-detail-row td { background: #f0f9ff; padding: 0; }
+        .plt-analysis { padding: 14px 18px; }
+        .plt-analysis-header { font-size: 11px; font-weight: 700; color: #3b82f6; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #bfdbfe; }
+
+        .analysis-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .a-item { display: flex; flex-direction: column; gap: 3px; background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #0f172a; }
+        .a-item.a-full { grid-column: 1 / -1; }
+        .a-label { font-size: 10px; font-weight: 600; color: #64748b; margin-bottom: 2px; }
+        .payload-pre { margin: 0; font-family: monospace; font-size: 11px; white-space: pre-wrap; color: #334155; max-height: 120px; overflow: auto; }
+        .hex-dump { margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #334155; white-space: pre-wrap; word-break: break-all; }
       `}</style>
     </div>
   );

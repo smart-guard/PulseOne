@@ -135,13 +135,17 @@ const DataExport: React.FC = () => {
     // 실제 API 호출
     const taskId = newTask.id;
     try {
-      // Step 3: 백엔드 API 호출
+      const exportTypeMap: Record<ExportType, 'current' | 'historical' | 'configuration'> = {
+        'historical': 'historical', 'realtime': 'current', 'alarms': 'historical', 'logs': 'historical'
+      };
       const result = await DataApiService.exportData({
-        export_type: exportType,
+        export_type: exportTypeMap[exportType],
         point_ids: selectedPointIds,
         device_ids: selectedDeviceId ? [selectedDeviceId] : undefined,
-        format: templates.find(t => t.type === exportType)?.format || 'csv',
-        start_time: '-24h', // 위저드에서 날짜 선택 기능이 추가될 때까지 기본값 사용
+        format: (templates.find(t => t.type === exportType)?.format === 'pdf' ? 'csv' :
+          templates.find(t => t.type === exportType)?.format === 'xlsx' ? 'csv' :
+            templates.find(t => t.type === exportType)?.format || 'csv') as 'csv' | 'json' | 'xml',
+        start_time: '-24h',
         end_time: 'now'
       });
 

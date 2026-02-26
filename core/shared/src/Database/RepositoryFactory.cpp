@@ -34,6 +34,7 @@
 #include "Database/Repositories/ExportTargetMappingRepository.h"
 #include "Database/Repositories/ExportTargetRepository.h"
 #include "Database/Repositories/PayloadTemplateRepository.h"
+#include "Database/Repositories/SystemSettingsRepository.h"
 
 // ✅ 필수 STL 헤더들
 #include <functional>
@@ -464,6 +465,15 @@ bool RepositoryFactory::createRepositoryInstances() {
       return false;
     }
     logger_->Info("✅ DeviceScheduleRepository created");
+
+    // 🆕 SystemSettings Repository 생성
+    system_settings_repository_ =
+        std::make_shared<Repositories::SystemSettingsRepository>();
+    if (!system_settings_repository_) {
+      logger_->Error("Failed to create SystemSettingsRepository");
+      return false;
+    }
+    logger_->Info("✅ SystemSettingsRepository created");
 
     logger_->Info("All repository instances created successfully");
     return true;

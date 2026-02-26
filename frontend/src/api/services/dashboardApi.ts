@@ -117,6 +117,11 @@ export interface DeviceSummary {
   sites_count: number;
   data_points_count: number;
   enabled_devices: number;
+  protocol_details?: Array<{
+    protocol_type: string;
+    count: number;
+    connected: number;
+  }>;
 }
 
 export interface DatabaseStats {
@@ -703,6 +708,7 @@ export class DashboardApiService {
   // ========================================================================
   // 🧪 API 테스트 및 헬스체크
   // ========================================================================
+
 
   /**
    * 대시보드 API 연결 테스트

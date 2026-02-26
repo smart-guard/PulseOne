@@ -14,6 +14,7 @@
 #include "Database/Entities/DeviceScheduleEntity.h"
 #include "Database/Repositories/DeviceScheduleRepository.h"
 #include "Database/RepositoryFactory.h"
+#include <iomanip>
 #include <sstream>
 #include <thread>
 
@@ -205,6 +206,19 @@ bool BACnetWorker::ProcessReceivedPacket(const UdpPacket &packet) {
     LogMessage(LogLevel::DEBUG_LEVEL, "Processing BACnet packet (" +
                                           std::to_string(packet.data.size()) +
                                           " bytes)");
+
+    // packet_logging: COMMUNICATION 카테고리가 TRACE 이하면 HEX 덤프 기록
+    if (static_cast<int>(LogManager::getInstance().getCategoryLogLevel(
+            DriverLogCategory::COMMUNICATION)) <=
+        static_cast<int>(LogLevel::TRACE)) {
+      std::ostringstream hex;
+      for (uint8_t b : packet.data) {
+        hex << std::hex << std::setw(2) << std::setfill('0')
+            << static_cast<int>(b) << " ";
+      }
+      LogManager::getInstance().logPacket("BACnet", device_info_.name,
+                                          hex.str(), "");
+    }
 
     UpdateWorkerStats("packet_received", true);
     return true;

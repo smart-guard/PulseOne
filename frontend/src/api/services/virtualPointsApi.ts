@@ -428,7 +428,7 @@ class VirtualPointsApiService {
   }
 
   /**
-   * 스크립트 테스트
+   * 스크립트 테스트 (실제 백엔드: POST /api/script-engine/test)
    */
   async testScript(testData: {
     expression: string;
@@ -438,14 +438,16 @@ class VirtualPointsApiService {
     console.log('스크립트 테스트:', testData);
 
     try {
-      const response = await fetch(`${this.baseUrl}/test`, {
+      // 백엔드 script-engine 라우트는 /api/script-engine/test 사용
+      // 파라미터: { script: string, context: object }
+      const response = await fetch('/api/script-engine/test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          ...testData,
-          data_type: testData.data_type || 'number'
+          script: testData.expression,
+          context: testData.variables || {}
         })
       });
 

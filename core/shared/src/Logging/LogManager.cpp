@@ -285,3 +285,15 @@ void LogManager::flushAll() { LogLib::LoggerEngine::getInstance().flushAll(); }
 void LogManager::rotateLogs() {
   LogLib::LoggerEngine::getInstance().rotateLogs();
 }
+
+void LogManager::cleanupOldLogs(int retentionDays) {
+  LogLib::LoggerEngine::getInstance().cleanupOldLogs(retentionDays);
+}
+
+size_t LogManager::getAvailableDiskSpaceMB() const {
+  return LogLib::LoggerEngine::getInstance().getAvailableDiskSpaceMB();
+}
+
+void LogManager::emergencyCleanupLogs(size_t targetFreeMB) {
+  LogLib::LoggerEngine::getInstance().emergencyCleanupLogs(targetFreeMB);
+}

@@ -228,21 +228,22 @@ const ProtocolEditor: React.FC<ProtocolEditorProps> = ({
     });
   };
 
-  const handleReissueApiKey = () => {
-    confirm({
+  const handleReissueApiKey = async () => {
+    const confirmed = await confirm({
       title: 'API 키 재발급',
       message: '새로운 API 키를 발급하시겠습니까? 기존 키를 사용하는 장치들의 연결이 끊어질 수 있습니다.',
-      onConfirm: () => {
-        setProtocol(prev => {
-          const updatedParams = {
-            ...(prev.connection_params || {}),
-            broker_api_key: crypto.randomUUID(),
-            broker_api_key_updated_at: new Date().toISOString()
-          };
-          return { ...prev, connection_params: updatedParams };
-        });
-      }
+      confirmButtonType: 'warning'
     });
+    if (confirmed) {
+      setProtocol(prev => {
+        const updatedParams = {
+          ...(prev.connection_params || {}),
+          broker_api_key: crypto.randomUUID(),
+          broker_api_key_updated_at: new Date().toISOString()
+        };
+        return { ...prev, connection_params: updatedParams };
+      });
+    }
   };
 
   const isReadOnly = mode === 'view';

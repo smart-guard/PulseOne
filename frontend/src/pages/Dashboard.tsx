@@ -1129,7 +1129,7 @@ const Dashboard: React.FC = () => {
               <div style={{ fontSize: '13px', fontWeight: '700', color: '#475569', marginBottom: '8px' }}>프로토콜별 장치 현황</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                 {(dashboardData.device_summary.protocol_details || []).map(p => (
-                  <div key={p.type} style={{
+                  <div key={p.protocol_type} style={{
                     padding: '6px 12px',
                     background: 'white',
                     border: '1px solid #e2e8f0',
@@ -1139,7 +1139,7 @@ const Dashboard: React.FC = () => {
                     alignItems: 'center',
                     gap: '6px'
                   }}>
-                    <span style={{ fontWeight: '700', color: '#334155' }}>{p.type}</span>
+                    <span style={{ fontWeight: '700', color: '#334155' }}>{p.protocol_type}</span>
                     <span style={{ color: '#94a3b8' }}>|</span>
                     <span style={{ fontWeight: '600', color: '#3b82f6' }}>{p.count}대</span>
                   </div>

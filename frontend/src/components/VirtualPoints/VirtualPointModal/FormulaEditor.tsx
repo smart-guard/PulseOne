@@ -12,7 +12,7 @@ interface FormulaEditorProps {
   onChange: (value: string) => void;
   validationResult?: any;
   isValidating?: boolean;
-  simulationResult: number | null;
+  simulationResult: any | null;
   isSimulating: boolean;
   onRunSimulation: () => void;
 }
@@ -53,8 +53,8 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
   // };
 
   return (
-    <div className="wizard-slide-active" style={{ width: '100%' }}>
-      <div className="formula-grid-v3">
+    <div className="wizard-slide-active" style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="formula-grid-v3" style={{ flex: 1, minHeight: 0 }}>
 
         {/* Column 1: Variable Catalog */}
         <div className="variable-palette-card">
@@ -91,12 +91,17 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
 
           {/* Logic Blocks Palette */}
           <div className="logic-palette-row">
-            <div style={{ marginRight: '8px', paddingRight: '8px', borderRight: '1px solid #cbd5e1', display: 'flex', gap: '4px' }}>
+            <div style={{ marginRight: '8px', paddingRight: '8px', borderRight: '1px solid #cbd5e1', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
               {['+', '-', '*', '/', '(', ')'].map(op => (
                 <button key={op} className="logic-block-btn" onClick={() => insertAtCursor(` ${op} `)}>{op}</button>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: '4px' }}>
+            <div style={{ marginRight: '8px', paddingRight: '8px', borderRight: '1px solid #cbd5e1', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              {['==', '!=', '>', '<', '>=', '<=', '&&', '||'].map(op => (
+                <button key={op} className="logic-block-btn logic-compare-btn" onClick={() => insertAtCursor(` ${op} `)} style={{ color: '#0369a1', borderColor: '#bae6fd' }}>{op}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
               {['SUM', 'AVG', 'MIN', 'MAX', 'IF'].map(fn => (
                 <button key={fn} className="logic-block-btn function" onClick={() => insertAtCursor(`${fn}( )`)}>
                   {fn}
@@ -173,7 +178,7 @@ const FormulaEditor: React.FC<FormulaEditorProps> = ({
               </div>
               {simulationResult !== null && (
                 <div style={{ background: '#ecfdf5', color: '#059669', padding: '6px 12px', borderRadius: '6px', fontWeight: 800, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <i className="fas fa-check-circle"></i> 예측 결과값: {simulationResult.toFixed(2)}
+                  <i className="fas fa-check-circle"></i> 예측 결과값: {typeof simulationResult === 'number' ? simulationResult.toFixed(2) : String(simulationResult)}
                 </div>
               )}
             </div>

@@ -80,5 +80,14 @@ export default defineConfig({
   // 개발 서버 최적화
   optimizeDeps: {
     include: ['socket.io-client']
+  },
+
+  // 테스트 설정 (Vitest)
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/setupTests.ts'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['node_modules', 'dist']
   }
-})
+} as any)

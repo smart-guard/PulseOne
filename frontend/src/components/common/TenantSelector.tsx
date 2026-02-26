@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TenantApiService } from '../../api/services/tenantApi';
 import { Tenant } from '../../types/common';
-import { LogManager } from '../../utils/LogManager'; // Assuming this exists or using console
+
 
 interface TenantSelectorProps {
     onTenantChange?: (tenantId: number | null) => void;

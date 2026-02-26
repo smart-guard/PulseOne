@@ -86,8 +86,9 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
   const [validationWarnings, setValidationWarnings] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
-  const [simulationResult, setSimulationResult] = useState<number | null>(null);
+  const [simulationResult, setSimulationResult] = useState<any | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isPendingInputVariable, setIsPendingInputVariable] = useState(false);
 
   const {
     validationResult,
@@ -147,7 +148,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
           description: virtualPoint.description || '',
           category: virtualPoint.category || '',
           tags: Array.isArray(virtualPoint.tags) ? virtualPoint.tags :
-            typeof virtualPoint.tags === 'string' ? virtualPoint.tags.split(',').map(t => t.trim()) : [],
+            typeof (virtualPoint.tags as any) === 'string' ? (virtualPoint.tags as any as string).split(',').map((t: string) => t.trim()) : [],
           expression: virtualPoint.expression || virtualPoint.formula || '',
           execution_type: virtualPoint.execution_type || 'periodic',
           execution_interval: virtualPoint.execution_interval || 5000,
@@ -157,7 +158,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
           decimal_places: virtualPoint.decimal_places || 2,
           input_variables: Array.isArray(virtualPoint.input_variables) ? virtualPoint.input_variables : [],
           timeout_ms: virtualPoint.timeout_ms || 10000,
-          error_handling: virtualPoint.error_handling || 'propagate',
+          error_handling: (virtualPoint.error_handling || 'propagate') as 'propagate' | 'default_value' | 'previous_value',
           default_value: virtualPoint.default_value !== undefined ? virtualPoint.default_value : 0,
           is_enabled: virtualPoint.is_enabled !== undefined ? virtualPoint.is_enabled : true,
           scope_type: virtualPoint.scope_type || 'device',
@@ -265,6 +266,17 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
       if (missingVariables.length > 0) {
         warnings.expression = `정의되지 않은 변수: ${missingVariables.join(', ')}`;
       }
+
+      // Boolean 변수에 대한 사칙/대소 비교 연산 검증
+      const booleanVariables = dataToValidate.input_variables.filter(v => v.data_type === 'boolean').map(v => v.input_name);
+      for (const boolVar of booleanVariables) {
+        // boolVar 앞뒤로 +, -, *, /, >, <, >=, <= 가 오면 에러 (==, != 는 허용)
+        const invalidOpRegex = new RegExp(`\\b${boolVar}\\s*(?:[><]=?|[+\\-*/])|(?:[><]=?|[+\\-*/])\\s*${boolVar}\\b`);
+        if (invalidOpRegex.test(dataToValidate.expression)) {
+          errors.expression = `BOOL 타입 변수('${boolVar}')는 크기 비교(>, <)나 사칙연산을 직접 수행할 수 없습니다. 대신 IF 함수를 사용해주세요.`;
+          break;
+        }
+      }
     }
 
     setValidationErrors(errors);
@@ -275,12 +287,20 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
   const handleRunSimulation = useCallback(async (inputs?: Record<string, any>) => {
     if (!formData.expression.trim()) return;
 
+    // 추가: 로직 테스트 전 자체 검증(validateForm)을 태워서 에러가 있으면 실행 중단
+    const validation = validateForm();
+    if (Object.keys(validation.errors).length > 0) {
+      setValidationErrors(validation.errors);
+      setSimulationResult(null);
+      return;
+    }
+
     try {
       const context: Record<string, any> = {};
       // 폼에 정의된 변수들의 테스트 값을 컨텍스트로 구성
       formData.input_variables.forEach(input => {
-        const val = inputs?.[input.variable_name] ?? (input.data_type === 'boolean' ? false : 0);
-        context[input.variable_name] = val;
+        const val = inputs?.[input.input_name] ?? (input.data_type === 'boolean' ? false : 0);
+        context[input.input_name] = val;
       });
 
       const response = await testScript(formData.expression, context);
@@ -291,9 +311,13 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
       } else {
         setSimulationResult(null);
         // 에러를 validationErrors에 표시할 수도 있음
+        const errorMsg = response?.error
+          ? (typeof response.error === 'object' && response.error.message ? response.error.message : String(response.error))
+          : '계산 오류가 발생했습니다.';
+
         setValidationErrors(prev => ({
           ...prev,
-          expression: response?.error || '계산 오류가 발생했습니다.'
+          expression: errorMsg
         }));
       }
     } catch (error) {
@@ -315,6 +339,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
   const canProceedToNext = () => {
     switch (currentStep) {
       case 1: return !!formData.name.trim();
+      case 2: return !isPendingInputVariable;
       case 3: return !!formData.expression.trim();
       default: return true;
     }
@@ -434,7 +459,7 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
 
         <div className="wizard-content">
           {currentStep === 1 && <BasicInfoForm data={formData} onChange={handleFormDataChange} onApplyTemplate={handleApplyTemplate} errors={validationErrors} />}
-          {currentStep === 2 && <InputVariableEditor variables={formData.input_variables} onChange={handleInputVariableChange} />}
+          {currentStep === 2 && <InputVariableEditor variables={formData.input_variables} onChange={handleInputVariableChange} onPendingChange={setIsPendingInputVariable} />}
           {currentStep === 3 && (
             <FormulaEditor
               expression={formData.expression}
@@ -485,6 +510,12 @@ const VirtualPointModal: React.FC<VirtualPointModalProps> = ({
             )}
           </div>
           <div style={{ flex: 1, display: 'flex', gap: '12px', alignItems: 'center', overflow: 'hidden' }}>
+            {currentStep === 2 && isPendingInputVariable && (
+              <div className="error-indicator" style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', color: '#e11d48' }}>
+                <i className="fas fa-exclamation-triangle"></i>
+                <span style={{ fontWeight: 800 }}>작성 중인 변수를 리스트에 [등록 완료] 해주세요.</span>
+              </div>
+            )}
             {totalErrors > 0 && (
               <div className="error-indicator" style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
                 <i className="fas fa-exclamation-circle"></i>

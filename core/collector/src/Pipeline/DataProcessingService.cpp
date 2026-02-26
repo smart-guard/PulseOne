@@ -413,8 +413,7 @@ void DataProcessingService::ProcessInfluxTasks(
 
   for (const auto &task : influx_tasks) {
     const auto &msg = task.message;
-    bool is_robot = (msg.device_type == "ROBOT");
-    std::string measurement = is_robot ? "robot_state" : "device_telemetry";
+    std::string measurement = "device_telemetry";
 
     for (const auto &point : task.points) {
       std::map<std::string, std::string> tags;
@@ -422,10 +421,8 @@ void DataProcessingService::ProcessInfluxTasks(
       tags["protocol"] = msg.protocol;
       tags["tenant_id"] = std::to_string(msg.tenant_id);
       tags["site_id"] = std::to_string(msg.site_id);
-
-      // 🔥 point_id와 pointid 모두 지원 (사용자 요청 반영: pointid)
       tags["point_id"] = std::to_string(point.point_id);
-      tags["pointid"] = std::to_string(point.point_id);
+      tags["point_name"] = getPointName(point.point_id);
 
       std::map<std::string, double> fields;
 
@@ -433,16 +430,8 @@ void DataProcessingService::ProcessInfluxTasks(
           [&](const auto &val) {
             using T = std::decay_t<decltype(val)>;
             if constexpr (std::is_arithmetic_v<T>) {
-              // 🔥 Hybrid Mapping: 로봇이면 의미적 이름(source=name) 사용,
-              // 아니면 p_ID 사용
-              if (is_robot && !point.source.empty()) {
-                fields[point.source] = static_cast<double>(val);
-              } else {
-                fields["p_" + std::to_string(point.point_id)] =
-                    static_cast<double>(val);
-              }
-              // ✅ pointid를 필드로도 추가 (필요시 데이터 조회 편의성)
-              fields["pointid"] = static_cast<double>(point.point_id);
+              fields["p_" + std::to_string(point.point_id)] =
+                  static_cast<double>(val);
             }
           },
           point.value);
@@ -668,12 +657,57 @@ void DataProcessingService::QueueRDBTask(
 void DataProcessingService::QueueInfluxTask(
     const Structs::DeviceDataMessage &message,
     const std::vector<Structs::TimestampedValue> &points) {
+
+  int interval_ms = influxdb_storage_interval_ms_.load();
+  std::vector<Structs::TimestampedValue> filtered_points;
+
+  if (interval_ms <= 0) {
+    // 필터링 없이 모두 저장
+    filtered_points = points;
+  } else {
+    auto now = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(influxd_save_mutex_);
+
+    for (const auto &p : points) {
+      bool should_save = false;
+
+      // bool이나 string 같은 상태성 데이터는 주기 상관없이 항상 저장
+      if (std::holds_alternative<bool>(p.value) ||
+          std::holds_alternative<std::string>(p.value)) {
+        should_save = true;
+      } else {
+        // 아날로그 데이터의 경우 주기 체크
+        auto it = last_influxd_save_times_.find(p.point_id);
+        if (it == last_influxd_save_times_.end()) {
+          should_save = true;
+        } else {
+          auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             now - it->second)
+                             .count();
+          if (elapsed >= interval_ms) {
+            should_save = true;
+          }
+        }
+      }
+
+      if (should_save) {
+        filtered_points.push_back(p);
+        last_influxd_save_times_[p.point_id] = now;
+      }
+    }
+  }
+
+  if (filtered_points.empty()) {
+    return; // 저장할 포인트가 없으면 스킵
+  }
+
   PersistenceTask task;
   task.type = PersistenceTask::Type::INFLUX_SAVE;
   task.message = message;
-  task.points = points;
+  task.points = filtered_points;
   // Backpressure Protection
   if (!persistence_queue_.try_push(std::move(task), 10000)) {
+    // ...logging logic remains...
     static std::atomic<int> drop_counter{0};
     int count = ++drop_counter;
     if (count % 100 == 1) {

@@ -5,6 +5,7 @@
 
 const BaseService = require('./BaseService');
 const RepositoryFactory = require('../database/repositories/RepositoryFactory');
+const ScriptEngineService = require('./ScriptEngineService');
 
 class VirtualPointService extends BaseService {
     constructor() {
@@ -174,6 +175,35 @@ class VirtualPointService extends BaseService {
             await this.findById(pointId, tenantId);
             return await this.repository.getLogs(pointId);
         }, 'VirtualPointService.getHistory');
+    }
+
+    /**
+     * 가상포인트 수동 실행 (Execute)
+     */
+    async execute(id, options, tenantId) {
+        return await this.handleRequest(async () => {
+            // 1. 가져오기
+            const vp = await this.findById(id, tenantId);
+
+            // 2. inputs 추출 및 기본 context 구성
+            const context = options.context || {};
+
+            // 3. ScriptEngineService를 활용하여 계산
+            // 엔진쪽 testScript와 유사하게 호출
+            const result = await ScriptEngineService.testScript({
+                script: vp.formula,
+                context: context
+            }, tenantId);
+
+            // 성공/실패 여부에 따라 히스토리나 로그 기록을 추가할 수 있음
+            if (result.success) {
+                await this.logAction(id, 'EXECUTE', null, { result: result.result }, null, 'Manual Execution Success');
+            } else {
+                await this.logAction(id, 'EXECUTE_ERROR', null, { error: result.error }, null, 'Manual Execution Failed');
+            }
+
+            return result;
+        }, 'VirtualPointService.execute');
     }
 }
 

@@ -223,15 +223,14 @@ class HttpClient {
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+
     console.log('🌐 Realtime API Request:', {
       method: options.method || 'GET',
       url: url,
       endpoint: endpoint
     });
-    
+
     const config: RequestInit = {
-      timeout: API_CONFIG.TIMEOUT,
       headers: {
         ...API_CONFIG.DEFAULT_HEADERS,
         ...options.headers,
@@ -241,20 +240,20 @@ class HttpClient {
 
     try {
       const response = await fetch(url, config);
-      
+
       console.log('📡 Realtime API Response:', {
         status: response.status,
         ok: response.ok,
         url: response.url
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data: ApiResponse<T> = await response.json();
-      
+
       // Backend 응답 변환
       if ('success' in data) {
         return {
@@ -265,16 +264,16 @@ class HttpClient {
           timestamp: data.timestamp
         };
       }
-      
+
       return data;
-      
+
     } catch (error) {
       console.error('❌ Realtime API Request failed:', {
         endpoint,
         url,
         error: error instanceof Error ? error.message : 'Unknown error'
       });
-      
+
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -285,7 +284,7 @@ class HttpClient {
 
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<ApiResponse<T>> {
     const queryParams = new URLSearchParams();
-    
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -297,10 +296,10 @@ class HttpClient {
         }
       });
     }
-    
-    const url = params && queryParams.toString() ? 
+
+    const url = params && queryParams.toString() ?
       `${endpoint}?${queryParams.toString()}` : endpoint;
-    
+
     return this.request<T>(url, { method: 'GET' });
   }
 
@@ -334,26 +333,26 @@ export class RealtimeApiService {
    */
   static async getCurrentValues(params?: CurrentValuesParams): Promise<ApiResponse<CurrentValuesResponse>> {
     console.log('⚡ 실시간 현재값 조회:', params);
-    
+
     // 🔥 백엔드 realtime.js가 기대하는 파라미터 형식으로 변환
     const queryParams: Record<string, any> = {};
-    
+
     if (params?.device_ids && params.device_ids.length > 0) {
       queryParams.device_ids = params.device_ids.join(',');  // string 배열을 쉼표로 연결
     }
-    
+
     if (params?.point_names && params.point_names.length > 0) {
       queryParams.point_names = params.point_names.join(',');
     }
-    
+
     if (params?.quality_filter && params.quality_filter !== 'all') {
       queryParams.quality_filter = params.quality_filter;
     }
-    
+
     if (params?.limit) {
       queryParams.limit = params.limit;
     }
-    
+
     if (params?.sort_by) {
       queryParams.sort_by = params.sort_by;
     }
@@ -386,7 +385,7 @@ export class RealtimeApiService {
    */
   static async getPoints(keys: string[]): Promise<ApiResponse<PointsResponse>> {
     console.log('🔍 개별 포인트 조회:', keys);
-    
+
     return this.httpClient.get<PointsResponse>('/api/realtime/points', {
       keys: keys.join(',')
     });
@@ -402,11 +401,11 @@ export class RealtimeApiService {
   static async createSubscription(request: SubscriptionRequest): Promise<ApiResponse<SubscriptionInfo>> {
     console.log('🔄 구독 생성:', request);
     const response = await this.httpClient.post<SubscriptionInfo>('/api/realtime/subscribe', request);
-    
+
     if (response.success && response.data) {
       this.subscriptions.set(response.data.subscription_id, response.data);
     }
-    
+
     return response;
   }
 
@@ -421,11 +420,11 @@ export class RealtimeApiService {
   }>> {
     console.log('🔄 구독 해제:', subscriptionId);
     const response = await this.httpClient.delete<any>(`/api/realtime/subscribe/${subscriptionId}`);
-    
+
     if (response.success) {
       this.subscriptions.delete(subscriptionId);
     }
-    
+
     return response;
   }
 
@@ -636,19 +635,19 @@ export class RealtimeApiService {
       latest_timestamp: null as string | null,
       value_range: {
         numeric_values: [] as number[]
-      }
+      } as { numeric_values: number[]; min?: number; max?: number; avg?: number; }
     };
 
     values.forEach(value => {
       // 품질별 카운트
       stats.by_quality[value.quality] = (stats.by_quality[value.quality] || 0) + 1;
-      
+
       // 데이터 타입별 카운트
       stats.by_data_type[value.data_type] = (stats.by_data_type[value.data_type] || 0) + 1;  // 🔥 수정: dataType → data_type
-      
+
       // 디바이스별 카운트
       stats.by_device[value.device_id] = (stats.by_device[value.device_id] || 0) + 1;
-      
+
       // 숫자 값 수집
       if (value.data_type === 'number' && typeof value.value === 'number') {  // 🔥 수정: dataType → data_type
         stats.value_range.numeric_values.push(value.value);
@@ -695,9 +694,9 @@ export class RealtimeApiService {
     }
 
     // 키 개수 제한 (최대 1000개)
-    const totalKeys = (request.keys?.length || 0) + 
-                     (request.point_ids?.length || 0) + 
-                     (request.device_ids?.length || 0);
+    const totalKeys = (request.keys?.length || 0) +
+      (request.point_ids?.length || 0) +
+      (request.device_ids?.length || 0);
     if (totalKeys > 1000) {
       errors.push('Total number of keys/points/devices cannot exceed 1000');
     }
@@ -729,7 +728,7 @@ export class RealtimeApiService {
         ...callbacks,
         onClose: () => {
           callbacks.onClose?.();
-          
+
           // 자동 재연결 시도
           if (retryCount < maxRetries) {
             retryCount++;
@@ -759,16 +758,16 @@ export class RealtimeApiService {
   } {
     const current = parseFloat(currentValue) || 0;
     const previous = parseFloat(previousValue) || 0;
-    
+
     const difference = current - previous;
     const rate = timeInterval > 0 ? difference / timeInterval : 0;
     const percentage = previous !== 0 ? (difference / previous) * 100 : 0;
-    
+
     let direction: 'increasing' | 'decreasing' | 'stable' = 'stable';
     if (Math.abs(difference) > 0.001) {
       direction = difference > 0 ? 'increasing' : 'decreasing';
     }
-    
+
     return {
       direction,
       rate: Math.abs(rate),
@@ -787,28 +786,28 @@ export class RealtimeApiService {
     const maxInterval = options.maxInterval || 10000; // 10초
     const minInterval = options.minInterval || 500;   // 0.5초
     const targetUpdateRate = options.targetUpdateRate || 0.1; // 10% 변화율
-    
+
     if (values.length === 0) return maxInterval;
-    
+
     // 최근 값들의 변화율 분석
     const recentChanges = values
       .filter(v => v.data_type === 'number')          // 🔥 수정: dataType → data_type
       .map(v => parseFloat(v.value as string) || 0);
-    
+
     if (recentChanges.length < 2) return maxInterval;
-    
+
     // 변화율 계산
     let totalChange = 0;
     for (let i = 1; i < recentChanges.length; i++) {
-      const change = Math.abs(recentChanges[i] - recentChanges[i-1]);
-      const average = (recentChanges[i] + recentChanges[i-1]) / 2;
+      const change = Math.abs(recentChanges[i] - recentChanges[i - 1]);
+      const average = (recentChanges[i] + recentChanges[i - 1]) / 2;
       if (average > 0) {
         totalChange += change / average;
       }
     }
-    
+
     const averageChangeRate = totalChange / (recentChanges.length - 1);
-    
+
     // 변화율에 따른 간격 조정
     if (averageChangeRate > targetUpdateRate) {
       return Math.max(minInterval, maxInterval * 0.3); // 빠른 폴링

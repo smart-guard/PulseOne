@@ -23,16 +23,18 @@ export interface DataPoint {
   address: string;
   address_string?: string;
   mapping_key?: string;
-  data_type: 'number' | 'boolean' | 'string';
+  data_type: 'number' | 'boolean' | 'string' | string; // 백엔드 C++ 타입(uint16 등)도 허용
   original_data_type?: string; // 원본 C++ 타입 (FLOAT32, UINT32 등)
   unit?: string;
   is_enabled: boolean;
+  is_writable?: boolean;
   description?: string;
   min_value?: number;
   max_value?: number;
   scaling_factor?: number;
   scaling_offset?: number;
   polling_interval?: number;
+  polling_interval_ms?: number; // DataPointModal 호환성
   access_mode?: 'read' | 'write' | 'read_write';
   is_log_enabled?: boolean;
   log_interval_ms?: number;
@@ -46,6 +48,9 @@ export interface DataPoint {
   tags?: string[];
   metadata?: any;
   protocol_params?: any;
+  quality?: string; // DataPointModal 호환성
+  last_update?: string; // DataPointModal 호환성
+  last_seen?: string;
   created_at: string;
   updated_at: string;
   tenant_id?: number;

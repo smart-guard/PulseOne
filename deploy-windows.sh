@@ -496,6 +496,7 @@ rem Backend XML
     echo   ^<workingdirectory^>%ROOT%^</workingdirectory^>
     rem NODE_ENV 미설정 → config/.env.production의 값 사용 (development로 주입됨)
     echo   ^<env name="DATA_DIR" value="%ROOT%\data"/^>
+    echo   ^<env name="COLLECTOR_LOG_DIR" value="%ROOT%\logs\packets"/^>
     echo   ^<startarguments^>--auto-init^</startarguments^>
     echo   ^<log mode="roll"^>^<sizeThreshold^>10240^</sizeThreshold^>^</log^>
     echo ^</service^>
@@ -608,6 +609,7 @@ if exist "mosquitto\mosquitto.exe" (
 )
 
 if not exist "%ROOT%\logs" mkdir "%ROOT%\logs"
+if not exist "%ROOT%\logs\packets" mkdir "%ROOT%\logs\packets"
 
 if exist "pulseone-backend.exe" (
     wscript.exe runHidden.vbs "cmd /c cd /d %ROOT% && pulseone-backend.exe --config=%ROOT%\config >> %ROOT%\logs\backend-startup.log 2>&1"

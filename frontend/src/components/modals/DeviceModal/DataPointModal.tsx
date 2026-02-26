@@ -4,7 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
-import { DataPoint, DataPointCreateData, DataPointUpdateData, DataPointApiService } from '../../api/services/dataPointApi';
+import { DataPoint, DataPointCreateData, DataPointUpdateData, DataPointApiService } from '../../../api/services/dataPointApi';
 
 interface DataPointModalProps {
   isOpen: boolean;
@@ -209,9 +209,9 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
     try {
       setIsTestingRead(true);
       setTestResult(null);
-      
+
       const response = await DataPointApiService.testDataPointRead(dataPoint.id);
-      
+
       if (response.success && response.data) {
         const result = response.data;
         if (result.test_successful) {
@@ -239,7 +239,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
 
       const value = parseFloat(testValue) || testValue;
       const response = await DataPointApiService.testDataPointWrite(dataPoint.id, value);
-      
+
       if (response.success && response.data) {
         const result = response.data;
         if (result.test_successful) {
@@ -266,7 +266,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
         <div className="modal-header">
           <h2>
             {mode === 'create' ? '새 데이터포인트 추가' :
-             mode === 'edit' ? '데이터포인트 편집' : '데이터포인트 상세'}
+              mode === 'edit' ? '데이터포인트 편집' : '데이터포인트 상세'}
           </h2>
           <button className="close-btn" onClick={onClose}>
             <i className="fas fa-times"></i>
@@ -279,7 +279,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
             {/* 기본 정보 */}
             <div className="form-section">
               <h3>📊 기본 정보</h3>
-              
+
               <div className="form-group">
                 <label>포인트명 *</label>
                 {mode === 'view' ? (
@@ -405,7 +405,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
             {/* 스케일링 및 범위 */}
             <div className="form-section">
               <h3>📐 스케일링 및 범위</h3>
-              
+
               <div className="form-group">
                 <label>스케일링 팩터</label>
                 {mode === 'view' ? (
@@ -464,7 +464,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
             {/* 로깅 및 폴링 설정 */}
             <div className="form-section">
               <h3>📝 로깅 및 폴링</h3>
-              
+
               <div className="form-group">
                 <label>폴링 간격 (ms)</label>
                 {mode === 'view' ? (
@@ -528,7 +528,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
             {/* 상태 및 옵션 */}
             <div className="form-section">
               <h3>⚙️ 상태 및 옵션</h3>
-              
+
               <div className="form-group">
                 <label>활성화</label>
                 {mode === 'view' ? (
@@ -594,7 +594,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
             {mode !== 'create' && dataPoint && (
               <div className="form-section">
                 <h3>📊 현재값 및 테스트</h3>
-                
+
                 <div className="form-group">
                   <label>현재값</label>
                   <div className="form-value current-value">
@@ -727,7 +727,7 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
           </div>
         </div>
 
-        <style jsx>{`
+        <style>{`
           .datapoint-modal {
             max-width: 800px;
             width: 90vw;

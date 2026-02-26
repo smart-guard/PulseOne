@@ -387,16 +387,16 @@ class CollectorProxyService {
 
             // Docker 서비스명 감지: 점이 없고 'localhost'가 아닌 경우
             // (예: "collector", "mqtt-gateway" 등 Docker 내부 서비스명)
-            // Windows/Linux 네이티브 환경에서는 resolve 안 되므로 127.0.0.1로 fallback
             if (host && !host.includes('.') && host !== 'localhost') {
                 const envOverride = this.config.get('COLLECTOR_HOST', '');
-                if (envOverride && envOverride !== host) {
+                if (envOverride) {
+                    // COLLECTOR_HOST 환경변수가 있으면 무조건 사용 (같든 다르든)
                     host = envOverride;
-                } else {
-                    console.warn(`🔄 [CollectorProxy] '${host}' looks like a Docker service name - falling back to 127.0.0.1`);
-                    host = '127.0.0.1';
                 }
+                // envOverride가 없을 때만 Docker 외부 환경을 위해 127.0.0.1 fallback
+                // (Docker 환경에서는 COLLECTOR_HOST가 항상 설정돼 있어야 함)
             }
+
 
             console.log(`🔌 [CollectorProxy] Connecting to edge_server[${id}]: ${host}:${port}`);
 
@@ -582,26 +582,84 @@ class CollectorProxyService {
             throw new Error(`Invalid log level: ${level}. Must be one of: ${validLevels.join(', ')}`);
         }
 
-        const payload = { key: 'log.level', value: normalized };
+        const payload = { level: normalized };
 
         if (edgeServerId === null || edgeServerId === 'all') {
-            // 모든 클라이언트에 전파
-            const results = await Promise.allSettled(
-                Array.from(this.clients.values()).map(client =>
-                    client.proxyRequest('POST', '/api/config', payload)
-                )
-            );
-            const failed = results.filter(r => r.status === 'rejected');
-            if (failed.length > 0) {
-                console.warn(`⚠️ setLogLevel: ${failed.length}개 Collector 실패`);
+            try {
+                const repo = RepositoryFactory.getInstance().getEdgeServerRepository();
+                const allServers = (await repo.findAll()).filter(s => s.server_type === 'collector');
+                const results = await Promise.allSettled(
+                    allServers.map(server =>
+                        this.getClient(server.id).then(client =>
+                            client.httpClient.post('/api/system/log-level', payload)
+                        )
+                    )
+                );
+                const failed = results.filter(r => r.status === 'rejected');
+                if (failed.length > 0) {
+                    console.warn(`⚠️ setLogLevel: ${failed.length}/${allServers.length} Collector 실패`);
+                }
+                return { success: true, level: normalized, propagated: results.length - failed.length, failed: failed.length, total: allServers.length };
+            } catch (e) {
+                console.warn('⚠️ setLogLevel: DB 조회 실패, 연결된 Collector만 전파합니다:', e.message);
+                const results = await Promise.allSettled(
+                    Array.from(this.clients.values()).map(client =>
+                        client.httpClient.post('/api/system/log-level', payload)
+                    )
+                );
+                const failed = results.filter(r => r.status === 'rejected');
+                return { success: true, level: normalized, propagated: results.length - failed.length, failed: failed.length };
             }
-            return { success: true, level: normalized, propagated: results.length, failed: failed.length };
         }
 
         const client = await this.getClient(edgeServerId);
-        await client.proxyRequest('POST', '/api/config', payload);
+        await client.httpClient.post('/api/system/log-level', payload);
         return { success: true, level: normalized };
+
     }
+
+    /**
+     * 모든 연결된 Collector에 로깅 설정 전체 전파
+     * @param {object} config - { enable_debug_logging, log_to_file, max_log_file_size_mb, packet_logging_enabled }
+     * @param {number|null} edgeServerId - null이면 전체 전파
+     */
+    async setLoggingConfig(config, edgeServerId = null) {
+        const payload = { ...config };
+
+        const broadcast = async (client) => {
+            return client.httpClient.post('/api/system/logging-config', payload);
+        };
+
+
+        if (edgeServerId === null || edgeServerId === 'all') {
+            try {
+                const repo = RepositoryFactory.getInstance().getEdgeServerRepository();
+                const allServers = await repo.findAll();
+                const results = await Promise.allSettled(
+                    allServers.map(server =>
+                        this.getClient(server.id).then(client => broadcast(client))
+                    )
+                );
+                const failed = results.filter(r => r.status === 'rejected');
+                if (failed.length > 0) {
+                    console.warn(`⚠️ setLoggingConfig: ${failed.length}개 Collector 실패`);
+                }
+                return { success: true, propagated: results.length - failed.length, failed: failed.length, total: allServers.length };
+            } catch (e) {
+                console.warn('⚠️ setLoggingConfig: DB 조회 실패, 연결된 Collector만 전파합니다:', e.message);
+                const results = await Promise.allSettled(
+                    Array.from(this.clients.values()).map(client => broadcast(client))
+                );
+                const failed = results.filter(r => r.status === 'rejected');
+                return { success: true, propagated: results.length - failed.length, failed: failed.length };
+            }
+        }
+
+        const client = await this.getClient(edgeServerId);
+        await broadcast(client);
+        return { success: true };
+    }
+
 
     async gracefulShutdown() {
         for (const client of this.clients.values()) {

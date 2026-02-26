@@ -9,6 +9,7 @@
 #include "Database/Entities/EdgeServerEntity.h"
 #include "Database/Entities/TenantEntity.h"
 #include "Database/Repositories/EdgeServerRepository.h"
+#include "Database/Repositories/SystemSettingsRepository.h"
 #include "Database/Repositories/TenantRepository.h"
 #include "Database/RepositoryFactory.h"
 #include "DatabaseManager.hpp"
@@ -140,6 +141,83 @@ bool CollectorApplication::Initialize() {
     }
     LogManager::getInstance().Info(
         "✓ RepositoryFactory initialized successfully");
+
+    // ── 시작 시 system_settings DB에서 로깅 설정 전체 로드 ─────────────────
+    try {
+      auto settings_repo = Database::RepositoryFactory::getInstance()
+                               .getSystemSettingsRepository();
+      auto &lm = LogManager::getInstance();
+
+      // 1. log_level
+      std::string saved_level = settings_repo->getValue("log_level", "INFO");
+      LogLevel lvl = LogLevel::INFO;
+      if (saved_level == "TRACE")
+        lvl = LogLevel::TRACE;
+      else if (saved_level == "DEBUG")
+        lvl = LogLevel::DEBUG;
+      else if (saved_level == "WARN")
+        lvl = LogLevel::WARN;
+      else if (saved_level == "ERROR")
+        lvl = LogLevel::LOG_ERROR;
+      else if (saved_level == "FATAL")
+        lvl = LogLevel::LOG_FATAL;
+      lm.setLogLevel(lvl);
+
+      // 2. enable_debug_logging (true면 DEBUG로 오버라이드)
+      if (settings_repo->getValue("enable_debug_logging", "false") == "true") {
+        lm.setLogLevel(LogLevel::DEBUG);
+      }
+
+      // 3. log_to_file
+      bool log_to_file =
+          settings_repo->getValue("log_to_file", "true") == "true";
+      lm.setFileOutput(log_to_file);
+
+      // 4. max_log_file_size_mb
+      try {
+        int max_mb =
+            std::stoi(settings_repo->getValue("max_log_file_size_mb", "100"));
+        if (max_mb > 0)
+          lm.setMaxLogSizeMB(static_cast<size_t>(max_mb));
+      } catch (...) {
+      }
+
+      // 5. packet_logging_enabled (COMMUNICATION 카테고리 레벨 제어)
+      bool pkt =
+          settings_repo->getValue("packet_logging_enabled", "false") == "true";
+      lm.setCategoryLogLevel(DriverLogCategory::COMMUNICATION,
+                             pkt ? LogLevel::TRACE : LogLevel::INFO);
+
+      // 6. log_retention_days & log_disk_min_free_mb
+      try {
+        log_retention_days_ =
+            std::stoi(settings_repo->getValue("log_retention_days", "30"));
+      } catch (...) {
+        log_retention_days_ = 30;
+      }
+      try {
+        log_disk_min_free_mb_ = static_cast<size_t>(
+            std::stoul(settings_repo->getValue("log_disk_min_free_mb", "500")));
+      } catch (...) {
+        log_disk_min_free_mb_ = 500;
+      }
+
+      lm.Info("📋 Logging settings loaded from DB: log_level=" + saved_level +
+              ", log_to_file=" + (log_to_file ? "true" : "false") +
+              ", packet_logging=" + (pkt ? "true" : "false") +
+              ", retention_days=" + std::to_string(log_retention_days_) +
+              ", disk_min_free_mb=" + std::to_string(log_disk_min_free_mb_));
+
+      // 시작 시 즉시 오래된 로그 정리
+      lm.cleanupOldLogs(log_retention_days_);
+      last_log_cleanup_time_ = std::chrono::steady_clock::now();
+
+    } catch (const std::exception &e) {
+      LogManager::getInstance().Warn(
+          "⚠️ Could not load logging settings from DB, using defaults: " +
+          std::string(e.what()));
+    }
+    // ──────────────────────────────────────────────────────────────────────────
 
     // 🔥 3a. Collector Identity Verification
     LogManager::getInstance().Info(
@@ -292,6 +370,18 @@ bool CollectorApplication::Initialize() {
       // DataProcessingService (처리기) 시작
       data_processing_service_ =
           std::make_unique<Pipeline::DataProcessingService>();
+
+      // InfluxDB 저장 주기 설정 로드 (기본 0: 즉시 저장)
+      try {
+        auto settings_repo = Database::RepositoryFactory::getInstance()
+                                 .getSystemSettingsRepository();
+        int influx_interval = std::stoi(
+            settings_repo->getValue("influxdb_storage_interval", "0"));
+        data_processing_service_->SetInfluxDbStorageInterval(influx_interval);
+      } catch (...) {
+        data_processing_service_->SetInfluxDbStorageInterval(0);
+      }
+
       if (!data_processing_service_->Start()) {
         LogManager::getInstance().Error(
             "✗ DataProcessingService failed to start");
@@ -488,7 +578,24 @@ void CollectorApplication::MainLoop() {
         LogManager::getInstance().Info("Active workers: " +
                                        std::to_string(active_count));
 
+        // 디스크 여유 공간 체크
+        auto &lm = LogManager::getInstance();
+        size_t free_mb = lm.getAvailableDiskSpaceMB();
+        lm.Info("💾 Disk free: " + std::to_string(free_mb) + " MB");
+        if (free_mb < log_disk_min_free_mb_) {
+          lm.Warn("⚠️ Disk space low (" + std::to_string(free_mb) + " MB < " +
+                  std::to_string(log_disk_min_free_mb_) +
+                  " MB)! Emergency log cleanup triggered.");
+          lm.emergencyCleanupLogs(log_disk_min_free_mb_);
+        }
+
         last_health_check = now;
+      }
+
+      // 24시간마다 보관 기간 초과 로그 파일 삭제
+      if (now - last_log_cleanup_time_ >= std::chrono::hours(24)) {
+        LogManager::getInstance().cleanupOldLogs(log_retention_days_);
+        last_log_cleanup_time_ = now;
       }
 
       // 주기적 통계 리포트 (1시간마다)

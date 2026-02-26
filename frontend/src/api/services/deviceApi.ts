@@ -403,6 +403,9 @@ export interface DeviceStats {
   total_devices: number;
   active_devices: number;
   enabled_devices: number;
+  connected_devices?: number;
+  disconnected_devices?: number;
+  error_devices?: number;
   by_protocol: { [key: string]: number };
   by_connection: { [key: string]: number };
   rtu_statistics?: {

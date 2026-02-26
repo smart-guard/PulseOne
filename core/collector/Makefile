@@ -183,7 +183,7 @@ BASIC_LIBS := -lpthread -static-libstdc++ -static-libgcc -lm -lsqlite3
 PLATFORM_LIBS := -lws2_32 -lwsock32 -liphlpapi -lrpcrt4 -luuid
 PLATFORM_LIBS += -lwinmm -lkernel32 -luser32 -ladvapi32
 else
-BASIC_LIBS := -lpthread -lsqlite3 -lm -ldl
+BASIC_LIBS := -lpthread -lsqlite3 -lpqxx -lpq -lm -ldl
 PLATFORM_LIBS :=
 endif
 
@@ -444,7 +444,7 @@ $(BUILD_DIR) $(BIN_DIR) $(DIST_DIR):
 
 $(TARGET): $(ALL_OBJECTS) $(MAIN_OBJECT) | $(BIN_DIR)
 	@echo -e "$(BLUE)🔗 Linking $(TARGET)...$(NC)"
-	$(CXX) $(LDFLAGS) -o $(BIN_DIR)/$@ $(ALL_OBJECTS) $(MAIN_OBJECT) $(LIBS)
+	$(CXX) $(LDFLAGS) -o $(BIN_DIR)/$@ $(ALL_OBJECTS) $(MAIN_OBJECT) $(LIBS) -lpqxx -lpq -lmysqlclient
 	@echo -e "$(GREEN)✅ $(TARGET) built successfully!$(NC)"
 	@echo -e "Size: $(CYAN)$(shell du -h $(BIN_DIR)/$(TARGET) 2>/dev/null | cut -f1 || echo 'N/A')$(NC)"
 

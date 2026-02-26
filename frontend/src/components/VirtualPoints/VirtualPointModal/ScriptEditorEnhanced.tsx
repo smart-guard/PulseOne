@@ -193,7 +193,7 @@ const ScriptEditorEnhanced: React.FC<ScriptEditorEnhancedProps> = ({
         </ul>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .script-editor-enhanced {
           display: flex;
           gap: 20px;

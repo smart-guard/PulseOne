@@ -25,7 +25,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
             console.log('--- [DataPointSelector] Fetching devices START ---');
             try {
                 // 1. Try standard Service call
-                const res = await DeviceApiService.getDevices({ limit: 1000, siteId });
+                const res = await DeviceApiService.getDevices({ limit: 1000, site_id: siteId ?? undefined });
                 let items: Device[] = [];
                 if (res && res.success) {
                     const rawData: any = res.data;

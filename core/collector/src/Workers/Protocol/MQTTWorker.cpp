@@ -1726,6 +1726,14 @@ bool MQTTWorker::ProcessReceivedMessage(const std::string &topic,
   try {
     worker_stats_.messages_received++;
 
+    // packet_logging: COMMUNICATION 카테고리가 TRACE 이하면 기록
+    if (static_cast<int>(LogManager::getInstance().getCategoryLogLevel(
+            DriverLogCategory::COMMUNICATION)) <=
+        static_cast<int>(LogLevel::TRACE)) {
+      LogManager::getInstance().logPacket("MQTT", device_info_.name, topic,
+                                          payload);
+    }
+
     // 프로덕션 모드에서는 성능 메트릭스 업데이트
     if (IsProductionMode()) {
       performance_metrics_.messages_received++;

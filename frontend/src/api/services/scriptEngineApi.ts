@@ -63,13 +63,32 @@ class ScriptEngineApiService {
   }
 
   /**
+   * 함수 검색 (검색어 기반)
+   */
+  async searchFunctions(searchTerm: string): Promise<ScriptFunction[]> {
+    try {
+      const allFunctions = await this.getFunctions();
+      if (!searchTerm.trim()) return allFunctions;
+      const lower = searchTerm.toLowerCase();
+      return allFunctions.filter(f =>
+        f.name.toLowerCase().includes(lower) ||
+        f.displayName.toLowerCase().includes(lower) ||
+        f.description.toLowerCase().includes(lower)
+      );
+    } catch (error) {
+      console.error('함수 검색 실패:', error);
+      return [];
+    }
+  }
+
+  /**
    * 스크립트 문법 검증
    */
   async validateScript(request: ScriptValidationRequest): Promise<ScriptValidationResult> {
     try {
       console.log('스크립트 검증 시작');
 
-      const response = await apiClient.post<ScriptValidationApiResponse>(
+      const response = await apiClient.post<ScriptValidationResult>(
         `${this.baseUrl}/validate`,
         request
       );
@@ -82,7 +101,7 @@ class ScriptEngineApiService {
       }
     } catch (error) {
       console.error('스크립트 검증 실패:', error);
-      
+
       // 백엔드 API가 없는 경우 클라이언트 검증
       return this.clientSideValidation(request);
     }
@@ -95,7 +114,7 @@ class ScriptEngineApiService {
     try {
       console.log('스크립트 테스트 시작');
 
-      const response = await apiClient.post<ScriptTestApiResponse>(
+      const response = await apiClient.post<ScriptTestResult>(
         `${this.baseUrl}/test`,
         {
           ...request,
@@ -111,7 +130,7 @@ class ScriptEngineApiService {
       }
     } catch (error) {
       console.error('스크립트 테스트 실패:', error);
-      
+
       // 백엔드 API가 없는 경우 클라이언트 시뮬레이션
       return this.clientSideTest(request);
     }
@@ -127,16 +146,17 @@ class ScriptEngineApiService {
     complexity: 'low' | 'medium' | 'high';
   }> {
     try {
-      const response = await apiClient.post(`${this.baseUrl}/parse`, { script });
-      
-      if (response.success) {
+      type ParseResult = { variables: string[]; functions: string[]; constants: string[]; complexity: 'low' | 'medium' | 'high' };
+      const response = await apiClient.post<ParseResult>(`${this.baseUrl}/parse`, { script });
+
+      if (response.success && response.data) {
         return response.data;
       } else {
         throw new Error(response.message);
       }
     } catch (error) {
       console.error('스크립트 파싱 실패:', error);
-      
+
       // 클라이언트 사이드 파싱
       return this.clientSideParse(script);
     }
@@ -185,9 +205,9 @@ class ScriptEngineApiService {
    */
   private getBuiltinFunctions(request?: ScriptFunctionSearchRequest): ScriptFunction[] {
     console.log('내장 함수 라이브러리 사용');
-    
+
     let functions: ScriptFunction[] = [];
-    
+
     if (request?.category) {
       functions = BUILTIN_FUNCTIONS[request.category] || [];
     } else {
@@ -197,7 +217,7 @@ class ScriptEngineApiService {
     // 검색 필터 적용
     if (request?.search) {
       const searchTerm = request.search.toLowerCase();
-      functions = functions.filter(func => 
+      functions = functions.filter(func =>
         func.name.toLowerCase().includes(searchTerm) ||
         func.displayName.toLowerCase().includes(searchTerm) ||
         func.description.toLowerCase().includes(searchTerm)
@@ -212,21 +232,19 @@ class ScriptEngineApiService {
    */
   private clientSideValidation(request: ScriptValidationRequest): ScriptValidationResult {
     console.log('클라이언트 사이드 스크립트 검증 사용');
-    
-    const errors = [];
-    const warnings = [];
-    
+
     // 기본적인 문법 체크
     try {
       // JavaScript 문법 검사
       new Function(request.script);
-      
+
       return {
         isValid: true,
         errors: [],
         warnings: [],
         usedVariables: this.extractVariables(request.script),
-        usedFunctions: this.extractFunctions(request.script)
+        usedFunctions: this.extractFunctions(request.script),
+        estimatedComplexity: this.calculateComplexity(request.script)
       };
     } catch (error) {
       return {
@@ -240,7 +258,8 @@ class ScriptEngineApiService {
         }],
         warnings: [],
         usedVariables: [],
-        usedFunctions: []
+        usedFunctions: [],
+        estimatedComplexity: 'low'
       };
     }
   }
@@ -250,28 +269,38 @@ class ScriptEngineApiService {
    */
   private clientSideTest(request: ScriptTestRequest): ScriptTestResult {
     console.log('클라이언트 사이드 스크립트 테스트 사용');
-    
+
     const startTime = performance.now();
-    
+
     try {
+      // 내장 함수 컨텍스트 추가
+      const enrichedContext = {
+        ...request.context,
+        IF: (condition: any, trueValue: any, falseValue: any) => condition ? trueValue : falseValue,
+        SUM: (...args: number[]) => args.reduce((a, b) => a + b, 0),
+        AVG: (...args: number[]) => args.length ? args.reduce((a, b) => a + b, 0) / args.length : 0,
+        MIN: (...args: number[]) => Math.min(...args),
+        MAX: (...args: number[]) => Math.max(...args)
+      };
+
       // 안전한 실행 환경 생성
       const func = new Function(
-        ...Object.keys(request.context),
+        ...Object.keys(enrichedContext),
         `return (${request.script})`
       );
-      
-      const result = func(...Object.values(request.context));
+
+      const result = func(...Object.values(enrichedContext));
       const executionTime = performance.now() - startTime;
-      
+
       return {
         success: true,
         result: result,
         executionTime: executionTime,
-        logs: [`실행 시간: ${executionTime.toFixed(2)}ms`]
+        logs: [{ timestamp: Date.now(), level: 'info', message: `실행 시간: ${executionTime.toFixed(2)}ms` }]
       };
     } catch (error) {
       const executionTime = performance.now() - startTime;
-      
+
       return {
         success: false,
         result: null,
@@ -283,7 +312,7 @@ class ScriptEngineApiService {
           type: 'runtime' as const,
           severity: 'error' as const
         },
-        logs: [`실행 실패: ${executionTime.toFixed(2)}ms`]
+        logs: [{ timestamp: Date.now(), level: 'error', message: `실행 실패: ${executionTime.toFixed(2)}ms` }]
       };
     }
   }
@@ -295,7 +324,7 @@ class ScriptEngineApiService {
     const variables = new Set<string>();
     const regex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
     let match;
-    
+
     while ((match = regex.exec(script)) !== null) {
       const variable = match[1];
       // JavaScript 예약어가 아닌 경우만 추가
@@ -303,7 +332,7 @@ class ScriptEngineApiService {
         variables.add(variable);
       }
     }
-    
+
     return Array.from(variables);
   }
 
@@ -314,11 +343,11 @@ class ScriptEngineApiService {
     const functions = new Set<string>();
     const regex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g;
     let match;
-    
+
     while ((match = regex.exec(script)) !== null) {
       functions.add(match[1]);
     }
-    
+
     return Array.from(functions);
   }
 
@@ -346,16 +375,16 @@ class ScriptEngineApiService {
   } {
     const variables = this.extractVariables(script);
     const functions = this.extractFunctions(script);
-    
+
     // 상수 추출 (숫자, 문자열 리터럴)
     const constants: string[] = [];
     const numberMatches = script.match(/\b\d+\.?\d*\b/g) || [];
     const stringMatches = script.match(/["'`][^"'`]*["'`]/g) || [];
     constants.push(...numberMatches, ...stringMatches);
-    
+
     // 복잡도 계산
     const complexity = this.calculateComplexity(script);
-    
+
     return {
       variables: Array.from(new Set(variables)),
       functions: Array.from(new Set(functions)),
@@ -371,9 +400,9 @@ class ScriptEngineApiService {
     const lines = script.split('\n').length;
     const operators = (script.match(/[+\-*/=<>!&|]/g) || []).length;
     const controlFlow = (script.match(/\b(if|else|for|while|switch|case)\b/g) || []).length;
-    
+
     const score = lines + operators + (controlFlow * 2);
-    
+
     if (score < 10) return 'low';
     if (score < 25) return 'medium';
     return 'high';
@@ -384,7 +413,7 @@ class ScriptEngineApiService {
    */
   private getBuiltinTemplates(category?: ScriptFunctionCategory): ScriptTemplate[] {
     console.log('내장 템플릿 사용');
-    
+
     const templates: ScriptTemplate[] = [
       {
         id: 'average',
@@ -417,9 +446,9 @@ class ScriptEngineApiService {
         tags: ['조건', '분기', '삼항연산자']
       }
     ];
-    
-    return category ? 
-      templates.filter(t => t.category === category) : 
+
+    return category ?
+      templates.filter(t => t.category === category) :
       templates;
   }
 }

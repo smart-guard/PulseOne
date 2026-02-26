@@ -1,18 +1,18 @@
 #ifndef LOGGER_ENGINE_HPP
 #define LOGGER_ENGINE_HPP
 
-#include "LogTypes.hpp"
 #include "LogExport.hpp"
+#include "LogTypes.hpp"
 
-#include <string>
-#include <fstream>
-#include <map>
-#include <mutex>
-#include <memory>
 #include <atomic>
 #include <filesystem>
-#include <vector>
+#include <fstream>
 #include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
 
 namespace LogLib {
 
@@ -22,78 +22,85 @@ namespace LogLib {
  */
 class LOGLIB_API LoggerEngine {
 public:
-    static LoggerEngine& getInstance();
+  static LoggerEngine &getInstance();
 
-    // Configuration
-    void setLogLevel(LogLevel level);
-    LogLevel getLogLevel() const;
-    
-    // Dynamic Configuration
-    using LogLevelProvider = std::function<LogLevel()>;
-    void setLogLevelProvider(LogLevelProvider provider);
-    
-    void setLogBasePath(const std::string& path);
-    std::string getLogBasePath() const;
-    
-    void setConsoleOutput(bool enabled);
-    void setFileOutput(bool enabled);
-    
-    void setMaxLogSizeMB(size_t size_mb);
-    void setMaxLogFiles(int count);
+  // Configuration
+  void setLogLevel(LogLevel level);
+  LogLevel getLogLevel() const;
 
-    // Logging
-    void log(const std::string& category, LogLevel level, const std::string& message);
-    void logPacket(const std::string& driver, const std::string& device,
-                   const std::string& rawPacket, const std::string& decoded);
+  // Dynamic Configuration
+  using LogLevelProvider = std::function<LogLevel()>;
+  void setLogLevelProvider(LogLevelProvider provider);
 
-    // Maintenance & Stats
-    void flushAll();
-    void rotateLogs();
-    LogStatistics getStatistics() const;
-    void resetStatistics();
+  void setLogBasePath(const std::string &path);
+  std::string getLogBasePath() const;
 
-    // Built-in Config Loader (Simple Key=Value parser)
-    bool loadFromConfigFile(const std::string& path);
+  void setConsoleOutput(bool enabled);
+  void setFileOutput(bool enabled);
+
+  void setMaxLogSizeMB(size_t size_mb);
+  void setMaxLogFiles(int count);
+
+  // Logging
+  void log(const std::string &category, LogLevel level,
+           const std::string &message);
+  void logPacket(const std::string &driver, const std::string &device,
+                 const std::string &rawPacket, const std::string &decoded);
+
+  // Maintenance & Stats
+  void flushAll();
+  void rotateLogs();
+  LogStatistics getStatistics() const;
+  void resetStatistics();
+
+  // Log Retention & Disk Management
+  void cleanupOldLogs(int retentionDays);
+  size_t getAvailableDiskSpaceMB() const;
+  void emergencyCleanupLogs(size_t targetFreeMB);
+
+  // Built-in Config Loader (Simple Key=Value parser)
+  bool loadFromConfigFile(const std::string &path);
 
 private:
-    LoggerEngine();
-    ~LoggerEngine();
-    
-    LoggerEngine(const LoggerEngine&) = delete;
-    LoggerEngine& operator=(const LoggerEngine&) = delete;
+  LoggerEngine();
+  ~LoggerEngine();
 
-    // Internal Utilities
-    std::string buildLogPath(const std::string& category);
-    std::filesystem::path buildLogDirectoryPath(const std::string& category);
-    std::filesystem::path buildLogFilePath(const std::string& category);
-    
-    void writeToFile(const std::string& filePath, const std::string& message);
-    void checkAndRotateLogFile(const std::string& filePath, std::ofstream& stream);
-    
-    // Config Parser Helpers
-    std::string trim(const std::string& s);
-    void applyConfig(const std::string& key, const std::string& value);
-    LogLevel stringToLogLevel(const std::string& level);
+  LoggerEngine(const LoggerEngine &) = delete;
+  LoggerEngine &operator=(const LoggerEngine &) = delete;
 
-    std::string getCurrentDate();
-    std::string getCurrentTimestamp();
-    void updateStatistics(LogLevel level);
+  // Internal Utilities
+  std::string buildLogPath(const std::string &category);
+  std::filesystem::path buildLogDirectoryPath(const std::string &category);
+  std::filesystem::path buildLogFilePath(const std::string &category);
 
-    // Member Variables
-    mutable std::recursive_mutex mutex_;
-    std::map<std::string, std::ofstream> logFiles_;
-    
-    LogLevel minLevel_;
-    std::string log_base_path_;
-    bool console_output_enabled_;
-    bool file_output_enabled_;
-    
-    size_t max_log_size_mb_;
-    int max_log_files_;
-    
-    LogLevelProvider log_level_provider_;
-    
-    mutable LogStatistics statistics_;
+  void writeToFile(const std::string &filePath, const std::string &message);
+  void checkAndRotateLogFile(const std::string &filePath,
+                             std::ofstream &stream);
+
+  // Config Parser Helpers
+  std::string trim(const std::string &s);
+  void applyConfig(const std::string &key, const std::string &value);
+  LogLevel stringToLogLevel(const std::string &level);
+
+  std::string getCurrentDate();
+  std::string getCurrentTimestamp();
+  void updateStatistics(LogLevel level);
+
+  // Member Variables
+  mutable std::recursive_mutex mutex_;
+  std::map<std::string, std::ofstream> logFiles_;
+
+  LogLevel minLevel_;
+  std::string log_base_path_;
+  bool console_output_enabled_;
+  bool file_output_enabled_;
+
+  size_t max_log_size_mb_;
+  int max_log_files_;
+
+  LogLevelProvider log_level_provider_;
+
+  mutable LogStatistics statistics_;
 };
 
 } // namespace LogLib
