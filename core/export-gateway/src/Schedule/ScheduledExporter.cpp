@@ -391,46 +391,67 @@ ScheduleExecutionResult ScheduledExporter::executeScheduleInternal(
         "스케줄 실행: " + schedule.getScheduleName() +
         " (ID: " + std::to_string(schedule.getId()) + ")");
 
-    // 1. Redis에서 데이터 수집
-    auto data_points = collectDataFromRedis(schedule);
-    result.data_point_count = data_points.size();
-
-    if (data_points.empty()) {
-      result.success = false;
-      result.error_message = "수집된 데이터가 없음";
-      LogManager::getInstance().Warn(result.error_message);
-      return result;
+    // 1. 타겟 조회 (기존 target_id 방식과 profile_id 방식 모두 지원)
+    std::vector<PulseOne::Database::Entities::ExportTargetEntity> targets;
+    auto target_id = schedule.getTargetId();
+    if (target_id > 0) {
+      auto target_opt = target_repo_->findById(target_id);
+      if (target_opt.has_value()) {
+        targets.push_back(target_opt.value());
+      }
+    } else if (schedule.getProfileId() > 0) {
+      targets = target_repo_->findByProfileId(schedule.getProfileId());
     }
 
-    LogManager::getInstance().Info(
-        "데이터 수집 완료: " + std::to_string(data_points.size()) +
-        "개 포인트");
-
-    // 2. 타겟 조회
-    auto target_id = schedule.getTargetId();
-    auto target_entity = target_repo_->findById(target_id);
-
-    if (!target_entity.has_value()) {
+    if (targets.empty()) {
       result.success = false;
-      result.error_message =
-          "타겟을 찾을 수 없음 (ID: " + std::to_string(target_id) + ")";
+      result.error_message = "연결된 타겟을 찾을 수 없음 (profile_id: " +
+                             std::to_string(schedule.getProfileId()) + ")";
       LogManager::getInstance().Error(result.error_message);
       return result;
     }
 
-    std::string target_name = target_entity->getName();
-    result.target_names.push_back(target_name);
+    bool all_send_success = true;
+    std::string final_error_msg = "";
+    int total_data_points = 0;
 
-    // 3. 데이터 전송 (템플릿 지원)
-    bool send_success = sendDataToTarget(target_name, data_points, schedule);
+    // 2. 타겟별로 데이터 수집 및 전송
+    for (const auto &target_entity : targets) {
+      std::string target_name = target_entity.getName();
+      result.target_names.push_back(target_name);
 
-    if (send_success) {
-      result.successful_targets++;
-      result.success = true;
-    } else {
-      result.failed_targets++;
-      result.success = false;
-      result.error_message = "타겟 전송 실패: " + target_name;
+      auto data_points = collectDataForSchedule(schedule, target_entity);
+      total_data_points += data_points.size();
+
+      if (data_points.empty()) {
+        LogManager::getInstance().Warn("타겟 [" + target_name +
+                                       "] 전송 보류: 수집된 데이터 없음");
+        // 데이터가 없어도 실패로 간주하지 않고 넘어감 (조건에 맞는
+        // 알람/이벤트가 없을 수 있음)
+        continue;
+      }
+
+      bool send_success = sendDataToTarget(target_name, data_points, schedule);
+
+      if (send_success) {
+        result.successful_targets++;
+      } else {
+        result.failed_targets++;
+        all_send_success = false;
+        if (!final_error_msg.empty())
+          final_error_msg += ", ";
+        final_error_msg += target_name + " 전송 실패";
+      }
+    }
+
+    result.data_point_count = total_data_points;
+
+    // 타겟이 있지만 전송할 데이터가 아예 없었던 경우도 성공(정상 스케줄 실행
+    // 완료)로 간주
+    result.success = all_send_success;
+    if (!result.success) {
+      result.error_message =
+          final_error_msg.empty() ? "타겟 전송 실패" : final_error_msg;
     }
 
     // 4. 실행 시간 계산
@@ -439,6 +460,11 @@ ScheduleExecutionResult ScheduledExporter::executeScheduleInternal(
         std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
                                                               start_time)
             .count();
+
+    // 4.5. 다음 실행 시간 계산
+    result.next_run_time = calculateNextRunTime(
+        schedule.getCronExpression(), schedule.getTimezone(),
+        std::chrono::system_clock::now());
 
     // 5. 로그 저장
     saveExecutionLog(schedule, result);
@@ -706,7 +732,7 @@ bool ScheduledExporter::sendDataToTarget(
 
       // Timestamp 변환 (ms -> yyyy-MM-dd HH:mm:ss.fff)
       std::time_t tt = point.timestamp / 1000;
-      std::tm *tm_info = std::gmtime(&tt);
+      std::tm *tm_info = std::localtime(&tt);
       char buf[32];
       std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", tm_info);
       msg.timestamp = buf;

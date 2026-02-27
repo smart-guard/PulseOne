@@ -120,18 +120,8 @@ bool TargetRegistry::loadFromDatabase() {
         continue;
       }
 
-      // Payload Template Injection
-      auto template_id_opt = db_target.getTemplateId();
-      if (template_id_opt.has_value() && payload_repo) {
-        auto tmpl = payload_repo->findById(template_id_opt.value());
-        if (tmpl) {
-          try {
-            target.config["body_template"] =
-                nlohmann::json::parse(tmpl->getTemplateJson());
-          } catch (...) {
-          }
-        }
-      }
+      // Payload Template logic has been decoupled from targets.
+      // Templates should be resolved at the profile assignment level if needed.
 
       // Load Mappings for this target
       auto mappings = mapping_repo->findByTargetId(target.id);

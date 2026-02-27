@@ -36,20 +36,14 @@ namespace Entities {
 // =============================================================================
 
 ExportTargetEntity::ExportTargetEntity()
-    : BaseEntity(), profile_id_(0), is_enabled_(true),
-      template_id_(std::nullopt) // 🔥 v3.1.0 추가: NULL 초기화
-      ,
-      export_mode_("on_change"), export_interval_(0), batch_size_(100),
-      execution_delay_ms_(0) {
+    : BaseEntity(), is_enabled_(true), export_mode_("on_change"),
+      export_interval_(0), batch_size_(100), execution_delay_ms_(0) {
   // 통계 필드 초기화 코드 모두 제거됨
 }
 
 ExportTargetEntity::ExportTargetEntity(int id)
-    : BaseEntity(id), profile_id_(0), is_enabled_(true),
-      template_id_(std::nullopt) // 🔥 v3.1.0 추가: NULL 초기화
-      ,
-      export_mode_("on_change"), export_interval_(0), batch_size_(100),
-      execution_delay_ms_(0) {
+    : BaseEntity(id), is_enabled_(true), export_mode_("on_change"),
+      export_interval_(0), batch_size_(100), execution_delay_ms_(0) {
   // 통계 필드 초기화 코드 모두 제거됨
 }
 
@@ -100,12 +94,6 @@ bool ExportTargetEntity::validate() const {
 
   // batch_size 범위 체크 (1~10000)
   if (batch_size_ <= 0 || batch_size_ > 10000) {
-    return false;
-  }
-
-  // 🔥 v3.1.0: template_id 검증은 선택사항 (NULL 허용)
-  // template_id가 있다면 양수여야 함
-  if (template_id_.has_value() && template_id_.value() <= 0) {
     return false;
   }
 
@@ -236,7 +224,6 @@ json ExportTargetEntity::toJson() const {
   try {
     // 기본 정보
     j["id"] = getId();
-    j["profile_id"] = profile_id_;
     j["name"] = name_;
     j["target_type"] = target_type_;
     j["description"] = description_;
@@ -244,13 +231,6 @@ json ExportTargetEntity::toJson() const {
 
     // 설정 정보
     j["config"] = parseConfig(); // JSON 문자열을 객체로 파싱
-
-    // 🔥 v3.1.0 추가: template_id 직렬화 (NULL 가능)
-    if (template_id_.has_value()) {
-      j["template_id"] = template_id_.value();
-    } else {
-      j["template_id"] = nullptr;
-    }
 
     j["export_mode"] = export_mode_;
     j["export_interval"] = export_interval_;
@@ -287,10 +267,6 @@ bool ExportTargetEntity::fromJson(const json &data) {
       setId(data["id"].get<int>());
     }
 
-    if (data.contains("profile_id")) {
-      profile_id_ = data["profile_id"].get<int>();
-    }
-
     if (data.contains("name")) {
       name_ = data["name"].get<std::string>();
     }
@@ -314,15 +290,6 @@ bool ExportTargetEntity::fromJson(const json &data) {
       } else if (data["config"].is_object()) {
         // JSON 객체인 경우 문자열로 변환
         config_ = data["config"].dump();
-      }
-    }
-
-    // 🔥 v3.1.0 추가: template_id 역직렬화 (NULL 허용)
-    if (data.contains("template_id")) {
-      if (data["template_id"].is_null()) {
-        template_id_ = std::nullopt;
-      } else if (data["template_id"].is_number_integer()) {
-        template_id_ = data["template_id"].get<int>();
       }
     }
 
@@ -358,14 +325,6 @@ std::string ExportTargetEntity::toString() const {
   oss << "id=" << getId();
   oss << ", name=" << name_;
   oss << ", type=" << target_type_;
-
-  // 🔥 v3.1.0 추가: template_id 표시
-  if (template_id_.has_value()) {
-    oss << ", template_id=" << template_id_.value();
-  } else {
-    oss << ", template_id=NULL";
-  }
-
   oss << ", mode=" << export_mode_;
   oss << ", batch=" << batch_size_;
   oss << ", delay=" << execution_delay_ms_;

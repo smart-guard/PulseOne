@@ -120,17 +120,15 @@ bool ExportTargetRepository::save(ExportTargetEntity &entity) {
 
     // ✅ FIX: template_id 포함하여 10개 파라미터 모두 처리
     std::vector<std::string> insert_order = {
-        "profile_id",        // 1
-        "name",              // 2
-        "target_type",       // 3
-        "description",       // 4
-        "is_enabled",        // 5
-        "config",            // 6
-        "template_id",       // 7
-        "export_mode",       // 8
-        "export_interval",   // 9
-        "batch_size",        // 10
-        "execution_delay_ms" // 11
+        "name",              // 1
+        "target_type",       // 2
+        "description",       // 3
+        "is_enabled",        // 4
+        "config",            // 5
+        "export_mode",       // 6
+        "export_interval",   // 7
+        "batch_size",        // 8
+        "execution_delay_ms" // 9
     };
 
     for (const auto &key : insert_order) {
@@ -139,11 +137,8 @@ bool ExportTargetRepository::save(ExportTargetEntity &entity) {
         auto it = params.find(key);
         std::string value = (it != params.end()) ? it->second : "NULL";
 
-        if (key == "template_id" && value == "NULL") {
-          query.replace(pos, 1, "NULL");
-        } else if (key == "profile_id" || key == "is_enabled" ||
-                   key == "export_interval" || key == "batch_size" ||
-                   key == "execution_delay_ms") {
+        if (key == "is_enabled" || key == "export_interval" ||
+            key == "batch_size" || key == "execution_delay_ms") {
           query.replace(pos, 1, value);
         } else {
           // SQL Injection 방지
@@ -189,15 +184,15 @@ bool ExportTargetRepository::update(const ExportTargetEntity &entity) {
     std::string query = SQL::ExportTarget::UPDATE;
 
     // UPDATE 쿼리의 SET 절 순서대로 파라미터 치환
-    std::vector<std::string> update_order = {
-        "profile_id",        "name",
-        "target_type",       "description",
-        "is_enabled",        "config",
-        "template_id", // 🆕 추가
-        "export_mode",       "export_interval",
-        "batch_size",
-        "execution_delay_ms" // 🆕 추가
-    };
+    std::vector<std::string> update_order = {"name",
+                                             "target_type",
+                                             "description",
+                                             "is_enabled",
+                                             "config",
+                                             "export_mode",
+                                             "export_interval",
+                                             "batch_size",
+                                             "execution_delay_ms"};
 
     for (const auto &key : update_order) {
       size_t pos = query.find('?');
@@ -205,11 +200,8 @@ bool ExportTargetRepository::update(const ExportTargetEntity &entity) {
         auto it = params.find(key);
         std::string value = (it != params.end()) ? it->second : "NULL";
 
-        if (key == "template_id" && value == "NULL") {
-          query.replace(pos, 1, "NULL");
-        } else if (key == "profile_id" || key == "is_enabled" ||
-                   key == "export_interval" || key == "batch_size" ||
-                   key == "execution_delay_ms") {
+        if (key == "is_enabled" || key == "export_interval" ||
+            key == "batch_size" || key == "execution_delay_ms") {
           query.replace(pos, 1, value);
         } else {
           // SQL Injection 방지
@@ -697,24 +689,6 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
   }
 
   // ==========================================================================
-  // profile_id
-  // ==========================================================================
-  try {
-    auto it = row.find("profile_id");
-    if (it != row.end() && !it->second.empty()) {
-      entity.setProfileId(std::stoi(it->second));
-    } else {
-      entity.setProfileId(0);
-    }
-  } catch (const std::exception &e) {
-    if (logger_) {
-      logger_->Debug("mapRowToEntity: Failed to parse 'profile_id': " +
-                     std::string(e.what()));
-    }
-    entity.setProfileId(0);
-  }
-
-  // ==========================================================================
   // name (필수 필드)
   // ==========================================================================
   try {
@@ -843,24 +817,6 @@ ExportTargetEntity ExportTargetRepository::mapRowToEntity(
   }
 
   // ==========================================================================
-  // template_id (NULL 가능)
-  // ==========================================================================
-  try {
-    auto it = row.find("template_id");
-    if (it != row.end() && !it->second.empty() && it->second != "NULL") {
-      entity.setTemplateId(std::stoi(it->second));
-    } else {
-      entity.setTemplateId(std::nullopt);
-    }
-  } catch (const std::exception &e) {
-    if (logger_) {
-      logger_->Debug("mapRowToEntity: template_id parse failed: " +
-                     std::string(e.what()));
-    }
-    entity.setTemplateId(std::nullopt);
-  }
-
-  // ==========================================================================
   // export_mode
   // ==========================================================================
   try {
@@ -951,8 +907,7 @@ ExportTargetRepository::entityToParams(const ExportTargetEntity &entity) {
 
   std::map<std::string, std::string> params;
 
-  // 설정 정보만 변환 (통계 필드 제거됨)
-  params["profile_id"] = std::to_string(entity.getProfileId());
+  // 설정 정보만 변환 (통계 및 legacy 필드 제거됨)
   params["name"] = entity.getName();
   params["target_type"] = entity.getTargetType();
   params["description"] = entity.getDescription();
@@ -963,12 +918,6 @@ ExportTargetRepository::entityToParams(const ExportTargetEntity &entity) {
   params["batch_size"] = std::to_string(entity.getBatchSize());
   params["execution_delay_ms"] =
       std::to_string(entity.getExecutionDelayMs()); // 🆕 추가
-
-  if (entity.getTemplateId().has_value()) {
-    params["template_id"] = std::to_string(entity.getTemplateId().value());
-  } else {
-    params["template_id"] = "NULL";
-  }
 
   return params;
 }

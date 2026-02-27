@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS permissions (
     resource VARCHAR(50),
     actions TEXT,            -- JSON 배열: ["read", "write", "delete"]
     is_system INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (datetime('now', 'localtime'))
 );
 
 -- 2. 역할 테이블 (roles)
@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS roles (
     name VARCHAR(100) NOT NULL,
     description TEXT,
     is_system INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
 );
 
 -- 3. 역할-권한 매핑 테이블 (role_permissions)

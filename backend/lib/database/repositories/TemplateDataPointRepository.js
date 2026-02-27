@@ -60,7 +60,7 @@ class TemplateDataPointRepository extends BaseRepository {
     async update(id, data) {
         try {
             const updateData = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const fields = [

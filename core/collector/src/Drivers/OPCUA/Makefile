@@ -11,7 +11,7 @@ BIN_DIR = $(COLLECTOR_ROOT)bin
 PLUGINS_DIR = $(BIN_DIR)/drivers
 
 SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
-SHARED_LIB_DIR = $(SHARED_DIR)/lib
+UNAME_S := $(shell uname -s)nifeq ($(CROSS_COMPILE_WINDOWS),1)n    TARGET_PLATFORM := Windows-Crossnelse ifeq ($(OS),Windows_NT)n    TARGET_PLATFORM := Windowsnelsen    TARGET_PLATFORM := $(UNAME_S)nendifnSHARED_LIB_DIR = $(SHARED_DIR)/lib
 
 TARGET = $(PLUGINS_DIR)/libopcua_driver.so
 

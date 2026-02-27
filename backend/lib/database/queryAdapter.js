@@ -136,7 +136,7 @@ class SqliteAdapter extends BaseAdapter {
         
         // PostgreSQL → SQLite 함수 변환
         adaptedQuery = adaptedQuery.replace(/NOW\(\)/gi, 'datetime(\'now\')');
-        adaptedQuery = adaptedQuery.replace(/CURRENT_TIMESTAMP/gi, 'datetime(\'now\')');
+        adaptedQuery = adaptedQuery.replace(/(datetime('now', 'localtime'))/gi, 'datetime(\'now\')');
         
         // LIMIT/OFFSET 변환 (MariaDB → SQLite)
         adaptedQuery = adaptedQuery.replace(/LIMIT\s+(\d+)\s*,\s*(\d+)/gi, 'LIMIT $2 OFFSET $1');
@@ -170,7 +170,7 @@ class PostgresAdapter extends BaseAdapter {
     }
 
     get timestamp() {
-        return 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
+        return "TIMESTAMP DEFAULT (datetime('now', 'localtime'))";
     }
 
     get boolean() {
@@ -231,7 +231,7 @@ class MariadbAdapter extends BaseAdapter {
     }
 
     get timestamp() {
-        return 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
+        return "TIMESTAMP DEFAULT (datetime('now', 'localtime'))";
     }
 
     get boolean() {
@@ -325,7 +325,7 @@ class MssqlAdapter extends BaseAdapter {
         // 다른 DB → MSSQL 함수 변환
         adaptedQuery = adaptedQuery.replace(/datetime\('now'\)/gi, 'GETDATE()');
         adaptedQuery = adaptedQuery.replace(/NOW\(\)/gi, 'GETDATE()');
-        adaptedQuery = adaptedQuery.replace(/CURRENT_TIMESTAMP/gi, 'GETDATE()');
+        adaptedQuery = adaptedQuery.replace(/(datetime('now', 'localtime'))/gi, 'GETDATE()');
         
         // LIMIT/OFFSET → TOP 및 OFFSET/FETCH
         adaptedQuery = this.convertLimitToTopOrOffset(adaptedQuery);

@@ -512,7 +512,7 @@ void DataProcessingService::ProcessCommStatsTasks(
           "successful_requests) "
           "VALUES (" +
           msg.device_id + ", '" + status_str +
-          "', datetime('now'), datetime('now'), " +
+          "', datetime('now', 'localtime'), datetime('now', 'localtime'), " +
           std::to_string(msg.response_time.count()) + ", 1, " +
           (is_online ? "1" : "0") +
           ") "
@@ -1440,7 +1440,7 @@ std::string DataProcessingService::ConvertToLightPointValue(
             1000;
 
   std::ostringstream timestamp_stream;
-  timestamp_stream << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+  timestamp_stream << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
   timestamp_stream << "." << std::setfill('0') << std::setw(3) << ms.count()
                    << "Z";
   light_point["timestamp"] = timestamp_stream.str();

@@ -17,9 +17,11 @@ const CRON_PRESETS = [
 interface ScheduleManagementTabProps {
     siteId?: number | null;
     tenantId?: number | null;
+    isAdmin?: boolean;
+    tenants?: any[];
 }
 
-const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, tenantId }) => {
+const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, tenantId, isAdmin, tenants = [] }) => {
     const [schedules, setSchedules] = useState<any[]>([]);
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [profiles, setProfiles] = useState<ExportProfile[]>([]);
@@ -79,11 +81,12 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
         }
 
         try {
+            const targetTenantId = editingSchedule?.tenant_id || tenantId;
             let response;
             if (editingSchedule?.id) {
-                response = await exportGatewayApi.updateSchedule(editingSchedule.id, editingSchedule as ExportSchedule, tenantId);
+                response = await exportGatewayApi.updateSchedule(editingSchedule.id, editingSchedule as ExportSchedule, targetTenantId);
             } else {
-                response = await exportGatewayApi.createSchedule(editingSchedule as ExportSchedule, tenantId);
+                response = await exportGatewayApi.createSchedule(editingSchedule as ExportSchedule, targetTenantId);
             }
 
             if (response.success) {
@@ -159,7 +162,7 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                     <div style={{ fontWeight: 600 }}>{s.schedule_name}</div>
                                     <div style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>{s.description}</div>
                                 </td>
-                                <td>{s.target_name || `ID: ${s.target_id}`}</td>
+                                <td>{s.target_id ? (s.target_name || `ID: ${s.target_id}`) : <span style={{ color: 'var(--neutral-400)', fontStyle: 'italic' }}>공용 프리셋 (연결 없음)</span>}</td>
                                 <td><code style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: '4px' }}>{s.cron_expression}</code></td>
                                 <td>
                                     <span className={`mgmt-badge ${s.is_enabled ? 'success' : 'neutral'}`}>
@@ -246,20 +249,25 @@ const ScheduleManagementTab: React.FC<ScheduleManagementTabProps> = ({ siteId, t
                                                 placeholder="예: 일일 마감 데이터 전송"
                                             />
                                         </div>
-                                        <div className="mgmt-modal-form-group">
-                                            <label style={{ fontWeight: 700 }}>전송 대상 타겟</label>
-                                            <select
-                                                className="mgmt-select"
-                                                required
-                                                value={editingSchedule?.target_id || ''}
-                                                onChange={e => { setEditingSchedule({ ...editingSchedule, target_id: parseInt(e.target.value) }); setHasChanges(true); }}
-                                            >
-                                                <option value="">(전송 목적지 선택)</option>
-                                                {targets.map(t => (
-                                                    <option key={t.id} value={t.id}>{t.name} ({t.target_type})</option>
-                                                ))}
-                                            </select>
-                                        </div>
+
+                                        {isAdmin && !tenantId && (
+                                            <div className="mgmt-modal-form-group">
+                                                <label style={{ fontWeight: 700 }}>소속 테넌트 <span style={{ color: 'red' }}>*</span></label>
+                                                <select
+                                                    className="mgmt-select"
+                                                    required
+                                                    value={editingSchedule?.tenant_id || ''}
+                                                    onChange={e => { setEditingSchedule({ ...editingSchedule, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
+                                                >
+                                                    <option value="">(테넌트 선택)</option>
+                                                    {tenants.map(t => (
+                                                        <option key={t.id} value={t.id}>{t.company_name}</option>
+                                                    ))}
+                                                </select>
+                                                <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginTop: '4px' }}>시스템 관리자 권한으로 특정 테넌트에 스케줄을 할당합니다.</div>
+                                            </div>
+                                        )}
+                                        {/* Target selection has been decoupled from global schedule presets. Targets are assigned via Gateway Wizard. */}
 
                                         <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '16px' }}>
                                             <label style={{ fontSize: '13px', fontWeight: 700, color: '#475569', marginBottom: '12px', display: 'block' }}>

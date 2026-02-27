@@ -506,7 +506,7 @@ S3Client::generateTimestampFileName(const std::string &prefix,
 
   std::ostringstream filename;
   filename << prefix << "_"
-           << std::put_time(std::gmtime(&time_t), "%Y%m%d_%H%M%S") << "_"
+           << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S") << "_"
            << std::setfill('0') << std::setw(3) << ms.count() << "."
            << extension;
 
@@ -753,7 +753,7 @@ std::string S3Client::formatTimestamp(
     const std::chrono::system_clock::time_point &timestamp) const {
   auto time_t = std::chrono::system_clock::to_time_t(timestamp);
   std::ostringstream formatted;
-  formatted << std::put_time(std::gmtime(&time_t), "%Y%m%dT%H%M%SZ");
+  formatted << std::put_time(std::localtime(&time_t), "%Y%m%dT%H%M%SZ");
   return formatted.str();
 }
 
@@ -761,7 +761,7 @@ std::string S3Client::formatDate(
     const std::chrono::system_clock::time_point &timestamp) const {
   auto time_t = std::chrono::system_clock::to_time_t(timestamp);
   std::ostringstream formatted;
-  formatted << std::put_time(std::gmtime(&time_t), "%Y%m%d");
+  formatted << std::put_time(std::localtime(&time_t), "%Y%m%d");
   return formatted.str();
 }
 

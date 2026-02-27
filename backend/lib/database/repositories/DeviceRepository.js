@@ -405,8 +405,8 @@ class DeviceRepository extends BaseRepository {
                             log_interval_ms: dp.log_interval_ms !== undefined ? dp.log_interval_ms : 0,
                             log_deadband: dp.log_deadband !== undefined ? dp.log_deadband : 0.0,
                             group_name: dp.group_name || '',
-                            created_at: this.knex.fn.now(),
-                            updated_at: this.knex.fn.now()
+                            created_at: this.knex.raw("datetime('now', 'localtime')"),
+                            updated_at: this.knex.raw("datetime('now', 'localtime')")
                         };
 
                         // JSON fields
@@ -442,7 +442,7 @@ class DeviceRepository extends BaseRepository {
             ];
 
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             allowedFields.forEach(field => {
@@ -484,7 +484,7 @@ class DeviceRepository extends BaseRepository {
                     ];
 
                     const settingsToUpdate = {
-                        updated_at: this.knex.fn.now()
+                        updated_at: this.knex.raw("datetime('now', 'localtime')")
                     };
 
                     allowedSettingsFields.forEach(field => {
@@ -569,7 +569,7 @@ class DeviceRepository extends BaseRepository {
                         const pointData = this._mapDataPointToDb(dp, id, existingPoint);
 
                         if (isNew) {
-                            pointData.created_at = this.knex.fn.now();
+                            pointData.created_at = this.knex.raw("datetime('now', 'localtime')");
                             toInsert.push(pointData);
                         } else {
                             toUpdate.push({ id: Number(dp.id), data: pointData });
@@ -615,7 +615,7 @@ class DeviceRepository extends BaseRepository {
         try {
             const dataToUpdate = {
                 ...updateData,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             // JSON 필드 처리
@@ -645,7 +645,7 @@ class DeviceRepository extends BaseRepository {
             this.logger.log(`🗑️ [DeviceRepository] Soft-deleting device ${id}...`);
             const dataToUpdate = {
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             let query = this.knex('devices').where('id', id);
@@ -667,7 +667,7 @@ class DeviceRepository extends BaseRepository {
             this.logger.log(`♻️ [DeviceRepository] Restoring device ${id}...`);
             const dataToUpdate = {
                 is_deleted: 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             let query = this.knex('devices').where('id', id);
@@ -956,7 +956,7 @@ class DeviceRepository extends BaseRepository {
 
             return await query.update({
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
         } catch (error) {
             this.logger.error('DeviceRepository.bulkDelete 오류:', error);
@@ -1162,7 +1162,7 @@ class DeviceRepository extends BaseRepository {
             high_alarm_limit: dp.high_alarm_limit,
             low_alarm_limit: dp.low_alarm_limit,
             alarm_deadband: dp.alarm_deadband || 0.0,
-            updated_at: this.knex.fn.now()
+            updated_at: this.knex.raw("datetime('now', 'localtime')")
         };
 
         // JSON fields

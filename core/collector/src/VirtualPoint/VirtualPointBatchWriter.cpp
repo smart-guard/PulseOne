@@ -362,7 +362,7 @@ bool VirtualPointBatchWriter::WriteBatchToDatabase(const std::vector<VPResult>& 
                     "INSERT INTO virtual_point_execution_history "
                     "(virtual_point_id, execution_time, result_value, success) VALUES (" +
                     std::to_string(result.vp_id) + ", " +
-                    "datetime('now'), " +
+                    "datetime('now', 'localtime'), " +
                     "'" + std::to_string(result.value) + "', " +
                     "1)";
                 
@@ -379,7 +379,7 @@ bool VirtualPointBatchWriter::WriteBatchToDatabase(const std::vector<VPResult>& 
                     std::to_string(result.vp_id) + ", " +
                     std::to_string(result.value) + ", " +
                     "'" + result.quality + "', " +
-                    "datetime('now'))";
+                    "datetime('now', 'localtime'))";
                 
                 if (!db_manager_->executeNonQuery(current_sql)) {
                     LogManager::getInstance().log("VirtualPointBatchWriter", LogLevel::WARN,
@@ -393,7 +393,7 @@ bool VirtualPointBatchWriter::WriteBatchToDatabase(const std::vector<VPResult>& 
                     "(point_id, value, timestamp, quality, data_type) VALUES (" +
                     std::to_string(result.vp_id) + ", " +
                     std::to_string(result.value) + ", " +
-                    "datetime('now'), " +
+                    "datetime('now', 'localtime'), " +
                     "'" + result.quality + "', " +
                     "'virtual_point')";
                 

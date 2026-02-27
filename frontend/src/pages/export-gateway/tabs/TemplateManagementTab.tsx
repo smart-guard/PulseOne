@@ -5,9 +5,11 @@ import { useConfirmContext } from '../../../components/common/ConfirmProvider';
 interface TemplateManagementTabProps {
     siteId?: number | null;
     tenantId?: number | null;
+    isAdmin?: boolean;
+    tenants?: any[];
 }
 
-const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, tenantId }) => {
+const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, tenantId, isAdmin, tenants = [] }) => {
     const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -308,10 +310,11 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                 template_json: templateJson
             };
             let response;
+            const targetTenantId = editingTemplate?.tenant_id || tenantId;
             if (editingTemplate?.id) {
-                response = await exportGatewayApi.updateTemplate(editingTemplate.id, dataToSave, tenantId);
+                response = await exportGatewayApi.updateTemplate(editingTemplate.id, dataToSave, targetTenantId);
             } else {
-                response = await exportGatewayApi.createTemplate(dataToSave as PayloadTemplate, tenantId);
+                response = await exportGatewayApi.createTemplate(dataToSave as PayloadTemplate, targetTenantId);
             }
 
             await confirm({
@@ -820,6 +823,23 @@ const TemplateManagementTab: React.FC<TemplateManagementTabProps> = ({ siteId, t
                                                     placeholder="Insite, AWS 등"
                                                 />
                                             </div>
+                                            {isAdmin && !tenantId && (
+                                                <div style={{ flex: 1 }}>
+                                                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--neutral-500)', marginBottom: '6px', display: 'block' }}>소속 테넌트 <span style={{ color: 'red' }}>*</span></label>
+                                                    <select
+                                                        className="mgmt-select"
+                                                        required
+                                                        style={{ height: '44px', fontSize: '14px', borderRadius: '10px', background: 'var(--neutral-50)', border: '1px solid var(--neutral-200)', width: '100%' }}
+                                                        value={editingTemplate?.tenant_id || ''}
+                                                        onChange={e => { setEditingTemplate({ ...editingTemplate, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
+                                                    >
+                                                        <option value="">(테넌트 선택)</option>
+                                                        {tenants.map(t => (
+                                                            <option key={t.id} value={t.id}>{t.company_name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Editor Section Header */}

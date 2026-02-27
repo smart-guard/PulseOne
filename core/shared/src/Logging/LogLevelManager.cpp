@@ -298,7 +298,7 @@ bool LogLevelManager::StartMaintenanceModeFromWeb(const EngineerID& engineer_id,
                 "INSERT INTO maintenance_log (engineer_id, action, log_level, timestamp, source) "
                 "VALUES ('" + engineer_id + "', 'START', '" + 
                 PulseOne::Utils::LogLevelToString(maintenance_level) +
-                "', datetime('now'), 'WEB_API')";
+                "', datetime('now', 'localtime'), 'WEB_API')";
             db_manager_->executeNonQuerySQLite(query);
         } catch (const std::exception& e) {
             LogManager::getInstance().Warn(
@@ -323,7 +323,7 @@ bool LogLevelManager::EndMaintenanceModeFromWeb(const EngineerID& engineer_id) {
         try {
             std::string query = 
                 "INSERT INTO maintenance_log (engineer_id, action, timestamp, source) "
-                "VALUES ('" + engineer_id + "', 'END', datetime('now'), 'WEB_API')";
+                "VALUES ('" + engineer_id + "', 'END', datetime('now', 'localtime'), 'WEB_API')";
             db_manager_->executeNonQuerySQLite(query);
         } catch (const std::exception& e) {
             LogManager::getInstance().Warn(
@@ -591,7 +591,7 @@ bool LogLevelManager::SaveLogLevelToDB(LogLevel level, LogLevelSource source,
         std::string query = 
             "INSERT OR REPLACE INTO system_settings (setting_name, setting_value, changed_by, changed_at, reason) "
             "VALUES ('default_log_level', '" + PulseOne::Utils::LogLevelToString(level) + 
-            "', '" + changed_by + "', datetime('now'), '" + reason + "')";
+            "', '" + changed_by + "', datetime('now', 'localtime'), '" + reason + "')";
         
         bool success = db_manager_->executeNonQuerySQLite(query);
         
@@ -600,7 +600,7 @@ bool LogLevelManager::SaveLogLevelToDB(LogLevel level, LogLevelSource source,
                 "INSERT INTO log_level_history (old_level, new_level, source, changed_by, reason, change_time) "
                 "VALUES ('" + PulseOne::Utils::LogLevelToString(current_level_) + "', '" + 
                 PulseOne::Utils::LogLevelToString(level) + "', '" +
-                LogLevelSourceToString(source) + "', '" + changed_by + "', '" + reason + "', datetime('now'))";
+                LogLevelSourceToString(source) + "', '" + changed_by + "', '" + reason + "', datetime('now', 'localtime'))";
             db_manager_->executeNonQuerySQLite(history_query);
         }
         
@@ -655,7 +655,7 @@ bool LogLevelManager::SaveCategoryLevelToDB(DriverLogCategory category, LogLevel
             "INSERT OR REPLACE INTO driver_log_levels (category, log_level, updated_by, updated_at) "
             "VALUES ('" + PulseOne::Utils::DriverLogCategoryToString(category) + 
             "', '" + PulseOne::Utils::LogLevelToString(level) + 
-            "', '" + changed_by + "', datetime('now'))";
+            "', '" + changed_by + "', datetime('now', 'localtime'))";
         
         return db_manager_->executeNonQuerySQLite(query);
         

@@ -87,7 +87,7 @@ describe('Device Bulk Operations & Hierarchy Tests', () => {
             table.integer('device_id').notNullable();
             table.integer('group_id').notNullable();
             table.integer('is_primary').defaultTo(0);
-            table.timestamp('created_at').defaultTo(knex.fn.now());
+            table.timestamp('created_at').defaultTo(knex.raw("datetime('now', 'localtime')"));
             table.primary(['device_id', 'group_id']);
         });
 

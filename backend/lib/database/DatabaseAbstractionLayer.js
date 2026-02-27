@@ -38,7 +38,7 @@ class SQLiteDialect extends ISQLDialect {
     getBooleanType() { return 'BOOLEAN'; }
     getTimestampType() { return 'DATETIME'; }
     getAutoIncrementType() { return 'INTEGER PRIMARY KEY AUTOINCREMENT'; }
-    getCurrentTimestamp() { return 'CURRENT_TIMESTAMP'; }
+    getCurrentTimestamp() { return "(datetime('now', 'localtime'))"; }
     
     buildUpsertQuery(tableName, columns, primaryKeys) {
         const placeholders = columns.map(() => '?').join(', ');
@@ -72,7 +72,7 @@ class PostgreSQLDialect extends ISQLDialect {
     getBooleanType() { return 'BOOLEAN'; }
     getTimestampType() { return 'TIMESTAMP'; }
     getAutoIncrementType() { return 'SERIAL PRIMARY KEY'; }
-    getCurrentTimestamp() { return 'CURRENT_TIMESTAMP'; }
+    getCurrentTimestamp() { return "(datetime('now', 'localtime'))"; }
     
     buildUpsertQuery(tableName, columns, primaryKeys) {
         const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
@@ -102,7 +102,7 @@ class MySQLDialect extends ISQLDialect {
     getBooleanType() { return 'BOOLEAN'; }
     getTimestampType() { return 'TIMESTAMP'; }
     getAutoIncrementType() { return 'INT AUTO_INCREMENT PRIMARY KEY'; }
-    getCurrentTimestamp() { return 'CURRENT_TIMESTAMP'; }
+    getCurrentTimestamp() { return "(datetime('now', 'localtime'))"; }
     
     buildUpsertQuery(tableName, columns, primaryKeys) {
         const placeholders = columns.map(() => '?').join(', ');
@@ -118,7 +118,7 @@ class MySQLDialect extends ISQLDialect {
     adaptCreateTableQuery(baseQuery) {
         return baseQuery
             .replace(/SERIAL PRIMARY KEY/g, 'INT AUTO_INCREMENT PRIMARY KEY')
-            .replace(/DATETIME DEFAULT CURRENT_TIMESTAMP/g, 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+            .replace(/DATETIME DEFAULT (datetime('now', 'localtime'))/g, "TIMESTAMP DEFAULT (datetime('now', 'localtime'))");
     }
     
     formatBooleanValue(value) { return value ? 'true' : 'false'; }
@@ -161,7 +161,7 @@ class MSSQLDialect extends ISQLDialect {
             .replace(/BOOLEAN DEFAULT false/g, 'BIT DEFAULT 0')
             .replace(/BOOLEAN/g, 'BIT')
             .replace(/DATETIME/g, 'DATETIME2')
-            .replace(/CURRENT_TIMESTAMP/g, 'GETDATE()')
+            .replace(/(datetime('now', 'localtime'))/g, 'GETDATE()')
             .replace(/TIMESTAMP/g, 'DATETIME2');
     }
     

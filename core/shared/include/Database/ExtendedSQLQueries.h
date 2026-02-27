@@ -23,7 +23,7 @@ const std::string CREATE_TABLE = R"(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             rule_id INTEGER NOT NULL,
             tenant_id INTEGER NOT NULL,
-            occurrence_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+            occurrence_time DATETIME DEFAULT (datetime('now', 'localtime')),
             trigger_value TEXT,
             trigger_condition TEXT,
             alarm_message TEXT,
@@ -43,8 +43,8 @@ const std::string CREATE_TABLE = R"(
             context_data TEXT,
             source_name VARCHAR(100),
             location VARCHAR(200),
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             device_id INTEGER,
             point_id INTEGER,
             category VARCHAR(50) DEFAULT NULL,
@@ -252,8 +252,8 @@ const std::string CREATE_TABLE = R"(
             notification_recipients TEXT,
             is_enabled INTEGER DEFAULT 1,
             is_latched INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             created_by INTEGER,
             template_id INTEGER,
             rule_group VARCHAR(36),
@@ -370,7 +370,7 @@ const std::string UPDATE = R"(
             is_enabled = {is_enabled}, is_latched = {is_latched},
             template_id = {template_id}, rule_group = {rule_group}, 
             created_by = {created_by},
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = (datetime('now', 'localtime'))
         WHERE id = {id}
     )";
 
@@ -405,8 +405,8 @@ const std::string CREATE_TABLE = R"(
             is_system INTEGER DEFAULT 0,
             usage_count INTEGER DEFAULT 0,
             rating REAL DEFAULT 0.0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             UNIQUE(tenant_id, name)
         )
     )";
@@ -453,7 +453,7 @@ const std::string UPDATE = R"(
             tenant_id = ?, category = ?, name = ?, display_name = ?, description = ?,
             script_code = ?, parameters = ?, return_type = ?,
             tags = ?, example_usage = ?, is_system = ?,
-            usage_count = ?, rating = ?, updated_at = CURRENT_TIMESTAMP
+            usage_count = ?, rating = ?, updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 
@@ -622,8 +622,8 @@ const std::string CREATE_TABLE = R"(
             avg_execution_time_ms REAL DEFAULT 0.0,
             last_execution_time DATETIME,
             created_by INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
             FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
@@ -679,7 +679,7 @@ const std::string UPDATE = R"(
             calculation_interval = ?, calculation_trigger = ?,
             is_enabled = ?, category = ?, tags = ?, execution_type = ?,
             dependencies = ?, cache_duration_ms = ?, error_handling = ?,
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 
@@ -797,22 +797,22 @@ const std::string UPDATE_EXECUTION_STATS = R"(
         UPDATE virtual_points SET 
             execution_count = execution_count + 1,
             avg_execution_time_ms = ((avg_execution_time_ms * (execution_count - 1)) + ?) / execution_count,
-            last_execution_time = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
+            last_execution_time = (datetime('now', 'localtime')),
+            updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 
 const std::string UPDATE_ERROR_INFO = R"(
         UPDATE virtual_points SET 
             last_error = ?,
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 
 const std::string UPDATE_EXECUTION_TIME = R"(
         UPDATE virtual_points SET 
-            last_execution_time = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
+            last_execution_time = (datetime('now', 'localtime')),
+            updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 
@@ -861,7 +861,7 @@ const std::string CREATE_VALUES_TABLE = R"(
             value REAL,
             string_value TEXT,
             quality VARCHAR(20) DEFAULT 'good',
-            last_calculated DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_calculated DATETIME DEFAULT (datetime('now', 'localtime')),
             calculation_error TEXT,
             input_values TEXT,
             FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
@@ -880,13 +880,13 @@ const std::string INSERT_OR_UPDATE_VALUE = R"(
         INSERT OR REPLACE INTO virtual_point_values (
             virtual_point_id, value, string_value, quality,
             last_calculated, calculation_error, input_values
-        ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+        ) VALUES (?, ?, ?, ?, (datetime('now', 'localtime')), ?, ?)
     )";
 
 const std::string UPDATE_VALUE = R"(
         UPDATE virtual_point_values SET 
             value = ?, string_value = ?, quality = ?,
-            last_calculated = CURRENT_TIMESTAMP,
+            last_calculated = (datetime('now', 'localtime')),
             calculation_error = ?, input_values = ?
         WHERE virtual_point_id = ?
     )";
@@ -972,8 +972,8 @@ const std::string CREATE_TABLE = R"(
             name VARCHAR(100) NOT NULL UNIQUE,
             description TEXT,
             is_enabled BOOLEAN DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             created_by VARCHAR(50),
             point_count INTEGER DEFAULT 0,
             last_exported_at DATETIME
@@ -1005,7 +1005,7 @@ const std::string INSERT = R"(
 
 const std::string UPDATE = R"(
         UPDATE export_profiles SET
-            name = ?, description = ?, is_enabled = ?, updated_at = CURRENT_TIMESTAMP
+            name = ?, description = ?, is_enabled = ?, updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 
@@ -1021,82 +1021,69 @@ namespace ExportTarget {
 const std::string CREATE_TABLE = R"(
         CREATE TABLE IF NOT EXISTS export_targets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            profile_id INTEGER,
             name VARCHAR(100) NOT NULL UNIQUE,
             target_type VARCHAR(20) NOT NULL,
             description TEXT,
             is_enabled BOOLEAN DEFAULT 1,
             config TEXT NOT NULL,
-            template_id INTEGER,
             export_mode VARCHAR(20) DEFAULT 'on_change',
             export_interval INTEGER DEFAULT 0,
             batch_size INTEGER DEFAULT 100,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            
-            FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
-            FOREIGN KEY (template_id) REFERENCES payload_templates(id) ON DELETE SET NULL
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
         )
     )";
 
 const std::string CREATE_INDEXES = R"(
         CREATE INDEX IF NOT EXISTS idx_export_targets_type ON export_targets(target_type);
-        CREATE INDEX IF NOT EXISTS idx_export_targets_profile ON export_targets(profile_id);
         CREATE INDEX IF NOT EXISTS idx_export_targets_enabled ON export_targets(is_enabled);
         CREATE INDEX IF NOT EXISTS idx_export_targets_name ON export_targets(name);
-        CREATE INDEX IF NOT EXISTS idx_export_targets_template ON export_targets(template_id);
     )";
 
 // 기본 CRUD
 const std::string FIND_ALL = R"(
-        SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+        SELECT id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets
         ORDER BY name ASC
     )";
 
 const std::string FIND_BY_ID = R"(
-        SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+        SELECT id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets WHERE id = ?
     )";
 
 const std::string FIND_BY_NAME = R"(
-        SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+        SELECT id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets WHERE name = ?
     )";
 
 const std::string FIND_BY_ENABLED = R"(
-        SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+        SELECT id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets WHERE is_enabled = ? ORDER BY name ASC
     )";
 
 const std::string FIND_BY_TARGET_TYPE = R"(
-        SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
+        SELECT id, name, target_type, description, is_enabled, config,
+               export_mode, export_interval, batch_size, created_at, updated_at
         FROM export_targets WHERE target_type = ? ORDER BY name ASC
-    )";
-
-const std::string FIND_BY_PROFILE_ID = R"(
-        SELECT id, profile_id, name, target_type, description, is_enabled, config,
-               template_id, export_mode, export_interval, batch_size, created_at, updated_at
-        FROM export_targets WHERE profile_id = ? ORDER BY name ASC
     )";
 
 const std::string INSERT = R"(
         INSERT INTO export_targets (
-            profile_id, name, target_type, description, is_enabled, config,
-            template_id, export_mode, export_interval, batch_size
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            name, target_type, description, is_enabled, config,
+            export_mode, export_interval, batch_size
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
 const std::string UPDATE = R"(
         UPDATE export_targets SET
-            profile_id = ?, name = ?, target_type = ?, description = ?, is_enabled = ?,
-            config = ?, template_id = ?, export_mode = ?, export_interval = ?, batch_size = ?,
-            updated_at = CURRENT_TIMESTAMP
+            name = ?, target_type = ?, description = ?, is_enabled = ?,
+            config = ?, export_mode = ?, export_interval = ?, batch_size = ?,
+            updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 
@@ -1116,28 +1103,7 @@ const std::string COUNT_BY_TYPE = R"(
         GROUP BY target_type
     )";
 
-const std::string FIND_WITH_TEMPLATE = R"(
-        SELECT 
-            t.id, t.profile_id, t.name, t.target_type, t.description, t.is_enabled, t.config,
-            t.template_id, t.export_mode, t.export_interval, t.batch_size, 
-            t.created_at, t.updated_at,
-            p.template_json, p.system_type as template_system_type, p.name as template_name
-        FROM export_targets t
-        LEFT JOIN payload_templates p ON t.template_id = p.id
-        WHERE t.id = ?
-    )";
-
-const std::string FIND_ALL_WITH_TEMPLATE = R"(
-        SELECT 
-            t.id, t.profile_id, t.name, t.target_type, t.description, t.is_enabled, t.config,
-            t.template_id, t.export_mode, t.export_interval, t.batch_size, 
-            t.created_at, t.updated_at,
-            p.template_json, p.system_type as template_system_type, p.name as template_name
-        FROM export_targets t
-        LEFT JOIN payload_templates p ON t.template_id = p.id
-        WHERE t.is_enabled = 1
-        ORDER BY t.name ASC
-    )";
+// Removed template JOIN queries
 
 } // namespace ExportTarget
 
@@ -1155,7 +1121,7 @@ const std::string CREATE_TABLE = R"(
             target_description VARCHAR(500),
             conversion_config TEXT,
             is_enabled BOOLEAN DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
             
             FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE,
             FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
@@ -1265,7 +1231,7 @@ const std::string CREATE_TABLE = R"(
             response_data TEXT,
             http_status_code INTEGER,
             processing_time_ms INTEGER,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
             client_info TEXT,
             gateway_id INTEGER,
             sent_payload TEXT,
@@ -1652,8 +1618,8 @@ const std::string CREATE_TABLE = R"(
             description TEXT,
             template_json TEXT NOT NULL,
             is_active BOOLEAN DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
         )
     )";
 
@@ -1709,7 +1675,7 @@ const std::string UPDATE = R"(
         UPDATE payload_templates SET
             name = ?, system_type = ?, description = ?,
             template_json = ?, is_active = ?,
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 
@@ -1752,8 +1718,8 @@ const std::string CREATE_TABLE = R"(
             successful_runs INTEGER DEFAULT 0,
             failed_runs INTEGER DEFAULT 0,
             
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             
             FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
             FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE
@@ -1815,7 +1781,7 @@ const std::string FIND_PENDING = R"(
                created_at, updated_at
         FROM export_schedules 
         WHERE is_enabled = 1 
-          AND next_run_at <= datetime('now')
+          AND next_run_at <= datetime('now', 'localtime')
         ORDER BY next_run_at ASC
     )";
 
@@ -1831,7 +1797,7 @@ const std::string UPDATE = R"(
         UPDATE export_schedules SET
             profile_id = ?, target_id = ?, schedule_name = ?, description = ?,
             cron_expression = ?, timezone = ?, data_range = ?, lookback_periods = ?,
-            is_enabled = ?, updated_at = CURRENT_TIMESTAMP
+            is_enabled = ?, updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 
@@ -1843,7 +1809,7 @@ const std::string UPDATE_RUN_STATUS = R"(
             total_runs = total_runs + 1,
             successful_runs = successful_runs + ?,
             failed_runs = failed_runs + ?,
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = (datetime('now', 'localtime'))
         WHERE id = ?
     )";
 

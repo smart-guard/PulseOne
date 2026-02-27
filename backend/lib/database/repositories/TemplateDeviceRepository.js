@@ -200,7 +200,7 @@ class TemplateDeviceRepository extends BaseRepository {
     async update(id, data, trx = null) {
         try {
             const updateData = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const fields = [
@@ -239,7 +239,7 @@ class TemplateDeviceRepository extends BaseRepository {
                 .where('id', id)
                 .update({
                     is_deleted: 1,
-                    updated_at: this.knex.fn.now()
+                    updated_at: this.knex.raw("datetime('now', 'localtime')")
                 });
 
             return affected > 0;

@@ -1137,9 +1137,9 @@ std::vector<ExportLogEntity> ExportLogRepository::findByTimeRange(
 
     char start_buf[20], end_buf[20];
     std::strftime(start_buf, sizeof(start_buf), "%Y-%m-%d %H:%M:%S",
-                  std::gmtime(&start_t));
+                  std::localtime(&start_t));
     std::strftime(end_buf, sizeof(end_buf), "%Y-%m-%d %H:%M:%S",
-                  std::gmtime(&end_t));
+                  std::localtime(&end_t));
 
     std::ostringstream query;
     query << "SELECT * FROM export_logs WHERE timestamp BETWEEN '" << start_buf

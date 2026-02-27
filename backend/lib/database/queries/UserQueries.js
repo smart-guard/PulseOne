@@ -23,8 +23,8 @@
  * - last_login DATETIME
  * - password_reset_token VARCHAR(255)
  * - password_reset_expires DATETIME
- * - created_at DATETIME DEFAULT CURRENT_TIMESTAMP
- * - updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+ * - created_at DATETIME DEFAULT (datetime('now', 'localtime'))
+ * - updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
  */
 class UserQueries {
     // ==========================================================================
@@ -207,7 +207,7 @@ class UserQueries {
             UPDATE users SET
                 username = ?, email = ?, full_name = ?, department = ?,
                 role = ?, permissions = ?, site_access = ?, device_access = ?,
-                is_active = ?, updated_at = CURRENT_TIMESTAMP
+                is_active = ?, updated_at = (datetime('now', 'localtime'))
             WHERE id = ?
         `;
     }
@@ -226,7 +226,7 @@ class UserQueries {
         return `
             UPDATE users SET 
                 is_active = 0, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -242,7 +242,7 @@ class UserQueries {
         return `
             UPDATE users SET 
                 password_hash = ?, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -253,8 +253,8 @@ class UserQueries {
     static updateLastLogin() {
         return `
             UPDATE users SET 
-                last_login = CURRENT_TIMESTAMP, 
-                updated_at = CURRENT_TIMESTAMP 
+                last_login = (datetime('now', 'localtime')), 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -267,7 +267,7 @@ class UserQueries {
             UPDATE users SET 
                 password_reset_token = ?, 
                 password_reset_expires = ?, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -281,7 +281,7 @@ class UserQueries {
                 id, username, email, password_reset_expires
             FROM users 
             WHERE password_reset_token = ? 
-              AND password_reset_expires > CURRENT_TIMESTAMP
+              AND password_reset_expires > (datetime('now', 'localtime'))
               AND is_active = 1
         `;
     }
@@ -294,7 +294,7 @@ class UserQueries {
             UPDATE users SET 
                 password_reset_token = NULL, 
                 password_reset_expires = NULL, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -310,7 +310,7 @@ class UserQueries {
         return `
             UPDATE users SET 
                 permissions = ?, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -322,7 +322,7 @@ class UserQueries {
         return `
             UPDATE users SET 
                 role = ?, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -334,7 +334,7 @@ class UserQueries {
         return `
             UPDATE users SET 
                 site_access = ?, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -346,7 +346,7 @@ class UserQueries {
         return `
             UPDATE users SET 
                 device_access = ?, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -358,7 +358,7 @@ class UserQueries {
         return `
             UPDATE users SET 
                 is_active = ?, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -594,7 +594,7 @@ class UserQueries {
                 COUNT(s.id) as active_sessions,
                 MAX(s.created_at) as latest_session
             FROM users u
-            LEFT JOIN user_sessions s ON u.id = s.user_id AND s.expires_at > CURRENT_TIMESTAMP
+            LEFT JOIN user_sessions s ON u.id = s.user_id AND s.expires_at > (datetime('now', 'localtime'))
             WHERE u.id = ?
             GROUP BY u.id, u.username, u.email, u.full_name, u.role, u.is_active,
                      u.last_login, u.created_at

@@ -20,7 +20,7 @@ set -e
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 VERSION=$(grep '"version"' "$PROJECT_ROOT/version.json" | cut -d'"' -f4 2>/dev/null || echo "6.1.0")
-TIMESTAMP=$(TZ=KST-9 date '+%Y%m%d_%H%M%S')
+TIMESTAMP=${HOST_TIMESTAMP:-$(date '+%Y%m%d_%H%M%S')}
 
 # 중앙 빌드 결과물 폴더
 BIN_DIR="$PROJECT_ROOT/bin-windows"
@@ -133,7 +133,9 @@ if [ "$SKIP_GATEWAY" = "false" ]; then
         cd "$PROJECT_ROOT/core/export-gateway"
         rm -rf build-win bin-windows
         make -j4 CROSS_COMPILE_WINDOWS=1
-        x86_64-w64-mingw32-strip --strip-unneeded bin-windows/export-gateway.exe
+        x86_64-w64-mingw32-strip --strip-unneeded bin/export-gateway.exe
+        mkdir -p bin-windows
+        cp bin/export-gateway.exe bin-windows/export-gateway.exe
     )
     echo "✅ Gateway 빌드 완료"
 else
@@ -316,7 +318,7 @@ if [ "$NO_PACKAGE" = "false" ]; then
     if [ ! -f "$ZLIB_DLL" ]; then
         echo "   Downloading zlib1.dll..."
         curl -fsSL -o "msys2_zlib.tar.zst" "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-zlib-1.3.1-1-any.pkg.tar.zst" && \
-        (sudo apt-get update -qq && sudo apt-get install -y -qq zstd tar || true) && \
+        (apt-get update -qq && apt-get install -y -qq zstd tar || true) && \
         tar -I zstd -xf msys2_zlib.tar.zst mingw64/bin/zlib1.dll && mv mingw64/bin/zlib1.dll . && rm -rf mingw64 msys2_zlib.tar.zst || \
         echo "   ⚠️  zlib1.dll 다운로드 실패"
     else

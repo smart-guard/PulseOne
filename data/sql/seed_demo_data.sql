@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS virtual_point_logs (
     new_state TEXT,
     user_id INTEGER,
     details TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
 );
 
@@ -20,7 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_virtual_point_logs_created_at ON virtual_point_lo
 UPDATE virtual_points
 SET 
     formula = 'return (inputs.temp_A + inputs.temp_B) / 2;',
-    updated_at = datetime('now')
+    updated_at = datetime('now', 'localtime')
 WHERE id = (SELECT id FROM virtual_points LIMIT 1);
 
 -- 3. Clear old logs for this point

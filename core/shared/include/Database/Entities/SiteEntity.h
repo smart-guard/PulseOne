@@ -70,8 +70,8 @@ namespace Entities {
  *     contact_email VARCHAR(255),
  *     contact_phone VARCHAR(50),
  *     
- *     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
- *     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+ *     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+ *     updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
  * );
  */
 class SiteEntity : public BaseEntity<SiteEntity> {
@@ -486,8 +486,8 @@ private:
     std::string contact_phone_;                     // VARCHAR(50)
     
     // 메타데이터
-    std::chrono::system_clock::time_point created_at_;    // DATETIME DEFAULT CURRENT_TIMESTAMP
-    std::chrono::system_clock::time_point updated_at_;    // DATETIME DEFAULT CURRENT_TIMESTAMP
+    std::chrono::system_clock::time_point created_at_;    // DATETIME DEFAULT (datetime('now', 'localtime'))
+    std::chrono::system_clock::time_point updated_at_;    // DATETIME DEFAULT (datetime('now', 'localtime'))
 };
 
 } // namespace Entities

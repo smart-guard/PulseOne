@@ -1,7 +1,7 @@
 CREATE TABLE schema_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     version VARCHAR(20) NOT NULL,
-    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    applied_at DATETIME DEFAULT (datetime('now', 'localtime')),
     description TEXT
 );
 -- CREATE TABLE sqlite_sequence(name,seq); -- Removed for internal compatibility
@@ -38,8 +38,8 @@ CREATE TABLE tenants (
     language VARCHAR(5) DEFAULT 'en',
     
     -- 🔥 감사 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     is_deleted BOOLEAN DEFAULT 0,
     
@@ -89,8 +89,8 @@ CREATE TABLE edge_servers (
     auto_update_enabled INTEGER DEFAULT 1,
     
     -- 🔥 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     is_deleted INTEGER DEFAULT 0,
     site_id INTEGER,
     max_devices INTEGER DEFAULT 100,
@@ -126,7 +126,7 @@ CREATE TABLE system_settings (
     
     -- 🔥 메타데이터
     updated_by INTEGER,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 제약조건
     CONSTRAINT chk_data_type CHECK (data_type IN ('string', 'integer', 'boolean', 'json', 'float'))
@@ -182,8 +182,8 @@ CREATE TABLE users (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     last_activity DATETIME, is_deleted TINYINT DEFAULT 0,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -214,10 +214,10 @@ CREATE TABLE user_sessions (
     -- 🔥 세션 상태
     is_active INTEGER DEFAULT 1,
     expires_at DATETIME NOT NULL,
-    last_used DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -282,8 +282,8 @@ CREATE TABLE sites (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_site_id) REFERENCES sites(id) ON DELETE SET NULL,
@@ -307,7 +307,7 @@ CREATE TABLE user_favorites (
     sort_order INTEGER DEFAULT 0,
     
     -- 🔥 감사 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(user_id, target_type, target_id),
@@ -343,7 +343,7 @@ CREATE TABLE user_notification_settings (
     teams_webhook_url VARCHAR(255),
     
     -- 🔥 메타데이터
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     
@@ -385,8 +385,8 @@ CREATE TABLE protocols (
     standard_reference VARCHAR(100),               -- 표준 문서 참조
     
     -- 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 제약조건
     CONSTRAINT chk_category CHECK (category IN ('industrial', 'iot', 'building_automation', 'network', 'web'))
@@ -400,8 +400,8 @@ CREATE TABLE manufacturers (
     logo_url VARCHAR(255),
     is_active INTEGER DEFAULT 1,
     is_deleted INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
 );
 CREATE TABLE device_models (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -414,8 +414,8 @@ CREATE TABLE device_models (
     manual_url VARCHAR(255),
     metadata TEXT,                                       -- JSON 형태
     is_active INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE CASCADE,
     UNIQUE(manufacturer_id, name)
 );
@@ -440,8 +440,8 @@ CREATE TABLE device_groups (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
@@ -455,7 +455,7 @@ CREATE TABLE device_group_assignments (
     device_id INTEGER NOT NULL,
     group_id INTEGER NOT NULL,
     is_primary INTEGER DEFAULT 0,                         -- 대표 그룹 여부
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     PRIMARY KEY (device_id, group_id),
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     FOREIGN KEY (group_id) REFERENCES device_groups(id) ON DELETE CASCADE
@@ -495,8 +495,8 @@ CREATE TABLE driver_plugins (
     supported_features TEXT,                             -- JSON 배열
     
     -- 🔥 감사 정보
-    installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    installed_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 제약조건
     UNIQUE(protocol_type, version),
@@ -553,8 +553,8 @@ CREATE TABLE devices (
     
     -- 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 프로토콜 인스턴스 연동 (Latest Migration)
     protocol_instance_id INTEGER,
@@ -616,8 +616,8 @@ CREATE TABLE device_settings (
     queue_size INTEGER DEFAULT 100,                     -- 명령 큐 크기
     
     -- 🔥 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     updated_by INTEGER,                                 -- 설정을 변경한 사용자
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
@@ -657,7 +657,7 @@ CREATE TABLE device_status (
     memory_usage REAL,                                  -- 디바이스 메모리 사용률
     
     -- 🔥 메타데이터
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     
@@ -718,8 +718,8 @@ CREATE TABLE data_points (
     compression_enabled INTEGER DEFAULT 1,
     
     -- 🔥 시간 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     is_deleted BOOLEAN DEFAULT 0, alarm_priority VARCHAR(20) DEFAULT 'medium',
     
@@ -767,7 +767,7 @@ CREATE TABLE current_values (
     -- 🔥 메타데이터
     source_info TEXT,                                  -- JSON: 값 소스 정보
     
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     
@@ -788,8 +788,8 @@ CREATE TABLE template_devices (
     timeout INTEGER DEFAULT 3000,
     is_public INTEGER DEFAULT 1,                         -- 시스템 공유 여부
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, is_deleted TINYINT DEFAULT 0,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')), is_deleted TINYINT DEFAULT 0,
     FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE CASCADE,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT
 );
@@ -878,8 +878,8 @@ CREATE TABLE alarm_rules (
     is_latched INTEGER DEFAULT 0,                   -- 래치 알람 (수동 리셋 필요)
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER, 
     template_id INTEGER, 
     rule_group VARCHAR(36), 
@@ -906,7 +906,7 @@ CREATE TABLE alarm_occurrences (
     tenant_id INTEGER NOT NULL,
     
     -- 발생 정보
-    occurrence_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    occurrence_time DATETIME DEFAULT (datetime('now', 'localtime')),
     trigger_value TEXT,
     trigger_condition TEXT,
     alarm_message TEXT,
@@ -938,8 +938,8 @@ CREATE TABLE alarm_occurrences (
     location VARCHAR(200),
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 디바이스/포인트 정보
     device_id INTEGER,                              -- 정수형
@@ -992,8 +992,8 @@ CREATE TABLE alarm_rule_templates (
     tags TEXT DEFAULT NULL,                         -- JSON 배열 형태
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -1028,8 +1028,8 @@ CREATE TABLE javascript_functions (
     is_system_function INTEGER DEFAULT 0,
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -1063,8 +1063,8 @@ CREATE TABLE recipes (
     last_error TEXT,
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -1100,8 +1100,8 @@ CREATE TABLE schedules (
     last_error TEXT,
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -1170,8 +1170,8 @@ CREATE TABLE virtual_points (
     
     -- 🔥 감사 필드
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
@@ -1224,8 +1224,8 @@ CREATE TABLE virtual_point_inputs (
     is_required INTEGER DEFAULT 1,                     -- 필수 입력 여부
     sort_order INTEGER DEFAULT 0,
     
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE,
     UNIQUE(virtual_point_id, variable_name),
@@ -1248,7 +1248,7 @@ CREATE TABLE virtual_point_values (
     quality_code INTEGER DEFAULT 1,
     
     -- 🔥 계산 정보
-    last_calculated DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_calculated DATETIME DEFAULT (datetime('now', 'localtime')),
     calculation_duration_ms INTEGER,                   -- 계산 소요 시간
     calculation_error TEXT,                            -- 계산 오류 메시지
     input_values TEXT,                                 -- JSON: 계산에 사용된 입력값들 (디버깅용)
@@ -1277,7 +1277,7 @@ CREATE TABLE virtual_point_execution_history (
     virtual_point_id INTEGER NOT NULL,
     
     -- 🔥 실행 정보
-    execution_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    execution_time DATETIME DEFAULT (datetime('now', 'localtime')),
     execution_duration_ms INTEGER,
     execution_id VARCHAR(50),                          -- 실행 세션 ID
     
@@ -1321,9 +1321,9 @@ CREATE TABLE virtual_point_dependencies (
     
     -- 🔥 상태 정보
     is_active INTEGER DEFAULT 1,
-    last_checked DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_checked DATETIME DEFAULT (datetime('now', 'localtime')),
     
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE,
     UNIQUE(virtual_point_id, depends_on_type, depends_on_id),
@@ -1369,8 +1369,8 @@ CREATE TABLE script_library (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id),
@@ -1397,7 +1397,7 @@ CREATE TABLE script_library_versions (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (script_id) REFERENCES script_library(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id)
@@ -1416,7 +1416,7 @@ CREATE TABLE script_usage_history (
     
     -- 🔥 감사 정보
     used_by INTEGER,
-    used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    used_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (script_id) REFERENCES script_library(id) ON DELETE CASCADE,
     FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE SET NULL,
@@ -1453,8 +1453,8 @@ CREATE TABLE script_templates (
     popularity_score INTEGER DEFAULT 0,
     
     -- 🔥 감사 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 제약조건
     CONSTRAINT chk_difficulty_level CHECK (difficulty_level IN ('beginner', 'intermediate', 'advanced'))
@@ -1502,7 +1502,7 @@ CREATE TABLE system_logs (
     
     -- 🔥 감사 정보
     hostname VARCHAR(100),                           -- 로그 생성 호스트
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
@@ -1562,7 +1562,7 @@ CREATE TABLE user_activities (
     tags TEXT,                                       -- JSON 배열 (분류 태그)
     
     -- 🔥 감사 정보
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL,
@@ -1621,7 +1621,7 @@ CREATE TABLE communication_logs (
     tags TEXT,                                       -- JSON 배열
     
     -- 🔥 감사 정보
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
     edge_server_id INTEGER,                          -- 통신을 수행한 엣지 서버
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
@@ -1724,7 +1724,7 @@ CREATE TABLE alarm_event_logs (
     context_data TEXT,                              -- JSON: 컨텍스트 데이터
     
     -- 🔥 감사 정보
-    event_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    event_time DATETIME DEFAULT (datetime('now', 'localtime')),
     source_system VARCHAR(50) DEFAULT 'collector',  -- 이벤트 소스
     
     FOREIGN KEY (occurrence_id) REFERENCES alarm_occurrences(id) ON DELETE CASCADE,
@@ -1761,7 +1761,7 @@ CREATE TABLE performance_logs (
     tags TEXT,                                      -- JSON 배열: 태그
     
     -- 🔥 시간 정보
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 제약조건
     CONSTRAINT chk_metric_category CHECK (metric_category IN ('system', 'database', 'network', 'application', 'security')),
@@ -1793,7 +1793,7 @@ CREATE TABLE audit_logs (
     details TEXT,                                    -- JSON 형태
     
     -- 🔥 감사 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -1805,8 +1805,8 @@ CREATE TABLE export_profiles (
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
     is_enabled BOOLEAN DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by VARCHAR(50),
     point_count INTEGER DEFAULT 0,
     last_exported_at DATETIME,
@@ -1822,7 +1822,7 @@ CREATE TABLE export_profile_points (
     display_order INTEGER DEFAULT 0,
     display_name VARCHAR(200),
     is_enabled BOOLEAN DEFAULT 1,
-    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    added_at DATETIME DEFAULT (datetime('now', 'localtime')),
     added_by VARCHAR(50),
     
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,
@@ -1840,8 +1840,8 @@ CREATE TABLE protocol_services (
     active_connections INTEGER DEFAULT 0,
     total_requests INTEGER DEFAULT 0,
     last_request_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE
 );
@@ -1860,8 +1860,8 @@ CREATE TABLE protocol_mappings (
     last_read_at DATETIME,
     last_write_at DATETIME,
     error_count INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (service_id) REFERENCES protocol_services(id) ON DELETE CASCADE,
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
@@ -1876,8 +1876,8 @@ CREATE TABLE payload_templates (
     description TEXT,
     template_json TEXT NOT NULL,
     is_active BOOLEAN DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
@@ -1912,7 +1912,7 @@ CREATE TABLE export_logs (
     processing_time_ms INTEGER,
     
     -- 메타 정보
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
     client_info TEXT,
     
     -- 추가 필드
@@ -1929,7 +1929,7 @@ CREATE TABLE export_schedules (
     tenant_id INTEGER NOT NULL,
     site_id INTEGER,                                     -- NULL = 테넌트 공용
     profile_id INTEGER,
-    target_id INTEGER NOT NULL,
+    target_id INTEGER,                                   -- NULL = 전역 프리셋
     schedule_name VARCHAR(100) NOT NULL,
     description TEXT,
     cron_expression VARCHAR(100) NOT NULL,
@@ -1943,8 +1943,8 @@ CREATE TABLE export_schedules (
     total_runs INTEGER DEFAULT 0,
     successful_runs INTEGER DEFAULT 0,
     failed_runs INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
@@ -1959,30 +1959,26 @@ CREATE TABLE virtual_point_logs (
     new_state TEXT,                       -- JSON string of new state (if applicable)
     user_id INTEGER,                      -- Optional: ID of the user performing the action
     details TEXT,                         -- Optional: detailed message or reason
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
 );
 CREATE TABLE export_targets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     site_id INTEGER,                                     -- NULL = 테넌트 공용
-    profile_id INTEGER,
     name VARCHAR(100) NOT NULL UNIQUE,
     target_type VARCHAR(20) NOT NULL,
     description TEXT,
     is_enabled BOOLEAN DEFAULT 1,
     config TEXT NOT NULL,
-    template_id INTEGER,
     export_mode VARCHAR(20) DEFAULT 'on_change',
     export_interval INTEGER DEFAULT 0,
     batch_size INTEGER DEFAULT 100,
     execution_delay_ms INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
-    FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
-    FOREIGN KEY (template_id) REFERENCES payload_templates(id) ON DELETE SET NULL
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
 );
 CREATE TABLE export_target_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1994,7 +1990,7 @@ CREATE TABLE export_target_mappings (
     target_description VARCHAR(500),
     conversion_config TEXT,
     is_enabled BOOLEAN DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE,
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
@@ -2006,7 +2002,7 @@ CREATE TABLE export_profile_assignments (
     profile_id INTEGER NOT NULL,
     gateway_id INTEGER NOT NULL,
     is_active INTEGER DEFAULT 1,
-    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    assigned_at DATETIME DEFAULT (datetime('now', 'localtime')),
     tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,       -- NULL = 시스템 관리자 전역 할당
     site_id INTEGER REFERENCES sites(id) ON DELETE SET NULL,          -- NULL = 테넌트 공용
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,
@@ -2030,8 +2026,8 @@ CREATE TABLE protocol_instances (
     status VARCHAR(20) DEFAULT 'STOPPED', -- RUNNING, STOPPED, ERROR
     
     -- 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 테넌트 및 브로커 상세 (Latest Migration)
     tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
@@ -2047,15 +2043,15 @@ CREATE TABLE permissions (
     resource VARCHAR(50),
     actions TEXT,            -- JSON 배열: ["read", "write", "delete"]
     is_system INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (datetime('now', 'localtime'))
 );
 CREATE TABLE roles (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
     is_system INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
 );
 CREATE TABLE role_permissions (
     role_id VARCHAR(50),
@@ -2064,7 +2060,7 @@ CREATE TABLE role_permissions (
     FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
     FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
 );
-CREATE TABLE backups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, filename TEXT NOT NULL UNIQUE, type TEXT DEFAULT 'full', status TEXT DEFAULT 'completed', size INTEGER DEFAULT 0, location TEXT DEFAULT '/app/data/backup', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, created_by TEXT, description TEXT, duration INTEGER, is_deleted INTEGER DEFAULT 0);
+CREATE TABLE backups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, filename TEXT NOT NULL UNIQUE, type TEXT DEFAULT 'full', status TEXT DEFAULT 'completed', size INTEGER DEFAULT 0, location TEXT DEFAULT '/app/data/backup', created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')), created_by TEXT, description TEXT, duration INTEGER, is_deleted INTEGER DEFAULT 0);
 -- =============================================================================
 -- 🔥 Views - device_details (SQLQueries.h FIND_WITH_PROTOCOL_INFO 에서 사용)
 -- =============================================================================
@@ -2290,10 +2286,8 @@ CREATE INDEX idx_export_schedules_target ON export_schedules(target_id);
 CREATE INDEX idx_virtual_point_logs_point_id ON virtual_point_logs(point_id);
 CREATE INDEX idx_virtual_point_logs_created_at ON virtual_point_logs(created_at);
 CREATE INDEX idx_export_targets_type ON export_targets(target_type);
-CREATE INDEX idx_export_targets_profile ON export_targets(profile_id);
 CREATE INDEX idx_export_targets_enabled ON export_targets(is_enabled);
 CREATE INDEX idx_export_targets_name ON export_targets(name);
-CREATE INDEX idx_export_targets_template ON export_targets(template_id);
 CREATE INDEX idx_export_target_mappings_target ON export_target_mappings(target_id);
 CREATE INDEX idx_export_target_mappings_point ON export_target_mappings(point_id);
 CREATE INDEX idx_export_schedules_target_id ON export_schedules(target_id);
@@ -2308,27 +2302,26 @@ CREATE INDEX idx_backups_status ON backups(status);
 CREATE VIEW v_export_targets_with_templates AS
 SELECT 
     t.id,
-    t.profile_id,
+    NULL as profile_id,
     t.name,
     t.target_type,
     t.description,
     t.is_enabled,
     t.config,
-    t.template_id,
+    NULL as template_id,
     t.export_mode,
     t.export_interval,
     t.batch_size,
     t.created_at,
     t.updated_at,
     
-    -- 템플릿 정보 (LEFT JOIN)
-    p.name as template_name,
-    p.system_type as template_system_type,
-    p.template_json,
-    p.is_active as template_is_active
+    -- 템플릿 정보 (LEFT JOIN 제거)
+    NULL as template_name,
+    NULL as template_system_type,
+    NULL as template_json,
+    NULL as template_is_active
     
 FROM export_targets t
-LEFT JOIN payload_templates p ON t.template_id = p.id
 /* v_export_targets_with_templates(id,profile_id,name,target_type,description,is_enabled,config,template_id,export_mode,export_interval,batch_size,created_at,updated_at,template_name,template_system_type,template_json,template_is_active) */;
 CREATE VIEW v_export_targets_stats_24h AS
 SELECT 
@@ -2428,14 +2421,14 @@ CREATE TRIGGER tr_export_profiles_update
 AFTER UPDATE ON export_profiles
 BEGIN
     UPDATE export_profiles 
-    SET updated_at = CURRENT_TIMESTAMP 
+    SET updated_at = (datetime('now', 'localtime')) 
     WHERE id = NEW.id;
 END;
 CREATE TRIGGER tr_payload_templates_update
 AFTER UPDATE ON payload_templates
 BEGIN
     UPDATE payload_templates 
-    SET updated_at = CURRENT_TIMESTAMP 
+    SET updated_at = (datetime('now', 'localtime')) 
     WHERE id = NEW.id;
 END;
 CREATE TRIGGER tr_profile_points_insert

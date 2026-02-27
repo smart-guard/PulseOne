@@ -241,12 +241,12 @@ std::string AlarmMessage::time_to_csharp_format(
   if (use_local_time)
     localtime_s(&tm_buf, &time_t);
   else
-    gmtime_s(&tm_buf, &time_t);
+    localtime_s(&tm_buf, &time_t);
 #else
   if (use_local_time)
     localtime_r(&time_t, &tm_buf);
   else
-    gmtime_r(&time_t, &tm_buf);
+    localtime_r(&time_t, &tm_buf);
 #endif
 
   std::ostringstream oss;

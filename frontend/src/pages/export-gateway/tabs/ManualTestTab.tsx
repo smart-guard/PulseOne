@@ -92,21 +92,13 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
 
         const val = typeof testValue === 'string' ? parseFloat(testValue) || 0 : testValue;
 
-        // 1. Find the target to get the template_id
-        // We use the first target in the list as the primary one for the template preview
+        // 1. Find the target for logging or future use
         const firstTargetInfo = currentMapping.target_names?.[0];
-        const targetId = firstTargetInfo?.id; // We need to ensure we pass ID in fetchGatewayMappings
+        const targetId = firstTargetInfo?.id;
         const target = targets.find(t => t.id === targetId);
 
+        // 2. Template feature is decoupled. We default to null (Fallback structure) for manual tests.
         let templateJson: any = null;
-
-        // 2. Find the template
-        if (target && target.template_id) {
-            const template = templates.find(t => t.id === target.template_id);
-            if (template) {
-                templateJson = template.template_json;
-            }
-        }
 
         // 3. Construct Payload
         let finalPayload: any;
@@ -215,11 +207,13 @@ const ManualTestTab: React.FC<ManualTestTabProps> = ({ siteId, tenantId }) => {
     const fetchGatewayMappings = async (gwId: number) => {
         setLoading(true);
         try {
+            // Find gateway to get linked targets
+            const gw = gateways.find(g => g.id === gwId);
+            const savedTargets = Object.keys(gw?.config?.target_priorities || {});
+            const linkedTargets = targets.filter(t => savedTargets.includes(String(t.id)));
+
             // Ensure we have assignments
             const gwAssignments = await ensureAssignments(gwId);
-
-            const profileIds = gwAssignments.map(a => String(a.profile_id));
-            const linkedTargets = targets.filter(t => profileIds.includes(String(t.profile_id)));
 
             const pointGroups: Record<number, any> = {};
             await Promise.all(linkedTargets.map(async (target) => {

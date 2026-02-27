@@ -162,8 +162,8 @@ class VirtualPointRepository extends BaseRepository {
                 device_id: virtualPointData.device_id || null,
                 tags: virtualPointData.tags ? (typeof virtualPointData.tags === 'string' ? virtualPointData.tags : JSON.stringify(virtualPointData.tags)) : null,
                 dependencies: this.formatDependencies(inputs),
-                created_at: this.knex.fn.now(),
-                updated_at: this.knex.fn.now()
+                created_at: this.knex.raw("datetime('now', 'localtime')"),
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const [virtualPointId] = await trx('virtual_points').insert(dataToInsert);
@@ -173,7 +173,7 @@ class VirtualPointRepository extends BaseRepository {
                 virtual_point_id: virtualPointId,
                 value: null,
                 quality: 'uncertain',
-                last_calculated: this.knex.fn.now(),
+                last_calculated: this.knex.raw("datetime('now', 'localtime')"),
                 calculation_duration_ms: 0,
                 is_stale: 1
             });
@@ -206,7 +206,7 @@ class VirtualPointRepository extends BaseRepository {
             // 4. 초기 실행 이력
             await trx('virtual_point_execution_history').insert({
                 virtual_point_id: virtualPointId,
-                execution_time: this.knex.fn.now(),
+                execution_time: this.knex.raw("datetime('now', 'localtime')"),
                 execution_duration_ms: 0,
                 result_type: 'success',
                 result_value: JSON.stringify({ action: 'created', status: 'initialized' }),
@@ -238,7 +238,7 @@ class VirtualPointRepository extends BaseRepository {
                 device_id: virtualPointData.device_id,
                 tags: virtualPointData.tags ? (typeof virtualPointData.tags === 'string' ? virtualPointData.tags : JSON.stringify(virtualPointData.tags)) : null,
                 dependencies: inputs ? this.formatDependencies(inputs) : undefined,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             // undefined 필드 제거
@@ -277,13 +277,13 @@ class VirtualPointRepository extends BaseRepository {
                 .update({
                     quality: 'uncertain',
                     is_stale: 1,
-                    last_calculated: this.knex.fn.now()
+                    last_calculated: this.knex.raw("datetime('now', 'localtime')")
                 });
 
             // 4. 업데이트 이력
             await trx('virtual_point_execution_history').insert({
                 virtual_point_id: id,
-                execution_time: this.knex.fn.now(),
+                execution_time: this.knex.raw("datetime('now', 'localtime')"),
                 execution_duration_ms: 0,
                 result_type: 'success',
                 result_value: JSON.stringify({ action: 'updated', status: 'completed' }),
@@ -305,7 +305,7 @@ class VirtualPointRepository extends BaseRepository {
 
             await query.update({
                 is_enabled: isEnabled ? 1 : 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
 
             return await this.findById(id, tenantId);
@@ -325,7 +325,7 @@ class VirtualPointRepository extends BaseRepository {
 
             const updatedRows = await query.update({
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
 
             return updatedRows > 0;
@@ -345,7 +345,7 @@ class VirtualPointRepository extends BaseRepository {
 
             const updatedRows = await query.update({
                 is_deleted: 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
 
             return updatedRows > 0;
@@ -495,7 +495,7 @@ class VirtualPointRepository extends BaseRepository {
                 new_state: logData.new_state,
                 user_id: logData.user_id,
                 details: logData.details,
-                created_at: this.knex.fn.now()
+                created_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             return await (trx || this.knex)('virtual_point_logs').insert(dataToInsert);

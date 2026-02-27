@@ -99,8 +99,8 @@ class ExportProfileRepository extends BaseRepository {
                 description: data.description || '',
                 data_points: typeof data.data_points === 'object' ? JSON.stringify(data.data_points) : (data.data_points || '[]'),
                 is_enabled: data.is_enabled !== undefined ? data.is_enabled : 1,
-                created_at: this.knex.fn.now(),
-                updated_at: this.knex.fn.now()
+                created_at: this.knex.raw("datetime('now', 'localtime')"),
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const [id] = await this.knex(this.tableName).insert(dataToInsert);
@@ -117,7 +117,7 @@ class ExportProfileRepository extends BaseRepository {
     async update(id, data, tenantId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const allowedFields = ['name', 'description', 'data_points', 'is_enabled'];

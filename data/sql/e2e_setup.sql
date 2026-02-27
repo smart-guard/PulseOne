@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS export_profile_assignments (
     profile_id INTEGER NOT NULL,
     gateway_id INTEGER NOT NULL,
     is_active INTEGER DEFAULT 1,
-    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    assigned_at DATETIME DEFAULT (datetime('now', 'localtime')),
     tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,       -- NULL = 시스템 관리자 전역 할당
     site_id INTEGER REFERENCES sites(id) ON DELETE SET NULL,          -- NULL = 테넌트 공용
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,

@@ -54,7 +54,7 @@ class RoleService extends BaseService {
             await trx('roles').where('id', id).update({
                 name: roleData.name,
                 description: roleData.description,
-                updated_at: trx.fn.now()
+                updated_at: trx.raw("datetime('now', 'localtime')")
             });
 
             if (permissions && Array.isArray(permissions)) {

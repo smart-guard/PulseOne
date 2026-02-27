@@ -330,7 +330,7 @@ class AlarmTemplateService extends BaseService {
 
                         // Version sync
                         template_version: template.version || 1,
-                        last_template_update: this.repository.knex.fn.now()
+                        last_template_update: this.repository.knex.raw("datetime('now', 'localtime')")
                     };
 
                     // Re-apply condition logic
@@ -412,7 +412,7 @@ class AlarmTemplateService extends BaseService {
 
                         // Version sync
                         template_version: template.version || 1,
-                        last_template_update: this.repository.knex.fn.now()
+                        last_template_update: this.repository.knex.raw("datetime('now', 'localtime')")
                     };
 
                     // Re-apply condition logic

@@ -122,7 +122,7 @@ class ManufacturerRepository extends BaseRepository {
     async update(id, data) {
         try {
             const updateData = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const fields = ['name', 'description', 'country', 'website', 'logo_url', 'is_active'];
@@ -155,7 +155,7 @@ class ManufacturerRepository extends BaseRepository {
 
             const affected = await this.query().where('id', id).update({
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {
@@ -171,7 +171,7 @@ class ManufacturerRepository extends BaseRepository {
         try {
             const affected = await this.query().where('id', id).update({
                 is_deleted: 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {

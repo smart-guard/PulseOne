@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS system_logs (
     
     -- 🔥 감사 정보
     hostname VARCHAR(100),                           -- 로그 생성 호스트
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS user_activities (
     tags TEXT,                                       -- JSON 배열 (분류 태그)
     
     -- 🔥 감사 정보
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL,
@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS communication_logs (
     tags TEXT,                                       -- JSON 배열
     
     -- 🔥 감사 정보
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
     edge_server_id INTEGER,                          -- 통신을 수행한 엣지 서버
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS alarm_event_logs (
     context_data TEXT,                              -- JSON: 컨텍스트 데이터
     
     -- 🔥 감사 정보
-    event_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    event_time DATETIME DEFAULT (datetime('now', 'localtime')),
     source_system VARCHAR(50) DEFAULT 'collector',  -- 이벤트 소스
     
     FOREIGN KEY (occurrence_id) REFERENCES alarm_occurrences(id) ON DELETE CASCADE,
@@ -333,7 +333,7 @@ CREATE TABLE IF NOT EXISTS performance_logs (
     tags TEXT,                                      -- JSON 배열: 태그
     
     -- 🔥 시간 정보
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 제약조건
     CONSTRAINT chk_metric_category CHECK (metric_category IN ('system', 'database', 'network', 'application', 'security')),
@@ -428,7 +428,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     details TEXT,                                    -- JSON 형태
     
     -- 🔥 감사 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL

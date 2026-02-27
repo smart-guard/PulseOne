@@ -92,18 +92,16 @@ class ExportTargetRepository extends BaseRepository {
         try {
             const dataToInsert = {
                 tenant_id: tenantId || data.tenant_id,
-                profile_id: data.profile_id,
                 name: data.name,
                 target_type: data.target_type || data.type,
                 config: typeof data.config === 'object' ? JSON.stringify(data.config) : (data.config || '{}'),
-                template_id: data.template_id,
                 export_mode: data.export_mode || 'on_change',
                 export_interval: data.export_interval || 60,
                 batch_size: data.batch_size || 100,
                 execution_delay_ms: data.execution_delay_ms || 0,
                 is_enabled: data.is_enabled !== undefined ? data.is_enabled : 1,
-                created_at: this.knex.fn.now(),
-                updated_at: this.knex.fn.now()
+                created_at: this.knex.raw("datetime('now', 'localtime')"),
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const [id] = await this.knex(this.tableName).insert(dataToInsert);
@@ -120,10 +118,10 @@ class ExportTargetRepository extends BaseRepository {
     async update(id, data, tenantId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
-            const allowedFields = ['name', 'target_type', 'type', 'config', 'is_enabled', 'profile_id', 'template_id', 'export_mode', 'export_interval', 'batch_size', 'execution_delay_ms'];
+            const allowedFields = ['name', 'target_type', 'type', 'config', 'is_enabled', 'export_mode', 'export_interval', 'batch_size', 'execution_delay_ms'];
             allowedFields.forEach(field => {
                 if (data[field] !== undefined) {
                     if (field === 'config' && typeof data[field] === 'object') {

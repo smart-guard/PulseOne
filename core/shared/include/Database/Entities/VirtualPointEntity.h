@@ -218,8 +218,8 @@ private:
     
     // 감사 필드
     std::optional<int> created_by_;                  // created_by INTEGER
-    std::chrono::system_clock::time_point created_at_; // created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    std::chrono::system_clock::time_point updated_at_; // updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    std::chrono::system_clock::time_point created_at_; // created_at DATETIME DEFAULT (datetime('now', 'localtime'))
+    std::chrono::system_clock::time_point updated_at_; // updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
     
     // =======================================================================
     // 헬퍼 메서드

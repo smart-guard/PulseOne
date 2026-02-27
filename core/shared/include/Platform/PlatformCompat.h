@@ -74,7 +74,7 @@
 
 // Windows 전용 매크로들
 #define SAFE_LOCALTIME(t, tm) localtime_s(tm, t)
-#define SAFE_GMTIME(t, tm) gmtime_s(tm, t)
+#define SAFE_GMTIME(t, tm) localtime_s(tm, t)
 
 // Windows SQL 지원 비활성화 (충돌 방지)
 #ifndef PULSEONE_DISABLE_MSSQL
@@ -105,7 +105,7 @@
 #include <unistd.h>
 
 #define SAFE_LOCALTIME(t, tm) localtime_r(t, tm)
-#define SAFE_GMTIME(t, tm) gmtime_r(t, tm)
+#define SAFE_GMTIME(t, tm) localtime_r(t, tm)
 #endif
 
 namespace PulseOne {

@@ -66,8 +66,8 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
     is_latched INTEGER DEFAULT 0,                   -- 래치 알람 (수동 리셋 필요)
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER, 
     template_id INTEGER, 
     rule_group VARCHAR(36), 
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS alarm_occurrences (
     tenant_id INTEGER NOT NULL,
     
     -- 발생 정보
-    occurrence_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    occurrence_time DATETIME DEFAULT (datetime('now', 'localtime')),
     trigger_value TEXT,
     trigger_condition TEXT,
     alarm_message TEXT,
@@ -129,8 +129,8 @@ CREATE TABLE IF NOT EXISTS alarm_occurrences (
     location VARCHAR(200),
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 디바이스/포인트 정보
     device_id INTEGER,                              -- 정수형
@@ -187,8 +187,8 @@ CREATE TABLE IF NOT EXISTS alarm_rule_templates (
     is_deleted INTEGER DEFAULT 0,
 
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -227,8 +227,8 @@ CREATE TABLE IF NOT EXISTS javascript_functions (
     is_system_function INTEGER DEFAULT 0,
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -266,8 +266,8 @@ CREATE TABLE IF NOT EXISTS recipes (
     last_error TEXT,
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -307,8 +307,8 @@ CREATE TABLE IF NOT EXISTS schedules (
     last_error TEXT,
     
     -- 타임스탬프
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by INTEGER,
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,

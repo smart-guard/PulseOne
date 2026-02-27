@@ -98,7 +98,7 @@ class DeviceGroupRepository extends BaseRepository {
     async update(id, updateData, tenantId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const allowedFields = [

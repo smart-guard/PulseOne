@@ -86,9 +86,9 @@ class ExportScheduleRepository extends BaseRepository {
                 data_range: data.data_range || 'day',
                 lookback_periods: data.lookback_periods || 1,
                 is_enabled: data.is_enabled !== undefined ? data.is_enabled : 1,
-                next_run_at: this.knex.fn.now(),
-                created_at: this.knex.fn.now(),
-                updated_at: this.knex.fn.now()
+                next_run_at: this.knex.raw("datetime('now', 'localtime')"),
+                created_at: this.knex.raw("datetime('now', 'localtime')"),
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const [id] = await this.knex(this.tableName).insert(dataToInsert);
@@ -105,7 +105,7 @@ class ExportScheduleRepository extends BaseRepository {
     async update(id, data, tenantId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const allowedFields = [

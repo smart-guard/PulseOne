@@ -74,8 +74,8 @@ namespace {
         "description TEXT, "
         "template_json TEXT NOT NULL, "
         "is_active INTEGER DEFAULT 1, "
-        "created_at TEXT DEFAULT CURRENT_TIMESTAMP, "
-        "updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+        "created_at TEXT DEFAULT (datetime('now', 'localtime')), "
+        "updated_at TEXT DEFAULT (datetime('now', 'localtime'))"
         ")";
 }
 

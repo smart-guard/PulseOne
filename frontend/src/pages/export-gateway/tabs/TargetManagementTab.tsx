@@ -71,9 +71,11 @@ const cleanupConfig = (config: any): any => {
 interface TargetManagementTabProps {
     siteId?: number | null;
     tenantId?: number | null;
+    isAdmin?: boolean;
+    tenants?: any[];
 }
 
-const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenantId }) => {
+const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenantId, isAdmin, tenants = [] }) => {
     const [targets, setTargets] = useState<ExportTarget[]>([]);
     const [templates, setTemplates] = useState<PayloadTemplate[]>([]);
     const [profiles, setProfiles] = useState<ExportProfile[]>([]);
@@ -82,16 +84,6 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
     const [editingTarget, setEditingTarget] = useState<Partial<ExportTarget> | null>(null);
     const [isTesting, setIsTesting] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
-
-    // Mapping state
-    const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
-    const [mappingTargetId, setMappingTargetId] = useState<number | null>(null);
-    const [hasMappingChanges, setHasMappingChanges] = useState(false);
-    // Extend type to support temporary invalid state
-    const [targetMappings, setTargetMappings] = useState<(Partial<ExportTargetMapping> & { _temp_name?: string })[]>([]);
-    const [allPoints, setAllPoints] = useState<DataPoint[]>([]);
-    const [pasteData, setPasteData] = useState('');
-    const [bulkSiteIdForMapping, setBulkSiteIdForMapping] = useState(''); // [NEW] Bulk Site ID state
 
     const { confirm } = useConfirmContext();
 
@@ -190,15 +182,13 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [targetsRes, templatesRes, pointsRes, profilesRes] = await Promise.all([
+            const [targetsRes, templatesRes, profilesRes] = await Promise.all([
                 exportGatewayApi.getTargets({ tenantId }),
                 exportGatewayApi.getTemplates({ tenantId }),
-                exportGatewayApi.getDataPoints('', undefined, siteId, tenantId),
                 exportGatewayApi.getProfiles({ tenantId })
             ]);
             setTargets(extractItems(targetsRes.data));
             setTemplates(extractItems(templatesRes.data));
-            setAllPoints(Array.isArray(pointsRes) ? pointsRes : (pointsRes as any)?.items || []);
             setProfiles(extractItems(profilesRes.data));
         } catch (error) {
             console.error(error);
@@ -206,123 +196,6 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
             setLoading(false);
         }
     };
-
-    const handleOpenMapping = async (targetId: number) => {
-        setMappingTargetId(targetId);
-        setIsMappingModalOpen(true);
-        setLoading(true);
-        try {
-            const response = await exportGatewayApi.getTargetMappings(targetId, siteId, tenantId);
-            setTargetMappings(extractItems(response.data));
-            setHasMappingChanges(false);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleCloseMapping = async () => {
-        if (hasMappingChanges) {
-            const confirmed = await confirm({
-                title: '매핑 변경사항 유실 주의',
-                message: '저장하지 않은 매핑 변경사항이 있습니다. 정말 닫으시겠습니까?',
-                confirmText: '닫기',
-                cancelText: '취소',
-                confirmButtonType: 'warning'
-            });
-            if (!confirmed) return;
-        }
-        setIsMappingModalOpen(false);
-        setMappingTargetId(null);
-        setTargetMappings([]);
-        setHasMappingChanges(false);
-        setPasteData(''); // Clear paste area
-    };
-
-    const handleSaveMappings = async () => {
-        if (!mappingTargetId) return;
-
-        // Validation for missing points
-        const invalidMappings = targetMappings.filter(m => !m.point_id);
-        if (invalidMappings.length > 0) {
-            await confirm({
-                title: '매핑 오류',
-                message: `${invalidMappings.length}개의 항목이 데이터 포인트와 연결되지 않았습니다. 삭제하거나 포인트를 선택해주세요.`,
-                showCancelButton: false,
-                confirmButtonType: 'danger'
-            });
-            return;
-        }
-
-        try {
-            const mappingsPayload = targetMappings.map(m => ({
-                point_id: m.point_id!,
-                target_field_name: m.target_field_name || '',
-                target_description: m.target_description || '',
-                site_id: m.site_id,
-                is_enabled: m.is_enabled !== false,
-                conversion_config: m.conversion_config
-            }));
-
-            const response = await exportGatewayApi.saveTargetMappings(mappingTargetId, mappingsPayload, siteId, tenantId);
-
-            if (response.success) {
-                await confirm({
-                    title: '매핑 저장 완료',
-                    message: '데이터 포인트 매핑이 성공적으로 저장되었습니다.',
-                    showCancelButton: false,
-                    confirmButtonType: 'success'
-                });
-                setIsMappingModalOpen(false);
-                setHasMappingChanges(false);
-            } else {
-                throw new Error(response.message);
-            }
-        } catch (error: any) {
-            await confirm({
-                title: '저장 실패',
-                message: error.message || '매핑 정보를 저장하는 중 오류가 발생했습니다.',
-                showCancelButton: false,
-                confirmButtonType: 'danger'
-            });
-        }
-    };
-
-    const handleTriggerManualExport = async (mapping: any) => {
-        if (!mapping.point_id || !mappingTargetId) return;
-
-        try {
-            // Find current value if available
-            const pointFn = allPoints.find(p => p.id === mapping.point_id);
-            const val = pointFn ? (pointFn as any).latest_value : 0;
-
-            const res = await exportGatewayApi.triggerManualExport(0, {
-                target_name: targets.find(t => t.id === mappingTargetId)?.name || 'Unknown',
-                target_id: mappingTargetId,
-                point_id: mapping.point_id,
-                value: val || 0
-            });
-
-            if (res.success) {
-                await confirm({
-                    title: '수동 전송 성공',
-                    message: `포인트 "${pointFn?.name}"의 현재값(${val})이 전송되었습니다.`,
-                    showCancelButton: false,
-                    confirmButtonType: 'success'
-                });
-            } else {
-                throw new Error(res.message);
-            }
-        } catch (e: any) {
-            await confirm({
-                title: '전송 실패',
-                message: e.message || '수동 전송에 실패했습니다.',
-                showCancelButton: false,
-                confirmButtonType: 'danger'
-            });
-        }
-    }
 
     const handleCloseModal = async () => {
         if (hasChanges) {
@@ -337,52 +210,6 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
         }
         setIsModalOpen(false);
         setHasChanges(false);
-    };
-
-    const handleImportFromProfile = async () => {
-        if (!mappingTargetId) return;
-        const target = targets.find(t => t.id === mappingTargetId);
-        if (!target?.profile_id) {
-            await confirm({
-                title: '프로파일 없음',
-                message: '이 타겟에는 연결된 프로파일이 없습니다. 먼저 타겟 설정에서 프로파일을 선택해주세요.',
-                showCancelButton: false,
-                confirmButtonType: 'warning'
-            });
-            return;
-        }
-
-        const profile = profiles.find(p => p.id === target.profile_id);
-        if (!profile) return;
-
-        const confirmed = await confirm({
-            title: '프로파일 데이터 불러오기',
-            message: `현재 설정된 매핑 리스트를 삭제하고, 프로파일 "${profile.name}"의 모든 포인트를 불러오시겠습니까?`,
-            confirmText: '불러오기',
-            cancelText: '취소',
-            confirmButtonType: 'warning'
-        });
-
-        if (!confirmed) return;
-
-        if (Array.isArray(profile.data_points)) {
-            const initialMappings = profile.data_points.map((p: any) => ({
-                point_id: p.id,
-                site_id: p.site_id || p.building_id, // [RESTORE] site_id focus
-                target_field_name: p.target_field_name || p.name,
-                target_description: '',
-                is_enabled: true,
-                conversion_config: { scale: 1, offset: 0 }
-            }));
-            setTargetMappings(initialMappings);
-            setHasMappingChanges(true);
-            await confirm({
-                title: '동기화 완료',
-                message: '프로파일에서 포인트 목록을 성공적으로 가져왔습니다.',
-                showCancelButton: false,
-                confirmButtonType: 'success'
-            });
-        }
     };
 
     useEffect(() => { fetchData(); }, [siteId, tenantId]);
@@ -403,19 +230,20 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
 
         try {
             let response;
+            const targetTenantId = editingTarget?.tenant_id || tenantId;
             if (editingTarget?.id) {
                 // [CLEANUP] Ensure config is an object and stripped of obsolete fields
                 const cleanTarget = {
                     ...editingTarget,
                     config: cleanupConfig(editingTarget.config)
                 };
-                response = await exportGatewayApi.updateTarget(editingTarget.id, cleanTarget, tenantId);
+                response = await exportGatewayApi.updateTarget(editingTarget.id, cleanTarget, targetTenantId);
             } else {
                 const cleanTarget = {
                     ...editingTarget,
                     config: cleanupConfig(editingTarget.config)
                 };
-                response = await exportGatewayApi.createTarget(cleanTarget as ExportTarget, tenantId);
+                response = await exportGatewayApi.createTarget(cleanTarget as ExportTarget, targetTenantId);
             }
 
             if (response.success) {
@@ -538,8 +366,10 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                 </td>
                                 <td>
                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs" onClick={() => handleOpenMapping(t.id)} style={{ width: 'auto' }}>매핑 설정</button>
-                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs" onClick={() => { setEditingTarget(t); setIsModalOpen(true); }} style={{ width: 'auto' }}>수정</button>
+                                        <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs" onClick={() => {
+                                            setEditingTarget({ ...t, config: typeof t.config === 'string' ? t.config : JSON.stringify(t.config, null, 2) });
+                                            setIsModalOpen(true);
+                                        }} style={{ width: 'auto' }}>수정</button>
                                         <button className="mgmt-btn mgmt-btn-outline mgmt-btn-xs mgmt-btn-error" onClick={() => handleDelete(t.id)} style={{ width: 'auto' }}>삭제</button>
                                     </div>
                                 </td>
@@ -575,6 +405,22 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                 placeholder="예: 본사 관제 시스템"
                                             />
                                         </div>
+                                        {isAdmin && !tenantId && (
+                                            <div className="mgmt-modal-form-group">
+                                                <label>소속 테넌트 <span style={{ color: 'red' }}>*</span></label>
+                                                <select
+                                                    className="mgmt-select"
+                                                    required
+                                                    value={editingTarget?.tenant_id || ''}
+                                                    onChange={e => { setEditingTarget({ ...editingTarget, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
+                                                >
+                                                    <option value="">(테넌트 선택)</option>
+                                                    {tenants.map(t => (
+                                                        <option key={t.id} value={t.id}>{t.company_name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
                                         <div className="mgmt-modal-form-group">
                                             <label>전송 프로토콜</label>
                                             <select
@@ -590,34 +436,7 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                                 <option value="database">External Database (SQL)</option>
                                             </select>
                                         </div>
-                                        <div className="mgmt-modal-form-group">
-                                            <label>사용할 페이로드 템플릿 <span className="mgmt-tag tag-blue">{templates.find(t => t.id === editingTarget.template_id)?.system_type || 'Custom'}</span></label>
-                                            <select
-                                                className="mgmt-select"
-                                                required
-                                                value={editingTarget?.template_id || ''}
-                                                onChange={e => { setEditingTarget({ ...editingTarget, template_id: parseInt(e.target.value) }); setHasChanges(true); }}
-                                            >
-                                                <option value="">(기본 형식 사용)</option>
-                                                {templates.map(t => (
-                                                    <option key={t.id} value={t.id}>{t.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="mgmt-modal-form-group">
-                                            <label>연결 프로파일 (데이터 소스)</label>
-                                            <select
-                                                className="mgmt-select"
-                                                value={editingTarget?.profile_id || ''}
-                                                onChange={e => { setEditingTarget({ ...editingTarget, profile_id: parseInt(e.target.value) || undefined }); setHasChanges(true); }}
-                                            >
-                                                <option value="">(연결된 프로파일 없음)</option>
-                                                {profiles.map(p => (
-                                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                                ))}
-                                            </select>
-                                            <div className="mgmt-modal-form-hint">프로파일을 연결하면 매핑 설정 시 포인트를 자동으로 불러올 수 있습니다.</div>
-                                        </div>
+                                        {/* Profile and Template associations have been decoupled from core Target definition */}
                                     </div>
 
                                     {/* Column 2: Protocol Specific Config */}
@@ -880,353 +699,6 @@ const TargetManagementTab: React.FC<TargetManagementTabProps> = ({ siteId, tenan
                                 </div>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
-            {isMappingModalOpen && (
-                <div className="mgmt-modal-overlay">
-                    <div className="mgmt-modal-content wide-modal target-mgmt-modal" style={{ display: 'flex', flexDirection: 'column' }}>
-                        <div className="mgmt-modal-header">
-                            <h3 className="mgmt-modal-title">데이터 포인트 매핑 설정</h3>
-                            <button className="mgmt-close-btn" onClick={handleCloseMapping}>&times;</button>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, overflow: 'hidden', padding: '20px' }}>
-                            {/* 1. Guidance Section (Top) */}
-                            <div style={{
-                                background: 'var(--warning-50)',
-                                border: '1px solid var(--warning-100)',
-                                borderRadius: '8px',
-                                padding: '15px',
-                                flexShrink: 0
-                            }}>
-                                <div style={{ fontWeight: 600, color: 'var(--warning-700)', fontSize: '14px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <i className="fas fa-exchange-alt" /> 물리 전송 매핑 가이드
-                                </div>
-                                <div style={{ fontSize: '13px', color: 'var(--warning-600)', lineHeight: '1.6' }}>
-                                    실제 외부 시스템으로 전송할 때의 <strong>최종 설정</strong>입니다.
-                                    데이터 단위 변환(Scale, Offset)이 필요한 경우 테이블에서 설정하세요.
-                                    엑셀에서 [포인트명][탭][필드명][탭][설명] 순으로 복사해 아래 영역에 붙여넣으면 자동 매핑됩니다.
-                                </div>
-                            </div>
-
-                            {/* 2. Excel Paste Section (Middle) */}
-                            <div style={{ padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', display: 'flex', flexDirection: 'column', gap: '10px', flexShrink: 0 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <h4 style={{ margin: 0, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <i className="fas fa-file-excel" style={{ color: '#1d6f42' }} /> 엑셀 붙여넣기 (일괄 등록)
-                                    </h4>
-                                    <button
-                                        className="mgmt-btn mgmt-btn-primary mgmt-btn-sm"
-                                        style={{ width: 'auto' }}
-                                        onClick={async () => {
-                                            if (!pasteData.trim()) {
-                                                await confirm({
-                                                    title: '데이터 없음',
-                                                    message: '붙여넣을 데이터가 없습니다.',
-                                                    showCancelButton: false,
-                                                    confirmButtonType: 'primary'
-                                                });
-                                                return;
-                                            }
-
-                                            const lines = pasteData.split(/\r?\n/);
-                                            let addedCount = 0;
-                                            let failedCount = 0;
-                                            const newMappings = [...targetMappings];
-
-                                            lines.forEach(line => {
-                                                if (!line.trim()) return;
-                                                const parts = line.split('\t');
-                                                const pointName = parts[0]?.trim();
-                                                const targetField = parts[1]?.trim() || '';
-                                                const desc = parts[2]?.trim() || '';
-
-                                                if (pointName) {
-                                                    const point = allPoints.find(p => p.name.toLowerCase() === pointName.toLowerCase());
-                                                    const isAlreadyMapped = newMappings.some(m => m.point_id && m.point_id === point?.id);
-
-                                                    if (point && !isAlreadyMapped) {
-                                                        newMappings.push({
-                                                            site_id: point.site_id, // [FIX] Include site_id
-                                                            point_id: point.id,
-                                                            target_field_name: targetField,
-                                                            target_description: desc,
-                                                            is_enabled: true
-                                                        });
-                                                        addedCount++;
-                                                    } else if (!point) {
-                                                        newMappings.push({
-                                                            point_id: undefined,
-                                                            target_field_name: targetField,
-                                                            site_id: undefined, // [FIX] Include site_id
-                                                            target_description: desc,
-                                                            is_enabled: true,
-                                                            _temp_name: pointName
-                                                        });
-                                                        failedCount++;
-                                                    }
-                                                }
-                                            });
-
-                                            if (addedCount > 0 || failedCount > 0) {
-                                                setTargetMappings(newMappings);
-                                                setPasteData('');
-                                                setHasMappingChanges(true);
-                                            }
-
-                                            await confirm({
-                                                title: '매핑 적용 완료',
-                                                message: `성공: ${addedCount}개\n실패(확인 필요): ${failedCount}개`,
-                                                showCancelButton: false,
-                                                confirmButtonType: 'success'
-                                            });
-                                        }}
-                                    >
-                                        <i className="fas fa-magic" /> 매핑 적용하기
-                                    </button>
-                                    <button
-                                        className="mgmt-btn mgmt-btn-outline mgmt-btn-sm"
-                                        style={{ width: 'auto', borderColor: 'var(--primary-300)', color: 'var(--primary-600)' }}
-                                        onClick={handleImportFromProfile}
-                                    >
-                                        <i className="fas fa-sync-alt" /> 프로파일에서 불러오기
-                                    </button>
-                                </div>
-                                <textarea
-                                    className="mgmt-input"
-                                    style={{ height: '100px', resize: 'vertical', width: '100%', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.4' }}
-                                    placeholder={`[PulseOne 포인트명] (탭) [외부 시스템 필드명] (탭) [설명]\n\nSensor_A_01\tFactory_Temp_01\t1공장 온도`}
-                                    value={pasteData}
-                                    onChange={(e) => setPasteData(e.target.value)}
-                                />
-                            </div>
-
-                            {/* [NEW] Bulk Site ID Application Area */}
-                            <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ fontSize: '12px', color: '#64748b' }}>
-                                    <i className="fas fa-info-circle" /> 포인트 정보 로드시 기본 Site ID가 설정됩니다. 필요시 아래에서 일괄 변경 가능합니다.
-                                </div>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '13px', fontWeight: 600 }}>Site ID 일괄 적용:</span>
-                                    <Input
-                                        size="small"
-                                        placeholder="빌딩 번호"
-                                        style={{ width: '100px' }}
-                                        value={bulkSiteIdForMapping}
-                                        onChange={e => setBulkSiteIdForMapping(e.target.value)}
-                                    />
-                                    <Button
-                                        size="small"
-                                        onClick={async () => {
-                                            const bid = parseInt(bulkSiteIdForMapping);
-                                            if (isNaN(bid)) {
-                                                await confirm({
-                                                    title: '입력 확인',
-                                                    message: '숫자 형태의 Site ID를 입력해주세요.',
-                                                    showCancelButton: false,
-                                                    confirmButtonType: 'warning'
-                                                });
-                                                return;
-                                            }
-                                            setTargetMappings(targetMappings.map(m => ({ ...m, site_id: bid })));
-                                            setHasMappingChanges(true);
-                                        }}
-                                    >적용하기</Button>
-                                </div>
-                            </div>
-
-                            {/* 3. Mapping List Section (Bottom) */}
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderTop: '1px solid #eee', paddingTop: '20px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#333' }}>
-                                        <i className="fas fa-list-ul" style={{ marginRight: '8px' }} /> 최종 매핑 리스트 ({targetMappings.length})
-                                    </h4>
-                                    <button className="mgmt-btn mgmt-btn-outline mgmt-btn-sm" style={{ width: 'auto' }} onClick={() => {
-                                        setTargetMappings([...targetMappings, { point_id: undefined, target_field_name: '', target_description: '', is_enabled: true }]);
-                                        setHasMappingChanges(true);
-                                    }}>
-                                        <i className="fas fa-plus" /> 1행 추가
-                                    </button>
-                                </div>
-
-                                <div className="mgmt-table-container" style={{ flex: 1, overflowY: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
-                                    <table className="mgmt-table">
-                                        <thead>
-                                            <tr>
-                                                <th style={{ width: '20%', padding: '8px 8px' }}>PulseOne 포인트 (소스)</th>
-                                                <th style={{ width: '25%', padding: '8px 8px' }}>외부 필드명 (Key)</th>
-                                                <th style={{ width: '60px', padding: '8px 4px' }}>Site ID</th>
-                                                <th style={{ width: '60px', padding: '8px 4px', whiteSpace: 'nowrap' }}>Scale</th>
-                                                <th style={{ width: '60px', padding: '8px 4px', whiteSpace: 'nowrap' }}>Offset</th>
-                                                <th style={{ width: '30%', padding: '8px 8px' }}>상세 설명</th>
-                                                <th style={{ width: '50px', padding: '8px 8px', textAlign: 'center' }}>관리</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {targetMappings.map((mapping, idx) => {
-                                                // conversion_config 파싱 (없으면 기본값)
-                                                let config: any = {};
-                                                try {
-                                                    config = typeof mapping.conversion_config === 'string'
-                                                        ? JSON.parse(mapping.conversion_config)
-                                                        : (mapping.conversion_config || {});
-                                                } catch { }
-
-                                                return (
-                                                    <tr key={idx}>
-                                                        <td style={{ padding: '8px 8px' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center' }}>
-                                                                <Select
-                                                                    showSearch
-                                                                    style={{ flex: 1 }}
-                                                                    placeholder={mapping._temp_name ? `찾을 수 없음: "${mapping._temp_name}"` : "포인트 선택"}
-                                                                    optionFilterProp="children"
-                                                                    filterOption={(input, option: any) =>
-                                                                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                                                                    }
-                                                                    value={mapping.point_id}
-                                                                    onChange={(val) => {
-                                                                        const newMappings = [...targetMappings];
-                                                                        newMappings[idx] = {
-                                                                            ...newMappings[idx],
-                                                                            point_id: val,
-                                                                            _temp_name: undefined
-                                                                        };
-                                                                        setTargetMappings(newMappings);
-                                                                        setHasMappingChanges(true);
-                                                                    }}
-                                                                    status={!mapping.point_id ? 'error' : ''}
-                                                                    options={allPoints.map(p => ({
-                                                                        value: p.id,
-                                                                        label: `${p.name} [${p.address || '?'}] (${p.device_name})`
-                                                                    }))}
-                                                                />
-                                                                {mapping.point_id && (
-                                                                    <Tooltip title="현재 데이터 즉시 전송 (Manual Export)">
-                                                                        <button
-                                                                            type="button"
-                                                                            className="mgmt-btn mgmt-btn-outline"
-                                                                            style={{
-                                                                                width: '32px',
-                                                                                height: '32px',
-                                                                                marginLeft: '8px',
-                                                                                padding: 0,
-                                                                                display: 'flex',
-                                                                                alignItems: 'center',
-                                                                                justifyContent: 'center',
-                                                                                color: 'var(--primary-600)',
-                                                                                borderColor: 'var(--primary-200)'
-                                                                            }}
-                                                                            onClick={() => handleTriggerManualExport(mapping)}
-                                                                        >
-                                                                            <i className="fas fa-paper-plane" />
-                                                                        </button>
-                                                                    </Tooltip>
-                                                                )}
-                                                            </div>
-                                                            {!mapping.point_id && mapping._temp_name && (
-                                                                <div style={{ color: '#ff4d4f', fontSize: '11px', marginTop: '2px' }}>
-                                                                    <i className="fas fa-exclamation-circle" /> 매칭 실패: "{mapping._temp_name}"
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td style={{ padding: '8px 8px' }}>
-                                                            <input
-                                                                type="text"
-                                                                className="mgmt-input"
-                                                                value={mapping.target_field_name || ''}
-                                                                onChange={e => {
-                                                                    const newMappings = [...targetMappings];
-                                                                    newMappings[idx] = { ...newMappings[idx], target_field_name: e.target.value };
-                                                                    setTargetMappings(newMappings);
-                                                                }}
-                                                                placeholder="예: voltage_l1"
-                                                            />
-                                                        </td>
-                                                        <td style={{ padding: '8px 4px' }}>
-                                                            <input
-                                                                type="number"
-                                                                className="mgmt-input"
-                                                                value={mapping.site_id || ''}
-                                                                onChange={e => {
-                                                                    const val = parseInt(e.target.value);
-                                                                    const newMappings = [...targetMappings];
-                                                                    newMappings[idx] = { ...newMappings[idx], site_id: isNaN(val) ? undefined : val };
-                                                                    setTargetMappings(newMappings);
-                                                                }}
-                                                                placeholder="ID"
-                                                            />
-                                                        </td>
-                                                        <td style={{ padding: '8px 4px' }}>
-                                                            <input
-                                                                type="number"
-                                                                className="mgmt-input"
-                                                                step="0.01"
-                                                                value={config.scale !== undefined ? config.scale : 1}
-                                                                onChange={e => {
-                                                                    const val = parseFloat(e.target.value);
-                                                                    const newConfig = { ...config, scale: isNaN(val) ? 1 : val };
-                                                                    const newMappings = [...targetMappings];
-                                                                    newMappings[idx] = { ...newMappings[idx], conversion_config: newConfig };
-                                                                    setTargetMappings(newMappings);
-                                                                }}
-                                                            />
-                                                        </td>
-                                                        <td style={{ padding: '8px 4px' }}>
-                                                            <input
-                                                                type="number"
-                                                                className="mgmt-input"
-                                                                step="0.01"
-                                                                value={config.offset !== undefined ? config.offset : 0}
-                                                                onChange={e => {
-                                                                    const val = parseFloat(e.target.value);
-                                                                    const newConfig = { ...config, offset: isNaN(val) ? 0 : val };
-                                                                    const newMappings = [...targetMappings];
-                                                                    newMappings[idx] = { ...newMappings[idx], conversion_config: newConfig };
-                                                                    setTargetMappings(newMappings);
-                                                                }}
-                                                            />
-                                                        </td>
-                                                        <td style={{ padding: '8px 8px' }}>
-                                                            <input
-                                                                type="text"
-                                                                className="mgmt-input"
-                                                                value={mapping.target_description || ''}
-                                                                onChange={e => {
-                                                                    const newMappings = [...targetMappings];
-                                                                    newMappings[idx] = { ...newMappings[idx], target_description: e.target.value };
-                                                                    setTargetMappings(newMappings);
-                                                                }}
-                                                                placeholder="설명"
-                                                            />
-                                                        </td>
-                                                        <td style={{ padding: '8px 8px', textAlign: 'center' }}>
-                                                            <button
-                                                                className="btn btn-xs btn-outline btn-danger"
-                                                                style={{ width: 'auto', padding: '0 8px' }}
-                                                                onClick={() => {
-                                                                    const newMappings = targetMappings.filter((_, i) => i !== idx);
-                                                                    setTargetMappings(newMappings);
-                                                                }}
-                                                            >
-                                                                <i className="fas fa-trash" />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                <div className="mgmt-modal-footer" style={{ marginTop: '20px', flexShrink: 0 }}>
-                                    <div className="mgmt-footer-right" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                        <button className="mgmt-btn mgmt-btn-outline" onClick={handleCloseMapping}>닫기</button>
-                                        <button className="mgmt-btn mgmt-btn-primary" onClick={handleSaveMappings}>저장하기</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
             )}

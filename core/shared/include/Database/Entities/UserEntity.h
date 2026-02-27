@@ -54,8 +54,8 @@ namespace Entities {
  *     login_count INTEGER DEFAULT 0,
  *     last_login_at TIMESTAMP,
  *     notes TEXT,
- *     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
- *     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+ *     created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+ *     updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
  * );
  */
 class UserEntity : public BaseEntity<UserEntity> {
@@ -339,7 +339,7 @@ private:
     std::string timestampToString(const std::chrono::system_clock::time_point& tp) const {
         auto time_t = std::chrono::system_clock::to_time_t(tp);
         std::stringstream ss;
-        ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+        ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
         return ss.str();
     }
     

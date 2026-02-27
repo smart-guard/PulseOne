@@ -527,7 +527,7 @@ std::string S3TargetHandler::generateTimestampString() const {
   auto time_t = std::chrono::system_clock::to_time_t(now);
 
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%Y%m%d_%H%M%S");
+  oss << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
   return oss.str();
 }
 
@@ -536,7 +536,7 @@ std::string S3TargetHandler::generateDateString() const {
   auto time_t = std::chrono::system_clock::to_time_t(now);
 
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d");
+  oss << std::put_time(std::localtime(&time_t), "%Y-%m-%d");
   return oss.str();
 }
 
@@ -545,7 +545,7 @@ std::string S3TargetHandler::generateYearString() const {
   auto time_t = std::chrono::system_clock::to_time_t(now);
 
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%Y");
+  oss << std::put_time(std::localtime(&time_t), "%Y");
   return oss.str();
 }
 
@@ -554,7 +554,7 @@ std::string S3TargetHandler::generateMonthString() const {
   auto time_t = std::chrono::system_clock::to_time_t(now);
 
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%m");
+  oss << std::put_time(std::localtime(&time_t), "%m");
   return oss.str();
 }
 
@@ -563,7 +563,7 @@ std::string S3TargetHandler::generateDayString() const {
   auto time_t = std::chrono::system_clock::to_time_t(now);
 
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%d");
+  oss << std::put_time(std::localtime(&time_t), "%d");
   return oss.str();
 }
 
@@ -572,7 +572,7 @@ std::string S3TargetHandler::generateHourString() const {
   auto time_t = std::chrono::system_clock::to_time_t(now);
 
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%H");
+  oss << std::put_time(std::localtime(&time_t), "%H");
   return oss.str();
 }
 
@@ -581,7 +581,7 @@ std::string S3TargetHandler::generateMinuteString() const {
   auto time_t = std::chrono::system_clock::to_time_t(now);
 
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%M");
+  oss << std::put_time(std::localtime(&time_t), "%M");
   return oss.str();
 }
 
@@ -590,7 +590,7 @@ std::string S3TargetHandler::generateSecondString() const {
   auto time_t = std::chrono::system_clock::to_time_t(now);
 
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%S");
+  oss << std::put_time(std::localtime(&time_t), "%S");
   return oss.str();
 }
 

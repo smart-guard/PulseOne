@@ -196,7 +196,7 @@ class AlarmQueries {
                 template_id = ?, rule_group = ?, created_by_template = ?,
                 last_template_update = ?, escalation_enabled = ?, escalation_max_level = ?, escalation_rules = ?,
                 category = ?, tags = ?,
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `,
 
@@ -365,7 +365,7 @@ class AlarmQueries {
         // 간단한 업데이트 쿼리들 (alarms.js의 PATCH 엔드포인트용)
         UPDATE_ENABLED_STATUS: `
             UPDATE alarm_rules 
-            SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP
+            SET is_enabled = ?, updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `,
 
@@ -376,19 +376,19 @@ class AlarmQueries {
                 notification_enabled = ?,
                 auto_acknowledge = ?,
                 auto_clear = ?,
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `,
 
         UPDATE_NAME_ONLY: `
             UPDATE alarm_rules 
-            SET name = ?, updated_at = CURRENT_TIMESTAMP
+            SET name = ?, updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `,
 
         UPDATE_SEVERITY_ONLY: `
             UPDATE alarm_rules 
-            SET severity = ?, updated_at = CURRENT_TIMESTAMP
+            SET severity = ?, updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `
     };
@@ -480,28 +480,28 @@ class AlarmQueries {
 
         UPDATE_STATE: `
             UPDATE alarm_occurrences SET
-                state = ?, updated_at = CURRENT_TIMESTAMP
+                state = ?, updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `,
 
         ACKNOWLEDGE: `
             UPDATE alarm_occurrences SET
-                acknowledged_time = CURRENT_TIMESTAMP,
+                acknowledged_time = (datetime('now', 'localtime')),
                 acknowledged_by = ?,
                 acknowledge_comment = ?,
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `,
 
         // ✅ 수정: cleared_by 파라미터 추가 (6개 파라미터)
         CLEAR: `
             UPDATE alarm_occurrences SET
-                cleared_time = CURRENT_TIMESTAMP,
+                cleared_time = (datetime('now', 'localtime')),
                 cleared_value = ?,
                 clear_comment = ?,
                 cleared_by = ?,
                 state = 'cleared',
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `,
 
@@ -928,19 +928,19 @@ class AlarmQueries {
                 default_config = ?, severity = ?, message_template = ?, applicable_data_types = ?,
                 applicable_device_types = ?, notification_enabled = ?, email_notification = ?, 
                 sms_notification = ?, auto_acknowledge = ?, auto_clear = ?, tags = ?, 
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `,
 
         DELETE: `
             UPDATE alarm_rule_templates SET 
-                is_active = 0, updated_at = CURRENT_TIMESTAMP
+                is_active = 0, updated_at = (datetime('now', 'localtime'))
             WHERE id = ? AND tenant_id = ?
         `,
 
         INCREMENT_USAGE: `
             UPDATE alarm_rule_templates SET 
-                usage_count = usage_count + ?, updated_at = CURRENT_TIMESTAMP
+                usage_count = usage_count + ?, updated_at = (datetime('now', 'localtime'))
             WHERE id = ?
         `,
 

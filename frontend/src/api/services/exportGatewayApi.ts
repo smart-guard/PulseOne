@@ -41,6 +41,7 @@ export interface Gateway {
 
 export interface ExportProfile {
     id: number;
+    tenant_id?: number | null;
     name: string;
     description: string;
     data_points: any[]; // JSON
@@ -50,13 +51,12 @@ export interface ExportProfile {
 
 export interface ExportTarget {
     id: number;
-    profile_id: number;
+    tenant_id?: number | null;
     name: string;
     target_type: string;
     description: string;
     config: any;
     is_enabled: boolean;
-    template_id?: number;
     export_mode: string;
     export_interval: number;
     batch_size: number;
@@ -67,6 +67,7 @@ export interface ExportTarget {
 
 export interface PayloadTemplate {
     id: number;
+    tenant_id?: number | null;
     name: string;
     system_type: string;
     description: string;
@@ -100,7 +101,7 @@ export interface Assignment {
 export interface ExportSchedule {
     id: number;
     profile_id?: number;
-    target_id: number;
+    target_id?: number | null;
     schedule_name: string;
     description: string;
     cron_expression: string;

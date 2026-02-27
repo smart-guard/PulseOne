@@ -77,61 +77,11 @@ class ExportGatewayService extends BaseService {
             LogManager.api('INFO', `[UpdateProfile] ID: ${id}, points count: ${data.data_points?.length || 0}`);
             const profile = await this.profileRepository.update(id, data, tenantId);
 
-            // ✅ 프로파일 수정 시, 해당 프로파일을 사용하는 모든 타겟의 매핑 정보도 동기화
-            if (profile && data.data_points) {
-                const points = Array.isArray(data.data_points) ? data.data_points : JSON.parse(data.data_points || '[]');
-                LogManager.api('INFO', `[UpdateProfile] Starting sync for profile ${id}`);
-                await this.syncProfileToTargets(id, points, tenantId);
-            }
-
             return profile;
         }, 'UpdateProfile');
     }
 
-    /**
-     * 프로파일 변경 내용을 관련 타겟들의 물리적 매핑 테이블(export_target_mappings)에 동기화
-     */
-    async syncProfileToTargets(profileId, dataPoints, tenantId) {
-        try {
-            LogManager.api('INFO', `[syncProfileToTargets] Profile: ${profileId}, Points: ${dataPoints.length}, Tenant: ${tenantId}`);
-            // ✅ targetRepository를 사용하여 해당 프로파일을 사용하는 모든 타겟 조회
-            const targetsQuery = this.targetRepository.query().where({
-                profile_id: profileId,
-                tenant_id: tenantId
-            });
 
-            const targets = await targetsQuery;
-            const rows = Array.isArray(targets) ? targets : [];
-
-            LogManager.api('INFO', `[syncProfileToTargets] Found ${rows.length} targets to sync`);
-
-            for (const target of rows) {
-                LogManager.api('INFO', `[syncProfileToTargets] Syncing target: ${target.name} (ID: ${target.id})`);
-
-                // 기존 매핑 삭제 (동기화를 위해)
-                const deleted = await this.targetMappingRepository.deleteByTargetId(target.id, tenantId);
-                LogManager.api('INFO', `[syncProfileToTargets] Deleted existing mappings for target ${target.id}: ${deleted}`);
-
-                for (const dp of dataPoints) {
-                    await this.targetMappingRepository.save({
-                        target_id: target.id,
-                        point_id: dp.id,
-                        site_id: dp.site_id || dp.building_id,
-                        target_field_name: dp.target_field_name || dp.name,
-                        target_description: '',
-                        conversion_config: {
-                            scale: dp.scale ?? 1,
-                            offset: dp.offset ?? 0
-                        },
-                        is_enabled: 1
-                    }, tenantId);
-                }
-            }
-        } catch (error) {
-            LogManager.api('ERROR', `[syncProfileToTargets] Error (Profile: ${profileId})`, { error: error.message, stack: error.stack });
-            throw error;
-        }
-    }
 
     async deleteProfile(id, tenantId) {
         return await this.handleRequest(async () => {
@@ -178,14 +128,6 @@ class ExportGatewayService extends BaseService {
                 }
             }
             const target = await this.targetRepository.save(data, tenantId);
-
-            // Automatically sync mappings if profile_id is assigned
-            if (data.profile_id) {
-                const profile = await this.profileRepository.findById(data.profile_id, tenantId);
-                if (profile && profile.data_points) {
-                    await this.syncProfileToTargets(data.profile_id, profile.data_points, tenantId);
-                }
-            }
 
             // Signal gateways to reload configurations
             await this.signalTargetReload(tenantId);
@@ -254,14 +196,6 @@ class ExportGatewayService extends BaseService {
             }
 
             const target = await this.targetRepository.update(id, data, tenantId);
-
-            // [Fix] Automatically sync mappings if profile_id is present (changed or just saved)
-            if (data.profile_id) {
-                const profile = await this.profileRepository.findById(data.profile_id, tenantId);
-                if (profile && profile.data_points) {
-                    await this.syncProfileToTargets(data.profile_id, profile.data_points, tenantId);
-                }
-            }
 
             // Signal gateways to reload configurations
             await this.signalTargetReload(tenantId);
@@ -647,7 +581,7 @@ class ExportGatewayService extends BaseService {
             // Reactivate with current tenant/site scoping
             await db('export_profile_assignments')
                 .where('id', existing.id)
-                .update({ is_active: 1, tenant_id: tenantId, site_id: siteId, assigned_at: this.knex.fn.now() });
+                .update({ is_active: 1, tenant_id: tenantId, site_id: siteId, assigned_at: this.knex.raw("datetime('now', 'localtime')") });
         } else {
             // Insert with full tenant/site scoping (columns now exist in schema)
             await db('export_profile_assignments')
@@ -657,7 +591,7 @@ class ExportGatewayService extends BaseService {
                     is_active: 1,
                     tenant_id: tenantId,
                     site_id: siteId,
-                    assigned_at: this.knex.fn.now()
+                    assigned_at: this.knex.raw("datetime('now', 'localtime')")
                 });
         }
 
@@ -678,7 +612,7 @@ class ExportGatewayService extends BaseService {
 
         await query.update({
             is_active: 0,
-            updated_at: this.knex.fn.now()
+            updated_at: this.knex.raw("datetime('now', 'localtime')")
         });
 
         await this.signalTargetReload(tenantId);

@@ -362,6 +362,33 @@ ALL_OBJECTS = $(EVENT_OBJECTS) $(MODEL_OBJECTS) $(SERVICE_OBJECTS) $(TARGET_OBJE
 TARGET = $(BIN_DIR)/export-gateway$(EXE_SUFFIX)
 
 # =============================================================================
+# 주요 디렉토리 설정
+# =============================================================================
+
+# 플랫폼 판별
+UNAME_S := $(shell uname -s)
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    TARGET_PLATFORM := Windows-Cross
+else ifeq ($(OS),Windows_NT)
+    TARGET_PLATFORM := Windows
+else
+    TARGET_PLATFORM := $(UNAME_S)
+endif
+
+# 프로젝트 디렉토리
+PROJ_DIR = .
+SRC_DIR = src
+INCLUDE_DIR = include
+BUILD_DIR = build/$(PLATFORM)
+BIN_DIR = bin
+DIST_DIR = dist
+
+# 공통 모듈 (Shared) 디렉토리
+SHARED_DIR = ../shared
+SHARED_INCLUDE_DIR = $(SHARED_DIR)/include
+SHARED_LIB_DIR = $(SHARED_DIR)/lib/$(TARGET_PLATFORM)
+
+# =============================================================================
 # 테스트 디렉토리 구조
 # =============================================================================
 

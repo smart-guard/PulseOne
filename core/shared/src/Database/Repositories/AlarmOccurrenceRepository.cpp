@@ -741,8 +741,8 @@ bool AlarmOccurrenceRepository::clear(int64_t occurrence_id, int cleared_by,
 
     // SQL::AlarmOccurrence::CLEAR 쿼리 사용
     // UPDATE alarm_occurrences SET state = 'cleared', cleared_time =
-    // CURRENT_TIMESTAMP, cleared_value = ?, clear_comment = ?, cleared_by = ?,
-    // updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    // (datetime('now', 'localtime')), cleared_value = ?, clear_comment = ?, cleared_by = ?,
+    // updated_at = (datetime('now', 'localtime')) WHERE id = ?
     std::string query = SQL::AlarmOccurrence::CLEAR;
     query =
         RepositoryHelpers::replaceParameter(query, escapeString(cleared_value));

@@ -423,8 +423,8 @@ const GatewayDetailModal: React.FC<{
         return [];
     })() : [];
 
-    const profileIds = assignedProfiles.map(p => String(p.id));
-    const linkedTargets = (targets || []).filter(t => profileIds.includes(String(t.profile_id)));
+    const savedTargetIds = Object.keys(gateway.config?.target_priorities || {});
+    const linkedTargets = (targets || []).filter(t => savedTargetIds.includes(String(t.id)));
     const targetIds = linkedTargets.map(t => String(t.id));
     const linkedSchedules = (schedules || []).filter(s => targetIds.includes(String(s.target_id)));
 
@@ -508,7 +508,7 @@ const GatewayDetailModal: React.FC<{
                             <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', textAlign: 'center' }}>
                                 <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, marginBottom: '4px' }}>EXPORT MODE</div>
                                 <div style={{ fontSize: '15px', fontWeight: 800, color: '#1e293b' }}>
-                                    {linkedSchedules.length > 0 ? '이벤트/정기 전송' : '설정 필요'}
+                                    {linkedSchedules.length > 0 ? '정기 전송' : '설정 필요'}
                                 </div>
                             </div>
                         </div>

@@ -503,7 +503,7 @@ int CollectorApplication::ResolveCollectorId() {
     // Claim the slot with instance_key for consistency
     std::string update_query =
         "UPDATE edge_servers SET instance_key = '" + instance_key +
-        "', last_seen = CURRENT_TIMESTAMP WHERE id = " +
+        "', last_seen = (datetime('now', 'localtime')) WHERE id = " +
         std::to_string(explicit_id) + " AND server_type = 'collector'";
     db_mgr.executeNonQuery(update_query);
     config.setCollectorId(explicit_id);
@@ -531,11 +531,11 @@ int CollectorApplication::ResolveCollectorId() {
   // > 5 min)
   std::string claim_query =
       "UPDATE edge_servers SET instance_key = '" + instance_key +
-      "', last_seen = CURRENT_TIMESTAMP "
+      "', last_seen = (datetime('now', 'localtime')) "
       "WHERE id = (SELECT id FROM edge_servers WHERE server_type = 'collector' "
       "AND ((instance_key IS NULL OR "
       "instance_key = '') "
-      "OR (last_heartbeat < CURRENT_TIMESTAMP - INTERVAL '5 minutes')) LIMIT "
+      "OR (last_heartbeat < (datetime('now', 'localtime')) - INTERVAL '5 minutes')) LIMIT "
       "1)";
 
   if (db_mgr.executeNonQuery(claim_query)) {
@@ -823,8 +823,8 @@ void CollectorApplication::UpdateHeartbeat() {
 
     auto &db_mgr = DbLib::DatabaseManager::getInstance();
     std::string query =
-        "UPDATE edge_servers SET last_seen = CURRENT_TIMESTAMP, "
-        "last_heartbeat = CURRENT_TIMESTAMP WHERE id = " +
+        "UPDATE edge_servers SET last_seen = (datetime('now', 'localtime')), "
+        "last_heartbeat = (datetime('now', 'localtime')) WHERE id = " +
         std::to_string(collector_id);
 
     db_mgr.executeNonQuery(query);

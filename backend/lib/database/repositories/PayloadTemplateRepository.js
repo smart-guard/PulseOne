@@ -82,8 +82,8 @@ class PayloadTemplateRepository extends BaseRepository {
                 description: data.description || '',
                 template_json: typeof data.template_json === 'object' ? JSON.stringify(data.template_json) : (data.template_json || '{}'),
                 is_active: data.is_active !== undefined ? data.is_active : 1,
-                created_at: this.knex.fn.now(),
-                updated_at: this.knex.fn.now()
+                created_at: this.knex.raw("datetime('now', 'localtime')"),
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const [id] = await this.knex(this.tableName).insert(dataToInsert);
@@ -100,7 +100,7 @@ class PayloadTemplateRepository extends BaseRepository {
     async update(id, data, tenantId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const allowedFields = ['name', 'system_type', 'description', 'template_json', 'is_active'];

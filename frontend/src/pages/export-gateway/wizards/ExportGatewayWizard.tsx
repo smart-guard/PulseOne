@@ -286,6 +286,10 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
         lookback_periods: 1
     });
 
+    const [scheduleMode, setScheduleMode] = useState<'new' | 'existing'>('new');
+    const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
+    const [availableSchedules, setAvailableSchedules] = useState<ExportSchedule[]>([]);
+
     const updateTargetPriority = (type: 'existing' | 'new', idOrProto: number | string, index: number, newPriority: number) => {
         // Collect all targets that need a priority
         const items: any[] = [];
@@ -378,6 +382,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
         prevVisibleRef.current = visible;
 
+        // Fetch available schedules for the 'existing' mode dropdown
+        exportGatewayApi.getSchedules({ tenantId: wizardTenantId || undefined }).then(res => {
+            if (res.success && res.data) {
+                setAvailableSchedules(extractItems(res.data));
+            }
+        });
+
         // If not in Edit mode, just handle initial open reset if needed
         if (!editingGateway) {
             if (hydratedTargetIdRef.current !== -1) { // -1 marks "New registration mode"
@@ -394,6 +405,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     config_s3: [{ endpoint: '', BucketName: '', Folder: '', ObjectKeyTemplate: '', AccessKeyID: '', SecretAccessKey: '', execution_order: 0 }]
                 });
                 setScheduleData({ schedule_name: '', cron_expression: '*/1 * * * *', data_range: 'minute', lookback_periods: 1 });
+                setScheduleMode('new');
+                setSelectedScheduleId(null);
                 setTransmissionMode('INTERVAL');
                 setCurrentStep(0);
                 hydratedTargetIdRef.current = -1;
@@ -465,18 +478,17 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             setMappings(initialMappings);
         }
 
-        const linkedTargets = targets.filter(t => String(t.profile_id) === String(assign.profile_id));
+        const savedTargets = Object.keys(editingGateway.config?.target_priorities || {});
+        const linkedTargets = targets.filter(t => savedTargets.includes(String(t.id)));
         if (linkedTargets.length > 0) {
             setTargetMode('existing');
             setSelectedTargetIds(linkedTargets.map(t => t.id));
 
             const primaryTarget = linkedTargets[0];
 
-            // Template
-            if (primaryTarget.template_id) {
-                setSelectedTemplateId(primaryTarget.template_id);
-                setTemplateMode('existing');
-            }
+            // Template handling - templates are deprecated for targets
+            setSelectedTemplateId(null);
+            setTemplateMode('new');
 
             // Mappings (Fetch from server if available, overwrite defaults)
             (async () => {
@@ -568,12 +580,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     setMappings(initialMappings);
                     lastMappedProfileIdRef.current = selectedProfileId;
 
-                    // [NEW] Auto-select targets that belong to this profile
-                    const belongsToProfile = targets
-                        .filter(t => String(t.profile_id) === String(selectedProfileId))
+                    // [FIX] Auto-select targets based on gateway configuration
+                    const savedTargets = Object.keys(editingGateway?.config?.target_priorities || {});
+                    const belongsToGateway = targets
+                        .filter(t => savedTargets.includes(String(t.id)))
                         .map(t => t.id);
-                    if (belongsToProfile.length > 0) {
-                        setSelectedTargetIds(belongsToProfile);
+                    if (belongsToGateway.length > 0) {
+                        setSelectedTargetIds(belongsToGateway);
                         setTargetMode('existing');
                     } else {
                         // If no targets for this profile, default to 'new' for user convenience
@@ -728,20 +741,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             if (targetMode === 'existing') {
                 finalTargetIds = selectedTargetIds;
 
-                // [NEW] Identify targets to UNLINK (those currently in this profile but NOT selected)
-                const currentProfileTargets = targets.filter(t => String(t.profile_id) === String(profileId));
-                const targetIdsToUnlink = currentProfileTargets
-                    .filter(t => !selectedTargetIds.some(sid => String(sid) === String(t.id)))
-                    .map(t => t.id);
-
-                if (targetIdsToUnlink.length > 0) {
-                    console.log(`[Wizard] Unlinking ${targetIdsToUnlink.length} targets from Profile ${profileId}`);
-                    await Promise.all(targetIdsToUnlink.map(tid =>
-                        exportGatewayApi.updateTarget(tid, { profile_id: 0 }, wizardTenantId)
-                    ));
-                }
-
-                // [FIXED] Update existing targets with ALL fields (profile, template, mode, config)
+                // [FIXED] Update existing targets with ALL fields (mode, config)
                 await Promise.all(selectedTargetIds.map(async (tid) => {
                     const editedConfigs = editingTargets[tid]; // Should be populated now
 
@@ -751,9 +751,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                         priorityMap[tid.toString()] = priority;
 
                         const uRes = await exportGatewayApi.updateTarget(tid, {
-                            profile_id: profileId, // [NEW] Ensure target stays on current profile
                             config: editedConfigs || [], // Falls back to empty if truly missing
-                            template_id: templateId || undefined,
                             export_mode: transmissionMode === 'EVENT' ? 'REALTIME' : 'batched'
                         }, wizardTenantId);
 
@@ -786,8 +784,6 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                         const tRes = await exportGatewayApi.createTarget({
                             name: targetName,
                             target_type: proto,
-                            profile_id: profileId,
-                            template_id: templateId || undefined,
                             config: [cfg], // Save as array of one
                             is_enabled: true,
                             export_mode: transmissionMode === 'EVENT' ? 'REALTIME' : 'batched'
@@ -810,17 +806,33 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             }
 
             // 5. Schedule
-            // If INTERVAL mode, create schedule for each target
+            // If INTERVAL mode, create (or link) schedule for each target
             if (transmissionMode === 'INTERVAL') {
                 for (const tid of finalTargetIds) {
-                    await exportGatewayApi.createSchedule({
+                    let schedToCreate: Partial<ExportSchedule> = {
                         target_id: tid,
                         schedule_name: scheduleData.schedule_name || `${gatewayData.name}_Schedule`,
                         cron_expression: scheduleData.cron_expression,
                         data_range: scheduleData.data_range,
                         lookback_periods: 1,
                         is_enabled: true
-                    }, wizardTenantId);
+                    };
+
+                    if (scheduleMode === 'existing' && selectedScheduleId) {
+                        const existingSched = availableSchedules.find(s => s.id === selectedScheduleId);
+                        if (existingSched) {
+                            schedToCreate = {
+                                target_id: tid,
+                                schedule_name: existingSched.schedule_name,
+                                cron_expression: existingSched.cron_expression,
+                                data_range: existingSched.data_range || 'minute',
+                                lookback_periods: existingSched.lookback_periods || 1,
+                                is_enabled: true
+                            };
+                        }
+                    }
+
+                    await exportGatewayApi.createSchedule(schedToCreate, wizardTenantId);
                 }
             }
 
@@ -1896,54 +1908,104 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
                                 {transmissionMode === 'INTERVAL' ? (
                                     <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
-                                        <Form.Item label={<span style={{ fontWeight: 600 }}>스케줄 명칭</span>} required>
-                                            <Input
-                                                placeholder="예: 5분 주기 정기 전송"
-                                                value={scheduleData.schedule_name}
-                                                onChange={e => setScheduleData({ ...scheduleData, schedule_name: e.target.value })}
-                                            />
+                                        <Form.Item label={<span style={{ fontWeight: 600 }}>스케줄 설정 방식</span>}>
+                                            <Radio.Group
+                                                value={scheduleMode}
+                                                onChange={e => {
+                                                    setScheduleMode(e.target.value);
+                                                    if (e.target.value === 'existing' && availableSchedules.length > 0 && !selectedScheduleId) {
+                                                        setSelectedScheduleId(availableSchedules[0].id);
+                                                    }
+                                                }}
+                                                optionType="button"
+                                                buttonStyle="solid"
+                                                style={{ width: '100%', marginBottom: '16px' }}
+                                            >
+                                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>신규 생성</Radio.Button>
+                                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>기존 스케줄 적용</Radio.Button>
+                                            </Radio.Group>
                                         </Form.Item>
-                                        <Form.Item
-                                            label={<span style={{ fontWeight: 600 }}>Cron 표현식</span>}
-                                            required
-                                            extra={<span style={{ fontSize: '11px' }}>* 표준 Cron 형식을 지원합니다 (분 시 일 월 요일)</span>}
-                                        >
-                                            <Input
-                                                placeholder="*/5 * * * *"
-                                                value={scheduleData.cron_expression}
-                                                onChange={e => setScheduleData({ ...scheduleData, cron_expression: e.target.value })}
-                                                style={{ fontFamily: 'monospace', fontSize: '15px' }}
-                                            />
-                                            <div style={{ marginTop: '12px' }}>
-                                                <div style={{ fontSize: '11px', color: '#8c8c8c', marginBottom: '8px', fontWeight: 600 }}>간편 프리셋 선택</div>
-                                                <Space wrap>
-                                                    {[
-                                                        { label: '1분 주기', value: '*/1 * * * *' },
-                                                        { label: '5분 주기', value: '*/5 * * * *' },
-                                                        { label: '10분 주기', value: '*/10 * * * *' },
-                                                        { label: '30분 주기', value: '*/30 * * * *' },
-                                                        { label: '1시간 주기', value: '0 * * * *' },
-                                                        { label: '12시간 주기', value: '0 */12 * * *' },
-                                                        { label: '매일 자정', value: '0 0 * * *' },
-                                                        { label: '매주 일요일', value: '0 0 * * 0' }
-                                                    ].map(preset => (
-                                                        <Button
-                                                            key={preset.value}
-                                                            size="small"
-                                                            type={scheduleData.cron_expression === preset.value ? 'primary' : 'default'}
-                                                            onClick={() => setScheduleData({
-                                                                ...scheduleData,
-                                                                cron_expression: preset.value,
-                                                                schedule_name: preset.label
-                                                            })}
-                                                            style={{ fontSize: '11px', borderRadius: '4px' }}
-                                                        >
-                                                            {preset.label}
-                                                        </Button>
-                                                    ))}
-                                                </Space>
-                                            </div>
-                                        </Form.Item>
+
+                                        {scheduleMode === 'new' ? (
+                                            <>
+                                                <Form.Item label={<span style={{ fontWeight: 600 }}>스케줄 명칭</span>} required>
+                                                    <Input
+                                                        placeholder="예: 5분 주기 정기 전송"
+                                                        value={scheduleData.schedule_name}
+                                                        onChange={e => setScheduleData({ ...scheduleData, schedule_name: e.target.value })}
+                                                    />
+                                                </Form.Item>
+                                                <Form.Item
+                                                    label={<span style={{ fontWeight: 600 }}>Cron 표현식</span>}
+                                                    required
+                                                    extra={<span style={{ fontSize: '11px' }}>* 표준 Cron 형식을 지원합니다 (분 시 일 월 요일)</span>}
+                                                >
+                                                    <Input
+                                                        placeholder="*/5 * * * *"
+                                                        value={scheduleData.cron_expression}
+                                                        onChange={e => setScheduleData({ ...scheduleData, cron_expression: e.target.value })}
+                                                        style={{ fontFamily: 'monospace', fontSize: '15px' }}
+                                                    />
+                                                    <div style={{ marginTop: '12px' }}>
+                                                        <div style={{ fontSize: '11px', color: '#8c8c8c', marginBottom: '8px', fontWeight: 600 }}>간편 프리셋 선택</div>
+                                                        <Space wrap>
+                                                            {[
+                                                                { label: '1분 주기', value: '*/1 * * * *' },
+                                                                { label: '5분 주기', value: '*/5 * * * *' },
+                                                                { label: '10분 주기', value: '*/10 * * * *' },
+                                                                { label: '30분 주기', value: '*/30 * * * *' },
+                                                                { label: '1시간 주기', value: '0 * * * *' },
+                                                                { label: '12시간 주기', value: '0 */12 * * *' },
+                                                                { label: '매일 자정', value: '0 0 * * *' },
+                                                                { label: '매주 일요일', value: '0 0 * * 0' }
+                                                            ].map(preset => (
+                                                                <Button
+                                                                    key={preset.value}
+                                                                    size="small"
+                                                                    type={scheduleData.cron_expression === preset.value ? 'primary' : 'default'}
+                                                                    onClick={() => setScheduleData({
+                                                                        ...scheduleData,
+                                                                        cron_expression: preset.value,
+                                                                        schedule_name: preset.label
+                                                                    })}
+                                                                    style={{ fontSize: '11px', borderRadius: '4px' }}
+                                                                >
+                                                                    {preset.label}
+                                                                </Button>
+                                                            ))}
+                                                        </Space>
+                                                    </div>
+                                                </Form.Item>
+                                            </>
+                                        ) : (
+                                            <Form.Item label={<span style={{ fontWeight: 600 }}>사전 정의된 스케줄 선택</span>} required>
+                                                {availableSchedules.length > 0 ? (
+                                                    <Select
+                                                        placeholder="스케줄을 선택하세요"
+                                                        value={selectedScheduleId}
+                                                        onChange={v => setSelectedScheduleId(v)}
+                                                        style={{ width: '100%' }}
+                                                    >
+                                                        {availableSchedules.map(s => (
+                                                            <Select.Option key={s.id} value={s.id}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <span>{s.schedule_name}</span>
+                                                                    <Tag color="blue" style={{ margin: 0 }}>{s.cron_expression}</Tag>
+                                                                </div>
+                                                            </Select.Option>
+                                                        ))}
+                                                    </Select>
+                                                ) : (
+                                                    <div style={{ padding: '16px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: '8px', color: '#d48806', fontSize: '13px' }}>
+                                                        <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
+                                                        이 테넌트에 등록된 기존 스케줄이 없습니다. <strong>신규 생성</strong> 모드를 이용해 주세요.
+                                                    </div>
+                                                )}
+                                                <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '8px' }}>
+                                                    * 선택한 기존 스케줄의 주기(Cron) 설정을 바탕으로 새로운 스케줄을 생성합니다.
+                                                </div>
+                                            </Form.Item>
+                                        )}
                                     </div>
                                 ) : (
                                     <div style={{

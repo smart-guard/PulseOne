@@ -87,7 +87,7 @@ bool DeviceScheduleRepository::update(const DeviceScheduleEntity& entity) {
         "schedule_type = '" + entity.getScheduleType() + "', "
         "schedule_data = '" + entity.getScheduleData() + "', "
         "is_synced = " + (entity.isSynced() ? "1" : "0") + ", "
-        "updated_at = CURRENT_TIMESTAMP "
+        "updated_at = (datetime('now', 'localtime')) "
         "WHERE id = " + std::to_string(entity.getId());
     return db.executeNonQuery(sql);
 }
@@ -129,7 +129,7 @@ std::vector<DeviceScheduleEntity> DeviceScheduleRepository::findPendingSync(int 
 
 bool DeviceScheduleRepository::markAsSynced(int id) {
     DbLib::DatabaseAbstractionLayer db;
-    std::string sql = "UPDATE device_schedules SET is_synced = 1, last_sync_time = CURRENT_TIMESTAMP WHERE id = " + std::to_string(id);
+    std::string sql = "UPDATE device_schedules SET is_synced = 1, last_sync_time = (datetime('now', 'localtime')) WHERE id = " + std::to_string(id);
     return db.executeNonQuery(sql);
 }
 

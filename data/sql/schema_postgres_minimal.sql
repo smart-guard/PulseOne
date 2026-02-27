@@ -6,7 +6,7 @@
 CREATE TABLE IF NOT EXISTS schema_versions (
     id SERIAL PRIMARY KEY,
     version VARCHAR(20) NOT NULL,
-    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    applied_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
     description TEXT
 );
 
@@ -28,8 +28,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     subscription_start_date TIMESTAMP,              -- Added
     trial_end_date TIMESTAMP,                       -- Added
     is_active INTEGER DEFAULT 1,                    -- Changed to INTEGER
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
     is_deleted INTEGER DEFAULT 0                    -- Changed to INTEGER
 );
 
@@ -43,8 +43,8 @@ CREATE TABLE IF NOT EXISTS users (
     full_name VARCHAR(100),
     role VARCHAR(20) NOT NULL,
     is_active INTEGER DEFAULT 1,     -- Changed to INTEGER
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
 );
 
 -- Sites
@@ -57,8 +57,8 @@ CREATE TABLE IF NOT EXISTS sites (
     description TEXT,
     location VARCHAR(200),
     is_active INTEGER DEFAULT 1,     -- Changed to INTEGER
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
     UNIQUE(tenant_id, code)
 );
 
@@ -84,8 +84,8 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     max_devices INTEGER DEFAULT 100,      -- Added
     max_data_points INTEGER DEFAULT 1000, -- Added
     is_enabled INTEGER DEFAULT 1,         -- Changed to INTEGER
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
     is_deleted INTEGER DEFAULT 0,         -- Changed to INTEGER from BOOLEAN
     site_id INTEGER REFERENCES sites(id) ON DELETE SET NULL
 );
@@ -102,8 +102,8 @@ CREATE TABLE IF NOT EXISTS protocols (
     is_enabled INTEGER DEFAULT 1,     -- Changed to INTEGER
     is_deprecated INTEGER DEFAULT 0,  -- Added
     category VARCHAR(50),             -- Added
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
 );
 
 -- Device Groups
@@ -113,8 +113,8 @@ CREATE TABLE IF NOT EXISTS device_groups (
     site_id INTEGER NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
 );
 
 -- Devices
@@ -144,8 +144,8 @@ CREATE TABLE IF NOT EXISTS devices (
     created_by INTEGER,
     installation_date DATE,
     last_maintenance DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
 );
 
 -- Device Settings
@@ -185,8 +185,8 @@ CREATE TABLE IF NOT EXISTS device_settings (
     auto_registration_enabled INTEGER DEFAULT 0,
     
     -- Metadata
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
     updated_by INTEGER
 );
 
@@ -212,8 +212,8 @@ CREATE TABLE IF NOT EXISTS data_points (
     tags TEXT,
     metadata TEXT,
     protocol_params TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
     is_deleted INTEGER DEFAULT 0,      -- Changed to INTEGER
     UNIQUE(device_id, address)
 );
@@ -232,8 +232,8 @@ CREATE TABLE IF NOT EXISTS alarm_rules (
     deadband REAL DEFAULT 0,
     severity VARCHAR(20) DEFAULT 'medium',
     is_enabled INTEGER DEFAULT 1,      -- Changed to INTEGER
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
     category VARCHAR(50),
     tags TEXT
 );
@@ -243,7 +243,7 @@ CREATE TABLE IF NOT EXISTS alarm_occurrences (
     id SERIAL PRIMARY KEY,
     rule_id INTEGER NOT NULL REFERENCES alarm_rules(id) ON DELETE CASCADE,
     tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    occurrence_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    occurrence_time TIMESTAMP DEFAULT (datetime('now', 'localtime')),
     trigger_value TEXT,
     alarm_message TEXT,
     severity VARCHAR(20),
@@ -252,8 +252,8 @@ CREATE TABLE IF NOT EXISTS alarm_occurrences (
     cleared_time TIMESTAMP,
     device_id INTEGER,
     point_id INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
 );
 
 -- System Settings
@@ -263,7 +263,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
     value TEXT NOT NULL,
     description TEXT,
     category VARCHAR(50) DEFAULT 'general',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT (datetime('now', 'localtime'))
 );
 
 -- SEED DATA

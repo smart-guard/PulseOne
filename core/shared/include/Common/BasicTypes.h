@@ -142,9 +142,9 @@ inline std::string TimestampToString(const Timestamp &timestamp) {
   std::tm tm_buf{};
 
 #ifdef _WIN32
-  gmtime_s(&tm_buf, &time_t);
+  localtime_s(&tm_buf, &time_t);
 #else
-  gmtime_r(&time_t, &tm_buf);
+  localtime_r(&time_t, &tm_buf);
 #endif
 
   std::stringstream ss;

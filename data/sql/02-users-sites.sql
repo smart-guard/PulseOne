@@ -58,8 +58,8 @@ CREATE TABLE IF NOT EXISTS users (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     last_activity DATETIME,
     is_deleted TINYINT DEFAULT 0,                        -- ⬅️ Moved to match live schema
     
@@ -95,10 +95,10 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     -- 🔥 세션 상태
     is_active INTEGER DEFAULT 1,
     expires_at DATETIME NOT NULL,
-    last_used DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -167,8 +167,8 @@ CREATE TABLE IF NOT EXISTS sites (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_site_id) REFERENCES sites(id) ON DELETE SET NULL,
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS user_favorites (
     sort_order INTEGER DEFAULT 0,
     
     -- 🔥 감사 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(user_id, target_type, target_id),
@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS user_notification_settings (
     teams_webhook_url VARCHAR(255),
     
     -- 🔥 메타데이터
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     

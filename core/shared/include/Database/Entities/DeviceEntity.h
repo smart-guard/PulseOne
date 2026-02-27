@@ -71,8 +71,8 @@ namespace Entities {
  *     last_maintenance DATE,
  *
  *     created_by INTEGER,
- *     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
- *     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ *     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+ *     updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
  *
  *     FOREIGN KEY (protocol_id) REFERENCES protocols(id)
  * );

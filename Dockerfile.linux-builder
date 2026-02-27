@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     uuid-dev libbluetooth-dev \
     git pkg-config wget curl autoconf automake libtool \
     rsync zip sqlite3 \
+    libpqxx-dev libmariadb-dev libmariadb-dev-compat python3 libmbedtls-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # =============================================================================
@@ -82,20 +83,33 @@ RUN cd /tmp && \
 RUN ldconfig
 
 # =============================================================================
+# 5.5 open62541 (OPC UA)
+# =============================================================================
+RUN cd /tmp && \
+    git clone --depth 1 --branch v1.3.9 https://github.com/open62541/open62541.git && \
+    cmake -S open62541 -B open62541/build -DUA_ENABLE_AMALGAMATION=ON -DUA_ENABLE_ENCRYPTION=ON && \
+    make -C open62541/build -j$(nproc) install && \
+    rm -rf /tmp/open62541 && \
+    echo "✅ open62541(OPC UA) 설치 완료"
+
+RUN ldconfig
+
+# =============================================================================
 # 6. BACnet Stack (Linux native)
 # =============================================================================
 RUN cd /tmp && \
     git clone --depth 1 https://github.com/bacnet-stack/bacnet-stack.git && \
     cd bacnet-stack && \
     echo "Building BACnet Stack for Linux..." && \
-    make BACNET_PORT=linux \
-    BACNET_DEFINES="-DBACAPP_ALL -DBACAPP_CHARACTER_STRING -DBACAPP_UNSIGNED -DBACAPP_SIGNED -DBACAPP_REAL -DBACAPP_DOUBLE -DBACAPP_BOOLEAN -DBACAPP_ENUMERATED -DBACAPP_DATE -DBACAPP_TIME -DBACAPP_OBJECT_ID" \
-    -j$(nproc) library 2>&1 | tail -5 && \
+    find src/bacnet -name "*.c" ! -path "*/ports/*" | while read -r file; do \
+    obj=$(echo "$file" | sed 's/\//_/g').o; \
+    gcc -c -fPIC -DBACDL_BIP=1 -DBACAPP_ALL=ON -DPRINT_ENABLED=1 -Isrc "$file" -o "$obj"; \
+    done && \
+    ar rcs libbacnet.a *.o && \
+    cp libbacnet.a /usr/local/lib/ && \
     mkdir -p /usr/local/include/bacnet && \
     cp -r src/bacnet/* /usr/local/include/bacnet/ && \
-    find . -name "libbacnet.a" -exec cp {} /usr/local/lib/ \; || \
-    (ar rcs /usr/local/lib/libbacnet.a $(find . -name '*.o' | head -500) && echo "libbacnet.a created") && \
-    rm -rf /tmp/bacnet-stack && \
+    cd .. && rm -rf bacnet-stack && \
     echo "✅ BACnet Stack 설치 완료"
 
 RUN ldconfig

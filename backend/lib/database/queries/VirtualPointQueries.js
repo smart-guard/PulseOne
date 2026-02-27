@@ -135,7 +135,7 @@ class VirtualPointQueries {
       INSERT INTO virtual_points (
         tenant_id, name, formula, description, data_type, unit,
         calculation_trigger, is_enabled, category, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), datetime('now', 'localtime'))
     `;
     }
 
@@ -144,7 +144,7 @@ class VirtualPointQueries {
         return `
       INSERT INTO virtual_point_values 
       (virtual_point_id, value, quality, last_calculated, calculation_duration_ms, is_stale) 
-      VALUES (?, NULL, 'initialization', datetime('now'), 0, 1)
+      VALUES (?, NULL, 'initialization', datetime('now', 'localtime'), 0, 1)
     `;
     }
 
@@ -182,7 +182,7 @@ class VirtualPointQueries {
       INSERT INTO virtual_point_execution_history 
       (virtual_point_id, execution_time, execution_duration_ms, result_type, 
        result_value, trigger_source, success) 
-      VALUES (?, datetime('now'), 0, 'success', '{"action": "created", "status": "initialized"}', 'system', 1)
+      VALUES (?, datetime('now', 'localtime'), 0, 'success', '{"action": "created", "status": "initialized"}', 'system', 1)
     `;
     }
 
@@ -196,7 +196,7 @@ class VirtualPointQueries {
       UPDATE virtual_points SET
         name = ?, formula = ?, description = ?, data_type = ?,
         unit = ?, calculation_trigger = ?, is_enabled = ?,
-        category = ?, updated_at = datetime('now')
+        category = ?, updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `;
     }
@@ -212,7 +212,7 @@ class VirtualPointQueries {
     static invalidateCurrentValue() {
         return `
       UPDATE virtual_point_values 
-      SET quality = 'pending_update', is_stale = 1, last_calculated = datetime('now')
+      SET quality = 'pending_update', is_stale = 1, last_calculated = datetime('now', 'localtime')
       WHERE virtual_point_id = ?
     `;
     }
@@ -223,7 +223,7 @@ class VirtualPointQueries {
       INSERT INTO virtual_point_execution_history 
       (virtual_point_id, execution_time, execution_duration_ms, result_type, 
        result_value, trigger_source, success) 
-      VALUES (?, datetime('now'), 0, 'success', '{"action": "updated", "status": "completed"}', 'manual', 1)
+      VALUES (?, datetime('now', 'localtime'), 0, 'success', '{"action": "updated", "status": "completed"}', 'manual', 1)
     `;
     }
     /**
@@ -232,7 +232,7 @@ class VirtualPointQueries {
     static updateEnabledOnly() {
         return `
       UPDATE virtual_points 
-      SET is_enabled = ?, updated_at = datetime('now')
+      SET is_enabled = ?, updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `;
     }
@@ -245,7 +245,7 @@ class VirtualPointQueries {
       UPDATE virtual_points 
       SET calculation_interval = ?, calculation_trigger = ?, 
           priority = ?, description = ?, unit = ?, data_type = ?, 
-          category = ?, updated_at = datetime('now')
+          category = ?, updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `;
     }
@@ -256,7 +256,7 @@ class VirtualPointQueries {
     static updateCurrentValue() {
         return `
       UPDATE virtual_point_values 
-      SET value = ?, quality = ?, last_calculated = datetime('now'),
+      SET value = ?, quality = ?, last_calculated = datetime('now', 'localtime'),
           calculation_duration_ms = ?, is_stale = 0
       WHERE virtual_point_id = ?
     `;
@@ -275,8 +275,8 @@ class VirtualPointQueries {
             ELSE ?
             END
           ),
-          last_execution_time = datetime('now'),
-          updated_at = datetime('now')
+          last_execution_time = datetime('now', 'localtime'),
+          updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `;
     }
@@ -287,7 +287,7 @@ class VirtualPointQueries {
     static updateLastError() {
         return `
       UPDATE virtual_points 
-      SET last_error = ?, updated_at = datetime('now')
+      SET last_error = ?, updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `;
     }
@@ -298,7 +298,7 @@ class VirtualPointQueries {
     static updateLastCalculated() {
         return `
       UPDATE virtual_points 
-      SET last_execution_time = datetime('now'), updated_at = datetime('now')
+      SET last_execution_time = datetime('now', 'localtime'), updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `;
     }

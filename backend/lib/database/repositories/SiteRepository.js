@@ -203,7 +203,7 @@ class SiteRepository extends BaseRepository {
                 // 인프라 연결
                 edge_server_id: siteData.edge_server_id || null,
 
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             // JSON 필드 처리 (tags, metadata)
@@ -249,7 +249,7 @@ class SiteRepository extends BaseRepository {
             const dataToUpdate = { ...siteData };
             delete dataToUpdate.id;
             delete dataToUpdate.tenant_id;
-            dataToUpdate.updated_at = this.knex.fn.now();
+            dataToUpdate.updated_at = this.knex.raw("datetime('now', 'localtime')");
 
             // Field mapping for contact_name
             if (dataToUpdate.contact_name !== undefined && dataToUpdate.manager_name === undefined) {
@@ -313,7 +313,7 @@ class SiteRepository extends BaseRepository {
             }
             const result = await query.update({
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return result > 0;
         } catch (error) {
@@ -335,7 +335,7 @@ class SiteRepository extends BaseRepository {
             }
             const result = await query.update({
                 is_deleted: 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return result > 0;
         } catch (error) {

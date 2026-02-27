@@ -69,8 +69,8 @@ CREATE TABLE IF NOT EXISTS virtual_points (
     
     -- 🔥 감사 필드
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
@@ -127,8 +127,8 @@ CREATE TABLE IF NOT EXISTS virtual_point_inputs (
     is_required INTEGER DEFAULT 1,                     -- 필수 입력 여부
     sort_order INTEGER DEFAULT 0,
     
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE,
     UNIQUE(virtual_point_id, variable_name),
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS virtual_point_values (
     quality_code INTEGER DEFAULT 1,
     
     -- 🔥 계산 정보
-    last_calculated DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_calculated DATETIME DEFAULT (datetime('now', 'localtime')),
     calculation_duration_ms INTEGER,                   -- 계산 소요 시간
     calculation_error TEXT,                            -- 계산 오류 메시지
     input_values TEXT,                                 -- JSON: 계산에 사용된 입력값들 (디버깅용)
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS virtual_point_execution_history (
     virtual_point_id INTEGER NOT NULL,
     
     -- 🔥 실행 정보
-    execution_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    execution_time DATETIME DEFAULT (datetime('now', 'localtime')),
     execution_duration_ms INTEGER,
     execution_id VARCHAR(50),                          -- 실행 세션 ID
     
@@ -236,9 +236,9 @@ CREATE TABLE IF NOT EXISTS virtual_point_dependencies (
     
     -- 🔥 상태 정보
     is_active INTEGER DEFAULT 1,
-    last_checked DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_checked DATETIME DEFAULT (datetime('now', 'localtime')),
     
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE CASCADE,
     UNIQUE(virtual_point_id, depends_on_type, depends_on_id),
@@ -288,8 +288,8 @@ CREATE TABLE IF NOT EXISTS script_library (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id),
@@ -318,7 +318,7 @@ CREATE TABLE IF NOT EXISTS script_library_versions (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (script_id) REFERENCES script_library(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id)
@@ -339,7 +339,7 @@ CREATE TABLE IF NOT EXISTS script_usage_history (
     
     -- 🔥 감사 정보
     used_by INTEGER,
-    used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    used_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (script_id) REFERENCES script_library(id) ON DELETE CASCADE,
     FOREIGN KEY (virtual_point_id) REFERENCES virtual_points(id) ON DELETE SET NULL,
@@ -378,8 +378,8 @@ CREATE TABLE IF NOT EXISTS script_templates (
     popularity_score INTEGER DEFAULT 0,
     
     -- 🔥 감사 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 제약조건
     CONSTRAINT chk_difficulty_level CHECK (difficulty_level IN ('beginner', 'intermediate', 'advanced'))
@@ -459,7 +459,7 @@ CREATE TABLE IF NOT EXISTS virtual_point_logs (
     new_state TEXT,                       -- JSON string of new state (if applicable)
     user_id INTEGER,                      -- Optional: ID of the user performing the action
     details TEXT,                         -- Optional: detailed message or reason
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (point_id) REFERENCES virtual_points(id) ON DELETE CASCADE
 );
 

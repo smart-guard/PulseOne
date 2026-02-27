@@ -657,11 +657,11 @@ bool UserRepository::ensureTableExists() {
                 department VARCHAR(50),
                 permissions TEXT DEFAULT '[]',
                 login_count INTEGER DEFAULT 0,
-                last_login_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_login_at DATETIME DEFAULT (datetime('now', 'localtime')),
                 notes TEXT,
                 created_by INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+                updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
                 
                 FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
                 FOREIGN KEY (created_by) REFERENCES users(id)

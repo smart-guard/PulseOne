@@ -60,8 +60,8 @@ namespace Entities {
  *     category VARCHAR(50),
  *     vendor VARCHAR(100),
  *     standard_reference VARCHAR(100),
- *     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
- *     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+ *     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+ *     updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
  * );
  */
 class ProtocolEntity : public BaseEntity<ProtocolEntity> {

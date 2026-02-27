@@ -1032,8 +1032,8 @@ bool SiteRepository::ensureTableExists() {
                 contact_email VARCHAR(255),
                 contact_phone VARCHAR(50),
                 
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+                updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
                 
                 FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
                 FOREIGN KEY (parent_site_id) REFERENCES sites(id) ON DELETE CASCADE,

@@ -317,7 +317,7 @@ SiteEntity::SiteType SiteEntity::stringToSiteType(const std::string& type_str) {
 std::string SiteEntity::timestampToString(const std::chrono::system_clock::time_point& timestamp) const {
     auto time_t = std::chrono::system_clock::to_time_t(timestamp);
     std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
     return ss.str();
 }
 

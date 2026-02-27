@@ -23,7 +23,7 @@ set -e
 
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 VERSION=$(grep '"version"' "$PROJECT_ROOT/version.json" | cut -d'"' -f4 2>/dev/null || echo "6.1.0")
-TIMESTAMP=$(TZ=Asia/Seoul date '+%Y%m%d_%H%M%S' 2>/dev/null || date '+%Y%m%d_%H%M%S')
+TIMESTAMP=${HOST_TIMESTAMP:-$(date '+%Y%m%d_%H%M%S')}
 
 BIN_DIR="$PROJECT_ROOT/bin-linux"
 
@@ -72,6 +72,11 @@ if [ "$SKIP_SHARED" = "false" ]; then
         cd "$PROJECT_ROOT/core/shared"
         make clean 2>/dev/null || true
         make -j$(nproc)
+        
+        # Deploy shared libraries to /usr/local/lib for plugin linkages
+        cp lib/Linux/*.a /usr/local/lib/ 2>/dev/null || true
+        cp lib/Linux/*.so* /usr/local/lib/ 2>/dev/null || true
+        ldconfig
     )
     echo "✅ Shared libs 완료"
 else

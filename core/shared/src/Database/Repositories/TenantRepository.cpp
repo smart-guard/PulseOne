@@ -498,7 +498,7 @@ std::vector<TenantEntity> TenantRepository::findExpiredTenants() {
                 trial_end_date as subscription_end, 
                 created_at, updated_at
             FROM tenants 
-            WHERE trial_end_date < datetime('now')
+            WHERE trial_end_date < datetime('now', 'localtime')
             ORDER BY trial_end_date DESC
         )";
 
@@ -969,8 +969,8 @@ bool TenantRepository::ensureTableExists() {
                 subscription_start DATETIME NOT NULL,
                 subscription_end DATETIME NOT NULL,
                 
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+                updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
             )
         )";
 

@@ -43,8 +43,8 @@ CREATE TABLE IF NOT EXISTS export_profiles (
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
     is_enabled BOOLEAN DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     created_by VARCHAR(50),
     point_count INTEGER DEFAULT 0,
     last_exported_at DATETIME,
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS export_profile_points (
     display_order INTEGER DEFAULT 0,
     display_name VARCHAR(200),
     is_enabled BOOLEAN DEFAULT 1,
-    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    added_at DATETIME DEFAULT (datetime('now', 'localtime')),
     added_by VARCHAR(50),
     
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE,
@@ -97,8 +97,8 @@ CREATE TABLE IF NOT EXISTS protocol_services (
     active_connections INTEGER DEFAULT 0,
     total_requests INTEGER DEFAULT 0,
     last_request_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE CASCADE
 );
@@ -126,8 +126,8 @@ CREATE TABLE IF NOT EXISTS protocol_mappings (
     last_read_at DATETIME,
     last_write_at DATETIME,
     error_count INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (service_id) REFERENCES protocol_services(id) ON DELETE CASCADE,
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
@@ -151,8 +151,8 @@ CREATE TABLE IF NOT EXISTS payload_templates (
     description TEXT,
     template_json TEXT NOT NULL,
     is_active BOOLEAN DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
 
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
@@ -170,7 +170,6 @@ CREATE TABLE IF NOT EXISTS export_targets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tenant_id INTEGER NOT NULL,
     site_id INTEGER,                        -- NULL = 테넌트 공용
-    profile_id INTEGER,
     
     -- 기본 정보
     name VARCHAR(100) NOT NULL UNIQUE,
@@ -181,9 +180,6 @@ CREATE TABLE IF NOT EXISTS export_targets (
     config TEXT NOT NULL,
     is_enabled BOOLEAN DEFAULT 1,
     
-    -- 템플릿 참조 (v2.2+)
-    template_id INTEGER,
-    
     -- 전송 옵션
     export_mode VARCHAR(20) DEFAULT 'on_change',
     export_interval INTEGER DEFAULT 0,
@@ -191,22 +187,18 @@ CREATE TABLE IF NOT EXISTS export_targets (
     execution_delay_ms INTEGER DEFAULT 0,
     
     -- 메타 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
-    FOREIGN KEY (profile_id) REFERENCES export_profiles(id) ON DELETE SET NULL,
-    FOREIGN KEY (template_id) REFERENCES payload_templates(id) ON DELETE SET NULL
+    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_export_targets_tenant ON export_targets(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_export_targets_site ON export_targets(site_id);
 CREATE INDEX IF NOT EXISTS idx_export_targets_type ON export_targets(target_type);
-CREATE INDEX IF NOT EXISTS idx_export_targets_profile ON export_targets(profile_id);
 CREATE INDEX IF NOT EXISTS idx_export_targets_enabled ON export_targets(is_enabled);
 CREATE INDEX IF NOT EXISTS idx_export_targets_name ON export_targets(name);
-CREATE INDEX IF NOT EXISTS idx_export_targets_template ON export_targets(template_id);
 
 -- ============================================================================
 -- 7. export_target_mappings (Export Target별 매핑)
@@ -222,7 +214,7 @@ CREATE TABLE IF NOT EXISTS export_target_mappings (
     target_description VARCHAR(500),
     conversion_config TEXT,
     is_enabled BOOLEAN DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (target_id) REFERENCES export_targets(id) ON DELETE CASCADE,
@@ -269,7 +261,7 @@ CREATE TABLE IF NOT EXISTS export_logs (
     processing_time_ms INTEGER,
     
     -- 메타 정보
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT (datetime('now', 'localtime')),
     client_info TEXT,
     
     -- 추가 필드
@@ -298,7 +290,7 @@ CREATE TABLE IF NOT EXISTS export_schedules (
     tenant_id INTEGER NOT NULL,
     site_id INTEGER,                        -- NULL = 테넌트 공용
     profile_id INTEGER,
-    target_id INTEGER NOT NULL,
+    target_id INTEGER,                      -- NULL = 프리셋 스케줄
     schedule_name VARCHAR(100) NOT NULL,
     description TEXT,
     cron_expression VARCHAR(100) NOT NULL,
@@ -312,8 +304,8 @@ CREATE TABLE IF NOT EXISTS export_schedules (
     total_runs INTEGER DEFAULT 0,
     successful_runs INTEGER DEFAULT 0,
     failed_runs INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL,
@@ -336,7 +328,7 @@ CREATE TABLE IF NOT EXISTS export_profile_assignments (
     profile_id INTEGER NOT NULL,
     gateway_id INTEGER NOT NULL,
     is_active INTEGER DEFAULT 1,
-    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    assigned_at DATETIME DEFAULT (datetime('now', 'localtime')),
     tenant_id INTEGER,                      -- NULL = 시스템 관리자 전역 할당
     site_id INTEGER,                        -- NULL = 테넌트 공용
 
@@ -411,33 +403,32 @@ INSERT OR IGNORE INTO payload_templates (tenant_id, name, system_type, descripti
 -- 뷰 (View) - 통계 조회용
 -- ============================================================================
 
--- 타겟 + 템플릿 통합 뷰
+-- 타겟 + 템플릿 통합 뷰 (Legacy, no direct template join anymore)
 CREATE VIEW IF NOT EXISTS v_export_targets_with_templates AS
 SELECT 
     t.id,
     t.tenant_id,
     t.site_id,
-    t.profile_id,
+    NULL as profile_id,
     t.name,
     t.target_type,
     t.description,
     t.is_enabled,
     t.config,
-    t.template_id,
+    NULL as template_id,
     t.export_mode,
     t.export_interval,
     t.batch_size,
     t.created_at,
     t.updated_at,
     
-    -- 템플릿 정보 (LEFT JOIN)
-    p.name as template_name,
-    p.system_type as template_system_type,
-    p.template_json,
-    p.is_active as template_is_active
+    -- 템플릿 정보 (LEFT JOIN 제거)
+    NULL as template_name,
+    NULL as template_system_type,
+    NULL as template_json,
+    NULL as template_is_active
     
-FROM export_targets t
-LEFT JOIN payload_templates p ON t.template_id = p.id;
+FROM export_targets t;
 
 -- 최근 24시간 통계
 CREATE VIEW IF NOT EXISTS v_export_targets_stats_24h AS
@@ -481,7 +472,7 @@ CREATE TRIGGER IF NOT EXISTS tr_export_profiles_update
 AFTER UPDATE ON export_profiles
 BEGIN
     UPDATE export_profiles 
-    SET updated_at = CURRENT_TIMESTAMP 
+    SET updated_at = (datetime('now', 'localtime')) 
     WHERE id = NEW.id;
 END;
 
@@ -489,7 +480,7 @@ CREATE TRIGGER IF NOT EXISTS tr_export_targets_update
 AFTER UPDATE ON export_targets
 BEGIN
     UPDATE export_targets 
-    SET updated_at = CURRENT_TIMESTAMP 
+    SET updated_at = (datetime('now', 'localtime')) 
     WHERE id = NEW.id;
 END;
 
@@ -497,7 +488,7 @@ CREATE TRIGGER IF NOT EXISTS tr_payload_templates_update
 AFTER UPDATE ON payload_templates
 BEGIN
     UPDATE payload_templates 
-    SET updated_at = CURRENT_TIMESTAMP 
+    SET updated_at = (datetime('now', 'localtime')) 
     WHERE id = NEW.id;
 END;
 

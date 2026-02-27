@@ -47,7 +47,7 @@ const std::string GET_LAST_INSERT_ID_POSTGRES = "SELECT lastval() as id";
 const std::string GET_LAST_INSERT_ID_MYSQL = "SELECT LAST_INSERT_ID() as id";
 
 // 🔥 현재 시간 조회
-const std::string GET_CURRENT_TIMESTAMP = "SELECT datetime('now') as timestamp";
+const std::string GET_CURRENT_TIMESTAMP = "SELECT datetime('now', 'localtime') as timestamp";
 
 // 🔥 데이터베이스 정보 조회
 const std::string GET_DATABASE_VERSION = "SELECT sqlite_version() as version";
@@ -283,8 +283,8 @@ const std::string CREATE_TABLE = R"(
             last_maintenance DATE,
             
             created_by INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             
             -- 외래키 제약조건
             FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -529,8 +529,8 @@ const std::string CREATE_TABLE = R"(
             protocol_params TEXT,
             
             -- 🔥 시간 정보
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
             UNIQUE(device_id, address),
@@ -749,7 +749,7 @@ const std::string COPY_TO_DEVICE = R"(
             unit, scaling_factor, scaling_offset, min_value, max_value,
             log_enabled, log_interval_ms, log_deadband, polling_interval_ms,
             group_name, tags, metadata, protocol_params,
-            datetime('now') as created_at, datetime('now') as updated_at
+            datetime('now', 'localtime') as created_at, datetime('now', 'localtime') as updated_at
         FROM data_points 
         WHERE device_id = ?
     )";
@@ -953,8 +953,8 @@ const std::string CREATE_TABLE = R"(
             queue_size INTEGER DEFAULT 100, -- 명령 큐 크기
             
             -- 메타데이터
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             updated_by INTEGER,
             
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
@@ -998,7 +998,7 @@ const std::string CREATE_TABLE = R"(
             alarm_acknowledged INTEGER DEFAULT 0,
             -- 🔥 메타데이터
             source_info TEXT, -- JSON: 값 소스 정보
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             
             FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE
         )
@@ -1435,8 +1435,8 @@ const std::string CREATE_TABLE = R"(
             standard_reference VARCHAR(100),
             
             -- 메타데이터
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             
             -- 제약조건
             CONSTRAINT chk_category CHECK (category IN ('industrial', 'iot', 'building_automation', 'network', 'web'))
@@ -1592,8 +1592,8 @@ const std::string CREATE_TABLE = R"(
             is_enabled INTEGER DEFAULT 1,
             max_devices INTEGER DEFAULT 100,
             max_data_points INTEGER DEFAULT 1000,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+            updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
             FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
         )
     )";

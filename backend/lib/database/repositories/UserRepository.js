@@ -133,7 +133,7 @@ class UserRepository extends BaseRepository {
                 site_access: typeof userData.site_access === 'object' ? JSON.stringify(userData.site_access) : userData.site_access,
                 device_access: typeof userData.device_access === 'object' ? JSON.stringify(userData.device_access) : userData.device_access,
                 is_active: userData.is_active !== false ? 1 : 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             let query = this.query().where('id', id);
@@ -159,7 +159,7 @@ class UserRepository extends BaseRepository {
             ];
 
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             allowedFields.forEach(field => {
@@ -193,7 +193,7 @@ class UserRepository extends BaseRepository {
             // Soft delete
             const affected = await query.update({
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {
@@ -209,7 +209,7 @@ class UserRepository extends BaseRepository {
 
             const affected = await query.update({
                 is_deleted: 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {

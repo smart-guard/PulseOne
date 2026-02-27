@@ -131,8 +131,8 @@ class AlarmTemplateRepository extends BaseRepository {
             const data = {
                 ...templateData,
                 tenant_id: tenantId || templateData.tenant_id || 1,
-                created_at: this.knex.fn.now(),
-                updated_at: this.knex.fn.now(),
+                created_at: this.knex.raw("datetime('now', 'localtime')"),
+                updated_at: this.knex.raw("datetime('now', 'localtime')"),
                 version: 1,
                 usage_count: 0
             };
@@ -177,7 +177,7 @@ class AlarmTemplateRepository extends BaseRepository {
             if (data.applicable_data_types && typeof data.applicable_data_types !== 'string') data.applicable_data_types = JSON.stringify(data.applicable_data_types);
             if (data.applicable_device_types && typeof data.applicable_device_types !== 'string') data.applicable_device_types = JSON.stringify(data.applicable_device_types);
 
-            data.updated_at = this.knex.fn.now();
+            data.updated_at = this.knex.raw("datetime('now', 'localtime')");
 
             const result = await this.knex(this.tableName)
                 .where('id', id)
@@ -207,7 +207,7 @@ class AlarmTemplateRepository extends BaseRepository {
                 .where('tenant_id', tenantId || 1)
                 .update({
                     is_active: false,
-                    updated_at: this.knex.fn.now()
+                    updated_at: this.knex.raw("datetime('now', 'localtime')")
                 });
 
             return result > 0;

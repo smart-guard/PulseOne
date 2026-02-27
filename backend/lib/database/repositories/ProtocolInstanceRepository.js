@@ -140,7 +140,7 @@ class ProtocolInstanceRepository extends BaseRepository {
         if (fields.length === 0) return 0;
 
         params.push(id);
-        const query = `UPDATE ${this.tableName} SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
+        const query = `UPDATE ${this.tableName} SET ${fields.join(', ')}, updated_at = (datetime('now', 'localtime')) WHERE id = ?`;
         const result = await this.executeNonQuery(query, params);
         return result.changes;
     }

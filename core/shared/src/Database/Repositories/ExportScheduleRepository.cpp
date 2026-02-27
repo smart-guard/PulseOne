@@ -767,29 +767,14 @@ bool ExportScheduleRepository::validateEntity(
 
 std::string ExportScheduleRepository::formatTimestamp(
     const std::chrono::system_clock::time_point &tp) {
-
-  auto time_t = std::chrono::system_clock::to_time_t(tp);
-  std::tm tm;
-
-#ifdef _WIN32
-  localtime_s(&tm, &time_t);
-#else
-  localtime_r(&time_t, &tm);
-#endif
-
-  std::stringstream ss;
-  ss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
-  return ss.str();
+  // ✅ UTC 저장을 위해 RepositoryHelpers를 재사용
+  return RepositoryHelpers::formatTimestamp(tp);
 }
 
 std::chrono::system_clock::time_point
 ExportScheduleRepository::parseTimestamp(const std::string &timestamp_str) {
-
-  std::tm tm = {};
-  std::istringstream ss(timestamp_str);
-  ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
-
-  auto time_t = std::mktime(&tm);
+  // ✅ RepositoryHelpers를 재사용하여 C++ core 일관성 유지
+  auto time_t = RepositoryHelpers::parseTimestamp(timestamp_str);
   return std::chrono::system_clock::from_time_t(time_t);
 }
 

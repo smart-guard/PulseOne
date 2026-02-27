@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS manufacturers (
     logo_url VARCHAR(255),
     is_active INTEGER DEFAULT 1,
     is_deleted INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS device_models (
@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS device_models (
     manual_url VARCHAR(255),
     metadata TEXT,                                       -- JSON 형태
     is_active INTEGER DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY (manufacturer_id) REFERENCES manufacturers(id) ON DELETE CASCADE,
     UNIQUE(manufacturer_id, name)
 );
@@ -63,8 +63,8 @@ CREATE TABLE IF NOT EXISTS device_groups (
     
     -- 🔥 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS device_group_assignments (
     device_id INTEGER NOT NULL,
     group_id INTEGER NOT NULL,
     is_primary INTEGER DEFAULT 0,                         -- 대표 그룹 여부
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     PRIMARY KEY (device_id, group_id),
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     FOREIGN KEY (group_id) REFERENCES device_groups(id) ON DELETE CASCADE
@@ -126,8 +126,8 @@ CREATE TABLE IF NOT EXISTS driver_plugins (
     supported_features TEXT,                             -- JSON 배열
     
     -- 🔥 감사 정보
-    installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    installed_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 제약조건
     UNIQUE(protocol_type, version),
@@ -189,8 +189,8 @@ CREATE TABLE IF NOT EXISTS devices (
     
     -- 감사 정보
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
@@ -253,8 +253,8 @@ CREATE TABLE IF NOT EXISTS device_settings (
     queue_size INTEGER DEFAULT 100,                     -- 명령 큐 크기
     
     -- 🔥 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     updated_by INTEGER,                                 -- 설정을 변경한 사용자
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
@@ -298,7 +298,7 @@ CREATE TABLE IF NOT EXISTS device_status (
     memory_usage REAL,                                  -- 디바이스 메모리 사용률
     
     -- 🔥 메타데이터
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
     
@@ -363,8 +363,8 @@ CREATE TABLE IF NOT EXISTS data_points (
     compression_enabled INTEGER DEFAULT 1,
     
     -- 🔥 시간 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     is_deleted TINYINT DEFAULT 0,                        -- ⬅️ Match live schema
     
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
@@ -415,7 +415,7 @@ CREATE TABLE IF NOT EXISTS current_values (
     -- 🔥 메타데이터
     source_info TEXT,                                  -- JSON: 값 소스 정보
     
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     FOREIGN KEY (point_id) REFERENCES data_points(id) ON DELETE CASCADE,
     
@@ -487,8 +487,8 @@ CREATE TABLE IF NOT EXISTS template_devices (
     timeout INTEGER DEFAULT 3000,
     is_public TINYINT DEFAULT 1,                         -- 시스템 공유 여부
     created_by INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     is_deleted TINYINT DEFAULT 0,
     FOREIGN KEY (model_id) REFERENCES device_models(id) ON DELETE CASCADE,
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE RESTRICT

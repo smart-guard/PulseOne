@@ -238,7 +238,7 @@ std::string replaceVariables(const std::string &template_str,
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
     timestamp_str = ss.str();
   } else {
     timestamp_str = alarm.timestamp;
@@ -255,7 +255,7 @@ json createAlarmJson(const AlarmMessage &alarm) {
   auto now = std::chrono::system_clock::now();
   auto time_t = std::chrono::system_clock::to_time_t(now);
   std::stringstream ss;
-  ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+  ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
 
   // ✅ icos C# AlarmMessage 포맷 그대로 사용
   json j;
@@ -299,7 +299,7 @@ std::string createAlarmCsv(const AlarmMessage &alarm) {
   auto now = std::chrono::system_clock::now();
   auto time_t = std::chrono::system_clock::to_time_t(now);
   std::stringstream ss;
-  ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+  ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
 
   std::stringstream csv;
   // ✅ icos 필드 순서: bd, nm, vl, tm, al, st, des
@@ -319,7 +319,7 @@ std::string createAlarmXml(const AlarmMessage &alarm) {
   auto now = std::chrono::system_clock::now();
   auto time_t = std::chrono::system_clock::to_time_t(now);
   std::stringstream ss;
-  ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+  ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
 
   std::stringstream xml;
   xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -350,13 +350,13 @@ std::string getCurrentTimestamp(const std::string &format_type) {
   std::stringstream ss;
 
   if (format_type == "iso8601") {
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
   } else if (format_type == "filename") {
     ss << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S");
   } else if (format_type == "readable") {
     ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
   } else {
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
   }
 
   return ss.str();

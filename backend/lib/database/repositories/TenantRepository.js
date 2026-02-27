@@ -135,7 +135,7 @@ class TenantRepository extends BaseRepository {
                 max_users: tenantData.max_users || 5,
                 is_active: tenantData.is_active !== false ? 1 : 0,
                 trial_end_date: tenantData.trial_end_date || null,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {
@@ -148,7 +148,7 @@ class TenantRepository extends BaseRepository {
         try {
             const affected = await this.query().where('id', id).update({
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {
@@ -161,7 +161,7 @@ class TenantRepository extends BaseRepository {
         try {
             const affected = await this.query().where('id', id).update({
                 is_deleted: 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {

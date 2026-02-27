@@ -22,8 +22,8 @@
  * - max_users INTEGER DEFAULT 5
  * - is_active INTEGER DEFAULT 1
  * - trial_end_date DATETIME
- * - created_at DATETIME DEFAULT CURRENT_TIMESTAMP
- * - updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+ * - created_at DATETIME DEFAULT (datetime('now', 'localtime'))
+ * - updated_at DATETIME DEFAULT (datetime('now', 'localtime'))
  */
 class TenantQueries {
     // ==========================================================================
@@ -174,7 +174,7 @@ class TenantQueries {
                 created_at, updated_at
             FROM tenants 
             WHERE trial_end_date IS NOT NULL 
-              AND trial_end_date < datetime('now')
+              AND trial_end_date < datetime('now', 'localtime')
             ORDER BY trial_end_date DESC
         `;
     }
@@ -194,7 +194,7 @@ class TenantQueries {
             FROM tenants 
             WHERE subscription_status = 'trial'
               AND trial_end_date IS NOT NULL
-              AND trial_end_date > datetime('now')
+              AND trial_end_date > datetime('now', 'localtime')
             ORDER BY trial_end_date ASC
         `;
     }
@@ -247,7 +247,7 @@ class TenantQueries {
                 subscription_plan = ?, subscription_status = ?,
                 max_edge_servers = ?, max_data_points = ?, max_users = ?,
                 is_active = ?, trial_end_date = ?,
-                updated_at = CURRENT_TIMESTAMP
+                updated_at = (datetime('now', 'localtime'))
             WHERE id = ?
         `;
     }
@@ -256,14 +256,14 @@ class TenantQueries {
      * 테넌트 삭제 (소프트 삭제)
      */
     static softDelete() {
-        return 'UPDATE tenants SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
+        return 'UPDATE tenants SET is_deleted = 1, updated_at = (datetime('now', 'localtime')) WHERE id = ?';
     }
 
     /**
      * 테넌트 복구
      */
     static restore() {
-        return 'UPDATE tenants SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
+        return 'UPDATE tenants SET is_deleted = 0, updated_at = (datetime('now', 'localtime')) WHERE id = ?';
     }
 
     /**
@@ -280,7 +280,7 @@ class TenantQueries {
         return `
             UPDATE tenants SET 
                 is_active = 0, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -296,7 +296,7 @@ class TenantQueries {
         return `
             UPDATE tenants SET 
                 subscription_status = ?, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -308,7 +308,7 @@ class TenantQueries {
         return `
             UPDATE tenants SET 
                 trial_end_date = datetime(COALESCE(trial_end_date, 'now'), '+' || ? || ' days'),
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -320,7 +320,7 @@ class TenantQueries {
         return `
             UPDATE tenants SET 
                 subscription_plan = ?,
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -334,7 +334,7 @@ class TenantQueries {
                 max_edge_servers = ?,
                 max_data_points = ?,
                 max_users = ?,
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -346,7 +346,7 @@ class TenantQueries {
         return `
             UPDATE tenants SET 
                 is_active = ?, 
-                updated_at = CURRENT_TIMESTAMP 
+                updated_at = (datetime('now', 'localtime')) 
             WHERE id = ?
         `;
     }
@@ -509,7 +509,7 @@ class TenantQueries {
             FROM tenants 
             WHERE subscription_status = 'trial' 
               AND trial_end_date IS NOT NULL
-              AND trial_end_date > datetime('now')
+              AND trial_end_date > datetime('now', 'localtime')
             GROUP BY expiry_period
         `;
     }

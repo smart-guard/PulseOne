@@ -96,7 +96,7 @@ class EdgeServerRepository extends BaseRepository {
     async update(id, updateData, tenantId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const allowedFields = [
@@ -134,8 +134,8 @@ class EdgeServerRepository extends BaseRepository {
             return await this.knex('edge_servers')
                 .where('id', id)
                 .update({
-                    last_seen: this.knex.fn.now(),
-                    last_heartbeat: this.knex.fn.now(),
+                    last_seen: this.knex.raw("datetime('now', 'localtime')"),
+                    last_heartbeat: this.knex.raw("datetime('now', 'localtime')"),
                     status: 'active'
                 });
         } catch (error) {
@@ -154,7 +154,7 @@ class EdgeServerRepository extends BaseRepository {
 
             const affected = await query.update({
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {
@@ -252,7 +252,7 @@ class EdgeServerRepository extends BaseRepository {
 
             const affected = await query.update({
                 site_id: newSiteId,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {

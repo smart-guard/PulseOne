@@ -101,7 +101,7 @@ class ExportGatewayRepository extends BaseRepository {
     async update(id, updateData, tenantId = null, siteId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const allowedFields = [
@@ -157,10 +157,10 @@ class ExportGatewayRepository extends BaseRepository {
                 .where('id', id)
                 .where('server_type', 'gateway')
                 .update({
-                    last_seen: this.knex.fn.now(),
-                    last_heartbeat: this.knex.fn.now(),
+                    last_seen: this.knex.raw("datetime('now', 'localtime')"),
+                    last_heartbeat: this.knex.raw("datetime('now', 'localtime')"),
                     status: 'online',
-                    updated_at: this.knex.fn.now()
+                    updated_at: this.knex.raw("datetime('now', 'localtime')")
                 });
         } catch (error) {
             this.logger.error('ExportGatewayRepository.updateHeartbeat 오류:', error);
@@ -185,7 +185,7 @@ class ExportGatewayRepository extends BaseRepository {
 
             const affected = await query.update({
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
             return affected > 0;
         } catch (error) {

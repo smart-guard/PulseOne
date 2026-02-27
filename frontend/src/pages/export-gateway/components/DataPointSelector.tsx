@@ -157,7 +157,7 @@ const DataPointSelector: React.FC<DataPointSelectorProps> = ({ siteId, selectedP
                 <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '11px', fontWeight: 700, color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <span>탐색 결과 ({allPoints.length})</span>
-                        {selectedDeviceId && allPoints.length > 0 && onAddAll && (
+                        {allPoints.length > 0 && onAddAll && (
                             <button
                                 type="button"
                                 className="btn btn-xs btn-outline"

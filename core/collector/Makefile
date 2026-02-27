@@ -47,15 +47,24 @@ BUILD_DIR := build
 BIN_DIR := bin
 DIST_DIR := dist
 TARGET := pulseone-collector
-
 # =============================================================================
 # 라이브러리 및 Include 경로 설정 (통합)
 # =============================================================================
 
+# 플랫폼 판별
+UNAME_S := $(shell uname -s)
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    TARGET_PLATFORM := Windows-Cross
+else ifeq ($(OS),Windows_NT)
+    TARGET_PLATFORM := Windows
+else
+    TARGET_PLATFORM := $(UNAME_S)
+endif
+
 # Shared 라이브러리 경로
 SHARED_BASE_DIR := ../shared
 SHARED_INCLUDE_DIR := $(SHARED_BASE_DIR)/include
-SHARED_LIB_DIR := $(SHARED_BASE_DIR)/lib
+SHARED_LIB_DIR := $(SHARED_BASE_DIR)/lib/$(TARGET_PLATFORM)
 
 # 동적 라이브러리 감지 (강제 활성화)
 HAS_SHARED := 1

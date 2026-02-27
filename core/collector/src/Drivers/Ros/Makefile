@@ -2,6 +2,16 @@
 # PulseOne ROS Driver Makefile
 # =============================================================================
 
+# 플랫폼 판별
+UNAME_S := $(shell uname -s)
+ifeq ($(CROSS_COMPILE_WINDOWS),1)
+    TARGET_PLATFORM := Windows-Cross
+else ifeq ($(OS),Windows_NT)
+    TARGET_PLATFORM := Windows
+else
+    TARGET_PLATFORM := $(UNAME_S)
+endif
+
 DEBUG ?= 1
 
 # Project Paths
@@ -17,7 +27,7 @@ OBJS = $(SRCS:.cpp=.o)
 
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -fPIC -fdiagnostics-color=always
-LDFLAGS = -shared -L$(SHARED_ROOT)/lib -L/usr/local/lib
+LDFLAGS = -shared -L$(SHARED_ROOT)/lib/$(TARGET_PLATFORM) -L/usr/local/lib
 
 ifeq ($(DEBUG),1)
     CXXFLAGS += -DDEBUG -g -O0
@@ -32,7 +42,7 @@ INCLUDES = -I$(COLLECTOR_ROOT)include \
            -I$(SHARED_ROOT)/modules/LogLib/include \
            -I/usr/local/include
 
-LIBS = -L$(SHARED_ROOT)/lib -lpulseone-common -lpulseone-dblib -lpulseone-security
+LIBS = -L$(SHARED_ROOT)/lib/$(TARGET_PLATFORM) -lpulseone-common -lpulseone-dblib -lpulseone-security
 
 .PHONY: all clean
 

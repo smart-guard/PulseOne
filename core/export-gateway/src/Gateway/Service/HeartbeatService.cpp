@@ -44,7 +44,7 @@ void HeartbeatService::updateOnce() {
   try {
     auto &db_manager = DbLib::DatabaseManager::getInstance();
     std::string query =
-        "UPDATE edge_servers SET last_seen = CURRENT_TIMESTAMP, status = "
+        "UPDATE edge_servers SET last_seen = (datetime('now', 'localtime')), status = "
         "'active' WHERE id = " +
         std::to_string(gateway_id_);
 

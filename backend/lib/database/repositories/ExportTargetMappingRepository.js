@@ -63,7 +63,7 @@ class ExportTargetMappingRepository extends BaseRepository {
                 target_description: data.target_description || '',
                 conversion_config: typeof data.conversion_config === 'object' ? JSON.stringify(data.conversion_config) : (data.conversion_config || '{}'),
                 is_enabled: data.is_enabled !== undefined ? data.is_enabled : 1,
-                created_at: this.knex.fn.now()
+                created_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const [id] = await this.query().insert(dataToInsert);
@@ -81,7 +81,7 @@ class ExportTargetMappingRepository extends BaseRepository {
     async update(id, data, tenantId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const allowedFields = ['target_field_name', 'target_description', 'conversion_config', 'is_enabled', 'site_id'];

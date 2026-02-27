@@ -6,9 +6,11 @@ import DataPointSelector from '../components/DataPointSelector';
 interface ProfileManagementTabProps {
     siteId?: number | null;
     tenantId?: number | null;
+    isAdmin?: boolean;
+    tenants?: any[];
 }
 
-const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, tenantId }) => {
+const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, tenantId, isAdmin, tenants = [] }) => {
     const [profiles, setProfiles] = useState<ExportProfile[]>([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -123,10 +125,11 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
             };
 
             let response;
+            const targetTenantId = editingProfile?.tenant_id || tenantId;
             if (processedProfile?.id) {
-                response = await exportGatewayApi.updateProfile(processedProfile.id, processedProfile, tenantId);
+                response = await exportGatewayApi.updateProfile(processedProfile.id, processedProfile, targetTenantId);
             } else {
-                response = await exportGatewayApi.createProfile({ ...processedProfile! }, tenantId);
+                response = await exportGatewayApi.createProfile({ ...processedProfile! }, targetTenantId);
             }
 
             if (response.success) {
@@ -484,6 +487,23 @@ const ProfileManagementTab: React.FC<ProfileManagementTabProps> = ({ siteId, ten
                                         style={{ height: '42px', fontSize: '15px' }}
                                     />
                                 </div>
+                                {isAdmin && !tenantId && (
+                                    <div style={{ flex: '0 0 250px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: '#444', marginBottom: '8px' }}>소속 테넌트 <span style={{ color: 'red' }}>*</span></label>
+                                        <select
+                                            className="mgmt-select"
+                                            required
+                                            value={editingProfile?.tenant_id || ''}
+                                            onChange={e => { setEditingProfile({ ...editingProfile, tenant_id: parseInt(e.target.value) }); setHasChanges(true); }}
+                                            style={{ width: '100%', height: '42px', fontSize: '15px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}
+                                        >
+                                            <option value="">(테넌트 선택)</option>
+                                            {tenants.map(t => (
+                                                <option key={t.id} value={t.id}>{t.company_name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="ultra-wide-body">

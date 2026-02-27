@@ -41,8 +41,8 @@ CREATE TABLE IF NOT EXISTS protocols (
     standard_reference VARCHAR(100),               -- 표준 문서 참조
     
     -- 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 제약조건
     CONSTRAINT chk_category CHECK (category IN ('industrial', 'iot', 'building_automation', 'network', 'web'))

@@ -298,11 +298,11 @@ const ExportGatewaySettings: React.FC = () => {
                             schedules={schedules}
                         />
                     )}
-                    {activeTab === 'profiles' && <ProfileManagementTab siteId={currentSiteId} tenantId={currentTenantId} />}
-                    {activeTab === 'targets' && <TargetManagementTab siteId={currentSiteId} tenantId={currentTenantId} />}
-                    {activeTab === 'templates' && <TemplateManagementTab siteId={currentSiteId} tenantId={currentTenantId} />}
-                    {activeTab === 'schedules' && <ScheduleManagementTab siteId={currentSiteId} tenantId={currentTenantId} />}
-                    {activeTab === 'manual-test' && <ManualTestTab siteId={currentSiteId} tenantId={currentTenantId} />}
+                    {activeTab === 'profiles' && <ProfileManagementTab siteId={currentSiteId} tenantId={currentTenantId} isAdmin={isAdmin} tenants={tenants} />}
+                    {activeTab === 'targets' && <TargetManagementTab siteId={currentSiteId} tenantId={currentTenantId} isAdmin={isAdmin} tenants={tenants} />}
+                    {activeTab === 'templates' && <TemplateManagementTab siteId={currentSiteId} tenantId={currentTenantId} isAdmin={isAdmin} tenants={tenants} />}
+                    {activeTab === 'schedules' && <ScheduleManagementTab siteId={currentSiteId} tenantId={currentTenantId} isAdmin={isAdmin} tenants={tenants} />}
+                    {activeTab === 'manual-test' && <ManualTestTab siteId={currentSiteId} tenantId={currentTenantId} isAdmin={isAdmin} tenants={tenants} />}
                 </div>
 
                 {/* Replacement: Wizard used for both Register & Edit */}

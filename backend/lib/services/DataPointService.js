@@ -81,7 +81,7 @@ class DataPointService extends BaseService {
                     const pointData = this.repository._mapDataPointToDb(dp, deviceId, existingPoint);
 
                     if (isNew) {
-                        pointData.created_at = trx.fn.now();
+                        pointData.created_at = trx.raw("datetime('now', 'localtime')");
                         toInsert.push(pointData);
                     } else {
                         toUpdate.push({ id: Number(dp.id), data: pointData });

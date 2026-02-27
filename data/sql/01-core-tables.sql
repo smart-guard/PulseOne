@@ -8,7 +8,7 @@
 CREATE TABLE IF NOT EXISTS schema_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     version VARCHAR(20) NOT NULL,
-    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    applied_at DATETIME DEFAULT (datetime('now', 'localtime')),
     description TEXT
 );
 
@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     language VARCHAR(5) DEFAULT 'en',
     
     -- 🔥 감사 정보
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 제약조건
     CONSTRAINT chk_subscription_plan CHECK (subscription_plan IN ('starter', 'professional', 'enterprise')),
@@ -101,8 +101,8 @@ CREATE TABLE IF NOT EXISTS edge_servers (
     auto_update_enabled INTEGER DEFAULT 1,
     
     -- 🔥 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     is_deleted INTEGER DEFAULT 0,
     site_id INTEGER,
     max_devices INTEGER DEFAULT 100,
@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
     
     -- 🔥 메타데이터
     updated_by INTEGER,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     
     -- 🔥 제약조건
     CONSTRAINT chk_data_type CHECK (data_type IN ('string', 'integer', 'boolean', 'json', 'float', 'datetime', 'binary'))

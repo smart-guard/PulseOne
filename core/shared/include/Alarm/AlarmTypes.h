@@ -308,12 +308,12 @@ struct AlarmEvent {
       auto time_t = std::chrono::system_clock::to_time_t(ts);
       std::tm tm_buf;
 #ifdef _WIN32
-      gmtime_s(&tm_buf, &time_t);
+      localtime_s(&tm_buf, &time_t);
 #else
-      gmtime_r(&time_t, &tm_buf);
+      localtime_r(&time_t, &tm_buf);
 #endif
       char buffer[32];
-      std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
+      std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%S", &tm_buf);
       return std::string(buffer);
     };
 

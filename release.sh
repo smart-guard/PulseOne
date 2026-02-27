@@ -7,6 +7,7 @@ set -e
 
 PROJECT_ROOT=$(pwd)
 VERSION=$(grep '"version"' "$PROJECT_ROOT/version.json" | cut -d'"' -f4 || echo "6.1.0")
+HOST_TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 
 echo "================================================================="
 echo "🚀 PulseOne Unified Release v$VERSION"
@@ -74,6 +75,7 @@ run_windows() {
         -e PROJECT_ROOT=/workspace \
         -e SKIP_FRONTEND=true \
         -e SKIP_BUILD="$SKIP_BUILD" \
+        -e HOST_TIMESTAMP="$HOST_TIMESTAMP" \
         pulseone-windows-builder bash /workspace/deploy-windows.sh
 }
 
@@ -90,6 +92,7 @@ run_linux() {
         -e PROJECT_ROOT=/workspace \
         -e SKIP_FRONTEND=true \
         -e SKIP_BUILD="$SKIP_BUILD" \
+        -e HOST_TIMESTAMP="$HOST_TIMESTAMP" \
         pulseone-linux-builder bash /workspace/deploy-linux.sh
 }
 
@@ -106,6 +109,7 @@ run_rpi() {
         -e PROJECT_ROOT=/workspace \
         -e SKIP_FRONTEND=true \
         -e SKIP_BUILD="$SKIP_BUILD" \
+        -e HOST_TIMESTAMP="$HOST_TIMESTAMP" \
         pulseone-rpi-builder bash /workspace/deploy-rpi.sh
 }
 

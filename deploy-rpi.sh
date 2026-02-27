@@ -24,7 +24,7 @@ set -e
 
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "$0")" && pwd)}"
 VERSION=$(grep '"version"' "$PROJECT_ROOT/version.json" | cut -d'"' -f4 2>/dev/null || echo "6.1.0")
-TIMESTAMP=$(TZ=Asia/Seoul date '+%Y%m%d_%H%M%S' 2>/dev/null || date '+%Y%m%d_%H%M%S')
+TIMESTAMP=${HOST_TIMESTAMP:-$(date '+%Y%m%d_%H%M%S')}
 
 BIN_DIR="$PROJECT_ROOT/bin-rpi"
 
@@ -60,6 +60,31 @@ mkdir -p "$BIN_DIR/drivers" "$BIN_DIR/lib" "$BIN_DIR/config" \
          "$BIN_DIR/data/backup" "$BIN_DIR/data/temp" "$BIN_DIR/data/influxdb"
 
 # =============================================================================
+# [0] Shared Libraries — 직접 make (ARM64 컨테이너 안)
+# =============================================================================
+if [ "$SKIP_SHARED" = "false" ] && [ -f "$PROJECT_ROOT/core/shared/lib/libpulseone-common.a" ]; then
+    echo "⚡ [0/4] Shared: 이미 빌드됨 → 스킵"
+    SKIP_SHARED=true
+fi
+
+if [ "$SKIP_SHARED" = "false" ]; then
+    echo "🔨 [0/4] Shared Libraries 빌드 중..."
+    (
+        cd "$PROJECT_ROOT/core/shared"
+        make clean 2>/dev/null || true
+        make -j$(nproc)
+        
+        # Deploy shared libraries to /usr/local/lib for plugin linkages
+        cp lib/Linux/*.a /usr/local/lib/ 2>/dev/null || true
+        cp lib/Linux/*.so* /usr/local/lib/ 2>/dev/null || true
+        ldconfig
+    )
+    echo "✅ Shared libs 완료"
+else
+    echo "⏭️  [0/4] Shared Libraries 스킵"
+fi
+
+# =============================================================================
 # [1] Collector + Drivers — 직접 make (ARM64 컨테이너 안)
 # =============================================================================
 # 목적지(bin-rpi)에 이미 있으면 스킵 (소스 빌드 디렉토리가 아닌 목적지 기준)
@@ -73,14 +98,15 @@ if [ "$SKIP_COLLECTOR" = "false" ]; then
     (
         cd "$PROJECT_ROOT/core/collector"
         make clean 2>/dev/null || true
-        make all -j$(nproc)
+        make all SHARED_LIB_DIR="$PROJECT_ROOT/core/shared/lib/Linux" -j$(nproc)
         strip bin/pulseone-collector 2>/dev/null || true
     )
-    echo "✅ Collector ARM64 빌드 완료"
+    echo "✅ Collector 빌드 완료"
 else
     echo "⏭️  [1/4] Collector 스킵"
 fi
 
+COLLECTOR_BIN="$PROJECT_ROOT/core/collector/bin/pulseone-collector"
 if [ -f "$COLLECTOR_BIN" ]; then
     cp "$COLLECTOR_BIN" "$BIN_DIR/"
     if [ -d "$PROJECT_ROOT/core/collector/bin/drivers" ] && \
@@ -109,7 +135,7 @@ if [ "$SKIP_GATEWAY" = "false" ]; then
     (
         cd "$PROJECT_ROOT/core/export-gateway"
         make clean 2>/dev/null || true
-        make all -j$(nproc)
+        make all SHARED_LIB_DIR="$PROJECT_ROOT/core/shared/lib/Linux" -j$(nproc)
         strip bin/export-gateway 2>/dev/null || true
     )
     echo "✅ Gateway ARM64 빌드 완료"

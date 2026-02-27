@@ -107,6 +107,196 @@ const initialSettings = {
   }
 };
 
+// 공통 설정 행 컴포넌트 (프리미엄 Property-Grid 레이아웃)
+const SettingRow = ({ label, description, children, required = false }: {
+  label: string,
+  description?: string,
+  children: React.ReactNode,
+  required?: boolean
+}) => (
+  <div style={{
+    display: 'flex',
+    borderBottom: '1px solid var(--neutral-100)',
+    minHeight: '80px'
+  }}>
+    {/* 레이블 컬럼: 우측 정렬 + 배경 음영 + 구분선 */}
+    <div style={{
+      width: '280px',
+      flexShrink: 0,
+      backgroundColor: 'var(--neutral-50)',
+      borderRight: '1px solid var(--neutral-200)',
+      padding: 'var(--space-6) var(--space-8)',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      textAlign: 'right'
+    }}>
+      <label style={{
+        display: 'block',
+        fontSize: '17px',
+        fontWeight: '800',
+        color: 'var(--neutral-800)',
+        marginBottom: description ? '8px' : '0',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        lineHeight: '1.2'
+      }}>
+        {label} {required && <span style={{ color: 'var(--error-500)' }}>*</span>}
+      </label>
+      {description && (
+        <p style={{
+          fontSize: '16px',
+          color: 'var(--neutral-500)',
+          lineHeight: '1.6',
+          margin: 0,
+          fontWeight: '500',
+          wordBreak: 'keep-all',
+          whiteSpace: 'pre-line',
+          opacity: 0.9
+        }}>
+          {description}
+        </p>
+      )}
+    </div>
+
+    {/* 설정값 컬럼 */}
+    <div style={{
+      flex: 1,
+      padding: 'var(--space-5) var(--space-8)',
+      display: 'flex',
+      alignItems: 'center',
+      backgroundColor: 'white'
+    }}>
+      <div style={{ width: '100%', maxWidth: '500px' }}>
+        {children}
+      </div>
+    </div>
+  </div>
+);
+
+// 공통 설정 서브 섹션 제목 (Spine 정렬 유지)
+const SettingSubHeader = ({ title, children }: { title: string, children?: React.ReactNode }) => (
+  <div style={{
+    display: 'flex',
+    backgroundColor: 'var(--neutral-50)',
+    borderBottom: '1px solid var(--neutral-100)'
+  }}>
+    <div style={{
+      width: '280px',
+      flexShrink: 0,
+      backgroundColor: 'var(--neutral-50)',
+      borderRight: '1px solid var(--neutral-200)',
+      padding: 'var(--space-4) var(--space-8)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      minHeight: '50px'
+    }}>
+      <h4 style={{
+        fontSize: '16px',
+        fontWeight: '900',
+        color: 'var(--primary-600)',
+        margin: 0,
+        textTransform: 'uppercase',
+        letterSpacing: '0.1em',
+        wordBreak: 'keep-all'
+      }}>
+        {title}
+      </h4>
+    </div>
+    <div style={{
+      flex: 1,
+      padding: 'var(--space-4) var(--space-8)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      backgroundColor: 'var(--neutral-50)'
+    }}>
+      {children}
+    </div>
+  </div>
+);
+
+// 입력 필드 컴포넌트
+const InputField = ({ label, value, onChange, type = 'text', suffix = '', min = undefined, max = undefined, required = false, description = '' }: {
+  label: string,
+  value: any,
+  onChange: (val: any) => void,
+  type?: string,
+  suffix?: string,
+  min?: number,
+  max?: number,
+  required?: boolean,
+  description?: string
+}) => (
+  <SettingRow label={label} description={description} required={required}>
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
+        min={min}
+        max={max}
+        className="mgmt-input"
+        style={{ flex: 1 }}
+      />
+      {suffix && (
+        <span style={{
+          position: 'absolute',
+          right: '12px',
+          fontSize: '12px',
+          color: 'var(--neutral-400)',
+          fontWeight: '500'
+        }}>
+          {suffix}
+        </span>
+      )}
+    </div>
+  </SettingRow>
+);
+
+// 체크박스 컴포넌트
+const CheckboxField = ({ label, checked, onChange, description = '' }: {
+  label: string,
+  checked: boolean,
+  onChange: (val: boolean) => void,
+  description?: string
+}) => (
+  <SettingRow label={label} description={description}>
+    <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', height: '40px' }}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span style={{ fontSize: '16px', fontWeight: '700', color: 'var(--neutral-700)' }}>활성화</span>
+    </label>
+  </SettingRow>
+);
+
+// 셀렉트 컴포넌트
+const SelectField = ({ label, value, onChange, options, required = false, description = '' }: {
+  label: string,
+  value: any,
+  onChange: (val: any) => void,
+  options: { value: string, label: string }[],
+  required?: boolean,
+  description?: string
+}) => (
+  <SettingRow label={label} description={description} required={required}>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="mgmt-select"
+      style={{ width: '100%', minWidth: '180px' }}
+    >
+      {options.map(option => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+      ))}
+    </select>
+  </SettingRow>
+);
+
 const SystemSettings = () => {
   const [settings, setSettings] = useState(initialSettings);
   const [loading, setLoading] = useState(false);
@@ -310,196 +500,7 @@ const SystemSettings = () => {
     return null;
   };
 
-  // 공통 설정 행 컴포넌트 (프리미엄 Property-Grid 레이아웃)
-  const SettingRow = ({ label, description, children, required = false }: {
-    label: string,
-    description?: string,
-    children: React.ReactNode,
-    required?: boolean
-  }) => (
-    <div style={{
-      display: 'flex',
-      borderBottom: '1px solid var(--neutral-100)',
-      minHeight: '80px'
-    }}>
-      {/* 레이블 컬럼: 우측 정렬 + 배경 음영 + 구분선 */}
-      <div style={{
-        width: '280px',
-        flexShrink: 0,
-        backgroundColor: 'var(--neutral-50)',
-        borderRight: '1px solid var(--neutral-200)',
-        padding: 'var(--space-6) var(--space-8)',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        textAlign: 'right'
-      }}>
-        <label style={{
-          display: 'block',
-          fontSize: '17px',
-          fontWeight: '800',
-          color: 'var(--neutral-800)',
-          marginBottom: description ? '8px' : '0',
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-          lineHeight: '1.2'
-        }}>
-          {label} {required && <span style={{ color: 'var(--error-500)' }}>*</span>}
-        </label>
-        {description && (
-          <p style={{
-            fontSize: '16px',
-            color: 'var(--neutral-500)',
-            lineHeight: '1.6',
-            margin: 0,
-            fontWeight: '500',
-            wordBreak: 'keep-all',
-            whiteSpace: 'pre-line',
-            opacity: 0.9
-          }}>
-            {description}
-          </p>
-        )}
-      </div>
 
-      {/* 설정값 컬럼 */}
-      <div style={{
-        flex: 1,
-        padding: 'var(--space-5) var(--space-8)',
-        display: 'flex',
-        alignItems: 'center',
-        backgroundColor: 'white'
-      }}>
-        <div style={{ width: '100%', maxWidth: '500px' }}>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-
-  // 공통 설정 서브 섹션 제목 (Spine 정렬 유지)
-  const SettingSubHeader = ({ title, children }: { title: string, children?: React.ReactNode }) => (
-    <div style={{
-      display: 'flex',
-      backgroundColor: 'var(--neutral-50)',
-      borderBottom: '1px solid var(--neutral-100)'
-    }}>
-      <div style={{
-        width: '280px',
-        flexShrink: 0,
-        backgroundColor: 'var(--neutral-50)',
-        borderRight: '1px solid var(--neutral-200)',
-        padding: 'var(--space-4) var(--space-8)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        minHeight: '50px'
-      }}>
-        <h4 style={{
-          fontSize: '16px',
-          fontWeight: '900',
-          color: 'var(--primary-600)',
-          margin: 0,
-          textTransform: 'uppercase',
-          letterSpacing: '0.1em',
-          wordBreak: 'keep-all'
-        }}>
-          {title}
-        </h4>
-      </div>
-      <div style={{
-        flex: 1,
-        padding: 'var(--space-4) var(--space-8)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        backgroundColor: 'var(--neutral-50)'
-      }}>
-        {children}
-      </div>
-    </div>
-  );
-
-  // 입력 필드 컴포넌트
-  const InputField = ({ label, value, onChange, type = 'text', suffix = '', min = undefined, max = undefined, required = false, description = '' }: {
-    label: string,
-    value: any,
-    onChange: (val: any) => void,
-    type?: string,
-    suffix?: string,
-    min?: number,
-    max?: number,
-    required?: boolean,
-    description?: string
-  }) => (
-    <SettingRow label={label} description={description} required={required}>
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
-          min={min}
-          max={max}
-          className="mgmt-input"
-          style={{ flex: 1 }}
-        />
-        {suffix && (
-          <span style={{
-            position: 'absolute',
-            right: '12px',
-            fontSize: '12px',
-            color: 'var(--neutral-400)',
-            fontWeight: '500'
-          }}>
-            {suffix}
-          </span>
-        )}
-      </div>
-    </SettingRow>
-  );
-
-  // 체크박스 컴포넌트
-  const CheckboxField = ({ label, checked, onChange, description = '' }: {
-    label: string,
-    checked: boolean,
-    onChange: (val: boolean) => void,
-    description?: string
-  }) => (
-    <SettingRow label={label} description={description}>
-      <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', height: '40px' }}>
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span style={{ fontSize: '16px', fontWeight: '700', color: 'var(--neutral-700)' }}>활성화</span>
-      </label>
-    </SettingRow>
-  );
-
-  // 셀렉트 컴포넌트
-  const SelectField = ({ label, value, onChange, options, required = false, description = '' }: {
-    label: string,
-    value: any,
-    onChange: (val: any) => void,
-    options: { value: string, label: string }[],
-    required?: boolean,
-    description?: string
-  }) => (
-    <SettingRow label={label} description={description} required={required}>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mgmt-select"
-        style={{ width: '100%', minWidth: '180px' }}
-      >
-        {options.map(option => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-    </SettingRow>
-
-  );
 
   return (
     <ManagementLayout>

@@ -182,7 +182,7 @@ class DeviceQueries {
         name = ?, description = ?, device_type = ?, manufacturer = ?, model = ?,
         serial_number = ?, protocol_id = ?, endpoint = ?, config = ?,  -- 🔥 변경
         polling_interval = ?, timeout = ?, retry_count = ?, is_enabled = ?,
-        installation_date = ?, last_maintenance = ?, updated_at = CURRENT_TIMESTAMP
+        installation_date = ?, last_maintenance = ?, updated_at = (datetime('now', 'localtime'))
       WHERE id = ?
     `;
   }
@@ -202,7 +202,7 @@ class DeviceQueries {
         device_id, polling_interval_ms, connection_timeout_ms,
         max_retry_count, retry_interval_ms, backoff_time_ms,
         is_keep_alive_enabled, keep_alive_interval_s, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, (datetime('now', 'localtime')))
     `;
   }
 
@@ -235,7 +235,7 @@ class DeviceQueries {
       INSERT OR REPLACE INTO device_status (
         device_id, connection_status, last_communication, error_count, last_error, 
         response_time, firmware_version, hardware_info, diagnostic_data, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (datetime('now', 'localtime')))
     `;
   }
 
@@ -325,7 +325,7 @@ class DeviceQueries {
         unit = ?, scaling_factor = ?, scaling_offset = ?, min_value = ?, max_value = ?,
         log_enabled = ?, log_interval_ms = ?, log_deadband = ?, polling_interval_ms = ?,
         group_name = ?, tags = ?, metadata = ?, protocol_params = ?,
-        updated_at = CURRENT_TIMESTAMP
+        updated_at = (datetime('now', 'localtime'))
       WHERE id = ?
     `;
   }
@@ -352,7 +352,7 @@ class DeviceQueries {
         quality_code, quality, value_timestamp, quality_timestamp,
         last_log_time, last_read_time, last_write_time,
         read_count, write_count, error_count, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (datetime('now', 'localtime')))
     `;
   }
 
@@ -729,7 +729,7 @@ class DeviceQueries {
       UPDATE devices 
       SET is_enabled = ?, 
           status = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = (datetime('now', 'localtime'))
       WHERE id = ? AND tenant_id = ?
     `;
   }
@@ -742,7 +742,7 @@ class DeviceQueries {
       UPDATE devices 
       SET connection_status = ?,
           last_seen = COALESCE(?, last_seen),
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = (datetime('now', 'localtime'))
       WHERE id = ? AND tenant_id = ?
     `;
   }
@@ -754,9 +754,9 @@ class DeviceQueries {
     return `
       UPDATE devices 
       SET status = ?,
-          last_restart = CASE WHEN ? = 'restarting' THEN CURRENT_TIMESTAMP ELSE last_restart END,
+          last_restart = CASE WHEN ? = 'restarting' THEN (datetime('now', 'localtime')) ELSE last_restart END,
           connection_status = CASE WHEN ? = 'running' THEN 'connected' ELSE connection_status END,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = (datetime('now', 'localtime'))
       WHERE id = ? AND tenant_id = ?
     `;
   }
@@ -768,7 +768,7 @@ class DeviceQueries {
     const setClause = fields.map(field => `${field} = ?`).join(', ');
     return `
       UPDATE devices 
-      SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+      SET ${setClause}, updated_at = (datetime('now', 'localtime'))
       WHERE id = ? AND tenant_id = ?
     `;
   }
@@ -779,7 +779,7 @@ class DeviceQueries {
   static updateDeviceEndpoint() {
     return `
       UPDATE devices 
-      SET endpoint = ?, updated_at = CURRENT_TIMESTAMP
+      SET endpoint = ?, updated_at = (datetime('now', 'localtime'))
       WHERE id = ? AND tenant_id = ?
     `;
   }
@@ -790,7 +790,7 @@ class DeviceQueries {
   static updateDeviceConfig() {
     return `
       UPDATE devices 
-      SET config = ?, updated_at = CURRENT_TIMESTAMP
+      SET config = ?, updated_at = (datetime('now', 'localtime'))
       WHERE id = ? AND tenant_id = ?
     `;
   }
@@ -826,7 +826,7 @@ class DeviceQueries {
         is_data_validation_enabled, is_performance_monitoring_enabled, 
         created_at, updated_at
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, (datetime('now', 'localtime')), (datetime('now', 'localtime'))
       )
     `;
   }
@@ -839,7 +839,7 @@ class DeviceQueries {
         device_id, connection_status, error_count, total_requests, 
         successful_requests, failed_requests, uptime_percentage, updated_at
       ) VALUES (
-        ?, 'disconnected', 0, 0, 0, 0, 0.0, CURRENT_TIMESTAMP
+        ?, 'disconnected', 0, 0, 0, 0, 0.0, (datetime('now', 'localtime'))
       )
     `;
   }
@@ -861,7 +861,7 @@ class DeviceQueries {
           retry_interval_ms = ?,
           is_keep_alive_enabled = ?,
           keep_alive_interval_s = ?,
-          updated_at = CURRENT_TIMESTAMP,
+          updated_at = (datetime('now', 'localtime')),
           updated_by = ?
       WHERE device_id = ?
     `;
@@ -872,7 +872,7 @@ class DeviceQueries {
   static updateDeviceEnabled() {
     return `
       UPDATE devices 
-      SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP
+      SET is_enabled = ?, updated_at = (datetime('now', 'localtime'))
       WHERE id = ? AND tenant_id = ?
     `;
   }
@@ -883,7 +883,7 @@ class DeviceQueries {
     return `
       INSERT OR REPLACE INTO device_status (
         device_id, connection_status, last_communication, updated_at
-      ) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, (datetime('now', 'localtime')))
     `;
   }
   /**
@@ -893,7 +893,7 @@ class DeviceQueries {
     return `
       INSERT OR REPLACE INTO device_status (
         device_id, connection_status, last_communication, updated_at
-      ) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, (datetime('now', 'localtime')), (datetime('now', 'localtime')))
     `;
   }
 
@@ -910,7 +910,7 @@ class DeviceQueries {
           response_time = ?,
           uptime_percentage = ?,
           firmware_version = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = (datetime('now', 'localtime'))
       WHERE device_id = ?
     `;
   }

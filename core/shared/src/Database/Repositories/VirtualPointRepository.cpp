@@ -801,7 +801,7 @@ bool VirtualPointRepository::updateExecutionStats(int id, double last_value, dou
         std::string query = "UPDATE virtual_points SET "
                            "execution_count = execution_count + 1, "
                            "avg_execution_time_ms = (avg_execution_time_ms * execution_count + " + params["execution_time_ms"] + ") / (execution_count + 1), "
-                           "last_execution_time = CURRENT_TIMESTAMP "
+                           "last_execution_time = (datetime('now', 'localtime')) "
                            "WHERE id = " + params["id"];
         
         bool success = db_layer.executeNonQuery(query);
@@ -868,7 +868,7 @@ bool VirtualPointRepository::updateLastValue(int id, double last_value) {
         
         // 임시로 execution_count만 업데이트
         DbLib::DatabaseAbstractionLayer db_layer;
-        std::string query = "UPDATE virtual_points SET execution_count = execution_count + 1, last_execution_time = CURRENT_TIMESTAMP WHERE id = " + std::to_string(id);
+        std::string query = "UPDATE virtual_points SET execution_count = execution_count + 1, last_execution_time = (datetime('now', 'localtime')) WHERE id = " + std::to_string(id);
         
         bool success = db_layer.executeNonQuery(query);
         

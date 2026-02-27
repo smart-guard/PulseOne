@@ -57,8 +57,8 @@ using json = nlohmann::json;
  *     export_mode VARCHAR(20) DEFAULT 'on_change',
  *     export_interval INTEGER DEFAULT 0,
  *     batch_size INTEGER DEFAULT 100,
- *     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
- *     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ *     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+ *     updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
  *     FOREIGN KEY (template_id) REFERENCES payload_templates(id)
  * );
  */
@@ -82,15 +82,11 @@ public:
   // Getter - 설정 정보만 (통계 필드 제거됨)
   // =======================================================================
 
-  int getProfileId() const { return profile_id_; }
   std::string getName() const { return name_; }
   std::string getTargetType() const { return target_type_; }
   std::string getDescription() const { return description_; }
   bool isEnabled() const { return is_enabled_; }
   std::string getConfig() const { return config_; }
-  std::optional<int> getTemplateId() const {
-    return template_id_;
-  } // 🔥 v3.1.0 추가
   std::string getExportMode() const { return export_mode_; }
   int getExportInterval() const { return export_interval_; }
   int getBatchSize() const { return batch_size_; }
@@ -101,11 +97,6 @@ public:
   // =======================================================================
   // Setter - 설정 정보만 (통계 필드 제거됨)
   // =======================================================================
-
-  void setProfileId(int profile_id) {
-    profile_id_ = profile_id;
-    markModified();
-  }
 
   void setName(const std::string &name) {
     name_ = name;
@@ -129,12 +120,6 @@ public:
 
   void setConfig(const std::string &config) {
     config_ = config;
-    markModified();
-  }
-
-  // 🔥 v3.1.0 추가: template_id setter
-  void setTemplateId(std::optional<int> template_id) {
-    template_id_ = template_id;
     markModified();
   }
 
@@ -209,14 +194,11 @@ private:
   // 멤버 변수 - 설정 정보만 (통계 필드 완전 제거)
   // =======================================================================
 
-  int profile_id_ = 0;      // FK to export_profiles
-  std::string name_;        // Target 이름
-  std::string target_type_; // 'http', 's3', 'file' 등
-  std::string description_; // 설명
-  bool is_enabled_ = true;  // 활성화 여부
-  std::string config_;      // JSON 설정
-  std::optional<int>
-      template_id_; // 🔥 v3.1.0 추가: FK to payload_templates (NULL 가능)
+  std::string name_;                      // Target 이름
+  std::string target_type_;               // 'http', 's3', 'file' 등
+  std::string description_;               // 설명
+  bool is_enabled_ = true;                // 활성화 여부
+  std::string config_;                    // JSON 설정
   std::string export_mode_ = "on_change"; // 전송 모드
   int export_interval_ = 0;               // 주기 전송 간격 (초)
   int batch_size_ = 100;                  // 배치 크기

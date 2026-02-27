@@ -524,7 +524,7 @@ inline std::string TimestampToISOString(const Timestamp &ts) {
             1000;
 
   std::stringstream ss;
-  ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+  ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
   ss << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
   return ss.str();
 }
@@ -725,7 +725,7 @@ inline Timestamp ParseTimestampFromString(const std::string &str) {
 inline std::string TimestampToDBString(const Timestamp &tp) {
   auto time_t = std::chrono::system_clock::to_time_t(tp);
   std::ostringstream oss;
-  oss << std::put_time(std::gmtime(&time_t), "%Y-%m-%d %H:%M:%S");
+  oss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
   return oss.str();
 }
 
@@ -743,7 +743,7 @@ TimestampToString(const PulseOne::BasicTypes::Timestamp &timestamp) {
               1000;
 
     std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
     ss << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
 
     return ss.str();

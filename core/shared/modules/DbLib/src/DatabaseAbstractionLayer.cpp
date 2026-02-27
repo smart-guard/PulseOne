@@ -297,7 +297,7 @@ DatabaseAbstractionLayer::adaptTimestampFunctions(const std::string &query) {
   if (current_db_type_ == "SQLITE") {
     result = std::regex_replace(
         result,
-        std::regex("(NOW\\(\\)|CURRENT_TIMESTAMP|GETDATE\\(\\))",
+        std::regex("(NOW\\(\\)|(datetime('now', 'localtime'))|GETDATE\\(\\))",
                    std::regex_constants::icase),
         "datetime('now', 'localtime')");
   } else if (current_db_type_ == "POSTGRESQL" || current_db_type_ == "MYSQL") {
@@ -310,7 +310,7 @@ DatabaseAbstractionLayer::adaptTimestampFunctions(const std::string &query) {
     result = std::regex_replace(
         result,
         std::regex(
-            "(NOW\\(\\)|datetime\\('now',\\s*'localtime'\\)|CURRENT_TIMESTAMP)",
+            "(NOW\\(\\)|datetime\\('now',\\s*'localtime'\\)|(datetime('now', 'localtime')))",
             std::regex_constants::icase),
         "GETDATE()");
   }

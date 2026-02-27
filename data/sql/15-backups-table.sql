@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS backups (
     status TEXT DEFAULT 'completed', -- 'completed', 'running', 'failed'
     size INTEGER DEFAULT 0,
     location TEXT DEFAULT '/app/data/backup',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (datetime('now', 'localtime')),
     created_by TEXT,
     description TEXT,
     duration INTEGER, -- seconds

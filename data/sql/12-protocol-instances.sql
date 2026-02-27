@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS protocol_instances (
     status VARCHAR(20) DEFAULT 'STOPPED', -- RUNNING, STOPPED, ERROR
     
     -- 메타데이터
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    updated_at DATETIME DEFAULT (datetime('now', 'localtime')),
     tenant_id INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
     
     FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE

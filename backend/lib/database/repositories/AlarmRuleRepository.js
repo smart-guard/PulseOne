@@ -366,7 +366,7 @@ class AlarmRuleRepository extends BaseRepository {
     async update(id, updateData, tenantId = null) {
         try {
             const dataToUpdate = {
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             const fields = [
@@ -416,7 +416,7 @@ class AlarmRuleRepository extends BaseRepository {
 
             const affected = await query.update({
                 is_enabled: isEnabled ? 1 : 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
 
             if (affected > 0) {
@@ -438,7 +438,7 @@ class AlarmRuleRepository extends BaseRepository {
                 notification_channels: typeof settings.notification_channels === 'object' ? JSON.stringify(settings.notification_channels) : (settings.notification_channels || null),
                 notification_recipients: typeof settings.notification_recipients === 'object' ? JSON.stringify(settings.notification_recipients) : (settings.notification_recipients || null),
                 escalation_rules: typeof settings.escalation_rules === 'object' ? JSON.stringify(settings.escalation_rules) : (settings.escalation_rules || null),
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             };
 
             let query = this.query().where('id', id);
@@ -466,7 +466,7 @@ class AlarmRuleRepository extends BaseRepository {
 
             const affected = await query.update({
                 name: name,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
 
             if (affected > 0) {
@@ -489,7 +489,7 @@ class AlarmRuleRepository extends BaseRepository {
 
             const affected = await query.update({
                 severity: severity,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
 
             if (affected > 0) {
@@ -512,7 +512,7 @@ class AlarmRuleRepository extends BaseRepository {
 
             const affected = await query.update({
                 is_deleted: 1,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
 
             if (affected > 0) {
@@ -533,7 +533,7 @@ class AlarmRuleRepository extends BaseRepository {
 
             const affected = await query.update({
                 is_deleted: 0,
-                updated_at: this.knex.fn.now()
+                updated_at: this.knex.raw("datetime('now', 'localtime')")
             });
 
             if (affected > 0) {
