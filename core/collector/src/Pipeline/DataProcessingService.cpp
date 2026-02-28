@@ -298,8 +298,9 @@ void DataProcessingService::ProcessingThreadLoop(size_t thread_index) {
 
         UpdateStatistics(batch.size(), static_cast<double>(duration.count()));
       } else {
-        // Log periodic heartbeat for debugging
-        static int empty_count = 0;
+        // [CRITICAL FIX] static은 모든 스레드가 공유 → 데이터 레이스 발생
+        // thread_local로 교체: 스레드별 독립 카운터 사용
+        thread_local int empty_count = 0;
         if (++empty_count >= 100) { // Every ~1 second
           LogManager::getInstance().log("processing", LogLevel::DEBUG_LEVEL,
                                         "Thread " +
@@ -437,8 +438,48 @@ void DataProcessingService::ProcessInfluxTasks(
           point.value);
 
       if (!fields.empty()) {
-        batch_lines.push_back(
-            influx_client_->formatRecord(measurement, tags, fields));
+        // [BUG #25 FIX] Use actual measurement timestamp instead of now().
+        // Convert point.timestamp (system_clock::time_point) to epoch seconds.
+        long long epoch_s = std::chrono::duration_cast<std::chrono::seconds>(
+                                point.timestamp.time_since_epoch())
+                                .count();
+
+        // Build line protocol manually so we can pass the real timestamp.
+        // Tags are already escaped inside formatLineProtocol.
+        std::string measurement_escaped = "device_telemetry";
+        std::ostringstream line;
+        line << measurement_escaped;
+        for (const auto &[k, v] : tags) {
+          // Inline escape: space→\ , comma→\, , equals→\=
+          auto esc = [](const std::string &s) {
+            std::string o;
+            o.reserve(s.size() + 4);
+            for (char c : s) {
+              if (c == ' ')
+                o += "\\ ";
+              else if (c == ',')
+                o += "\\,";
+              else if (c == '=')
+                o += "\\=";
+              else
+                o += c;
+            }
+            return o;
+          };
+          line << "," << esc(k) << "=" << esc(v);
+        }
+        line << " ";
+        bool first_f = true;
+        for (const auto &[k, v] : fields) {
+          if (!first_f)
+            line << ",";
+          line << k << "=" << v;
+          first_f = false;
+        }
+        if (epoch_s > 0)
+          line << " " << epoch_s;
+
+        batch_lines.push_back(line.str());
       }
     }
   }
@@ -505,13 +546,31 @@ void DataProcessingService::ProcessCommStatsTasks(
           (msg.device_status == PulseOne::Enums::DeviceStatus::ONLINE ||
            msg.device_status == PulseOne::Enums::DeviceStatus::WARNING);
 
-      // SQLite UPSERT 지원
+      // [CRITICAL FIX] SQL 인젝션 방어: msg.device_id를 직접 쿼리에 삽입하면
+      // 위험 device_id를 숫자만 추출하여 안전한 정수 문자열로 변환
+      std::string safe_device_id;
+      try {
+        // 숫자 부분만 추출 ("device_42" → "42", "42" → "42")
+        size_t last_underscore = msg.device_id.find_last_of('_');
+        std::string raw_num = (last_underscore != std::string::npos)
+                                  ? msg.device_id.substr(last_underscore + 1)
+                                  : msg.device_id;
+        safe_device_id = std::to_string(std::stoi(raw_num));
+      } catch (...) {
+        // 파싱 실패 시 해당 레코드 스킵 (0 삽입 대신 건너뜀)
+        LogManager::getInstance().log("processing", LogLevel::WARN,
+                                      "Invalid device_id for SQL, skipping: " +
+                                          msg.device_id);
+        continue;
+      }
+
+      // SQLite UPSERT 지원 (안전한 정수 ID 사용)
       std::string status_query =
           "INSERT INTO device_status (device_id, connection_status, "
           "last_communication, updated_at, response_time, total_requests, "
           "successful_requests) "
           "VALUES (" +
-          msg.device_id + ", '" + status_str +
+          safe_device_id + ", '" + status_str +
           "', datetime('now', 'localtime'), datetime('now', 'localtime'), " +
           std::to_string(msg.response_time.count()) + ", 1, " +
           (is_online ? "1" : "0") +
@@ -1440,7 +1499,8 @@ std::string DataProcessingService::ConvertToLightPointValue(
             1000;
 
   std::ostringstream timestamp_stream;
-  timestamp_stream << std::put_time(std::localtime(&time_t), "%Y-%m-%dT%H:%M:%S");
+  timestamp_stream << std::put_time(std::localtime(&time_t),
+                                    "%Y-%m-%dT%H:%M:%S");
   timestamp_stream << "." << std::setfill('0') << std::setw(3) << ms.count()
                    << "Z";
   light_point["timestamp"] = timestamp_stream.str();

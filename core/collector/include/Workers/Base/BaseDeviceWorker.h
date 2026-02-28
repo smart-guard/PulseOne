@@ -113,7 +113,7 @@ struct ReconnectionStats {
  * - WorkerManager를 통한 중앙집중식 관리 지원
  * - 메모리 누수 방지를 위한 스레드 생명주기 관리
  */
-class BaseDeviceWorker {
+class BaseDeviceWorker : public std::enable_shared_from_this<BaseDeviceWorker> {
 public:
   explicit BaseDeviceWorker(const PulseOne::Structs::DeviceInfo &device_info);
   virtual ~BaseDeviceWorker();
@@ -440,6 +440,9 @@ private:
   std::atomic<bool> in_wait_cycle_{false};
   std::chrono::system_clock::time_point wait_start_time_;
   std::chrono::system_clock::time_point last_keep_alive_time_;
+  // [BUG #15 FIX] static local 대체: 연결 시작 시간을 인스턴스별로 추적
+  std::chrono::system_clock::time_point last_connection_start_{
+      std::chrono::system_clock::now()};
 
   // =============================================================================
   // 메모리 누수 방지를 위한 백그라운드 스레드 관리

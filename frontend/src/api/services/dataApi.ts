@@ -640,6 +640,28 @@ export class DataApiService {
   }
 
   // ========================================================================
+  // ✍️ 포인트 제어 (Write)
+  // ========================================================================
+
+  /**
+   * 포인트에 값 쓰기 → Backend → Redis → Collector → 실제 장비
+   */
+  static async writePoint(deviceId: number, pointId: number, value: string | number | boolean): Promise<ApiResponse<{
+    point_id: number;
+    point_name: string;
+    device_id: number;
+    value: string;
+    channel: string;
+    subscriber_count: number;
+  }>> {
+    console.log(`✍️ 포인트 쓰기: device=${deviceId}, point=${pointId}, value=${value}`);
+    return this.httpClient.post<any>(
+      `/api/devices/${deviceId}/data-points/${pointId}/write`,
+      { value: String(value) }
+    );
+  }
+
+  // ========================================================================
   // 🔧 유틸리티 메서드들
   // ========================================================================
 

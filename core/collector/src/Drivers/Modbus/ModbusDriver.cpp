@@ -223,18 +223,23 @@ bool ModbusDriver::IsConnected() const { return is_connected_.load(); }
 
 bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint> &points,
                               std::vector<Structs::TimestampedValue> &values) {
-  // 🔍 1:N 시리얼 포트 공유 또는 동시 접근 제어를 위한 엔드포인트 잠금
-  logger_->Debug(
-      "[ModbusDriver] Entering ReadValues for endpoint: " + config_.endpoint +
-      " (Points: " + std::to_string(points.size()) + ")");
-  std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
-  logger_->Debug("[ModbusDriver] Acquired port_lock for endpoint: " +
-                 config_.endpoint);
-
   // 연결 풀링 활성화 시
   if (connection_pool_ && IsConnectionPoolingEnabled()) {
     return PerformReadWithConnectionPool(points, values);
   }
+  return ReadValuesImpl(points, values);
+}
+
+bool ModbusDriver::ReadValuesImpl(
+    const std::vector<Structs::DataPoint> &points,
+    std::vector<Structs::TimestampedValue> &values) {
+  // 🔍 1:N 시리얼 포트 공유 또는 동시 접근 제어를 위한 엔드포인트 잠금
+  logger_->Debug("[ModbusDriver] Entering ReadValuesImpl for endpoint: " +
+                 config_.endpoint +
+                 " (Points: " + std::to_string(points.size()) + ")");
+  std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
+  logger_->Debug("[ModbusDriver] Acquired port_lock for endpoint: " +
+                 config_.endpoint);
 
   values.clear();
   values.reserve(points.size());
@@ -282,10 +287,32 @@ bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint> &points,
         func_type = point.data_type;
       }
     } else {
-      // Fallback mapping if no function code
-      // (Simple heuristic or default to HOLDING)
-      if (func_type != "COIL" && func_type != "DISCRETE_INPUT")
+      // [BUG FIX] Parse address_string prefix before falling back to heuristic.
+      // Modbus 표준: CO:xxx=FC01(Coil), DI:xxx=FC02(Discrete),
+      //              HR:xxx=FC03(Holding), IR:xxx=FC04(Input)
+      if (!point.address_string.empty()) {
+        const std::string &as = point.address_string;
+        if (as.size() > 3) {
+          std::string prefix = as.substr(0, 3);
+          // Normalise to uppercase for robustness
+          std::transform(prefix.begin(), prefix.end(), prefix.begin(),
+                         ::toupper);
+          if (prefix == "CO:")
+            func_type = "COIL";
+          else if (prefix == "DI:")
+            func_type = "DISCRETE_INPUT";
+          else if (prefix == "HR:")
+            func_type = "HOLDING_REGISTER";
+          else if (prefix == "IR:")
+            func_type = "INPUT_REGISTER";
+          // else: keep data_type-based func_type
+        }
+      }
+      // Final fallback: if still not a known coil type, default to HOLDING
+      if (func_type != "COIL" && func_type != "DISCRETE_INPUT" &&
+          func_type != "HOLDING_REGISTER" && func_type != "INPUT_REGISTER") {
         func_type = "HOLDING_REGISTER";
+      }
     }
 
     groups[{slave_id, func_type}].slave_id = slave_id;
@@ -471,13 +498,17 @@ bool ModbusDriver::ReadValues(const std::vector<Structs::DataPoint> &points,
 
 bool ModbusDriver::WriteValue(const Structs::DataPoint &point,
                               const Structs::DataValue &value) {
-  // 🔍 엔드포인트 잠금
-  std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
-
   // 연결 풀링이 활성화된 경우 해당 방식 사용
   if (connection_pool_ && IsConnectionPoolingEnabled()) {
     return PerformWriteWithConnectionPool(point, value);
   }
+  return WriteValueImpl(point, value);
+}
+
+bool ModbusDriver::WriteValueImpl(const Structs::DataPoint &point,
+                                  const Structs::DataValue &value) {
+  // 🔍 엔드포인트 잠금
+  std::lock_guard<std::mutex> port_lock(GetSerialMutex(config_.endpoint));
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -499,20 +530,72 @@ bool ModbusDriver::WriteValue(const Structs::DataPoint &point,
   }
 
   // 🔥 포인트별 function_code 확인
+  // protocol_params["function_code"]는 read FC 번호를 저장 (1=Coil, 3=HR)
   std::string function_type = point.data_type; // 기본값
   if (point.protocol_params.count("function_code")) {
-    int func_code = std::stoi(point.protocol_params.at("function_code"));
-    switch (func_code) {
-    case 5:
+    int fc = std::stoi(point.protocol_params.at("function_code"));
+    switch (fc) {
+    case 1: // FC01 Read Coils → Write Coil
+    case 5: // FC05 Write Single Coil (직접 지정)
       function_type = "COIL";
       break;
-    case 6:
-    case 16:
+    case 2: // FC02 Read Discrete Input → 쓰기 불가지만 COIL로 매핑
+      function_type = "COIL";
+      break;
+    case 3:  // FC03 Read Holding Register → Write Single Register (FC06)
+    case 4:  // FC04 Read Input Register → Write Single Register (FC06)
+    case 6:  // FC06 Write Single Register (직접 지정)
+    case 16: // FC16 Write Multiple Registers
       function_type = "HOLDING_REGISTER";
       break;
     default:
       function_type = point.data_type;
       break;
+    }
+  } else {
+    // Fallback: address_string prefix 파싱
+    if (!point.address_string.empty() && point.address_string.size() > 3) {
+      std::string prefix = point.address_string.substr(0, 3);
+      std::transform(prefix.begin(), prefix.end(), prefix.begin(), ::toupper);
+      if (prefix == "CO:" || prefix == "DI:") {
+        function_type = "COIL";
+      } else if (prefix == "HR:" || prefix == "IR:") {
+        function_type = "HOLDING_REGISTER";
+      }
+    }
+    // Final fallback: BOOL → COIL, 나머지 → HOLDING_REGISTER
+    if (function_type == "bool" || function_type == "BOOL") {
+      function_type = "COIL";
+    } else if (function_type != "COIL" && function_type != "HOLDING_REGISTER") {
+      function_type = "HOLDING_REGISTER";
+    }
+  }
+
+  // 🔥 비트 인덱스 특정 변경 지원 (MaskWriteRegister 활용)
+  if (point.protocol_params.count("bit_index")) {
+    try {
+      int bit_idx = std::stoi(point.protocol_params.at("bit_index"));
+      if (bit_idx >= 0 && bit_idx < 16) {
+        // bool로 변환되거나 0값이 아닌 경우 true로 간주
+        bool is_on = (modbus_value != 0);
+
+        uint16_t and_mask = ~(1 << bit_idx);
+        uint16_t or_mask = is_on ? (1 << bit_idx) : 0;
+
+        success = MaskWriteRegister(slave_id, point.address, and_mask, or_mask);
+
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - start_time);
+
+        UpdateStats(success, duration.count(), "write");
+        RecordResponseTime(slave_id, duration.count());
+        RecordSlaveRequest(slave_id, success, duration.count());
+
+        return success;
+      }
+    } catch (...) {
+      // 파싱 실패시 일반 로직으로 진행
     }
   }
 
@@ -1141,7 +1224,8 @@ ModbusDriver::ConvertModbusValue(const Structs::DataPoint &point,
     result = static_cast<float>(scaled_value);
   } else if (point.data_type == "DOUBLE") {
     result = scaled_value;
-  } else if (point.data_type == "BOOL" || point.data_type == "COIL") {
+  } else if (point.data_type == "BOOL" || point.data_type == "COIL" ||
+             point.data_type == "bool") {
     result = (raw_value != 0);
   } else {
     // 기본값으로 스케일링된 unsigned int 사용
@@ -1188,9 +1272,14 @@ bool ModbusDriver::ConvertToModbusValue(const Structs::DataValue &value,
       return false;
     }
     modbus_value = apply_reverse_scaling(float_val);
-  } else if (point.data_type == "BOOL" || point.data_type == "COIL") {
+  } else if (point.data_type == "BOOL" || point.data_type == "COIL" ||
+             point.data_type == "bool") {
     if (std::holds_alternative<bool>(value)) {
       modbus_value = std::get<bool>(value) ? 1 : 0;
+    } else if (std::holds_alternative<int>(value)) {
+      modbus_value = (std::get<int>(value) != 0) ? 1 : 0;
+    } else if (std::holds_alternative<double>(value)) {
+      modbus_value = (std::get<double>(value) != 0.0) ? 1 : 0;
     } else {
       return false;
     }
@@ -1458,7 +1547,7 @@ bool ModbusDriver::PerformReadWithConnectionPool(
   }
 
   // 풀이 없으면 일반 방식으로 fallback
-  return ReadValues(points, values);
+  return ReadValuesImpl(points, values);
 }
 
 bool ModbusDriver::PerformWriteWithConnectionPool(
@@ -1468,7 +1557,7 @@ bool ModbusDriver::PerformWriteWithConnectionPool(
   }
 
   // 풀이 없으면 일반 방식으로 fallback
-  return WriteValue(point, value);
+  return WriteValueImpl(point, value);
 }
 
 bool ModbusDriver::SwitchToBackupEndpoint() {
@@ -1609,10 +1698,36 @@ ModbusDriver::ExtractValueFromBuffer(const std::vector<uint16_t> &buffer,
   }
   uint16_t reg = buffer[offset];
 
+  // 🔥 Bit Index 추출 (특정 비트맵 파싱용)
+  if (point.protocol_params.count("bit_index")) {
+    try {
+      int bit_idx = std::stoi(point.protocol_params.at("bit_index"));
+      if (bit_idx >= 0 && bit_idx < 16) {
+        bool bit_val = (reg & (1 << bit_idx)) != 0;
+
+        // 데이터 타입이 bool로 명시된 경우 bool로 반환
+        if (point.data_type == "BOOL" || point.data_type == "COIL" ||
+            point.data_type == "bool") {
+          return bit_val;
+        } else {
+          // UINT16 등 수치형 타입 호환성을 위해 0.0 또는 1.0으로 반환 (스케일링
+          // 적용 가능)
+          double numeric_val = bit_val ? 1.0 : 0.0;
+          return numeric_val * point.scaling_factor + point.scaling_offset;
+        }
+      }
+    } catch (...) {
+      // 오류 발생 시 일반 변환 로직으로 Fallback
+    }
+  }
+
   double scaled_value;
   // INT16 check
   if (point.data_type == "INT16") {
     scaled_value = static_cast<double>(static_cast<int16_t>(reg));
+  } else if (point.data_type == "BOOL" || point.data_type == "COIL" ||
+             point.data_type == "bool") {
+    return (reg != 0);
   } else {
     scaled_value = static_cast<double>(reg);
   }

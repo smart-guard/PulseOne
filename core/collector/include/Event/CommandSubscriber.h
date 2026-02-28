@@ -8,8 +8,10 @@
 #ifndef COLLECTOR_COMMAND_SUBSCRIBER_H
 #define COLLECTOR_COMMAND_SUBSCRIBER_H
 
+#include "Client/RedisClientImpl.h"
 #include "Event/EventSubscriber.h" // Shared base class
 #include <functional>
+#include <memory>
 #include <string>
 
 namespace PulseOne {
@@ -52,6 +54,8 @@ protected:
 
 private:
   int collector_id_;
+  std::shared_ptr<PulseOne::RedisClient>
+      publisher_client_; ///< publish 전용 (subscriber 모드 분리)
 };
 
 } // namespace Core

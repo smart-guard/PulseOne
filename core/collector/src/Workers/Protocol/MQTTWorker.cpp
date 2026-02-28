@@ -113,73 +113,85 @@ std::future<bool> MQTTWorker::Start() {
   auto promise = std::make_shared<std::promise<bool>>();
   auto future = promise->get_future();
 
-  std::thread([this, promise]() {
+  // [CRITICAL FIX] UAF 방어: raw this 대신 shared_ptr 캡처
+  auto self = shared_from_this();
+  auto mqtt_self = std::dynamic_pointer_cast<MQTTWorker>(self);
+
+  std::thread([mqtt_self, promise]() {
     try {
-      LogMessage(LogLevel::INFO, "Starting MQTT worker...");
+      mqtt_self->LogMessage(LogLevel::INFO, "Starting MQTT worker...");
 
       // 1. DataPoint 기반 자동 구독 등록
+      // [LOCK ORDER CONTRACT]
+      // data_points_mutex_ → subscriptions_mutex_ 순서로만 획득.
+      // AddSubscription()은 subscriptions_mutex_를 내부적으로 잡으므로
+      // 이 블록 안에서만 호출 허용.
+      // ⚠️ 역순서 금지: subscriptions_mutex_ 보유 중 data_points_mutex_ 획득
+      // 불가.
       {
-        std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
-        for (const auto &dp : data_points_) {
+        std::lock_guard<std::recursive_mutex> lock(
+            mqtt_self->data_points_mutex_);
+        for (const auto &dp : mqtt_self->data_points_) {
           if (!dp.address_string.empty()) {
             MQTTSubscription sub;
             sub.topic = dp.address_string;
             sub.qos = MqttQoS::AT_LEAST_ONCE;
-            AddSubscription(sub);
+            mqtt_self->AddSubscription(sub);
           }
         }
       }
 
       // 1.1 [Auto-Registration] 설정된 베이스 토픽(와일드카드 포함) 자동 구독
-      if (!mqtt_config_.topic.empty()) {
-        std::stringstream ss(mqtt_config_.topic);
+      if (!mqtt_self->mqtt_config_.topic.empty()) {
+        std::stringstream ss(mqtt_self->mqtt_config_.topic);
         std::string segment;
         while (std::getline(ss, segment, ',')) {
-          // 공백 제거 (Trim)
           segment.erase(0, segment.find_first_not_of(" \t\n\r\f\v"));
           segment.erase(segment.find_last_not_of(" \t\n\r\f\v") + 1);
 
           if (!segment.empty()) {
             MQTTSubscription sub;
             sub.topic = segment;
-            sub.qos = mqtt_config_.default_qos;
-            LogMessage(LogLevel::INFO,
-                       "자동 등록을 위한 베이스 토픽 구독: " + sub.topic);
-            AddSubscription(sub);
+            sub.qos = mqtt_self->mqtt_config_.default_qos;
+            mqtt_self->LogMessage(LogLevel::INFO,
+                                  "자동 등록을 위한 베이스 토픽 구독: " +
+                                      sub.topic);
+            mqtt_self->AddSubscription(sub);
           }
         }
       }
 
       // 🔥 BaseDeviceWorker의 재연결 관리 스레드 시작
-      StartReconnectionThread();
+      mqtt_self->StartReconnectionThread();
 
-      if (EstablishConnection()) {
-        ChangeState(WorkerState::RUNNING);
+      if (mqtt_self->EstablishConnection()) {
+        mqtt_self->ChangeState(WorkerState::RUNNING);
       } else {
-        ChangeState(WorkerState::RECONNECTING);
+        mqtt_self->ChangeState(WorkerState::RECONNECTING);
       }
 
       // 2. 메시지 처리 스레드 시작
-      message_thread_running_ = true;
-      message_processor_thread_ = std::make_unique<std::thread>(
-          &MQTTWorker::MessageProcessorThreadFunction, this);
+      mqtt_self->message_thread_running_ = true;
+      mqtt_self->message_processor_thread_ = std::make_unique<std::thread>(
+          &MQTTWorker::MessageProcessorThreadFunction, mqtt_self.get());
 
       // 3. 발행 처리 스레드 시작
-      publish_thread_running_ = true;
-      publish_processor_thread_ = std::make_unique<std::thread>(
-          &MQTTWorker::PublishProcessorThreadFunction, this);
+      mqtt_self->publish_thread_running_ = true;
+      mqtt_self->publish_processor_thread_ = std::make_unique<std::thread>(
+          &MQTTWorker::PublishProcessorThreadFunction, mqtt_self.get());
 
       // 4. 프로덕션 모드라면 고급 스레드들 시작
-      if (IsProductionMode()) {
-        StartProductionThreads();
+      if (mqtt_self->IsProductionMode()) {
+        mqtt_self->StartProductionThreads();
       }
 
-      LogMessage(LogLevel::INFO, "MQTT worker started successfully");
+      mqtt_self->LogMessage(LogLevel::INFO, "MQTT worker started successfully");
       promise->set_value(true);
 
     } catch (const std::exception &e) {
-      LogMessage(LogLevel::LOG_ERROR,
-                 "Failed to start MQTT worker: " + std::string(e.what()));
+      mqtt_self->LogMessage(LogLevel::LOG_ERROR,
+                            "Failed to start MQTT worker: " +
+                                std::string(e.what()));
       promise->set_value(false);
     }
   }).detach();
@@ -191,37 +203,44 @@ std::future<bool> MQTTWorker::Stop() {
   auto promise = std::make_shared<std::promise<bool>>();
   auto future = promise->get_future();
 
-  std::thread([this, promise]() {
+  // [CRITICAL FIX] UAF 방어: raw this 대신 shared_ptr 캡처
+  auto self = shared_from_this();
+  auto mqtt_self = std::dynamic_pointer_cast<MQTTWorker>(self);
+
+  std::thread([mqtt_self, promise]() {
     try {
-      LogMessage(LogLevel::INFO, "Stopping MQTT worker...");
+      mqtt_self->LogMessage(LogLevel::INFO, "Stopping MQTT worker...");
 
       // 1. 프로덕션 모드 스레드들 정리
-      StopProductionThreads();
+      mqtt_self->StopProductionThreads();
 
       // 2. 기본 스레드들 정리
-      message_thread_running_ = false;
-      publish_thread_running_ = false;
-      publish_queue_cv_.notify_all();
+      mqtt_self->message_thread_running_ = false;
+      mqtt_self->publish_thread_running_ = false;
+      mqtt_self->publish_queue_cv_.notify_all();
 
-      if (message_processor_thread_ && message_processor_thread_->joinable()) {
-        message_processor_thread_->join();
+      if (mqtt_self->message_processor_thread_ &&
+          mqtt_self->message_processor_thread_->joinable()) {
+        mqtt_self->message_processor_thread_->join();
       }
-      if (publish_processor_thread_ && publish_processor_thread_->joinable()) {
-        publish_processor_thread_->join();
+      if (mqtt_self->publish_processor_thread_ &&
+          mqtt_self->publish_processor_thread_->joinable()) {
+        mqtt_self->publish_processor_thread_->join();
       }
 
       // 3. 연결 해제
-      CloseConnection();
+      mqtt_self->CloseConnection();
 
-      ChangeState(WorkerState::STOPPED);
-      StopAllThreads();
+      mqtt_self->ChangeState(WorkerState::STOPPED);
+      mqtt_self->StopAllThreads();
 
-      LogMessage(LogLevel::INFO, "MQTT worker stopped successfully");
+      mqtt_self->LogMessage(LogLevel::INFO, "MQTT worker stopped successfully");
       promise->set_value(true);
 
     } catch (const std::exception &e) {
-      LogMessage(LogLevel::LOG_ERROR,
-                 "Failed to stop MQTT worker: " + std::string(e.what()));
+      mqtt_self->LogMessage(LogLevel::LOG_ERROR,
+                            "Failed to stop MQTT worker: " +
+                                std::string(e.what()));
       promise->set_value(false);
     }
   }).detach();

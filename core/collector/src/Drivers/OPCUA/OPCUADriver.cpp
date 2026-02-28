@@ -245,6 +245,11 @@ bool OPCUADriver::Disconnect() {
     UA_Client_delete(client_);
     client_ = nullptr;
   }
+
+  // [CRITICAL FIX] 구독 해제 시 동적 할당된 Context 메모리 전체 환수
+  monitored_contexts_.clear();
+  monitored_nodes_.clear();
+
   UpdateStatus(DriverStatus::STOPPED);
   return true;
 }
@@ -438,6 +443,8 @@ void OPCUADriver::SyncMonitoredItems() {
 
     if (monResult.statusCode == UA_STATUSCODE_GOOD) {
       monitored_nodes_.insert(nodeIdStr);
+      // [CRITICAL FIX] std::string memory leak 방어: 할당된 메모리 소유권 이전
+      monitored_contexts_.push_back(std::unique_ptr<std::string>(contextStr));
       // LogManager::getInstance().Info("[OPC-UA] Monitored Item created: " +
       // nodeIdStr);
     } else {

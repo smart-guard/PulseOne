@@ -313,10 +313,12 @@ bool RedisDataWriter::PublishAlarmEvent(
     // interface yet
 
     // 3. 알람 카운터 업데이트
+    // [BUG #22 FIX] GET→stoi→setex는 비원자적 → 동시 publish 시 카운트 손실.
+    // Redis INCR은 원자 연산이므로 race condition 없이 정확하게 증가.
+    // expire()로 자정 이후 자동 만료 (24h TTL 갱신).
     std::string counter_key = "alarms:count:today";
-    std::string current_count = redis_client_->get(counter_key);
-    int count = current_count.empty() ? 1 : std::stoi(current_count) + 1;
-    redis_client_->setex(counter_key, std::to_string(count), 86400);
+    redis_client_->incr(counter_key, 1);
+    redis_client_->expire(counter_key, 86400);
 
     stats_.total_writes.fetch_add(1);
     stats_.successful_writes.fetch_add(1);

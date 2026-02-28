@@ -82,6 +82,11 @@ const RealTimeMonitor: React.FC = () => {
   const [dataPoints, setDataPoints] = useState<any[]>([]);
   const [dataStatistics, setDataStatistics] = useState<any>(null);
 
+  // ✍️ 포인트 제어 state
+  const [writeValues, setWriteValues] = useState<Record<number, string>>({}); // point_id → 입력중인 값
+  const [writeStatus, setWriteStatus] = useState<Record<number, 'idle' | 'sending' | 'success' | 'error'>>({});
+  const [writeMessages, setWriteMessages] = useState<Record<number, string>>({});
+
   // =============================================================================
   // 🛠️ 헬퍼 함수들
   // =============================================================================
@@ -494,6 +499,36 @@ const RealTimeMonitor: React.FC = () => {
     switch (trend) { case 'up': return 'fas fa-arrow-up text-success'; case 'down': return 'fas fa-arrow-down text-error'; default: return 'fas fa-minus text-neutral'; }
   };
 
+  // ✍️ 포인트 제어 함수
+  const handleWrite = useCallback(async (item: RealTimeData, value: string) => {
+    const pointId = item.point_id;
+    const deviceId = item.device_id;
+    if (!deviceId || !value.trim()) return;
+
+    setWriteStatus(prev => ({ ...prev, [pointId]: 'sending' }));
+    setWriteMessages(prev => ({ ...prev, [pointId]: '' }));
+
+    try {
+      const result = await DataApiService.writePoint(deviceId, pointId, value.trim());
+      if (result.success) {
+        setWriteStatus(prev => ({ ...prev, [pointId]: 'success' }));
+        setWriteMessages(prev => ({ ...prev, [pointId]: '전송 완료' }));
+      } else {
+        setWriteStatus(prev => ({ ...prev, [pointId]: 'error' }));
+        setWriteMessages(prev => ({ ...prev, [pointId]: result.message || '오류' }));
+      }
+    } catch (err) {
+      setWriteStatus(prev => ({ ...prev, [pointId]: 'error' }));
+      setWriteMessages(prev => ({ ...prev, [pointId]: err instanceof Error ? err.message : '오류 발생' }));
+    }
+
+    // 3초 후 상태 초기화
+    setTimeout(() => {
+      setWriteStatus(prev => ({ ...prev, [pointId]: 'idle' }));
+      setWriteMessages(prev => ({ ...prev, [pointId]: '' }));
+    }, 3000);
+  }, []);
+
   // Pagination
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -816,33 +851,115 @@ const RealTimeMonitor: React.FC = () => {
                     <th>공장/위치</th>
                     <th>디바이스</th>
                     <th>갱신 시간</th>
+                    <th style={{ width: '200px' }}>제어</th>
                     <th style={{ width: '50px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {currentData.map(item => (
-                    <tr key={`${item.id}_${item.point_id}`}>
-                      <td><input type="checkbox" checked={selectedData.some(d => d.id === item.id)} onChange={() => toggleDataSelection(item)} /></td>
-                      <td><span className={`quality-badge ${item.quality}`}>{item.quality}</span></td>
-                      <td><div style={{ fontWeight: 600 }}>{item.displayName}</div><div style={{ fontSize: '11px', color: '#9ca3af' }}>{item.category}</div></td>
-                      <td>
-                        <span className={`cell-value ${item.trend === 'up' ? 'value-up' : item.trend === 'down' ? 'value-down' : 'value-stable'}`}>
-                          {isBlobValue(item.value) ? 'FILE' : formatValue(item)}
-                        </span>
-                        {item.unit && <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '4px' }}>{item.unit}</span>}
-                      </td>
-                      <td>
-                        {item.trend === 'up' && <i className="fas fa-arrow-up value-up"></i>}
-                        {item.trend === 'down' && <i className="fas fa-arrow-down value-down"></i>}
-                        {item.trend === 'stable' && <i className="fas fa-minus value-stable"></i>}
-                      </td>
-                      <td>{item.factory}</td>
-                      <td>{item.device}</td>
-                      <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{formatTimestamp(item.timestamp)}</td>
-                      <td><button style={{ border: 'none', background: 'none', cursor: 'pointer', color: item.isFavorite ? '#f59e0b' : '#d1d5db' }} onClick={() => toggleFavorite(item.id)}><i className="fas fa-star"></i></button></td>
-                    </tr>
-                  ))}
-                  {currentData.length === 0 && (<tr><td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>검색 결과가 없습니다.</td></tr>)}
+                  {currentData.map(item => {
+                    const dpMeta = dataPoints.find((dp: any) => dp.id === item.point_id);
+                    const isWritable = dpMeta?.access_mode === 'read_write' || dpMeta?.access_mode === 'write';
+                    const isBoolType = item.dataType === 'boolean' || dpMeta?.data_type === 'BOOL';
+                    const wStatus = writeStatus[item.point_id] || 'idle';
+                    return (
+                      <tr key={`${item.id}_${item.point_id}`}>
+                        <td><input type="checkbox" checked={selectedData.some(d => d.id === item.id)} onChange={() => toggleDataSelection(item)} /></td>
+                        <td><span className={`quality-badge ${item.quality}`}>{item.quality}</span></td>
+                        <td><div style={{ fontWeight: 600 }}>{item.displayName}</div><div style={{ fontSize: '11px', color: '#9ca3af' }}>{item.category}</div></td>
+                        <td>
+                          <span className={`cell-value ${item.trend === 'up' ? 'value-up' : item.trend === 'down' ? 'value-down' : 'value-stable'}`}>
+                            {isBlobValue(item.value) ? 'FILE' : formatValue(item)}
+                          </span>
+                          {item.unit && <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '4px' }}>{item.unit}</span>}
+                        </td>
+                        <td>
+                          {item.trend === 'up' && <i className="fas fa-arrow-up value-up"></i>}
+                          {item.trend === 'down' && <i className="fas fa-arrow-down value-down"></i>}
+                          {item.trend === 'stable' && <i className="fas fa-minus value-stable"></i>}
+                        </td>
+                        <td>{item.factory}</td>
+                        <td>{item.device}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{formatTimestamp(item.timestamp)}</td>
+
+                        {/* ✍️ 인라인 제어 셀 */}
+                        <td style={{ minWidth: '200px' }}>
+                          {isWritable ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {isBoolType ? (
+                                /* BOOL: 토글 스위치 */
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                  <div
+                                    onClick={() => handleWrite(item, item.value ? '0' : '1')}
+                                    style={{
+                                      width: '40px', height: '22px', borderRadius: '11px',
+                                      background: item.value ? '#22c55e' : '#d1d5db',
+                                      position: 'relative', cursor: 'pointer',
+                                      transition: 'background 0.2s',
+                                      opacity: wStatus === 'sending' ? 0.5 : 1
+                                    }}
+                                  >
+                                    <div style={{
+                                      width: '18px', height: '18px', borderRadius: '50%',
+                                      background: 'white', position: 'absolute',
+                                      top: '2px', left: item.value ? '20px' : '2px',
+                                      transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                                    }} />
+                                  </div>
+                                  <span style={{ fontSize: '11px', color: item.value ? '#16a34a' : '#6b7280' }}>
+                                    {wStatus === 'sending' ? '...' : item.value ? 'ON' : 'OFF'}
+                                  </span>
+                                </label>
+                              ) : (
+                                /* 숫자/문자: 입력창 + 전송 버튼 */
+                                <>
+                                  <input
+                                    type="number"
+                                    value={writeValues[item.point_id] ?? ''}
+                                    onChange={e => setWriteValues(prev => ({ ...prev, [item.point_id]: e.target.value }))}
+                                    onKeyDown={e => e.key === 'Enter' && handleWrite(item, writeValues[item.point_id] ?? '')}
+                                    placeholder={String(item.value)}
+                                    disabled={wStatus === 'sending'}
+                                    style={{
+                                      width: '80px', padding: '4px 6px', fontSize: '12px',
+                                      border: wStatus === 'error' ? '1px solid #ef4444' :
+                                        wStatus === 'success' ? '1px solid #22c55e' : '1px solid #d1d5db',
+                                      borderRadius: '4px'
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => handleWrite(item, writeValues[item.point_id] ?? '')}
+                                    disabled={wStatus === 'sending' || !(writeValues[item.point_id] ?? '').trim()}
+                                    style={{
+                                      padding: '4px 8px', fontSize: '11px', fontWeight: 600,
+                                      background: wStatus === 'success' ? '#22c55e' :
+                                        wStatus === 'error' ? '#ef4444' : '#3b82f6',
+                                      color: 'white', border: 'none', borderRadius: '4px',
+                                      cursor: 'pointer', opacity: wStatus === 'sending' ? 0.5 : 1
+                                    }}
+                                  >
+                                    {wStatus === 'sending' ? <i className="fas fa-spinner fa-spin" /> :
+                                      wStatus === 'success' ? <i className="fas fa-check" /> :
+                                        wStatus === 'error' ? <i className="fas fa-times" /> :
+                                          <i className="fas fa-paper-plane" />}
+                                  </button>
+                                </>
+                              )}
+                              {writeMessages[item.point_id] && (
+                                <span style={{ fontSize: '10px', color: wStatus === 'error' ? '#ef4444' : '#22c55e' }}>
+                                  {writeMessages[item.point_id]}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '11px', color: '#9ca3af' }}>읽기 전용</span>
+                          )}
+                        </td>
+
+                        <td><button style={{ border: 'none', background: 'none', cursor: 'pointer', color: item.isFavorite ? '#f59e0b' : '#d1d5db' }} onClick={() => toggleFavorite(item.id)}><i className="fas fa-star"></i></button></td>
+                      </tr>
+                    );
+                  })}
+                  {currentData.length === 0 && (<tr><td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>검색 결과가 없습니다.</td></tr>)}
                 </tbody>
               </table>
             )}

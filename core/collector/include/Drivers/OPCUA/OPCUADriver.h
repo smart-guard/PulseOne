@@ -90,6 +90,9 @@ private:
   std::vector<std::string>
       pending_monitored_items_;           // NodeIDs waiting to be monitored
   std::set<std::string> monitored_nodes_; // NodeIDs already monitored
+  std::vector<std::unique_ptr<std::string>>
+      monitored_contexts_; // [CRITICAL FIX] Callback Context 생명주기 관리
+                           // (Memory Leak 차단)
 
   // Background Thread for Async Callbacks
   std::thread background_thread_;

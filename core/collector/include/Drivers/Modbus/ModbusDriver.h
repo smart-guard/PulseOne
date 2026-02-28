@@ -90,6 +90,13 @@ public:
   bool WriteValue(const Structs::DataPoint &point,
                   const Structs::DataValue &value) override;
 
+  // 내부 코어 구현체 (연결 풀링의 무한루프를 방지하기 위해 내부적으로 직접
+  // 접근)
+  bool ReadValuesImpl(const std::vector<Structs::DataPoint> &points,
+                      std::vector<Structs::TimestampedValue> &values);
+  bool WriteValueImpl(const Structs::DataPoint &point,
+                      const Structs::DataValue &value);
+
   // 표준 통계 인터페이스 (DriverStatistics 사용)
   const DriverStatistics &GetStatistics() const override;
   void ResetStatistics() override;

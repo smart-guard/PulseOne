@@ -330,31 +330,38 @@ std::future<bool> BaseDeviceWorker::ForceReconnect() {
   auto promise = std::make_shared<std::promise<bool>>();
   auto future = promise->get_future();
 
-  std::thread([this, promise]() {
+  // [CRITICAL FIX] UAF(Use-After-Free) 방어
+  // 원시 this 포인터 캡처 시, 스레드가 실행되는 동안 Worker 객체가 소멸되면
+  // LogMessage, CloseConnection 등 모든 호출이 dangling pointer 역참조가
+  // 됩니다. shared_from_this()로 shared_ptr을 캡처하여 스레드 수명 동안 객체를
+  // 보장합니다.
+  auto self = shared_from_this();
+
+  std::thread([self, promise]() {
     try {
-      LogMessage(LogLevel::INFO, "Force reconnect requested");
+      self->LogMessage(LogLevel::INFO, "Force reconnect requested");
 
       // 현재 연결 강제 종료
-      if (is_connected_.load()) {
-        CloseConnection();
-        SetConnectionState(false);
+      if (self->is_connected_.load()) {
+        self->CloseConnection();
+        self->SetConnectionState(false);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
       }
 
       // 재연결 상태 리셋
-      ResetReconnectionState();
+      self->ResetReconnectionState();
 
       // 즉시 재연결 시도
-      bool success = AttemptReconnection();
+      bool success = self->AttemptReconnection();
 
-      LogMessage(LogLevel::INFO,
-                 "Force reconnect " +
-                     std::string(success ? "successful" : "failed"));
+      self->LogMessage(LogLevel::INFO,
+                       "Force reconnect " +
+                           std::string(success ? "successful" : "failed"));
       promise->set_value(success);
 
     } catch (const std::exception &e) {
-      LogMessage(LogLevel::LOG_ERROR,
-                 "Exception in force reconnect: " + std::string(e.what()));
+      self->LogMessage(LogLevel::LOG_ERROR, "Exception in force reconnect: " +
+                                                std::string(e.what()));
       promise->set_value(false);
     }
   }).detach();
@@ -424,7 +431,14 @@ std::string BaseDeviceWorker::GetStatusJson() const {
   ss << "  \"total_failures\": " << total_failures_ << ",\n";
   ss << "  \"total_attempts\": " << total_attempts_ << ",\n";
   ss << "  \"latency_ms\": " << last_response_time_.count() << ",\n";
-  ss << "  \"data_points_count\": " << data_points_.size() << ",\n";
+  ss << "  \"data_points_count\": ";
+  // [BUG #20 FIX] data_points_를 data_points_mutex_ 없이 읽으면
+  // ReloadDataPoints()와 data race 발생 → 락으로 보호
+  {
+    std::lock_guard<std::recursive_mutex> lock(data_points_mutex_);
+    ss << data_points_.size();
+  }
+  ss << ",\n";
 
   double success_rate = (total_attempts_ > 0)
                             ? ((double)(total_attempts_ - total_failures_) /
@@ -489,6 +503,15 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
 
   while (thread_running_.load()) {
     try {
+      // [BUG #18 FIX] reconnection_settings_를 락 없이 읽으면
+      // UpdateReconnectionSettings와 데이터 레이스 발생. 루프 시작시 설정
+      // 스냅샷 생성.
+      ReconnectionSettings settings;
+      {
+        std::lock_guard<std::mutex> lock(settings_mutex_);
+        settings = reconnection_settings_;
+      }
+
       // 1. Keep-alive 처리 (연결된 경우에만)
       if (is_connected_.load()) {
         HandleKeepAlive();
@@ -509,28 +532,24 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
              current_state == WorkerState::WORKER_ERROR) &&
             !is_connected_.load()) {
 
-          // 🔥 현재 설정값 명확히 로깅 (디버깅용)
+          // 현재 설정값 명확히 로깅 (디버깅용)
           if (current_retry_count_.load() == 0) {
             LogMessage(
                 LogLevel::INFO,
                 "재연결 프로세스 시작: 간격=" +
-                    std::to_string(reconnection_settings_.retry_interval_ms) +
+                    std::to_string(settings.retry_interval_ms) +
                     "ms, 최대재시도=" +
-                    std::to_string(
-                        reconnection_settings_.max_retries_per_cycle) +
+                    std::to_string(settings.max_retries_per_cycle) +
                     ", 쿨다운=" +
-                    std::to_string(
-                        reconnection_settings_.wait_time_after_max_retries_ms) +
+                    std::to_string(settings.wait_time_after_max_retries_ms) +
                     "ms");
           }
 
           // 최대 재시도 횟수 도달 확인
-          if (current_retry_count_.load() >=
-              reconnection_settings_.max_retries_per_cycle) {
+          if (current_retry_count_.load() >= settings.max_retries_per_cycle) {
             LogMessage(LogLevel::WARN,
                        "최대 재시도 횟수 도달 (" +
-                           std::to_string(
-                               reconnection_settings_.max_retries_per_cycle) +
+                           std::to_string(settings.max_retries_per_cycle) +
                            "). 대기 사이클 진입.");
 
             in_wait_cycle_.store(true);
@@ -540,12 +559,10 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
             continue;
           }
 
-          LogMessage(
-              LogLevel::DEBUG_LEVEL,
-              "재연결 시도 (" +
-                  std::to_string(current_retry_count_.load() + 1) + "/" +
-                  std::to_string(reconnection_settings_.max_retries_per_cycle) +
-                  ")");
+          LogMessage(LogLevel::DEBUG_LEVEL,
+                     "재연결 시도 (" +
+                         std::to_string(current_retry_count_.load() + 1) + "/" +
+                         std::to_string(settings.max_retries_per_cycle) + ")");
 
           if (AttemptReconnection()) {
             LogMessage(LogLevel::INFO, "재연결 성공");
@@ -565,9 +582,9 @@ void BaseDeviceWorker::ReconnectionThreadMain() {
       }
 
       // 4. 설정된 간격만큼 대기 (100ms 단위로 끊어서 종료 체크)
-      int interval_ms = reconnection_settings_.retry_interval_ms;
+      int interval_ms = settings.retry_interval_ms;
       if (interval_ms < 100)
-        interval_ms = 1000; // 최소 100ms
+        interval_ms = 100; // 최소 100ms
 
       for (int i = 0; i < (interval_ms / 100) && thread_running_.load(); ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -671,18 +688,17 @@ void BaseDeviceWorker::UpdateReconnectionStats(bool connection_successful) {
     reconnection_stats_.successful_connections.fetch_add(1);
     reconnection_stats_.last_successful_connection = system_clock::now();
 
-    // 평균 연결 지속 시간 계산 (간단한 구현)
-    static auto last_connection_start = system_clock::now();
-    last_connection_start = system_clock::now();
+    // [BUG #15 FIX] static local은 모든 Worker 인스턴스가 공유 → 멤버 변수로
+    // 교체
+    last_connection_start_ = system_clock::now();
 
   } else {
     reconnection_stats_.failed_connections.fetch_add(1);
     reconnection_stats_.last_failure_time = system_clock::now();
 
-    // 연결 지속 시간 업데이트 (연결이 끊어질 때)
-    static auto last_connection_start = system_clock::now();
+    // [BUG #15 FIX] static local 제거 → 멤버 변수 사용
     auto duration =
-        duration_cast<seconds>(system_clock::now() - last_connection_start)
+        duration_cast<seconds>(system_clock::now() - last_connection_start_)
             .count();
 
     if (duration > 0) {

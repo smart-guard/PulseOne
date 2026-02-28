@@ -19,6 +19,27 @@ import '../styles/alarm-history.css';
 import AlarmActionModal from '../components/modals/AlarmActionModal';
 import AlarmHistoryDetailModal from '../components/modals/AlarmHistoryDetailModal';
 
+// ─── 제어 감사 로그 타입 ─────────────────────────────────────────────
+interface ControlLog {
+  id: number;
+  request_id: string;
+  username?: string;
+  device_name?: string;
+  point_name?: string;
+  protocol_type?: string;
+  address?: string;
+  old_value?: string;
+  requested_value: string;
+  delivery_status: 'pending' | 'delivered' | 'no_collector';
+  execution_result: 'pending' | 'protocol_success' | 'protocol_failure' | 'protocol_async' | 'timeout' | 'failure';
+  verification_result: 'pending' | 'verified' | 'unverified' | 'skipped';
+  final_status: 'pending' | 'success' | 'partial' | 'failure' | 'timeout';
+  linked_alarm_id?: number;
+  requested_at: string;
+  executed_at?: string;
+  duration_ms?: number;
+}
+
 // 화면 크기 감지 훅
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
@@ -64,6 +85,14 @@ const AlarmHistory: React.FC = () => {
   const [targetAlarmId, setTargetAlarmId] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [activeRowId, setActiveRowId] = useState<number | null>(null);
+
+  // ── 탭 상태 (알람이력 / 제어이력) ────────────────────────────
+  const [activeTab, setActiveTab] = useState<'alarm' | 'control'>('alarm');
+  const [controlLogs, setControlLogs] = useState<ControlLog[]>([]);
+  const [controlLoading, setControlLoading] = useState(false);
+  const [controlTotal, setControlTotal] = useState(0);
+  const [controlPage, setControlPage] = useState(1);
+  const CONTROL_PAGE_SIZE = 50;
 
   // 필터 상태
   const [filters, setFilters] = useState<FilterOptions>({
@@ -202,10 +231,31 @@ const AlarmHistory: React.FC = () => {
     }
   }, []);
 
+  // ── 제어이력 API 호출 ─────────────────────────────────────────
+  const fetchControlLogs = useCallback(async (page = 1) => {
+    setControlLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: String(CONTROL_PAGE_SIZE) });
+      const res = await fetch(`/api/control-logs?${params}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+      });
+      const json = await res.json();
+      if (json.success) {
+        setControlLogs(json.data || []);
+        setControlTotal(json.pagination?.total || 0);
+      }
+    } catch (err) {
+      console.error('[ControlLogs] 조회 실패:', err);
+    } finally {
+      setControlLoading(false);
+    }
+  }, [CONTROL_PAGE_SIZE]);
+
   const handleRefresh = useCallback(() => {
     fetchAlarmHistory(hasInitialLoad);
     fetchStatistics();
   }, [fetchAlarmHistory, fetchStatistics, hasInitialLoad]);
+
 
   const handleFilterChange = useCallback((newFilters: Partial<FilterOptions>) => {
     setFilters(prev => ({ ...prev, ...newFilters }));
@@ -616,31 +666,66 @@ const AlarmHistory: React.FC = () => {
 
       {/* 메인 컨텐츠 영역 */}
       <div className="mgmt-card table-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '500px' }}>
-        {/* 탭/뷰 모드 전환 */}
-        <div className="mgmt-header" style={{ border: 'none', background: 'transparent' }}>
-          <div className="mgmt-header-info">
-            <h3 className="mgmt-title" style={{ fontSize: '18px' }}>
-              <i className="fas fa-list-ul" style={{ color: 'var(--primary-500)' }}></i>
-              이력 내역 ({computedStats.total})
-            </h3>
-          </div>
-          <div className="view-toggle">
-            <button
-              className={`mgmt-btn-icon ${viewMode === 'list' ? 'active' : ''}`}
-              onClick={() => setViewMode('list')}
-              title="목록 보기"
-            >
-              <i className="fas fa-list"></i>
-            </button>
-            <button
-              className={`mgmt-btn-icon ${viewMode === 'timeline' ? 'active' : ''}`}
-              onClick={() => setViewMode('timeline')}
-              title="타임라인 보기"
-            >
-              <i className="fas fa-stream"></i>
-            </button>
-          </div>
+        {/* ── 상위 탭 전환 (알람이력 / 제어이력) ── */}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '0 24px', borderBottom: '2px solid var(--neutral-100)', gap: 0 }}>
+          <button
+            onClick={() => setActiveTab('alarm')}
+            style={{
+              padding: '14px 20px', border: 'none', background: 'none', cursor: 'pointer',
+              fontWeight: activeTab === 'alarm' ? 700 : 400,
+              color: activeTab === 'alarm' ? 'var(--primary-600, #2563eb)' : 'var(--neutral-500)',
+              borderBottom: activeTab === 'alarm' ? '2px solid var(--primary-600, #2563eb)' : '2px solid transparent',
+              marginBottom: '-2px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px'
+            }}
+          >
+            <i className="fas fa-bell" />
+            알람이력 ({computedStats.total})
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('control');
+              if (controlLogs.length === 0) fetchControlLogs(1);
+            }}
+            style={{
+              padding: '14px 20px', border: 'none', background: 'none', cursor: 'pointer',
+              fontWeight: activeTab === 'control' ? 700 : 400,
+              color: activeTab === 'control' ? 'var(--primary-600, #2563eb)' : 'var(--neutral-500)',
+              borderBottom: activeTab === 'control' ? '2px solid var(--primary-600, #2563eb)' : '2px solid transparent',
+              marginBottom: '-2px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px'
+            }}
+          >
+            <i className="fas fa-sliders-h" />
+            제어이력 {controlTotal > 0 ? `(${controlTotal})` : ''}
+          </button>
         </div>
+
+        {/* 알람이력 탭: 기존 탭/뷰 모드 전환 */}
+        {activeTab === 'alarm' && (
+          <div className="mgmt-header" style={{ border: 'none', background: 'transparent' }}>
+            <div className="mgmt-header-info">
+              <h3 className="mgmt-title" style={{ fontSize: '18px' }}>
+                <i className="fas fa-list-ul" style={{ color: 'var(--primary-500)' }}></i>
+                이력 내역 ({computedStats.total})
+              </h3>
+            </div>
+            <div className="view-toggle">
+              <button
+                className={`mgmt-btn-icon ${viewMode === 'list' ? 'active' : ''}`}
+                onClick={() => setViewMode('list')}
+                title="목록 보기"
+              >
+                <i className="fas fa-list"></i>
+              </button>
+              <button
+                className={`mgmt-btn-icon ${viewMode === 'timeline' ? 'active' : ''}`}
+                onClick={() => setViewMode('timeline')}
+                title="타임라인 보기"
+              >
+                <i className="fas fa-stream"></i>
+              </button>
+            </div>
+          </div>
+        )}
 
         {isInitialLoading ? (
           <div className="mgmt-loading">
@@ -822,6 +907,125 @@ const AlarmHistory: React.FC = () => {
                 }}
                 showSizeChanger={true}
               />
+            </div>
+          </>
+        )}
+
+        {/* ── 제어이력 탭 ── */}
+        {activeTab === 'control' && (
+          <>
+            {controlLoading ? (
+              <div className="mgmt-loading">
+                <i className="fas fa-spinner fa-spin"></i>
+                <p>제어 이력을 불러오는 중...</p>
+              </div>
+            ) : (
+              <div className="mgmt-table-wrapper" style={{ flex: 1 }}>
+                <table className="mgmt-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '50px' }}>ID</th>
+                      <th style={{ width: '90px' }}>사용자</th>
+                      <th style={{ width: '150px' }}>디바이스 / 포인트</th>
+                      <th style={{ width: '90px', textAlign: 'center' }}>변경값</th>
+                      <th style={{ width: '110px', textAlign: 'center' }}>전달</th>
+                      <th style={{ width: '110px', textAlign: 'center' }}>실행</th>
+                      <th style={{ width: '110px', textAlign: 'center' }}>반영</th>
+                      <th style={{ width: '80px', textAlign: 'center' }}>최종</th>
+                      <th style={{ width: '80px', textAlign: 'center' }}>알람</th>
+                      <th style={{ width: '150px' }}>요청시간</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {controlLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="text-center" style={{ padding: '80px 0' }}>
+                          <div className="text-muted">
+                            <i className="fas fa-inbox" style={{ fontSize: '48px', marginBottom: '16px', display: 'block', opacity: 0.3 }}></i>
+                            제어 이력이 없습니다.
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      controlLogs.map((log) => {
+                        const deliveryColor = log.delivery_status === 'delivered' ? '#22c55e' : log.delivery_status === 'no_collector' ? '#ef4444' : '#f59e0b';
+                        const deliveryIcon = log.delivery_status === 'delivered' ? 'fa-check-circle' : log.delivery_status === 'no_collector' ? 'fa-times-circle' : 'fa-clock';
+                        const deliveryText = log.delivery_status === 'delivered' ? '전달됨' : log.delivery_status === 'no_collector' ? '미전달' : '대기';
+
+                        const execColor = log.execution_result === 'protocol_success' ? '#22c55e' : log.execution_result === 'protocol_failure' || log.execution_result === 'failure' ? '#ef4444' : log.execution_result === 'protocol_async' ? '#3b82f6' : log.execution_result === 'timeout' ? '#f97316' : '#9ca3af';
+                        const execIcon = log.execution_result === 'protocol_success' ? 'fa-check-circle' : log.execution_result === 'protocol_failure' || log.execution_result === 'failure' ? 'fa-times-circle' : log.execution_result === 'protocol_async' ? 'fa-exchange-alt' : log.execution_result === 'timeout' ? 'fa-hourglass-end' : 'fa-clock';
+                        const execText = log.execution_result === 'protocol_success' ? '성공' : log.execution_result === 'protocol_failure' || log.execution_result === 'failure' ? '실패' : log.execution_result === 'protocol_async' ? '비동기' : log.execution_result === 'timeout' ? '타임아웃' : '대기';
+
+                        const verColor = log.verification_result === 'verified' ? '#22c55e' : log.verification_result === 'unverified' ? '#f59e0b' : log.verification_result === 'skipped' ? '#9ca3af' : '#d1d5db';
+                        const verIcon = log.verification_result === 'verified' ? 'fa-check-double' : log.verification_result === 'unverified' ? 'fa-exclamation-triangle' : log.verification_result === 'skipped' ? 'fa-minus-circle' : 'fa-clock';
+                        const verText = log.verification_result === 'verified' ? '반영됨' : log.verification_result === 'unverified' ? '미반영' : log.verification_result === 'skipped' ? '건너뜀' : '대기';
+
+                        const finalBg = log.final_status === 'success' ? '#dcfce7' : log.final_status === 'failure' || log.final_status === 'timeout' ? '#fee2e2' : log.final_status === 'partial' ? '#fef3c7' : '#f3f4f6';
+                        const finalColor = log.final_status === 'success' ? '#16a34a' : log.final_status === 'failure' || log.final_status === 'timeout' ? '#dc2626' : log.final_status === 'partial' ? '#d97706' : '#6b7280';
+                        const finalText = log.final_status === 'success' ? '성공' : log.final_status === 'failure' ? '실패' : log.final_status === 'timeout' ? '타임아웃' : log.final_status === 'partial' ? '부분' : '대기';
+
+                        return (
+                          <tr key={log.id}>
+                            <td className="font-bold text-primary">#{log.id}</td>
+                            <td style={{ fontSize: '12px' }}>{log.username || '-'}</td>
+                            <td>
+                              <div className="font-semibold" style={{ fontSize: '13px' }}>{log.device_name || '-'}</div>
+                              <div style={{ fontSize: '11px', color: '#6b7280' }}>{log.point_name || '-'}</div>
+                              {log.protocol_type && <div style={{ fontSize: '10px', color: '#9ca3af' }}>{log.protocol_type}</div>}
+                            </td>
+                            <td style={{ textAlign: 'center', fontSize: '13px' }}>
+                              <div style={{ color: '#6b7280', fontSize: '11px' }}>{log.old_value ?? '-'} →</div>
+                              <div style={{ fontWeight: 600, color: '#1d4ed8' }}>{log.requested_value}</div>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                <i className={`fas ${deliveryIcon}`} style={{ color: deliveryColor, fontSize: '14px' }} title={deliveryText}></i>
+                                <span style={{ fontSize: '10px', color: deliveryColor }}>{deliveryText}</span>
+                              </div>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                <i className={`fas ${execIcon}`} style={{ color: execColor, fontSize: '14px' }} title={execText}></i>
+                                <span style={{ fontSize: '10px', color: execColor }}>{execText}</span>
+                                {log.duration_ms != null && <span style={{ fontSize: '9px', color: '#9ca3af' }}>{log.duration_ms}ms</span>}
+                              </div>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                <i className={`fas ${verIcon}`} style={{ color: verColor, fontSize: '14px' }} title={verText}></i>
+                                <span style={{ fontSize: '10px', color: verColor }}>{verText}</span>
+                              </div>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '10px', background: finalBg, color: finalColor, fontSize: '11px', fontWeight: 600 }}>
+                                {finalText}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {log.linked_alarm_id
+                                ? <span style={{ fontSize: '11px', color: '#ef4444' }}><i className="fas fa-bell"></i> #{log.linked_alarm_id}</span>
+                                : <span style={{ fontSize: '11px', color: '#d1d5db' }}>-</span>
+                              }
+                            </td>
+                            <td style={{ fontSize: '12px', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                              {log.requested_at ? new Date(log.requested_at).toLocaleString('ko-KR') : '-'}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {/* 제어이력 페이지네이션 */}
+            <div className="mgmt-footer" style={{ padding: '12px 24px', borderTop: '1px solid var(--neutral-200)', background: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '13px', color: '#6b7280' }}>총 {controlTotal}건</span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button className="mgmt-btn mgmt-btn-outline" disabled={controlPage <= 1} onClick={() => { const p = controlPage - 1; setControlPage(p); fetchControlLogs(p); }} style={{ padding: '4px 12px', fontSize: '12px' }}>이전</button>
+                <span style={{ padding: '4px 12px', fontSize: '12px' }}>{controlPage}</span>
+                <button className="mgmt-btn mgmt-btn-outline" disabled={controlPage * CONTROL_PAGE_SIZE >= controlTotal} onClick={() => { const p = controlPage + 1; setControlPage(p); fetchControlLogs(p); }} style={{ padding: '4px 12px', fontSize: '12px' }}>다음</button>
+              </div>
             </div>
           </>
         )}

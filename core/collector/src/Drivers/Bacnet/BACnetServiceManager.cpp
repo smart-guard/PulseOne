@@ -232,73 +232,34 @@ bool BACnetServiceManager::ReadProperty(uint32_t device_id,
       std::make_unique<PendingRequest>(invoke_id, "ReadProperty", 3000);
   request->property_id = property_id; // Set Context
   auto future = request->promise.get_future();
-
-  // Context-sensitive 응답 처리를 위해 데이터 보관 (여기에 result 포인터를
-  // 담거나 invoke_id로 식별 가능하도록 구현) 간단히 하기 위해 invoke_id별로
-  // 수신된 데이터와 짝을 맞춤. 하지만 promise는 bool(성공여부)만 넘기므로, 실제
-  // 데이터는 다른 곳에 임시 보관 필요.
-
   request->result_ptr = &result;
 
-  RegisterRequest(std::move(request));
+  uint8_t stack_invoke_id = 0;
 
-  // 3. 실제 요청 전송 (s_rp)
-  // Note: Send_Read_Property_Request는 invoke_id를 반환하며,
-  // 내부적으로 tsm_next_free_invoke_id를 사용하여 GetNextInvokeId() 결과와 다를
-  // 수 있음. 여기서는 stack의 invoke_id를 우선시하도록 로직 조정 필요 가능성
-  // 있음.
+  {
+    // [CRITICAL FIX] Race Condition 방어를 위한 Atomic Lock
+    // 빠른 로컬 네트워크에서 UDP 패킷의 응답(ACK) 스레드가
+    // ID 맵 갱신보다 먼저 도착하여 응답이 버려지는 버그를 차단합니다.
+    std::lock_guard<std::mutex> lock(requests_mutex_);
 
-  // [Stack의 invoke_id를 직접 사용하는 방식으로 변경]
-  logger.Info(
-      "Attempting to send ReadProperty: Device=" + std::to_string(device_id) +
-      ", Object=" + std::to_string(object_type) + ":" +
-      std::to_string(object_instance));
+    // 3. 실제 요청 전송 (s_rp)
+    stack_invoke_id = Send_Read_Property_Request(
+        device_id, object_type, object_instance, property_id, array_index);
 
-  // 주소 바인딩 확인 (디버그용)
-  BACNET_ADDRESS dest = {0};
-  unsigned max_apdu = 0;
-  unsigned total_bindings = address_count();
-  logger.Info("BACnet address table count: " + std::to_string(total_bindings));
+    if (stack_invoke_id == 0) {
+      logger.Error(
+          "Failed to send ReadProperty request (stack returned 0 for Device " +
+          std::to_string(device_id) + ")");
+      return false; // Error. No need to map.
+    }
 
-  if (address_get_by_device(device_id, &max_apdu, &dest)) {
-    char ip_str[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &dest.adr[0], ip_str, INET_ADDRSTRLEN);
-    uint16_t port = (dest.adr[4] << 8) | dest.adr[5];
-    logger.Info("Address binding found for device " +
-                std::to_string(device_id) + " -> " + std::string(ip_str) + ":" +
-                std::to_string(port));
-  } else {
-    logger.Warn("NO address binding found for device " +
-                std::to_string(device_id));
-  }
-
-  uint8_t stack_invoke_id = Send_Read_Property_Request(
-      device_id, object_type, object_instance, property_id, array_index);
-
-  if (stack_invoke_id == 0) {
-    logger.Error(
-        "Failed to send ReadProperty request (stack returned 0 for Device " +
-        std::to_string(device_id) + ")");
-    CompleteRequest(invoke_id, false);
-    return false;
+    // 전송 즉시 실제 stack_invoke_id로 맵핑 완료
+    request->invoke_id = stack_invoke_id;
+    pending_requests_[stack_invoke_id] = std::move(request);
   }
 
   logger.Info("ReadProperty request sent. InvokeID: " +
               std::to_string(stack_invoke_id));
-
-  // RegisterRequest 이전에 invoke_id가 결정되어야 하므로 순서 재조정 필요
-  // 하지만 이미 1번에서 GetNextInvokeId를 썼으므로, stack_invoke_id로 다시 맵을
-  // 업데이트함.
-  {
-    std::lock_guard<std::mutex> lock(requests_mutex_);
-    auto it = pending_requests_.find(invoke_id);
-    if (it != pending_requests_.end()) {
-      auto req = std::move(it->second);
-      pending_requests_.erase(it);
-      req->invoke_id = stack_invoke_id;
-      pending_requests_[stack_invoke_id] = std::move(req);
-    }
-  }
 
   // 4. 응답 대기 (Timeout 3s)
   if (future.wait_for(std::chrono::seconds(3)) == std::future_status::ready) {
@@ -307,6 +268,23 @@ bool BACnetServiceManager::ReadProperty(uint32_t device_id,
 
   logger.Warn("ReadProperty timeout for device " + std::to_string(device_id) +
               " (InvokeID: " + std::to_string(stack_invoke_id) + ")");
+
+  // [CRITICAL FIX] Timeout 시 pending_requests_에서 항목 제거
+  // 제거 없이 반환 시, 늘은 ACK가 나중에 도착하면 CompleteRequest가 set_value를
+  // 호출하는데 future는 이미 다 테스트하여 future_error를 통발하게 됩니다.
+  {
+    std::lock_guard<std::mutex> lock(requests_mutex_);
+    auto stale_it = pending_requests_.find(stack_invoke_id);
+    if (stale_it != pending_requests_.end()) {
+      // promise를 안전하게 보지 후 제거
+      try {
+        stale_it->second->promise.set_value(false);
+      } catch (const std::future_error &) {
+        // 이미 세팅 된 경우 뙰혈하 여기는 묶는다
+      }
+      pending_requests_.erase(stale_it);
+    }
+  }
   return false;
 
 #else

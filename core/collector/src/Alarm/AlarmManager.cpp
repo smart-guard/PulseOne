@@ -81,6 +81,9 @@ void AlarmManager::initializeData() {
   try {
     next_occurrence_id_ = 1;
 
+    // [LOCK ORDER CONTRACT]
+    // 항상 rules_mutex_ → index_mutex_ 순서로만 획득.
+    // 역순서로 잡으면 ABBA 데드락. (initializeData / shutdown 모두 동일 순서)
     {
       std::unique_lock<std::shared_mutex> rules_lock(rules_mutex_);
       std::unique_lock<std::shared_mutex> index_lock(index_mutex_);
@@ -721,7 +724,11 @@ json AlarmManager::getStatistics() const {
     stats["alarms_cleared"] = alarms_cleared_.load();
     stats["next_occurrence_id"] = next_occurrence_id_.load();
     stats["js_engine_available"] = (js_context_ != nullptr);
-    stats["cached_rules_count"] = alarm_rules_.size();
+    // [BUG #17 FIX] alarm_rules_를 unprotected read → rules_mutex_로 보호
+    {
+      std::shared_lock<std::shared_mutex> rules_lock(rules_mutex_);
+      stats["cached_rules_count"] = alarm_rules_.size();
+    }
 
     // 🎯 순수 AlarmManager 특성
     stats["alarm_manager_type"] = "standalone";

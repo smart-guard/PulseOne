@@ -7,8 +7,8 @@
  * @author PulseOne Development Team
  */
 
-#include "Client/InfluxClient.h"
 #include "Client/HttpClient.h"
+#include "Client/InfluxClient.h"
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -22,43 +22,48 @@ namespace Client {
  */
 class InfluxClientImpl : public InfluxClient {
 public:
-    InfluxClientImpl();
-    ~InfluxClientImpl() override;
+  InfluxClientImpl();
+  ~InfluxClientImpl() override;
 
-    // InfluxClient interface implementation
-    bool connect(const std::string& url, const std::string& token, 
-                 const std::string& org, const std::string& bucket) override;
-    
-    bool writePoint(const std::string& measurement, const std::string& field, double value) override;
-    
-    bool writeRecord(const std::string& measurement, 
-                     const std::map<std::string, std::string>& tags,
-                     const std::map<std::string, double>& fields) override;
-    
-    bool writeBatch(const std::vector<std::string>& lines) override;
-    std::string formatRecord(const std::string& measurement,
-                           const std::map<std::string, std::string>& tags,
-                           const std::map<std::string, double>& fields) override;
-    
-    std::string query(const std::string& fluxQuery) override;
-    
-    void disconnect() override;
+  // InfluxClient interface implementation
+  bool connect(const std::string &url, const std::string &token,
+               const std::string &org, const std::string &bucket) override;
+
+  bool writePoint(const std::string &measurement, const std::string &field,
+                  double value) override;
+
+  bool writeRecord(const std::string &measurement,
+                   const std::map<std::string, std::string> &tags,
+                   const std::map<std::string, double> &fields) override;
+
+  bool writeBatch(const std::vector<std::string> &lines) override;
+  std::string
+  formatRecord(const std::string &measurement,
+               const std::map<std::string, std::string> &tags,
+               const std::map<std::string, double> &fields) override;
+
+  std::string query(const std::string &fluxQuery) override;
+
+  void disconnect() override;
 
 private:
-    std::string url_;
-    std::string token_;
-    std::string org_;
-    std::string bucket_;
-    
-    std::unique_ptr<HttpClient> http_client_;
-    mutable std::mutex mutex_;
-    bool connected_ = false;
+  std::string url_;
+  std::string token_;
+  std::string org_;
+  std::string bucket_;
 
-    // Helper to format Line Protocol
-    std::string formatLineProtocol(const std::string& measurement, const std::string& field, double value);
-    std::string formatLineProtocol(const std::string& measurement, 
-                                 const std::map<std::string, std::string>& tags,
-                                 const std::map<std::string, double>& fields);
+  std::unique_ptr<HttpClient> http_client_;
+  mutable std::mutex mutex_;
+  bool connected_ = false;
+
+  // Helper to format Line Protocol
+  std::string formatLineProtocol(const std::string &measurement,
+                                 const std::string &field, double value,
+                                 long long epoch_seconds = 0);
+  std::string formatLineProtocol(const std::string &measurement,
+                                 const std::map<std::string, std::string> &tags,
+                                 const std::map<std::string, double> &fields,
+                                 long long epoch_seconds = 0);
 };
 
 } // namespace Client

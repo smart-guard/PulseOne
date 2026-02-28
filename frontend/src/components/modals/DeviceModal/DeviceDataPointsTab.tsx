@@ -381,6 +381,63 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               </div>
             )}
 
+            {/* Modbus 전용: Function Code 선택 */}
+            {(protocolType === 'MODBUS_TCP' || protocolType === 'MODBUS_RTU' || protocolType === 'MODBUS') && (
+              <div className="form-field">
+                <label>Function Code (FC) *</label>
+                <select
+                  value={
+                    typeof formData.protocol_params === 'object'
+                      ? (formData.protocol_params as any)?.function_code || '3'
+                      : '3'
+                  }
+                  onChange={e => {
+                    const params = typeof formData.protocol_params === 'object'
+                      ? { ...(formData.protocol_params as any) }
+                      : {};
+                    params.function_code = e.target.value;
+                    setFormData({ ...formData, protocol_params: params });
+                  }}
+                >
+                  <option value="1">FC01 — Read Coils (CO:xxx, BOOL)</option>
+                  <option value="2">FC02 — Read Discrete Inputs (DI:xxx)</option>
+                  <option value="3">FC03 — Read Holding Registers (HR:xxx)</option>
+                  <option value="4">FC04 — Read Input Registers (IR:xxx)</option>
+                </select>
+                <span className="hint">FC03이 일반적인 레지스터. BOOL 포인트는 FC01</span>
+              </div>
+            )}
+
+            {/* Modbus 전용: Bit Index (비트맵 레지스터) */}
+            {(protocolType === 'MODBUS_TCP' || protocolType === 'MODBUS_RTU' || protocolType === 'MODBUS') && (
+              <div className="form-field">
+                <label>Bit Index (0-15, 선택)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="15"
+                  value={
+                    typeof formData.protocol_params === 'object'
+                      ? (formData.protocol_params as any)?.bit_index ?? ''
+                      : ''
+                  }
+                  onChange={e => {
+                    const params = typeof formData.protocol_params === 'object'
+                      ? { ...(formData.protocol_params as any) }
+                      : {};
+                    if (e.target.value === '') {
+                      delete params.bit_index;
+                    } else {
+                      params.bit_index = e.target.value;
+                    }
+                    setFormData({ ...formData, protocol_params: params });
+                  }}
+                  placeholder="비워두면 레지스터 전체 값 사용"
+                />
+                <span className="hint">한 레지스터를 비트 단위로 쪼갤 때 사용 (0=LSB)</span>
+              </div>
+            )}
+
             <div className="form-field">
               <label>데이터 타입</label>
               <select

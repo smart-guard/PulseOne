@@ -794,6 +794,22 @@ app.use('/api/models', modelRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 
+// 제어 감사 로그 (Control Audit Log)
+app.use('/api/control-logs', require('./routes/control-logs'));
+
+// ControlLogService Redis 구독 초기화 (비동기, non-blocking)
+try {
+    const controlLog = require('./lib/services/ControlLogService');
+    controlLog.ensureTable().then(() => {
+        controlLog.initialize().then(() => {
+            logger.services('INFO', '✅ ControlLogService 초기화 완료 (control:result 구독)');
+        }).catch(e => logger.services('WARN', 'ControlLogService Redis 구독 실패', { error: e.message }));
+    }).catch(e => logger.services('WARN', 'ControlLogService DB 테이블 보장 실패', { error: e.message }));
+} catch (e) {
+    logger.services('WARN', 'ControlLogService 로드 실패', { error: e.message });
+}
+
+
 // 신규 추가: 게이트웨이(Edge Server) 관리
 // 2025-01-20 추가: Export Gateway 통합 관제
 const gatewayRoutes = require('./routes/gateways');

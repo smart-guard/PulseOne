@@ -810,10 +810,19 @@ bool MqttDriver::EstablishConnection() {
   auto start_time = steady_clock::now();
 
   try {
-    // 🚀 중요: 선택된 브로커로 클라이언트 재생성 (새로 추가)
+    // 🚀 중요: 선택된 브로커로 클라이언트 재생성
     if (!mqtt_client_ || target_broker != broker_url_) {
-      // 기존 클라이언트 정리
+      // 기존 클라이언트 완전 정리 (Disconnect 누락 방지: Socket/Thread Leak
+      // 차단)
       if (mqtt_client_) {
+        if (mqtt_client_->is_connected()) {
+          try {
+            auto token = mqtt_client_->disconnect();
+            token->wait_for(std::chrono::milliseconds(500));
+          } catch (...) {
+            // 연결 해제 중 발생한 예외 무시 (어차피 소멸시킬 것이므로)
+          }
+        }
         mqtt_client_.reset();
       }
 

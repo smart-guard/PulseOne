@@ -901,8 +901,23 @@ void RedisClientImpl::setMessageCallback(MessageCallback callback) {
 
 bool RedisClientImpl::waitForMessage(int timeout_ms) {
 #ifdef HAVE_REDIS
-  if (!context_) {
-    return false;
+  // [LOCK ORDER CONTRACT]
+  // ① connection_mutex_ 획득 → fd 스냅샷 후 즉시 해제  (블로킹 I/O 전)
+  // ② ::select() 호출 — 락 없음 (블로킹이므로 락 보유 금지)
+  // ③ connection_mutex_ 재획득 → redisGetReply()
+  // ④ connection_mutex_ 보유 중 callback_mutex_ 획득 → 콜백 호출
+  //
+  // ⚠️  콜백 내부에서 Redis API(set/get/publish 등)를 호출하면
+  //     connection_mutex_를 recursive하게 재진입하므로 허용되지만,
+  //     콜백이 다시 waitForMessage()를 호출하는 것은 금지.
+  //     (락 순서: connection_mutex_ → callback_mutex_)
+  int fd_snapshot;
+  {
+    std::lock_guard<std::recursive_mutex> lock(connection_mutex_);
+    if (!context_) {
+      return false;
+    }
+    fd_snapshot = context_->fd;
   }
 
   // 타임아웃 설정
@@ -912,13 +927,18 @@ bool RedisClientImpl::waitForMessage(int timeout_ms) {
   // 소켓에서 읽을 데이터가 있는지 확인
   fd_set readfds;
   FD_ZERO(&readfds);
-  FD_SET(context_->fd, &readfds);
+  FD_SET(fd_snapshot, &readfds);
 
-  // ✅ 전역 네임스페이스의 select 명시
-  int result = ::select(context_->fd + 1, &readfds, nullptr, nullptr, &tv);
+  // ✅ 전역 네임스페이스의 select 명시 (lock 없이 호출 — 블로킹 I/O)
+  int result = ::select(fd_snapshot + 1, &readfds, nullptr, nullptr, &tv);
 
-  if (result > 0 && FD_ISSET(context_->fd, &readfds)) {
-    // 메시지 읽기
+  if (result > 0 && FD_ISSET(fd_snapshot, &readfds)) {
+    // 메시지 읽기: context_를 다시 락으로 보호
+    std::lock_guard<std::recursive_mutex> lock(connection_mutex_);
+    if (!context_) {
+      return false; // 선택(select) 대기 중 재연결로 context_ 교체됨
+    }
+
     redisReply *reply = nullptr;
     if (redisGetReply(context_, (void **)&reply) == REDIS_OK && reply) {
       // 메시지 타입 확인
@@ -930,8 +950,8 @@ bool RedisClientImpl::waitForMessage(int timeout_ms) {
           std::string channel = replyToString(reply->element[1]);
           std::string message = replyToString(reply->element[2]);
 
-          // 콜백 호출
-          std::lock_guard<std::mutex> lock(callback_mutex_);
+          // 콜백 호출 (connection_mutex_와 callback_mutex_ 순서 고정)
+          std::lock_guard<std::mutex> cb_lock(callback_mutex_);
           if (message_callback_) {
             message_callback_(channel, message);
           }
@@ -942,7 +962,7 @@ bool RedisClientImpl::waitForMessage(int timeout_ms) {
           std::string message = replyToString(reply->element[3]);
 
           // 콜백 호출
-          std::lock_guard<std::mutex> lock(callback_mutex_);
+          std::lock_guard<std::mutex> cb_lock(callback_mutex_);
           if (message_callback_) {
             message_callback_(channel, message);
           }
@@ -1369,6 +1389,11 @@ bool RedisClientImpl::attemptConnection() {
 }
 
 bool RedisClientImpl::ensureConnected() {
+  // [BUG #13 FIX] connected_/context_/reconnect_attempts_를 뮤텍스 없이
+  // 읽으면 watchdog 스레드의 재연결과 TOCTOU 레이스가 발생한다.
+  // connection_mutex_를 잡고 전체 상태를 일관되게 확인한다.
+  std::lock_guard<std::recursive_mutex> lock(connection_mutex_);
+
   if (connected_ && context_) {
     return true;
   }
@@ -1385,6 +1410,7 @@ bool RedisClientImpl::ensureConnected() {
   last_reconnect_attempt_ = now;
   reconnect_attempts_++;
 
+  // attemptConnection()도 connection_mutex_를 recursive하게 잡으므로 안전
   if (attemptConnection()) {
     total_reconnects_++;
     logInfo("재연결 성공 (시도 " + std::to_string(reconnect_attempts_) + ")");
@@ -1397,6 +1423,11 @@ bool RedisClientImpl::ensureConnected() {
 }
 
 void RedisClientImpl::connectionWatchdog() {
+  // [LOCK ORDER CONTRACT]
+  // watchdog_mutex_ → connection_mutex_ 순서로만 획득.
+  // connection_mutex_ 보유 중에 watchdog_mutex_를 잡으면 ABBA 데드락 발생.
+  // watchdog_cv_.notify_*() 는 connection_mutex_ 없이 호출 가능 (wait만 mutex
+  // 필요).
   while (!shutdown_requested_) {
     std::unique_lock<std::mutex> lock(watchdog_mutex_);
     watchdog_cv_.wait_for(lock, std::chrono::seconds(30),

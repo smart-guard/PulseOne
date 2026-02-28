@@ -372,6 +372,31 @@ const DataPointModal: React.FC<DataPointModalProps> = ({
               </div>
 
               <div className="form-group">
+                <label>비트 인덱스 (선택, 0~15)</label>
+                {mode === 'view' ? (
+                  <div className="form-value">{dataPoint?.protocol_params?.bit_index ?? '없음'}</div>
+                ) : (
+                  <input
+                    type="number"
+                    min="0"
+                    max="15"
+                    value={formData.protocol_params?.bit_index || ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const newParams = { ...formData.protocol_params };
+                      if (value === '') {
+                        delete newParams.bit_index; // 빈 값이면 삭제
+                      } else {
+                        newParams.bit_index = value;
+                      }
+                      updateField('protocol_params', newParams);
+                    }}
+                    placeholder="Register 비트 추출용 (예: 0)"
+                  />
+                )}
+              </div>
+
+              <div className="form-group">
                 <label>접근 모드</label>
                 {mode === 'view' ? (
                   <div className="form-value">{dataPoint?.access_mode || 'read'}</div>

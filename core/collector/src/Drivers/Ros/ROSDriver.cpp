@@ -181,7 +181,12 @@ void ROSDriver::ReceiveLoop() {
       break;
     } else {
       // Error
+#if defined(_WIN32)
+      int err = WSAGetLastError();
+      if (err != WSAEWOULDBLOCK && err != WSAETIMEDOUT) {
+#else
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
+#endif
         LogManager::getInstance().Error("Socket Error: " +
                                         std::string(strerror(errno)));
         is_connected_ = false;
@@ -206,6 +211,18 @@ bool ROSDriver::OpenSocket() {
              PulseOne::Structs::ErrorCode::CONNECTION_FAILED);
     return false;
   }
+
+  // [CRITICAL FIX] ReceiveLoop 스레드 Deadlock 방지 (recv 무한 블로킹 해제)
+#if PULSEONE_LINUX
+  struct timeval tv;
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
+  setsockopt(socket_fd_, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
+#elif defined(_WIN32)
+  DWORD timeout = 1000;
+  setsockopt(socket_fd_, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
+             sizeof timeout);
+#endif
 
   struct addrinfo hints, *res;
   std::memset(&hints, 0, sizeof(hints));

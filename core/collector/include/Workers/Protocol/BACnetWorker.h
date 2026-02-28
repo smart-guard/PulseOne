@@ -375,6 +375,10 @@ private:
   // COV용 이전 값 저장 (스레드 안전하게 보호됨)
   std::map<std::string, DataValue> previous_values_;
   mutable std::mutex previous_values_mutex_; // 스레드 안전성 강화
+
+  // [BUG #16 FIX] static local 대체: 스케줄 동기화 타이머를 인스턴스별로 유지
+  std::chrono::steady_clock::time_point last_sync_time_{
+      std::chrono::steady_clock::now()};
 };
 
 } // namespace Workers

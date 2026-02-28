@@ -2453,3 +2453,68 @@ BEGIN
     )
     WHERE id = OLD.profile_id;
 END;
+
+-- ============================================================
+-- 제어 감사 로그 (Control Audit Log)
+-- 추가일: 2026-02-28
+-- ============================================================
+CREATE TABLE IF NOT EXISTS control_logs (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id       TEXT NOT NULL UNIQUE,
+
+  -- 컨텍스트
+  tenant_id        INTEGER,
+  site_id          INTEGER,
+  user_id          INTEGER,
+  username         TEXT,
+
+  -- 대상
+  device_id        INTEGER NOT NULL,
+  device_name      TEXT,
+  protocol_type    TEXT,
+  point_id         INTEGER NOT NULL,
+  point_name       TEXT,
+  address          TEXT,
+
+  -- 값 변화
+  old_value        TEXT,
+  requested_value  TEXT NOT NULL,
+
+  -- 단계 1: 커맨드 전달
+  delivery_status  TEXT DEFAULT 'pending',
+  subscriber_count INTEGER DEFAULT 0,
+  delivered_at     DATETIME,
+
+  -- 단계 2: 프로토콜 실행 결과
+  execution_result TEXT DEFAULT 'pending',
+  execution_error  TEXT,
+  executed_at      DATETIME,
+  duration_ms      INTEGER,
+
+  -- 단계 3: 값 반영 검증
+  verification_result TEXT DEFAULT 'pending',
+  verified_value   TEXT,
+  verified_at      DATETIME,
+
+  -- 알람 매칭
+  linked_alarm_id  INTEGER,
+  alarm_matched_at DATETIME,
+
+  -- UI용 최종 상태
+  final_status     TEXT DEFAULT 'pending',
+
+  requested_at     DATETIME DEFAULT (datetime('now', 'localtime')),
+
+  FOREIGN KEY (device_id)       REFERENCES devices(id)           ON DELETE SET NULL,
+  FOREIGN KEY (point_id)        REFERENCES data_points(id)       ON DELETE SET NULL,
+  FOREIGN KEY (user_id)         REFERENCES users(id)             ON DELETE SET NULL,
+  FOREIGN KEY (linked_alarm_id) REFERENCES alarm_occurrences(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cl_device  ON control_logs(device_id);
+CREATE INDEX IF NOT EXISTS idx_cl_point   ON control_logs(point_id);
+CREATE INDEX IF NOT EXISTS idx_cl_user    ON control_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_cl_tenant  ON control_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_cl_status  ON control_logs(final_status);
+CREATE INDEX IF NOT EXISTS idx_cl_time    ON control_logs(requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cl_alarm   ON control_logs(linked_alarm_id);

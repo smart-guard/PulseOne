@@ -351,6 +351,9 @@ bool HttpRestDriver::InitializeHttpClient() {
 
   // Set timeout
   curl_easy_setopt(curl_context_->curl_handle, CURLOPT_TIMEOUT_MS, timeout_ms_);
+  curl_easy_setopt(
+      curl_context_->curl_handle, CURLOPT_CONNECTTIMEOUT_MS,
+      std::min(2000, timeout_ms_)); // [CRITICAL FIX] TCP/DNS Hang 방어
 
   // Set write callback
   curl_easy_setopt(curl_context_->curl_handle, CURLOPT_WRITEFUNCTION,
@@ -386,6 +389,11 @@ std::string HttpRestDriver::ExecuteHttpRequest(const std::string &url,
   if (!curl_context_ || !curl_context_->curl_handle) {
     return "";
   }
+
+  // [CRITICAL FIX] CURL Handle 동시 접근 차단 (Polling Thread vs Command
+  // Thread) libcurl easy handle은 스레드 안전하지 않으므로 다중 스레드 접근 시
+  // Segmentation Fault를 유발합니다.
+  std::lock_guard<std::mutex> lock(driver_mutex_);
 
   curl_context_->response_buffer.clear();
 

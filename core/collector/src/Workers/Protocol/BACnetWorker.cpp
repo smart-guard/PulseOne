@@ -887,12 +887,13 @@ bool BACnetWorker::PerformDataScan() {
     }
 
     // 5. 스케줄 동기화 수행 (Step 15)
-    static auto last_sync_time = std::chrono::steady_clock::now();
+    // [BUG #16 FIX] static local → 모든 BACnetWorker 인스턴스가 공유 →
+    // 멤버 변수 last_sync_time_으로 교체하여 인스턴스별 독립 타이머 유지
     auto now = std::chrono::steady_clock::now();
-    if (std::chrono::duration_cast<std::chrono::seconds>(now - last_sync_time)
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - last_sync_time_)
             .count() >= 60) {
       SyncSchedulesWithDevices();
-      last_sync_time = now;
+      last_sync_time_ = now;
     }
 
     return true;
