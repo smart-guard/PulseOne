@@ -141,9 +141,9 @@ export const UserModal: React.FC<UserModalProps> = ({
         if (!user) return;
 
         const confirmed = await confirm({
-            title: 'Delete User',
-            message: `'${user.full_name}' user will be deactivated. Deleted users will be in the 'Deleted users' section and can be restored later.`,
-            confirmText: 'Delete',
+            title: t('modal.deleteTitle', { ns: 'permissions' }),
+            message: t('modal.deleteMessage', { ns: 'permissions', name: user.full_name }),
+            confirmText: t('modal.deleteBtn', { ns: 'permissions' }),
             confirmButtonType: 'danger'
         });
 
@@ -171,7 +171,7 @@ export const UserModal: React.FC<UserModalProps> = ({
             <div className="mgmt-modal-container user-modal">
                 <div className="mgmt-modal-header">
                     <div className="mgmt-modal-title">
-                        <h2>{user ? 'Edit User Info' : 'Register New User'}</h2>
+                        <h2>{user ? t('modal.editTitle', { ns: 'permissions' }) : t('modal.createTitle', { ns: 'permissions' })}</h2>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose} disabled={loading}>
                         <i className="fas fa-times"></i>
@@ -183,12 +183,12 @@ export const UserModal: React.FC<UserModalProps> = ({
                         <div className="mgmt-modal-form-grid">
                             {/* Left Column: Basic Info */}
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
+                                <h3><i className="fas fa-info-circle"></i> {t('modal.sectionBasic', { ns: 'permissions' })}</h3>
 
                                 {/* Tenant Selection (Visible if multiple tenants available) */}
                                 {tenants.length > 1 && (
                                     <div className="mgmt-modal-form-group">
-                                        <label className="required">{t('labels.companyTenant', {ns: 'permissions'})}</label>
+                                        <label className="required">{t('labels.companyTenant', { ns: 'permissions' })}</label>
                                         <select
                                             className="form-control"
                                             value={formData.tenant_id || ''}
@@ -196,7 +196,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                             disabled={!!user || loading}
                                             required
                                         >
-                                            <option value="">{t('labels.selectACompany', {ns: 'permissions'})}</option>
+                                            <option value="">{t('labels.selectACompany', { ns: 'permissions' })}</option>
                                             {tenants.map(t => (
                                                 <option key={t.id} value={t.id}>{t.company_name} ({t.company_code})</option>
                                             ))}
@@ -205,7 +205,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                 )}
 
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">{t('labels.username', {ns: 'permissions'})}</label>
+                                    <label className="required">{t('labels.username', { ns: 'permissions' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
@@ -217,7 +217,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">{t('labels.fullName', {ns: 'permissions'})}</label>
+                                    <label className="required">{t('labels.fullName', { ns: 'permissions' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
@@ -229,7 +229,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('labels.phoneNumber', {ns: 'permissions'})}</label>
+                                    <label>{t('labels.phoneNumber', { ns: 'permissions' })}</label>
                                     <input
                                         type="tel"
                                         className="form-control"
@@ -240,7 +240,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">{t('labels.email', {ns: 'permissions'})}</label>
+                                    <label className="required">{t('labels.email', { ns: 'permissions' })}</label>
                                     <input
                                         type="email"
                                         className="form-control"
@@ -252,7 +252,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('labels.department', {ns: 'permissions'})}</label>
+                                    <label>{t('labels.department', { ns: 'permissions' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
@@ -266,26 +266,26 @@ export const UserModal: React.FC<UserModalProps> = ({
 
                             {/* Right Column: Roles & Permissions */}
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-shield-alt"></i> Access & Account Settings</h3>
+                                <h3><i className="fas fa-shield-alt"></i> {t('modal.sectionAccess', { ns: 'permissions' })}</h3>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">{t('labels.systemRole', {ns: 'permissions'})}</label>
+                                    <label className="required">{t('labels.systemRole', { ns: 'permissions' })}</label>
                                     <select
                                         className="form-control"
                                         value={formData.role}
                                         onChange={(e) => handleInputChange('role', e.target.value)}
                                         disabled={loading}
                                     >
-                                        <option value="">{t('labels.selectARole', {ns: 'permissions'})}</option>
+                                        <option value="">{t('labels.selectARole', { ns: 'permissions' })}</option>
                                         {roles.map(role => (
                                             <option key={role.id} value={role.id}>
-                                                {role.name} {role.is_system ? '(System)' : ''}
+                                                {role.name} {role.is_system ? t('modal.systemBadge', { ns: 'permissions' }) : ''}
                                             </option>
                                         ))}
                                     </select>
                                 </div>
 
                                 <div className="mgmt-modal-form-group" style={{ marginTop: '12px' }}>
-                                    <label>{t('labels.detailedPermissions', {ns: 'permissions'})}</label>
+                                    <label>{t('labels.detailedPermissions', { ns: 'permissions' })}</label>
                                     <div className="permissions-grid" style={{ maxHeight: '150px', overflowY: 'auto' }}>
                                         {availablePermissions.length > 0 ? (
                                             availablePermissions.map(perm => (
@@ -301,19 +301,19 @@ export const UserModal: React.FC<UserModalProps> = ({
                                             ))
                                         ) : (
                                             <div style={{ gridColumn: '1 / -1', color: '#999', fontSize: '13px', textAlign: 'center', padding: '10px' }}>
-                                                No permissions defined.
+                                                {t('labels.noPermissionsDefined', { ns: 'permissions' })}
                                             </div>
                                         )}
                                     </div>
-                                    <p className="mgmt-modal-form-hint">Use this to grant additional permissions not included in the role.</p>
+                                    <p className="mgmt-modal-form-hint">{t('modal.permissionsHint', { ns: 'permissions' })}</p>
                                 </div>
 
                                 {/* Site Access Selection */}
                                 <div className="mgmt-modal-form-group" style={{ marginTop: '12px' }}>
-                                    <label>Site Access ({filteredSites.length})</label>
+                                    <label>{t('modal.siteAccessLabel', { ns: 'permissions', count: filteredSites.length })}</label>
                                     <div className="permissions-grid" style={{ maxHeight: '100px', overflowY: 'auto' }}>
                                         {filteredSites.length === 0 ? (
-                                            <span style={{ color: '#999', fontSize: '13px' }}>{t('labels.noSitesRegistered', {ns: 'permissions'})}</span>
+                                            <span style={{ color: '#999', fontSize: '13px' }}>{t('labels.noSitesRegistered', { ns: 'permissions' })}</span>
                                         ) : (
                                             filteredSites.map(site => (
                                                 <label key={site.id} className="permission-item" title={site.name}>
@@ -339,10 +339,10 @@ export const UserModal: React.FC<UserModalProps> = ({
                                                 onChange={(e) => handleInputChange('is_active', e.target.checked)}
                                                 disabled={loading}
                                             />
-                                            계정 활성화 상태
+                                            {t('labels.accountStatus', { ns: 'permissions' })}
                                         </label>
                                         <p className="mgmt-modal-form-hint">
-                                            비활성화 시 해당 사용자의 시스템 로그인이 즉시 차단됩니다.
+                                            {t('labels.accountActiveHint', { ns: 'permissions' })}
                                         </p>
                                     </div>
                                 </div>

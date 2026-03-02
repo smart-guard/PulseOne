@@ -40,6 +40,7 @@
         "contact": "Contact",
         "department": "Department",
         "accountStatus": "Account Status",
+        "accountActiveHint": "Deactivating will immediately block this user from logging in.",
         "assignedRole": "Assigned Role",
         "activePermissionPolicy": "Active Permission Policy",
         "siteAccess": "Site Access",
@@ -51,6 +52,19 @@
         "systemRole": "System Role",
         "selectARole": "Select a role",
         "detailedPermissions": "Detailed Permissions",
-        "noSitesRegistered": "No sites registered."
+        "noSitesRegistered": "No sites registered.",
+        "noPermissionsDefined": "No permissions defined."
+    },
+    "modal": {
+        "createTitle": "Register New User",
+        "editTitle": "Edit User Info",
+        "sectionBasic": "Basic Info",
+        "sectionAccess": "Access & Account Settings",
+        "siteAccessLabel": "Site Access ({{count}})",
+        "permissionsHint": "Use this to grant additional permissions not included in the role.",
+        "systemBadge": "(System)",
+        "deleteTitle": "Delete User",
+        "deleteMessage": "'{{name}}' user will be deactivated. Deleted users will be in the 'Deleted users' section and can be restored later.",
+        "deleteBtn": "Delete"
     }
 }
