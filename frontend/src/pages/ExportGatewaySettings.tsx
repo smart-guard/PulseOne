@@ -162,8 +162,8 @@ const ExportGatewaySettings: React.FC = () => {
         try {
             await exportGatewayApi.deleteGateway(gateway.id);
             await confirm({
-                title: 'Delete Complete',
-                message: 'Gateway deleted successfully.',
+                title: t('gwTab.deleteComplete', { ns: 'dataExport' }),
+                message: t('gwTab.deleteCompleteMsg', { ns: 'dataExport' }),
                 showCancelButton: false,
                 confirmButtonType: 'success'
             });
@@ -171,8 +171,8 @@ const ExportGatewaySettings: React.FC = () => {
         } catch (e) {
             console.error(e);
             await confirm({
-                title: 'Delete Failed',
-                message: 'Error during delete.',
+                title: t('gwTab.deleteFailed', { ns: 'dataExport' }),
+                message: t('gwTab.deleteFailedMsg', { ns: 'dataExport' }),
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -190,25 +190,25 @@ const ExportGatewaySettings: React.FC = () => {
         <>
             <ManagementLayout>
                 <PageHeader
-                    title="Data Export Settings"
-                    description="Configure gateways and data mappings for transmitting data to external systems (HTTP/MQTT)."
+                    title={t('exportPage.title', { ns: 'dataExport' })}
+                    description={t('exportPage.description', { ns: 'dataExport' })}
                     icon="fas fa-satellite-dish"
                 />
 
                 <div className="mgmt-stats-panel" style={{ marginBottom: '24px' }}>
-                    <StatCard label="Total Gateways" value={gateways.length} type="neutral" />
-                    <StatCard label="Online" value={onlineCount} type="success" />
-                    <StatCard label="Offline" value={gateways.length - onlineCount} type="error" />
+                    <StatCard label={t('exportPage.statTotal', { ns: 'dataExport' })} value={gateways.length} type="neutral" />
+                    <StatCard label={t('exportPage.statOnline', { ns: 'dataExport' })} value={onlineCount} type="success" />
+                    <StatCard label={t('exportPage.statOffline', { ns: 'dataExport' })} value={gateways.length - onlineCount} type="error" />
                 </div>
 
                 <div style={{ marginBottom: '20px' }}>
                     <FilterBar
                         filters={[
                             ...(isAdmin ? [{
-                                label: 'Tenant Filter',
+                                label: t('exportPage.filterTenant', { ns: 'dataExport' }),
                                 value: currentTenantId ? String(currentTenantId) : 'all',
                                 options: [
-                                    { label: 'All Tenants', value: 'all' },
+                                    { label: t('exportPage.filterTenantAll', { ns: 'dataExport' }), value: 'all' },
                                     ...tenants.map(t => ({ label: t.company_name, value: String(t.id) }))
                                 ],
                                 onChange: (val: string) => {
@@ -221,10 +221,10 @@ const ExportGatewaySettings: React.FC = () => {
                                 }
                             }] : []),
                             {
-                                label: 'Site Filter',
+                                label: t('exportPage.filterSite', { ns: 'dataExport' }),
                                 value: currentSiteId ? String(currentSiteId) : 'all',
                                 options: [
-                                    { label: 'All Sites (Global)', value: 'all' },
+                                    { label: t('exportPage.filterSiteAll', { ns: 'dataExport' }), value: 'all' },
                                     ...sites.map(s => ({ label: s.name, value: String(s.id) }))
                                 ],
                                 onChange: (val) => setCurrentSiteId(val === 'all' ? null : Number(val))
@@ -243,12 +243,12 @@ const ExportGatewaySettings: React.FC = () => {
                 <div className="mgmt-filter-bar" style={{ marginBottom: '20px', borderBottom: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', overflow: 'visible' }}>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'nowrap', overflow: 'auto' }}>
                         {[
-                            { key: 'gateways', icon: 'fa-server', label: 'Gateway Settings' },
-                            { key: 'profiles', icon: 'fa-file-export', label: 'Data Mapping' },
-                            { key: 'targets', icon: 'fa-external-link-alt', label: '내보내기 대상' },
-                            { key: 'templates', icon: 'fa-code', label: '페이로드 템플릿' },
-                            { key: 'schedules', icon: 'fa-calendar-alt', label: '스케줄 관리' },
-                            { key: 'manual-test', icon: 'fa-flask', label: '수동 테스트' },
+                            { key: 'gateways', icon: 'fa-server', label: t('exportPage.tabGatewaySettings', { ns: 'dataExport' }) },
+                            { key: 'profiles', icon: 'fa-file-export', label: t('exportPage.tabDataMapping', { ns: 'dataExport' }) },
+                            { key: 'targets', icon: 'fa-external-link-alt', label: t('exportPage.tabTargets', { ns: 'dataExport' }) },
+                            { key: 'templates', icon: 'fa-code', label: t('exportPage.tabTemplates', { ns: 'dataExport' }) },
+                            { key: 'schedules', icon: 'fa-calendar-alt', label: t('exportPage.tabSchedules', { ns: 'dataExport' }) },
+                            { key: 'manual-test', icon: 'fa-flask', label: t('exportPage.tabManualTest', { ns: 'dataExport' }) },
                         ].map(t => (
                             <button
                                 key={t.key}
@@ -304,7 +304,7 @@ const ExportGatewaySettings: React.FC = () => {
                     {activeTab === 'targets' && <TargetManagementTab siteId={currentSiteId} tenantId={currentTenantId} isAdmin={isAdmin} tenants={tenants} />}
                     {activeTab === 'templates' && <TemplateManagementTab siteId={currentSiteId} tenantId={currentTenantId} isAdmin={isAdmin} tenants={tenants} />}
                     {activeTab === 'schedules' && <ScheduleManagementTab siteId={currentSiteId} tenantId={currentTenantId} isAdmin={isAdmin} tenants={tenants} />}
-                    {activeTab === 'manual-test' && <ManualTestTab siteId={currentSiteId} tenantId={currentTenantId} isAdmin={isAdmin} tenants={tenants} />}
+                    {activeTab === 'manual-test' && <ManualTestTab siteId={currentSiteId} tenantId={currentTenantId} />}
                 </div>
 
                 {/* Replacement: Wizard used for both Register & Edit */}

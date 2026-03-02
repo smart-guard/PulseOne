@@ -58,9 +58,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const handleDelete = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: 'Delete Gateway',
-            message: `Delete gateway "${gw.name}"?\nThis cannot be undone.`,
-            confirmText: 'Delete',
+            title: t('gwTab.deleteConfirmTitle', { ns: 'dataExport' }),
+            message: `${t('gwTab.deleteConfirmMsg', { ns: 'dataExport' })} ("${gw.name}")`,
+            confirmText: t('delete', { ns: 'common' }),
             confirmButtonType: 'danger'
         });
         if (!confirmed) return;
@@ -70,8 +70,8 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             onRefresh();
         } catch (e: any) {
             await confirm({
-                title: 'Delete Failed',
-                message: e.message || 'Error occurred while deleting.',
+                title: t('gwTab.deleteFailed', { ns: 'dataExport' }),
+                message: e.message || t('gwTab.deleteFailedMsg', { ns: 'dataExport' }),
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -80,9 +80,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const onStart = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: 'Confirm Gateway Start',
-            message: `Start gateway process "${gw.name}"?`,
-            confirmText: 'Start',
+            title: t('gwTab.confirmStartTitle', { ns: 'dataExport' }),
+            message: t('gwTab.confirmStartMsg', { ns: 'dataExport', name: gw.name }),
+            confirmText: t('gwTab.btnStart', { ns: 'dataExport' }),
             confirmButtonType: 'primary'
         });
         if (!confirmed) return;
@@ -91,15 +91,15 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             const res = await exportGatewayApi.startGatewayProcess(gw.id, siteId);
             if (res.success) {
                 await confirm({
-                    title: 'Start Complete',
-                    message: 'Gateway process started successfully.',
+                    title: t('gwTab.startComplete', { ns: 'dataExport' }),
+                    message: res.message || '',
                     showCancelButton: false,
-                    confirmText: 'OK'
+                    confirmText: t('ok', { ns: 'common' })
                 });
             } else {
                 await confirm({
-                    title: 'Start Failed',
-                    message: res.message || 'Failed to start process.',
+                    title: t('gwTab.startFailed', { ns: 'dataExport' }),
+                    message: res.message || '',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -107,8 +107,8 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             onRefresh();
         } catch (e) {
             await confirm({
-                title: 'Start Error',
-                message: 'Error calling API.',
+                title: t('gwTab.startFailed', { ns: 'dataExport' }),
+                message: '',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -117,9 +117,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const onStop = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: 'Confirm Gateway Stop',
-            message: `Stop gateway process "${gw.name}"?`,
-            confirmText: 'Stop',
+            title: t('gwTab.confirmStopTitle', { ns: 'dataExport' }),
+            message: t('gwTab.confirmStopMsg', { ns: 'dataExport', name: gw.name }),
+            confirmText: t('gwTab.btnStop', { ns: 'dataExport' }),
             confirmButtonType: 'danger'
         });
         if (!confirmed) return;
@@ -128,15 +128,15 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             const res = await exportGatewayApi.stopGatewayProcess(gw.id, siteId);
             if (res.success) {
                 await confirm({
-                    title: 'Stop Complete',
-                    message: 'Gateway process stopped.',
+                    title: t('gwTab.stopComplete', { ns: 'dataExport' }),
+                    message: res.message || '',
                     showCancelButton: false,
-                    confirmText: 'OK'
+                    confirmText: t('ok', { ns: 'common' })
                 });
             } else {
                 await confirm({
-                    title: 'Stop Failed',
-                    message: res.message || 'Failed to stop the process.',
+                    title: t('gwTab.stopFailed', { ns: 'dataExport' }),
+                    message: res.message || '',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -144,8 +144,8 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             onRefresh();
         } catch (e) {
             await confirm({
-                title: 'Stop Error',
-                message: 'Error calling API.',
+                title: t('gwTab.stopFailed', { ns: 'dataExport' }),
+                message: '',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -154,9 +154,9 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
     const onRestart = async (gw: Gateway) => {
         const confirmed = await confirm({
-            title: 'Confirm Gateway Restart',
-            message: `Restart gateway process "${gw.name}"?`,
-            confirmText: 'Restart',
+            title: t('gwTab.confirmRestartTitle', { ns: 'dataExport' }),
+            message: t('gwTab.confirmRestartMsg', { ns: 'dataExport', name: gw.name }),
+            confirmText: t('gwTab.btnRestart', { ns: 'dataExport' }),
             confirmButtonType: 'warning'
         });
         if (!confirmed) return;
@@ -165,15 +165,15 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             const res = await exportGatewayApi.restartGatewayProcess(gw.id, siteId);
             if (res.success) {
                 await confirm({
-                    title: 'Restart Complete',
-                    message: 'Gateway process restarted.',
+                    title: t('gwTab.restartComplete', { ns: 'dataExport' }),
+                    message: res.message || '',
                     showCancelButton: false,
-                    confirmText: 'OK'
+                    confirmText: t('ok', { ns: 'common' })
                 });
             } else {
                 await confirm({
-                    title: 'Restart Failed',
-                    message: res.message || 'Failed to restart the process.',
+                    title: t('gwTab.restartFailed', { ns: 'dataExport' }),
+                    message: res.message || '',
                     showCancelButton: false,
                     confirmButtonType: 'danger'
                 });
@@ -181,8 +181,8 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
             onRefresh();
         } catch (e) {
             await confirm({
-                title: 'Restart Error',
-                message: 'Error calling API.',
+                title: t('gwTab.restartFailed', { ns: 'dataExport' }),
+                message: '',
                 showCancelButton: false,
                 confirmButtonType: 'danger'
             });
@@ -237,7 +237,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                 <div className="mgmt-header-actions" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', alignItems: 'center' }}>
                     <h3 style={{ margin: 0, color: 'var(--neutral-800)', fontWeight: 600 }}>{t('labels.registeredGateways', { ns: 'dataExport' })}</h3>
                     <button className="btn btn-outline btn-sm" onClick={() => onRefresh()}>
-                        <i className="fas fa-sync-alt" /> Refresh
+                        <i className="fas fa-sync-alt" /> {t('gwTab.refresh', { ns: 'dataExport' })}
                     </button>
                 </div>
                 {gateways.length === 0 ? (
@@ -301,7 +301,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                             <div style={{ fontSize: '11px', color: 'var(--neutral-500)', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
                                                 <span>{t('labels.processStatus', { ns: 'dataExport' })}</span>
                                                 <span style={{ fontWeight: 600, color: (gw.processes && gw.processes.length > 0) || gw.status === 'active' ? 'var(--success-600)' : 'var(--error-600)' }}>
-                                                    {(gw.processes && gw.processes.length > 0) || gw.status === 'active' ? 'RUNNING' : 'STOPPED'}
+                                                    {(gw.processes && gw.processes.length > 0) || gw.status === 'active' ? t('gwTab.statusRunning', { ns: 'dataExport' }) : t('gwTab.statusStopped', { ns: 'dataExport' })}
                                                 </span>
                                             </div>
                                             {gw.processes && gw.processes.length > 0 && (
@@ -317,7 +317,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                                         onClick={() => handleAction(gw.id, onStart)}
                                                         disabled={actionLoading === gw.id}
                                                     >
-                                                        {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-play" style={{ fontSize: '10px' }} />} Start
+                                                        {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-play" style={{ fontSize: '10px' }} />} {t('gwTab.btnStart', { ns: 'dataExport' })}
                                                     </button>
                                                 ) : (
                                                     <>
@@ -327,7 +327,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                                             onClick={() => handleAction(gw.id, onStop)}
                                                             disabled={actionLoading === gw.id}
                                                         >
-                                                            {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-stop" style={{ fontSize: '10px' }} />} Stop
+                                                            {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-stop" style={{ fontSize: '10px' }} />} {t('gwTab.btnStop', { ns: 'dataExport' })}
                                                         </button>
                                                         <button
                                                             className="btn btn-outline btn-xs"
@@ -335,7 +335,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                                             onClick={() => handleAction(gw.id, onRestart)}
                                                             disabled={actionLoading === gw.id}
                                                         >
-                                                            {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-redo" style={{ fontSize: '10px' }} />} Restart
+                                                            {actionLoading === gw.id ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-redo" style={{ fontSize: '10px' }} />} {t('gwTab.btnRestart', { ns: 'dataExport' })}
                                                         </button>
                                                     </>
                                                 )}
@@ -360,10 +360,10 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
 
                                 <div className="mgmt-card-footer" style={{ borderTop: '1px solid var(--neutral-100)', paddingTop: '12px', marginTop: 'auto', display: 'flex', gap: '8px' }}>
                                     <button className="btn btn-outline btn-sm" onClick={() => { setSelectedGateway(gw); setIsDetailModalOpen(true); }} style={{ flex: 1 }}>
-                                        <i className="fas fa-search-plus" /> Details
+                                        <i className="fas fa-search-plus" /> {t('labels.details', { ns: 'dataExport' }) || '상세'}
                                     </button>
                                     <button className="btn btn-primary btn-sm" onClick={() => onDeploy(gw)} style={{ flex: 1 }} disabled={gw.live_status?.status !== 'online' && gw.live_status?.status !== 'running' && gw.status !== 'active'}>
-                                        <i className="fas fa-rocket" /> Deploy
+                                        <i className="fas fa-rocket" /> {t('labels.deploy', { ns: 'dataExport' }) || '배포'}
                                     </button>
                                 </div>
                             </div>
@@ -443,10 +443,10 @@ const GatewayDetailModal: React.FC<{
                         onClick={() => { onClose(); onEdit(gateway); }}
                         style={{ border: '1px solid #e2e8f0' }}
                     >
-                        <i className="fas fa-magic" style={{ marginRight: '6px', color: 'var(--primary-600)' }} /> Edit Settings
+                        <i className="fas fa-magic" style={{ marginRight: '6px', color: 'var(--primary-600)' }} /> {t('labels.editSettings', { ns: 'dataExport' }) || '설정 편집'}
                     </button>
                     <button className="btn btn-primary" onClick={onClose} style={{ minWidth: '80px' }}>
-                        Close
+                        {t('close', { ns: 'common' }) || '닫기'}
                     </button>
                 </div>
             }
