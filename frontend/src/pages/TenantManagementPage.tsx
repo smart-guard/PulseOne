@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TenantApiService } from '../api/services/tenantApi';
 import { ManagementLayout } from '../components/common/ManagementLayout';
 import { PageHeader } from '../components/common/PageHeader';
@@ -14,7 +15,8 @@ import { TenantModal } from '../components/modals/TenantModal/TenantModal';
 import { TenantDetailModal } from '../components/modals/TenantModal/TenantDetailModal';
 
 const TenantManagementPage: React.FC = () => {
-    const [tenants, setTenants] = useState<Tenant[]>([]);
+    const { t } = useTranslation('tenantManagement');
+    const [tenants, setTenants] = useState<Tenant[]>([]);;
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -62,7 +64,7 @@ const TenantManagementPage: React.FC = () => {
                 setTotalCount(response.data.pagination?.total_count || 0);
             }
         } catch (err) {
-            setError('Error loading tenant information.');
+            setError(t('errLoad'));
         } finally {
             setLoading(false);
         }
@@ -85,22 +87,22 @@ const TenantManagementPage: React.FC = () => {
         console.log('[TenantPage] setDetailModalOpen(true) called');
     };
 
-    const handleRestore = async (t: Tenant) => {
+    const handleRestore = async (tnt: Tenant) => {
         const confirmed = await confirm({
-            title: 'Confirm Tenant Restore',
-            message: `Are you sure you want to restore tenant '${t.company_name}'?`,
-            confirmText: 'Restore',
+            title: t('restoreTitle'),
+            message: t('restoreMessage', { name: tnt.company_name }),
+            confirmText: t('restoreBtn'),
             confirmButtonType: 'primary'
         });
 
         if (confirmed) {
             try {
-                const res = await TenantApiService.restoreTenant(t.id);
+                const res = await TenantApiService.restoreTenant(tnt.id);
                 if (res.success) {
                     await confirm({
-                        title: 'Restore Complete',
-                        message: 'Tenant restored successfully.',
-                        confirmText: 'OK',
+                        title: t('restoreCompleteTitle'),
+                        message: t('restoreCompleteMsg'),
+                        confirmText: t('restoreCompleteBtn'),
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
@@ -117,20 +119,20 @@ const TenantManagementPage: React.FC = () => {
     return (
         <ManagementLayout>
             <PageHeader
-                title="Tenant Management"
-                description="Manage tenant information in a multi-tenant environment. Configure subscription plans and usage limits."
+                title={t('pageTitle')}
+                description={t('pageDesc')}
                 icon="fas fa-building"
                 actions={
                     <button className="mgmt-btn mgmt-btn-primary" onClick={handleCreate}>
-                        <i className="fas fa-plus"></i> New Tenant Registration
+                        <i className="fas fa-plus"></i> {t('newTenant')}
                     </button>
                 }
             />
 
             <div className="mgmt-stats-panel">
-                <StatCard label="Total Tenants" value={stats.total_tenants} type="primary" />
-                <StatCard label="Active Tenants" value={stats.active_tenants} type="success" />
-                <StatCard label="Trial" value={stats.trial_tenants} type="warning" />
+                <StatCard label={t('totalTenants')} value={stats.total_tenants} type="primary" />
+                <StatCard label={t('activeTenants')} value={stats.active_tenants} type="success" />
+                <StatCard label={t('trialTenants')} value={stats.trial_tenants} type="warning" />
             </div>
 
             <FilterBar
@@ -138,12 +140,12 @@ const TenantManagementPage: React.FC = () => {
                 onSearchChange={setSearchTerm}
                 filters={[
                     {
-                        label: 'Status',
+                        label: t('filterStatus'),
                         value: selectedStatus,
                         options: [
-                            { label: 'All', value: 'all' },
-                            { label: 'Active', value: 'active' },
-                            { label: 'Inactive', value: 'inactive' }
+                            { label: t('filterAll'), value: 'all' },
+                            { label: t('filterActive'), value: 'active' },
+                            { label: t('filterInactive'), value: 'inactive' }
                         ],
                         onChange: setSelectedStatus
                     }
@@ -162,7 +164,7 @@ const TenantManagementPage: React.FC = () => {
                                 checked={includeDeleted}
                                 onChange={(e) => setIncludeDeleted(e.target.checked)}
                             />
-                            View Deleted Tenants
+                            {t('includeDeleted')}
                         </label>
                     </div>
                 }
@@ -173,39 +175,39 @@ const TenantManagementPage: React.FC = () => {
                     <table className="mgmt-table">
                         <thead>
                             <tr>
-                                <th>Company Name</th>
-                                <th>Company Code</th>
-                                <th>Domain</th>
-                                <th>Subscription Plan</th>
-                                <th>Status</th>
-                                <th>Registered</th>
+                                <th>{t('colCompanyName')}</th>
+                                <th>{t('colCompanyCode')}</th>
+                                <th>{t('colDomain')}</th>
+                                <th>{t('colPlan')}</th>
+                                <th>{t('colStatus')}</th>
+                                <th>{t('colRegistered')}</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {tenants.map(t => (
-                                <tr key={t.id} className={t.is_active ? '' : 'inactive-row'}>
+                            {tenants.map(tnt => (
+                                <tr key={tnt.id} className={tnt.is_active ? '' : 'inactive-row'}>
                                     <td>
                                         <div
                                             className="mgmt-table-id-link mgmt-clickable-name"
-                                            onClick={() => handleViewDetail(t.id)}
+                                            onClick={() => handleViewDetail(tnt.id)}
                                             style={{ fontWeight: '600' }}
                                         >
-                                            {t.company_name}
+                                            {tnt.company_name}
                                         </div>
                                     </td>
-                                    <td><div style={{ fontWeight: '500', color: 'var(--neutral-700)' }}>{t.company_code}</div></td>
-                                    <td>{t.domain || '-'}</td>
+                                    <td><div style={{ fontWeight: '500', color: 'var(--neutral-700)' }}>{tnt.company_code}</div></td>
+                                    <td>{tnt.domain || '-'}</td>
                                     <td>
-                                        <span className={`mgmt-badge ${t.subscription_plan === 'enterprise' ? 'primary' : 'neutral'}`}>
-                                            {t.subscription_plan.toUpperCase()}
+                                        <span className={`mgmt-badge ${tnt.subscription_plan === 'enterprise' ? 'primary' : 'neutral'}`}>
+                                            {tnt.subscription_plan.toUpperCase()}
                                         </span>
                                     </td>
                                     <td>
-                                        <span className={`mgmt-badge ${t.subscription_status === 'active' ? 'success' : 'warning'}`}>
-                                            {t.subscription_status.toUpperCase()}
+                                        <span className={`mgmt-badge ${tnt.subscription_status === 'active' ? 'success' : 'warning'}`}>
+                                            {tnt.subscription_status.toUpperCase()}
                                         </span>
                                     </td>
-                                    <td>{new Date(t.created_at).toLocaleDateString()}</td>
+                                    <td>{new Date(tnt.created_at).toLocaleDateString()}</td>
                                 </tr>
                             ))}
                         </tbody>

@@ -577,6 +577,10 @@
     border-bottom: 1px solid var(--neutral-100);
     font-size: var(--text-sm);
     vertical-align: middle;
+}
+
+/* Apply only to text-heavy columns - not to badges/status cells */
+.mgmt-td-truncate {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

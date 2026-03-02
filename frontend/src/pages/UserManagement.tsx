@@ -218,8 +218,8 @@ const UserManagement: React.FC = () => {
                 <th style={{ width: '20%' }}>{t('colEmail')}</th>
                 <th style={{ width: '9%' }}>{t('colRole')}</th>
                 <th style={{ width: '11%' }}>{t('colDepartment')}</th>
-                <th style={{ width: '16%' }}>{t('colLastLogin')}</th>
-                <th style={{ width: '8%', textAlign: 'center' }}>{t('colStatus')}</th>
+                <th style={{ width: '14%' }}>{t('colLastLogin')}</th>
+                <th style={{ width: '10%', textAlign: 'center' }}>{t('colStatus')}</th>
               </tr>
             </thead>
             <tbody>
@@ -237,12 +237,12 @@ const UserManagement: React.FC = () => {
                   <td>
                     <span className="username">@{user.username}</span>
                   </td>
-                  <td>
+                  <td className="mgmt-td-truncate">
                     <span className="tenant-name" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--neutral-600)' }}>
                       {tenants.find(tn => tn.id === user.tenant_id)?.company_name || t('unassigned')}
                     </span>
                   </td>
-                  <td>
+                  <td className="mgmt-td-truncate">
                     <span className="email text-neutral-500">{maskEmail(user.email)}</span>
                   </td>
                   <td>
@@ -250,7 +250,7 @@ const UserManagement: React.FC = () => {
                       {getRoleLabel(user.role)}
                     </span>
                   </td>
-                  <td>{user.department || '-'}</td>
+                  <td className="mgmt-td-truncate">{user.department || '-'}</td>
                   <td>{user.last_login ? new Date(user.last_login).toLocaleString() : t('noLoginRecord')}</td>
                   <td style={{ textAlign: 'center' }}>
                     <div style={{ display: 'inline-flex', justifyContent: 'center' }}>

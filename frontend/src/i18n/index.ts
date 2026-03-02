@@ -51,6 +51,7 @@ export const NAMESPACES = [
     'errorMonitoring',
     'loginHistory',
     'userManagement',
+    'tenantManagement',
 ];
 
 i18n
