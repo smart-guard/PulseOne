@@ -161,7 +161,7 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                                     <label className="required">{t('roleModal.name', { ns: 'permissions' })}</label>
                                     <input
                                         type="text"
-                                        className="mgmt-modal-input"
+                                        className="mgmt-input"
                                         value={formData.name}
                                         onChange={(e) => handleInputChange('name', e.target.value)}
                                         placeholder={t('roleModal.namePlaceholder', { ns: 'permissions' })}
@@ -176,7 +176,7 @@ export const RoleModal: React.FC<RoleModalProps> = ({
                                     <label>{t('roleModal.descLabel', { ns: 'permissions' })}</label>
                                     <input
                                         type="text"
-                                        className="mgmt-modal-input"
+                                        className="mgmt-input"
                                         value={formData.description || ''}
                                         onChange={(e) => handleInputChange('description', e.target.value)}
                                         placeholder={t('roleModal.descPlaceholder', { ns: 'permissions' })}
