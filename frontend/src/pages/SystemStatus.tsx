@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DashboardApiService, ServiceInfo } from '../api/services/dashboardApi';
 import exportGatewayApi from '../api/services/exportGatewayApi';
 import '../styles/base.css';
 import '../styles/system-status.css';
 
 const SystemStatus: React.FC = () => {
+  const { t } = useTranslation('systemSettings');
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -33,7 +35,7 @@ const SystemStatus: React.FC = () => {
         setUnassignedCollectors(overviewRes.data.unassigned_collectors || []);
         setLastUpdate(new Date());
       } else {
-        setError(overviewRes.message || 'Failed to load data.');
+        setError(overviewRes.message || t('status.errLoadData'));
       }
 
       let mergedServices: ServiceInfo[] = [];
@@ -57,11 +59,11 @@ const SystemStatus: React.FC = () => {
       if (!exportGatewayParent) {
         exportGatewayParent = {
           name: 'export-gateway',
-          displayName: 'Export Gateway Service',
+          displayName: t('status.exportGatewayService'),
           status: 'running',
           icon: 'fas fa-share-square',
           controllable: false,
-          description: 'Industrial data export and integration service',
+          description: t('status.exportGatewayDescription'),
           serviceType: 'core',
         } as ServiceInfo;
         mergedServices.push(exportGatewayParent);
@@ -72,7 +74,7 @@ const SystemStatus: React.FC = () => {
 
         const gatewayServices: ServiceInfo[] = gateways.map(gw => ({
           name: `export-gateway-${gw.id}`,
-          displayName: gw.server_name || gw.name || 'Unnamed Gateway',
+          displayName: gw.server_name || gw.name || t('status.unnamedGateway'),
           status: (
             gw.live_status?.status === 'online' ||
             gw.live_status?.status === 'running' ||
@@ -81,7 +83,7 @@ const SystemStatus: React.FC = () => {
           ) ? 'running' : 'stopped',
           icon: 'fas fa-server',
           controllable: true,
-          description: gw.description || `Export Gateway (ID: ${gw.id})`,
+          description: gw.description || t('status.exportGatewayId', { id: gw.id }),
           serviceType: 'export-gateway',
           gatewayId: gw.id,
           ip: gw.ip_address,
@@ -104,12 +106,12 @@ const SystemStatus: React.FC = () => {
       setServices(mergedServices);
 
     } catch (err) {
-      console.error('Failed to fetch system status:', err);
-      setError('Error while communicating with the server.');
+      console.error(t('status.fetchStatusFailed'), err);
+      setError(t('status.errServerComm'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // 실시간 업데이트
   useEffect(() => {
@@ -121,7 +123,7 @@ const SystemStatus: React.FC = () => {
   // 개별 서비스 제어
   const handleServiceControl = async (service: ServiceInfo, action: 'start' | 'stop' | 'restart') => {
     if (!service.controllable) {
-      alert(`${service.displayName} is a required service and cannot be controlled.`);
+      alert(t('status.requiredServiceControlBlocked', { displayName: service.displayName }));
       return;
     }
 
@@ -130,7 +132,7 @@ const SystemStatus: React.FC = () => {
       let response;
 
       if (service.serviceType === 'export-gateway' && service.gatewayId) {
-        // Export Gateway 제어
+        // Export Gateway Control
         if (action === 'start') response = await exportGatewayApi.startGatewayProcess(service.gatewayId);
         else if (action === 'stop') response = await exportGatewayApi.stopGatewayProcess(service.gatewayId);
         else if (action === 'restart') response = await exportGatewayApi.restartGatewayProcess(service.gatewayId);
@@ -140,15 +142,15 @@ const SystemStatus: React.FC = () => {
       }
 
       if (response && response.success) {
-        console.log(`${service.displayName} ${action} 완료`);
-        await fetchStatus(); // 상태 Refresh
+        console.log(t('status.serviceControlComplete', { displayName: service.displayName, action }));
+        await fetchStatus(); // Status Refresh
       } else {
-        const msg = response?.message || 'Unknown error';
-        alert(`${service.displayName} ${action} failed: ${msg}`);
+        const msg = response?.message || t('common.unknownError');
+        alert(t('status.serviceControlFailed', { displayName: service.displayName, action, message: msg }));
       }
     } catch (error) {
-      console.error(`서비스 제어 실패:`, error);
-      alert(`Error during ${service.displayName} ${action}.`);
+      console.error(t('status.serviceControlError'), error);
+      alert(t('status.serviceControlGenericError', { displayName: service.displayName, action }));
     } finally {
       setIsProcessing(false);
     }
@@ -181,14 +183,14 @@ const SystemStatus: React.FC = () => {
       const response = await DashboardApiService.controlPoint(device.id, pointId, type, value);
 
       if (response.success) {
-        alert(`${type === 'digital' ? 'DO' : 'AO'} control command sent successfully.`);
+        alert(type === 'digital' ? t('status.doControlSent') : t('status.aoControlSent'));
         await fetchStatus();
       } else {
-        alert(`${type === 'digital' ? 'DO' : 'AO'} control failed: ${response.message}`);
+        alert(t('status.controlFailed', { message: response.message }));
       }
     } catch (err) {
       console.error(`포인트 제어 실패:`, err);
-      alert(`제어 명령 전송 중 Error가 발생했습니다.`);
+      alert(t('status.controlError'));
     } finally {
       setIsProcessing(false);
     }
@@ -215,15 +217,12 @@ const SystemStatus: React.FC = () => {
     const controllableServices = services.filter(s => s.controllable);
 
     if (controllableServices.length === 0) {
-      alert('No controllable services available.');
+      alert(t('status.errNoControllable'));
       return;
     }
 
-    const confirmation = confirm(
-      `${controllableServices.length}개의 서비스를 ${action === 'start' ? 'start' :
-        action === 'stop' ? 'stop' : 'restart'
-      }?`
-    );
+    const actionLabel = action === 'start' ? t('status.actionStart') : action === 'stop' ? t('status.actionStop') : t('status.actionRestart');
+    const confirmation = confirm(t('status.confirmBulk', { count: controllableServices.length, action: actionLabel }));
 
     if (!confirmation) return;
 
@@ -236,10 +235,10 @@ const SystemStatus: React.FC = () => {
       }
 
       await fetchStatus();
-      alert(`${controllableServices.length} service(s) ${action} complete.`);
+      alert(t('status.bulkComplete', { count: controllableServices.length, action: actionLabel }));
     } catch (error) {
       console.error('일괄 서비스 제어 실패:', error);
-      alert('Error during bulk service control.');
+      alert(t('status.errBulk'));
     } finally {
       setIsProcessing(false);
     }
@@ -248,7 +247,7 @@ const SystemStatus: React.FC = () => {
   // 선택된 서비스 제어
   const handleSelectedAction = async (action: 'start' | 'stop' | 'restart') => {
     if (selectedServices.length === 0) {
-      alert('Please select a service.');
+      alert(t('status.errSelectFirst'));
       return;
     }
 
@@ -257,23 +256,24 @@ const SystemStatus: React.FC = () => {
     );
 
     if (selectedServiceObjects.length === 0) {
-      alert('No controllable service is selected.');
+      alert(t('status.errNoControllableSelected'));
       return;
     }
 
     try {
       setIsProcessing(true);
+      const actionLabel = action === 'start' ? t('status.actionStart') : action === 'stop' ? t('status.actionStop') : t('status.actionRestart');
 
       for (const service of selectedServiceObjects) {
         await DashboardApiService.controlService(service.name, action);
       }
 
       await fetchStatus();
-      alert(`${selectedServiceObjects.length} service(s) ${action} complete.`);
+      alert(t('status.bulkComplete', { count: selectedServiceObjects.length, action: actionLabel }));
       setSelectedServices([]);
     } catch (error) {
       console.error('선택된 서비스 제어 실패:', error);
-      alert('Error during selected service control.');
+      alert(t('status.errSelectedControl'));
     } finally {
       setIsProcessing(false);
     }
@@ -292,10 +292,10 @@ const SystemStatus: React.FC = () => {
     const diffMs = now.getTime() - date.getTime();
     const diffSecs = Math.floor(diffMs / 1000);
 
-    if (diffSecs < 60) return 'just now';
+    if (diffSecs < 60) return t('status.justNow');
     const diffMins = Math.floor(diffSecs / 60);
-    if (diffMins < 60) return `${diffMins} min ago`;
-    return `${Math.floor(diffMins / 60)} hr ago`;
+    if (diffMins < 60) return t('status.minAgo', { n: diffMins });
+    return t('status.hrAgo', { n: Math.floor(diffMins / 60) });
   };
 
   const formatUptime = (seconds?: number) => {
@@ -316,7 +316,7 @@ const SystemStatus: React.FC = () => {
     return (
       <div className="loading-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
         <i className="fas fa-spinner fa-spin fa-3x" style={{ color: '#667eea', marginBottom: '16px' }}></i>
-        <div style={{ fontSize: '1.2rem', color: '#4a5568' }}>Loading data...</div>
+        <div style={{ fontSize: '1.2rem', color: '#4a5568' }}>{t('status.loadingData')}</div>
       </div>
     );
   }
@@ -385,11 +385,11 @@ const SystemStatus: React.FC = () => {
                   )}
                   {isExportGatewayParent && (
                     <span style={{ fontSize: '0.7rem', color: '#805ad5', background: '#faf5ff', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, border: '1px solid #e9d8fd' }}>
-                      SERVICE HUB
+                      {t('status.serviceHub')}
                     </span>
                   )}
                   {isCollector && !service.exists && (
-                    <span style={{ fontSize: '0.7rem', color: '#e53e3e', background: '#fff5f5', padding: '1px 6px', borderRadius: '4px', border: '1px solid #feb2b2' }}>Unregistered</span>
+                    <span style={{ fontSize: '0.7rem', color: '#e53e3e', background: '#fff5f5', padding: '1px 6px', borderRadius: '4px', border: '1px solid #feb2b2' }}>{t('status.unregistered')}</span>
                   )}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -412,7 +412,7 @@ const SystemStatus: React.FC = () => {
                 fontWeight: 700,
                 color: service.status === 'running' ? '#2f855a' : '#c53030'
               }}>
-                {service.status === 'running' ? 'ALIVE' : 'DOWN'}
+                {service.status === 'running' ? t('status.alive') : t('status.down')}
               </span>
             </div>
           </td>
@@ -433,7 +433,7 @@ const SystemStatus: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               {!service.controllable ? (
                 <span style={{ fontSize: '0.75rem', color: '#cbd5e0', fontStyle: 'italic' }}>
-                  {isExportGatewayParent ? 'EXPAND TO MANAGE' : 'SYSTEM LOCKED'}
+                  {isExportGatewayParent ? t('status.expandToManage') : t('status.systemLocked')}
                 </span>
               ) : (
                 <>
@@ -442,7 +442,7 @@ const SystemStatus: React.FC = () => {
                       onClick={() => handleServiceControl(service, 'stop')}
                       className="btn-icon"
                       style={{ width: '30px', height: '30px', borderRadius: '6px', border: '1px solid #fed7d7', background: '#fff5f5', color: '#c53030', cursor: 'pointer' }}
-                      title="Stop"
+                      title={t('status.stop')}
                       disabled={isProcessing}
                     >
                       <i className="fas fa-stop"></i>
@@ -452,7 +452,7 @@ const SystemStatus: React.FC = () => {
                       onClick={() => handleServiceControl(service, 'start')}
                       className="btn-icon"
                       style={{ width: '30px', height: '30px', borderRadius: '6px', border: '1px solid #c6f6d5', background: '#f0fff4', color: '#2f855a', cursor: 'pointer' }}
-                      title="Start"
+                      title={t('status.start')}
                       disabled={isProcessing}
                     >
                       <i className="fas fa-play"></i>
@@ -462,7 +462,7 @@ const SystemStatus: React.FC = () => {
                     onClick={() => handleServiceControl(service, 'restart')}
                     className="btn-icon"
                     style={{ width: '30px', height: '30px', borderRadius: '6px', border: '1px solid #e2e8f0', background: 'white', color: '#4a5568', cursor: 'pointer' }}
-                    title="Restart"
+                    title={t('status.restart')}
                     disabled={isProcessing}
                   >
                     <i className="fas fa-redo-alt"></i>
@@ -479,7 +479,7 @@ const SystemStatus: React.FC = () => {
             <td colSpan={6} style={{ padding: '12px 24px 24px 60px' }}>
               <div style={{ borderLeft: '2px solid #cbd5e0', paddingLeft: '20px' }}>
                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#718096', marginBottom: '12px', textTransform: 'uppercase' }}>
-                  Assigned Devices ({service.devices.length})
+                  {t('status.assignedDevices', { count: service.devices.length })}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px' }}>
                   {service.devices.map(device => {
@@ -523,7 +523,7 @@ const SystemStatus: React.FC = () => {
                         {isDeviceExpanded && (
                           <div style={{ marginTop: '12px', borderTop: '1px solid #edf2f7', paddingTop: '10px' }}>
                             {/* Points Control Logic */}
-                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#a0aec0', marginBottom: '8px' }}>POINT CONTROL</div>
+                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#a0aec0', marginBottom: '8px' }}>{t('status.pointControl')}</div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                               <button
                                 onClick={() => handlePointControl(device, 1, 'digital', 1)}
@@ -561,7 +561,7 @@ const SystemStatus: React.FC = () => {
             <td colSpan={6} style={{ padding: '12px 24px 24px 60px' }}>
               <div style={{ borderLeft: '2px solid #805ad5', paddingLeft: '20px' }}>
                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b46c1', marginBottom: '12px', textTransform: 'uppercase' }}>
-                  Registered Gateways ({(service as any).gateways.length})
+                  {t('status.registeredGateways', { count: (service as any).gateways.length })}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '16px' }}>
@@ -588,7 +588,7 @@ const SystemStatus: React.FC = () => {
                           background: currGateway.status === 'running' ? '#def7ec' : '#fde2e2',
                           color: currGateway.status === 'running' ? '#03543f' : '#9b1c1c'
                         }}>
-                          {currGateway.status === 'running' ? 'ALIVE' : 'DOWN'}
+                          {currGateway.status === 'running' ? t('status.alive') : t('status.down')}
                         </span>
                       </div>
 
@@ -603,21 +603,21 @@ const SystemStatus: React.FC = () => {
                               onClick={() => handleServiceControl(currGateway, 'stop')}
                               style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #fed7d7', background: 'white', color: '#c53030', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
                             >
-                              <i className="fas fa-stop" style={{ marginRight: '6px' }}></i> Stop
+                              <i className="fas fa-stop" style={{ marginRight: '6px' }}></i> {t('status.stop')}
                             </button>
                           ) : (
                             <button
                               onClick={() => handleServiceControl(currGateway, 'start')}
                               style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #c6f6d5', background: 'white', color: '#2f855a', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
                             >
-                              <i className="fas fa-play" style={{ marginRight: '6px' }}></i> Start
+                              <i className="fas fa-play" style={{ marginRight: '6px' }}></i> {t('status.start')}
                             </button>
                           )}
                           <button
                             onClick={() => handleServiceControl(currGateway, 'restart')}
                             style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: 'white', color: '#4a5568', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
                           >
-                            <i className="fas fa-redo" style={{ marginRight: '6px' }}></i> 재Start
+                            <i className="fas fa-redo" style={{ marginRight: '6px' }}></i> {t('status.restart')}
                           </button>
                         </div>
                       </div>
@@ -633,7 +633,7 @@ const SystemStatus: React.FC = () => {
           <tr style={{ background: '#f8fafc' }}>
             <td colSpan={6} style={{ padding: '16px 24px 24px 60px', color: '#a0aec0', fontSize: '0.85rem' }}>
               <div style={{ borderLeft: '2px solid #cbd5e0', paddingLeft: '20px' }}>
-                No devices assigned.
+                {t('status.noDevices')}
               </div>
             </td>
           </tr>
@@ -648,14 +648,14 @@ const SystemStatus: React.FC = () => {
       {/* ... (Header section remains) ... */}
       <div className="page-header" style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '20px 24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
         <div>
-          <h1 className="page-title" style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#1a202c' }}>System Status & Service Management</h1>
-          <p style={{ margin: '4px 0 0 0', color: '#718096', fontSize: '0.9rem' }}>Monitor all service statuses of the industrial data hub in real time.</p>
+          <h1 className="page-title" style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#1a202c' }}>{t('status.pageTitle')}</h1>
+          <p style={{ margin: '4px 0 0 0', color: '#718096', fontSize: '0.9rem' }}>{t('status.pageDesc')}</p>
         </div>
         <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ textAlign: 'right' }}>
             {error && <div className="text-error-600" style={{ color: '#e53e3e', fontSize: '0.85rem', fontWeight: 500 }}>{error}</div>}
             <span className="text-sm text-neutral-600" style={{ fontSize: '0.85rem', color: '#718096' }}>
-              Updated: {formatTimeAgo(lastUpdate)}
+              {t('status.updated', { time: formatTimeAgo(lastUpdate) })}
             </span>
           </div>
           <button
@@ -665,7 +665,7 @@ const SystemStatus: React.FC = () => {
             style={{ padding: '10px 20px', borderRadius: '8px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', border: 'none', color: 'white', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
           >
             <i className={`fas fa-sync-alt ${isProcessing ? 'fa-spin' : ''}`}></i>
-            Refresh
+            {t('status.refresh')}
           </button>
         </div>
       </div>
@@ -674,7 +674,7 @@ const SystemStatus: React.FC = () => {
         {/* Core Infrastructure Section */}
         <div className="status-card" style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <i className="fas fa-microchip" style={{ color: '#4a5568' }}></i> Core Infrastructure
+            <i className="fas fa-microchip" style={{ color: '#4a5568' }}></i> {t('status.coreInfrastructure')}
           </h3>
           <div className="service-mini-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {coreServices.map(s => (
@@ -691,7 +691,7 @@ const SystemStatus: React.FC = () => {
                   background: s.status === 'running' ? '#def7ec' : '#fde2e2',
                   color: s.status === 'running' ? '#03543f' : '#9b1c1c'
                 }}>
-                  {s.status === 'running' ? 'ALIVE' : 'DOWN'}
+                  {s.status === 'running' ? t('status.alive') : t('status.down')}
                 </span>
               </div>
             ))}
@@ -701,28 +701,28 @@ const SystemStatus: React.FC = () => {
         {/* Collector Partitions Section */}
         <div className="status-card" style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', borderBottom: '1px solid #edf2f7', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <i className="fas fa-network-wired" style={{ color: '#667eea' }}></i> 수집기 파티션
+            <i className="fas fa-network-wired" style={{ color: '#667eea' }}></i> {t('status.collectorPartitions')}
           </h3>
           <div className="collector-summary" style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
             <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: '#ebf4ff', borderRadius: '8px' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2b6cb0' }}>{collectorServices.length}</div>
-              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>Total Partitions</div>
+              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>{t('status.totalPartitions')}</div>
             </div>
             <div style={{ flex: 1, textAlign: 'center', padding: '12px', background: '#f0fff4', borderRadius: '8px' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#2f855a' }}>{collectorServices.filter(s => s.status === 'running').length}</div>
-              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>Active Collectors</div>
+              <div style={{ fontSize: '0.75rem', color: '#4a5568', textTransform: 'uppercase', fontWeight: 600 }}>{t('status.activeCollectors')}</div>
             </div>
           </div>
-          <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0 }}>Each edge server's data collection engine operates independently.</p>
+          <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0 }}>{t('status.collectorDesc')}</p>
         </div>
       </div>
 
       <div className="main-service-panel" style={{ background: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #edf2f7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Service List</h3>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>{t('status.serviceList')}</h3>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className="btn btn-sm" onClick={() => handleBulkAction('restart')} style={{ padding: '6px 12px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer' }}>
-              <i className="fas fa-redo"></i> 일괄 재Start
+              <i className="fas fa-redo"></i> {t('status.bulkRestart')}
             </button>
           </div>
         </div>
@@ -731,7 +731,7 @@ const SystemStatus: React.FC = () => {
           {/* Core Infrastructure Group */}
           <div className="service-group">
             <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Core Infrastructure (Core Services)
+              {t('status.coreGroup')}
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
@@ -744,7 +744,7 @@ const SystemStatus: React.FC = () => {
           {exportGatewayServices.length > 0 && (
             <div className="service-group" style={{ marginTop: '20px' }}>
               <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#805ad5', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '2px solid #faf5ff' }}>
-                Data Export Integration (Export Gateways)
+                {t('status.exportGroup')}
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
@@ -757,7 +757,7 @@ const SystemStatus: React.FC = () => {
           {/* Collector Partitions Group (Hierarchical) */}
           <div className="service-group" style={{ marginTop: '20px' }}>
             <div style={{ background: '#f8fafc', padding: '10px 24px', borderBottom: '1px solid #edf2f7', fontSize: '0.8rem', fontWeight: 700, color: '#667eea', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '2px solid #ebf4ff' }}>
-              Collector Partitions (Hierarchical Overview)
+              {t('status.collectorGroup')}
             </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -779,7 +779,7 @@ const SystemStatus: React.FC = () => {
                             SITE: {site.name} ({site.code})
                           </span>
                           <span style={{ fontSize: '0.7rem', color: '#94a3b8', background: 'white', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                            {site.collectors?.length || 0} Collectors
+                            {t('status.collectors', { count: site.collectors?.length || 0 })}
                           </span>
                         </div>
                       </td>
@@ -790,7 +790,7 @@ const SystemStatus: React.FC = () => {
                       ) : (
                         <tr style={{ background: 'white' }}>
                           <td colSpan={6} style={{ padding: '12px 60px', color: '#94a3b8', fontSize: '0.8rem', fontStyle: 'italic' }}>
-                            No collectors assigned to this site.
+                            {t('status.noCollectors')}
                           </td>
                         </tr>
                       )
@@ -806,7 +806,7 @@ const SystemStatus: React.FC = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <i className="fas fa-question-circle" style={{ color: '#718096' }}></i>
                           <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#4a5568' }}>
-                            UNASSIGNED COLLECTORS (Registered but no Site)
+                            {t('status.unassignedCollectors')}
                           </span>
                         </div>
                       </td>
@@ -823,7 +823,7 @@ const SystemStatus: React.FC = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <i className="fas fa-exclamation-triangle" style={{ color: '#e53e3e' }}></i>
                           <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#c53030' }}>
-                            UNREGISTERED PROCESS (Detected but not in DB)
+                            {t('status.unregisteredProcess')}
                           </span>
                         </div>
                       </td>
@@ -836,7 +836,7 @@ const SystemStatus: React.FC = () => {
                   <tr>
                     <td colSpan={6} style={{ padding: '48px', textAlign: 'center', color: '#a0aec0' }}>
                       <i className="fas fa-search fa-2x" style={{ marginBottom: '12px', display: 'block' }}></i>
-                      No data available.
+                      {t('status.noData')}
                     </td>
                   </tr>
                 )}
