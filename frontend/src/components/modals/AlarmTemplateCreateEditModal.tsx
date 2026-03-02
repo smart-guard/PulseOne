@@ -29,10 +29,10 @@ const LOGIC_TOKENS = [
 ];
 
 const QUICK_LOGIC_PATTERNS = [
-    { id: 'high', title: 'High Threshold', logic: 'value > THRESHOLD', desc: 'Triggered when value exceeds the set upper limit' },
-    { id: 'low', title: 'Low Threshold', logic: 'value < THRESHOLD', desc: 'Triggered when value falls below the set lower limit' },
-    { id: 'range_in', title: 'Inside Range', logic: 'value > THRESHOLD AND value < THRESHOLD', desc: 'Triggered when value is within a specific range' },
-    { id: 'range_out', title: 'Outside Range', logic: 'value < THRESHOLD OR value > THRESHOLD', desc: 'Triggered when value is outside a specific range' },
+    { id: 'high', titleKey: 'patternHighTitle', logic: 'value > THRESHOLD', descKey: 'patternHighDesc' },
+    { id: 'low', titleKey: 'patternLowTitle', logic: 'value < THRESHOLD', descKey: 'patternLowDesc' },
+    { id: 'range_in', titleKey: 'patternInTitle', logic: 'value > THRESHOLD AND value < THRESHOLD', descKey: 'patternInDesc' },
+    { id: 'range_out', titleKey: 'patternOutTitle', logic: 'value < THRESHOLD OR value > THRESHOLD', descKey: 'patternOutDesc' },
 ];
 
 const SEVERITY_CARDS = [
@@ -164,7 +164,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
 
     const handleSave = async () => {
         if (!formData.name) {
-            confirm({ title: 'Input Error', message: 'Please enter a template name.', confirmButtonType: 'warning', showCancelButton: false });
+            confirm({ title: t('templates.wizard.errorTitle'), message: t('templates.wizard.errorNoName'), confirmButtonType: 'warning', showCancelButton: false });
             setStep(1);
             return;
         }
@@ -191,10 +191,10 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
     if (!isOpen) return null;
 
     const steps = [
-        { id: 1, title: 'Identity', label: 'Template Basic Info' },
-        { id: 2, title: 'Logic', label: 'Trigger Condition Setup' },
-        { id: 3, title: 'Config', label: 'Detail Settings & Level' },
-        { id: 4, title: 'Finalize', label: 'Publish & Final Review' }
+        { id: 1, titleKey: 'stepIdentity', labelKey: 'step1Label' },
+        { id: 2, titleKey: 'stepLogic', labelKey: 'step2Label' },
+        { id: 3, titleKey: 'stepConfig', labelKey: 'step3Label' },
+        { id: 4, titleKey: 'stepFinalize', labelKey: 'step4Label' },
     ];
 
     return (
@@ -207,14 +207,14 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                         </div>
                         <div>
                             <h3 className="modal-title" style={{ margin: 0, color: 'white', fontSize: '18px', fontWeight: 700 }}>
-                                {mode === 'create' ? 'New Alarm Template Wizard' : 'Edit Alarm Template Wizard'}
+                                {mode === 'create' ? t('templates.wizard.createTitle') : t('templates.wizard.editTitle')}
                             </h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
                                 <p style={{ margin: 0, color: 'rgba(255, 255, 255, 0.95)', fontSize: '13px', lineHeight: '1.4' }}>
-                                    A 4-step process to define alarm rules and set thresholds tailored to data source characteristics.
+                                    {t('templates.wizard.subtitle')}
                                 </p>
                                 <span className="wizard-step-info" style={{ color: 'rgba(255, 255, 255, 0.85)', fontWeight: 600, fontSize: '11px', letterSpacing: '0.8px', marginTop: '2px' }}>
-                                    STEP {step} OF 4: {steps[step - 1].label.toUpperCase()}
+                                    {t('templates.wizard.stepOf', { step, label: t(`templates.wizard.${steps[step - 1].labelKey}`) })}
                                 </span>
                             </div>
                         </div>
@@ -226,7 +226,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                     {steps.map((s) => (
                         <div key={s.id} className={`wizard-step-item ${step === s.id ? 'active' : ''} ${step > s.id ? 'completed' : ''}`}>
                             <div className="step-number">{step > s.id ? <i className="fas fa-check"></i> : s.id}</div>
-                            <div className="step-label">{s.title}</div>
+                            <div className="step-label">{t(`templates.wizard.${s.titleKey}`)}</div>
                         </div>
                     ))}
                 </div>
@@ -240,15 +240,15 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section" style={{ marginBottom: '32px' }}>
                                             <div className="section-title">
                                                 <i className="fas fa-id-card"></i>
-                                                Basic Identification Info
+                                                {t('templates.wizard.basicIdentification')}
                                             </div>
                                             <div className="form-group" style={{ marginBottom: '16px' }}>
-                                                <label className="form-label required">{t('templates.name', {ns: 'alarms'})}</label>
+                                                <label className="form-label required">{t('templates.name', { ns: 'alarms' })}</label>
                                                 <input type="text" className="form-input" placeholder="New Alarm Template"
                                                     value={formData.name} onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} />
                                             </div>
                                             <div className="form-group">
-                                                <label className="form-label">{t('modals.category', {ns: 'alarms'})}</label>
+                                                <label className="form-label">{t('modals.category', { ns: 'alarms' })}</label>
                                                 <div className="category-selector-wrapper">
                                                     <select className="form-select" value={formData.category} onChange={e => setFormData(p => ({ ...p, category: e.target.value }))}>
                                                         {ALARM_CATEGORIES.map(cat => (
@@ -262,23 +262,23 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section">
                                             <div className="section-title">
                                                 <i className="fas fa-sliders-h"></i>
-                                                Select Template Mode
+                                                {t('templates.wizard.selectMode')}
                                             </div>
                                             <div className="complexity-selector-vertical">
                                                 <div className={`complexity-card-v2 ${formData.template_type === 'simple' ? 'active' : ''}`}
                                                     onClick={() => setFormData(p => ({ ...p, template_type: 'simple' }))}>
                                                     <div className="mode-icon"><i className="fas fa-bolt"></i></div>
                                                     <div className="mode-info">
-                                                        <div className="mode-title">{t('labels.simpleBasic', {ns: 'alarms'})}</div>
-                                                        <div className="mode-desc">For beginners. Intuitive settings focused on standard thresholds</div>
+                                                        <div className="mode-title">{t('labels.simpleBasic', { ns: 'alarms' })}</div>
+                                                        <div className="mode-desc">{t('templates.wizard.modeSimpleDesc')}</div>
                                                     </div>
                                                 </div>
                                                 <div className={`complexity-card-v2 ${formData.template_type === 'advanced' ? 'active' : ''}`}
                                                     onClick={() => setFormData(p => ({ ...p, template_type: 'advanced' }))}>
                                                     <div className="mode-icon"><i className="fas fa-microchip"></i></div>
                                                     <div className="mode-info">
-                                                        <div className="mode-title">{t('templates.advanced', {ns: 'alarms'})}</div>
-                                                        <div className="mode-desc">{t('labels.forEngineersComplexFormulascriptLogicConfiguration', {ns: 'alarms'})}</div>
+                                                        <div className="mode-title">{t('templates.advanced', { ns: 'alarms' })}</div>
+                                                        <div className="mode-desc">{t('labels.forEngineersComplexFormulascriptLogicConfiguration', { ns: 'alarms' })}</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -288,10 +288,10 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                     <div className="dashboard-right-panel">
                                         <div className="section-title">
                                             <i className="fas fa-rocket"></i>
-                                            Industry Quick-Start Presets
+                                            {t('templates.wizard.industryPresets')}
                                         </div>
 
-                                        <div className="preset-group-header">{t('labels.pumpsIndustrial', {ns: 'alarms'})}</div>
+                                        <div className="preset-group-header">{t('labels.pumpsIndustrial', { ns: 'alarms' })}</div>
                                         <div className="quick-start-row-v2" style={{ marginBottom: '16px' }}>
                                             {ALARM_PRESETS.filter(p => p.category === 'industrial').map(preset => (
                                                 <div key={preset.id} className="preset-card preset-card-v2" onClick={() => applyPreset(preset as any)}>
@@ -305,7 +305,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                             ))}
                                         </div>
 
-                                        <div className="preset-group-header">{t('labels.environmentalHvac', {ns: 'alarms'})}</div>
+                                        <div className="preset-group-header">{t('labels.environmentalHvac', { ns: 'alarms' })}</div>
                                         <div className="quick-start-row-v2" style={{ marginBottom: '16px' }}>
                                             {ALARM_PRESETS.filter(p => ['env', 'hvac'].includes(p.category)).map(preset => (
                                                 <div key={preset.id} className="preset-card preset-card-v2" onClick={() => applyPreset(preset as any)}>
@@ -319,7 +319,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                             ))}
                                         </div>
 
-                                        <div className="preset-group-header">{t('labels.electricalPower', {ns: 'alarms'})}</div>
+                                        <div className="preset-group-header">{t('labels.electricalPower', { ns: 'alarms' })}</div>
                                         <div className="quick-start-row-v2">
                                             {ALARM_PRESETS.filter(p => p.category === 'electrical').map(preset => (
                                                 <div key={preset.id} className="preset-card preset-card-v2" onClick={() => applyPreset(preset as any)}>
@@ -342,7 +342,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                 <div className="form-section">
                                     <div className="section-title">
                                         <i className="fas fa-microchip" style={{ color: 'var(--blueprint-500)' }}></i>
-                                        Trigger Condition (Logic)
+                                        {t('templates.wizard.triggerCondition')}
                                     </div>
                                     <div className="logic-builder-container" style={{ padding: '32px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -376,24 +376,24 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                             </div>
                                             <div style={{ display: 'flex', gap: '8px' }}>
                                                 <button type="button" className="btn btn-outline" onClick={removeLastToken} style={{ fontSize: '13px', padding: '8px 16px' }}>
-                                                    <i className="fas fa-undo-alt"></i> Back
+                                                    <i className="fas fa-undo-alt"></i> {t('templates.wizard.backToken')}
                                                 </button>
                                                 <button type="button" className="btn btn-outline" onClick={() => setFormData(p => ({ ...p, trigger_condition: '' }))} style={{ fontSize: '13px', padding: '8px 16px', color: '#ef4444' }}>
-                                                    <i className="fas fa-trash-alt"></i> Clear All
+                                                    <i className="fas fa-trash-alt"></i> {t('templates.wizard.clearAll')}
                                                 </button>
                                             </div>
                                         </div>
 
                                         <div className="expression-box">
-                                            {formData.trigger_condition || 'Use the builder to define trigger logic'}
+                                            {formData.trigger_condition || t('templates.wizard.builderPlaceholder')}
                                         </div>
 
                                         <div className="quick-logic-patterns">
                                             {QUICK_LOGIC_PATTERNS.map(pattern => (
                                                 <div key={pattern.id} className="pattern-btn" onClick={() => setFormData(p => ({ ...p, trigger_condition: pattern.logic }))}>
-                                                    <div className="pattern-title">{pattern.title}</div>
+                                                    <div className="pattern-title">{t(`templates.wizard.${pattern.titleKey}`)}</div>
                                                     <div className="pattern-logic">{pattern.logic}</div>
-                                                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>{pattern.desc}</div>
+                                                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>{t(`templates.wizard.${pattern.descKey}`)}</div>
                                                 </div>
                                             ))}
                                         </div>
@@ -409,7 +409,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section">
                                             <div className="section-title">
                                                 <i className="fas fa-exclamation-circle" style={{ color: '#f59e0b' }}></i>
-                                                Severity Settings
+                                                {t('templates.wizard.severitySettings')}
                                             </div>
                                             <div className="severity-grid">
                                                 {SEVERITY_CARDS.map(s => (
@@ -427,24 +427,24 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section">
                                             <div className="section-title">
                                                 <i className="fas fa-sliders-h" style={{ color: 'var(--blueprint-500)' }}></i>
-                                                Threshold & Deadband Settings
+                                                {t('templates.wizard.thresholdDeadband')}
                                             </div>
                                             <div className="form-row two-col">
                                                 <div className="form-group">
-                                                    <label className="form-label">{t('labels.highLimitHh', {ns: 'alarms'})}</label>
+                                                    <label className="form-label">{t('labels.highLimitHh', { ns: 'alarms' })}</label>
                                                     <input type="number" className="form-input" placeholder="80"
                                                         value={formData.default_config?.high_limit}
                                                         onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, high_limit: e.target.value } as any }))} />
                                                 </div>
                                                 <div className="form-group">
-                                                    <label className="form-label">{t('labels.lowLimitLl', {ns: 'alarms'})}</label>
+                                                    <label className="form-label">{t('labels.lowLimitLl', { ns: 'alarms' })}</label>
                                                     <input type="number" className="form-input" placeholder="20"
                                                         value={formData.default_config?.low_limit}
                                                         onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, low_limit: e.target.value } as any }))} />
                                                 </div>
                                             </div>
                                             <div className="form-group" style={{ marginTop: '16px' }}>
-                                                <label className="form-label">{t('labels.deadband1', {ns: 'alarms'})}</label>
+                                                <label className="form-label">{t('labels.deadband1', { ns: 'alarms' })}</label>
                                                 <input type="number" className="form-input" placeholder="0"
                                                     value={formData.default_config?.deadband}
                                                     onChange={e => setFormData(p => ({ ...p, default_config: { ...p.default_config, deadband: Number(e.target.value) } as any }))} />
@@ -463,19 +463,19 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section">
                                             <div className="section-title">
                                                 <i className="fas fa-comment-alt" style={{ color: '#3b82f6' }}></i>
-                                                Alarm Message Composer
+                                                {t('templates.wizard.messageComposer')}
                                             </div>
                                             <div className="composer-container" style={{ background: '#f8fafc', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                                                <label className="form-label" style={{ marginBottom: '12px' }}>{t('templates.messageTemplate', {ns: 'alarms'})}</label>
+                                                <label className="form-label" style={{ marginBottom: '12px' }}>{t('templates.messageTemplate', { ns: 'alarms' })}</label>
                                                 <textarea
                                                     className="description-composer"
                                                     rows={4}
                                                     value={formData.message_template}
                                                     onChange={e => setFormData(p => ({ ...p, message_template: e.target.value }))}
-                                                    placeholder="Enter the message to send when an alarm is triggered..."
+                                                    placeholder={t('templates.wizard.messagePlaceholder')}
                                                 />
                                                 <div style={{ marginTop: '20px' }}>
-                                                    <label className="form-label" style={{ fontSize: '11px', color: '#64748b' }}>사용 가능한 변수 (클릭하여 추가)</label>
+                                                    <label className="form-label" style={{ fontSize: '11px', color: '#64748b' }}>{t('templates.wizard.variableHint')}</label>
                                                     <div className="variable-chip-group">
                                                         {['{device_name}', '{value}', '{limit}', '{time}'].map(v => (
                                                             <div key={v} className="var-badge" onClick={() => {
@@ -496,12 +496,12 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section" style={{ marginBottom: '32px' }}>
                                             <div className="section-title">
                                                 <i className="fas fa-info-circle" style={{ color: '#64748b' }}></i>
-                                                Template Description & Notes
+                                                {t('templates.wizard.descNotes')}
                                             </div>
                                             <textarea
                                                 className="description-composer"
                                                 rows={3}
-                                                placeholder="Describe this template's purpose for engineers..."
+                                                placeholder={t('templates.wizard.descPlaceholder')}
                                                 value={formData.description}
                                                 onChange={e => setFormData(p => ({ ...p, description: e.target.value }))}
                                             />
@@ -510,7 +510,7 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                         <div className="form-section">
                                             <div className="section-title">
                                                 <i className="fas fa-tags" style={{ color: '#3b82f6' }}></i>
-                                                관리 태그 (Tags)
+                                                {t('templates.wizard.manageTags')}
                                             </div>
                                             <div className="modern-tag-container">
                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
@@ -522,14 +522,14 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                                                             </span>
                                                         ))
                                                     ) : (
-                                                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>설정된 태그가 없습니다.</span>
+                                                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>{t('templates.wizard.noTags')}</span>
                                                     )}
                                                 </div>
                                                 <input
                                                     ref={tagInputRef}
                                                     type="text"
                                                     className="tag-input-v2"
-                                                    placeholder="태그를 입력하고 ENTER..."
+                                                    placeholder={t('templates.wizard.tagPlaceholder')}
                                                     onKeyDown={handleAddTag}
                                                 />
                                             </div>
@@ -543,25 +543,25 @@ const AlarmTemplateCreateEditModal: React.FC<Props> = ({
                     <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
                         {step > 1 ? (
                             <button className="btn btn-outline" onClick={handleBack} style={{ width: '100px' }}>
-                                <i className="fas fa-arrow-left"></i> 이전
+                                <i className="fas fa-arrow-left"></i> {t('templates.wizard.prev')}
                             </button>
                         ) : (
                             mode === 'edit' && onDelete && (
                                 <button className="btn btn-outline-danger" onClick={() => onDelete(template!.id, template!.name)}>
-                                    <i className="fas fa-trash-alt"></i> 템플릿 삭제
+                                    <i className="fas fa-trash-alt"></i> {t('templates.wizard.deleteTemplate')}
                                 </button>
                             )
                         )}
 
                         <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px' }}>
-                            <button className="btn btn-ghost" onClick={onClose}>{t('cancel', {ns: 'common'})}</button>
+                            <button className="btn btn-ghost" onClick={onClose}>{t('cancel', { ns: 'common' })}</button>
                             {step < 4 ? (
                                 <button className="btn btn-primary" onClick={handleNext} disabled={!formData.name && step === 1} style={{ minWidth: '120px' }}>
-                                    다음 단계 <i className="fas fa-arrow-right"></i>
+                                    {t('templates.wizard.next')} <i className="fas fa-arrow-right"></i>
                                 </button>
                             ) : (
                                 <button className="btn btn-primary" onClick={handleSave} style={{ minWidth: '160px' }}>
-                                    <i className="fas fa-check"></i> 템플릿 저장 및 게시
+                                    <i className="fas fa-check"></i> {t('templates.wizard.savePublish')}
                                 </button>
                             )}
                         </div>
