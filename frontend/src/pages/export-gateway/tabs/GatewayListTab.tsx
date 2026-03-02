@@ -256,12 +256,12 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                             <div style={{ display: 'flex', gap: '8px' }}>
                                                 <div className={`badge ${(gw.live_status?.status === 'online' || gw.live_status?.status === 'running' || gw.status === 'online' || gw.status === 'active') ? 'success' : 'neutral'}`}>
                                                     <i className={`fas fa-circle`} style={{ fontSize: '8px', marginRight: '5px' }} />
-                                                    {(gw.live_status?.status === 'online' || gw.live_status?.status === 'running' || gw.status === 'online' || gw.status === 'active') ? 'ONLINE' : 'OFFLINE'}
+                                                    {(gw.live_status?.status === 'online' || gw.live_status?.status === 'running' || gw.status === 'online' || gw.status === 'active') ? t('exportPage.statOnline', { ns: 'dataExport' }) : t('exportPage.statOffline', { ns: 'dataExport' })}
                                                 </div>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDelete(gw); }}
                                                     style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: '0 4px' }}
-                                                    title="Delete"
+                                                    title={t('delete', { ns: 'common' })}
                                                 >
                                                     <i className="fas fa-trash-alt hover-danger" />
                                                 </button>
@@ -275,7 +275,7 @@ const GatewayListTab: React.FC<GatewayListTabProps> = ({
                                         <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
                                             <span className="badge neutral-light" style={{ fontSize: '10px', padding: '2px 6px' }}>
                                                 <i className="fas fa-satellite-dish" style={{ marginRight: '4px' }} />
-                                                EXPORT GATEWAY
+                                                {t('gwTab.exportGatewayBadge', { ns: 'dataExport' })}
                                             </span>
                                         </div>
                                     </div>
