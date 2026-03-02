@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ProtocolApiService, Protocol, ProtocolInstance } from '../../api/services/protocolApi';
 import { StatCard } from '../common/StatCard';
 import { useConfirmContext } from '../common/ConfirmProvider';
@@ -16,6 +17,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
     const { type: protocolType, id: protocolId, tab: urlTab } = useParams();
     const navigate = useNavigate();
     const { confirm } = useConfirmContext();
+    const { t } = useTranslation(['protocols', 'common']);
 
     // 탭 상태 (URL과 동기화)
     const activeTab = urlTab || 'info';
@@ -99,15 +101,15 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
     // 변경된 필드 추출
     const getChangedFields = () => {
         const changes: string[] = [];
-        if (editData.display_name !== protocol.display_name) changes.push(`Protocol Name: ${protocol.display_name} -> ${editData.display_name}`);
-        if (editData.default_port !== protocol.default_port) changes.push(`Default Port: ${protocol.default_port} -> ${editData.default_port}`);
-        if (editData.uses_serial !== protocol.uses_serial) changes.push(`Serial: ${protocol.uses_serial ? 'Supported' : 'Not Supported'} -> ${editData.uses_serial ? 'Supported' : 'Not Supported'}`);
-        if (editData.requires_broker !== protocol.requires_broker) changes.push(`Broker Required: ${protocol.requires_broker ? 'Yes' : 'No'} -> ${editData.requires_broker ? 'Yes' : 'No'}`);
-        if (editData.default_polling_interval !== protocol.default_polling_interval) changes.push(`Polling Interval: ${protocol.default_polling_interval}ms -> ${editData.default_polling_interval}ms`);
-        if (editData.category !== protocol.category) changes.push(`Category: ${protocol.category} -> ${editData.category}`);
-        if (JSON.stringify(editData.supported_data_types) !== JSON.stringify(protocol.supported_data_types)) changes.push('Supported data types changed');
-        if (JSON.stringify(editData.supported_operations) !== JSON.stringify(protocol.supported_operations)) changes.push('Protocol features changed');
-        if (editData.description !== protocol.description) changes.push('Detailed description changed');
+        if (editData.display_name !== protocol.display_name) changes.push(`${t('detail.protocolName', { defaultValue: '프로토콜 이름' })}: ${protocol.display_name} -> ${editData.display_name}`);
+        if (editData.default_port !== protocol.default_port) changes.push(`${t('detail.defaultPort', { defaultValue: '기본 포트' })}: ${protocol.default_port} -> ${editData.default_port}`);
+        if (editData.uses_serial !== protocol.uses_serial) changes.push(`${t('detail.serialSupport', { defaultValue: '시리얼 지원' })}: ${protocol.uses_serial ? t('detail.supported', { defaultValue: '지원' }) : t('detail.notSupported', { defaultValue: '미지원' })} -> ${editData.uses_serial ? t('detail.supported', { defaultValue: '지원' }) : t('detail.notSupported', { defaultValue: '미지원' })}`);
+        if (editData.requires_broker !== protocol.requires_broker) changes.push(`${t('detail.brokerRequired', { defaultValue: '브로커 필요' })}: ${protocol.requires_broker ? t('common:yes', { defaultValue: '예' }) : t('common:no', { defaultValue: '아니요' })} -> ${editData.requires_broker ? t('common:yes', { defaultValue: '예' }) : t('common:no', { defaultValue: '아니요' })}`);
+        if (editData.default_polling_interval !== protocol.default_polling_interval) changes.push(`${t('detail.pollingInterval', { defaultValue: '폴링 주기' })}: ${protocol.default_polling_interval}ms -> ${editData.default_polling_interval}ms`);
+        if (editData.category !== protocol.category) changes.push(`${t('detail.category', { defaultValue: '카테고리' })}: ${protocol.category} -> ${editData.category}`);
+        if (JSON.stringify(editData.supported_data_types) !== JSON.stringify(protocol.supported_data_types)) changes.push(t('detail.dataTypesChanged', { defaultValue: '지원 데이터 타입 변경됨' }));
+        if (JSON.stringify(editData.supported_operations) !== JSON.stringify(protocol.supported_operations)) changes.push(t('detail.featuresChanged', { defaultValue: '프로토콜 기능 변경됨' }));
+        if (editData.description !== protocol.description) changes.push(t('detail.descriptionChanged', { defaultValue: '상세 설명 변경됨' }));
         return changes;
     };
 
@@ -124,27 +126,27 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
             {/* 1. 상단 요약 영역 (공통) */}
             <div className="dashboard-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
                 <StatCard
-                    label="Connection Status"
-                    value={protocol.is_enabled ? 'Normal' : 'Inactive'}
+                    label={t('detail.connectionStatus', { defaultValue: '연결 상태' })}
+                    value={protocol.is_enabled ? t('detail.statusNormal', { defaultValue: '정상' }) : t('detail.statusInactive', { defaultValue: '비활성' })}
                     type={protocol.is_enabled ? 'success' : 'neutral'}
                     icon={protocol.is_enabled ? 'fas fa-check-circle' : 'fas fa-pause-circle'}
                 />
                 {protocol.requires_broker && (
                     <StatCard
-                        label="Instances"
+                        label={t('detail.instances', { defaultValue: '인스턴스' })}
                         value={instances.length}
                         type="primary"
                         icon="fas fa-server"
                     />
                 )}
                 <StatCard
-                    label="Devices"
+                    label={t('detail.devices', { defaultValue: '디바이스' })}
                     value={protocol.device_count || 0}
                     type="primary"
                     icon="fas fa-microchip"
                 />
                 <StatCard
-                    label="Error Logs (24h)"
+                    label={t('detail.errorLogs24h', { defaultValue: '오류 로그 (24h)' })}
                     value="0"
                     type="error"
                     icon="fas fa-exclamation-circle"
@@ -172,14 +174,13 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                     gap: '8px'
                 }}>
                     {[
-                        { id: 'info', label: 'Protocol Info', icon: 'fas fa-info-circle' },
-                        { id: 'monitoring', label: 'Real-time Status', icon: 'fas fa-desktop' },
-                        // 브로커(vhost) 격리가 필요한 경우에만 인스턴스 및 보안 탭 노출
+                        { id: 'info', label: t('tabs.info', { defaultValue: '프로토콜 정보' }), icon: 'fas fa-info-circle' },
+                        { id: 'monitoring', label: t('tabs.realtimeStatus', { defaultValue: '실시간 상태' }), icon: 'fas fa-desktop' },
                         ...(protocol.requires_broker ? [
-                            { id: 'instances', label: 'Instances', icon: 'fas fa-server' },
-                            { id: 'security', label: 'Security/Auth', icon: 'fas fa-shield-alt' }
+                            { id: 'instances', label: t('tabs.instances', { defaultValue: '인스턴스' }), icon: 'fas fa-server' },
+                            { id: 'security', label: t('tabs.security', { defaultValue: '보안/인증' }), icon: 'fas fa-shield-alt' }
                         ] : []),
-                        { id: 'devices', label: 'Device List', icon: 'fas fa-list' }
+                        { id: 'devices', label: t('tabs.deviceList', { defaultValue: '디바이스 목록' }), icon: 'fas fa-list' }
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -234,17 +235,17 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                     background: device.is_enabled ? 'var(--success-50)' : 'var(--neutral-100)',
                                                     color: device.is_enabled ? 'var(--success-600)' : 'var(--neutral-500)'
                                                 }}>
-                                                    {device.is_enabled ? 'ACTIVE' : 'DISABLED'}
+                                                    {device.is_enabled ? t('common:active', { defaultValue: '활성' }) : t('common:disabled', { defaultValue: '비활성' })}
                                                 </span>
                                             </div>
                                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                                 <span style={{ fontSize: '11px', padding: '2px 6px', background: 'var(--neutral-50)', borderRadius: '4px', border: '1px solid var(--neutral-100)' }}>
-                                                    Type: {device.device_type}
+                                                    {t('detail.type', { defaultValue: '유형' })}: {device.device_type}
                                                 </span>
                                                 {device.last_communication && (
                                                     <span style={{ fontSize: '11px', padding: '2px 6px', background: 'var(--primary-50)', color: 'var(--primary-600)', borderRadius: '4px' }}>
                                                         <i className="fas fa-clock" style={{ marginRight: '4px' }}></i>
-                                                        Last: {new Date(device.last_communication).toLocaleTimeString()}
+                                                        {t('detail.last', { defaultValue: '최근' })}: {new Date(device.last_communication).toLocaleTimeString()}
                                                     </span>
                                                 )}
                                             </div>
@@ -253,7 +254,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                 ) : (
                                     <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '100px', color: 'var(--neutral-400)' }}>
                                         <i className="fas fa-chart-area" style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.2 }}></i>
-                                        <p>No devices to monitor. Please register devices using this protocol first.</p>
+                                        <p>{t('detail.noDevicesMonitor', { defaultValue: '모니터링할 디바이스가 없습니다. 먼저 이 프로토콜을 사용하는 디바이스를 등록해주세요.' })}</p>
                                     </div>
                                 )}
                             </div>
@@ -263,14 +264,14 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                     {activeTab === 'devices' && (
                         <div className="devices-content" style={{ animation: 'fadeIn 0.3s ease-in' }}>
                             <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0 }}>Connected Devices ({devices.length})</h3>
+                                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0 }}>{t('detail.connectedDevices', { defaultValue: '연결된 디바이스' })} ({devices.length})</h3>
                                 <button
                                     className="mgmt-btn mgmt-btn-outline primary"
                                     style={{ padding: '4px 12px', fontSize: '12px', height: '32px' }}
                                     onClick={() => navigate(`/devices?protocolId=${protocol.id}${selectedInstanceId ? `&instanceId=${selectedInstanceId}` : ''}`)}
                                 >
                                     <i className="fas fa-external-link-alt" style={{ marginRight: '6px' }}></i>
-                                    View in Device Manager
+                                    {t('detail.viewDeviceManager', { defaultValue: '디바이스 관리자에서 보기' })}
                                 </button>
                             </div>
 
@@ -279,10 +280,10 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                     <thead>
                                         <tr style={{ background: 'var(--neutral-50)', borderBottom: '1px solid var(--neutral-100)' }}>
                                             <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)', width: '60px' }}>ID</th>
-                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>Device Name</th>
-                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>Endpoint</th>
-                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>Type</th>
-                                            <th style={{ padding: '12px 20px', textAlign: 'center', fontWeight: 800, color: 'var(--neutral-600)', width: '100px' }}>Status</th>
+                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>{t('common:name', { defaultValue: '이름' })}</th>
+                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>{t('detail.endpoint', { defaultValue: '엔드포인트' })}</th>
+                                            <th style={{ padding: '12px 20px', textAlign: 'left', fontWeight: 800, color: 'var(--neutral-600)' }}>{t('detail.type', { defaultValue: '유형' })}</th>
+                                            <th style={{ padding: '12px 20px', textAlign: 'center', fontWeight: 800, color: 'var(--neutral-600)', width: '100px' }}>{t('common:status', { defaultValue: '상태' })}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -307,7 +308,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                             marginRight: '8px'
                                                         }}></span>
                                                         <span style={{ fontSize: '12px', fontWeight: 700, color: device.is_enabled ? 'var(--success-700)' : 'var(--neutral-500)' }}>
-                                                            {device.is_enabled ? 'Active' : 'Disabled'}
+                                                            {device.is_enabled ? t('common:active', { defaultValue: '활성' }) : t('common:disabled', { defaultValue: '비활성' })}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -315,7 +316,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                         ) : (
                                             <tr>
                                                 <td colSpan={5} style={{ padding: '60px', textAlign: 'center', color: 'var(--neutral-400)' }}>
-                                                    No connected devices.
+                                                    {t('detail.noConnectedDevices', { defaultValue: '연결된 디바이스가 없습니다.' })}
                                                 </td>
                                             </tr>
                                         )}
@@ -349,11 +350,11 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                             autoFocus
                                         />
                                     ) : (
-                                        <h3 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>{protocol.display_name} Detailed Specs</h3>
+                                        <h3 style={{ fontSize: '18px', fontWeight: 800, margin: 0 }}>{protocol.display_name} {t('detail.detailedSpecs', { defaultValue: '상세 사양' })}</h3>
                                     )}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontWeight: 600 }}>Protocol ID: {protocol.id}</span>
+                                    <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontWeight: 600 }}>{t('detail.protocolId', { defaultValue: '프로토콜 ID' })}: {protocol.id}</span>
                                     {isEditing ? (
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <button
@@ -361,7 +362,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                 onClick={() => setIsEditing(false)}
                                                 disabled={loading}
                                             >
-                                                Cancel
+                                                {t('cancel', { ns: 'common' })}
                                             </button>
                                             <button
                                                 className="mgmt-btn mgmt-btn-sm mgmt-btn-primary"
@@ -370,8 +371,8 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
 
                                                     if (changes.length === 0) {
                                                         await confirm({
-                                                            title: 'No Changes',
-                                                            message: 'No changes were made.',
+                                                            title: t('detail.noChanges', { defaultValue: '변경 없음' }),
+                                                            message: t('detail.noChangesMsg', { defaultValue: '변경된 내용이 없습니다.' }),
                                                             confirmText: 'OK',
                                                             confirmButtonType: 'primary'
                                                         });
@@ -380,10 +381,10 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                     }
 
                                                     const ok = await confirm({
-                                                        title: 'Save Settings',
+                                                        title: t('detail.saveSettings', { defaultValue: '설정 저장' }),
                                                         message: (
                                                             <div>
-                                                                <p style={{ marginBottom: '12px' }}>Save the following changes?</p>
+                                                                <p style={{ marginBottom: '12px' }}>{t('detail.saveChangesQuestion', { defaultValue: '다음 변경 사항을 저장하시겠습니까?' })}</p>
                                                                 <ul style={{
                                                                     fontSize: '13px',
                                                                     color: 'var(--neutral-600)',
@@ -396,7 +397,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                                 </ul>
                                                             </div>
                                                         ) as any,
-                                                        confirmText: 'Save',
+                                                        confirmText: t('save', { ns: 'common', defaultValue: '저장' }),
                                                         confirmButtonType: 'primary'
                                                     });
                                                     if (ok) {
@@ -407,7 +408,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                 disabled={loading}
                                             >
                                                 <i className="fas fa-save" style={{ marginRight: '6px' }}></i>
-                                                Save
+                                                {t('save', { ns: 'common', defaultValue: '저장' })}
                                             </button>
                                         </div>
                                     ) : (
@@ -419,7 +420,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                             }}
                                         >
                                             <i className="fas fa-edit" style={{ marginRight: '6px' }}></i>
-                                            Edit
+                                            {t('edit', { ns: 'common', defaultValue: '수정' })}
                                         </button>
                                     )}
                                 </div>
@@ -430,32 +431,32 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                     <section>
                                         <h4 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--neutral-800)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <i className="fas fa-info-circle" style={{ color: 'var(--primary-500)' }}></i> Basic Specs
+                                            <i className="fas fa-info-circle" style={{ color: 'var(--primary-500)' }}></i> {t('detail.basicSpecs', { defaultValue: '기본 사양' })}
                                         </h4>
                                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                                             <tbody>
                                                 {[
-                                                    { label: 'Internal ID', value: protocol.protocol_type, isReadOnly: true },
+                                                    { label: t('detail.internalId', { defaultValue: '내부 ID' }), value: protocol.protocol_type, isReadOnly: true },
                                                     {
-                                                        label: 'Default Port',
+                                                        label: t('detail.defaultPort', { defaultValue: '기본 포트' }),
                                                         value: protocol.default_port || 'N/A',
                                                         field: 'default_port',
                                                         type: 'number'
                                                     },
                                                     {
-                                                        label: 'Serial Support',
-                                                        value: protocol.uses_serial ? 'Supported' : 'Not Supported',
+                                                        label: t('detail.serialSupport', { defaultValue: '시리얼 지원' }),
+                                                        value: protocol.uses_serial ? t('detail.supported', { defaultValue: '지원' }) : t('detail.notSupported', { defaultValue: '미지원' }),
                                                         field: 'uses_serial',
                                                         type: 'checkbox'
                                                     },
                                                     {
-                                                        label: 'Broker (vhost)',
-                                                        value: protocol.requires_broker ? 'Required' : 'Not Required',
+                                                        label: t('detail.brokerVhost', { defaultValue: '브로커 (vhost)' }),
+                                                        value: protocol.requires_broker ? t('detail.required', { defaultValue: '필요' }) : t('detail.notRequired', { defaultValue: '불필요' }),
                                                         field: 'requires_broker',
                                                         type: 'checkbox'
                                                     },
                                                     {
-                                                        label: 'Default Polling',
+                                                        label: t('detail.defaultPolling', { defaultValue: '기본 폴링' }),
                                                         value: `${protocol.default_polling_interval || 1000} ms`,
                                                         field: 'default_polling_interval',
                                                         type: 'number',
@@ -495,7 +496,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                                 ))}
                                                 {isEditing && (
                                                     <tr style={{ borderBottom: '1px solid var(--neutral-50)' }}>
-                                                        <td style={{ padding: '10px 0', color: 'var(--neutral-500)', width: '120px', fontWeight: 600 }}>Category</td>
+                                                        <td style={{ padding: '10px 0', color: 'var(--neutral-500)', width: '120px', fontWeight: 600 }}>{t('detail.category', { defaultValue: '카테고리' })}</td>
                                                         <td style={{ padding: '10px 0', color: 'var(--neutral-900)', fontWeight: 700 }}>
                                                             <select
                                                                 value={editData.category || ''}
@@ -518,7 +519,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
 
                                     <section>
                                         <h4 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--neutral-800)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <i className="fas fa-database" style={{ color: 'var(--success-500)' }}></i> Supported Data Types
+                                            <i className="fas fa-database" style={{ color: 'var(--success-500)' }}></i> {t('detail.supportedDataTypes', { defaultValue: '지원 데이터 타입' })}
                                         </h4>
                                         <div className="inline-edit-chip-container">
                                             {isEditing ? (
@@ -549,7 +550,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                     <section>
                                         <h4 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--neutral-800)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <i className="fas fa-cogs" style={{ color: 'var(--warning-500)' }}></i> Protocol Features (Operations)
+                                            <i className="fas fa-cogs" style={{ color: 'var(--warning-500)' }}></i> {t('detail.protocolFeatures', { defaultValue: '프로토콜 기능 (작업)' })}
                                         </h4>
                                         <div className="inline-edit-chip-container">
                                             {isEditing ? (
@@ -578,7 +579,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
 
                                     <section style={{ flex: 1 }}>
                                         <h4 style={{ fontSize: '14px', fontWeight: 800, color: 'var(--neutral-800)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <i className="fas fa-align-left" style={{ color: 'var(--neutral-400)' }}></i> Protocol Description
+                                            <i className="fas fa-align-left" style={{ color: 'var(--neutral-400)' }}></i> {t('detail.protocolDescription', { defaultValue: '프로토콜 설명' })}
                                         </h4>
                                         {isEditing ? (
                                             <textarea
@@ -589,7 +590,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                             />
                                         ) : (
                                             <div style={{ padding: '16px', background: 'var(--neutral-50)', borderRadius: '12px', color: 'var(--neutral-600)', fontSize: '13px', lineHeight: '1.6', border: '1px solid var(--neutral-100)' }}>
-                                                {protocol.description || 'No additional description for this protocol.'}
+                                                {protocol.description || t('detail.noDescription', { defaultValue: '이 프로토콜에 대한 추가 설명이 없습니다.' })}
                                             </div>
                                         )}
                                     </section>
@@ -598,7 +599,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
 
                             {/* Raw Data (Foldable/Optional - Keep for super technical needs but hide by default) */}
                             <details style={{ marginTop: '32px', borderTop: '1px dashed var(--neutral-200)', paddingTop: '16px' }}>
-                                <summary style={{ fontSize: '12px', color: 'var(--neutral-400)', cursor: 'pointer', fontWeight: 700 }}>Raw Protocol Meta-JSON</summary>
+                                <summary style={{ fontSize: '12px', color: 'var(--neutral-400)', cursor: 'pointer', fontWeight: 700 }}>{t('detail.rawMetaJson', { defaultValue: '원시 프로토콜 메타 JSON' })}</summary>
                                 <pre style={{ background: 'var(--neutral-50)', padding: '16px', borderRadius: '12px', fontSize: '11px', marginTop: '12px', overflowX: 'auto' }}>
                                     {JSON.stringify(protocol, null, 2)}
                                 </pre>
@@ -623,7 +624,7 @@ const ProtocolDashboard: React.FC<ProtocolDashboardProps> = ({ protocol, onRefre
                                         gap: '12px'
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                            <label style={{ fontSize: '13px', fontWeight: 800, color: 'var(--neutral-600)' }}>Select Instance to Configure:</label>
+                                            <label style={{ fontSize: '13px', fontWeight: 800, color: 'var(--neutral-600)' }}>{t('detail.selectInstanceConfigure', { defaultValue: '설정할 인스턴스 선택:' })}  </label>
                                             <select
                                                 value={selectedInstanceId || ''}
                                                 onChange={(e) => setSelectedInstanceId(parseInt(e.target.value))}
