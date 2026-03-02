@@ -520,6 +520,7 @@ const BackupRestore: React.FC = () => {
                 <input
                   type="text"
                   className="mgmt-input"
+                  style={{ width: '100%' }}
                   placeholder={t('modal.namePlaceholder')}
                   value={backupFormData.name}
                   onChange={(e) => setBackupFormData({ ...backupFormData, name: e.target.value })}
@@ -529,7 +530,7 @@ const BackupRestore: React.FC = () => {
                 <label>{t('modal.descLabel')}</label>
                 <textarea
                   className="mgmt-input"
-                  style={{ height: '80px', paddingTop: '10px' }}
+                  style={{ width: '100%', height: '80px', paddingTop: '10px', whiteSpace: 'pre-wrap' }}
                   placeholder={t('modal.descPlaceholder')}
                   value={backupFormData.description}
                   onChange={(e) => setBackupFormData({ ...backupFormData, description: e.target.value })}
