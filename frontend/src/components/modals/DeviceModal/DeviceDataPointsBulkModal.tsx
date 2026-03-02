@@ -766,11 +766,11 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                 </div>
                             </div>
                             <div className="instruction-box">
-                                <p className="main-desc">Copy (Ctrl+C) Excel data and paste (Ctrl+V) it into the table below.</p>
+                                <p className="main-desc">{t('bulk.instruction1', { ns: 'devices' })}</p>
                                 <ul className="usage-guide">
-                                    <li>Name* and Address* are required. Addresses must be unique.</li>
-                                    <li>Press Enter to move rows; a new row is auto-added at the last row.</li>
-                                    <li>{t('labels.invalidCellsAreHighlightedInRed', { ns: 'devices' })}</li>
+                                    <li>{t('bulk.instruction2', { ns: 'devices' })}</li>
+                                    <li>{t('bulk.instruction3', { ns: 'devices' })}</li>
+                                    <li>{t('bulk.instruction4', { ns: 'devices' })}</li>
                                 </ul>
                             </div>
                         </div>
@@ -789,10 +789,10 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                     <thead>
                                         <tr>
                                             <th className="col-idx">#</th>
-                                            <th className="col-name">Name *</th>
-                                            <th className="col-addr">{protocolType === 'MQTT' ? 'Sub-Topic *' : 'Address *'}</th>
+                                            <th className="col-name">{t('bulk.colName', { ns: 'devices' })}</th>
+                                            <th className="col-addr">{protocolType === 'MQTT' ? 'Sub-Topic *' : t('bulk.colAddress', { ns: 'devices' })}</th>
                                             {protocolType === 'MQTT' && <th className="col-key">{t('labels.jsonKey', { ns: 'devices' })}</th>}
-                                            {isModbus && <th className="col-bit" title="Bit extraction index (0–15) for Modbus register bit-split">BIT #</th>}
+                                            {isModbus && <th className="col-bit" title="Bit extraction index (0–15) for Modbus register bit-split">{t('bulk.colBit', { ns: 'devices' })}</th>}
                                             <th className="col-type">{t('modal.dpDiffType', { ns: 'devices' })}</th>
                                             <th className="col-mode">{t('modal.dpDiffAccess', { ns: 'devices' })}</th>
                                             <th className="col-desc">{t('dpTab.description', { ns: 'devices' })}</th>
@@ -938,10 +938,10 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                     <div className="footer-left">
                         <div className="action-group">
                             <button className="add-row-btn" onClick={addRow}>
-                                <i className="fas fa-plus"></i> Add Row
+                                <i className="fas fa-plus"></i> {t('bulk.addRow', { ns: 'devices' })}
                             </button>
                             <button className="template-btn" onClick={() => setShowTemplateSelector(!showTemplateSelector)}>
-                                <i className="fas fa-file-import"></i> Load Template
+                                <i className="fas fa-file-import"></i> {t('bulk.loadTemplate', { ns: 'devices' })}
                             </button>
                             {protocolType === 'MQTT' && (
                                 <button
@@ -958,7 +958,7 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    <i className="fas fa-code"></i> Parse JSON Sample
+                                    <i className="fas fa-code"></i> {t('bulk.parseJson', { ns: 'devices' })}
                                 </button>
                             )}
                             {isModbus && (
@@ -975,11 +975,11 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                         cursor: 'pointer'
                                     }}
                                 >
-                                    <i className="fas fa-layer-group"></i> Bit Split
+                                    <i className="fas fa-layer-group"></i> {t('bulk.bitSplit', { ns: 'devices' })}
                                 </button>
                             )}
                             <button className="reset-btn" onClick={handleReset} title="Reset all input data">
-                                <i className="fas fa-trash-alt"></i> Reset
+                                <i className="fas fa-trash-alt"></i> {t('bulk.reset', { ns: 'devices' })}
                             </button>
                         </div>
                         {showTemplateSelector && (
@@ -1138,13 +1138,13 @@ const DeviceDataPointsBulkModal: React.FC<DeviceDataPointsBulkModalProps> = ({
                                             borderRadius: '6px', fontWeight: 700, cursor: 'pointer'
                                         }}
                                     >
-                                        Analyze & Auto-generate
+                                        {t('bulk.analyzeAndGenerate', { ns: 'devices' })}
                                     </button>
                                 </div>
                             </div>
                         )}
                         <span className="stats-text" style={{ marginLeft: '12px' }}>
-                            Total <strong>{points.filter(p => p.name || p.address).length}</strong> entered
+                            {t('bulk.totalEntered', { ns: 'devices', count: points.filter(p => p.name || p.address).length })}
                         </span>
                     </div>
                     <div className="footer-right">

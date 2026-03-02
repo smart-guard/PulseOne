@@ -150,8 +150,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       if (showModal) {
         showModal({
           type: 'error',
-          title: 'Input Error',
-          message: 'Please fill in required fields (Name, Address).',
+          title: t('devices:modal.inputError'),
+          message: t('devices:modal.inputErrorMsg'),
           onConfirm: () => { }
         });
       } else {
@@ -213,8 +213,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       if (showModal) {
         showModal({
           type: 'success',
-          title: 'Saved',
-          message: 'Data point has been temporarily applied.\nClick [Save] at the bottom of the device modal to finalize.',
+          title: t('devices:modal.saved'),
+          message: t('devices:modal.savedMsg'),
           onConfirm: () => {
             setShowCreateForm(false);
             setShowEditForm(false);
@@ -232,8 +232,8 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       if (showModal) {
         showModal({
           type: 'error',
-          title: t('devices:msg.saveFailed'),
-          message: 'Save failed.',
+          title: t('devices:modal.saveFailed'),
+          message: t('devices:modal.saveFailedMsg'),
           onConfirm: () => { }
         });
       } else {
@@ -250,11 +250,11 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
       const res = await DataApiService.getCurrentValues({ point_ids: [dp.id], include_metadata: true });
       if (res.success && res.data?.current_values) {
         const val = res.data.current_values.find(v => v.point_id === dp.id);
-        const msg = val ? `Value: ${val.value} (${val.quality})\nTime: ${val.timestamp}` : 'Could not read value.';
+        const msg = val ? `Value: ${val.value} (${val.quality})\nTime: ${val.timestamp}` : t('devices:dpForm.couldNotRead');
         if (showModal) {
           showModal({
             type: 'success',
-            title: 'Read Test Result',
+            title: t('devices:dpForm.readTestResult'),
             message: msg,
             onConfirm: () => { }
           });
@@ -263,14 +263,14 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         }
       } else {
         if (showModal) {
-          showModal({ type: 'error', title: 'Read Failed', message: 'Could not read data.', onConfirm: () => { } });
+          showModal({ type: 'error', title: t('devices:dpForm.readFailed'), message: t('devices:dpForm.readFailedMsg'), onConfirm: () => { } });
         } else {
           alert('Read failed');
         }
       }
     } catch (e) {
       if (showModal) {
-        showModal({ type: 'error', title: 'Communication Error', message: 'Cannot communicate with backend server.', onConfirm: () => { } });
+        showModal({ type: 'error', title: t('devices:dpForm.commError'), message: t('devices:dpForm.commErrorMsg'), onConfirm: () => { } });
       } else {
         alert('Communication error');
       }
@@ -353,7 +353,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               />
             </div>
             <div className="form-field">
-              <label>{protocolType === 'MQTT' ? 'Sub-Topic' : 'Address'} *</label>
+              <label>{protocolType === 'MQTT' ? t('devices:dpForm.subTopic') : t('devices:dpForm.address')} *</label>
               <input
                 type="text"
                 value={protocolType === 'MQTT' ? (formData.address_string || '') : (formData.address || '')}
@@ -370,7 +370,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
 
             {protocolType === 'MQTT' && (
               <div className="form-field">
-                <label>JSON Key (Mapping)</label>
+                <label>{t('devices:dpForm.jsonKeyMapping')}</label>
                 <input
                   type="text"
                   value={formData.mapping_key || ''}
@@ -386,7 +386,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             {/* Modbus 전용: Function Code 선택 */}
             {(protocolType === 'MODBUS_TCP' || protocolType === 'MODBUS_RTU' || protocolType === 'MODBUS') && (
               <div className="form-field">
-                <label>Function Code (FC) *</label>
+                <label>{t('devices:dpForm.functionCode')} *</label>
                 <select
                   value={
                     typeof formData.protocol_params === 'object'
@@ -401,19 +401,19 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                     setFormData({ ...formData, protocol_params: params });
                   }}
                 >
-                  <option value="1">FC01 — Read Coils (CO:xxx, BOOL)</option>
-                  <option value="2">FC02 — Read Discrete Inputs (DI:xxx)</option>
-                  <option value="3">FC03 — Read Holding Registers (HR:xxx)</option>
-                  <option value="4">FC04 — Read Input Registers (IR:xxx)</option>
+                  <option value="1">{t('devices:dpForm.fc01')}</option>
+                  <option value="2">{t('devices:dpForm.fc02')}</option>
+                  <option value="3">{t('devices:dpForm.fc03')}</option>
+                  <option value="4">{t('devices:dpForm.fc04')}</option>
                 </select>
-                <span className="hint">FC03 is common for registers. Use FC01 for BOOL points.</span>
+                <span className="hint">{t('devices:dpForm.fcHint')}</span>
               </div>
             )}
 
             {/* Modbus 전용: Bit Index (비트맵 레지스터) */}
             {(protocolType === 'MODBUS_TCP' || protocolType === 'MODBUS_RTU' || protocolType === 'MODBUS') && (
               <div className="form-field">
-                <label>Bit Index (0-15, optional)</label>
+                <label>{t('devices:dpForm.bitIndex')}</label>
                 <input
                   type="number"
                   min="0"
@@ -434,9 +434,9 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                     }
                     setFormData({ ...formData, protocol_params: params });
                   }}
-                  placeholder="Leave blank to use full register value"
+                  placeholder={t('devices:dpForm.bitIndexPlaceholder')}
                 />
-                <span className="hint">Split a register into individual bits (0=LSB)</span>
+                <span className="hint">{t('devices:dpForm.bitIndexHint')}</span>
               </div>
             )}
 
@@ -490,7 +490,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
             </div>
 
             <div className="form-field">
-              <label>Group</label>
+              <label>{t('devices:dpForm.group')}</label>
               <input
                 type="text"
                 value={formData.group_name || ''}
@@ -499,7 +499,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
               />
             </div>
             <div className="form-field">
-              <label>Tags (comma separated)</label>
+              <label>{t('devices:dpForm.tags')}</label>
               <input
                 type="text"
                 value={Array.isArray(formData.tags) ? formData.tags.join(', ') : ''}
@@ -515,12 +515,12 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   checked={formData.is_enabled !== false}
                   onChange={e => setFormData({ ...formData, is_enabled: e.target.checked })}
                 />
-                Enable Point
+                {t('devices:dpForm.enablePoint')}
               </label>
             </div>
 
             <div className="form-field full">
-              <label>Metadata (JSON)</label>
+              <label>{t('devices:dpForm.metadata')}</label>
               <textarea
                 style={{ height: '60px', fontSize: '12px', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
                 value={typeof formData.metadata === 'object' ? JSON.stringify(formData.metadata) : formData.metadata || '{}'}
@@ -559,7 +559,7 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                 value={formData.scaling_factor ?? 1}
                 onChange={e => setFormData({ ...formData, scaling_factor: parseFloat(e.target.value) })}
               />
-              <span className="hint">Raw Value * Factor</span>
+              <span className="hint">{t('devices:dpForm.scalingFactorHint')}</span>
             </div>
             <div className="form-field">
               <label>{t('devices:dataPoint.scalingOffset')}</label>
@@ -568,25 +568,25 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                 value={formData.scaling_offset ?? 0}
                 onChange={e => setFormData({ ...formData, scaling_offset: parseFloat(e.target.value) })}
               />
-              <span className="hint">+ Offset</span>
+              <span className="hint">{t('devices:dpForm.scalingOffsetHint')}</span>
             </div>
 
             <div className="form-field">
-              <label>Min Value</label>
+              <label>{t('devices:dpForm.minValue')}</label>
               <input
                 type="number"
                 value={formData.min_value ?? ''}
                 onChange={e => setFormData({ ...formData, min_value: parseFloat(e.target.value) })}
-                placeholder="No Limit"
+                placeholder={t('devices:dpForm.noLimit')}
               />
             </div>
             <div className="form-field">
-              <label>Max Value</label>
+              <label>{t('devices:dpForm.maxValue')}</label>
               <input
                 type="number"
                 value={formData.max_value ?? ''}
                 onChange={e => setFormData({ ...formData, max_value: parseFloat(e.target.value) })}
-                placeholder="No Limit"
+                placeholder={t('devices:dpForm.noLimit')}
               />
             </div>
           </div>
@@ -601,31 +601,31 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   checked={formData.is_log_enabled !== false}
                   onChange={e => setFormData({ ...formData, is_log_enabled: e.target.checked })}
                 />
-                Enable Data Logging
+                {t('devices:dpForm.enableLogging')}
               </label>
             </div>
 
             {formData.is_log_enabled && (
               <div className="form-grid-2">
                 <div className="form-field">
-                  <label>Logging Interval (ms)</label>
+                  <label>{t('devices:dpForm.loggingInterval')}</label>
                   <input
                     type="number"
                     value={formData.log_interval_ms ?? 0}
                     onChange={e => setFormData({ ...formData, log_interval_ms: parseInt(e.target.value) })}
                     min="0"
                   />
-                  <span className="hint">0 = Log on every change (COV)</span>
+                  <span className="hint">{t('devices:dpForm.loggingIntervalHint')}</span>
                 </div>
                 <div className="form-field">
-                  <label>Logging Deadband</label>
+                  <label>{t('devices:dpForm.loggingDeadband')}</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.log_deadband ?? 0}
                     onChange={e => setFormData({ ...formData, log_deadband: parseFloat(e.target.value) })}
                   />
-                  <span className="hint">Save only when value changes by more than this amount</span>
+                  <span className="hint">{t('devices:dpForm.loggingDeadbandHint')}</span>
                 </div>
               </div>
             )}
@@ -641,26 +641,26 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   checked={formData.is_alarm_enabled === true}
                   onChange={e => setFormData({ ...formData, is_alarm_enabled: e.target.checked })}
                 />
-                Use Alarm
+                {t('devices:dpForm.enableAlarm')}
               </label>
             </div>
 
             {formData.is_alarm_enabled && (
               <div className="form-grid-2">
                 <div className="form-field">
-                  <label>Alarm Priority</label>
+                  <label>{t('devices:dpForm.alarmPriority')}</label>
                   <select
                     value={formData.alarm_priority || 'medium'}
                     onChange={e => setFormData({ ...formData, alarm_priority: e.target.value as any })}
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
+                    <option value="low">{t('common:low')}</option>
+                    <option value="medium">{t('common:medium')}</option>
+                    <option value="high">{t('common:high')}</option>
+                    <option value="critical">{t('common:critical')}</option>
                   </select>
                 </div>
                 <div className="form-field">
-                  <label>Alarm Deadband</label>
+                  <label>{t('devices:dpForm.alarmDeadband')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -669,23 +669,23 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
                   />
                 </div>
                 <div className="form-field">
-                  <label>High Limit</label>
+                  <label>{t('devices:dpForm.highLimit')}</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.high_alarm_limit ?? ''}
                     onChange={e => setFormData({ ...formData, high_alarm_limit: parseFloat(e.target.value) })}
-                    placeholder="No Limit"
+                    placeholder={t('devices:dpForm.noLimit')}
                   />
                 </div>
                 <div className="form-field">
-                  <label>Low Limit</label>
+                  <label>{t('devices:dpForm.lowLimit')}</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.low_alarm_limit ?? ''}
                     onChange={e => setFormData({ ...formData, low_alarm_limit: parseFloat(e.target.value) })}
-                    placeholder="No Limit"
+                    placeholder={t('devices:dpForm.noLimit')}
                   />
                 </div>
               </div>
@@ -867,17 +867,17 @@ const DeviceDataPointsTab: React.FC<DeviceDataPointsTabProps> = ({
         <div className="modal-overlay">
           <div className="modal-dialog">
             <div className="modal-hdr">
-              <h3>{showCreateForm ? 'New Data Point' : 'Edit Data Point'}</h3>
+              <h3>{showCreateForm ? t('devices:dpForm.newDataPoint') : t('devices:dpForm.editDataPoint')}</h3>
               <button onClick={() => { setShowCreateForm(false); setShowEditForm(false); }}>
                 <i className="fas fa-times"></i>
               </button>
             </div>
 
             <div className="modal-tabs">
-              <button className={activeFormTab === 'basic' ? 'active' : ''} onClick={() => setActiveFormTab('basic')}>Basic Info</button>
-              <button className={activeFormTab === 'engineering' ? 'active' : ''} onClick={() => setActiveFormTab('engineering')}>Engineering</button>
-              <button className={activeFormTab === 'logging' ? 'active' : ''} onClick={() => setActiveFormTab('logging')}>Logging</button>
-              <button className={activeFormTab === 'alarm' ? 'active' : ''} onClick={() => setActiveFormTab('alarm')}>Alarm</button>
+              <button className={activeFormTab === 'basic' ? 'active' : ''} onClick={() => setActiveFormTab('basic')}>{t('devices:dpForm.tabBasic')}</button>
+              <button className={activeFormTab === 'engineering' ? 'active' : ''} onClick={() => setActiveFormTab('engineering')}>{t('devices:dpForm.tabEngineering')}</button>
+              <button className={activeFormTab === 'logging' ? 'active' : ''} onClick={() => setActiveFormTab('logging')}>{t('devices:dpForm.tabLogging')}</button>
+              <button className={activeFormTab === 'alarm' ? 'active' : ''} onClick={() => setActiveFormTab('alarm')}>{t('devices:dpForm.tabAlarm')}</button>
             </div>
 
             <div className="modal-body icon-inputs">
