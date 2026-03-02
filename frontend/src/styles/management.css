@@ -1140,13 +1140,20 @@
     margin-bottom: var(--space-3);
 }
 
-/* Ensure inputs/selects in all modal types take full width */
+/* Override input height inside modals - variable + direct rules for maximum compatibility */
+.mgmt-modal-container,
+.mgmt-modal-content {
+    --input-h: 52px;
+}
+
 .mgmt-modal-container .mgmt-input,
 .mgmt-modal-container .mgmt-select,
 .mgmt-modal-content .mgmt-input,
 .mgmt-modal-content .mgmt-select {
     width: 100% !important;
     height: 52px !important;
+    min-height: 52px !important;
+    line-height: 52px;
 }
 
 .mgmt-modal-form-group label {
