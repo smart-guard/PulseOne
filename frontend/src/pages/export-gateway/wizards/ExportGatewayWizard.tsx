@@ -601,40 +601,40 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
 
     const steps = [
-        { title: 'Gateway', description: 'Basic Info' },
-        { title: 'Profile', description: 'Data Points' },
-        { title: 'Template', description: 'Transmission Format' },
-        { title: 'Target', description: 'Protocol/Mapping' },
-        { title: 'Schedule', description: 'Transmission Interval' }
+        { title: tl('gwWizard.step1', { ns: 'dataExport' }), description: tl('gwWizard.step1Desc', { ns: 'dataExport' }) },
+        { title: tl('gwWizard.step2', { ns: 'dataExport' }), description: tl('gwWizard.step2Desc', { ns: 'dataExport' }) },
+        { title: tl('gwWizard.step3', { ns: 'dataExport' }), description: tl('gwWizard.step3Desc', { ns: 'dataExport' }) },
+        { title: tl('gwWizard.step4', { ns: 'dataExport' }), description: tl('gwWizard.step4Desc', { ns: 'dataExport' }) },
+        { title: tl('gwWizard.step5', { ns: 'dataExport' }), description: tl('gwWizard.step5Desc', { ns: 'dataExport' }) }
     ];
 
     const handleNext = () => {
         // Validation logic
         if (currentStep === 0) {
             if (!wizardTenantId && !editingGateway) {
-                confirm({ title: 'Input Error', message: 'Please select a tenant. Tenant is required for new gateway registration.', showCancelButton: false, confirmButtonType: 'danger' });
+                confirm({ title: tl('gwWizard.inputError', { ns: 'dataExport' }), message: tl('gwWizard.selectTenantError', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'danger' });
                 return;
             }
-            if (!gatewayData.name) { confirm({ title: 'Input Error', message: 'Please enter a gateway name.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+            if (!gatewayData.name) { confirm({ title: tl('gwWizard.inputError', { ns: 'dataExport' }), message: tl('gwWizard.enterGatewayNameError', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'danger' }); return; }
         }
         if (currentStep === 1) {
             if (profileMode === 'new') {
-                if (!newProfileData.name) { confirm({ title: 'Input Error', message: 'Please enter a profile name.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
-                if (newProfileData.data_points.length === 0) { confirm({ title: 'Input Error', message: 'Please select at least one data point.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (!newProfileData.name) { confirm({ title: tl('gwWizard.inputError', { ns: 'dataExport' }), message: tl('gwWizard.enterProfileName', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (newProfileData.data_points.length === 0) { confirm({ title: tl('gwWizard.inputError', { ns: 'dataExport' }), message: tl('gwWizard.selectPointError', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'danger' }); return; }
             } else {
-                if (!selectedProfileId) { confirm({ title: 'Input Error', message: 'Please select a profile.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (!selectedProfileId) { confirm({ title: tl('gwWizard.inputError', { ns: 'dataExport' }), message: tl('gwWizard.selectProfileError', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'danger' }); return; }
             }
         }
         if (currentStep === 2) {
-            if (templateMode === 'new' && !newTemplateData.name) { confirm({ title: 'Input Error', message: 'Please enter a template name.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
-            if (templateMode === 'existing' && !selectedTemplateId) { confirm({ title: 'Input Error', message: 'Please select a template.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+            if (templateMode === 'new' && !newTemplateData.name) { confirm({ title: tl('gwWizard.inputError', { ns: 'dataExport' }), message: tl('gwWizard.enterTemplateNameError', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'danger' }); return; }
+            if (templateMode === 'existing' && !selectedTemplateId) { confirm({ title: tl('gwWizard.inputError', { ns: 'dataExport' }), message: tl('gwWizard.selectTemplateError', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'danger' }); return; }
         }
         if (currentStep === 3) {
             if (targetMode === 'new') {
-                if (selectedProtocols.length === 0) { confirm({ title: 'Input Error', message: 'Please select at least one transmission protocol.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (selectedProtocols.length === 0) { confirm({ title: tl('gwWizard.inputError', { ns: 'dataExport' }), message: tl('gwWizard.selectProtocolError', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'danger' }); return; }
                 // Detailed validation for each protocol... omitted for brevity but strictly required in prod
             } else {
-                if (selectedTargetIds.length === 0) { confirm({ title: 'Input Error', message: 'Please select at least one transmission target.', showCancelButton: false, confirmButtonType: 'danger' }); return; }
+                if (selectedTargetIds.length === 0) { confirm({ title: tl('gwWizard.inputError', { ns: 'dataExport' }), message: tl('gwWizard.selectTargetError', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'danger' }); return; }
             }
         }
 
@@ -850,13 +850,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
             // Ensure ID is passed for update
             await exportGatewayApi.updateGateway(gatewayId, finalGatewayData, wizardSiteId, wizardTenantId);
 
-            await confirm({ title: 'Setup Complete', message: 'Gateway and transmission settings have been configured.', showCancelButton: false, confirmButtonType: 'success' });
+            await confirm({ title: tl('gwWizard.completeTitle', { ns: 'dataExport' }), message: tl('gwWizard.completeMsg', { ns: 'dataExport' }), showCancelButton: false, confirmButtonType: 'success' });
             onSuccess();
         } catch (e: any) {
             console.error("GATEWAY_SAVE_ERROR:", e);
             const errMsg = e?.response?.data?.message || e?.message || 'Error during save. Please check the logs.';
             await confirm({
-                title: 'Setup Failed',
+                title: tl('gwWizard.failedTitle', { ns: 'dataExport' }),
                 message: errMsg,
                 showCancelButton: false,
                 confirmButtonType: 'danger'
@@ -869,7 +869,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
     return (
         <Modal
-            title={<><i className={`fas ${editingGateway ? 'fa-edit' : 'fa-magic'} `} style={{ marginRight: '8px' }} />{editingGateway ? 'Edit Gateway Settings' : 'Gateway Registration Wizard'}</>}
+            title={<><i className={`fas ${editingGateway ? 'fa-edit' : 'fa-magic'} `} style={{ marginRight: '8px' }} />{editingGateway ? tl('gwWizard.editTitle', { ns: 'dataExport' }) : tl('gwWizard.createTitle', { ns: 'dataExport' })}</>}
             open={visible}
             onCancel={onClose}
             width={900}
@@ -903,16 +903,16 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                         }}>
                             <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a1a1a', display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
                                 <i className="fas fa-server" style={{ marginRight: '12px', color: '#1890ff' }} />
-                                Gateway Basic Info Setup
+                                {tl('gwWizard.basicInfoTitle', { ns: 'dataExport' })}
                             </div>
 
                             {isAdmin && (
                                 <Row gutter={16}>
                                     <Col span={12}>
-                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>{tl('labels.tenantSelectionAdmin', {ns: 'dataExport'})}</div>
+                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>{tl('labels.tenantSelectionAdmin', { ns: 'dataExport' })}</div>
                                         <Select
                                             style={{ width: '100%' }}
-                                            placeholder="Select tenant"
+                                            placeholder={tl('gwWizard.selectTenantPh', { ns: 'dataExport' })}
                                             value={wizardTenantId}
                                             onChange={(val) => {
                                                 setWizardTenantId(val);
@@ -926,7 +926,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         </Select>
                                     </Col>
                                     <Col span={12}>
-                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>{tl('labels.siteSelectionAdmin', {ns: 'dataExport'})}</div>
+                                        <div style={{ marginBottom: '8px', fontWeight: 600 }}>{tl('labels.siteSelectionAdmin', { ns: 'dataExport' })}</div>
                                         <Select
                                             style={{ width: '100%' }}
                                             placeholder="Select site"
@@ -934,7 +934,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                             onChange={setWizardSiteId}
                                             disabled={!wizardTenantId}
                                         >
-                                            <Select.Option value={null}>{tl('labels.allSitesShared', {ns: 'dataExport'})}</Select.Option>
+                                            <Select.Option value={null}>{tl('labels.allSitesShared', { ns: 'dataExport' })}</Select.Option>
                                             {sites.map(s => (
                                                 <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
                                             ))}
@@ -944,16 +944,16 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                             )}
 
                             <Form layout="vertical">
-                                <Form.Item label="Gateway Name (Unique)" required tooltip="A unique identifier within the system.">
+                                <Form.Item label={tl('gwWizard.gatewayNameLabel', { ns: 'dataExport' })} required tooltip={tl('gwWizard.gatewayNameTooltip', { ns: 'dataExport' })}>
                                     <Input
                                         size="large"
                                         autoFocus
-                                        placeholder="e.g. GW_Factory_A_Line1"
+                                        placeholder={tl('gwWizard.gatewayNamePh', { ns: 'dataExport' })}
                                         value={gatewayData.name}
                                         onChange={e => setGatewayData({ ...gatewayData, name: e.target.value })}
                                     />
                                 </Form.Item>
-                                <Form.Item label="IP Address (Allowed Host)" required tooltip="IP address allowed to receive data. For Docker internal communication, 127.0.0.1 is recommended.">
+                                <Form.Item label={tl('gwWizard.ipAddressLabel', { ns: 'dataExport' })} required tooltip={tl('gwWizard.ipAddressTooltip', { ns: 'dataExport' })}>
                                     <Input
                                         size="large"
                                         placeholder="127.0.0.1"
@@ -961,19 +961,19 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         onChange={e => setGatewayData({ ...gatewayData, ip_address: e.target.value })}
                                     />
                                 </Form.Item>
-                                <Form.Item label="Alarm Subscription Mode" required tooltip="Sets the data reception scope. 'Selective' processes only alarms for assigned devices.">
+                                <Form.Item label={tl('gwWizard.alarmSubModeLabel', { ns: 'dataExport' })} required tooltip={tl('gwWizard.alarmSubModeTooltip', { ns: 'dataExport' })}>
                                     <Radio.Group
                                         size="large"
                                         value={gatewayData.subscription_mode}
                                         onChange={e => setGatewayData({ ...gatewayData, subscription_mode: e.target.value as 'all' | 'selective' })}
                                     >
-                                        <Radio value="all">{tl('labels.receiveAll', {ns: 'dataExport'})}</Radio>
-                                        <Radio value="selective">{tl('labels.assignedDevicesOnlySelective', {ns: 'dataExport'})}</Radio>
+                                        <Radio value="all">{tl('labels.receiveAll', { ns: 'dataExport' })}</Radio>
+                                        <Radio value="selective">{tl('labels.assignedDevicesOnlySelective', { ns: 'dataExport' })}</Radio>
                                     </Radio.Group>
                                 </Form.Item>
-                                <Form.Item label="Description">
+                                <Form.Item label={tl('gwWizard.descriptionLabel', { ns: 'dataExport' })}>
                                     <Input.TextArea
-                                        placeholder="Detailed description for management"
+                                        placeholder={tl('gwWizard.descriptionPh', { ns: 'dataExport' })}
                                         rows={4}
                                         value={gatewayData.description}
                                         onChange={e => setGatewayData({ ...gatewayData, description: e.target.value })}
@@ -992,8 +992,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 style={{ marginBottom: '16px', width: '100%' }}
                                 buttonStyle="solid"
                             >
-                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.selectExistingProfile', {ns: 'dataExport'})}</Radio.Button>
-                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.createNewProfile', {ns: 'dataExport'})}</Radio.Button>
+                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.selectExistingProfile', { ns: 'dataExport' })}</Radio.Button>
+                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.createNewProfile', { ns: 'dataExport' })}</Radio.Button>
                             </Radio.Group>
 
                             {profileMode === 'existing' ? (
@@ -1010,13 +1010,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 }}>
                                     <div style={{ marginBottom: '12px', fontWeight: 700, fontSize: '15px', color: '#1a1a1a', display: 'flex', alignItems: 'center' }}>
                                         <i className="fas fa-search" style={{ marginRight: '8px', color: '#1890ff' }} />
-                                        Select Profile
+                                        {tl('gwWizard.selectProfileSectionTitle', { ns: 'dataExport' })}
                                     </div>
                                     <Select
                                         showSearch
                                         style={{ width: '100%', marginBottom: '20px' }}
                                         size="large"
-                                        placeholder="Search or select a profile"
+                                        placeholder={tl('gwWizard.searchSelectProfile', { ns: 'dataExport' })}
                                         optionFilterProp="children"
                                         value={selectedProfileId}
                                         onChange={setSelectedProfileId}
@@ -1042,7 +1042,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         {p.name}
                                                     </div>
                                                     <div style={{ fontSize: '13px', marginTop: '6px', color: '#434343', lineHeight: '1.5' }}>
-                                                        {p.description || 'No description for this profile.'}
+                                                        {p.description || tl('gwWizard.noProfileDesc', { ns: 'dataExport' })}
                                                     </div>
                                                 </div>
 
@@ -1062,10 +1062,10 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #f5f5f5', paddingBottom: '16px' }}>
                                                         <div style={{ fontSize: '16px', fontWeight: 800, color: '#1a1a1a', display: 'flex', alignItems: 'center' }}>
                                                             <i className="fas fa-exchange-alt" style={{ marginRight: '10px', color: '#1890ff' }} />
-                                                            Data Mapping & External Field Name Settings
+                                                            {tl('gwWizard.dataMappingTitle', { ns: 'dataExport' })}
                                                         </div>
                                                         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', background: '#f0f5ff', padding: '8px 16px', borderRadius: '10px', border: '1px solid #adc6ff' }}>
-                                                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#1d39c4' }}>{tl('labels.bulkApplySiteId', {ns: 'dataExport'})}</span>
+                                                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#1d39c4' }}>{tl('labels.bulkApplySiteId', { ns: 'dataExport' })}</span>
                                                             <Input
                                                                 size="small"
                                                                 placeholder="Enter ID"
@@ -1082,7 +1082,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                     setMappings(mappings.map(m => ({ ...m, site_id: bid })));
                                                                 }}
                                                             >
-                                                                Apply
+                                                                {tl('gwWizard.applyBtn', { ns: 'dataExport' })}
                                                             </Button>
                                                         </div>
                                                     </div>
@@ -1091,12 +1091,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px', fontSize: '12px' }}>
                                                             <thead>
                                                                 <tr style={{ textAlign: 'left', color: '#8c8c8c' }}>
-                                                                    <th style={{ padding: '8px 12px', width: '20%' }}>{tl('labels.internalPointName', {ns: 'dataExport'})}</th>
-                                                                    <th style={{ padding: '8px 12px', width: '35%' }}>{tl('labels.mappingNameTargetKey', {ns: 'dataExport'})}</th>
-                                                                    <th style={{ padding: '8px 12px', width: '15%' }}>{tl('labels.siteId', {ns: 'dataExport'})}</th>
-                                                                    <th style={{ padding: '8px 12px', width: '10%' }}>{tl('labels.scale', {ns: 'dataExport'})}</th>
-                                                                    <th style={{ padding: '8px 12px', width: '10%' }}>{tl('labels.offset', {ns: 'dataExport'})}</th>
-                                                                    <th style={{ padding: '8px 12px', width: '10%', textAlign: 'center' }}>{tl('delete', {ns: 'common'})}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '20%' }}>{tl('labels.internalPointName', { ns: 'dataExport' })}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '35%' }}>{tl('labels.mappingNameTargetKey', { ns: 'dataExport' })}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '15%' }}>{tl('labels.siteId', { ns: 'dataExport' })}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '10%' }}>{tl('labels.scale', { ns: 'dataExport' })}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '10%' }}>{tl('labels.offset', { ns: 'dataExport' })}</th>
+                                                                    <th style={{ padding: '8px 12px', width: '10%', textAlign: 'center' }}>{tl('delete', { ns: 'common' })}</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
@@ -1232,8 +1232,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     {currentStep === 2 && (
                         <div>
                             <Radio.Group value={templateMode} onChange={e => setTemplateMode(e.target.value)} style={{ marginBottom: '16px', width: '100%' }} buttonStyle="solid">
-                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.useExistingTemplate', {ns: 'dataExport'})}</Radio.Button>
-                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.defineNewTemplate', {ns: 'dataExport'})}</Radio.Button>
+                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.useExistingTemplate', { ns: 'dataExport' })}</Radio.Button>
+                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.defineNewTemplate', { ns: 'dataExport' })}</Radio.Button>
                             </Radio.Group>
                             {templateMode === 'existing' ? (
                                 <div style={{
@@ -1249,12 +1249,12 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 }}>
                                     <div style={{ marginBottom: '12px', fontWeight: 700, fontSize: '15px', color: '#1a1a1a', display: 'flex', alignItems: 'center' }}>
                                         <i className="fas fa-layer-group" style={{ marginRight: '8px', color: '#1890ff' }} />
-                                        Select Template
+                                        {tl('gwWizard.selectTemplateSectionTitle', { ns: 'dataExport' })}
                                     </div>
                                     <Select
                                         style={{ width: '100%', marginBottom: '20px' }}
                                         size="large"
-                                        placeholder="Select a template to define the transmission format"
+                                        placeholder={tl('gwWizard.selectTemplatePh', { ns: 'dataExport' })}
                                         value={selectedTemplateId}
                                         onChange={setSelectedTemplateId}
                                         options={templates.map(t => ({ value: t.id, label: t.name }))}
@@ -1264,7 +1264,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         <div style={{ marginTop: '10px', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                                             <div style={{ marginBottom: '8px', fontSize: '12px', fontWeight: 700, color: '#8c8c8c', display: 'flex', alignItems: 'center' }}>
                                                 <i className="fas fa-code" style={{ marginRight: '6px' }} />
-                                                Template JSON Preview
+                                                {tl('gwWizard.templatePreviewLabel', { ns: 'dataExport' })}
                                             </div>
                                             <div style={{
                                                 flex: 1,
@@ -1286,7 +1286,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 }}>
                                                     {(() => {
                                                         const raw = templates.find(t => t.id === selectedTemplateId)?.template_json;
-                                                        if (raw === undefined || raw === null) return 'No template selected.';
+                                                        if (raw === undefined || raw === null) return tl('gwWizard.noTemplateSelected', { ns: 'dataExport' });
                                                         try {
                                                             const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
                                                             return JSON.stringify(parsed, null, 2);
@@ -1303,7 +1303,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '15px' }}>
                                     <div style={{ display: 'flex', gap: '15px' }}>
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{tl('labels.templateName', {ns: 'dataExport'})}</div>
+                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{tl('labels.templateName', { ns: 'dataExport' })}</div>
                                             <Input
                                                 size="large"
                                                 placeholder="e.g. Standard JSON Payload"
@@ -1312,7 +1312,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                             />
                                         </div>
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{tl('labels.systemType', {ns: 'dataExport'})}</div>
+                                            <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px' }}>{tl('labels.systemType', { ns: 'dataExport' })}</div>
                                             <Input
                                                 size="large"
                                                 placeholder="e.g. AWS IoT, MS Azure, etc."
@@ -1324,19 +1324,19 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
                                     <div style={{ padding: '12px', background: '#f0faff', borderRadius: '8px', border: '1px solid #e6f7ff', fontSize: '11px', color: '#0050b3', lineHeight: '1.6' }}>
                                         <i className="fas fa-info-circle" style={{ marginRight: '8px' }} />
-                                        <strong>{tl('labels.engineerGuide', {ns: 'dataExport'})}</strong> <code>{"{{target_key}}"}</code>to inject the profile's <b>{tl('labels.targetKey', {ns: 'dataExport'})}</b>. For versatile design, a metadata-centric schema is recommended over site-specific fixed variables.
+                                        <strong>{tl('labels.engineerGuide', { ns: 'dataExport' })}</strong> <code>{"{{target_key}}"}</code>to inject the profile's <b>{tl('labels.targetKey', { ns: 'dataExport' })}</b>. For versatile design, a metadata-centric schema is recommended over site-specific fixed variables.
                                     </div>
 
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                            <span style={{ fontWeight: 700, fontSize: '13px' }}>{tl('labels.payloadStructure', {ns: 'dataExport'})}</span>
+                                            <span style={{ fontWeight: 700, fontSize: '13px' }}>{tl('labels.payloadStructure', { ns: 'dataExport' })}</span>
                                             <Radio.Group
                                                 size="small"
                                                 value={templateEditMode}
                                                 onChange={e => setTemplateEditMode(e.target.value)}
                                             >
-                                                <Radio.Button value="simple">{tl('labels.builderSimple', {ns: 'dataExport'})}</Radio.Button>
-                                                <Radio.Button value="advanced">{tl('labels.codeAdvanced', {ns: 'dataExport'})}</Radio.Button>
+                                                <Radio.Button value="simple">{tl('labels.builderSimple', { ns: 'dataExport' })}</Radio.Button>
+                                                <Radio.Button value="advanced">{tl('labels.codeAdvanced', { ns: 'dataExport' })}</Radio.Button>
                                             </Radio.Group>
                                         </div>
                                     </div>
@@ -1394,7 +1394,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                             )}
                                         </div>
                                         <div style={{ flex: 1, background: '#1e272e', borderRadius: '8px', padding: '12px', overflowY: 'auto' }}>
-                                            <div style={{ fontSize: '11px', color: '#55efc4', fontWeight: 700, marginBottom: '8px' }}>{tl('labels.preview', {ns: 'dataExport'})}</div>
+                                            <div style={{ fontSize: '11px', color: '#55efc4', fontWeight: 700, marginBottom: '8px' }}>{tl('labels.preview', { ns: 'dataExport' })}</div>
                                             <pre style={{ margin: 0, fontSize: '11px', color: '#abb2bf', whiteSpace: 'pre-wrap' }}>
                                                 {(() => {
                                                     try {
@@ -1424,13 +1424,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                     {currentStep === 3 && (
                         <div style={{ height: '480px', display: 'flex', flexDirection: 'column' }}>
                             <Radio.Group value={targetMode} onChange={e => setTargetMode(e.target.value)} style={{ marginBottom: '16px' }}>
-                                <Radio.Button value="existing">{tl('labels.connectExistingTarget', {ns: 'dataExport'})}</Radio.Button>
-                                <Radio.Button value="new">{tl('labels.createNewTarget', {ns: 'dataExport'})}</Radio.Button>
+                                <Radio.Button value="existing">{tl('labels.connectExistingTarget', { ns: 'dataExport' })}</Radio.Button>
+                                <Radio.Button value="new">{tl('labels.createNewTarget', { ns: 'dataExport' })}</Radio.Button>
                             </Radio.Group>
 
                             {targetMode === 'existing' ? (
                                 <div style={{ padding: '24px', textAlign: 'left', background: 'white', borderRadius: '8px', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-                                    <div style={{ marginBottom: '8px', fontWeight: 600 }}>{tl('labels.selectEditTarget', {ns: 'dataExport'})}</div>
+                                    <div style={{ marginBottom: '8px', fontWeight: 600 }}>{tl('labels.selectEditTarget', { ns: 'dataExport' })}</div>
                                     <Select
                                         mode="multiple"
                                         style={{ width: '100%' }}
@@ -1465,7 +1465,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                     <Tag bordered={false} color={t.target_type === 'HTTP' ? 'blue' : t.target_type === 'S3' ? 'orange' : 'default'}>{t.target_type}</Tag>
                                                                 </div>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <span style={{ fontSize: '12px', color: '#666' }}>{tl('labels.priority', {ns: 'dataExport'})}</span>
+                                                                    <span style={{ fontSize: '12px', color: '#666' }}>{tl('labels.priority', { ns: 'dataExport' })}</span>
                                                                     <Select
                                                                         size="small"
                                                                         style={{ width: '60px' }}
@@ -1494,8 +1494,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                                         setEditingTargets(next);
                                                                                     }}
                                                                                 >
-                                                                                    <option value="POST">{tl('labels.post', {ns: 'dataExport'})}</option>
-                                                                                    <option value="PUT">{tl('labels.put', {ns: 'dataExport'})}</option>
+                                                                                    <option value="POST">{tl('labels.post', { ns: 'dataExport' })}</option>
+                                                                                    <option value="PUT">{tl('labels.put', { ns: 'dataExport' })}</option>
                                                                                 </Select>
                                                                                 <Input
                                                                                     placeholder="Endpoint URL"
@@ -1624,7 +1624,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         onChange={e => setTargetData({ ...targetData, name: e.target.value })}
                                     />
                                     <div className="mgmt-modal-form-group">
-                                        <label>{tl('labels.transmissionProtocolMultiselect', {ns: 'dataExport'})}</label>
+                                        <label>{tl('labels.transmissionProtocolMultiselect', { ns: 'dataExport' })}</label>
                                         <Checkbox.Group
                                             options={['HTTP', 'MQTT', 'S3']}
                                             value={selectedProtocols}
@@ -1635,13 +1635,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                     {/* Config Forms */}
                                     {selectedProtocols.includes('HTTP') && (
                                         <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
-                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>{tl('labels.httpConnectionSettings', {ns: 'dataExport'})}</div>
+                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>{tl('labels.httpConnectionSettings', { ns: 'dataExport' })}</div>
                                             {targetData.config_http.map((c: any, i: number) => (
                                                 <div key={i} style={{ marginBottom: '16px', padding: '12px', background: '#f9f9f9', borderRadius: '8px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
                                                         <span style={{ fontWeight: 600, color: '#666', fontSize: '12px' }}>Mirror #{i + 1}</span>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <span style={{ fontSize: '11px', color: '#999' }}>{tl('labels.priority', {ns: 'dataExport'})}</span>
+                                                            <span style={{ fontSize: '11px', color: '#999' }}>{tl('labels.priority', { ns: 'dataExport' })}</span>
                                                             <Select
                                                                 size="small"
                                                                 style={{ width: '60px' }}
@@ -1666,8 +1666,8 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                                 setTargetData({ ...targetData, config_http: next });
                                                             }}
                                                         >
-                                                            <Select.Option value="POST">{tl('labels.post', {ns: 'dataExport'})}</Select.Option>
-                                                            <Select.Option value="PUT">{tl('labels.put', {ns: 'dataExport'})}</Select.Option>
+                                                            <Select.Option value="POST">{tl('labels.post', { ns: 'dataExport' })}</Select.Option>
+                                                            <Select.Option value="PUT">{tl('labels.put', { ns: 'dataExport' })}</Select.Option>
                                                         </Select>
                                                         <Input
                                                             placeholder="Endpoint URL (e.g. http://api.server.com/ingest)"
@@ -1719,7 +1719,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         <Button danger size="small" onClick={() => {
                                                             const next = targetData.config_http.filter((_, idx) => idx !== i);
                                                             setTargetData({ ...targetData, config_http: next });
-                                                        }}>{tl('delete', {ns: 'common'})}</Button>
+                                                        }}>{tl('delete', { ns: 'common' })}</Button>
                                                     )}
                                                 </div>
                                             ))}
@@ -1731,13 +1731,13 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
                                     {selectedProtocols.includes('MQTT') && (
                                         <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', background: 'white', marginTop: '16px' }}>
-                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>{tl('labels.mqttConnectionSettings', {ns: 'dataExport'})}</div>
+                                            <div style={{ fontWeight: 600, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>{tl('labels.mqttConnectionSettings', { ns: 'dataExport' })}</div>
                                             {targetData.config_mqtt.map((c: any, i: number) => (
                                                 <div key={i} style={{ marginBottom: '16px', padding: '12px', background: '#f9f9f9', borderRadius: '8px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
                                                         <span style={{ fontWeight: 600, color: '#666', fontSize: '12px' }}>MQTT Target #{i + 1}</span>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <span style={{ fontSize: '11px', color: '#999' }}>{tl('labels.priority', {ns: 'dataExport'})}</span>
+                                                            <span style={{ fontSize: '11px', color: '#999' }}>{tl('labels.priority', { ns: 'dataExport' })}</span>
                                                             <Select
                                                                 size="small"
                                                                 style={{ width: '60px' }}
@@ -1775,7 +1775,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         <Button danger size="small" style={{ marginTop: '8px' }} onClick={() => {
                                                             const next = targetData.config_mqtt.filter((_, idx) => idx !== i);
                                                             setTargetData({ ...targetData, config_mqtt: next });
-                                                        }}>{tl('delete', {ns: 'common'})}</Button>
+                                                        }}>{tl('delete', { ns: 'common' })}</Button>
                                                     )}
                                                 </div>
                                             ))}
@@ -1793,7 +1793,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
                                                         <span style={{ fontWeight: 600, color: '#666', fontSize: '12px' }}>S3 Target #{i + 1}</span>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <span style={{ fontSize: '11px', color: '#999' }}>{tl('labels.priority', {ns: 'dataExport'})}</span>
+                                                            <span style={{ fontSize: '11px', color: '#999' }}>{tl('labels.priority', { ns: 'dataExport' })}</span>
                                                             <Select
                                                                 size="small"
                                                                 style={{ width: '60px' }}
@@ -1861,7 +1861,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         <Button danger size="small" onClick={() => {
                                                             const next = targetData.config_s3.filter((_, idx) => idx !== i);
                                                             setTargetData({ ...targetData, config_s3: next });
-                                                        }}>{tl('delete', {ns: 'common'})}</Button>
+                                                        }}>{tl('delete', { ns: 'common' })}</Button>
                                                     )}
                                                 </div>
                                             ))}
@@ -1887,15 +1887,15 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                 </div>
                                 <div style={{ fontSize: '12.5px', color: '#434343', lineHeight: '1.6' }}>
                                     {transmissionMode === 'INTERVAL' ? (
-                                        <><strong>{tl('labels.scheduled', {ns: 'dataExport'})}</strong> Periodically transmits data in batches according to the Cron schedule. Traffic is predictable and suitable for report generation.</>
+                                        <><strong>{tl('labels.scheduled', { ns: 'dataExport' })}</strong> Periodically transmits data in batches according to the Cron schedule. Traffic is predictable and suitable for report generation.</>
                                     ) : (
-                                        <><strong>{tl('labels.eventbased', {ns: 'dataExport'})}</strong> Transmits immediately when collected data changes or an event exceeds a threshold. Used for real-time alarms and immediate response scenarios.</>
+                                        <><strong>{tl('labels.eventbased', { ns: 'dataExport' })}</strong> Transmits immediately when collected data changes or an event exceeds a threshold. Used for real-time alarms and immediate response scenarios.</>
                                     )}
                                 </div>
                             </div>
 
                             <Form layout="vertical">
-                                <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.selectTransmissionMode', {ns: 'dataExport'})}</span>}>
+                                <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.selectTransmissionMode', { ns: 'dataExport' })}</span>}>
                                     <Radio.Group
                                         value={transmissionMode}
                                         onChange={e => setTransmissionMode(e.target.value)}
@@ -1903,14 +1903,14 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                         buttonStyle="solid"
                                         style={{ width: '100%' }}
                                     >
-                                        <Radio.Button value="INTERVAL" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.scheduledTransmission', {ns: 'dataExport'})}</Radio.Button>
-                                        <Radio.Button value="EVENT" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.eventbasedRealtime', {ns: 'dataExport'})}</Radio.Button>
+                                        <Radio.Button value="INTERVAL" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.scheduledTransmission', { ns: 'dataExport' })}</Radio.Button>
+                                        <Radio.Button value="EVENT" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.eventbasedRealtime', { ns: 'dataExport' })}</Radio.Button>
                                     </Radio.Group>
                                 </Form.Item>
 
                                 {transmissionMode === 'INTERVAL' ? (
                                     <div style={{ animation: 'fadeIn 0.3s ease-in-out' }}>
-                                        <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.scheduleConfiguration', {ns: 'dataExport'})}</span>}>
+                                        <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.scheduleConfiguration', { ns: 'dataExport' })}</span>}>
                                             <Radio.Group
                                                 value={scheduleMode}
                                                 onChange={e => {
@@ -1923,14 +1923,14 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 buttonStyle="solid"
                                                 style={{ width: '100%', marginBottom: '16px' }}
                                             >
-                                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.createNew', {ns: 'dataExport'})}</Radio.Button>
-                                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.applyExistingSchedule', {ns: 'dataExport'})}</Radio.Button>
+                                                <Radio.Button value="new" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.createNew', { ns: 'dataExport' })}</Radio.Button>
+                                                <Radio.Button value="existing" style={{ width: '50%', textAlign: 'center' }}>{tl('labels.applyExistingSchedule', { ns: 'dataExport' })}</Radio.Button>
                                             </Radio.Group>
                                         </Form.Item>
 
                                         {scheduleMode === 'new' ? (
                                             <>
-                                                <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.scheduleName', {ns: 'dataExport'})}</span>} required>
+                                                <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.scheduleName', { ns: 'dataExport' })}</span>} required>
                                                     <Input
                                                         placeholder="e.g. Every 5 minutes batch"
                                                         value={scheduleData.schedule_name}
@@ -1938,7 +1938,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                     />
                                                 </Form.Item>
                                                 <Form.Item
-                                                    label={<span style={{ fontWeight: 600 }}>{tl('labels.cronExpression', {ns: 'dataExport'})}</span>}
+                                                    label={<span style={{ fontWeight: 600 }}>{tl('labels.cronExpression', { ns: 'dataExport' })}</span>}
                                                     required
                                                     extra={<span style={{ fontSize: '11px' }}>* Standard Cron format supported (min hr day month weekday)</span>}
                                                 >
@@ -1949,7 +1949,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                         style={{ fontFamily: 'monospace', fontSize: '15px' }}
                                                     />
                                                     <div style={{ marginTop: '12px' }}>
-                                                        <div style={{ fontSize: '11px', color: '#8c8c8c', marginBottom: '8px', fontWeight: 600 }}>{tl('labels.quickPreset', {ns: 'dataExport'})}</div>
+                                                        <div style={{ fontSize: '11px', color: '#8c8c8c', marginBottom: '8px', fontWeight: 600 }}>{tl('labels.quickPreset', { ns: 'dataExport' })}</div>
                                                         <Space wrap>
                                                             {[
                                                                 { label: 'Every 1 min', value: '*/1 * * * *' },
@@ -1980,7 +1980,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 </Form.Item>
                                             </>
                                         ) : (
-                                            <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.selectPredefinedSchedule', {ns: 'dataExport'})}</span>} required>
+                                            <Form.Item label={<span style={{ fontWeight: 600 }}>{tl('labels.selectPredefinedSchedule', { ns: 'dataExport' })}</span>} required>
                                                 {availableSchedules.length > 0 ? (
                                                     <Select
                                                         placeholder="Select a schedule"
@@ -2000,7 +2000,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
                                                 ) : (
                                                     <div style={{ padding: '16px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: '8px', color: '#d48806', fontSize: '13px' }}>
                                                         <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px' }}></i>
-                                                        No existing schedules registered for this tenant. Please use <strong>{tl('labels.createNew', {ns: 'dataExport'})}</strong> mode.
+                                                        No existing schedules registered for this tenant. Please use <strong>{tl('labels.createNew', { ns: 'dataExport' })}</strong> mode.
                                                     </div>
                                                 )}
                                                 <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '8px' }}>
@@ -2033,7 +2033,7 @@ const ExportGatewayWizard: React.FC<ExportGatewayWizardProps> = ({ visible, onCl
 
                 <div className="wizard-footer" style={{ padding: '16px 32px', borderTop: '1px solid var(--neutral-100)', display: 'flex', justifyContent: 'space-between', marginTop: 'auto' }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <Button onClick={onClose} disabled={loading}>{tl('cancel', {ns: 'common'})}</Button>
+                        <Button onClick={onClose} disabled={loading}>{tl('cancel', { ns: 'common' })}</Button>
                         {editingGateway && onDelete && (
                             <Button
                                 danger
