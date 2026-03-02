@@ -86,7 +86,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.name || !formData.code) {
-            setError('Site name and code are required.');
+            setError(t('modal.requiredError', { ns: 'sites' }));
             return;
         }
 
@@ -96,9 +96,9 @@ export const SiteModal: React.FC<SiteModalProps> = ({
 
             if (site) {
                 const isConfirmed = await confirm({
-                    title: 'Save Changes',
-                    message: 'Save the changes you have entered?',
-                    confirmText: 'Save',
+                    title: t('modal.saveConfirmTitle', { ns: 'sites' }),
+                    message: t('modal.saveConfirmMsg', { ns: 'sites' }),
+                    confirmText: t('modal.saveConfirmText', { ns: 'sites' }),
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) return;
@@ -106,22 +106,22 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                 const res = await SiteApiService.updateSite(site.id, formData);
                 if (res.success) {
                     await confirm({
-                        title: 'Save Complete',
-                        message: 'Site information updated successfully.',
-                        confirmText: 'OK',
+                        title: t('modal.saveCompleteTitle', { ns: 'sites' }),
+                        message: t('modal.saveCompleteMsg', { ns: 'sites' }),
+                        confirmText: t('ok', { ns: 'common' }),
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || 'Update failed.');
+                    setError(res.message || t('modal.updateFailed', { ns: 'sites' }));
                 }
             } else {
                 const isConfirmed = await confirm({
-                    title: 'Register Site',
-                    message: 'Register a new site?',
-                    confirmText: 'Register',
+                    title: t('modal.registerConfirmTitle', { ns: 'sites' }),
+                    message: t('modal.registerConfirmMsg', { ns: 'sites' }),
+                    confirmText: t('modal.registerConfirmText', { ns: 'sites' }),
                     confirmButtonType: 'primary'
                 });
                 if (!isConfirmed) return;
@@ -129,20 +129,20 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                 const res = await SiteApiService.createSite(formData);
                 if (res.success) {
                     await confirm({
-                        title: 'Registration Complete',
-                        message: 'Registered successfully.',
-                        confirmText: 'OK',
+                        title: t('modal.registerCompleteTitle', { ns: 'sites' }),
+                        message: t('modal.registerCompleteMsg', { ns: 'sites' }),
+                        confirmText: t('ok', { ns: 'common' }),
                         showCancelButton: false,
                         confirmButtonType: 'primary'
                     });
                     onSave();
                     onClose();
                 } else {
-                    setError(res.message || 'Registration failed.');
+                    setError(res.message || t('modal.registerFailed', { ns: 'sites' }));
                 }
             }
         } catch (err: any) {
-            setError(err.message || 'Error communicating with server.');
+            setError(err.message || t('modal.serverError', { ns: 'sites' }));
         } finally {
             setSaving(false);
         }
@@ -153,7 +153,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({
             <div className="mgmt-modal-container site-modal">
                 <div className="mgmt-modal-header">
                     <div className="mgmt-modal-title">
-                        <h2>{site ? 'Edit Site Info' : 'Register New Site'}</h2>
+                        <h2>{site ? t('modal.editTitle', { ns: 'sites' }) : t('modal.createTitle', { ns: 'sites' })}</h2>
                     </div>
                     <button className="mgmt-close-btn" onClick={onClose}>
                         <i className="fas fa-times"></i>
@@ -166,88 +166,88 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                     <form id="site-form" onSubmit={handleSubmit}>
                         <div className="mgmt-modal-form-grid">
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-info-circle"></i> Basic Info</h3>
+                                <h3><i className="fas fa-info-circle"></i> {t('modal.sectionBasic', { ns: 'sites' })}</h3>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">{t('table.name', {ns: 'sites'})}</label>
+                                    <label className="required">{t('table.name', { ns: 'sites' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.name}
                                         onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        placeholder="Enter site name (e.g. Seoul HQ)"
+                                        placeholder={t('modal.phSiteName', { ns: 'sites' })}
                                         disabled={saving}
                                         required
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label className="required">{t('field.code', {ns: 'sites'})}</label>
+                                    <label className="required">{t('field.code', { ns: 'sites' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.code}
                                         onChange={e => setFormData({ ...formData, code: e.target.value })}
-                                        placeholder="Enter site code (e.g. HQ-001)"
+                                        placeholder={t('modal.phSiteCode', { ns: 'sites' })}
                                         disabled={saving}
                                         required
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('labels.siteType', {ns: 'sites'})}</label>
+                                    <label>{t('labels.siteType', { ns: 'sites' })}</label>
                                     <select
                                         className="form-control"
                                         value={formData.site_type}
                                         onChange={e => setFormData({ ...formData, site_type: e.target.value })}
                                         disabled={saving}
                                     >
-                                        <option value="company">{t('labels.headquartersBusinessUnit', {ns: 'sites'})}</option>
-                                        <option value="office">{t('labels.officebranch', {ns: 'sites'})}</option>
-                                        <option value="factory">{t('labels.factoryplant', {ns: 'sites'})}</option>
-                                        <option value="building">{t('labels.building', {ns: 'sites'})}</option>
-                                        <option value="floor">{t('labels.floor', {ns: 'sites'})}</option>
-                                        <option value="room">{t('labels.room', {ns: 'sites'})}</option>
+                                        <option value="company">{t('labels.headquartersBusinessUnit', { ns: 'sites' })}</option>
+                                        <option value="office">{t('labels.officebranch', { ns: 'sites' })}</option>
+                                        <option value="factory">{t('labels.factoryplant', { ns: 'sites' })}</option>
+                                        <option value="building">{t('labels.building', { ns: 'sites' })}</option>
+                                        <option value="floor">{t('labels.floor', { ns: 'sites' })}</option>
+                                        <option value="room">{t('labels.room', { ns: 'sites' })}</option>
                                     </select>
                                 </div>
                             </div>
 
                             <div className="mgmt-modal-form-section">
-                                <h3><i className="fas fa-sitemap"></i> Hierarchy & Location</h3>
+                                <h3><i className="fas fa-sitemap"></i> {t('modal.sectionHierarchy', { ns: 'sites' })}</h3>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('table.parentSite', {ns: 'sites'})}</label>
+                                    <label>{t('table.parentSite', { ns: 'sites' })}</label>
                                     <select
                                         className="form-control"
                                         value={formData.parent_site_id || ''}
                                         onChange={e => setFormData({ ...formData, parent_site_id: e.target.value ? parseInt(e.target.value) : undefined })}
                                         disabled={saving || loadingSites}
                                     >
-                                        <option value="">{t('labels.noneToplevelSite', {ns: 'sites'})}</option>
+                                        <option value="">{t('labels.noneToplevelSite', { ns: 'sites' })}</option>
                                         {sites.map(s => (
                                             <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
                                         ))}
                                     </select>
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('labels.address', {ns: 'sites'})}</label>
+                                    <label>{t('labels.address', { ns: 'sites' })}</label>
                                     <input
                                         type="text"
                                         className="form-control"
                                         value={formData.address}
                                         onChange={e => setFormData({ ...formData, address: e.target.value })}
-                                        placeholder="Enter full address"
+                                        placeholder={t('modal.phAddress', { ns: 'sites' })}
                                         disabled={saving}
                                     />
                                 </div>
                                 <div className="mgmt-modal-form-group">
-                                    <label>{t('labels.timezone', {ns: 'sites'})}</label>
+                                    <label>{t('labels.timezone', { ns: 'sites' })}</label>
                                     <select
                                         className="form-control"
                                         value={formData.timezone}
                                         onChange={e => setFormData({ ...formData, timezone: e.target.value })}
                                         disabled={saving}
                                     >
-                                        <option value="Asia/Seoul">{t('labels.asiaseoulKst', {ns: 'sites'})}</option>
-                                        <option value="UTC">{t('labels.utc', {ns: 'sites'})}</option>
+                                        <option value="Asia/Seoul">{t('labels.asiaseoulKst', { ns: 'sites' })}</option>
+                                        <option value="UTC">{t('labels.utc', { ns: 'sites' })}</option>
                                         <option value="America/New_York">America/New_York (EST/EDT)</option>
-                                        <option value="Europe/London">{t('labels.europelondonGmtbst', {ns: 'sites'})}</option>
+                                        <option value="Europe/London">{t('labels.europelondonGmtbst', { ns: 'sites' })}</option>
                                     </select>
                                 </div>
                                 <div className="checkbox-group">
@@ -258,17 +258,17 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                                             onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
                                             disabled={saving}
                                         />
-                                        Active Status
+                                        {t('modal.activeStatus', { ns: 'sites' })}
                                     </label>
                                 </div>
                             </div>
 
                             {!site && (
                                 <div className="mgmt-modal-form-section mgmt-span-full">
-                                    <h3><i className="fas fa-server"></i> Collector 설정 <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>(auto-created on site registration)</span></h3>
+                                    <h3><i className="fas fa-server"></i> {t('modal.sectionCollector', { ns: 'sites' })} <span style={{ fontSize: '12px', color: 'var(--neutral-400)', fontWeight: 'normal' }}>({t('modal.collectorAutoNote', { ns: 'sites' })})</span></h3>
                                     <div className="mgmt-modal-form-row">
                                         <div className="mgmt-modal-form-group">
-                                            <label>{t('labels.collectorName', {ns: 'sites'})}</label>
+                                            <label>{t('labels.collectorName', { ns: 'sites' })}</label>
                                             <input
                                                 type="text"
                                                 className="form-control"
@@ -277,16 +277,16 @@ export const SiteModal: React.FC<SiteModalProps> = ({
                                                 placeholder={`${formData.name || 'Site'}-Collector`}
                                                 disabled={saving}
                                             />
-                                            <span className="mgmt-modal-form-hint">비워두면 "Site-Collector" will be used as default.</span>
+                                            <span className="mgmt-modal-form-hint">{t('modal.collectorNameHint', { ns: 'sites', name: formData.name || 'Site' })}</span>
                                         </div>
                                         <div className="mgmt-modal-form-group">
-                                            <label>{t('labels.collectorDescription', {ns: 'sites'})}</label>
+                                            <label>{t('labels.collectorDescription', { ns: 'sites' })}</label>
                                             <input
                                                 type="text"
                                                 className="form-control"
                                                 value={(formData as any).collector_description || ''}
                                                 onChange={e => setFormData({ ...formData, collector_description: e.target.value } as any)}
-                                                placeholder="Optional"
+                                                placeholder={t('modal.phCollectorOptional', { ns: 'sites' })}
                                                 disabled={saving}
                                             />
                                         </div>

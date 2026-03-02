@@ -4,6 +4,34 @@
     "register": "새 사이트 등록",
     "showDeleted": "삭제된 사이트 보기",
     "topLevel": "최상위",
+    "modal": {
+        "createTitle": "새 사이트 등록",
+        "editTitle": "사이트 정보 편집",
+        "sectionBasic": "기본 정보",
+        "sectionHierarchy": "계층 구조 및 위치",
+        "sectionCollector": "Collector 설정",
+        "collectorAutoNote": "사이트 등록 시 자동 생성",
+        "activeStatus": "활성 상태",
+        "collectorNameHint": "비워두면 \"{name}-Collector\"가 기본값으로 사용됩니다.",
+        "phSiteName": "예: 서울 본사",
+        "phSiteCode": "예: HQ-001",
+        "phAddress": "전체 주소 입력",
+        "phCollectorOptional": "선택 사항",
+        "saveConfirmTitle": "변경 사항 저장",
+        "saveConfirmMsg": "입력한 변경 사항을 저장하시겠습니까?",
+        "saveConfirmText": "저장",
+        "saveCompleteTitle": "저장 완료",
+        "saveCompleteMsg": "사이트 정보가 성공적으로 업데이트되었습니다.",
+        "registerConfirmTitle": "사이트 등록",
+        "registerConfirmMsg": "새 사이트를 등록하시겠습니까?",
+        "registerConfirmText": "등록",
+        "registerCompleteTitle": "등록 완료",
+        "registerCompleteMsg": "성공적으로 등록되었습니다.",
+        "requiredError": "사이트명과 코드는 필수 입력 항목입니다.",
+        "updateFailed": "업데이트에 실패했습니다.",
+        "registerFailed": "등록에 실패했습니다.",
+        "serverError": "서버 통신 오류가 발생했습니다."
+    },
     "stats": {
         "totalSites": "전체 사이트",
         "activeSites": "활성 사이트",
@@ -39,9 +67,6 @@
         "restoreSuccessMsg": "사이트가 성공적으로 복구되었습니다."
     },
     "loading": "사이트 정보를 불러오는 중 오류가 발생했습니다.",
-    "modal": {
-        "createTitle": "사이트 등록"
-    },
     "field": {
         "name": "사이트명",
         "code": "사이트 코드"

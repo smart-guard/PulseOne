@@ -252,9 +252,9 @@
 
 /* 드랍다운 셀렉트 너비 */
 .mgmt-filter-group .mgmt-select {
-    width: 120px !important;
-    min-width: 120px !important;
-    flex: 0 0 120px !important;
+    width: 180px !important;
+    min-width: 180px !important;
+    flex: 0 0 180px !important;
 }
 
 /* Management Filter Visibility Helpers - CLEANED */
